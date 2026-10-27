@@ -1,0 +1,26 @@
+name: Ошибка
+description: Что-то работает не так
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что случилось и что ожидали
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Как повторить
+      placeholder: "1. Нажал 🆕 Новая …"
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Вывод `gas-pult doctor`
+      description: Токен он не печатает. Логи: journalctl --user -u gas-pult -n 50 — проверьте, что в них нет секретов.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: ОС, версия gas-pult и Claude Code
+      placeholder: "Ubuntu 24.04 · gas-pult 0.1.0 · Claude Code 2.1"

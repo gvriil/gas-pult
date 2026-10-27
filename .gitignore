@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+# никогда не коммитить
+token
+*.env
+.env
+state.json
+cmds.json
+inbox/
+*.onnx
+*.onnx.json
+*.pt
