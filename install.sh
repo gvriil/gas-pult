@@ -36,7 +36,7 @@ command -v claude >/dev/null || [ -x "$BIN/claude" ] || \
 
 # --- откуда ставить: из клона или с GitHub ---
 SRC="$REPO/archive/$REF.tar.gz"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || HERE=""
 if [ -n "$HERE" ] && grep -qs '^name = "gas-pult"' "$HERE/pyproject.toml"; then SRC="$HERE"; fi
 
 EXTRAS=""
