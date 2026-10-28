@@ -152,6 +152,11 @@
   .cmd .out { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 260px; overflow-y: auto; }
   select { width: 100%; font: 16px/1.3 -apple-system, system-ui, sans-serif; color: var(--text); background: var(--surface);
            border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+  .steps { counter-reset: st; margin: 6px 0 0; padding: 0; list-style: none; }
+  .steps li { position: relative; padding: 0 0 12px 34px; }
+  .steps li::before { counter-increment: st; content: counter(st); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%;
+                      background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
 
   .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(20,20,19,.4); display: flex; align-items: flex-end; }
@@ -170,6 +175,7 @@
 </style>
 </head>
 <body>
+<button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
 <div class="demo" id="demoBar" hidden>Демо-данные — так панель выглядит; ваши сессии не затронуты</div>
 <div class="top" id="top">
   <button class="icon" id="backBtn" hidden aria-label="Назад">‹</button>
@@ -246,7 +252,7 @@ const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
 const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт вашего выбора" };
-let sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
+let BUILD = null, sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -369,6 +375,7 @@ async function refresh() {
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions;
+    if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
     if (view === "home") {
       $("subtitle").textContent = `${d.host} · сессий: ${sessions.length}`;
       if (homeView === "sessions") $("sessionsView").innerHTML =
@@ -430,7 +437,7 @@ async function loadContent() {
       tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null,
       api("/api/screen?w=" + encodeURIComponent(current)),
     ]);
-    renderAsk(scr.lines);
+    renderAsk(scr.lines, scr.auth);
     $("keys").hidden = tab !== "screen" && cur()?.status !== "dialog";
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
@@ -497,8 +504,35 @@ $("content").addEventListener("click", (e) => {
   b.classList.contains("danger") ? ask() : go(false);
 });
 
-// Диалог Claude на экране → вопрос и варианты кнопками (нажатие = цифра варианта).
-function renderAsk(lines) {
+// Вход в MCP-сервис (ссылка на экране Claude Code) — карточка из трёх шагов; адрес после входа уходит в сессию.
+function authCard(a, name, w) {
+  return `<div class="ask"><p class="q">🔑 Вход в ${esc(a.service)}</p><ol class="steps">
+    <li><button class="btn" data-openauth="${esc(a.url)}" style="margin:0">Открыть страницу входа ${esc(a.service)}</button></li>
+    <li>Войдите как обычно — почтой, через Google или паролем ${esc(a.service)}. Это делается на сайте сервиса, панель пароль не видит.</li>
+    <li>После входа откроется страница, которая <b>не загружается</b> (адрес начинается с http://localhost) — так и должно быть.
+      Скопируйте адрес этой страницы целиком и вставьте сюда:
+      <div class="field" style="margin:8px 0 0"><textarea id="authUrl" rows="3" placeholder="http://localhost:…/callback?code=…"></textarea></div>
+      <button class="btn" data-finish="${esc(name || "")}" data-w="${esc(w || current)}">Завершить вход</button><div id="authResult"></div></li></ol></div>`;
+}
+document.addEventListener("click", async (e) => {
+  const o = e.target.closest("[data-openauth]");
+  if (o) { tg?.openLink ? tg.openLink(o.dataset.openauth) : window.open(o.dataset.openauth, "_blank"); return; }
+  const f = e.target.closest("[data-finish]"); if (!f) return;
+  const url = $("authUrl").value.trim();
+  if (!url) return toast("Вставьте адрес страницы после входа");
+  await busy(f, "Завершаю вход…", async () => {
+    try {
+      const d = await api("/api/mcp/finish", { w: f.dataset.w, url, name: f.dataset.finish || guessName() });
+      $("authResult").innerHTML = `<div class="result ${d.result.startsWith("✔") ? "ok" : "bad"}">${esc(d.result)}</div>`;
+      haptic("notificationOccurred", d.result.startsWith("✔") ? "success" : "error");
+    } catch (err) { $("authResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; }
+  });
+});
+const guessName = () => (document.querySelector(".ask .q")?.textContent || "").replace("🔑 Вход в ", "").trim();
+
+// Диалог Claude на экране → вопрос и варианты кнопками: с номером — цифрой, без номера — сервер дойдёт стрелками.
+function renderAsk(lines, auth) {
+  if (auth?.paste) { if (!$("authUrl")) $("ask").innerHTML = authCard(auth); return; }
   const opts = [], re = /^\s*(❯)?\s*(\d+)\.\s+(.+?)\s*$/;
   let end = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -507,13 +541,37 @@ function renderAsk(lines) {
     else if (opts.length) break;
   }
   const asking = cur()?.status === "dialog" || lines.slice(Math.max(0, end - 12), end + 1).some((l) => /\?\s*$/.test(l));
-  if (!asking || opts.length < 2) { $("ask").innerHTML = ""; return; }
+  if (!asking || opts.length < 2) { $("ask").innerHTML = plainOptions(lines); return; }
   const qi = lines.findLastIndex((l, i) => i < end - opts.length + 1 && /\?\s*$/.test(l));
   const q = qi >= 0 ? lines[qi].trim() : "Claude ждёт выбора";
   $("ask").innerHTML = `<div class="ask"><p class="q">${esc(q)}</p>${opts.map((o) =>
     `<button class="opt ${o.sel ? "sel" : ""}" data-key="${o.n}"><b>${o.n}</b>${esc(o.text)}</button>`).join("")}</div>`;
 }
-$("ask").onclick = (e) => { const b = e.target.closest("button[data-key]"); if (b) press(b.dataset.key); };
+$("ask").onclick = (e) => {
+  const b = e.target.closest("button[data-key]"); if (b) return press(b.dataset.key);
+  const t = e.target.closest("button[data-pick]"); if (t) pick(t.dataset.pick, t);
+};
+// Меню без номеров (доверие к папке, /mcp): строки над подсказкой «… to navigate / Enter to confirm», одна с ❯.
+function plainOptions(lines) {
+  const foot = lines.findLastIndex((l) => /to navigate|Enter to confirm|Enter to select/.test(l));
+  const sel = lines.findLastIndex((l, i) => i < foot && l.includes("❯"));
+  if (foot < 0 || sel < 0 || /^\s*❯\s*\d+\./.test(lines[sel])) return "";
+  let a = sel, z = sel;
+  while (a > 0 && lines[a - 1].trim() && /^\s{2,}/.test(lines[a - 1]) && !/[:?]\s*$/.test(lines[a - 1])) a--;
+  while (z < foot - 1 && lines[z + 1].trim() && /^\s{2,}/.test(lines[z + 1]) && !/^\s*(※|https?:)/.test(lines[z + 1])) z++;
+  let opts = lines.slice(a, z + 1).map((l) => ({ text: l.replace("❯", "").trim(), sel: l.includes("❯") })).filter((o) => o.text);
+  if (opts.some((o) => /^[✔✘⚠]/.test(o.text))) opts = opts.filter((o) => /^[✔✘⚠]/.test(o.text));
+  if (opts.length < 2) return "";
+  const q = lines.slice(Math.max(0, a - 6), a).reverse().find((l) => /\?\s*$/.test(l) || /^\s*\S.*(servers|MCP)/.test(l)) || "Выберите пункт";
+  return `<div class="ask"><p class="q">${esc(q.trim())}</p>${opts.map((o) =>
+    `<button class="opt ${o.sel ? "sel" : ""}" data-pick="${esc(o.text.replace(/^[✔✘⚠]\s*/, "").split(/\s{2,}/)[0])}">${esc(o.text)}</button>`).join("")}</div>`;
+}
+async function pick(text, btn) {
+  await busy(btn, "Выбираю…", async () => {
+    try { const d = await api("/api/select", { w: current, text }); setTab("screen"); renderAsk(d.lines); }
+    catch (e) { toast(e.message, 4500); }
+  });
+}
 $("keys").onclick = (e) => { const b = e.target.closest("button[data-key]"); if (b) press(b.dataset.key); };
 async function press(key) {
   haptic("impactOccurred", "light");
@@ -701,7 +759,8 @@ function renderMcp() {
     ${srv.length ? srv.map((s, i) => `<div class="card"><div class="row"><span class="name">${esc(s.name)}</span>
         <span class="pill ${s.ok ? "ok" : "bad"}">${s.ok ? "работает" : /auth/i.test(s.state) ? "нужен вход" : "не подключается"}</span></div>
         <div class="meta">${esc(s.target)}</div>${s.ok ? "" : `<div class="meta" style="white-space:normal">${/auth/i.test(s.state)
-          ? "Войдите: откройте сессию → ☰ → ⚡ Команды → /mcp → выберите сервер → Authenticate" : esc(s.state)}</div>`}
+          ? "Сервису нужен ваш вход — нажмите «Войти» ниже" : esc(s.state)}</div>`}
+        ${!s.ok && /auth/i.test(s.state) ? `<button class="btn" data-login="${esc(s.name)}" style="margin:8px 0 0;padding:9px">🔑 Войти в ${esc(s.name)}</button>` : ""}
         ${s.removable ? `<button class="btn danger" data-rm="${i}" style="margin:8px 0 0;padding:8px">Отключить</button>` : ""}</div>`).join("")
       : '<div class="empty">Пока ничего не подключено.</div>'}
     <button class="btn ghost" id="mcpRefresh">Проверить заново</button>
@@ -710,7 +769,8 @@ function renderMcp() {
       <div class="meta" style="white-space:normal">${esc(p.about)}</div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => {
-  const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]");
+  const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), lg = e.target.closest("[data-login]");
+  if (lg) return startLogin(lg.dataset.login, lg);
   if (e.target.id === "mcpRefresh") return busy(e.target, "Проверяю…", () => loadMcp(true));
   if (rm) {
     const s = mcpData.servers[+rm.dataset.rm];
@@ -719,6 +779,18 @@ $("integrationsView").addEventListener("click", (e) => {
   }
   if (p) mcpForm(mcpData.presets[+p.dataset.p]);
 });
+
+// Вход в MCP-сервис целиком из панели: сервер сам открывает /mcp в свободной сессии и достаёт ссылку входа.
+async function startLogin(name, btn) {
+  await busy(btn, "Готовлю вход… (до 20 секунд)", async () => {
+    try {
+      const a = await api("/api/mcp/login", { name });
+      const box = document.createElement("div"); box.innerHTML = authCard(a, name, a.w) +
+        `<p class="note">Вход идёт через сессию «${esc(a.session)}». Ссылка действует несколько минут.</p>`;
+      btn.replaceWith(box); box.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) { toast(e.message, 5000); }
+  });
+}
 
 function mcpForm(p) {
   show("mcpForm"); $("title").textContent = p.title; $("subtitle").textContent = "подключение MCP";
@@ -729,8 +801,9 @@ function mcpForm(p) {
       ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`).join("");
   $("mcpForm").innerHTML = `<div class="panel">
       <p style="margin:0 0 12px">${esc(p.about)}</p>
-      <div class="field"><label for="f__name">Имя подключения</label><input id="f__name" value="${esc(p.id === "http" || p.id === "stdio" ? "" : p.id)}" placeholder="например: my-service" autocapitalize="off" spellcheck="false">
-        <div class="hint">Как сервер будет называться у Claude: латиница, цифры, дефис.</div></div>
+      ${p.id === "http" || p.id === "stdio" ? `<div class="field"><label for="f__name">Короткое название (латиницей)</label><input id="f__name" placeholder="например: crm" autocapitalize="off" spellcheck="false">
+        <div class="hint">Как этот инструмент будет называться у Claude. Это не логин — логин и пароль здесь не нужны.</div></div>` : `<input id="f__name" type="hidden" value="${esc(p.id)}">`}
+      ${!p.fields.length ? `<div class="result ok">Ключ не нужен. Нажмите «Подключить», затем «Войти» — откроется страница ${esc(p.title)}, где вы войдёте как обычно.</div>` : ""}
       ${fields}
       ${p.after ? `<div class="result ok">После подключения: ${esc(p.after)}</div>` : ""}
       <button class="btn" id="mcpAdd">Подключить</button>
@@ -741,8 +814,12 @@ function mcpForm(p) {
     const values = Object.fromEntries(p.fields.map((f) => [f.key, $("f_" + f.key).value]));
     try {
       const d = await api("/api/mcp/add", { preset: p.id, name: $("f__name").value.trim(), values });
-      $("mcpResult").innerHTML = `<div class="result ok">${esc(d.result)}</div><button class="btn ghost" id="mcpDone">Готово — к списку</button>`;
+      const needLogin = /не отвечает|вход/i.test(d.result);
+      $("mcpResult").innerHTML = `<div class="result ok">${esc(d.result.split(". Если")[0].split(". Вход")[0])}</div>` +
+        (needLogin ? `<button class="btn" data-login="${esc($("f__name").value.trim())}">🔑 Войти в ${esc(p.title)}</button>` : "") +
+        `<button class="btn ghost" id="mcpDone">Готово — к списку</button>`;
       $("mcpDone").onclick = back; haptic("notificationOccurred", "success");
+      $("mcpResult").querySelector("[data-login]")?.addEventListener("click", (ev) => startLogin(ev.target.dataset.login, ev.target));
     } catch (err) { $("mcpResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; haptic("notificationOccurred", "error"); }
   });
 }
@@ -754,14 +831,16 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    { label: "↻ Перезагрузить панель", sub: "если что-то выглядит старым или зависло", run: () => location.reload() },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
 };
 $("backBtn").onclick = back;
+$("updateBar").onclick = () => location.reload();
 
 // ---------- старт ----------
 async function start() {
-  try { meta = await api("/api/meta"); } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; return; }
+  try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; return; }
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
@@ -798,6 +877,7 @@ function demoApi(path, body) {
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
                   presets: [{ id: "github", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
+                            { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", fields: [], after: "" },
                             { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
   };
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
@@ -811,7 +891,8 @@ function demoApi(path, body) {
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты", ts: "2026-10-29 09:20" },
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" }] });
-  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "] });
+  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
+    auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
   return Promise.resolve(R[key] || { ok: true });
 }
 </script>

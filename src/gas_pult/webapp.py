@@ -62,6 +62,25 @@ def verify(init_data: str, token: str, now: float | None = None) -> dict | None:
         return None
 
 
+AUTH_WITH = re.compile(r"Authenticating with (.+?)[….]*\s*$")
+URL_TAIL = re.compile(r"^\s+([A-Za-z0-9%&=_.~:/?#+\-]+)\s*$")
+
+
+def find_auth(lines: list[str]) -> dict | None:
+    """Вход в MCP-сервис на экране Claude Code: название и полная ссылка (продолжение ссылки — следующими строками)."""
+    service = next((m.group(1).strip() for line in lines if (m := AUTH_WITH.search(line))), None)
+    for i, line in enumerate(lines):
+        if m := re.search(r"https://\S*(authorize|oauth)\S*", line):
+            url = m.group(0)
+            for nxt in lines[i + 1:]:
+                if not (t := URL_TAIL.match(nxt)):
+                    break
+                url += t.group(1)
+            return {"service": service or "сервис", "url": url,
+                    "paste": any("paste the URL" in x or "URL >" in x for x in lines)}
+    return None
+
+
 def brief(text: str, limit: int = 700) -> str:
     """«Кратко» для озвучки: первые абзацы до ~700 знаков — в наших ответах там вывод."""
     out = ""
@@ -168,6 +187,61 @@ class Panel:
         self.tmux.keys(w["id"], key)
         time.sleep(1)
         return self.tmux.screen(w["id"], 40)
+
+    def login_window(self) -> dict:
+        """Окно для входа в MCP: активная сессия, если свободна, иначе любая свободная."""
+        sess = [s for s in self.sessions() if s["status"] == "idle"]
+        pick = next((s for s in sess if s["active"]), None) or (sess[0] if sess else None)
+        if not pick:
+            raise ValueError("нет свободной сессии Claude — откройте новую («Сессии» → ＋) и повторите")
+        return self.window(pick["id"])
+
+    def mcp_login(self, name: str) -> dict:
+        """Запуск входа в MCP-сервис из панели: /mcp → сервер → Authenticate → ссылка входа с экрана."""
+        w = self.login_window()
+        self.slash(w, "/mcp")
+        self.select(w, name)
+        self.select(w, "Authenticate")
+        for _ in range(15):
+            lines = self.tmux.screen(w["id"], 60)
+            if auth := find_auth(lines):
+                return {"w": w["id"], "session": w["name"], **auth}
+            time.sleep(1)
+        self.tmux.keys(w["id"], "Escape")
+        raise ValueError("Claude Code не показал ссылку входа — откройте сессию и проверьте «Экран»")
+
+    def mcp_finish(self, w: dict, url: str, name: str) -> str:
+        """Адрес страницы после входа (http://localhost…/callback?code=…) → в поле «URL >» Claude Code."""
+        u = urllib.parse.urlparse(url.strip())
+        if u.scheme != "http" or u.hostname not in ("localhost", "127.0.0.1") or "code=" not in u.query:
+            raise ValueError("нужен адрес страницы после входа: начинается с http://localhost и содержит code=")
+        self.send(w, url.strip())
+        time.sleep(4)
+        self.tmux.keys(w["id"], "Escape")              # закрыть меню /mcp, вернуться к вводу
+        time.sleep(1)
+        self.tmux.keys(w["id"], "Escape")
+        status = next((s for s in self.mcp.list(fresh=True) if s["name"] == name), None)
+        if status and status["ok"]:
+            return f"✔ {name} подключён"
+        return f"вход не подтвердился: {status['state'] if status else 'сервер не найден'} — попробуйте ещё раз"
+
+    def select(self, w: dict, target: str) -> list[str]:
+        """Пункт меню без номера (диалог доверия, /mcp): двигаем ❯ стрелками до строки с этим текстом и жмём Enter."""
+        target = target.strip()[:200]
+        with self.lock(w["id"]):
+            for _ in range(30):
+                lines = self.tmux.screen(w["id"], 60)
+                sel = next((i for i, x in enumerate(lines) if "❯" in x), None)
+                tgt = next((i for i, x in enumerate(lines) if target and target in x), None)
+                if sel is None or tgt is None:
+                    raise ValueError("пункт не найден на экране — обновите экран")
+                if sel == tgt:
+                    self.tmux.keys(w["id"], "Enter")
+                    time.sleep(1.5)
+                    return self.tmux.screen(w["id"], 40)
+                self.tmux.keys(w["id"], "Down" if tgt > sel else "Up")
+                time.sleep(0.25)
+        raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
 
     def new(self, i: int) -> str:
         dirs = self.pult.projects()
@@ -309,6 +383,7 @@ class Panel:
 
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
+    build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
@@ -372,9 +447,9 @@ def handler(panel: Panel):
 
         def get(self, path: str, q: dict):
             if path == "/api/sessions":
-                return {"sessions": panel.sessions(), "host": panel.cfg.host}
+                return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build}
             if path == "/api/meta":
-                return {**panel.meta(), "via": self.via()}
+                return {**panel.meta(), "via": self.via(), "build": build}
             if path == "/api/mcp":
                 return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS}
             if path == "/api/providers":
@@ -384,7 +459,8 @@ def handler(panel: Panel):
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"])}
             if path == "/api/screen":
-                return {"lines": panel.tmux.screen(w["id"], 40)}
+                lines = panel.tmux.screen(w["id"], 60)
+                return {"lines": lines[-40:], "auth": find_auth(lines)}
             if path == "/api/cmds":
                 return {"cmds": panel.commands(w), "host": panel.cfg.host}
             if path == "/api/tts":
@@ -433,6 +509,8 @@ def handler(panel: Panel):
             if path == "/api/providers":
                 panel.set_providers(b)
                 return {"ok": True}
+            if path == "/api/mcp/login":
+                return panel.mcp_login(str(b.get("name", "")))
             if path == "/api/new":
                 return {"id": panel.new(int(b.get("i", -1)))}
             w = self.win(b.get("w"))
@@ -451,6 +529,10 @@ def handler(panel: Panel):
                 return {"lines": panel.model(w, str(b.get("name", "")))}
             if path == "/api/key":
                 return {"lines": panel.key(w, str(b.get("key", "")))}
+            if path == "/api/select":
+                return {"lines": panel.select(w, str(b.get("text", "")))}
+            if path == "/api/mcp/finish":
+                return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")))}
             if path == "/api/close":
                 return {"result": panel.close(w)}
             if path == "/api/run":

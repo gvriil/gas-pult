@@ -44,3 +44,17 @@ def test_upload_sanitizes_name(panel, tmp_path):
     p = panel.upload("..%2F..%2Fetc%2Fpasswd фото.jpg", b"x")
     assert p.startswith(str(tmp_path / "inbox")) and "/etc/" not in p.split("inbox")[1]
     assert Path(p).read_bytes() == b"x"
+
+
+def test_find_auth_joins_wrapped_url():
+    from gas_pult.webapp import find_auth
+    lines = ["   Authenticating with notion…",
+             "   If your browser doesn't open automatically, copy this URL manually (c to copy)",
+             "   https://mcp.notion.com/authorize?response_type=code&client_id=x&code_challe",
+             "   nge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A49442%2Fcallback&state=abc",
+             "   If the redirect page shows a connection error, paste the URL from your browser's address bar:",
+             "   URL >"]
+    a = find_auth(lines)
+    assert a["service"] == "notion" and a["paste"]
+    assert a["url"].endswith("callback&state=abc") and "code_challenge_method=S256" in a["url"]
+    assert find_auth(["❯ ", "просто экран"]) is None
