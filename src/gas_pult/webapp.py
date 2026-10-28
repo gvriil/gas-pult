@@ -1,7 +1,11 @@
-"""Mini App: панель сессий внутри Telegram — статусы, последний ответ, экран, выбор активной сессии.
+"""Mini App: пульт внутри Telegram — те же возможности, что у бота, на одном экране.
+
+Сессии и их статусы, последний ответ и экран, поле ввода (текст и диктовка клавиатуры), голосовое
+(распознаётся и встаёт в поле — проверить перед отправкой), озвучка ответа, команды ⚡, выбор модели,
+клавиши диалога 1/2/3/↑/↓/⏎/Esc, новая сессия и закрытие.
 
 Сервер — стандартная библиотека. Каждый запрос к ``/api`` подписан Telegram (``initData``) и пускается только
-для ``owners``. Команды отсюда не выполняются: панель только смотрит и переключает активное окно.
+для ``owners``. Кнопки «▶️ Выполнить» здесь нет — команды из ответов выполняются только из чата бота.
 
     gas-pult webapp [--port 8765] [--tunnel | --url https://…]
 
@@ -14,23 +18,27 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import subprocess
 import threading
 import time
 import urllib.parse
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
-from gas_pult import transcripts
-from gas_pult.bot import BUSY, DIALOG
+from gas_pult import transcripts, voice
+from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.config import Config
 from gas_pult.telegram import Api, TelegramError
-from gas_pult.tmux import Tmux
+from gas_pult.voice import catalog
 
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
+MAX_BODY = 16 << 20                     # голосовое до 16 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
+AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 
 
 def verify(init_data: str, token: str, now: float | None = None) -> dict | None:
@@ -50,29 +58,34 @@ def verify(init_data: str, token: str, now: float | None = None) -> dict | None:
         return None
 
 
+def brief(text: str, limit: int = 700) -> str:
+    """«Кратко» для озвучки: первые абзацы до ~700 знаков — в наших ответах там вывод."""
+    out = ""
+    for para in re.split(r"\n\s*\n", text.strip()):
+        if out and len(out) + len(para) > limit:
+            break
+        out += para + "\n\n"
+    return out.strip()
+
+
 class Panel:
+    """Действия панели поверх того же tmux и state.json, что у бота (окна, активное, голос)."""
+
     def __init__(self, cfg: Config):
-        self.cfg, self.tmux, self.lock = cfg, Tmux(cfg.session), threading.Lock()
-        self.state_file = cfg.data / "state.json"
+        self.cfg, self.pult = cfg, Pult(cfg)
+        self.tmux = self.pult.tmux
+        self.locks: dict[str, threading.Lock] = {}      # одно окно — одна вставка за раз
 
-    def active(self) -> str:
-        try:
-            return json.loads(self.state_file.read_text()).get("active", "")
-        except (OSError, ValueError):
-            return ""
+    def lock(self, wid: str) -> threading.Lock:
+        with self.pult.lock:
+            return self.locks.setdefault(wid, threading.Lock())
 
-    def set_active(self, wid: str):
-        with self.lock:                  # тот же state.json, что у бота: остальные ключи не трогаем
-            try:
-                s = json.loads(self.state_file.read_text())
-            except (OSError, ValueError):
-                s = {}
-            s["active"] = wid
-            self.state_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            self.state_file.write_text(json.dumps(s))
+    def window(self, wid: str) -> dict | None:
+        w = self.tmux.window(wid)
+        return w if w and w["cmd"] == "claude" else None
 
     def sessions(self) -> list[dict]:
-        act, out = self.active(), []
+        act, out = self.pult.state().get("active"), []
         for w in self.tmux.windows():
             if w["cmd"] != "claude":
                 continue
@@ -86,9 +99,109 @@ class Panel:
                         "active": w["id"] == act, "channel": w["channel"]})
         return out
 
-    def window(self, wid: str) -> dict | None:
-        w = self.tmux.window(wid)
-        return w if w and w["cmd"] == "claude" else None
+    def meta(self) -> dict:
+        voices = catalog.installed()
+        return {"host": self.cfg.host,
+                "commands": [t for t, _ in self.pult.command_list()],
+                "models": self.cfg.models,
+                "keys": [{"label": t, "key": k} for t, k in KEYS],
+                "projects": [self.pult.short(p) for p in self.pult.projects()],
+                "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
+                "voice": self.voice(voices)}
+
+    def voice(self, voices: list[str] | None = None) -> str | None:
+        voices = catalog.installed() if voices is None else voices
+        v = self.pult.state().get("voice")
+        return v if v in voices else (voices[0] if voices else None)
+
+    # ---------- действия ----------
+    def send(self, w: dict, text: str):
+        with self.lock(w["id"]):
+            self.pult.to_claude(w, text)
+
+    def slash(self, w: dict, cmd: str) -> list[str]:
+        with self.lock(w["id"]):
+            self.pult.wait_ready(w["id"])
+            self.tmux.type(w["id"], cmd)
+            time.sleep(0.3)
+            self.tmux.keys(w["id"], "Enter")
+        time.sleep(2.5)
+        return self.tmux.screen(w["id"], 40)
+
+    def command(self, w: dict, i: int) -> dict:
+        cmds = self.pult.command_list()
+        if not 0 <= i < len(cmds):
+            raise ValueError("команда устарела — обновите панель")
+        cmd = cmds[i][1]
+        if cmd == "models":
+            return {"models": self.cfg.models}
+        if cmd in PROMPTS:
+            self.send(w, PROMPTS[cmd])
+            return {"sent": True}
+        if cmd.startswith("/"):
+            return {"lines": self.slash(w, cmd)}
+        self.send(w, cmd)
+        return {"sent": True}
+
+    def model(self, w: dict, name: str) -> list[str]:
+        if name not in self.cfg.models and name != "":
+            raise ValueError("такой модели нет в настройках (models)")
+        return self.slash(w, f"/model {name}".strip())
+
+    def key(self, w: dict, key: str) -> list[str]:
+        if key not in {k for _, k in KEYS}:
+            raise ValueError("неизвестная клавиша")
+        self.tmux.keys(w["id"], key)
+        time.sleep(1)
+        return self.tmux.screen(w["id"], 40)
+
+    def new(self, i: int) -> str:
+        dirs = self.pult.projects()
+        if not 0 <= i < len(dirs):
+            raise ValueError("список папок изменился — обновите панель")
+        path = dirs[i]
+        base = os.path.basename(path) if path != self.pult.home else "home"
+        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, self.cfg.claude)
+        self.pult.set_state(active=wid)
+        return wid
+
+    def close(self, w: dict) -> str:
+        with self.lock(w["id"]):
+            self.tmux.keys(w["id"], "C-c")
+            self.tmux.type(w["id"], "/exit")
+            self.tmux.keys(w["id"], "Enter")
+            time.sleep(4)
+            if "Enter to confirm" in "\n".join(self.tmux.screen(w["id"])):
+                self.tmux.keys(w["id"], "Escape")
+                return "не закрыл: у сессии есть фоновые задачи — решите в самом окне"
+            if (self.tmux.window(w["id"]) or w)["cmd"] == "claude":
+                return "Claude не вышел (возможно, занят) — посмотрите экран"
+            self.tmux.kill(w["id"])
+            return "закрыто"
+
+    def stt(self, data: bytes, ctype: str) -> str:
+        path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{AUDIO_EXT.get(ctype.split(';')[0], 'webm')}"
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.write_bytes(data)
+        try:
+            return voice.transcribe(path, self.cfg.whisper_model)
+        finally:
+            path.unlink(missing_ok=True)                 # голос не храним
+
+    def tts(self, w: dict, full: bool) -> bytes:
+        text = transcripts.clean(transcripts.last_answer(w["path"]))
+        text = (text if full else brief(text))[:3500]
+        v = self.voice()
+        if not text:
+            raise ValueError("нечего озвучивать")
+        if not v:
+            raise ValueError("голоса не установлены: gas-pult voices install irina")
+        out = self.cfg.data / f"web-{uuid.uuid4().hex}.mp3"
+        try:
+            voice.synth(v, text, out)
+            return out.read_bytes()
+        finally:
+            out.unlink(missing_ok=True)
 
 
 def handler(panel: Panel):
@@ -101,6 +214,7 @@ def handler(panel: Panel):
         def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8"):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
@@ -116,35 +230,86 @@ def handler(panel: Panel):
                 return False
             return True
 
+        def body(self) -> bytes:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                raise ValueError("слишком большой запрос")
+            return self.rfile.read(n)
+
+        def win(self, wid) -> dict:
+            if not (w := panel.window(str(wid or ""))):
+                raise LookupError("окна уже нет")
+            return w
+
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8")
-            if not url.path.startswith("/api/") or not self.owner():
-                return None if url.path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
+            if not url.path.startswith("/api/"):
+                return self.json({"error": "нет такой страницы"}, 404)
+            if not self.owner():
+                return None
             q = dict(urllib.parse.parse_qsl(url.query))
-            if url.path == "/api/sessions":
-                return self.json({"sessions": panel.sessions(), "host": panel.cfg.host})
-            w = panel.window(q.get("w", ""))
-            if not w:
-                return self.json({"error": "окна уже нет"}, 404)
-            if url.path == "/api/last":
-                return self.json({"text": transcripts.last_answer(w["path"])})
-            if url.path == "/api/screen":
-                return self.json({"lines": panel.tmux.screen(w["id"], 40)})
-            return self.json({"error": "нет такого метода"}, 404)
+            self.dispatch(lambda: self.get(url.path, q))
+
+        def get(self, path: str, q: dict):
+            if path == "/api/sessions":
+                return {"sessions": panel.sessions(), "host": panel.cfg.host}
+            if path == "/api/meta":
+                return panel.meta()
+            w = self.win(q.get("w"))
+            if path == "/api/last":
+                return {"text": transcripts.last_answer(w["path"])}
+            if path == "/api/screen":
+                return {"lines": panel.tmux.screen(w["id"], 40)}
+            if path == "/api/tts":
+                return ("audio/mpeg", panel.tts(w, q.get("full") == "1"))
+            raise KeyError
 
         def do_POST(self):
-            if self.path != "/api/active" or not self.owner():
-                return None if self.path == "/api/active" else self.json({"error": "нет такого метода"}, 404)
+            path = urllib.parse.urlparse(self.path).path
+            if not path.startswith("/api/") or not self.owner():
+                return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
+            self.dispatch(lambda: self.post(path))
+
+        def post(self, path: str):
+            if path == "/api/stt":
+                return {"text": panel.stt(self.body(), self.headers.get("Content-Type", ""))}
+            b = json.loads(self.body() or b"{}")
+            if path == "/api/new":
+                return {"id": panel.new(int(b.get("i", -1)))}
+            w = self.win(b.get("w"))
+            if path == "/api/send":
+                text = str(b.get("text", "")).strip()
+                if not text:
+                    raise ValueError("пустое сообщение")
+                panel.send(w, text)
+                return {"ok": True}
+            if path == "/api/active":
+                panel.pult.set_state(active=w["id"])
+                return {"ok": True}
+            if path == "/api/command":
+                return panel.command(w, int(b.get("i", -1)))
+            if path == "/api/model":
+                return {"lines": panel.model(w, str(b.get("name", "")))}
+            if path == "/api/key":
+                return {"lines": panel.key(w, str(b.get("key", "")))}
+            if path == "/api/close":
+                return {"result": panel.close(w)}
+            raise KeyError
+
+        def dispatch(self, fn):
             try:
-                body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 4096)))
-            except ValueError:
-                return self.json({"error": "плохой запрос"}, 400)
-            if not panel.window(str(body.get("w", ""))):
-                return self.json({"error": "окна уже нет"}, 404)
-            panel.set_active(body["w"])
-            return self.json({"ok": True})
+                out = fn()
+            except KeyError:
+                return self.json({"error": "нет такого метода"}, 404)
+            except LookupError as e:
+                return self.json({"error": str(e)}, 404)
+            except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+                return self.json({"error": str(e) or "ошибка"}, 400)
+            if isinstance(out, tuple):
+                return self.reply(200, out[1], out[0])
+            return self.json(out)
 
     return H
 
