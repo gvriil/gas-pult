@@ -71,3 +71,20 @@ def test_clean_drops_emoji_and_backslashes():
     out = t.clean("Чего нет: кнопки «▶️ Выполнить» и 🔊 озвучки \\ ✅")
     assert "▶" not in out and "🔊" not in out and "\\" not in out and "✅" not in out
     assert "Выполнить" in out and "озвучки" in out
+
+
+def test_history_pairs_turns(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/p")
+    d.mkdir(parents=True)
+    rows = [{"type": "user", "message": {"content": "привет"}, "timestamp": "2026-10-29T10:00:00"},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "а"}]}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "б"}], "stop_reason": "end_turn"}},
+            {"type": "assistant", "isSidechain": True, "message": {"content": [{"type": "text", "text": "суб"}]}},
+            {"type": "user", "message": {"content": "ещё"}, "timestamp": "2026-10-29T10:05:00"}]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    items, more = t.history("/home/u/p")
+    assert [(x["role"], x["text"]) for x in items] == [("user", "привет"), ("assistant", "а\n\nб"), ("user", "ещё")]
+    assert not more and items[1]["i"] == 1
+    items, more = t.history("/home/u/p", limit=1, before=2)
+    assert [x["i"] for x in items] == [1] and more

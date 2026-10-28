@@ -27,11 +27,15 @@ PRESETS = [
                  "hint": "github.com → Settings → Developer settings → Personal access tokens → Fine-grained: "
                          "выберите нужные репозитории и права (Contents, Issues, Pull requests)."}], "after": ""},
     {"id": "linear", "title": "Linear", "about": "Задачи и проекты Linear — брать задачу, менять статус, "
-     "комментировать", "type": "http", "url": "https://mcp.linear.app/mcp", "fields": [],
-     "after": "Вход через Linear: откройте любую сессию → ⚡ Команды → /mcp → linear → Authenticate."},
+     "комментировать", "type": "http", "url": "https://mcp.linear.app/mcp",
+     "fields": [{"key": "token", "label": "API-ключ Linear", "secret": True, "optional": True,
+                 "header": "Authorization", "format": "Bearer {}", "placeholder": "lin_api_…",
+                 "hint": "Linear → Settings → Security & access → Personal API keys → New key. Только чтение — "
+                         "выберите право Read. Без ключа — вход через браузер (см. ниже)."}],
+     "after": "Если ключ не вводили — вход через Linear: сессия → ☰ → ⚡ Команды → /mcp → linear → Authenticate."},
     {"id": "notion", "title": "Notion", "about": "Страницы и базы Notion — читать и обновлять", "type": "http",
      "url": "https://mcp.notion.com/mcp", "fields": [],
-     "after": "Вход через Notion: откройте любую сессию → ⚡ Команды → /mcp → notion → Authenticate."},
+     "after": "Вход через Notion: сессия → ☰ → ⚡ Команды → /mcp → notion → Authenticate — с компьютера."},
     {"id": "homeassistant", "title": "Home Assistant", "about": "Умный дом: состояние устройств, свет, "
      "сценарии", "type": "http", "url": "{base}/api/mcp",
      "fields": [{"key": "base", "label": "Адрес Home Assistant", "placeholder": "https://home.example.com:8123",

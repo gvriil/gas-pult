@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from gas_pult import webapp
@@ -36,3 +38,9 @@ def test_run_danger_needs_confirm(panel):
 def test_run_foreign_refused(panel):
     with pytest.raises(ValueError, match="вручную"):
         panel.run(W, 2, "ccc", True)
+
+
+def test_upload_sanitizes_name(panel, tmp_path):
+    p = panel.upload("..%2F..%2Fetc%2Fpasswd фото.jpg", b"x")
+    assert p.startswith(str(tmp_path / "inbox")) and "/etc/" not in p.split("inbox")[1]
+    assert Path(p).read_bytes() == b"x"

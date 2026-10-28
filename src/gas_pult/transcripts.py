@@ -95,6 +95,38 @@ class Tail:
                 pass
 
 
+def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list[dict], bool]:
+    """Переписка сессии из последнего транскрипта папки: [{i, role: user|assistant, text, ts}], есть ли раньше.
+
+    Ответ Claude — весь текст хода до следующего запроса человека (как в чате), субагенты пропускаются.
+    """
+    files = transcripts(path)
+    if not files:
+        return [], False
+    items: list[dict] = []
+    with open(max(files, key=lambda p: p.stat().st_mtime), encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if e.get("isSidechain"):
+                continue
+            ts = e.get("timestamp", "")[:16].replace("T", " ")
+            if e.get("type") == "user" and is_real_prompt(e):
+                items.append({"role": "user", "text": text_of(e["message"]["content"]).strip(), "ts": ts})
+            elif e.get("type") == "assistant" and (t := text_of((e.get("message") or {}).get("content")).strip()):
+                if items and items[-1]["role"] == "assistant":
+                    items[-1]["text"] += "\n\n" + t
+                else:
+                    items.append({"role": "assistant", "text": t, "ts": ts})
+    for i, it in enumerate(items):
+        it["i"] = i
+    end = len(items) if before is None else max(0, min(before, len(items)))
+    start = max(0, end - limit)
+    return items[start:end], start > 0
+
+
 def last_answer(path: str) -> str:
     """Последний полный ответ Claude в папке (для «💬 Последний ответ»)."""
     files = transcripts(path)

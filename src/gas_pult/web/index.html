@@ -108,7 +108,28 @@
   .round { width: 42px; height: 42px; border: 0; border-radius: 50%; flex: none; font-size: 18px; background: var(--surface); border: 1px solid var(--line); }
   .round.send { background: var(--accent); color: var(--on-accent); border: 0; }
   .round.rec { background: var(--danger); color: #fff; border: 0; animation: pulse 1s infinite; }
-  #session { padding-bottom: 130px; }
+  #session { padding-bottom: 110px; }
+  .menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 2px 0 8px; }
+  .menu button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 4px; font-size: 13px; }
+  .menu button span { display: block; font-size: 20px; margin-bottom: 2px; }
+  .menu button.danger { color: var(--danger); }
+  .attach { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 6px; scrollbar-width: none; }
+  .attach span { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 70vw; border: 1px solid var(--line);
+                 background: var(--surface); border-radius: 14px; padding: 4px 4px 4px 10px; font-size: 13px; }
+  .attach span em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach span button { border: 0; background: none; color: var(--muted); padding: 0 6px; }
+  .playerbox { display: flex; align-items: center; gap: 6px; padding: 0 0 6px; }
+  .playerbox audio { flex: 1; min-width: 0; margin: 0; height: 36px; }
+  .chat .msg { margin: 0 0 12px; }
+  .chat .bubble { border-radius: 14px; padding: 10px 12px; overflow-wrap: anywhere; }
+  .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
+  .chat .me .bubble { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); max-width: 88%; white-space: pre-wrap; }
+  .chat .ai .bubble { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .chat .when { color: var(--muted); font-size: 12px; margin: 3px 4px 0; }
+  .chat .acts { display: flex; gap: 6px; align-items: center; margin: 5px 2px 0; flex-wrap: wrap; }
+  .chat .acts button { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: 13px; }
+  .card { cursor: pointer; }
+  .card .end { border: 1px solid var(--line); background: var(--surface2); border-radius: 10px; padding: 3px 9px; font-size: 13px; color: var(--danger); flex: none; }
 
   /* формы */
   .field { margin: 0 0 14px; }
@@ -188,11 +209,10 @@
 
   <!-- одна сессия -->
   <section id="session" hidden>
-    <div class="seg" id="tabs"><button data-tab="last" class="on">Ответ</button><button data-tab="screen">Экран</button></div>
+    <div class="seg" id="tabs"><button data-tab="chat" class="on">Переписка</button><button data-tab="screen">Экран</button></div>
     <div id="ask"></div>
     <div class="keys" id="keys" hidden></div>
-    <audio id="player" controls hidden></audio>
-    <div class="panel" id="content"></div>
+    <div id="content"></div>
   </section>
 
   <!-- форма добавления MCP -->
@@ -200,16 +220,25 @@
 </main>
 
 <div class="dock" id="dock" hidden>
-  <div class="chips" id="actions">
-    <button data-act="say">🔊 Кратко</button><button data-act="sayfull">🔊 Целиком</button>
-    <button data-act="commands">⚡ Команды</button><button data-act="models">🧠 Модель</button>
-    <button data-act="more">⋯ Ещё</button>
+  <div class="playerbox" id="playerBox" hidden><audio id="player" controls></audio><button class="icon" id="playerClose" aria-label="Закрыть плеер">✕</button></div>
+  <div class="menu" id="menu" hidden>
+    <button data-act="say"><span>🔊</span>Последний кратко</button><button data-act="sayfull"><span>📢</span>Последний целиком</button>
+    <button data-act="commands"><span>⚡</span>Команды</button><button data-act="models"><span>🧠</span>Модель</button>
+    <button data-act="switch"><span>⇅</span>Другая сессия</button><button data-act="active"><span>✅</span>Сделать активной</button>
+    <button data-act="refresh"><span>↻</span>Обновить</button><button data-act="top"><span>⤒</span>В начало</button>
+    <button data-act="close" class="danger"><span>⏻</span>Завершить</button>
   </div>
+  <div class="attach" id="attach" hidden></div>
   <div class="compose">
-    <button class="round" id="mic" aria-label="Голосовое">🎙</button>
+    <button class="round" id="menuBtn" aria-label="Меню действий">☰</button>
+    <button class="round" id="plus" aria-label="Прикрепить фото или файл">＋</button>
     <textarea id="input" rows="1" placeholder="Сообщение для Claude…"></textarea>
-    <button class="round send" id="send" aria-label="Отправить">➤</button>
+    <button class="round" id="mic" aria-label="Голосовое">🎙</button>
+    <button class="round send" id="send" aria-label="Отправить" hidden>➤</button>
   </div>
+  <input type="file" id="fCam" accept="image/*" capture="environment" hidden>
+  <input type="file" id="fPhoto" accept="image/*,video/*" multiple hidden>
+  <input type="file" id="fFile" multiple hidden>
 </div>
 
 <script>
@@ -217,7 +246,7 @@ const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
 const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт вашего выбора" };
-let sessions = [], meta = null, current = null, tab = "last", lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
+let sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -242,9 +271,9 @@ function toast(text, ms = 2600) {
 }
 
 // ---------- сеть ----------
-async function api(path, body, raw) {
+async function api(path, body, raw, extra) {
   if (DEMO) return demoApi(path, body);
-  const headers = { "X-Telegram-Init-Data": tg?.initData || "" };
+  const headers = { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
   const r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin",
@@ -285,7 +314,7 @@ function show(v) {
 }
 function back() {
   if (view === "mcpForm") { show("home"); return setHome("integrations"); }
-  current = null; $("player").pause(); show("home"); setHome("sessions");
+  current = null; stopPlayer(); closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
 
 let lastY = 0;
@@ -329,10 +358,11 @@ function setHome(v) {
 $("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
 
 function card(s) {
-  return `<button class="card ${s.status}${s.active ? " active" : ""}" data-id="${esc(s.id)}">
-    <div class="row"><span class="dot"></span><span class="name">${esc(s.name)}</span>${s.active ? '<span class="pill">активная</span>' : ""}</div>
+  return `<div class="card ${s.status}${s.active ? " active" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0">
+    <div class="row"><span class="dot"></span><span class="name">${esc(s.name)}</span>${s.active ? '<span class="pill">активная</span>' : ""}
+      <button class="end" data-end="${esc(s.id)}" aria-label="Завершить сессию">⏻ Завершить</button></div>
     <div class="meta">${STATUS[s.status]} · ${esc(folder(s.path))}${s.branch ? " · " + esc(s.branch) : ""}</div>
-    ${s.context == null ? "" : `<div class="ctx" title="контекст свободен ${s.context}%"><i style="width:${100 - s.context}%"></i></div>`}</button>`;
+    ${s.context == null ? "" : `<div class="ctx" title="контекст свободен ${s.context}%"><i style="width:${100 - s.context}%"></i></div>`}</div>`;
 }
 
 async function refresh() {
@@ -352,7 +382,7 @@ async function refresh() {
     if (!s) { toast("Сессия закрыта"); return back(); }
     $("title").textContent = s.name;
     $("subtitle").textContent = `${STATUS[s.status]} · ${folder(s.path)}${s.branch ? " · " + s.branch : ""}${s.context == null ? "" : " · контекст " + s.context + "%"}`;
-    if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "last"); }
+    if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "chat"); }
     else if (tab === "screen" || s.status === "dialog") loadContent();
     lastStatus = s.status;
   } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; }
@@ -368,8 +398,14 @@ $("sessionsView").addEventListener("click", (e) => {
       },
     })));
   }
+  const end = e.target.closest("[data-end]");
+  if (end) return confirmClose(end.dataset.end);
   const c = e.target.closest(".card[data-id]"); if (c) open(c.dataset.id);
 });
+function confirmClose(id) {
+  const s = sessions.find((x) => x.id === id), t = `Завершить «${s?.name || "сессию"}»? Claude выйдет штатно, переписка сохранится.`;
+  tg?.showConfirm ? tg.showConfirm(t, (ok) => ok && closeSession(id)) : confirm(t) && closeSession(id);
+}
 
 // ---------- сессия ----------
 async function open(id) {
@@ -378,7 +414,7 @@ async function open(id) {
   lastStatus = cur()?.status;
   $("title").textContent = cur()?.name || "Сессия"; $("player").hidden = true;
   $("content").innerHTML = '<div class="empty">загружаю…</div>';
-  setTab(cur()?.status === "dialog" ? "screen" : "last"); refresh(); haptic("selectionChanged");
+  hist = []; setTab(cur()?.status === "dialog" ? "screen" : "chat"); refresh(); haptic("selectionChanged"); padDock();
 }
 function setTab(t) {
   tab = t;
@@ -390,25 +426,51 @@ $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab
 async function loadContent() {
   if (!current) return;
   try {
-    const [last, scr] = await Promise.all([
-      tab === "last" ? api("/api/last?w=" + encodeURIComponent(current)) : null,
+    const [h, scr] = await Promise.all([
+      tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null,
       api("/api/screen?w=" + encodeURIComponent(current)),
     ]);
     renderAsk(scr.lines);
     $("keys").hidden = tab !== "screen" && cur()?.status !== "dialog";
-    if (tab === "last") {
-      const html = last.text ? DOMPurify.sanitize(marked.parse(last.text)) : "";
-      $("content").innerHTML = html ? `<div class="md">${html}</div>` : '<div class="empty">Ответов пока нет — напишите Claude внизу.</div>';
-      $("content").querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
-      if (last.text) renderCmds();
-    } else $("content").innerHTML = `<pre class="screen">${esc(scr.lines.join("\n"))}</pre>`;
-  } catch (e) { $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    if (tab === "chat") {
+      const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
+      if (!hist.length || grew) { hist = h.items; histMore = h.more; renderChat(true); }
+    } else { $("content").className = "panel"; $("content").innerHTML = `<pre class="screen">${esc(scr.lines.join("\n"))}</pre>`; }
+  } catch (e) { $("content").className = "panel"; $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
+
+// Переписка: все сообщения сессии; у ответа Claude — озвучка кратко/целиком и копирование.
+function renderChat(toBottom) {
+  const box = $("content"); box.className = "chat";
+  if (!hist.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
+  box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
+    ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div><div class="when">${esc(m.ts)}</div></div>`
+    : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
+        <div class="acts"><button data-say="${m.i}">🔊 Кратко</button><button data-sayfull="${m.i}">📢 Целиком</button><button data-copy="${m.i}">⧉ Копировать</button><span class="when">${esc(m.ts)}</span></div></div>`).join("");
+  box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+  if (!meta?.voices?.length && !prov?.keys?.elevenlabs) box.querySelectorAll("[data-say],[data-sayfull]").forEach((b) => (b.hidden = true));
+  if (hist.at(-1)?.role === "assistant") renderCmds();
+  if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollTo(0, document.body.scrollHeight));
+}
+$("content").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "older") return busy(b, "Загружаю…", async () => {
+    const h = await api(`/api/history?w=${encodeURIComponent(current)}&before=${hist[0].i}`);
+    const y = document.body.scrollHeight - scrollY; hist = [...h.items, ...hist]; histMore = h.more; renderChat(false);
+    scrollTo(0, document.body.scrollHeight - y);
+  });
+  if (b.dataset.say) return say(false, b, +b.dataset.say);
+  if (b.dataset.sayfull) return say(true, b, +b.dataset.sayfull);
+  if (b.dataset.copy) {
+    const m = hist.find((x) => x.i === +b.dataset.copy);
+    try { await navigator.clipboard.writeText(m.text); toast("Скопировано"); } catch (err) { toast("Не удалось скопировать"); }
+  }
+});
 
 // ▶️ Команды из последнего ответа: сервер берёт их из ответа сам, браузер шлёт только номер и отпечаток.
 async function renderCmds() {
   const d = await api("/api/cmds?w=" + encodeURIComponent(current)).catch(() => null);
-  if (!d?.cmds?.length || tab !== "last") return;
+  if (!d?.cmds?.length || tab !== "chat") return;
   const box = document.createElement("div");
   box.innerHTML = `<div class="section" style="margin-top:14px">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd" data-i="${c.i}">
     <pre>${esc(c.cmd)}</pre>${c.kind === "local"
@@ -469,15 +531,20 @@ async function act(path, body, okText) {
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
 
-async function say(full, btn) {
+async function say(full, btn, msg) {
   await busy(btn, "⏳ Готовлю…", async () => {
     try {
-      const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}`);
-      const p = $("player"); p.src = URL.createObjectURL(blob); p.hidden = false;
+      const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
+      const p = $("player"); p.src = URL.createObjectURL(blob); $("playerBox").hidden = false; padDock();
       p.play().catch(() => toast("Нажмите ▶ на плеере"));
     } catch (e) { toast("Озвучка: " + e.message, 4500); }
   });
 }
+function stopPlayer() { $("player").pause(); $("playerBox").hidden = true; padDock(); }
+$("playerClose").onclick = stopPlayer;
+function padDock() { requestAnimationFrame(() => { $("session").style.paddingBottom = ($("dock").offsetHeight + 16) + "px"; }); }
+function closeMenu() { $("menu").hidden = true; $("menuBtn").textContent = "☰"; padDock(); }
+$("menuBtn").onclick = () => { const open = $("menu").hidden; $("menu").hidden = !open; $("menuBtn").textContent = open ? "✕" : "☰"; padDock(); };
 
 const ACTIONS = {
   say: (b) => say(false, b),
@@ -488,30 +555,60 @@ const ACTIONS = {
   models: () => sheet("Модель для этой сессии", [
     ...meta.models.map((m) => ({ label: m, sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], run: () => act("/api/model", { name: m }, "Модель: " + m) })),
     { label: "Открыть меню /model", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) }]),
-  more: () => sheet(cur()?.name || "Сессия", [
-    { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", run: () => act("/api/active", {}, "Теперь активная").then(refresh) },
-    { label: "Закрыть сессию", sub: "Claude выйдет штатно, переписка сохранится", danger: true,
-      run: () => (tg?.showConfirm ? tg.showConfirm("Закрыть сессию?", (ok) => ok && closeSession()) : confirm("Закрыть сессию?") && closeSession()) },
-  ]),
+  switch: () => $("switchBtn").onclick(),
+  active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
+  refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
+  top: () => scrollTo(0, 0),
+  close: () => confirmClose(current),
 };
-$("actions").onclick = (e) => { const b = e.target.closest("button"); if (b) ACTIONS[b.dataset.act](b); };
-async function closeSession() { const d = await act("/api/close", {}); if (d) { toast("Закрытие: " + d.result, 4500); if (d.result === "закрыто") back(); } }
+$("menu").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; closeMenu(); ACTIONS[b.dataset.act](b); };
+async function closeSession(id = current) {
+  try {
+    const d = await api("/api/close", { w: id }); toast("Завершение: " + d.result, 4500);
+    if (d.result === "закрыто") { if (id === current) back(); else refresh(); }
+  } catch (e) { toast("Не вышло: " + e.message, 4500); }
+}
 
 $("switchBtn").onclick = () => sheet("Перейти в сессию", sessions.map((s) => ({
   label: s.name, sub: `${STATUS[s.status]} · ${folder(s.path)}`, on: s.id === current, run: () => open(s.id) })));
 
 // ---------- ввод ----------
 async function sendText() {
-  const text = $("input").value.trim();
-  if (!text) return toast("Напишите или надиктуйте сообщение");
+  if (files.some((f) => !f.path)) return toast("Подождите — файл ещё загружается");
+  const typed = $("input").value.trim();
+  if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
+  const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
   await busy($("send"), "…", async () => {
     try {
       await api("/api/send", { w: current, text });
-      $("input").value = ""; grow(); toast("Отправлено в «" + (cur()?.name || "") + "»");
-      lastStatus = "busy"; setTab("screen"); haptic("notificationOccurred", "success");
+      $("input").value = ""; files = []; renderFiles(); grow(); toast("Отправлено в «" + (cur()?.name || "") + "»");
+      lastStatus = "busy"; haptic("notificationOccurred", "success"); setTimeout(() => { hist = []; loadContent(); }, 1500);
     } catch (e) { toast("Не отправлено: " + e.message, 4500); }
   });
 }
+
+// Вложения: фото с камеры, из галереи, любой файл → загрузка в inbox пульта → путь уходит Claude вместе с сообщением.
+$("plus").onclick = () => sheet("Прикрепить", [
+  { label: "📷 Сфотографировать", run: () => $("fCam").click() },
+  { label: "🖼 Фото или видео из галереи", run: () => $("fPhoto").click() },
+  { label: "📄 Файл с устройства", sub: "документ, таблица, архив — до 50 МБ", run: () => $("fFile").click() },
+]);
+for (const id of ["fCam", "fPhoto", "fFile"]) $(id).onchange = (e) => { [...e.target.files].forEach(upload); e.target.value = ""; };
+async function upload(f) {
+  if (f.size > 50 * 1024 * 1024) return toast(`«${f.name}» больше 50 МБ`, 4000);
+  const item = { name: f.name || "photo.jpg", path: null }; files.push(item); renderFiles();
+  try { item.path = (await api("/api/upload", f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(item.name) })).path; }
+  catch (e) { files = files.filter((x) => x !== item); toast(`«${item.name}» не загрузился: ${e.message}`, 4500); }
+  renderFiles();
+}
+function renderFiles() {
+  $("attach").hidden = !files.length;
+  $("attach").innerHTML = files.map((f, i) => `<span>${f.path ? "📎" : "⏳"} <em>${esc(f.name)}</em><button data-rmf="${i}" aria-label="Убрать">✕</button></span>`).join("");
+  sync(); padDock();
+}
+$("attach").onclick = (e) => { const b = e.target.closest("[data-rmf]"); if (b) { files.splice(+b.dataset.rmf, 1); renderFiles(); } };
+// 🎙 и ➤ на одном месте, как в Telegram: есть текст или файл — ➤, нет — 🎙.
+function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; $("mic").hidden = has && !rec; }
 async function toggleMic() {
   if (rec) return rec.stop();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
@@ -535,7 +632,7 @@ async function toggleMic() {
     toast("Говорите. Нажмите ■, чтобы закончить", 3000);
   } catch (e) { toast("Нет доступа к микрофону: " + e.message, 5000); }
 }
-function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; }
+function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; sync(); padDock(); }
 $("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
 
 // ---------- интеграции: MCP ----------
@@ -602,8 +699,9 @@ function renderMcp() {
     <div class="section">MCP — инструменты Claude</div>
     <p class="note">MCP-сервер даёт Claude доступ к сервису: задачам, документам, умному дому. Подключение действует во всех сессиях; уже открытые увидят его после перезапуска.</p>
     ${srv.length ? srv.map((s, i) => `<div class="card"><div class="row"><span class="name">${esc(s.name)}</span>
-        <span class="pill ${s.ok ? "ok" : "bad"}">${s.ok ? "работает" : "не отвечает"}</span></div>
-        <div class="meta">${esc(s.target)}</div>${s.ok ? "" : `<div class="meta" style="white-space:normal">${esc(s.state)}</div>`}
+        <span class="pill ${s.ok ? "ok" : "bad"}">${s.ok ? "работает" : /auth/i.test(s.state) ? "нужен вход" : "не подключается"}</span></div>
+        <div class="meta">${esc(s.target)}</div>${s.ok ? "" : `<div class="meta" style="white-space:normal">${/auth/i.test(s.state)
+          ? "Войдите: откройте сессию → ☰ → ⚡ Команды → /mcp → выберите сервер → Authenticate" : esc(s.state)}</div>`}
         ${s.removable ? `<button class="btn danger" data-rm="${i}" style="margin:8px 0 0;padding:8px">Отключить</button>` : ""}</div>`).join("")
       : '<div class="empty">Пока ничего не подключено.</div>'}
     <button class="btn ghost" id="mcpRefresh">Проверить заново</button>
@@ -665,10 +763,14 @@ $("backBtn").onclick = back;
 async function start() {
   try { meta = await api("/api/meta"); } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; return; }
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
-  if (!meta.voices.length) document.querySelectorAll("[data-act^=say]").forEach((b) => (b.hidden = true));
+  if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
   if (!start.timer) start.timer = setInterval(refresh, 4000);
-  if (DEMO && params.get("open")) { await refresh(); open(params.get("open")); }
+  if (DEMO && params.get("open")) {
+    await refresh(); await open(params.get("open"));
+    if (params.get("menu")) $("menuBtn").click();
+    if (params.get("files")) { files = [{ name: "фото-стенда.jpg", path: "/x" }, { name: "отчёт-П8.xlsx", path: null }]; renderFiles(); }
+  }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
 }
 
@@ -704,6 +806,11 @@ function demoApi(path, body) {
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
   if (key === "/api/last") return Promise.resolve({ text: answer });
+  if (key === "/api/history") return Promise.resolve({ more: true, items: [
+    { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
+    { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
+    { i: 9, role: "user", text: "Проверь сборку и запусти тесты", ts: "2026-10-29 09:20" },
+    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" }] });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "] });
   return Promise.resolve(R[key] || { ok: true });
 }

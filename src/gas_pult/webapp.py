@@ -39,7 +39,7 @@ from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
-MAX_BODY = 16 << 20                     # голосовое до 16 МБ
+MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
@@ -193,6 +193,16 @@ class Panel:
             self.tmux.kill(w["id"])
             return "закрыто"
 
+    def upload(self, name: str, data: bytes) -> str:
+        """Файл из панели → inbox пульта; Claude получает путь (как файлы из чата бота)."""
+        safe = re.sub(r"[^\w.\-]+", "_", os.path.basename(urllib.parse.unquote(name)))[-80:].lstrip(".") or "file"
+        d = self.cfg.data / "inbox"
+        d.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path = d / f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}-{safe}"
+        path.write_bytes(data)
+        path.chmod(0o600)
+        return str(path)
+
     # ---------- голос: локально или ElevenLabs ----------
     def voice_settings(self) -> dict:
         st, keys = self.pult.state(), providers.key_info()
@@ -245,8 +255,16 @@ class Panel:
         finally:
             path.unlink(missing_ok=True)                 # голос не храним
 
-    def tts(self, w: dict, full: bool) -> bytes:
-        text = transcripts.clean(transcripts.last_answer(w["path"]))
+    def message(self, w: dict, i: int | None) -> str:
+        if i is None:
+            return transcripts.last_answer(w["path"])
+        items, _ = transcripts.history(w["path"], limit=1, before=i + 1)
+        if not items or items[0]["i"] != i:
+            raise ValueError("сообщение не найдено — обновите переписку")
+        return items[0]["text"]
+
+    def tts(self, w: dict, full: bool, msg: int | None = None) -> bytes:
+        text = transcripts.clean(self.message(w, msg))
         text = (text if full else brief(text))[:3500]
         if not text:
             raise ValueError("нечего озвучивать")
@@ -370,7 +388,12 @@ def handler(panel: Panel):
             if path == "/api/cmds":
                 return {"cmds": panel.commands(w), "host": panel.cfg.host}
             if path == "/api/tts":
-                return ("audio/mpeg", panel.tts(w, q.get("full") == "1"))
+                msg = int(q["msg"]) if q.get("msg", "").isdigit() else None
+                return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg))
+            if path == "/api/history":
+                before = int(q["before"]) if q.get("before", "").isdigit() else None
+                items, more = transcripts.history(w["path"], 30, before)
+                return {"items": items, "more": more}
             raise KeyError
 
         def do_POST(self):
@@ -389,6 +412,8 @@ def handler(panel: Panel):
             return ("cookie", webauth.set_cookie(token), {"ok": True})
 
         def post(self, path: str):
+            if path == "/api/upload":
+                return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
             if path == "/api/stt":
                 return {"text": panel.stt(self.body(), self.headers.get("Content-Type", ""))}
             b = json.loads(self.body() or b"{}")
