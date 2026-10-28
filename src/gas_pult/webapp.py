@@ -384,6 +384,7 @@ class Panel:
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
     build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
+    whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
@@ -449,7 +450,7 @@ def handler(panel: Panel):
             if path == "/api/sessions":
                 return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build}
             if path == "/api/meta":
-                return {**panel.meta(), "via": self.via(), "build": build}
+                return {**panel.meta(), "via": self.via(), "build": build, "whatsnew": whatsnew[:1]}
             if path == "/api/mcp":
                 return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS}
             if path == "/api/providers":

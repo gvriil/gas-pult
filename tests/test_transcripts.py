@@ -88,3 +88,20 @@ def test_history_pairs_turns(tmp_path, monkeypatch):
     assert not more and items[1]["i"] == 1
     items, more = t.history("/home/u/p", limit=1, before=2)
     assert [x["i"] for x in items] == [1] and more
+
+
+def test_history_shows_queued_messages(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/q")
+    d.mkdir(parents=True)
+    pasted = '<pasted_content id="x">\nа ещё вот\n</pasted_content id="x">'
+    rows = [{"type": "user", "message": {"content": "сделай"}, "timestamp": "2026-10-29T10:00:00"},
+            {"type": "queue-operation", "operation": "enqueue", "content": pasted},
+            {"type": "attachment", "attachment": {"type": "queued_command", "prompt": pasted}},
+            {"type": "queue-operation", "operation": "enqueue", "content": "и это"},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "готово"}],
+                                              "stop_reason": "end_turn"}}]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    items, _ = t.history("/home/u/q")
+    assert [(x["text"], x.get("queued")) for x in items if x["role"] == "user"] == \
+        [("сделай", None), ("а ещё вот", "read"), ("и это", "wait")]

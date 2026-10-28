@@ -126,6 +126,9 @@
   .chat .me .bubble { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); max-width: 88%; white-space: pre-wrap; }
   .chat .ai .bubble { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
   .chat .when { color: var(--muted); font-size: 12px; margin: 3px 4px 0; }
+  .chat .state { color: var(--muted); font-size: 12px; margin: 3px 4px 0; text-align: right; }
+  .chat .state.ok { color: var(--ok); } .chat .state.wait { color: var(--warn); }
+  .chat .me.pending .bubble { opacity: .8; }
   .chat .acts { display: flex; gap: 6px; align-items: center; margin: 5px 2px 0; flex-wrap: wrap; }
   .chat .acts button { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: 13px; }
   .card { cursor: pointer; }
@@ -252,7 +255,7 @@ const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
 const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт вашего выбора" };
-let BUILD = null, sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
+let BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -449,11 +452,16 @@ async function loadContent() {
 // Переписка: все сообщения сессии; у ответа Claude — озвучка кратко/целиком и копирование.
 function renderChat(toBottom) {
   const box = $("content"); box.className = "chat";
-  if (!hist.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
+  if (!hist.length && !pending.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
+  const norm = (t) => t.replace(/\s+/g, " ").trim();
+  pending = pending.filter((p) => !hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));   // дошло — убираем черновик
+  const QS = { wait: ["wait", "⏳ в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "✓ прочитано по ходу работы"] };
   box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
-    ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div><div class="when">${esc(m.ts)}</div></div>`
+    ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div>${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
     : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
-        <div class="acts"><button data-say="${m.i}">🔊 Кратко</button><button data-sayfull="${m.i}">📢 Целиком</button><button data-copy="${m.i}">⧉ Копировать</button><span class="when">${esc(m.ts)}</span></div></div>`).join("");
+        <div class="acts"><button data-say="${m.i}">🔊 Кратко</button><button data-sayfull="${m.i}">📢 Целиком</button><button data-copy="${m.i}">⧉ Копировать</button><span class="when">${esc(m.ts)}</span></div></div>`).join("")
+    + pending.map((p) => `<div class="msg me pending"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : p.state === "fail" ? "" : "wait"}">${
+      { sending: "⏳ отправляется…", sent: cur()?.status === "busy" ? "✓ доставлено · Claude занят — прочитает по ходу работы" : "✓ доставлено в сессию", fail: "✕ не отправлено — " + esc(p.err || "") }[p.state]}</div></div>`).join("");
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
   if (!meta?.voices?.length && !prov?.keys?.elevenlabs) box.querySelectorAll("[data-say],[data-sayfull]").forEach((b) => (b.hidden = true));
   if (hist.at(-1)?.role === "assistant") renderCmds();
@@ -636,13 +644,19 @@ async function sendText() {
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
   const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
-  await busy($("send"), "…", async () => {
-    try {
-      await api("/api/send", { w: current, text });
-      $("input").value = ""; files = []; renderFiles(); grow(); toast("Отправлено в «" + (cur()?.name || "") + "»");
-      lastStatus = "busy"; haptic("notificationOccurred", "success"); setTimeout(() => { hist = []; loadContent(); }, 1500);
-    } catch (e) { toast("Не отправлено: " + e.message, 4500); }
-  });
+  const p = { text, state: "sending" }; pending.push(p);           // видно сразу, ещё до ответа сервера
+  $("input").value = ""; const sent = files; files = []; renderFiles(); grow();
+  if (tab !== "chat") setTab("chat"); else renderChat(true);
+  try {
+    await api("/api/send", { w: current, text });
+    p.state = "sent"; haptic("notificationOccurred", "success");
+    if (cur()?.status !== "busy") lastStatus = "busy";
+    setTimeout(() => { hist = []; loadContent(); }, 2000);
+  } catch (e) {
+    p.state = "fail"; p.err = e.message; $("input").value = typed; files = sent; renderFiles(); grow();
+    haptic("notificationOccurred", "error");
+  }
+  renderChat(true);
 }
 
 // Вложения: фото с камеры, из галереи, любой файл → загрузка в inbox пульта → путь уходит Claude вместе с сообщением.
@@ -692,6 +706,9 @@ async function toggleMic() {
 }
 function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; sync(); padDock(); }
 $("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
+// Диктовка клавиатуры не всегда шлёт «input» — сверяем поле ещё и так, чтобы ➤ появлялась всегда.
+for (const ev of ["keyup", "change", "paste", "compositionend", "focus", "blur"]) $("input").addEventListener(ev, () => setTimeout(grow, 0));
+setInterval(() => { if (!$("dock").hidden) sync(); }, 700);
 
 // ---------- интеграции: MCP ----------
 let prov = null;
@@ -844,10 +861,17 @@ async function start() {
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
+  const wn = meta.whatsnew?.[0];
+  if (wn && store("whatsnew") !== wn.id && !DEMO) {            // один раз после обновления
+    store("whatsnew", wn.id);
+    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ label: "• " + t, run: () => {} })));
+  }
+  store("seenAny", "1");
   if (!start.timer) start.timer = setInterval(refresh, 4000);
   if (DEMO && params.get("open")) {
     await refresh(); await open(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
+    if (params.get("pending")) { pending = [{ text: "Проверь, что сообщение видно сразу", state: "sent" }]; renderChat(false); }
     if (params.get("files")) { files = [{ name: "фото-стенда.jpg", path: "/x" }, { name: "отчёт-П8.xlsx", path: null }]; renderFiles(); }
   }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
@@ -890,7 +914,9 @@ function demoApi(path, body) {
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты", ts: "2026-10-29 09:20" },
-    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" }] });
+    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" },
+    { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" },
+    { i: 12, role: "user", text: "Ещё проверь интеграции", ts: "2026-10-29 09:23", queued: "wait" }] });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
   return Promise.resolve(R[key] || { ok: true });

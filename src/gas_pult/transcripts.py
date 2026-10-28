@@ -95,10 +95,16 @@ class Tail:
                 pass
 
 
+PASTED = re.compile(r"</?pasted_content[^>]*>")
+
+
 def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list[dict], bool]:
-    """Переписка сессии из последнего транскрипта папки: [{i, role: user|assistant, text, ts}], есть ли раньше.
+    """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
 
     Ответ Claude — весь текст хода до следующего запроса человека (как в чате), субагенты пропускаются.
+    Сообщение, отправленное, пока Claude занят, Claude Code ставит в очередь (``queue-operation``) и отдаёт
+    по ходу работы (``attachment: queued_command``): такие показываем сразу, с пометкой
+    ``queued`` = "wait" (ещё в очереди) или "read" (прочитано по ходу работы).
     """
     files = transcripts(path)
     if not files:
@@ -113,8 +119,21 @@ def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list
             if e.get("isSidechain"):
                 continue
             ts = e.get("timestamp", "")[:16].replace("T", " ")
-            if e.get("type") == "user" and is_real_prompt(e):
-                items.append({"role": "user", "text": text_of(e["message"]["content"]).strip(), "ts": ts})
+            kind = e.get("type")
+            if kind == "queue-operation" and e.get("operation") == "enqueue" and str(e.get("content", "")).strip():
+                items.append({"role": "user", "text": PASTED.sub("", e["content"]).strip(), "ts": ts, "queued": "wait"})
+            elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "queued_command":
+                text = PASTED.sub("", str(e["attachment"].get("prompt", ""))).strip()
+                q = next((x for x in reversed(items) if x.get("queued") == "wait" and x["text"] == text), None)
+                if q:
+                    q["queued"] = "read"
+                elif text:
+                    items.append({"role": "user", "text": text, "ts": ts, "queued": "read"})
+            elif kind == "user" and is_real_prompt(e):
+                text = PASTED.sub("", text_of(e["message"]["content"])).strip()
+                # очередь, которую Claude взял обычным ходом, — не дублируем
+                items = [x for x in items if not (x.get("queued") == "wait" and x["text"] == text)]
+                items.append({"role": "user", "text": text, "ts": ts})
             elif e.get("type") == "assistant" and (t := text_of((e.get("message") or {}).get("content")).strip()):
                 if items and items[-1]["role"] == "assistant":
                     items[-1]["text"] += "\n\n" + t
