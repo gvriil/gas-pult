@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>gas-pult · сессии</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #fff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --text: var(--tg-theme-text-color, #111);
+    --hint: var(--tg-theme-hint-color, #8a8a8e);
+    --link: var(--tg-theme-link-color, #2a7ae2);
+    --accent: var(--tg-theme-button-color, #2a7ae2);
+    --accent-text: var(--tg-theme-button-text-color, #fff);
+    --sep: color-mix(in srgb, var(--hint) 25%, transparent);
+    --idle: #34c759; --busy: #0a84ff; --dialog: #ff9f0a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg2); color: var(--text);
+         font: 15px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg2); padding: 12px 16px 8px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  .sub { color: var(--hint); font-size: 13px; }
+  main { padding: 0 12px 24px; }
+  .card { display: block; width: 100%; text-align: left; border: 0; margin: 0 0 8px; padding: 12px 14px;
+          background: var(--bg); color: var(--text); border-radius: 12px; font: inherit; cursor: pointer; }
+  .card.active { box-shadow: inset 0 0 0 2px var(--accent); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .idle .dot { background: var(--idle); } .busy .dot { background: var(--busy); } .dialog .dot { background: var(--dialog); }
+  .busy .dot { animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
+  .meta { color: var(--hint); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctx { height: 4px; border-radius: 2px; background: var(--sep); margin-top: 8px; overflow: hidden; }
+  .ctx i { display: block; height: 100%; background: var(--accent); }
+  .tabs { display: flex; gap: 4px; padding: 3px; margin: 0 4px 10px; background: var(--sep); border-radius: 10px; }
+  .tabs button { flex: 1; border: 0; padding: 6px; border-radius: 8px; background: transparent; color: var(--text);
+                 font: inherit; font-size: 14px; }
+  .tabs button.on { background: var(--bg); font-weight: 600; }
+  .panel { background: var(--bg); border-radius: 12px; padding: 12px 14px; overflow-x: auto; }
+  .md { font-size: 15px; } .md table { border-collapse: collapse; font-size: 13px; }
+  .md th, .md td { border: 1px solid var(--sep); padding: 4px 6px; vertical-align: top; }
+  .md pre, .screen { background: var(--bg2); border-radius: 8px; padding: 8px; overflow-x: auto; font-size: 12px; }
+  .md code { font-size: 13px; } .md a { color: var(--link); }
+  .screen { margin: 0; white-space: pre; font-family: ui-monospace, Menlo, monospace; }
+  .empty { color: var(--hint); text-align: center; padding: 32px 16px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Сессии</h1>
+  <div class="sub" id="subtitle">загружаю…</div>
+</header>
+<main>
+  <section id="list"></section>
+  <section id="detail" hidden>
+    <div class="tabs"><button data-tab="last" class="on">Ответ</button><button data-tab="screen">Экран</button></div>
+    <div class="panel" id="content"></div>
+  </section>
+</main>
+<script>
+const tg = window.Telegram?.WebApp;
+const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт выбора" };
+let sessions = [], current = null, tab = "last", timer = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const folder = (p) => p.split("/").filter(Boolean).pop() || "~";
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: { "X-Telegram-Init-Data": tg?.initData || "", ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.status);
+  return data;
+}
+
+function card(s) {
+  const ctx = s.context == null ? "" : `<div class="ctx" title="свободно ${s.context}%"><i style="width:${100 - s.context}%"></i></div>`;
+  return `<button class="card ${s.status}${s.active ? " active" : ""}" data-id="${esc(s.id)}">
+    <div class="row"><span class="dot"></span><span class="name">${esc(s.name)}</span>${s.active ? '<span class="badge">активная</span>' : ""}</div>
+    <div class="meta">${STATUS[s.status]} · ${esc(folder(s.path))}${s.branch ? " · " + esc(s.branch) : ""}${s.context == null ? "" : " · контекст свободен " + s.context + "%"}${s.channel ? " · 📡" : ""}</div>
+    ${ctx}</button>`;
+}
+
+async function loadList() {
+  try {
+    const d = await api("/api/sessions");
+    sessions = d.sessions;
+    $("subtitle").textContent = `${d.host} · ${sessions.length} ${sessions.length === 1 ? "сессия" : "сессий"} · обновляется сама`;
+    $("list").innerHTML = sessions.length ? sessions.map(card).join("") : '<div class="empty">Сессий с Claude нет. Откройте новую кнопкой 🆕 в чате.</div>';
+    if (current) showMain();
+  } catch (e) {
+    $("subtitle").textContent = "нет связи: " + e.message;
+  }
+}
+
+async function loadDetail() {
+  if (!current) return;
+  try {
+    if (tab === "last") {
+      const d = await api("/api/last?w=" + encodeURIComponent(current));
+      $("content").innerHTML = d.text ? `<div class="md">${DOMPurify.sanitize(marked.parse(d.text))}</div>` : '<div class="empty">Ответов пока нет.</div>';
+    } else {
+      const d = await api("/api/screen?w=" + encodeURIComponent(current));
+      $("content").innerHTML = `<pre class="screen">${esc(d.lines.join("\n"))}</pre>`;
+    }
+  } catch (e) {
+    $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function showMain() {
+  const s = sessions.find((x) => x.id === current);
+  if (!tg) return;
+  if (!s || s.active) { tg.MainButton.setParams({ text: s ? "Это активная сессия" : "Окна уже нет", is_active: false }).show(); return; }
+  tg.MainButton.setParams({ text: "Писать в эту сессию", is_active: true }).show();
+}
+
+function open(id) {
+  current = id; tab = "last";
+  const s = sessions.find((x) => x.id === id);
+  $("title").textContent = s?.name || "Сессия";
+  $("subtitle").textContent = s ? `${STATUS[s.status]} · ${folder(s.path)}${s.branch ? " · " + s.branch : ""}` : "";
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  $("list").hidden = true; $("detail").hidden = false;
+  $("content").innerHTML = '<div class="empty">загружаю…</div>';
+  tg?.BackButton.show(); showMain(); loadDetail();
+  tg?.HapticFeedback.selectionChanged();
+}
+
+function back() {
+  current = null;
+  $("title").textContent = "Сессии";
+  $("detail").hidden = true; $("list").hidden = false;
+  tg?.BackButton.hide(); tg?.MainButton.hide();
+  loadList();
+}
+
+$("list").addEventListener("click", (e) => { const c = e.target.closest(".card"); if (c) open(c.dataset.id); });
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  tab = b.dataset.tab;
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  loadDetail();
+});
+
+if (tg) {
+  tg.ready(); tg.expand();
+  tg.BackButton.onClick(back);
+  tg.MainButton.onClick(async () => {
+    try { await api("/api/active", { w: current }); tg.HapticFeedback.notificationOccurred("success"); await loadList(); }
+    catch (e) { tg.showAlert("Не вышло: " + e.message); }
+  });
+}
+if (!tg?.initData) {
+  $("subtitle").textContent = "Откройте панель из Telegram — кнопкой «📱 Панель» в меню бота.";
+} else {
+  loadList();
+  timer = setInterval(() => (current ? (tab === "screen" ? loadDetail() : loadList()) : loadList()), 5000);
+}
+</script>
+</body>
+</html>
