@@ -56,3 +56,11 @@ def test_offer_and_run(tmp_path):
     c.run(cid, False, send, kb)
     assert "✅ код 0" in sent[-1][0] and "привет" in sent[-1][0]
     assert (tmp_path / "cmds.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_execute_pipefail_reports_failure():
+    from gas_pult.commands import execute
+    code, _, _ = execute("false | cat", None)
+    assert code != 0                         # без pipefail было бы 0 — ложный «✅»
+    code, _, out = execute("echo token=abcdef123456", None)
+    assert code == 0 and "abcdef123456" not in out

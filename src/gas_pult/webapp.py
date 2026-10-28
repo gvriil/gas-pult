@@ -6,7 +6,8 @@
 
 Сервер — стандартная библиотека. Запрос к ``/api`` пускается, если он подписан Telegram (``initData``) владельцем
 из ``owners`` или пришёл из браузера с сессией, открытой одноразовым кодом из Telegram (``webauth``).
-MCP-серверы Claude Code — список, добавление по шаблону, удаление (``mcp``). Кнопки «▶️ Выполнить» здесь нет.
+MCP-серверы Claude Code (``mcp``), ключи API и поставщики голоса (``providers``), «▶️ Выполнить» для команд
+из последнего ответа: команду берёт сервер из ответа Claude (браузер присылает только её номер и отпечаток).
 
     gas-pult webapp [--port 8765] [--tunnel | --url https://…]
 
@@ -29,8 +30,9 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
-from gas_pult import transcripts, voice, webauth
+from gas_pult import providers, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
+from gas_pult.commands import DANGER, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import PRESETS, Mcp
 from gas_pult.telegram import Api, TelegramError
@@ -191,8 +193,51 @@ class Panel:
             self.tmux.kill(w["id"])
             return "закрыто"
 
+    # ---------- голос: локально или ElevenLabs ----------
+    def voice_settings(self) -> dict:
+        st, keys = self.pult.state(), providers.key_info()
+        el = "elevenlabs" in keys
+        return {"tts": st.get("tts_provider", "local") if el else "local",
+                "stt": st.get("stt_provider", "local") if el else "local",
+                "el_voice": st.get("el_voice"), "keys": keys, "local_voice": catalog.label(self.voice() or "")}
+
+    def el_voices(self) -> list[dict]:
+        key = providers.load_keys().get("elevenlabs")
+        return providers.el_voices(key) if key else []
+
+    def set_key(self, provider: str, key: str) -> list[dict]:
+        if provider != "elevenlabs":
+            raise ValueError("пока поддерживается только ElevenLabs")
+        key = key.strip()
+        if len(key) < 20:
+            raise ValueError("это не похоже на ключ ElevenLabs — скопируйте его целиком")
+        voices = providers.el_voices(key)                 # проверка: неверный ключ сюда не дойдёт
+        providers.save_key(provider, key)
+        if voices and not self.pult.state().get("el_voice"):
+            self.pult.set_state(el_voice=voices[0]["id"])
+        return voices
+
+    def remove_key(self, provider: str):
+        providers.save_key(provider, None)
+        self.pult.set_state(tts_provider="local", stt_provider="local")
+
+    def set_providers(self, b: dict):
+        el = "elevenlabs" in providers.key_info()
+        upd = {}
+        for k in ("tts", "stt"):
+            if k in b:
+                if b[k] not in ("local", "elevenlabs") or (b[k] == "elevenlabs" and not el):
+                    raise ValueError("сначала сохраните ключ ElevenLabs")
+                upd[f"{k}_provider"] = b[k]
+        if b.get("el_voice"):
+            upd["el_voice"] = str(b["el_voice"])
+        self.pult.set_state(**upd)
+
     def stt(self, data: bytes, ctype: str) -> str:
-        path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{AUDIO_EXT.get(ctype.split(';')[0], 'webm')}"
+        ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
+        if self.voice_settings()["stt"] == "elevenlabs":
+            return providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}")
+        path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{ext}"
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_bytes(data)
         try:
@@ -203,9 +248,15 @@ class Panel:
     def tts(self, w: dict, full: bool) -> bytes:
         text = transcripts.clean(transcripts.last_answer(w["path"]))
         text = (text if full else brief(text))[:3500]
-        v = self.voice()
         if not text:
             raise ValueError("нечего озвучивать")
+        vs = self.voice_settings()
+        if vs["tts"] == "elevenlabs":
+            voice_id = vs["el_voice"] or next(iter(self.el_voices()), {}).get("id")
+            if not voice_id:
+                raise ValueError("в аккаунте ElevenLabs нет голосов")
+            return providers.el_tts(providers.load_keys()["elevenlabs"], voice_id, text)
+        v = self.voice()
         if not v:
             raise ValueError("голоса не установлены: gas-pult voices install irina")
         out = self.cfg.data / f"web-{uuid.uuid4().hex}.mp3"
@@ -214,6 +265,28 @@ class Panel:
             return out.read_bytes()
         finally:
             out.unlink(missing_ok=True)
+
+
+    # ---------- ▶️ команды из последнего ответа ----------
+    def commands(self, w: dict) -> list[dict]:
+        out = []
+        for i, cmd in enumerate(extract(transcripts.last_answer(w["path"]))):
+            kind = self.pult.cmds.kind(cmd)
+            out.append({"i": i, "cmd": cmd, "kind": kind, "danger": bool(DANGER.search(cmd)),
+                        "sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})
+        return out
+
+    def run(self, w: dict, i: int, sha: str, confirmed: bool) -> dict:
+        c = next((x for x in self.commands(w) if x["i"] == i and x["sha"] == sha), None)
+        if not c:
+            raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
+        if c["kind"] != "local":
+            raise ValueError("эту команду выполняйте вручную: " +
+                             ("sudo вне разрешённого списка" if c["kind"] == "sudo" else "она для другой машины"))
+        if c["danger"] and not confirmed:
+            return {"confirm": True}
+        code, secs, out = execute(c["cmd"], w["path"])
+        return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL}
 
 
 def handler(panel: Panel):
@@ -286,11 +359,16 @@ def handler(panel: Panel):
                 return {**panel.meta(), "via": self.via()}
             if path == "/api/mcp":
                 return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS}
+            if path == "/api/providers":
+                vs = panel.voice_settings()
+                return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"])}
             if path == "/api/screen":
                 return {"lines": panel.tmux.screen(w["id"], 40)}
+            if path == "/api/cmds":
+                return {"cmds": panel.commands(w), "host": panel.cfg.host}
             if path == "/api/tts":
                 return ("audio/mpeg", panel.tts(w, q.get("full") == "1"))
             raise KeyError
@@ -322,6 +400,14 @@ def handler(panel: Panel):
                                                 b.get("values") or {})}
             if path == "/api/mcp/remove":
                 return {"result": panel.mcp.remove(str(b.get("name", "")))}
+            if path == "/api/keys":
+                return {"voices": panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))}
+            if path == "/api/keys/remove":
+                panel.remove_key(str(b.get("provider", "")))
+                return {"ok": True}
+            if path == "/api/providers":
+                panel.set_providers(b)
+                return {"ok": True}
             if path == "/api/new":
                 return {"id": panel.new(int(b.get("i", -1)))}
             w = self.win(b.get("w"))
@@ -342,6 +428,8 @@ def handler(panel: Panel):
                 return {"lines": panel.key(w, str(b.get("key", "")))}
             if path == "/api/close":
                 return {"result": panel.close(w)}
+            if path == "/api/run":
+                return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError
 
         def dispatch(self, fn):
@@ -351,7 +439,7 @@ def handler(panel: Panel):
                 return self.json({"error": "нет такого метода"}, 404)
             except LookupError as e:
                 return self.json({"error": str(e)}, 404)
-            except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+            except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
             if isinstance(out, tuple) and out[0] == "cookie":
                 return self.reply(200, json.dumps(out[2], ensure_ascii=False).encode(), cookie=out[1])

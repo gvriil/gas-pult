@@ -124,6 +124,13 @@
   .result { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
   .result.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
   .result.bad { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+  .cmd { border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 8px 0; background: var(--surface); }
+  .cmd pre { margin: 0 0 6px; background: var(--code); border-radius: 8px; padding: 8px; font: 12.5px/1.4 ui-monospace, Menlo, monospace;
+             white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd .btn { margin: 0; padding: 9px; }
+  .cmd .out { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 260px; overflow-y: auto; }
+  select { width: 100%; font: 16px/1.3 -apple-system, system-ui, sans-serif; color: var(--text); background: var(--surface);
+           border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
 
   .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(20,20,19,.4); display: flex; align-items: flex-end; }
@@ -393,9 +400,40 @@ async function loadContent() {
       const html = last.text ? DOMPurify.sanitize(marked.parse(last.text)) : "";
       $("content").innerHTML = html ? `<div class="md">${html}</div>` : '<div class="empty">Ответов пока нет — напишите Claude внизу.</div>';
       $("content").querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+      if (last.text) renderCmds();
     } else $("content").innerHTML = `<pre class="screen">${esc(scr.lines.join("\n"))}</pre>`;
   } catch (e) { $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
+
+// ▶️ Команды из последнего ответа: сервер берёт их из ответа сам, браузер шлёт только номер и отпечаток.
+async function renderCmds() {
+  const d = await api("/api/cmds?w=" + encodeURIComponent(current)).catch(() => null);
+  if (!d?.cmds?.length || tab !== "last") return;
+  const box = document.createElement("div");
+  box.innerHTML = `<div class="section" style="margin-top:14px">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd" data-i="${c.i}">
+    <pre>${esc(c.cmd)}</pre>${c.kind === "local"
+      ? `<button class="btn${c.danger ? " danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? "⚠️ " : "▶️ "}Выполнить на ${esc(d.host)}</button>`
+      : `<div class="note" style="margin:0">${c.kind === "sudo" ? "🔐 sudo вне разрешённого списка — выполните вручную в терминале" : "💻 команда для другой машины — скопируйте и выполните там"}</div>`}
+    <div class="out-wrap"></div></div>`).join("");
+  $("content").append(box);
+}
+$("content").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-run]"); if (!b) return;
+  const cmd = b.closest(".cmd").querySelector("pre").textContent;
+  const go = (confirmed) => busy(b, "⏳ Выполняю…", async () => {
+    const outBox = b.closest(".cmd").querySelector(".out-wrap");
+    try {
+      const r = await api("/api/run", { w: current, i: +b.dataset.run, sha: b.dataset.sha, confirmed });
+      if (r.confirm) return ask();
+      outBox.innerHTML = `<div class="result ${r.code === 0 ? "ok" : "bad"}">${r.code === 0 ? "✅" : "❌"} код ${esc(r.code)} · ${r.seconds} с${r.cut ? " · показан конец вывода" : ""}
+        ${r.out ? `<pre class="out">${esc(r.out)}</pre>` : " · вывода нет"}</div>`;
+      haptic("notificationOccurred", r.code === 0 ? "success" : "error");
+    } catch (err) { outBox.innerHTML = `<div class="result bad">${esc(err.message)}</div>`; }
+  });
+  const ask = () => { const t = "Команда меняет или удаляет данные:\n\n" + cmd.slice(0, 600) + "\n\nВыполнить?";
+    tg?.showConfirm ? tg.showConfirm(t, (ok) => ok && go(true)) : confirm(t) && go(true); };
+  b.classList.contains("danger") ? ask() : go(false);
+});
 
 // Диалог Claude на экране → вопрос и варианты кнопками (нажатие = цифра варианта).
 function renderAsk(lines) {
@@ -501,17 +539,68 @@ function grow() { const t = $("input"); t.style.height = "auto"; t.style.height 
 $("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
 
 // ---------- интеграции: MCP ----------
+let prov = null;
 async function loadMcp(fresh) {
-  $("subtitle").textContent = "MCP — инструменты, которыми пользуется Claude";
-  $("integrationsView").innerHTML = '<div class="empty">Проверяю подключения… (до 30 секунд)</div>';
+  $("subtitle").textContent = "голос, ключи API и MCP";
+  $("integrationsView").innerHTML = '<div id="voiceBox"><div class="empty">загружаю…</div></div><div id="mcpBox"><div class="empty">Проверяю MCP-подключения… (до 30 секунд)</div></div>';
+  api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
-  catch (e) { $("integrationsView").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
+  catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
 }
+
+function renderVoice() {
+  const el = prov.keys.elevenlabs, seg = (name, val, opts) => `<div class="seg" data-prov="${name}">${opts.map(([v, label]) =>
+    `<button data-val="${v}" class="${val === v ? "on" : ""}" ${v === "elevenlabs" && !el ? "disabled" : ""}>${esc(label)}</button>`).join("")}</div>`;
+  $("voiceBox").innerHTML = `
+    <div class="section">Голос</div>
+    <div class="card">
+      <div class="field"><label>Озвучка ответов (🔊)</label>${seg("tts", prov.tts, [["local", "На сервере — " + (prov.local_voice || "Piper")], ["elevenlabs", "ElevenLabs"]])}
+        ${prov.tts === "elevenlabs" && prov.el_voices.length ? `<select id="elVoice">${prov.el_voices.map((v) =>
+          `<option value="${esc(v.id)}" ${v.id === prov.el_voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>` : ""}
+        <div class="hint">На сервере — бесплатно и приватно. ElevenLabs — живее, платно по тарифу; текст ответа уходит в ElevenLabs.</div></div>
+      <div class="field" style="margin:0"><label>Распознавание голосовых (🎙)</label>${seg("stt", prov.stt, [["local", "На сервере — whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
+        <div class="hint">ElevenLabs точнее на терминах и именах; запись голоса уходит в ElevenLabs.</div></div>
+    </div>
+    <div class="section">Ключи API</div>
+    <div class="card">
+      <div class="row"><span class="name">ElevenLabs</span><span class="pill ${el ? "ok" : ""}">${el ? "ключ " + esc(el.tail) : "нет ключа"}</span></div>
+      <div class="field" style="margin:10px 0 0"><label for="elKey">${el ? "Заменить ключ" : "Ключ API"}</label>
+        <div class="inp"><input id="elKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk_…">
+        <button class="icon" type="button" data-eye="elKey" aria-label="Показать">👁</button></div>
+        <div class="hint">elevenlabs.io → профиль → API Keys → Create. Права: Text to Speech, Speech to Text, Voices — чтение.
+          Ключ хранится только на сервере (файл с правами 600) и сюда больше не возвращается — сохраните копию в KeePassXC.</div></div>
+      <button class="btn" id="elSave">Сохранить и проверить</button>
+      ${el ? '<button class="btn danger" id="elDel">Удалить ключ</button>' : ""}
+      <div id="elResult"></div>
+    </div>`;
+}
+$("integrationsView").addEventListener("click", async (e) => {
+  const segBtn = e.target.closest("[data-prov] button");
+  if (segBtn && !segBtn.disabled) {
+    try { await api("/api/providers", { [segBtn.parentElement.dataset.prov]: segBtn.dataset.val }); prov = await api("/api/providers"); renderVoice(); toast("Сохранено"); }
+    catch (err) { toast(err.message, 4500); }
+  }
+  if (e.target.dataset.eye) { const i = $(e.target.dataset.eye); i.type = i.type === "password" ? "text" : "password"; }
+  if (e.target.id === "elSave") busy(e.target, "Проверяю ключ…", async () => {
+    try { const d = await api("/api/keys", { provider: "elevenlabs", key: $("elKey").value });
+          prov = await api("/api/providers"); renderVoice();
+          $("elResult").innerHTML = `<div class="result ok">✔ Ключ работает, голосов в аккаунте: ${d.voices.length}. Теперь выберите ElevenLabs выше.</div>`; haptic("notificationOccurred", "success"); }
+    catch (err) { $("elResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; haptic("notificationOccurred", "error"); }
+  });
+  if (e.target.id === "elDel") {
+    const go = async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); prov = await api("/api/providers"); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); };
+    tg?.showConfirm ? tg.showConfirm("Удалить ключ ElevenLabs?", (ok) => ok && go()) : confirm("Удалить ключ ElevenLabs?") && go();
+  }
+});
+$("integrationsView").addEventListener("change", async (e) => {
+  if (e.target.id === "elVoice") { await api("/api/providers", { el_voice: e.target.value }).catch((err) => toast(err.message)); toast("Голос выбран"); }
+});
+
 function renderMcp() {
   const srv = mcpData.servers;
-  $("integrationsView").innerHTML = `
+  $("mcpBox").innerHTML = `
+    <div class="section">MCP — инструменты Claude</div>
     <p class="note">MCP-сервер даёт Claude доступ к сервису: задачам, документам, умному дому. Подключение действует во всех сессиях; уже открытые увидят его после перезапуска.</p>
-    <div class="section">Подключено</div>
     ${srv.length ? srv.map((s, i) => `<div class="card"><div class="row"><span class="name">${esc(s.name)}</span>
         <span class="pill ${s.ok ? "ok" : "bad"}">${s.ok ? "работает" : "не отвечает"}</span></div>
         <div class="meta">${esc(s.target)}</div>${s.ok ? "" : `<div class="meta" style="white-space:normal">${esc(s.state)}</div>`}
@@ -609,6 +698,10 @@ function demoApi(path, body) {
                   presets: [{ id: "github", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
                             { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
   };
+  R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
+                          el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
+  R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
+    { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
   if (key === "/api/last") return Promise.resolve({ text: answer });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "] });
