@@ -2,305 +2,618 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>gas-pult · пульт</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
-  :root {
-    --bg: var(--tg-theme-bg-color, #fff);
-    --bg2: var(--tg-theme-secondary-bg-color, #f2f2f7);
-    --text: var(--tg-theme-text-color, #111);
-    --hint: var(--tg-theme-hint-color, #8a8a8e);
-    --link: var(--tg-theme-link-color, #2a7ae2);
-    --accent: var(--tg-theme-button-color, #2a7ae2);
-    --accent-text: var(--tg-theme-button-text-color, #fff);
-    --danger: var(--tg-theme-destructive-text-color, #e53935);
-    --sep: color-mix(in srgb, var(--hint) 25%, transparent);
-    --idle: #34c759; --busy: #0a84ff; --dialog: #ff9f0a;
+  /* Палитра в духе Anthropic: тёплая бумага, терракотовый акцент; тёмная — в тон. */
+  :root, :root[data-theme="light"] {
+    --bg: #f5f4ee; --surface: #ffffff; --surface2: #faf9f5; --code: #f0eee6;
+    --text: #141413; --muted: #6b6a64; --line: #e6e4da;
+    --accent: #d97757; --accent-strong: #c15f3c; --on-accent: #ffffff;
+    --ok: #5a8f5c; --warn: #c98a2b; --danger: #b8463a;
+    --shadow: 0 1px 2px rgba(20,20,19,.06), 0 1px 1px rgba(20,20,19,.04);
+  }
+  :root[data-theme="dark"] {
+    --bg: #1f1e1d; --surface: #2a2927; --surface2: #30302e; --code: #262624;
+    --text: #f5f4ee; --muted: #a3a199; --line: #3b3a36;
+    --accent: #d97757; --accent-strong: #e08b6e; --on-accent: #ffffff;
+    --ok: #7fb07f; --warn: #e0a84a; --danger: #e07a6e;
+    --shadow: none;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin: 0; background: var(--bg2); color: var(--text);
-         font: 15px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
-  button { font: inherit; color: inherit; cursor: pointer; }
-  header { position: sticky; top: 0; z-index: 3; background: var(--bg2); padding: 12px 16px 8px; }
-  h1 { margin: 0; font-size: 20px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sub { color: var(--hint); font-size: 13px; }
-  main { padding: 0 12px 24px; }
-  #detail { padding-bottom: 150px; }
-  .card { display: block; width: 100%; text-align: left; border: 0; margin: 0 0 8px; padding: 12px 14px;
-          background: var(--bg); border-radius: 12px; }
-  .card.active { box-shadow: inset 0 0 0 2px var(--accent); }
-  .card.new { color: var(--accent); font-weight: 600; text-align: center; }
-  .row { display: flex; align-items: center; gap: 8px; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); overscroll-behavior: none;
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .55; cursor: default; }
+  .serif { font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif; }
+
+  /* верхняя панель — прячется при прокрутке вниз */
+  .top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 12px 8px;
+         display: flex; align-items: center; gap: 8px; transition: transform .2s ease; border-bottom: 1px solid transparent; }
+  .top.hide { transform: translateY(-110%); }
+  .top.edge { border-bottom-color: var(--line); }
+  .top .titles { flex: 1; min-width: 0; }
+  .top h1 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top .sub { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icon { width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; font-size: 18px; flex: none; }
+  .icon:active { background: var(--line); }
+
+  main { padding: 4px 12px 24px; }
+  .seg { display: flex; gap: 2px; padding: 3px; background: var(--line); border-radius: 10px; margin: 0 0 10px; }
+  .seg button { flex: 1; border: 0; padding: 7px 4px; border-radius: 8px; background: transparent; font-size: 14px; color: var(--muted); }
+  .seg button.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+
+  .card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); margin: 0 0 8px; padding: 12px 14px;
+          background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); }
+  .card.active { border-color: var(--accent); }
+  .card.cta { text-align: center; color: var(--accent-strong); font-weight: 600; border-style: dashed; background: transparent; box-shadow: none; }
+  .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--idle); }
-  .busy .dot { background: var(--busy); animation: pulse 1.2s infinite; } .dialog .dot { background: var(--dialog); }
-  @keyframes pulse { 50% { opacity: .35; } }
-  .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
-  .meta { color: var(--hint); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ctx { height: 4px; border-radius: 2px; background: var(--sep); margin-top: 8px; overflow: hidden; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--ok); }
+  .busy .dot { background: var(--accent); animation: pulse 1.2s infinite; } .dialog .dot { background: var(--warn); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-strong); white-space: nowrap; }
+  .pill.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .pill.bad { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctx { height: 3px; border-radius: 2px; background: var(--line); margin-top: 8px; overflow: hidden; }
   .ctx i { display: block; height: 100%; background: var(--accent); }
-  .tabs { display: flex; gap: 4px; padding: 3px; margin: 0 0 8px; background: var(--sep); border-radius: 10px; }
-  .tabs button { flex: 1; border: 0; padding: 6px; border-radius: 8px; background: transparent; font-size: 14px; }
-  .tabs button.on { background: var(--bg); font-weight: 600; }
-  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 8px; scrollbar-width: none; }
-  .chips button { flex: none; border: 0; padding: 7px 12px; border-radius: 16px; background: var(--bg); font-size: 14px; }
-  .keys button { min-width: 44px; font-weight: 600; }
-  .panel { background: var(--bg); border-radius: 12px; padding: 12px 14px; overflow-x: auto; }
-  .md { font-size: 15px; } .md table { border-collapse: collapse; font-size: 13px; }
-  .md th, .md td { border: 1px solid var(--sep); padding: 4px 6px; vertical-align: top; }
-  .md pre, .screen { background: var(--bg2); border-radius: 8px; padding: 8px; overflow-x: auto; font-size: 12px; }
-  .md code { font-size: 13px; } .md a { color: var(--link); }
-  .screen { margin: 0; white-space: pre; font-family: ui-monospace, Menlo, monospace; }
-  .empty { color: var(--hint); text-align: center; padding: 32px 16px; }
-  .composer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; gap: 8px; align-items: flex-end;
-              padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--sep); }
-  .composer textarea { flex: 1; resize: none; border: 1px solid var(--sep); border-radius: 18px; padding: 8px 14px;
-                       background: var(--bg2); color: var(--text); font: inherit; max-height: 160px; outline: none; }
-  .round { width: 40px; height: 40px; border: 0; border-radius: 50%; flex: none; font-size: 18px; background: var(--bg2); }
-  .round.send { background: var(--accent); color: var(--accent-text); }
-  .round.rec { background: var(--danger); color: #fff; animation: pulse 1s infinite; }
-  .sheet-bg { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; }
-  .sheet { width: 100%; max-height: 75vh; overflow-y: auto; background: var(--bg); border-radius: 16px 16px 0 0;
-           padding: 8px 0 calc(12px + env(safe-area-inset-bottom)); }
-  .sheet h3 { margin: 8px 16px; font-size: 15px; color: var(--hint); font-weight: 600; }
-  .sheet button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: 16px; }
+  .section { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin: 16px 4px 8px; }
+  .note { color: var(--muted); font-size: 13px; margin: 4px 4px 12px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); min-width: 0; }
+  .md { font-size: 15px; overflow-wrap: anywhere; }
+  .md h1, .md h2, .md h3 { font-family: ui-serif, "Iowan Old Style", Georgia, serif; font-weight: 600; margin: 14px 0 6px; line-height: 1.25; }
+  .md h1 { font-size: 20px; } .md h2 { font-size: 18px; } .md h3 { font-size: 16px; }
+  .md p { margin: 6px 0; } .md ul, .md ol { padding-left: 20px; margin: 6px 0; }
+  .md .tbl { overflow-x: auto; margin: 8px 0; }
+  .md table { border-collapse: collapse; font-size: 13px; }
+  .md th, .md td { border: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
+  .md th { background: var(--code); }
+  .md pre { background: var(--code); border-radius: 8px; padding: 8px; overflow-x: auto; font-size: 12.5px; }
+  .md code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--code); padding: 0 3px; border-radius: 4px; }
+  .md pre code { background: none; padding: 0; }
+  .md a { color: var(--accent-strong); }
+  .md blockquote { margin: 6px 0; padding: 2px 10px; border-left: 3px solid var(--line); color: var(--muted); }
+  .screen { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--text); }
+  .empty { color: var(--muted); text-align: center; padding: 28px 12px; }
+
+  /* диалог Claude — крупные кнопки вариантов */
+  .ask { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+         border-radius: 12px; padding: 12px; margin: 0 0 10px; }
+  .ask .q { font-weight: 600; margin: 0 0 8px; }
+  .ask button.opt { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
+                    border-radius: 10px; padding: 10px 12px; margin: 0 0 6px; }
+  .ask button.opt.sel { border-color: var(--accent); }
+  .ask button.opt b { color: var(--accent-strong); margin-right: 6px; }
+  .keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 0 0 10px; }
+  .keys button { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 0; font-weight: 600; }
+
+  /* нижняя часть сессии: действия + поле ввода */
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-top: 1px solid var(--line);
+          padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips button { flex: none; border: 1px solid var(--line); padding: 6px 11px; border-radius: 16px; background: var(--surface); font-size: 13.5px; }
+  .compose { display: flex; gap: 8px; align-items: flex-end; }
+  textarea, input { font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+  .compose textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--line); border-radius: 20px; padding: 9px 14px;
+                      background: var(--surface); max-height: 140px; outline: none; }
+  .compose textarea:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); }
+  .round { width: 42px; height: 42px; border: 0; border-radius: 50%; flex: none; font-size: 18px; background: var(--surface); border: 1px solid var(--line); }
+  .round.send { background: var(--accent); color: var(--on-accent); border: 0; }
+  .round.rec { background: var(--danger); color: #fff; border: 0; animation: pulse 1s infinite; }
+  #session { padding-bottom: 130px; }
+
+  /* формы */
+  .field { margin: 0 0 14px; }
+  .field label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 4px; }
+  .field .opt { color: var(--muted); font-weight: 400; }
+  .field .inp { display: flex; gap: 6px; }
+  .field input, .field textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+                                  background: var(--surface); outline: none; }
+  .field .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 12px; font-weight: 600; background: var(--accent); color: var(--on-accent); margin: 8px 0; }
+  .btn.ghost { background: transparent; color: var(--accent-strong); border: 1px solid var(--line); }
+  .btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--line); }
+  .result { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+  .result.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
+  .result.bad { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+  .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
+
+  .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(20,20,19,.4); display: flex; align-items: flex-end; }
+  .sheet { width: 100%; max-height: 78vh; overflow-y: auto; background: var(--surface); border-radius: 16px 16px 0 0;
+           padding: 6px 0 calc(12px + env(safe-area-inset-bottom)); }
+  .sheet h3 { margin: 10px 16px 6px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .sheet button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 13px 16px; font-size: 16px; }
+  .sheet button small { display: block; color: var(--muted); font-size: 13px; }
+  .sheet button.on { color: var(--accent-strong); font-weight: 600; }
   .sheet button.danger { color: var(--danger); }
-  .toast { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 20; background: var(--text); color: var(--bg);
-           padding: 8px 14px; border-radius: 10px; font-size: 14px; max-width: 90vw; }
+  .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30;
+           background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 14px; max-width: 92vw; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+  .demo { background: color-mix(in srgb, var(--accent) 14%, var(--bg)); color: var(--accent-strong); font-size: 12px; text-align: center; padding: 4px; }
   audio { width: 100%; margin: 0 0 8px; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<header>
-  <h1 id="title">Сессии</h1>
-  <div class="sub" id="subtitle">загружаю…</div>
-</header>
+<div class="demo" id="demoBar" hidden>Демо-данные — так панель выглядит; ваши сессии не затронуты</div>
+<div class="top" id="top">
+  <button class="icon" id="backBtn" hidden aria-label="Назад">‹</button>
+  <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle">загружаю…</div></div>
+  <button class="icon" id="switchBtn" hidden aria-label="Другая сессия">⇅</button>
+  <button class="icon" id="settingsBtn" aria-label="Настройки">⚙︎</button>
+</div>
+
 <main>
-  <section id="list"></section>
-  <section id="detail" hidden>
-    <div class="tabs"><button data-tab="last" class="on">Ответ</button><button data-tab="screen">Экран</button></div>
-    <div class="chips" id="actions">
-      <button data-act="say">🔊 Кратко</button><button data-act="sayfull">🔊 Целиком</button>
-      <button data-act="commands">⚡ Команды</button><button data-act="models">🧠 Модель</button>
-      <button data-act="more">⋯</button>
+  <!-- вход из браузера -->
+  <section id="login" hidden>
+    <div class="panel">
+      <h2 class="serif" style="margin:4px 0 6px;font-size:20px">Вход в пульт</h2>
+      <p class="note" style="margin:0 0 12px">Пароль не нужен: мы пришлём одноразовый код в Telegram владельцу бота. Код действует 5 минут.</p>
+      <div id="loginStep1">
+        <button class="btn" id="getCode">Получить код в Telegram</button>
+      </div>
+      <div id="loginStep2" hidden>
+        <div class="field">
+          <label for="code">Код из Telegram</label>
+          <input id="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••">
+          <div class="hint">Откройте чат с ботом — там сообщение «🔐 Вход в панель» с 6 цифрами.</div>
+        </div>
+        <button class="btn" id="enter">Войти</button>
+        <button class="btn ghost" id="resend">Прислать новый код</button>
+      </div>
+      <div id="loginResult"></div>
     </div>
-    <div class="chips keys" id="keys" hidden></div>
+  </section>
+
+  <!-- главная: сессии и интеграции -->
+  <section id="home" hidden>
+    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations">Интеграции</button></div>
+    <div id="sessionsView"></div>
+    <div id="integrationsView" hidden></div>
+  </section>
+
+  <!-- одна сессия -->
+  <section id="session" hidden>
+    <div class="seg" id="tabs"><button data-tab="last" class="on">Ответ</button><button data-tab="screen">Экран</button></div>
+    <div id="ask"></div>
+    <div class="keys" id="keys" hidden></div>
     <audio id="player" controls hidden></audio>
     <div class="panel" id="content"></div>
   </section>
+
+  <!-- форма добавления MCP -->
+  <section id="mcpForm" hidden></section>
 </main>
-<div class="composer" id="composer" hidden>
-  <button class="round" id="mic" title="Голосовое">🎙</button>
-  <textarea id="input" rows="1" placeholder="Сообщение… (или диктовка клавиатуры)"></textarea>
-  <button class="round send" id="send" title="Отправить">➤</button>
+
+<div class="dock" id="dock" hidden>
+  <div class="chips" id="actions">
+    <button data-act="say">🔊 Кратко</button><button data-act="sayfull">🔊 Целиком</button>
+    <button data-act="commands">⚡ Команды</button><button data-act="models">🧠 Модель</button>
+    <button data-act="more">⋯ Ещё</button>
+  </div>
+  <div class="compose">
+    <button class="round" id="mic" aria-label="Голосовое">🎙</button>
+    <textarea id="input" rows="1" placeholder="Сообщение для Claude…"></textarea>
+    <button class="round send" id="send" aria-label="Отправить">➤</button>
+  </div>
 </div>
+
 <script>
 const tg = window.Telegram?.WebApp;
-const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт выбора" };
-let sessions = [], meta = null, current = null, tab = "last", lastStatus = null, rec = null;
+const params = new URLSearchParams(location.search);
+const DEMO = params.has("demo");
+const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт вашего выбора" };
+let sessions = [], meta = null, current = null, tab = "last", lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const folder = (p) => p.split("/").filter(Boolean).pop() || "~";
 const cur = () => sessions.find((x) => x.id === current);
+const haptic = (kind, v) => { try { tg?.HapticFeedback?.[kind]?.(v); } catch (e) {} };
 
-function toast(text, ms = 2500) {
+// ---------- тема ----------
+function applyTheme() {
+  let mode = params.get("theme") || store("theme") || "auto";
+  const dark = mode === "dark" || (mode === "auto" && (tg?.colorScheme ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches));
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  try { tg?.setHeaderColor?.(bg); tg?.setBackgroundColor?.(bg); tg?.setBottomBarColor?.(bg); } catch (e) {}
+}
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+function toast(text, ms = 2600) {
+  document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
   document.body.append(t); setTimeout(() => t.remove(), ms);
 }
 
+// ---------- сеть ----------
 async function api(path, body, raw) {
+  if (DEMO) return demoApi(path, body);
   const headers = { "X-Telegram-Init-Data": tg?.initData || "" };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
-  const r = await fetch(path, { method: body ? "POST" : "GET", headers, body: body ? (raw ? body : JSON.stringify(body)) : undefined });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  const r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin",
+                                body: body ? (raw ? body : JSON.stringify(body)) : undefined });
+  if (r.status === 403 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "ошибка " + r.status);
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
 
-function sheet(title, items) {        // items: [{label, run, danger}]
+async function busy(btn, text, fn) {      // кнопка показывает, что работает, и не нажимается дважды
+  const old = btn.textContent; btn.disabled = true; btn.textContent = text;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+
+function sheet(title, items) {             // [{label, sub, run, danger, on}]
   const bg = document.createElement("div"); bg.className = "sheet-bg";
   bg.innerHTML = `<div class="sheet"><h3>${esc(title)}</h3>${items.map((it, i) =>
-    `<button data-i="${i}" class="${it.danger ? "danger" : ""}">${esc(it.label)}</button>`).join("")}</div>`;
+    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</button>`).join("")}
+    <button data-close style="text-align:center;color:var(--muted)">Отмена</button></div>`;
   bg.addEventListener("click", (e) => {
-    const b = e.target.closest("button"); bg.remove();
-    if (b) items[+b.dataset.i].run();
+    const b = e.target.closest("button");
+    if (e.target === bg || b) bg.remove();
+    if (b && b.dataset.i) items[+b.dataset.i].run();
   });
   document.body.append(bg);
 }
 
-// ---------- список ----------
+// ---------- навигация ----------
+function show(v) {
+  view = v;
+  for (const id of ["login", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
+  $("dock").hidden = v !== "session";
+  $("backBtn").hidden = !(v === "session" || v === "mcpForm");
+  $("switchBtn").hidden = v !== "session";
+  $("settingsBtn").hidden = v === "login";
+  if (tg) (v === "session" || v === "mcpForm") ? tg.BackButton.show() : tg.BackButton.hide();
+  $("top").classList.remove("hide"); window.scrollTo(0, 0);
+}
+function back() {
+  if (view === "mcpForm") { show("home"); return setHome("integrations"); }
+  current = null; $("player").pause(); show("home"); setHome("sessions");
+}
+
+let lastY = 0;
+addEventListener("scroll", () => {
+  const y = scrollY;
+  $("top").classList.toggle("edge", y > 4);
+  if (y > lastY + 6 && y > 70) $("top").classList.add("hide");
+  else if (y < lastY - 6 || y < 30) $("top").classList.remove("hide");
+  lastY = y;
+}, { passive: true });
+
+// ---------- вход ----------
+function showLogin() {
+  show("login"); $("title").textContent = "Пульт"; $("subtitle").textContent = "вход по коду из Telegram";
+}
+$("getCode").onclick = (e) => requestCode(e.target);
+$("resend").onclick = (e) => requestCode(e.target);
+async function requestCode(btn) {
+  await busy(btn, "Отправляю…", async () => {
+    try {
+      loginId = (await api("/api/login/start", {})).id;
+      $("loginStep1").hidden = true; $("loginStep2").hidden = false; $("code").value = ""; $("code").focus();
+      $("loginResult").innerHTML = '<div class="result ok">Код отправлен в Telegram.</div>';
+    } catch (e) { $("loginResult").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
+  });
+}
+$("code").addEventListener("input", () => { $("code").value = $("code").value.replace(/\D/g, "").slice(0, 6); if ($("code").value.length === 6) $("enter").click(); });
+$("enter").onclick = (e) => busy(e.target, "Проверяю…", async () => {
+  try { await api("/api/login/verify", { id: loginId, code: $("code").value }); $("loginResult").innerHTML = ""; await start(); }
+  catch (err) { $("loginResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; }
+});
+
+// ---------- главная ----------
+function setHome(v) {
+  homeView = v;
+  document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+  $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
+  $("title").textContent = "Пульт";
+  if (v === "integrations") loadMcp(); else refresh();
+}
+$("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
+
 function card(s) {
-  const ctx = s.context == null ? "" : `<div class="ctx"><i style="width:${100 - s.context}%"></i></div>`;
   return `<button class="card ${s.status}${s.active ? " active" : ""}" data-id="${esc(s.id)}">
-    <div class="row"><span class="dot"></span><span class="name">${esc(s.name)}</span>${s.active ? '<span class="badge">активная</span>' : ""}</div>
-    <div class="meta">${STATUS[s.status]} · ${esc(folder(s.path))}${s.branch ? " · " + esc(s.branch) : ""}${s.context == null ? "" : " · контекст свободен " + s.context + "%"}${s.channel ? " · 📡" : ""}</div>
-    ${ctx}</button>`;
+    <div class="row"><span class="dot"></span><span class="name">${esc(s.name)}</span>${s.active ? '<span class="pill">активная</span>' : ""}</div>
+    <div class="meta">${STATUS[s.status]} · ${esc(folder(s.path))}${s.branch ? " · " + esc(s.branch) : ""}</div>
+    ${s.context == null ? "" : `<div class="ctx" title="контекст свободен ${s.context}%"><i style="width:${100 - s.context}%"></i></div>`}</button>`;
 }
 
 async function refresh() {
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions;
-    if (!current) {
-      $("subtitle").textContent = `${d.host} · ${sessions.length} в работе · обновляется сама`;
-      $("list").innerHTML = '<button class="card new" data-new>＋ Новая сессия</button>' +
-        (sessions.length ? sessions.map(card).join("") : '<div class="empty">Сессий с Claude нет — откройте новую.</div>');
+    if (view === "home") {
+      $("subtitle").textContent = `${d.host} · сессий: ${sessions.length}`;
+      if (homeView === "sessions") $("sessionsView").innerHTML =
+        '<button class="card cta" data-new>＋ Новая сессия</button>' +
+        (sessions.length ? sessions.map(card).join("") : '<div class="empty">Сессий с Claude пока нет.</div>') +
+        '<p class="note">🟢 свободна · 🟠 работает · 🟡 ждёт выбора. Полоска — сколько контекста занято.</p>';
       return;
     }
+    if (view !== "session") return;
     const s = cur();
     if (!s) { toast("Сессия закрыта"); return back(); }
+    $("title").textContent = s.name;
     $("subtitle").textContent = `${STATUS[s.status]} · ${folder(s.path)}${s.branch ? " · " + s.branch : ""}${s.context == null ? "" : " · контекст " + s.context + "%"}`;
-    $("keys").hidden = !(s.status === "dialog" || tab === "screen");
-    if (lastStatus === "busy" && s.status !== "busy") { setTab(s.status === "dialog" ? "screen" : "last"); tg?.HapticFeedback.notificationOccurred("success"); }
-    else if (tab === "screen") loadContent();
+    if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "last"); }
+    else if (tab === "screen" || s.status === "dialog") loadContent();
     lastStatus = s.status;
-  } catch (e) {
-    $("subtitle").textContent = "нет связи: " + e.message;
-  }
+  } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; }
 }
 
+$("sessionsView").addEventListener("click", (e) => {
+  if (e.target.closest("[data-new]")) {
+    return sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
+      label, run: async () => {
+        toast("Запускаю Claude…", 3000);
+        try { const d = await api("/api/new", { i }); await refresh(); open(d.id); }
+        catch (err) { toast("Не вышло: " + err.message, 4500); }
+      },
+    })));
+  }
+  const c = e.target.closest(".card[data-id]"); if (c) open(c.dataset.id);
+});
+
 // ---------- сессия ----------
+async function open(id) {
+  current = id; show("session");
+  if (!cur()) await refresh();
+  lastStatus = cur()?.status;
+  $("title").textContent = cur()?.name || "Сессия"; $("player").hidden = true;
+  $("content").innerHTML = '<div class="empty">загружаю…</div>';
+  setTab(cur()?.status === "dialog" ? "screen" : "last"); refresh(); haptic("selectionChanged");
+}
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  loadContent();
+}
+$("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
+
 async function loadContent() {
   if (!current) return;
   try {
+    const [last, scr] = await Promise.all([
+      tab === "last" ? api("/api/last?w=" + encodeURIComponent(current)) : null,
+      api("/api/screen?w=" + encodeURIComponent(current)),
+    ]);
+    renderAsk(scr.lines);
+    $("keys").hidden = tab !== "screen" && cur()?.status !== "dialog";
     if (tab === "last") {
-      const d = await api("/api/last?w=" + encodeURIComponent(current));
-      $("content").innerHTML = d.text ? `<div class="md">${DOMPurify.sanitize(marked.parse(d.text))}</div>` : '<div class="empty">Ответов пока нет.</div>';
-    } else showScreen((await api("/api/screen?w=" + encodeURIComponent(current))).lines);
+      const html = last.text ? DOMPurify.sanitize(marked.parse(last.text)) : "";
+      $("content").innerHTML = html ? `<div class="md">${html}</div>` : '<div class="empty">Ответов пока нет — напишите Claude внизу.</div>';
+      $("content").querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+    } else $("content").innerHTML = `<pre class="screen">${esc(scr.lines.join("\n"))}</pre>`;
   } catch (e) { $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
-const showScreen = (lines) => { $("content").innerHTML = `<pre class="screen">${esc(lines.join("\n"))}</pre>`; };
 
-function setTab(t) {
-  tab = t;
-  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
-  $("keys").hidden = !(t === "screen" || cur()?.status === "dialog");
-  loadContent();
+// Диалог Claude на экране → вопрос и варианты кнопками (нажатие = цифра варианта).
+function renderAsk(lines) {
+  const opts = [], re = /^\s*(❯)?\s*(\d+)\.\s+(.+?)\s*$/;
+  let end = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(re);
+    if (m) { opts.unshift({ n: m[2], text: m[3], sel: !!m[1] }); end = end < 0 ? i : end; }
+    else if (opts.length) break;
+  }
+  const asking = cur()?.status === "dialog" || lines.slice(Math.max(0, end - 12), end + 1).some((l) => /\?\s*$/.test(l));
+  if (!asking || opts.length < 2) { $("ask").innerHTML = ""; return; }
+  const qi = lines.findLastIndex((l, i) => i < end - opts.length + 1 && /\?\s*$/.test(l));
+  const q = qi >= 0 ? lines[qi].trim() : "Claude ждёт выбора";
+  $("ask").innerHTML = `<div class="ask"><p class="q">${esc(q)}</p>${opts.map((o) =>
+    `<button class="opt ${o.sel ? "sel" : ""}" data-key="${o.n}"><b>${o.n}</b>${esc(o.text)}</button>`).join("")}</div>`;
 }
-
-function open(id) {
-  current = id; lastStatus = cur()?.status;
-  $("title").textContent = cur()?.name || "Сессия";
-  $("list").hidden = true; $("detail").hidden = false; $("composer").hidden = false; $("player").hidden = true;
-  $("content").innerHTML = '<div class="empty">загружаю…</div>';
-  tg?.BackButton.show(); setTab(cur()?.status === "dialog" ? "screen" : "last"); refresh();
-  tg?.HapticFeedback.selectionChanged();
-}
-
-function back() {
-  current = null; $("title").textContent = "Сессии";
-  $("detail").hidden = true; $("composer").hidden = true; $("list").hidden = false;
-  $("player").pause(); tg?.BackButton.hide(); refresh();
+$("ask").onclick = (e) => { const b = e.target.closest("button[data-key]"); if (b) press(b.dataset.key); };
+$("keys").onclick = (e) => { const b = e.target.closest("button[data-key]"); if (b) press(b.dataset.key); };
+async function press(key) {
+  haptic("impactOccurred", "light");
+  try { const d = await api("/api/key", { w: current, key }); renderAsk(d.lines); if (tab === "screen") $("content").innerHTML = `<pre class="screen">${esc(d.lines.join("\n"))}</pre>`; setTimeout(refresh, 800); }
+  catch (e) { toast("Не вышло: " + e.message, 4000); }
 }
 
 async function act(path, body, okText) {
   try {
     const d = await api(path, { w: current, ...body });
-    if (d.lines) { setTab("screen"); showScreen(d.lines); }
+    if (d.lines) { setTab("screen"); }
     if (okText) toast(okText);
-    tg?.HapticFeedback.impactOccurred("light");
+    haptic("impactOccurred", "light");
     return d;
-  } catch (e) { toast("Не вышло: " + e.message, 4000); }
+  } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
 
-async function say(full) {
-  toast(full ? "Готовлю озвучку целиком…" : "Готовлю озвучку…", 4000);
-  try {
-    const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}`);
-    const p = $("player"); p.src = URL.createObjectURL(blob); p.hidden = false; p.play().catch(() => toast("Нажмите ▶ на плеере"));
-  } catch (e) { toast("Озвучка: " + e.message, 4000); }
+async function say(full, btn) {
+  await busy(btn, "⏳ Готовлю…", async () => {
+    try {
+      const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}`);
+      const p = $("player"); p.src = URL.createObjectURL(blob); p.hidden = false;
+      p.play().catch(() => toast("Нажмите ▶ на плеере"));
+    } catch (e) { toast("Озвучка: " + e.message, 4500); }
+  });
 }
 
 const ACTIONS = {
-  say: () => say(false),
-  sayfull: () => say(true),
-  commands: () => sheet("⚡ Команды", meta.commands.map((label, i) => ({
-    label, run: async () => { const d = await act("/api/command", { i }, null); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); setTab("screen"); } },
+  say: (b) => say(false, b),
+  sayfull: (b) => say(true, b),
+  commands: () => sheet("Команды Claude", meta.commands.map((label, i) => ({
+    label, run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
   }))),
-  models: () => sheet("🧠 Модель", [...meta.models.map((m) => ({ label: m, run: () => act("/api/model", { name: m }, "Модель: " + m) })),
-                                    { label: "Меню выбора /model", run: () => act("/api/model", { name: "" }) }]),
+  models: () => sheet("Модель для этой сессии", [
+    ...meta.models.map((m) => ({ label: m, sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], run: () => act("/api/model", { name: m }, "Модель: " + m) })),
+    { label: "Открыть меню /model", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) }]),
   more: () => sheet(cur()?.name || "Сессия", [
-    { label: "✅ Сделать активной (ответы в чате бота — от неё)", run: () => act("/api/active", {}, "Активная").then(refresh) },
-    { label: "⛔ Закрыть сессию", danger: true, run: () => tg ? tg.showConfirm("Закрыть сессию? Claude выйдет штатно.", (ok) => ok && closeSession()) : closeSession() },
+    { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", run: () => act("/api/active", {}, "Теперь активная").then(refresh) },
+    { label: "Закрыть сессию", sub: "Claude выйдет штатно, переписка сохранится", danger: true,
+      run: () => (tg?.showConfirm ? tg.showConfirm("Закрыть сессию?", (ok) => ok && closeSession()) : confirm("Закрыть сессию?") && closeSession()) },
   ]),
 };
-async function closeSession() { const d = await act("/api/close", {}); if (d) { toast("Закрытие: " + d.result, 4000); if (d.result === "закрыто") back(); } }
+$("actions").onclick = (e) => { const b = e.target.closest("button"); if (b) ACTIONS[b.dataset.act](b); };
+async function closeSession() { const d = await act("/api/close", {}); if (d) { toast("Закрытие: " + d.result, 4500); if (d.result === "закрыто") back(); } }
 
-// ---------- ввод: текст, диктовка, голосовое ----------
+$("switchBtn").onclick = () => sheet("Перейти в сессию", sessions.map((s) => ({
+  label: s.name, sub: `${STATUS[s.status]} · ${folder(s.path)}`, on: s.id === current, run: () => open(s.id) })));
+
+// ---------- ввод ----------
 async function sendText() {
   const text = $("input").value.trim();
-  if (!text || !current) return;
-  $("send").disabled = true;
-  try {
-    await api("/api/send", { w: current, text });
-    $("input").value = ""; grow(); toast("Отправлено в «" + (cur()?.name || "") + "»");
-    lastStatus = "busy"; setTab("screen"); tg?.HapticFeedback.notificationOccurred("success");
-  } catch (e) { toast("Не отправлено: " + e.message, 4000); }
-  $("send").disabled = false;
+  if (!text) return toast("Напишите или надиктуйте сообщение");
+  await busy($("send"), "…", async () => {
+    try {
+      await api("/api/send", { w: current, text });
+      $("input").value = ""; grow(); toast("Отправлено в «" + (cur()?.name || "") + "»");
+      lastStatus = "busy"; setTab("screen"); haptic("notificationOccurred", "success");
+    } catch (e) { toast("Не отправлено: " + e.message, 4500); }
+  });
 }
-
 async function toggleMic() {
-  if (rec) { rec.stop(); return; }
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    return toast("Запись недоступна в этом Telegram — диктуйте микрофоном клавиатуры", 4500);
-  }
+  if (rec) return rec.stop();
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
+    return toast("Этот Telegram не даёт панели микрофон — диктуйте кнопкой микрофона на клавиатуре", 5000);
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
     const chunks = []; rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop()); $("mic").classList.remove("rec"); rec = null;
+      stream.getTracks().forEach((t) => t.stop()); $("mic").classList.remove("rec"); $("mic").textContent = "🎙"; rec = null;
       const blob = new Blob(chunks, { type: (type || "audio/webm").split(";")[0] });
-      toast("Распознаю…", 6000);
+      toast("Распознаю…", 8000);
       try {
         const d = await api("/api/stt", blob, blob.type);
         $("input").value = ($("input").value + " " + d.text).trim(); grow(); $("input").focus();
-        toast("Проверьте текст и нажмите ➤");
-      } catch (e) { toast("Не распознал: " + e.message, 4000); }
+        toast("Проверьте текст и нажмите ➤", 3500);
+      } catch (e) { toast("Не распознал: " + e.message, 4500); }
     };
-    rec.start(); $("mic").classList.add("rec"); tg?.HapticFeedback.impactOccurred("medium");
-    toast("Говорите… нажмите 🎙 ещё раз, чтобы закончить", 3000);
-  } catch (e) { toast("Нет доступа к микрофону: " + e.message, 4500); }
+    rec.start(); $("mic").classList.add("rec"); $("mic").textContent = "■"; haptic("impactOccurred", "medium");
+    toast("Говорите. Нажмите ■, чтобы закончить", 3000);
+  } catch (e) { toast("Нет доступа к микрофону: " + e.message, 5000); }
+}
+function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; }
+$("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
+
+// ---------- интеграции: MCP ----------
+async function loadMcp(fresh) {
+  $("subtitle").textContent = "MCP — инструменты, которыми пользуется Claude";
+  $("integrationsView").innerHTML = '<div class="empty">Проверяю подключения… (до 30 секунд)</div>';
+  try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
+  catch (e) { $("integrationsView").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
+}
+function renderMcp() {
+  const srv = mcpData.servers;
+  $("integrationsView").innerHTML = `
+    <p class="note">MCP-сервер даёт Claude доступ к сервису: задачам, документам, умному дому. Подключение действует во всех сессиях; уже открытые увидят его после перезапуска.</p>
+    <div class="section">Подключено</div>
+    ${srv.length ? srv.map((s, i) => `<div class="card"><div class="row"><span class="name">${esc(s.name)}</span>
+        <span class="pill ${s.ok ? "ok" : "bad"}">${s.ok ? "работает" : "не отвечает"}</span></div>
+        <div class="meta">${esc(s.target)}</div>${s.ok ? "" : `<div class="meta" style="white-space:normal">${esc(s.state)}</div>`}
+        ${s.removable ? `<button class="btn danger" data-rm="${i}" style="margin:8px 0 0;padding:8px">Отключить</button>` : ""}</div>`).join("")
+      : '<div class="empty">Пока ничего не подключено.</div>'}
+    <button class="btn ghost" id="mcpRefresh">Проверить заново</button>
+    <div class="section">Подключить</div>
+    ${mcpData.presets.map((p, i) => `<button class="card" data-p="${i}"><div class="row"><span class="name">${esc(p.title)}</span><span class="pill">＋</span></div>
+      <div class="meta" style="white-space:normal">${esc(p.about)}</div></button>`).join("")}`;
+}
+$("integrationsView").addEventListener("click", (e) => {
+  const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]");
+  if (e.target.id === "mcpRefresh") return busy(e.target, "Проверяю…", () => loadMcp(true));
+  if (rm) {
+    const s = mcpData.servers[+rm.dataset.rm];
+    const go = () => busy(rm, "Отключаю…", async () => { try { await api("/api/mcp/remove", { name: s.name }); toast("«" + s.name + "» отключён"); loadMcp(true); } catch (err) { toast(err.message, 4500); } });
+    return tg?.showConfirm ? tg.showConfirm(`Отключить «${s.name}»?`, (ok) => ok && go()) : confirm(`Отключить «${s.name}»?`) && go();
+  }
+  if (p) mcpForm(mcpData.presets[+p.dataset.p]);
+});
+
+function mcpForm(p) {
+  show("mcpForm"); $("title").textContent = p.title; $("subtitle").textContent = "подключение MCP";
+  const fields = p.fields.map((f) => `<div class="field"><label for="f_${f.key}">${esc(f.label)}${f.optional ? ' <span class="opt">— необязательно</span>' : ""}</label>
+      <div class="inp">${f.multiline ? `<textarea id="f_${f.key}" rows="3" placeholder="${esc(f.placeholder || "")}"></textarea>`
+        : `<input id="f_${f.key}" type="${f.secret ? "password" : "text"}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(f.placeholder || "")}">`}
+      ${f.secret && !f.multiline ? `<button class="icon" type="button" data-eye="f_${f.key}" aria-label="Показать">👁</button>` : ""}</div>
+      ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`).join("");
+  $("mcpForm").innerHTML = `<div class="panel">
+      <p style="margin:0 0 12px">${esc(p.about)}</p>
+      <div class="field"><label for="f__name">Имя подключения</label><input id="f__name" value="${esc(p.id === "http" || p.id === "stdio" ? "" : p.id)}" placeholder="например: my-service" autocapitalize="off" spellcheck="false">
+        <div class="hint">Как сервер будет называться у Claude: латиница, цифры, дефис.</div></div>
+      ${fields}
+      ${p.after ? `<div class="result ok">После подключения: ${esc(p.after)}</div>` : ""}
+      <button class="btn" id="mcpAdd">Подключить</button>
+      <div id="mcpResult"></div>
+      <p class="note">Ключи сохраняются только на вашем сервере (настройки Claude Code) и в панели больше не показываются.</p></div>`;
+  $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
+  $("mcpAdd").onclick = (e) => busy(e.target, "Подключаю и проверяю…", async () => {
+    const values = Object.fromEntries(p.fields.map((f) => [f.key, $("f_" + f.key).value]));
+    try {
+      const d = await api("/api/mcp/add", { preset: p.id, name: $("f__name").value.trim(), values });
+      $("mcpResult").innerHTML = `<div class="result ok">${esc(d.result)}</div><button class="btn ghost" id="mcpDone">Готово — к списку</button>`;
+      $("mcpDone").onclick = back; haptic("notificationOccurred", "success");
+    } catch (err) { $("mcpResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; haptic("notificationOccurred", "error"); }
+  });
 }
 
-function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 160) + "px"; }
+// ---------- настройки ----------
+$("settingsBtn").onclick = () => {
+  const mode = store("theme") || "auto";
+  sheet("Настройки", [
+    { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
+    { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
+    { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
+  ]);
+};
+$("backBtn").onclick = back;
 
-// ---------- события ----------
-$("list").addEventListener("click", (e) => {
-  if (e.target.closest("[data-new]")) {
-    return sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
-      label, run: async () => {
-        try { const d = await api("/api/new", { i }); toast("Сессия открывается…", 3000); await refresh(); open(d.id); }
-        catch (err) { toast("Не вышло: " + err.message, 4000); }
-      },
-    })));
-  }
-  const c = e.target.closest(".card"); if (c) open(c.dataset.id);
-});
-document.querySelector(".tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); });
-$("actions").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) ACTIONS[b.dataset.act](); });
-$("keys").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) act("/api/key", { key: b.dataset.key }); });
-$("send").addEventListener("click", sendText);
-$("mic").addEventListener("click", toggleMic);
-$("input").addEventListener("input", grow);
+// ---------- старт ----------
+async function start() {
+  try { meta = await api("/api/meta"); } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; return; }
+  $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
+  if (!meta.voices.length) document.querySelectorAll("[data-act^=say]").forEach((b) => (b.hidden = true));
+  show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
+  if (!start.timer) start.timer = setInterval(refresh, 4000);
+  if (DEMO && params.get("open")) { await refresh(); open(params.get("open")); }
+  if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
+}
 
-(async () => {
-  if (!tg?.initData) { $("subtitle").textContent = "Откройте панель из Telegram — кнопкой «📱 Панель» в меню бота."; return; }
-  tg.ready(); tg.expand(); tg.BackButton.onClick(back);
-  try {
-    meta = await api("/api/meta");
-    $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
-    if (!meta.voices.length) document.querySelectorAll("[data-act^=say]").forEach((b) => (b.hidden = true));
-  } catch (e) { $("subtitle").textContent = "нет связи: " + e.message; return; }
-  await refresh();
-  setInterval(refresh, 4000);
-})();
+applyTheme();
+if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); }
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
+if (DEMO) $("demoBar").hidden = false;
+if (DEMO && params.get("view") === "login") showLogin(); else start();
+
+// ---------- демо-данные (?demo) — только для показа и скриншотов, сервер не трогается ----------
+function demoApi(path, body) {
+  const S = [
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "feature/rooms", status: "busy", context: 41, active: true, channel: false },
+    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false },
+    { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false },
+  ];
+  const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
+    " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
+  const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Верхняя панель прячется при прокрутке\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
+  const R = {
+    "/api/meta": { host: "ubuntu", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
+                   keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"]].map(([label, key]) => ({ label, key })),
+                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina" },
+    "/api/sessions": { host: "ubuntu", sessions: S },
+    "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
+                            { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
+                  presets: [{ id: "github", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
+                            { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
+  };
+  const key = path.split("?")[0];
+  if (key === "/api/last") return Promise.resolve({ text: answer });
+  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "] });
+  return Promise.resolve(R[key] || { ok: true });
+}
 </script>
 </body>
 </html>

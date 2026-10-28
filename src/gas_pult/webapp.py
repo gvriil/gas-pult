@@ -4,8 +4,9 @@
 (распознаётся и встаёт в поле — проверить перед отправкой), озвучка ответа, команды ⚡, выбор модели,
 клавиши диалога 1/2/3/↑/↓/⏎/Esc, новая сессия и закрытие.
 
-Сервер — стандартная библиотека. Каждый запрос к ``/api`` подписан Telegram (``initData``) и пускается только
-для ``owners``. Кнопки «▶️ Выполнить» здесь нет — команды из ответов выполняются только из чата бота.
+Сервер — стандартная библиотека. Запрос к ``/api`` пускается, если он подписан Telegram (``initData``) владельцем
+из ``owners`` или пришёл из браузера с сессией, открытой одноразовым кодом из Telegram (``webauth``).
+MCP-серверы Claude Code — список, добавление по шаблону, удаление (``mcp``). Кнопки «▶️ Выполнить» здесь нет.
 
     gas-pult webapp [--port 8765] [--tunnel | --url https://…]
 
@@ -28,9 +29,10 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
-from gas_pult import transcripts, voice
+from gas_pult import transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.config import Config
+from gas_pult.mcp import PRESETS, Mcp
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -75,6 +77,8 @@ class Panel:
         self.cfg, self.pult = cfg, Pult(cfg)
         self.tmux = self.pult.tmux
         self.locks: dict[str, threading.Lock] = {}      # одно окно — одна вставка за раз
+        self.auth = webauth.Auth(cfg.data / "web_sessions.json")
+        self.mcp = Mcp()
 
     def lock(self, wid: str) -> threading.Lock:
         with self.pult.lock:
@@ -114,6 +118,14 @@ class Panel:
         v = self.pult.state().get("voice")
         return v if v in voices else (voices[0] if voices else None)
 
+    def login_start(self, ip: str, ua: str) -> str:
+        rid, code = self.auth.start()
+        text = (f"🔐 Вход в панель gas-pult из браузера\n\nКод: {code}\n\nДействует 5 минут. "
+                f"Откуда: {ip or '?'} · {ua[:80] or 'браузер'}.\nЕсли входите не вы — просто не вводите код.")
+        for chat in self.cfg.owners:
+            self.pult.api("sendMessage", chat_id=chat, text=text)
+        return rid
+
     # ---------- действия ----------
     def send(self, w: dict, text: str):
         with self.lock(w["id"]):
@@ -149,7 +161,7 @@ class Panel:
         return self.slash(w, f"/model {name}".strip())
 
     def key(self, w: dict, key: str) -> list[str]:
-        if key not in {k for _, k in KEYS}:
+        if key not in {k for _, k in KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты диалога
             raise ValueError("неизвестная клавиша")
         self.tmux.keys(w["id"], key)
         time.sleep(1)
@@ -211,8 +223,10 @@ def handler(panel: Panel):
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
 
-        def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8"):
+        def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = ""):
             self.send_response(code)
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
@@ -223,12 +237,25 @@ def handler(panel: Panel):
         def json(self, data, code: int = 200):
             self.reply(code, json.dumps(data, ensure_ascii=False).encode())
 
-        def owner(self) -> bool:
+        def via(self) -> str:
+            """Кто спрашивает: «telegram» (подпись владельца), «browser» (сессия по коду) или ""."""
             user = verify(self.headers.get("X-Telegram-Init-Data", ""), panel.cfg.token)
-            if not user or user.get("id") not in panel.cfg.owners:
-                self.json({"error": "нет доступа"}, 403)
-                return False
-            return True
+            if user and user.get("id") in panel.cfg.owners:
+                return "telegram"
+            return "browser" if panel.auth.check(self.session()) else ""
+
+        def session(self) -> str:
+            return webauth.cookie_value(self.headers.get("Cookie", ""))
+
+        def owner(self) -> bool:
+            if self.via():
+                return True
+            self.json({"error": "нет доступа"}, 403)
+            return False
+
+        def client(self) -> tuple[str, str]:
+            ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
+            return ip, self.headers.get("User-Agent", "")
 
         def body(self) -> bytes:
             n = int(self.headers.get("Content-Length", 0))
@@ -256,7 +283,9 @@ def handler(panel: Panel):
             if path == "/api/sessions":
                 return {"sessions": panel.sessions(), "host": panel.cfg.host}
             if path == "/api/meta":
-                return panel.meta()
+                return {**panel.meta(), "via": self.via()}
+            if path == "/api/mcp":
+                return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS}
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"])}
@@ -268,14 +297,31 @@ def handler(panel: Panel):
 
         def do_POST(self):
             path = urllib.parse.urlparse(self.path).path
+            if path == "/api/login/start":
+                return self.dispatch(lambda: {"id": panel.login_start(*self.client())})
+            if path == "/api/login/verify":
+                return self.dispatch(self.login)
             if not path.startswith("/api/") or not self.owner():
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             self.dispatch(lambda: self.post(path))
+
+        def login(self):
+            b = json.loads(self.body() or b"{}")
+            token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
+            return ("cookie", webauth.set_cookie(token), {"ok": True})
 
         def post(self, path: str):
             if path == "/api/stt":
                 return {"text": panel.stt(self.body(), self.headers.get("Content-Type", ""))}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/logout":
+                panel.auth.logout(self.session())
+                return ("cookie", webauth.set_cookie("", 0), {"ok": True})
+            if path == "/api/mcp/add":
+                return {"result": panel.mcp.add(str(b.get("preset", "")), str(b.get("name", "")),
+                                                b.get("values") or {})}
+            if path == "/api/mcp/remove":
+                return {"result": panel.mcp.remove(str(b.get("name", "")))}
             if path == "/api/new":
                 return {"id": panel.new(int(b.get("i", -1)))}
             w = self.win(b.get("w"))
@@ -307,6 +353,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e)}, 404)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
+            if isinstance(out, tuple) and out[0] == "cookie":
+                return self.reply(200, json.dumps(out[2], ensure_ascii=False).encode(), cookie=out[1])
             if isinstance(out, tuple):
                 return self.reply(200, out[1], out[0])
             return self.json(out)
