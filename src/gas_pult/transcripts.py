@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF"
+                   "\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
 
 
 def text_of(content) -> str:
@@ -44,7 +46,8 @@ def clean(md: str) -> str:
     md = md.replace("|", ", ")
     md = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", md)
     md = re.sub(r"https?://\S+", " ссылка ", md)
-    md = re.sub(r"[`*_#>]", "", md)
+    md = re.sub(r"[`*_#>\\]", "", md)
+    md = EMOJI.sub("", md)                      # эмодзи и стрелки синтез читает словами («треугольник вправо»)
     md = re.sub(r"[ \t]+", " ", md)
     return re.sub(r"\n{2,}", "\n", md).strip()
 

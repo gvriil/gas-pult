@@ -65,3 +65,9 @@ def test_last_answer(tmp_path, monkeypatch):
             assistant("б", "end_turn")]
     (d / "x.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     assert t.last_answer("/home/u/proj") == "а\n\nб"
+
+
+def test_clean_drops_emoji_and_backslashes():
+    out = t.clean("Чего нет: кнопки «▶️ Выполнить» и 🔊 озвучки \\ ✅")
+    assert "▶" not in out and "🔊" not in out and "\\" not in out and "✅" not in out
+    assert "Выполнить" in out and "озвучки" in out
