@@ -9,219 +9,266 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
-  /* Палитра в духе Anthropic: тёплая бумага, терракотовый акцент; тёмная — в тон. */
+  /* ===== Дизайн-система: тёплая бумага + терракота; статусы семантические (свободна ≠ зелёный) ===== */
   :root, :root[data-theme="light"] {
-    --bg: #f5f4ee; --surface: #ffffff; --surface2: #faf9f5; --code: #f0eee6;
-    --text: #141413; --muted: #6b6a64; --line: #e6e4da;
-    --accent: #d97757; --accent-strong: #c15f3c; --on-accent: #ffffff;
-    --ok: #5a8f5c; --warn: #c98a2b; --danger: #b8463a;
-    --shadow: 0 1px 2px rgba(20,20,19,.06), 0 1px 1px rgba(20,20,19,.04);
+    --bg-canvas: #F6F5F0; --bg-surface: #FFFFFF; --bg-subtle: #ECEAE3; --bg-terminal: #161615;
+    --border-subtle: #E2DFD7; --border-focus: #C85A32;
+    --text-primary: #181816; --text-secondary: #6E6C65; --text-muted: #9E9B93;
+    --accent-primary: #C85A32; --accent-soft: #F9EBE6; --on-accent: #FFFFFF;
+    --status-idle: #8E8C84; --status-running: #2563EB; --status-approval: #D97706; --status-approval-bg: #FEF3C7;
+    --status-success: #15803D; --status-danger: #DC2626;
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-pill: 9999px;
+    --shadow-sm: 0 1px 2px rgba(24,24,22,.05), 0 1px 1px rgba(24,24,22,.03);
+    --shadow-lg: 0 -8px 32px rgba(24,24,22,.10);
   }
   :root[data-theme="dark"] {
-    --bg: #1f1e1d; --surface: #2a2927; --surface2: #30302e; --code: #262624;
-    --text: #f5f4ee; --muted: #a3a199; --line: #3b3a36;
-    --accent: #d97757; --accent-strong: #e08b6e; --on-accent: #ffffff;
-    --ok: #7fb07f; --warn: #e0a84a; --danger: #e07a6e;
-    --shadow: none;
+    --bg-canvas: #111110; --bg-surface: #1A1918; --bg-subtle: #242321; --bg-terminal: #0C0C0B;
+    --border-subtle: #2E2D2A; --border-focus: #E06D44;
+    --text-primary: #F2F0E8; --text-secondary: #9E9B93; --text-muted: #6E6C65;
+    --accent-primary: #E06D44; --accent-soft: #2D1B14; --on-accent: #FFFFFF;
+    --status-idle: #6E6C65; --status-running: #60A5FA; --status-approval: #FBBF24; --status-approval-bg: #2E230B;
+    --status-success: #4ADE80; --status-danger: #F87171;
+    --shadow-sm: none; --shadow-lg: 0 -8px 32px rgba(0,0,0,.5);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { overflow-x: hidden; max-width: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text); overscroll-behavior: none;
-         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; }
+  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none;
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
-  button:disabled { opacity: .55; cursor: default; }
-  .serif { font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:not(:disabled):active { transform: scale(.97); }
+  .serif { font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif; letter-spacing: -.01em; }
+  .i { width: 20px; height: 20px; flex: none; display: block; }
+  .ic-16 .i, .i.s16 { width: 16px; height: 16px; }
+  [hidden] { display: none !important; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @keyframes up { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
-  /* верхняя панель — прячется при прокрутке вниз */
-  .top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 12px 8px;
-         display: flex; align-items: center; gap: 8px; transition: transform .2s ease; border-bottom: 1px solid transparent; }
-  .top.hide { transform: translateY(-110%); }
-  .top.edge { border-bottom-color: var(--line); }
-  .top .titles { flex: 1; min-width: 0; }
-  .top h1 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .top .sub { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .icon { width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; font-size: 18px; flex: none; }
-  .icon:active { background: var(--line); }
+  /* ===== Верхняя панель ===== */
+  .top { position: sticky; top: 0; z-index: 5; background: var(--bg-canvas); padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 4px;
+         transition: transform .2s ease; border-bottom: 1px solid transparent; }
+  .top.hide { transform: translateY(-110%); } .top.edge { border-bottom-color: var(--border-subtle); }
+  .titles { flex: 1; min-width: 0; padding: 0 4px; }
+  .top h1 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sub { color: var(--text-secondary); font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .sub > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .sub > .chip { flex: none; overflow: visible; }
+  .icon { width: 40px; height: 40px; border: 0; border-radius: var(--radius-md); background: transparent; display: grid; place-items: center; flex: none; color: var(--text-primary); }
+  .icon:active { background: var(--bg-subtle); }
 
   main { padding: 4px 12px 24px; }
-  .seg { display: flex; gap: 2px; padding: 3px; background: var(--line); border-radius: 10px; margin: 0 0 10px; }
-  .seg button { flex: 1; border: 0; padding: 7px 4px; border-radius: 8px; background: transparent; font-size: 14px; color: var(--muted); }
-  .seg button.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+  .seg { display: flex; gap: 2px; padding: 3px; background: var(--bg-subtle); border-radius: var(--radius-md); margin: 0 0 10px; }
+  .seg button { flex: 1; border: 0; padding: 7px 4px; border-radius: 9px; background: transparent; font-size: 14px; color: var(--text-secondary);
+                display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .seg button.on { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; box-shadow: var(--shadow-sm); }
 
-  .card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); margin: 0 0 8px; padding: 12px 14px;
-          background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); }
-  .card.active { border-color: var(--accent); }
-  .card.cta { text-align: center; color: var(--accent-strong); font-weight: 600; border-style: dashed; background: transparent; box-shadow: none; }
-  .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--ok); }
-  .busy .dot { background: var(--accent); animation: pulse 1.2s infinite; } .dialog .dot { background: var(--warn); }
-  @keyframes pulse { 50% { opacity: .3; } }
-  .pill { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-strong); white-space: nowrap; }
-  .pill.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
-  .pill.bad { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
-  .meta { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ctx { height: 3px; border-radius: 2px; background: var(--line); margin-top: 8px; overflow: hidden; }
-  .ctx i { display: block; height: 100%; background: var(--accent); }
-  .section { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin: 16px 4px 8px; }
-  .note { color: var(--muted); font-size: 13px; margin: 4px 4px 12px; }
+  /* ===== Статусы ===== */
+  .sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--status-idle); }
+  .s-running .sdot, .sdot.s-running { background: var(--status-running); animation: pulse 1.4s infinite; }
+  .s-approval .sdot, .sdot.s-approval { background: var(--status-approval); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: var(--radius-pill);
+          background: var(--bg-subtle); color: var(--text-secondary); white-space: nowrap; }
+  .chip.s-running { color: var(--status-running); background: color-mix(in srgb, var(--status-running) 12%, transparent); }
+  .chip.s-approval { color: var(--status-approval); background: var(--status-approval-bg); }
+  .chip.new, .chip.ok { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); }
+  .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
+  .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
 
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); min-width: 0; }
-  .md { font-size: 15px; overflow-wrap: anywhere; }
+  /* ===== Список сессий ===== */
+  .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 2px 12px; }
+  .summary .chip { font-size: 13px; padding: 4px 10px; } .summary b { font-variant-numeric: tabular-nums; }
+  .card { position: relative; display: block; width: 100%; text-align: left; border: 1px solid var(--border-subtle); margin: 0 0 8px; padding: 12px 8px 12px 14px;
+          background: var(--bg-surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); cursor: pointer; transition: border-color .15s; }
+  .card:active { transform: scale(.99); }
+  .card.s-approval { border-color: color-mix(in srgb, var(--status-approval) 55%, var(--border-subtle)); background: color-mix(in srgb, var(--status-approval-bg) 55%, var(--bg-surface)); }
+  .card.active::before { content: ""; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--accent-primary); }
+  .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .ctext { flex: 1; min-width: 0; }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { color: var(--text-secondary); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cfoot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 0 18px; }
+  .ctx-txt { margin-left: auto; padding-right: 6px; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .kebab { width: 36px; height: 36px; border: 0; background: transparent; border-radius: 10px; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
+  .kebab:active { background: var(--bg-subtle); }
+  .reply { margin: 10px 6px 0 18px; }
+  .section { color: var(--text-secondary); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin: 18px 4px 8px; }
+  .note { color: var(--text-secondary); font-size: 13px; margin: 4px 4px 12px; }
+  .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
+  .homebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+             background: linear-gradient(to top, var(--bg-canvas) 70%, transparent); }
+  #home { padding-bottom: 76px; }
+
+  /* ===== Кнопки и формы ===== */
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-md); padding: 13px 14px;
+         font-weight: 600; background: var(--accent-primary); color: var(--on-accent); margin: 8px 0; min-height: 48px; }
+  .btn.ghost { background: transparent; color: var(--accent-primary); border: 1px solid var(--border-subtle); }
+  .btn.quiet { background: var(--bg-subtle); color: var(--text-primary); }
+  .btn.danger { background: transparent; color: var(--status-danger); border: 1px solid color-mix(in srgb, var(--status-danger) 35%, var(--border-subtle)); }
+  .btn.approval { background: var(--status-approval); color: #1b1300; }
+  .btn.sm { min-height: 40px; padding: 8px 12px; margin: 0; }
+  .field { margin: 0 0 14px; }
+  .field label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 4px; } .field .opt { color: var(--text-secondary); font-weight: 400; }
+  .field .inp { display: flex; gap: 6px; }
+  textarea, input, select { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text-primary); }
+  .field input, .field textarea, select { width: 100%; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 11px 12px; background: var(--bg-surface); outline: none; }
+  .field input:focus, .field textarea:focus, select:focus { border-color: var(--border-focus); }
+  .hint { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+  .result { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; display: flex; gap: 8px; align-items: flex-start; }
+  .result.ok { background: color-mix(in srgb, var(--status-success) 10%, var(--bg-surface)); }
+  .result.bad { background: color-mix(in srgb, var(--status-danger) 10%, var(--bg-surface)); }
+  .result.wait { background: var(--bg-subtle); }
+  .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
+  .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
+
+  /* ===== Переписка ===== */
+  .live { color: var(--text-muted); font-size: 12px; margin: -4px 4px 10px; display: flex; align-items: center; gap: 6px; }
+  .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); display: inline-block; }
+  .live.stale { color: var(--status-danger); } .live.stale i { background: var(--status-danger); }
+  .chat .msg { margin: 0 0 14px; animation: fade .2s ease; }
+  .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
+  .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
+  .chat .me .bubble { background: var(--accent-soft); border-bottom-right-radius: 6px; max-width: 88%; white-space: pre-wrap; }
+  .chat .ai .bubble { background: var(--bg-surface); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); border-bottom-left-radius: 6px; }
+  .chat .when { color: var(--text-muted); font-size: 12px; margin: 4px 4px 0; }
+  .chat .state { font-size: 12px; margin: 4px 4px 0; text-align: right; color: var(--text-secondary); }
+  .chat .state.ok { color: var(--status-success); } .chat .state.wait { color: var(--status-approval); } .chat .state.bad { color: var(--status-danger); }
+  .chat .acts { display: flex; gap: 4px; align-items: center; margin: 6px 0 0; flex-wrap: wrap; }
+  .chat .acts button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--text-secondary);
+                       border-radius: var(--radius-pill); padding: 5px 9px; font-size: 13px; }
+  .chat .acts button:active { background: var(--bg-subtle); }
+  .md { font-size: 15px; } .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
   .md h1, .md h2, .md h3 { font-family: ui-serif, "Iowan Old Style", Georgia, serif; font-weight: 600; margin: 14px 0 6px; line-height: 1.25; }
   .md h1 { font-size: 20px; } .md h2 { font-size: 18px; } .md h3 { font-size: 16px; }
   .md p { margin: 6px 0; } .md ul, .md ol { padding-left: 20px; margin: 6px 0; }
   .md .tbl { overflow-x: auto; margin: 8px 0; }
-  .md table { border-collapse: collapse; font-size: 13px; }
-  .md th, .md td { border: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
-  .md th { background: var(--code); }
-  .md pre { background: var(--code); border-radius: 8px; padding: 8px; overflow-x: auto; font-size: 12.5px; }
-  .md code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--code); padding: 0 3px; border-radius: 4px; }
-  .md pre code { background: none; padding: 0; }
-  .md a { color: var(--accent-strong); }
-  .md blockquote { margin: 6px 0; padding: 2px 10px; border-left: 3px solid var(--line); color: var(--muted); }
-  .screen { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--text); }
-  .empty { color: var(--muted); text-align: center; padding: 28px 12px; }
+  .md table { border-collapse: collapse; font-size: 13px; } .md th, .md td { border: 1px solid var(--border-subtle); padding: 5px 7px; vertical-align: top; }
+  .md th { background: var(--bg-subtle); font-weight: 600; text-align: left; }
+  .md pre { background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 10px; overflow-x: auto; font-size: 12.5px; }
+  .md code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; background: var(--bg-subtle); padding: 1px 4px; border-radius: 5px; }
+  .md pre code { background: none; padding: 0; } .md a { color: var(--accent-primary); }
+  .md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--border-subtle); color: var(--text-secondary); }
 
-  /* диалог Claude — крупные кнопки вариантов */
-  .ask { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
-         border-radius: 12px; padding: 12px; margin: 0 0 10px; }
-  .ask .q { font-weight: 600; margin: 0 0 8px; }
-  .ask button.opt { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
-                    border-radius: 10px; padding: 10px 12px; margin: 0 0 6px; }
-  .ask button.opt.sel { border-color: var(--accent); }
-  .ask button.opt b { color: var(--accent-strong); margin-right: 6px; }
-  .keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 0 0 10px; }
-  .keys button { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 0; font-weight: 600; }
+  /* ===== Экран (терминал) — всегда контрастный, без простыни ===== */
+  .term { background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-md); padding: 12px 12px 10px; }
+  .term pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; }
+  .term .more { display: block; width: 100%; margin: 10px 0 0; border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-sm); padding: 8px; font-size: 13px; }
 
-  /* нижняя часть сессии: действия + поле ввода */
-  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-top: 1px solid var(--line);
-          padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); }
-  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; }
-  .chips::-webkit-scrollbar { display: none; }
-  .chips button { flex: none; border: 1px solid var(--line); padding: 6px 11px; border-radius: 16px; background: var(--surface); font-size: 13.5px; }
-  .compose { display: flex; gap: 8px; align-items: flex-end; }
-  textarea, input { font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); }
-  .compose textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--line); border-radius: 20px; padding: 9px 14px;
-                      background: var(--surface); max-height: 140px; outline: none; }
-  .compose textarea:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); }
-  .round { width: 42px; height: 42px; border: 0; border-radius: 50%; flex: none; font-size: 18px; background: var(--surface); border: 1px solid var(--line); }
-  .round.send { background: var(--accent); color: var(--on-accent); border: 0; }
-  .round.rec { background: var(--danger); color: #fff; border: 0; animation: pulse 1s infinite; }
-  #session { padding-bottom: 110px; }
-  .menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 2px 0 8px; }
-  .menu button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 4px; font-size: 13px; }
-  .menu button span { display: block; font-size: 20px; margin-bottom: 2px; }
-  .menu button.danger { color: var(--danger); }
-  .attach { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 6px; scrollbar-width: none; }
-  .attach span { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 70vw; border: 1px solid var(--line);
-                 background: var(--surface); border-radius: 14px; padding: 4px 4px 4px 10px; font-size: 13px; }
-  .attach span em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .attach span button { border: 0; background: none; color: var(--muted); padding: 0 6px; }
-  .playerbox { display: flex; align-items: center; gap: 6px; padding: 0 0 6px; }
-  .playerbox audio { flex: 1; min-width: 0; margin: 0; height: 36px; }
-  .chat .msg { margin: 0 0 12px; }
-  .chat .bubble { border-radius: 14px; padding: 10px 12px; overflow-wrap: anywhere; }
-  .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
-  .chat .me .bubble { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); max-width: 88%; white-space: pre-wrap; }
-  .chat .ai .bubble { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
-  .chat .when { color: var(--muted); font-size: 12px; margin: 3px 4px 0; }
-  .chat .state { color: var(--muted); font-size: 12px; margin: 3px 4px 0; text-align: right; }
-  .chat .state.ok { color: var(--ok); } .chat .state.wait { color: var(--warn); }
-  .chat .me.pending .bubble { opacity: .8; }
-  .chat .acts { display: flex; gap: 6px; align-items: center; margin: 5px 2px 0; flex-wrap: wrap; }
-  .chat .acts button { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: 13px; }
-  .card { cursor: pointer; }
-  .card .end { border: 1px solid var(--line); background: var(--surface2); border-radius: 10px; padding: 3px 9px; font-size: 13px; color: var(--danger); flex: none; }
-
-  /* формы */
-  .field { margin: 0 0 14px; }
-  .field label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 4px; }
-  .field .opt { color: var(--muted); font-weight: 400; }
-  .field .inp { display: flex; gap: 6px; }
-  .field input, .field textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
-                                  background: var(--surface); outline: none; }
-  .field .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 12px; font-weight: 600; background: var(--accent); color: var(--on-accent); margin: 8px 0; }
-  .btn.ghost { background: transparent; color: var(--accent-strong); border: 1px solid var(--line); }
-  .btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--line); }
-  .result { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
-  .result.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
-  .result.bad { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
-  .cmd { border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 8px 0; background: var(--surface); }
-  .cmd pre { margin: 0 0 6px; background: var(--code); border-radius: 8px; padding: 8px; font: 12.5px/1.4 ui-monospace, Menlo, monospace;
-             white-space: pre-wrap; overflow-wrap: anywhere; }
-  .cmd .btn { margin: 0; padding: 9px; }
-  .cmd .out { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 260px; overflow-y: auto; }
-  select { width: 100%; font: 16px/1.3 -apple-system, system-ui, sans-serif; color: var(--text); background: var(--surface);
-           border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+  /* ===== Вопрос Claude — у большого пальца ===== */
+  .ask { background: var(--status-approval-bg); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent); border-radius: var(--radius-lg);
+         padding: 12px; margin: 0 0 8px; animation: up .2s ease; }
+  .ask .q { font-weight: 600; margin: 0 0 8px; display: flex; gap: 8px; align-items: flex-start; color: var(--text-primary); }
+  .ask .q .i { color: var(--status-approval); margin-top: 1px; }
+  .ask button.opt { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 1px solid var(--border-subtle); background: var(--bg-surface);
+                    border-radius: var(--radius-md); padding: 11px 12px; margin: 0 0 6px; min-height: 48px; }
+  .ask button.opt.sel { border-color: var(--status-approval); }
+  .ask button.opt b { color: var(--status-approval); min-width: 14px; font-variant-numeric: tabular-nums; }
+  .ask button.opt:last-child { margin-bottom: 0; }
+  .keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 0 0 8px; }
+  .keys button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 10px; padding: 9px 0; font-weight: 600; font-size: 14px; }
   .steps { counter-reset: st; margin: 6px 0 0; padding: 0; list-style: none; }
   .steps li { position: relative; padding: 0 0 12px 34px; }
-  .steps li::before { counter-increment: st; content: counter(st); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%;
-                      background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
-  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .tile { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 14px 10px; text-align: center; box-shadow: var(--shadow); }
-  .tile b { display: block; font-size: 30px; line-height: 1.2; margin-bottom: 4px; font-weight: 400; }
-  .tile span { font-weight: 600; } .tile small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .tile.on { border-color: var(--ok); } .tile.on::after { content: "✓ подключено"; display: block; color: var(--ok); font-size: 12px; margin-top: 4px; }
-  .hero { text-align: center; margin: 4px 0 14px; } .hero b { font-size: 46px; display: block; font-weight: 400; }
-  .hero h2 { margin: 4px 0 2px; font-size: 21px; } .hero p { margin: 0; color: var(--muted); }
-  .conn { display: flex; flex-wrap: wrap; gap: 6px; }
-  .conn span { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: 13px; }
-  .live { color: var(--muted); font-size: 12px; margin: -4px 4px 8px; display: flex; align-items: center; gap: 6px; }
-  .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
-  .live.stale i { background: var(--warn); }
-  .recbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--danger); border-radius: 20px;
-            padding: 4px 6px 4px 12px; background: color-mix(in srgb, var(--danger) 8%, var(--surface)); height: 42px; }
-  .recbar .dotrec { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; flex: none; }
-  .recbar canvas { flex: 1; min-width: 0; height: 28px; }
-  .recbar .t { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--danger); flex: none; }
-  .recbar button { border: 0; border-radius: 16px; padding: 6px 10px; font-size: 13px; flex: none; }
-  .recbar .ok { background: var(--accent); color: var(--on-accent); } .recbar .no { background: var(--surface2); }
-  .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; }
-  .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
+  .steps li::before { counter-increment: st; content: counter(st); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%;
+                      background: var(--accent-primary); color: var(--on-accent); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
 
-  .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(20,20,19,.4); display: flex; align-items: flex-end; }
-  .sheet { width: 100%; max-height: 78vh; overflow-y: auto; background: var(--surface); border-radius: 16px 16px 0 0;
-           padding: 6px 0 calc(12px + env(safe-area-inset-bottom)); }
-  .sheet h3 { margin: 10px 16px 6px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-  .sheet button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 13px 16px; font-size: 16px; }
-  .sheet button small { display: block; color: var(--muted); font-size: 13px; }
-  .sheet button.on { color: var(--accent-strong); font-weight: 600; }
-  .sheet button.danger { color: var(--danger); }
-  .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30;
-           background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 14px; max-width: 92vw; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
-  .demo { background: color-mix(in srgb, var(--accent) 14%, var(--bg)); color: var(--accent-strong); font-size: 12px; text-align: center; padding: 4px; }
-  audio { width: 100%; margin: 0 0 8px; }
-  [hidden] { display: none !important; }
+  /* ===== Нижняя панель сессии ===== */
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas); border-top: 1px solid var(--border-subtle);
+          padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78vh; overflow-y: auto; }
+  .target { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); padding: 0 4px 6px; min-width: 0; }
+  .target b { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compose { display: flex; gap: 6px; align-items: flex-end; }
+  .compose textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--border-subtle); border-radius: 22px; padding: 10px 14px;
+                      background: var(--bg-surface); max-height: 140px; outline: none; }
+  .compose textarea:focus { border-color: var(--border-focus); }
+  .round { width: 44px; height: 44px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--bg-surface);
+           border: 1px solid var(--border-subtle); color: var(--text-primary); }
+  .round.send { background: var(--accent-primary); color: var(--on-accent); border: 0; }
+  .round.on { background: var(--bg-subtle); }
+  .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 0 8px; animation: up .18s ease; }
+  .menu button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 10px 2px 8px; font-size: 12px;
+                 display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--text-primary); line-height: 1.2; }
+  .menu button .i { color: var(--text-secondary); }
+  .menu .danger { grid-column: 1 / -1; margin-bottom: 4px; flex-direction: row; justify-content: center; color: var(--status-danger); padding: 11px; font-size: 14px; }
+  .menu .danger .i { color: var(--status-danger); }
+  .attach { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 6px; scrollbar-width: none; }
+  .attach span { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 70vw; border: 1px solid var(--border-subtle);
+                 background: var(--bg-surface); border-radius: var(--radius-pill); padding: 4px 4px 4px 10px; font-size: 13px; }
+  .attach span em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach span button { border: 0; background: none; color: var(--text-secondary); padding: 2px; display: grid; place-items: center; }
+  .playerbox { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; }
+  .playerbox audio { flex: 1; min-width: 0; height: 36px; }
+  .recbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--status-danger); border-radius: 22px;
+            padding: 4px 4px 4px 12px; background: color-mix(in srgb, var(--status-danger) 7%, var(--bg-surface)); height: 44px; }
+  .recbar .dotrec { width: 9px; height: 9px; border-radius: 50%; background: var(--status-danger); animation: pulse 1s infinite; flex: none; }
+  .recbar canvas { flex: 1; min-width: 0; height: 28px; }
+  .recbar .t { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--status-danger); flex: none; }
+  .recbar button { border: 0; border-radius: var(--radius-pill); height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; flex: none; display: grid; place-items: center; }
+  .recbar .ok { background: var(--accent-primary); color: var(--on-accent); } .recbar .no { background: var(--bg-subtle); width: 36px; padding: 0; }
+
+  /* ===== Команды из ответа ===== */
+  .cmd { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px; margin: 8px 0; background: var(--bg-surface); }
+  .cmd pre { margin: 0 0 8px; background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-sm); padding: 10px; font: 12.5px/1.45 ui-monospace, Menlo, monospace;
+             white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd .out { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 260px; overflow-y: auto; width: 100%; }
+  .cmd .hint { display: flex; gap: 6px; align-items: flex-start; margin: 0; }
+
+  /* ===== Интеграции ===== */
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .tile { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 14px 12px; text-align: left; box-shadow: var(--shadow-sm);
+          display: flex; flex-direction: column; gap: 8px; min-height: 112px; }
+  .tile span { font-weight: 600; } .tile small { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+  .tile.on { border-color: color-mix(in srgb, var(--status-success) 50%, var(--border-subtle)); }
+  .mono { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-weight: 700; font-size: 15px;
+          background: var(--bg-subtle); color: var(--text-primary); flex: none; }
+  .tile.on .mono { background: color-mix(in srgb, var(--status-success) 14%, transparent); color: var(--status-success); }
+  .hero { text-align: center; margin: 4px 0 14px; } .hero .mono { width: 56px; height: 56px; font-size: 24px; border-radius: 16px; margin: 0 auto 8px; }
+  .hero .mono .i { width: 28px; height: 28px; }
+  .hero h2 { margin: 0 0 2px; font-size: 21px; } .hero p { margin: 0; color: var(--text-secondary); }
+  .conn { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* ===== Листы, тосты, баннеры ===== */
+  .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(17,17,16,.42); display: flex; align-items: flex-end; animation: fade .15s ease; }
+  .sheet { width: 100%; max-height: 80vh; overflow-y: auto; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+           padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow: var(--shadow-lg); animation: up .2s ease; }
+  .sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border-subtle); margin: 0 auto 6px; }
+  .sheet h3 { margin: 8px 16px 6px; font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .sheet button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: 16px; min-height: 52px; }
+  .sheet button .i { color: var(--text-secondary); }
+  .sheet button span { flex: 1; min-width: 0; } .sheet button small { display: block; color: var(--text-secondary); font-size: 13px; }
+  .sheet button.on { color: var(--accent-primary); font-weight: 600; } .sheet button.danger, .sheet button.danger .i { color: var(--status-danger); }
+  .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+  .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; animation: fade .15s ease;
+           background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: 14px; max-width: 92vw; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: 12px; text-align: center; padding: 5px 8px; }
+  .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; width: auto; box-shadow: var(--shadow-lg); }
 </style>
 </head>
 <body>
 <button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
 <div class="demo" id="demoBar" hidden>Демо-режим: панель на примерах, ваши действия никуда не уходят · <a href="/" style="color:inherit">войти</a></div>
 <div class="top" id="top">
-  <button class="icon" id="backBtn" hidden aria-label="Назад">‹</button>
-  <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle">загружаю…</div></div>
-  <button class="icon" id="switchBtn" hidden aria-label="Другая сессия">⇅</button>
-  <button class="icon" id="settingsBtn" aria-label="Настройки">⚙︎</button>
+  <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
+  <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
+  <button class="icon" id="switchBtn" hidden aria-label="Другая сессия"></button>
+  <button class="icon" id="settingsBtn" aria-label="Настройки"></button>
 </div>
 
 <main>
-  <!-- вход из браузера -->
   <section id="login" hidden>
     <div class="panel">
-      <h2 class="serif" style="margin:4px 0 6px;font-size:20px">Вход в пульт</h2>
-      <p class="note" style="margin:0 0 12px">Пароль не нужен: мы пришлём одноразовый код в Telegram владельцу бота. Код действует 5 минут.</p>
+      <h2 class="serif" style="margin:2px 0 6px;font-size:21px">Вход в пульт</h2>
+      <p class="note" style="margin:0 0 12px">Пароль не нужен: одноразовый код придёт в Telegram владельцу бота. Код действует 5 минут.</p>
       <div id="loginStep1">
         <button class="btn" id="getCode">Получить код в Telegram</button>
         <button class="btn ghost" id="tryDemo">Посмотреть демо — без входа</button>
-        <p class="note" style="margin:6px 0 0">Демо — та же панель на примерах: можно всё нажимать, писать и подключать, ничего никуда не уходит.</p>
+        <p class="note" style="margin:6px 0 0">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
       </div>
       <div id="loginStep2" hidden>
         <div class="field">
           <label for="code">Код из Telegram</label>
           <input id="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••">
-          <div class="hint">Откройте чат с ботом — там сообщение «🔐 Вход в панель» с 6 цифрами.</div>
+          <div class="hint">Откройте чат с ботом — там сообщение «Вход в панель» с 6 цифрами.</div>
         </div>
         <button class="btn" id="enter">Войти</button>
         <button class="btn ghost" id="resend">Прислать новый код</button>
@@ -230,42 +277,36 @@
     </div>
   </section>
 
-  <!-- главная: сессии и интеграции -->
   <section id="home" hidden>
     <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations">Интеграции</button></div>
     <div id="sessionsView"></div>
     <div id="integrationsView" hidden></div>
   </section>
 
-  <!-- одна сессия -->
   <section id="session" hidden>
-    <div class="seg" id="tabs"><button data-tab="chat" class="on">Переписка</button><button data-tab="screen">Экран</button></div>
+    <div class="seg" id="tabs"><button data-tab="chat" class="on"></button><button data-tab="screen"></button></div>
     <div class="live" id="live"><i></i><span>обновляется каждые 3 секунды</span></div>
-    <div id="ask"></div>
-    <div class="keys" id="keys" hidden></div>
     <div id="content"></div>
   </section>
 
-  <!-- форма добавления MCP -->
   <section id="mcpForm" hidden></section>
 </main>
 
+<div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
+
 <div class="dock" id="dock" hidden>
-  <div class="playerbox" id="playerBox" hidden><audio id="player" controls></audio><button class="icon" id="playerClose" aria-label="Закрыть плеер">✕</button></div>
-  <div class="menu" id="menu" hidden>
-    <button data-act="say"><span>🔊</span>Последний кратко</button><button data-act="sayfull"><span>📢</span>Последний целиком</button>
-    <button data-act="commands"><span>⚡</span>Команды</button><button data-act="models"><span>🧠</span>Модель</button>
-    <button data-act="switch"><span>⇅</span>Другая сессия</button><button data-act="active"><span>✅</span>Сделать активной</button>
-    <button data-act="refresh"><span>↻</span>Обновить</button><button data-act="top"><span>⤒</span>В начало</button>
-    <button data-act="close" class="danger"><span>⏻</span>Завершить</button>
-  </div>
+  <div id="ask"></div>
+  <div class="keys" id="keys" hidden></div>
+  <div class="playerbox" id="playerBox" hidden><audio id="player" controls></audio><button class="icon" id="playerClose" aria-label="Закрыть плеер"></button></div>
+  <div class="menu" id="menu" hidden></div>
   <div class="attach" id="attach" hidden></div>
+  <div class="target" id="target"></div>
   <div class="compose">
-    <button class="round" id="menuBtn" aria-label="Меню действий">☰</button>
-    <button class="round" id="plus" aria-label="Прикрепить фото или файл">＋</button>
-    <textarea id="input" rows="1" placeholder="Сообщение для Claude…"></textarea>
-    <button class="round" id="mic" aria-label="Голосовое">🎙</button>
-    <button class="round send" id="send" aria-label="Отправить" hidden>➤</button>
+    <button class="round" id="menuBtn" aria-label="Меню действий"></button>
+    <button class="round" id="plus" aria-label="Прикрепить фото или файл"></button>
+    <textarea id="input" rows="1" placeholder="Сообщение…"></textarea>
+    <button class="round" id="mic" aria-label="Записать голосовое"></button>
+    <button class="round send" id="send" aria-label="Отправить" hidden></button>
   </div>
   <input type="file" id="fCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="fPhoto" accept="image/*,video/*" multiple hidden>
@@ -276,21 +317,72 @@
 const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
-const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт вашего выбора" };
-let histRev = "", lastOk = 0, BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
+// Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
+const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" } };
+const ORDER = { dialog: 0, busy: 1, idle: 2 };
+let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
+    lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clean = (s) => String(s ?? "").replace(/[\p{Extended_Pictographic}️‍]/gu, "").replace(/\s+/g, " ").trim();   // без системных эмодзи
 const folder = (p) => p.split("/").filter(Boolean).pop() || "~";
 const cur = () => sessions.find((x) => x.id === current);
 const haptic = (kind, v) => { try { tg?.HapticFeedback?.[kind]?.(v); } catch (e) {} };
 
+// ---------- иконки (линейные SVG, цвет — currentColor) ----------
+const P = {
+  back: '<path d="M15 18l-6-6 6-6"/>', swap: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
+  settings: '<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>',
+  menu: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
+  vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
+  volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
+  bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>', chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', refresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4.5v4.5h-4.5"/>',
+  top: '<path d="M12 20V9M6.5 14.5L12 9l5.5 5.5M5 4.5h14"/>', power: '<path d="M12 3.5v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/>',
+  camera: '<path d="M4 8.5h3.2L9 6h6l1.8 2.5H20V19H4z"/><circle cx="12" cy="13.2" r="3.3"/>',
+  image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 15.5l-5-5-9 9"/>',
+  file: '<path d="M7 3.5h7l4.5 4.5v12.5H7z"/><path d="M14 3.5V8h4.5"/>',
+  key: '<circle cx="8" cy="15.5" r="3.5"/><path d="M10.5 13l8.5-8.5M15.5 8l2.5 2.5M17.5 6l2 2"/>',
+  term: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/>',
+  chat: '<path d="M4.5 5.5h15v10.5H10l-4.5 3.5v-3.5h-1z"/>', play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  more: '<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18.5 14v5.5h-14v-14H10"/>', warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.3"/>',
+  lock: '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>', monitor: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/>',
+  wait: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>', pin: '<path d="M12 21s6.5-6 6.5-11a6.5 6.5 0 0 0-13 0c0 5 6.5 11 6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+  attach: '<path d="M19.5 11.5l-7.8 7.8a5 5 0 0 1-7-7l8.3-8.3a3.3 3.3 0 0 1 4.7 4.7l-8.3 8.3a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6"/>',
+  newsess: '<path d="M12 6v12M6 12h12"/>', grid: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6 8-6"/>',
+  cal: '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+  folder: '<path d="M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2.5H19a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/>',
+  hash: '<path d="M9.5 4l-2 16M16.5 4l-2 16M4.5 9h16M3.5 15h16"/>', home: '<path d="M4 11l8-6.5 8 6.5M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>',
+  book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
+  code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
+  tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
+};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
+function paintIcons() {
+  $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
+  $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
+  $("playerClose").innerHTML = ic("x"); $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
+  document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
+  document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
+  $("menu").innerHTML = `<button data-act="close" class="danger">${ic("power")}Завершить сессию</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"], ["commands", "bolt", "Команды"], ["models", "chip", "Модель"],
+    ["switch", "swap", "Сессии"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["top", "top", "В начало"]]
+    .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("");
+}
+
 // ---------- тема ----------
 function applyTheme() {
-  let mode = params.get("theme") || store("theme") || "auto";
+  const mode = params.get("theme") || store("theme") || "auto";
   const dark = mode === "dark" || (mode === "auto" && (tg?.colorScheme ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches));
   document.documentElement.dataset.theme = dark ? "dark" : "light";
-  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim();
   try { tg?.setHeaderColor?.(bg); tg?.setBackgroundColor?.(bg); tg?.setBottomBarColor?.(bg); } catch (e) {}
 }
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -307,23 +399,20 @@ async function api(path, body, raw, extra) {
   const headers = { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
-  const r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin",
-                                body: body ? (raw ? body : JSON.stringify(body)) : undefined });
+  const r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined });
   if (r.status === 403 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "ошибка " + r.status);
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
-
-async function busy(btn, text, fn) {      // кнопка показывает, что работает, и не нажимается дважды
-  const old = btn.textContent; btn.disabled = true; btn.textContent = text;
-  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+async function busy(btn, text, fn) {              // кнопка показывает, что работает, и не нажимается дважды
+  const old = btn.innerHTML; btn.disabled = true; btn.textContent = text;
+  try { return await fn(); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
 }
-
-function sheet(title, items) {             // [{label, sub, run, danger, on}]
+function sheet(title, items) {                     // [{label, sub, icon, run, danger, on}]
   const bg = document.createElement("div"); bg.className = "sheet-bg";
-  bg.innerHTML = `<div class="sheet"><h3>${esc(title)}</h3>${items.map((it, i) =>
-    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</button>`).join("")}
-    <button data-close style="text-align:center;color:var(--muted)">Отмена</button></div>`;
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>${esc(title)}</h3>${items.map((it, i) =>
+    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
+    <button class="cancel" data-close>Отмена</button></div>`;
   bg.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (e.target === bg || b) bg.remove();
@@ -331,12 +420,14 @@ function sheet(title, items) {             // [{label, sub, run, danger, on}]
   });
   document.body.append(bg);
 }
+function confirmDanger(text, go) { tg?.showConfirm ? tg.showConfirm(text, (ok) => ok && go()) : confirm(text) && go(); }
 
 // ---------- навигация ----------
 function show(v) {
   view = v;
   for (const id of ["login", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
   $("dock").hidden = v !== "session";
+  $("homeBar").hidden = !(v === "home" && homeView === "sessions");
   $("backBtn").hidden = !(v === "session" || v === "mcpForm");
   $("switchBtn").hidden = v !== "session";
   $("settingsBtn").hidden = v === "login";
@@ -347,7 +438,6 @@ function back() {
   if (view === "mcpForm") { clearInterval(connTimer); show("home"); return setHome("integrations"); }
   current = null; stopPlayer(); closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
-
 let lastY = 0;
 addEventListener("scroll", () => {
   const y = scrollY;
@@ -356,11 +446,10 @@ addEventListener("scroll", () => {
   else if (y < lastY - 6 || y < 30) $("top").classList.remove("hide");
   lastY = y;
 }, { passive: true });
+function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() {
-  show("login"); $("title").textContent = "Пульт"; $("subtitle").textContent = "вход по коду из Telegram";
-}
+function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход по коду из Telegram</span>"); }
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 $("resend").onclick = (e) => requestCode(e.target);
@@ -369,90 +458,115 @@ async function requestCode(btn) {
     try {
       loginId = (await api("/api/login/start", {})).id;
       $("loginStep1").hidden = true; $("loginStep2").hidden = false; $("code").value = ""; $("code").focus();
-      $("loginResult").innerHTML = '<div class="result ok">Код отправлен в Telegram.</div>';
-    } catch (e) { $("loginResult").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
+      $("loginResult").innerHTML = `<div class="result ok">${ic("check")}<span>Код отправлен в Telegram.</span></div>`;
+    } catch (e) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
   });
 }
 $("code").addEventListener("input", () => { $("code").value = $("code").value.replace(/\D/g, "").slice(0, 6); if ($("code").value.length === 6) $("enter").click(); });
 $("enter").onclick = (e) => busy(e.target, "Проверяю…", async () => {
   try { await api("/api/login/verify", { id: loginId, code: $("code").value }); $("loginResult").innerHTML = ""; await start(); }
-  catch (err) { $("loginResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; }
+  catch (err) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
 });
 
-// ---------- главная ----------
+// ---------- главная: статус всех сессий за 3 секунды ----------
 function setHome(v) {
   homeView = v;
   document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
   $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
+  $("homeBar").hidden = !(view === "home" && v === "sessions");
   $("title").textContent = "Пульт";
   if (v === "integrations") loadMcp(); else refresh();
 }
 $("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
 
-function card(s) {
-  return `<div class="card ${s.status}${s.active ? " active" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0">
-    <div class="row"><span class="dot"></span><span class="name">${esc(s.name)}</span>${s.active ? '<span class="pill">активная</span>' : ""}
-      <button class="end" data-end="${esc(s.id)}" aria-label="Завершить сессию">⏻ Завершить</button></div>
-    <div class="meta">${STATUS[s.status]} · ${esc(folder(s.path))}${s.branch ? " · " + esc(s.branch) : ""}</div>
-    ${s.context == null ? "" : `<div class="ctx" title="контекст свободен ${s.context}%"><i style="width:${100 - s.context}%"></i></div>`}</div>`;
+const seenKey = (s) => "seen:" + s.id + ":" + s.path;
+function isNew(s) {                                   // журнал изменился с тех пор, как вы последний раз открывали сессию
+  const seen = store(seenKey(s));
+  if (seen == null) { if (s.rev) store(seenKey(s), s.rev); return false; }
+  return s.status === "idle" && s.rev && s.rev !== seen;
 }
-
+function card(s) {
+  const st = ST[s.status];
+  return `<div class="card ${st.cls}${s.active ? " active" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
+    <div class="row"><span class="sdot"></span>
+      <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}</div></div>
+      <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
+      ${s.context == null ? "" : `<span class="ctx-txt">контекст: ${s.context}% свободно</span>`}</div>
+    ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}</div>`;
+}
 async function refresh() {
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions;
     if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
     if (view === "home") {
-      $("subtitle").textContent = `${d.host} · сессий: ${sessions.length}`;
-      if (homeView === "sessions") $("sessionsView").innerHTML =
-        '<button class="card cta" data-new>＋ Новая сессия</button>' +
-        (sessions.length ? sessions.map(card).join("") : '<div class="empty">Сессий с Claude пока нет.</div>') +
-        '<p class="note">🟢 свободна · 🟠 работает · 🟡 ждёт выбора. Полоска — сколько контекста занято.</p>';
+      const n = (k) => sessions.filter((s) => s.status === k).length;
+      if (homeView === "sessions") {
+        setSub(`<span>${esc(d.host)} · обновлено ${new Date().toLocaleTimeString("ru-RU")}</span>`);
+        const sorted = [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.active - a.active));
+        $("sessionsView").innerHTML = (sessions.length ? `<div class="summary">
+            ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
+            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span></div>`
+            + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>');
+      }
       return;
     }
     if (view !== "session") return;
     const s = cur();
     if (!s) { toast("Сессия закрыта"); return back(); }
-    $("title").textContent = s.name;
-    $("subtitle").textContent = `${STATUS[s.status]} · ${folder(s.path)}${s.branch ? " · " + s.branch : ""}${s.context == null ? "" : " · контекст " + s.context + "%"}`;
+    if (s.rev) store(seenKey(s), s.rev);              // вы в сессии — значит, видели
+    paintSession(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "chat"); }
     else if (tab === "screen" || s.status === "dialog") loadContent();
     else liveChat();
     lastStatus = s.status;
-  } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; }
+  } catch (e) { if (view !== "login") setSub(`<span style="color:var(--status-danger)">нет связи: ${esc(e.message)}</span>`); }
 }
-
+// Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
+function paintSession(s) {
+  const st = ST[s.status];
+  $("title").textContent = s.name;
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span><span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.context == null ? "" : " · контекст " + s.context + "%"}</span>`);
+  $("target").innerHTML = `<span class="sdot ${st.cls}"></span>Пишете в <b>${esc(s.name)}</b><span>· ${st.label}</span>`;
+}
 $("sessionsView").addEventListener("click", (e) => {
-  if (e.target.closest("[data-new]")) {
-    return sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
-      label, run: async () => {
-        toast("Запускаю Claude…", 3000);
-        try { const d = await api("/api/new", { i }); await refresh(); open(d.id); }
-        catch (err) { toast("Не вышло: " + err.message, 4500); }
-      },
-    })));
-  }
-  const end = e.target.closest("[data-end]");
-  if (end) return confirmClose(end.dataset.end);
+  const r = e.target.closest("[data-reply]"); if (r) return open(r.dataset.reply, "screen");
+  const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
   const c = e.target.closest(".card[data-id]"); if (c) open(c.dataset.id);
 });
+$("newBtn").onclick = () => sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
+  label, icon: "file", run: async () => {
+    toast("Запускаю Claude…", 3000);
+    try { const d = await api("/api/new", { i }); await refresh(); open(d.id); } catch (err) { toast("Не вышло: " + err.message, 4500); }
+  },
+})));
+function sessionSheet(id) {
+  const s = sessions.find((x) => x.id === id); if (!s) return;
+  sheet(s.name, [
+    { label: "Открыть", icon: "chat", run: () => open(id) },
+    { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) },
+    { label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) },
+  ]);
+}
 function confirmClose(id) {
-  const s = sessions.find((x) => x.id === id), t = `Завершить «${s?.name || "сессию"}»? Claude выйдет штатно, переписка сохранится.`;
-  tg?.showConfirm ? tg.showConfirm(t, (ok) => ok && closeSession(id)) : confirm(t) && closeSession(id);
+  const s = sessions.find((x) => x.id === id);
+  confirmDanger(`Завершить «${s?.name || "сессию"}»? Claude выйдет штатно, переписка сохранится.`, () => closeSession(id));
 }
 
 // ---------- сессия ----------
-async function open(id) {
-  current = id; show("session");
+async function open(id, startTab) {
+  current = id; termAll = false; show("session");
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
-  $("title").textContent = cur()?.name || "Сессия"; $("player").hidden = true;
-  $("content").innerHTML = '<div class="empty">загружаю…</div>';
-  hist = []; setTab(cur()?.status === "dialog" ? "screen" : "chat"); refresh(); haptic("selectionChanged"); padDock();
+  if (cur()) paintSession(cur());
+  $("content").innerHTML = '<div class="empty">загружаю…</div>'; setAsk("");
+  hist = []; setTab(startTab || (cur()?.status === "dialog" ? "screen" : "chat")); refresh(); haptic("selectionChanged"); padDock();
 }
 function setTab(t) {
   tab = t;
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  $("live").hidden = t !== "chat";
   loadContent();
 }
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
@@ -460,22 +574,26 @@ $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab
 async function loadContent() {
   if (!current) return;
   try {
-    const [h, scr] = await Promise.all([
-      tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null,
-      api("/api/screen?w=" + encodeURIComponent(current)),
-    ]);
+    const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]);
     renderAsk(scr.lines, scr.auth);
     $("keys").hidden = tab !== "screen" && cur()?.status !== "dialog";
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
       histRev = h.rev || ""; markFresh();
       if (!hist.length || grew) { hist = h.items; histMore = h.more; renderChat(true); }
-    } else { $("content").className = "panel"; $("content").innerHTML = `<pre class="screen">${esc(scr.lines.join("\n"))}</pre>`; }
-  } catch (e) { $("content").className = "panel"; $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } else renderTerm(scr.lines);
+    padDock();
+  } catch (e) { $("content").className = ""; $("content").innerHTML = `<div class="panel"><div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div></div>`; }
+}
+// Экран — контрастный терминал: последние строки, остальное по кнопке.
+function renderTerm(lines) {
+  const box = $("content"); box.className = "";
+  const shown = termAll ? lines : lines.slice(-18);
+  box.innerHTML = `<div class="term"><pre>${esc(shown.join("\n"))}</pre>${lines.length > 18 ? `<button class="more" id="termMore">${termAll ? "Свернуть" : "Показать весь экран · " + lines.length + " строк"}</button>` : ""}</div>`;
+  $("termMore")?.addEventListener("click", () => { termAll = !termAll; renderTerm(lines); });
 }
 
-// Живая переписка: каждые 3 с спрашиваем, менялся ли журнал сессии; изменился — дорисовываем, не сбивая прокрутку.
-async function liveChat() {
+async function liveChat() {                         // каждые 3 с: менялся ли журнал; изменился — дорисовываем, не сбивая прокрутку
   if (!current || tab !== "chat") return;
   try {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
@@ -488,32 +606,25 @@ async function liveChat() {
     renderChat(atBottom);
   } catch (e) { $("live").classList.add("stale"); $("live").querySelector("span").textContent = "нет связи — повторю через 3 секунды"; }
 }
-function markFresh() {
-  lastOk = Date.now(); $("live").classList.remove("stale");
-  $("live").querySelector("span").textContent = "в реальном времени · обновлено " + new Date().toLocaleTimeString("ru-RU");
-}
-// Вернулись в приложение — сразу обновить и снова не давать экрану гаснуть.
+function markFresh() { $("live").classList.remove("stale"); $("live").querySelector("span").textContent = "в реальном времени · " + new Date().toLocaleTimeString("ru-RU"); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); keepAwake(); } });
 let wake = null;
-async function keepAwake() {
-  try { if (navigator.wakeLock && !document.hidden && (!wake || wake.released)) wake = await navigator.wakeLock.request("screen"); } catch (e) {}
-}
+async function keepAwake() { try { if (navigator.wakeLock && !document.hidden && (!wake || wake.released)) wake = await navigator.wakeLock.request("screen"); } catch (e) {} }
 
-// Переписка: все сообщения сессии; у ответа Claude — озвучка кратко/целиком и копирование.
 function renderChat(toBottom) {
   const box = $("content"); box.className = "chat";
   if (!hist.length && !pending.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
-  pending = pending.filter((p) => !hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));   // дошло — убираем черновик
-  const QS = { wait: ["wait", "⏳ в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "✓ прочитано по ходу работы"] };
+  pending = pending.filter((p) => !hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));
+  const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
+  const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
     ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div>${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
     : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
-        <div class="acts"><button data-say="${m.i}">🔊 Кратко</button><button data-sayfull="${m.i}">📢 Целиком</button><button data-copy="${m.i}">⧉ Копировать</button><span class="when">${esc(m.ts)}</span></div></div>`).join("")
-    + pending.map((p) => `<div class="msg me pending"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : p.state === "fail" ? "" : "wait"}">${
-      { sending: "⏳ отправляется…", sent: cur()?.status === "busy" ? "✓ доставлено · Claude занят — прочитает по ходу работы" : "✓ доставлено в сессию", fail: "✕ не отправлено — " + esc(p.err || "") }[p.state]}</div></div>`).join("");
+        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(m.ts)}</span></div></div>`).join("")
+    + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : p.state === "fail" ? "bad" : "wait"}">${
+      { sending: "отправляется…", sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"), fail: "не отправлено — " + esc(p.err || "") }[p.state]}</div></div>`).join("");
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
-  if (!meta?.voices?.length && !prov?.keys?.elevenlabs) box.querySelectorAll("[data-say],[data-sayfull]").forEach((b) => (b.hidden = true));
   if (hist.at(-1)?.role === "assistant") renderCmds();
   if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollTo(0, document.body.scrollHeight));
 }
@@ -532,45 +643,43 @@ $("content").addEventListener("click", async (e) => {
   }
 });
 
-// ▶️ Команды из последнего ответа: сервер берёт их из ответа сам, браузер шлёт только номер и отпечаток.
+// ---------- команды из последнего ответа: сервер берёт их сам, браузер шлёт номер и отпечаток ----------
 async function renderCmds() {
   const d = await api("/api/cmds?w=" + encodeURIComponent(current)).catch(() => null);
   if (!d?.cmds?.length || tab !== "chat") return;
   const box = document.createElement("div");
-  box.innerHTML = `<div class="section" style="margin-top:14px">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd" data-i="${c.i}">
+  box.innerHTML = `<div class="section">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd">
     <pre>${esc(c.cmd)}</pre>${c.kind === "local"
-      ? `<button class="btn${c.danger ? " danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? "⚠️ " : "▶️ "}Выполнить на ${esc(d.host)}</button>`
-      : `<div class="note" style="margin:0">${c.kind === "sudo" ? "🔐 sudo вне разрешённого списка — выполните вручную в терминале" : "💻 команда для другой машины — скопируйте и выполните там"}</div>`}
+      ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(d.host)}</button>`
+      : `<div class="hint">${c.kind === "sudo" ? ic("lock", "s16") + "sudo вне разрешённого списка — выполните вручную в терминале" : ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
     <div class="out-wrap"></div></div>`).join("");
   $("content").append(box);
 }
 $("content").addEventListener("click", (e) => {
   const b = e.target.closest("[data-run]"); if (!b) return;
   const cmd = b.closest(".cmd").querySelector("pre").textContent;
-  const go = (confirmed) => busy(b, "⏳ Выполняю…", async () => {
+  const go = (confirmed) => busy(b, "Выполняю…", async () => {
     const outBox = b.closest(".cmd").querySelector(".out-wrap");
     try {
       const r = await api("/api/run", { w: current, i: +b.dataset.run, sha: b.dataset.sha, confirmed });
       if (r.confirm) return ask();
-      outBox.innerHTML = `<div class="result ${r.code === 0 ? "ok" : "bad"}">${r.code === 0 ? "✅" : "❌"} код ${esc(r.code)} · ${r.seconds} с${r.cut ? " · показан конец вывода" : ""}
-        ${r.out ? `<pre class="out">${esc(r.out)}</pre>` : " · вывода нет"}</div>`;
+      outBox.innerHTML = `<div class="result ${r.code === 0 ? "ok" : "bad"}"><div style="width:100%">${r.code === 0 ? "Готово" : "Ошибка"} · код ${esc(r.code)} · ${r.seconds} с${r.cut ? " · показан конец вывода" : ""}
+        ${r.out ? `<pre class="out">${esc(r.out)}</pre>` : " · вывода нет"}</div></div>`;
       haptic("notificationOccurred", r.code === 0 ? "success" : "error");
-    } catch (err) { outBox.innerHTML = `<div class="result bad">${esc(err.message)}</div>`; }
+    } catch (err) { outBox.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
   });
-  const ask = () => { const t = "Команда меняет или удаляет данные:\n\n" + cmd.slice(0, 600) + "\n\nВыполнить?";
-    tg?.showConfirm ? tg.showConfirm(t, (ok) => ok && go(true)) : confirm(t) && go(true); };
+  const ask = () => confirmDanger("Команда меняет или удаляет данные:\n\n" + cmd.slice(0, 600) + "\n\nВыполнить?", () => go(true));
   b.classList.contains("danger") ? ask() : go(false);
 });
 
-// Вход в MCP-сервис (ссылка на экране Claude Code) — карточка из трёх шагов; адрес после входа уходит в сессию.
+// ---------- вход в MCP-сервис (ссылка на экране Claude Code) ----------
 function authCard(a, name, w) {
-  return `<div class="ask"><p class="q">🔑 Вход в ${esc(a.service)}</p><ol class="steps">
-    <li><button class="btn" data-openauth="${esc(a.url)}" style="margin:0">Открыть страницу входа ${esc(a.service)}</button></li>
-    <li>Войдите как обычно — почтой, через Google или паролем ${esc(a.service)}. Это делается на сайте сервиса, панель пароль не видит.</li>
-    <li>После входа откроется страница, которая <b>не загружается</b> (адрес начинается с http://localhost) — так и должно быть.
-      Скопируйте адрес этой страницы целиком и вставьте сюда:
+  return `<div class="ask"><p class="q">${ic("key")}<span>Вход в ${esc(a.service)}</span></p><ol class="steps">
+    <li><button class="btn sm" data-openauth="${esc(a.url)}">${ic("ext")}Открыть страницу входа</button></li>
+    <li>Войдите как обычно — почтой или через Google. Это происходит на сайте сервиса, панель пароль не видит.</li>
+    <li>Откроется страница, которая <b>не загружается</b> (адрес начинается с http://localhost) — так и должно быть. Скопируйте её адрес и вставьте:
       <div class="field" style="margin:8px 0 0"><textarea id="authUrl" rows="3" placeholder="http://localhost:…/callback?code=…"></textarea></div>
-      <button class="btn" data-finish="${esc(name || "")}" data-w="${esc(w || current)}">Завершить вход</button><div id="authResult"></div></li></ol></div>`;
+      <button class="btn sm" style="margin-top:8px" data-finish="${esc(name || "")}" data-w="${esc(w || current)}">Завершить вход</button><div id="authResult"></div></li></ol></div>`;
 }
 document.addEventListener("click", async (e) => {
   const o = e.target.closest("[data-openauth]");
@@ -581,16 +690,18 @@ document.addEventListener("click", async (e) => {
   await busy(f, "Завершаю вход…", async () => {
     try {
       const d = await api("/api/mcp/finish", { w: f.dataset.w, url, name: f.dataset.finish || guessName() });
-      $("authResult").innerHTML = `<div class="result ${d.result.startsWith("✔") ? "ok" : "bad"}">${esc(d.result)}</div>`;
-      haptic("notificationOccurred", d.result.startsWith("✔") ? "success" : "error");
-    } catch (err) { $("authResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; }
+      const ok = d.result.startsWith("✔");
+      $("authResult").innerHTML = `<div class="result ${ok ? "ok" : "bad"}">${ic(ok ? "check" : "warn")}<span>${esc(clean(d.result))}</span></div>`;
+      haptic("notificationOccurred", ok ? "success" : "error");
+    } catch (err) { $("authResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
   });
 });
-const guessName = () => (document.querySelector(".ask .q")?.textContent || "").replace("🔑 Вход в ", "").trim();
+const guessName = () => (document.querySelector(".ask .q span")?.textContent || "").replace("Вход в ", "").trim();
 
-// Диалог Claude на экране → вопрос и варианты кнопками: с номером — цифрой, без номера — сервер дойдёт стрелками.
+// ---------- вопрос Claude → у большого пальца: варианты кнопками ----------
+function setAsk(html) { if ($("ask").dataset.html !== html) { $("ask").innerHTML = html; $("ask").dataset.html = html; } padDock(); }
 function renderAsk(lines, auth) {
-  if (auth?.paste) { if (!$("authUrl")) $("ask").innerHTML = authCard(auth); return; }
+  if (auth?.paste) { if (!$("authUrl")) setAsk(authCard(auth)); return; }
   const opts = [], re = /^\s*(❯)?\s*(\d+)\.\s+(.+?)\s*$/;
   let end = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -599,18 +710,17 @@ function renderAsk(lines, auth) {
     else if (opts.length) break;
   }
   const asking = cur()?.status === "dialog" || lines.slice(Math.max(0, end - 12), end + 1).some((l) => /\?\s*$/.test(l));
-  if (!asking || opts.length < 2) { $("ask").innerHTML = plainOptions(lines); return; }
+  if (!asking || opts.length < 2) return setAsk(plainOptions(lines));
   const qi = lines.findLastIndex((l, i) => i < end - opts.length + 1 && /\?\s*$/.test(l));
   const q = qi >= 0 ? lines[qi].trim() : "Claude ждёт выбора";
-  $("ask").innerHTML = `<div class="ask"><p class="q">${esc(q)}</p>${opts.map((o) =>
-    `<button class="opt ${o.sel ? "sel" : ""}" data-key="${o.n}"><b>${o.n}</b>${esc(o.text)}</button>`).join("")}</div>`;
+  setAsk(`<div class="ask"><p class="q">${ic("warn")}<span>${esc(q)}</span></p>${opts.map((o) =>
+    `<button class="opt ${o.sel ? "sel" : ""}" data-key="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}</div>`);
 }
 $("ask").onclick = (e) => {
   const b = e.target.closest("button[data-key]"); if (b) return press(b.dataset.key);
   const t = e.target.closest("button[data-pick]"); if (t) pick(t.dataset.pick, t);
 };
-// Меню без номеров (доверие к папке, /mcp): строки над подсказкой «… to navigate / Enter to confirm», одна с ❯.
-function plainOptions(lines) {
+function plainOptions(lines) {                      // меню без номеров (доверие к папке, /mcp)
   const foot = lines.findLastIndex((l) => /to navigate|Enter to confirm|Enter to select/.test(l));
   const sel = lines.findLastIndex((l, i) => i < foot && l.includes("❯"));
   if (foot < 0 || sel < 0 || /^\s*❯\s*\d+\./.test(lines[sel])) return "";
@@ -621,57 +731,57 @@ function plainOptions(lines) {
   if (opts.some((o) => /^[✔✘⚠]/.test(o.text))) opts = opts.filter((o) => /^[✔✘⚠]/.test(o.text));
   if (opts.length < 2) return "";
   const q = lines.slice(Math.max(0, a - 6), a).reverse().find((l) => /\?\s*$/.test(l) || /^\s*\S.*(servers|MCP)/.test(l)) || "Выберите пункт";
-  return `<div class="ask"><p class="q">${esc(q.trim())}</p>${opts.map((o) =>
-    `<button class="opt ${o.sel ? "sel" : ""}" data-pick="${esc(o.text.replace(/^[✔✘⚠]\s*/, "").split(/\s{2,}/)[0])}">${esc(o.text)}</button>`).join("")}</div>`;
+  return `<div class="ask"><p class="q">${ic("warn")}<span>${esc(q.trim())}</span></p>${opts.map((o) =>
+    `<button class="opt ${o.sel ? "sel" : ""}" data-pick="${esc(o.text.replace(/^[✔✘⚠]\s*/, "").split(/\s{2,}/)[0])}"><span>${esc(o.text.replace(/^[✔✘⚠]\s*/, ""))}</span></button>`).join("")}</div>`;
 }
 async function pick(text, btn) {
   await busy(btn, "Выбираю…", async () => {
-    try { const d = await api("/api/select", { w: current, text }); setTab("screen"); renderAsk(d.lines); }
+    try { const d = await api("/api/select", { w: current, text }); renderAsk(d.lines); if (tab === "screen") renderTerm(d.lines); }
     catch (e) { toast(e.message, 4500); }
   });
 }
 $("keys").onclick = (e) => { const b = e.target.closest("button[data-key]"); if (b) press(b.dataset.key); };
 async function press(key) {
   haptic("impactOccurred", "light");
-  try { const d = await api("/api/key", { w: current, key }); renderAsk(d.lines); if (tab === "screen") $("content").innerHTML = `<pre class="screen">${esc(d.lines.join("\n"))}</pre>`; setTimeout(refresh, 800); }
+  try { const d = await api("/api/key", { w: current, key }); renderAsk(d.lines); if (tab === "screen") renderTerm(d.lines); setTimeout(refresh, 800); }
   catch (e) { toast("Не вышло: " + e.message, 4000); }
 }
-
 async function act(path, body, okText) {
   try {
     const d = await api(path, { w: current, ...body });
-    if (d.lines) { setTab("screen"); }
+    if (d.lines) setTab("screen");
     if (okText) toast(okText);
     haptic("impactOccurred", "light");
     return d;
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
 
+// ---------- озвучка ----------
 async function say(full, btn, msg) {
   if (DEMO) return toast("В демо озвучки нет — в настоящей панели ответ прочитает голос", 3500);
-  await busy(btn, "⏳ Готовлю…", async () => {
+  await busy(btn, "Готовлю…", async () => {
     try {
       const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
       const p = $("player"); p.src = URL.createObjectURL(blob); $("playerBox").hidden = false; padDock();
-      p.play().catch(() => toast("Нажмите ▶ на плеере"));
+      p.play().catch(() => toast("Нажмите воспроизведение на плеере"));
     } catch (e) { toast("Озвучка: " + e.message, 4500); }
   });
 }
 function stopPlayer() { $("player").pause(); $("playerBox").hidden = true; padDock(); }
 $("playerClose").onclick = stopPlayer;
 function padDock() { requestAnimationFrame(() => { $("session").style.paddingBottom = ($("dock").offsetHeight + 16) + "px"; }); }
-function closeMenu() { $("menu").hidden = true; $("menuBtn").textContent = "☰"; padDock(); }
-$("menuBtn").onclick = () => { const open = $("menu").hidden; $("menu").hidden = !open; $("menuBtn").textContent = open ? "✕" : "☰"; padDock(); };
+function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
+$("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
 const ACTIONS = {
   say: (b) => say(false, b),
   sayfull: (b) => say(true, b),
   commands: () => sheet("Команды Claude", meta.commands.map((label, i) => ({
-    label, run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
+    label: clean(label), icon: "bolt", run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
   }))),
   models: () => sheet("Модель для этой сессии", [
-    ...meta.models.map((m) => ({ label: m, sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], run: () => act("/api/model", { name: m }, "Модель: " + m) })),
-    { label: "Открыть меню /model", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) }]),
+    ...meta.models.map((m) => ({ label: m, icon: "chip", sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], run: () => act("/api/model", { name: m }, "Модель: " + m) })),
+    { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) }]),
   switch: () => $("switchBtn").onclick(),
   active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
   refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
@@ -685,9 +795,8 @@ async function closeSession(id = current) {
     if (d.result === "закрыто") { if (id === current) back(); else refresh(); }
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
-
-$("switchBtn").onclick = () => sheet("Перейти в сессию", sessions.map((s) => ({
-  label: s.name, sub: `${STATUS[s.status]} · ${folder(s.path)}`, on: s.id === current, run: () => open(s.id) })));
+$("switchBtn").onclick = () => sheet("Перейти в сессию", [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((s) => ({
+  label: s.name, sub: `${ST[s.status].label} · ${folder(s.path)}`, icon: s.status === "dialog" ? "warn" : "chat", on: s.id === current, run: () => open(s.id) })));
 
 // ---------- ввод ----------
 async function sendText() {
@@ -695,7 +804,7 @@ async function sendText() {
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
   const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
-  const p = { text, state: "sending" }; pending.push(p);           // видно сразу, ещё до ответа сервера
+  const p = { text, state: "sending" }; pending.push(p);
   $("input").value = ""; const sent = files; files = []; renderFiles(); grow();
   if (tab !== "chat") setTab("chat"); else renderChat(true);
   try {
@@ -709,12 +818,10 @@ async function sendText() {
   }
   renderChat(true);
 }
-
-// Вложения: фото с камеры, из галереи, любой файл → загрузка в inbox пульта → путь уходит Claude вместе с сообщением.
 $("plus").onclick = () => sheet("Прикрепить", [
-  { label: "📷 Сфотографировать", run: () => $("fCam").click() },
-  { label: "🖼 Фото или видео из галереи", run: () => $("fPhoto").click() },
-  { label: "📄 Файл с устройства", sub: "документ, таблица, архив — до 50 МБ", run: () => $("fFile").click() },
+  { label: "Сфотографировать", icon: "camera", run: () => $("fCam").click() },
+  { label: "Фото или видео из галереи", icon: "image", run: () => $("fPhoto").click() },
+  { label: "Файл с устройства", icon: "file", sub: "документ, таблица, архив — до 50 МБ", run: () => $("fFile").click() },
 ]);
 for (const id of ["fCam", "fPhoto", "fFile"]) $(id).onchange = (e) => { [...e.target.files].forEach(upload); e.target.value = ""; };
 async function upload(f) {
@@ -726,12 +833,12 @@ async function upload(f) {
 }
 function renderFiles() {
   $("attach").hidden = !files.length;
-  $("attach").innerHTML = files.map((f, i) => `<span>${f.path ? "📎" : "⏳"} <em>${esc(f.name)}</em><button data-rmf="${i}" aria-label="Убрать">✕</button></span>`).join("");
+  $("attach").innerHTML = files.map((f, i) => `<span>${ic(f.path ? "file" : "wait", "s16")}<em>${esc(f.name)}</em><button data-rmf="${i}" aria-label="Убрать">${ic("x", "s16")}</button></span>`).join("");
   sync(); padDock();
 }
 $("attach").onclick = (e) => { const b = e.target.closest("[data-rmf]"); if (b) { files.splice(+b.dataset.rmf, 1); renderFiles(); } };
-// 🎙 и ➤ на одном месте, как в Telegram: есть текст или файл — ➤, нет — 🎙.
-function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; $("mic").hidden = has && !rec; }
+// Микрофон всегда на месте (предсказуемо); «Отправить» появляется рядом, когда есть что отправить.
+function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; }
 async function toggleMic() {
   if (rec) return rec.stop();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
@@ -743,15 +850,15 @@ async function toggleMic() {
   const chunks = []; let cancelled = false, raf = 0;
   rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  // полоска записи вместо поля: живая громкость, таймер, «Отмена» и «Готово»
   const bar = document.createElement("div"); bar.className = "recbar";
-  bar.innerHTML = '<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no">✕</button><button class="ok">Готово</button>';
-  $("input").hidden = true; $("mic").hidden = true; $("send").hidden = true; $("input").after(bar);
+  bar.innerHTML = `<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no" aria-label="Отменить запись">${ic("x", "s16")}</button><button class="ok">Готово</button>`;
+  for (const id of ["input", "mic", "send", "plus", "menuBtn"]) $(id).hidden = true;
+  $("input").after(bar);
   const cv = bar.querySelector("canvas"), g = cv.getContext("2d"), t0 = Date.now();
   const ac = new (window.AudioContext || window.webkitAudioContext)(), an = ac.createAnalyser();
   an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an);
   const lv = new Uint8Array(an.frequencyBinCount), levels = [];
-  const color = getComputedStyle(document.documentElement).getPropertyValue("--danger").trim();
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--status-danger").trim();
   (function draw() {
     an.getByteTimeDomainData(lv);
     let peak = 0; for (const v of lv) peak = Math.max(peak, Math.abs(v - 128));
@@ -760,7 +867,8 @@ async function toggleMic() {
     const sec = Math.floor((Date.now() - t0) / 1000); bar.querySelector(".t").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
     raf = requestAnimationFrame(draw);
   })();
-  const finish = () => { cancelAnimationFrame(raf); ac.close(); stream.getTracks().forEach((t) => t.stop()); bar.remove(); $("input").hidden = false; rec = null; sync(); padDock(); };
+  const finish = () => { cancelAnimationFrame(raf); ac.close(); stream.getTracks().forEach((t) => t.stop()); bar.remove();
+    for (const id of ["input", "mic", "plus", "menuBtn"]) $(id).hidden = false; rec = null; sync(); padDock(); };
   bar.querySelector(".no").onclick = () => { cancelled = true; rec.stop(); };
   bar.querySelector(".ok").onclick = () => rec.stop();
   rec.onstop = async () => {
@@ -771,48 +879,48 @@ async function toggleMic() {
     try {
       const d = await api("/api/stt", blob, blob.type);
       $("input").value = ($("input").value + " " + d.text).trim(); grow(); $("input").focus();
-      toast("Проверьте текст и нажмите ➤", 3500);
+      toast("Проверьте текст и отправьте", 3500);
     } catch (e) { toast("Не распознал: " + e.message, 4500); }
   };
   rec.start(); haptic("impactOccurred", "medium"); padDock();
 }
 function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; sync(); padDock(); }
 $("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
-// Диктовка клавиатуры не всегда шлёт «input» — сверяем поле ещё и так, чтобы ➤ появлялась всегда.
 for (const ev of ["keyup", "change", "paste", "compositionend", "focus", "blur"]) $("input").addEventListener(ev, () => setTimeout(grow, 0));
 setInterval(() => { if (!$("dock").hidden) sync(); }, 700);
 
-// ---------- интеграции: MCP ----------
+// ---------- интеграции ----------
 let prov = null;
+const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", linear: "tasks", atlassian: "tasks", figma: "pen",
+                github: "code", homeassistant: "home", context7: "book", http: "server", stdio: "term" };
+const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase())}</span>`;
 async function loadMcp(fresh) {
-  $("subtitle").textContent = "голос, ключи API и MCP";
+  setSub("<span>голос, ключи API и сервисы</span>");
   $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="voiceBox"></div>';
-  api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; });
+  api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
-  catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
+  catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
 }
-
 function renderVoice() {
   const el = prov.keys.elevenlabs, seg = (name, val, opts) => `<div class="seg" data-prov="${name}">${opts.map(([v, label]) =>
     `<button data-val="${v}" class="${val === v ? "on" : ""}" ${v === "elevenlabs" && !el ? "disabled" : ""}>${esc(label)}</button>`).join("")}</div>`;
   $("voiceBox").innerHTML = `
     <div class="section">Голос</div>
-    <div class="card">
-      <div class="field"><label>Озвучка ответов (🔊)</label>${seg("tts", prov.tts, [["local", "На сервере — " + (prov.local_voice || "Piper")], ["elevenlabs", "ElevenLabs"]])}
+    <div class="panel">
+      <div class="field"><label>Озвучка ответов</label>${seg("tts", prov.tts, [["local", "На сервере · " + (prov.local_voice || "Piper")], ["elevenlabs", "ElevenLabs"]])}
         ${prov.tts === "elevenlabs" && prov.el_voices.length ? `<select id="elVoice">${prov.el_voices.map((v) =>
           `<option value="${esc(v.id)}" ${v.id === prov.el_voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>` : ""}
-        <div class="hint">На сервере — бесплатно и приватно. ElevenLabs — живее, платно по тарифу; текст ответа уходит в ElevenLabs.</div></div>
-      <div class="field" style="margin:0"><label>Распознавание голосовых (🎙)</label>${seg("stt", prov.stt, [["local", "На сервере — whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
+        <div class="hint">На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs.</div></div>
+      <div class="field" style="margin:0"><label>Распознавание голосовых</label>${seg("stt", prov.stt, [["local", "На сервере · whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
         <div class="hint">ElevenLabs точнее на терминах и именах; запись голоса уходит в ElevenLabs.</div></div>
     </div>
     <div class="section">Ключи API</div>
-    <div class="card">
-      <div class="row"><span class="name">ElevenLabs</span><span class="pill ${el ? "ok" : ""}">${el ? "ключ " + esc(el.tail) : "нет ключа"}</span></div>
-      <div class="field" style="margin:10px 0 0"><label for="elKey">${el ? "Заменить ключ" : "Ключ API"}</label>
+    <div class="panel">
+      <div class="row"><span class="name" style="flex:1">ElevenLabs</span><span class="chip ${el ? "ok" : ""}">${el ? "ключ " + esc(el.tail) : "нет ключа"}</span></div>
+      <div class="field" style="margin:12px 0 0"><label for="elKey">${el ? "Заменить ключ" : "Ключ API"}</label>
         <div class="inp"><input id="elKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk_…">
-        <button class="icon" type="button" data-eye="elKey" aria-label="Показать">👁</button></div>
-        <div class="hint">elevenlabs.io → профиль → API Keys → Create. Права: Text to Speech, Speech to Text, Voices — чтение.
-          Ключ хранится только на сервере (файл с правами 600) и сюда больше не возвращается — сохраните копию в KeePassXC.</div></div>
+        <button class="icon" type="button" data-eye="elKey" aria-label="Показать">${ic("eye")}</button></div>
+        <div class="hint">elevenlabs.io → профиль → API Keys → Create. Ключ хранится только на сервере (права 600) и сюда больше не возвращается — сохраните копию в менеджере паролей.</div></div>
       <button class="btn" id="elSave">Сохранить и проверить</button>
       ${el ? '<button class="btn danger" id="elDel">Удалить ключ</button>' : ""}
       <div id="elResult"></div>
@@ -824,22 +932,18 @@ $("integrationsView").addEventListener("click", async (e) => {
     try { await api("/api/providers", { [segBtn.parentElement.dataset.prov]: segBtn.dataset.val }); prov = await api("/api/providers"); renderVoice(); toast("Сохранено"); }
     catch (err) { toast(err.message, 4500); }
   }
-  if (e.target.dataset.eye) { const i = $(e.target.dataset.eye); i.type = i.type === "password" ? "text" : "password"; }
+  const eye = e.target.closest("[data-eye]"); if (eye) { const i = $(eye.dataset.eye); i.type = i.type === "password" ? "text" : "password"; }
   if (e.target.id === "elSave") busy(e.target, "Проверяю ключ…", async () => {
     try { const d = await api("/api/keys", { provider: "elevenlabs", key: $("elKey").value });
           prov = await api("/api/providers"); renderVoice();
-          $("elResult").innerHTML = `<div class="result ok">✔ Ключ работает, голосов в аккаунте: ${d.voices.length}. Теперь выберите ElevenLabs выше.</div>`; haptic("notificationOccurred", "success"); }
-    catch (err) { $("elResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; haptic("notificationOccurred", "error"); }
+          $("elResult").innerHTML = `<div class="result ok">${ic("check")}<span>Ключ работает, голосов в аккаунте: ${d.voices.length}. Выберите ElevenLabs выше.</span></div>`; haptic("notificationOccurred", "success"); }
+    catch (err) { $("elResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
   });
-  if (e.target.id === "elDel") {
-    const go = async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); prov = await api("/api/providers"); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); };
-    tg?.showConfirm ? tg.showConfirm("Удалить ключ ElevenLabs?", (ok) => ok && go()) : confirm("Удалить ключ ElevenLabs?") && go();
-  }
+  if (e.target.id === "elDel") confirmDanger("Удалить ключ ElevenLabs?", async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); prov = await api("/api/providers"); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); });
 });
 $("integrationsView").addEventListener("change", async (e) => {
   if (e.target.id === "elVoice") { await api("/api/providers", { el_voice: e.target.value }).catch((err) => toast(err.message)); toast("Голос выбран"); }
 });
-
 const isOn = (c) => mcpData.servers.some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
 const pname = (s) => s.name.replace(/^claude\.ai /, "").replace(/^plugin:[^:]+:/, "");
 function renderMcp() {
@@ -847,47 +951,44 @@ function renderMcp() {
   const keyTiles = mcpData.presets.filter((p) => p.key_url);
   $("mcpBox").innerHTML = `
     <div class="section">Подключено</div>
-    ${ok.length ? `<div class="conn">${ok.map((s) => `<span>✅ ${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
-    ${bad.map((s) => `<div class="card" style="margin-top:8px"><div class="row"><span class="name">⚠️ ${esc(pname(s))}</span><span class="pill bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span></div>
-      <button class="btn danger" data-rm="${srv.indexOf(s)}" style="margin:8px 0 0;padding:8px">Убрать</button></div>`).join("")}
+    ${ok.length ? `<div class="conn">${ok.map((s) => `<span class="chip ok">${ic("check", "s16")}${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
+    ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row"><span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span></div>
+      <button class="btn danger sm" data-rm="${srv.indexOf(s)}" style="margin-top:10px">Убрать</button></div>`).join("")}
     <div class="section">Подключить сервис</div>
     <p class="note">Нажмите на сервис — дальше всё по шагам. Claude сможет работать с ним по вашей просьбе.</p>
     <div class="tiles">
-      ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}"><b>${c.icon}</b><span>${esc(c.title)}</span><small>${esc(c.about)}</small></button>`).join("")}
-      ${keyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}"><b>${p.icon || "🔑"}</b><span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0])}</small></button>`).join("")}
-      <button class="tile" data-more="1"><b>🧰</b><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
+      ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${isOn(c) ? "подключено" : esc(c.about)}</small></button>`).join("")}
+      ${keyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}">${mono(p.title, p.id)}<span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0])}</small></button>`).join("")}
+      <button class="tile" data-more="1"><span class="mono">${ic("plus")}</span><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
     </div>
-    <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">Обновить список</button>`;
+    <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">${ic("refresh")}Обновить список</button>`;
 }
 $("integrationsView").addEventListener("click", (e) => {
   const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), c = e.target.closest("[data-c]"), more = e.target.closest("[data-more]");
-  if (e.target.id === "mcpRefresh") return busy(e.target, "Проверяю…", () => loadMcp(true));
+  const rf = e.target.closest("#mcpRefresh"); if (rf) return busy(rf, "Проверяю…", () => loadMcp(true));
   if (rm) {
     const s = mcpData.servers[+rm.dataset.rm];
-    const go = () => busy(rm, "Убираю…", async () => { try { await api("/api/mcp/remove", { name: s.name }); toast("«" + pname(s) + "» убран"); loadMcp(true); } catch (err) { toast(err.message, 4500); } });
-    return tg?.showConfirm ? tg.showConfirm(`Убрать «${pname(s)}»?`, (ok) => ok && go()) : confirm(`Убрать «${pname(s)}»?`) && go();
+    return confirmDanger(`Убрать «${pname(s)}»?`, () => busy(rm, "Убираю…", async () => { try { await api("/api/mcp/remove", { name: s.name }); toast("«" + pname(s) + "» убран"); loadMcp(true); } catch (err) { toast(err.message, 4500); } }));
   }
   if (c) return connectorView(mcpData.connectors[+c.dataset.c]);
   if (p) return mcpForm(mcpData.presets[+p.dataset.p]);
   if (more) return moreView();
 });
-
-// Подключение в одно касание: человек жмёт «Подключить» в claude.ai, панель сама ждёт, когда Claude Code его увидит.
 let connTimer = null;
 function connectorView(c) {
-  show("mcpForm"); $("title").textContent = c.title; $("subtitle").textContent = "подключение";
+  show("mcpForm"); $("title").textContent = c.title; setSub("<span>подключение сервиса</span>");
   const on = isOn(c);
   $("mcpForm").innerHTML = `<div class="panel">
-    <div class="hero"><b>${c.icon}</b><h2 class="serif">${esc(c.title)}</h2><p>${esc(c.about)}</p></div>
+    <div class="hero">${mono(c.title, c.id)}<h2 class="serif">${esc(c.title)}</h2><p>${esc(c.about)}</p></div>
     ${on ? "" : `<ol class="steps">
-      <li><button class="btn" id="openClaude" style="margin:0">Открыть claude.ai</button>
-        <div class="hint" style="margin-top:4px">Откроется страница «Коннекторы». Если попросит войти — тем же аккаунтом Claude, что и на сервере.</div></li>
-      <li>Найдите <b>${esc(c.title)}</b> и нажмите <b>«Подключить»</b> (Connect). Войдите в ${esc(c.title)} как обычно — почтой или через Google.</li>
-      <li>Вернитесь сюда. Галочка появится сама.</li></ol>`}
-    <div id="connStatus" class="result ${on ? "ok" : ""}">${on ? `✅ ${esc(c.title)} подключён` : "⏳ Жду подключения — проверяю каждые 10 секунд…"}</div>
+      <li><button class="btn sm" id="openClaude">${ic("ext")}Открыть claude.ai</button>
+        <div class="hint">Откроется страница «Коннекторы». Если попросит войти — тем же аккаунтом Claude, что и на сервере.</div></li>
+      <li>Найдите <b>${esc(c.title)}</b> и нажмите <b>«Подключить»</b> (Connect). Войдите в ${esc(c.title)} как обычно.</li>
+      <li>Вернитесь сюда. Отметка появится сама.</li></ol>`}
+    <div id="connStatus" class="result ${on ? "ok" : "wait"}">${on ? `${ic("check")}<span>${esc(c.title)} подключён</span>` : `${ic("wait")}<span>Жду подключения — проверяю каждые 10 секунд…</span>`}</div>
     <div id="connNext">${on ? tryButton(c) : '<button class="btn ghost" id="connCheck">Проверить сейчас</button>'}</div>
     <details style="margin-top:10px"><summary class="note" style="display:inline">Не получается?</summary>
-      <p class="note">• Галочка не появляется 2–3 минуты — нажмите «Проверить сейчас».<br>• В claude.ai нет ${esc(c.title)} — значит, его подключают иначе: «Другой сервис» → «Для продвинутых».<br>• Уже открытые сессии увидят ${esc(c.title)} после перезапуска, новые — сразу.</p></details></div>`;
+      <p class="note">Отметка не появляется 2–3 минуты — нажмите «Проверить сейчас». В claude.ai нет ${esc(c.title)} — «Другой сервис» → «Для продвинутых». Открытые сессии увидят сервис после перезапуска, новые — сразу.</p></details></div>`;
   $("openClaude")?.addEventListener("click", () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); });
   $("connCheck")?.addEventListener("click", (e) => busy(e.target, "Проверяю…", () => checkConn(c)));
   clearInterval(connTimer);
@@ -896,74 +997,64 @@ function connectorView(c) {
 async function checkConn(c) {
   try {
     const d = await api("/api/mcp/connected?id=" + c.id);
-    if (!d.ok) { if (d.found) $("connStatus").textContent = "⏳ Claude видит " + c.title + ", но вход ещё не завершён — закончите вход в claude.ai"; return; }
+    if (!d.ok) { if (d.found) $("connStatus").innerHTML = `${ic("wait")}<span>Claude видит ${esc(c.title)}, но вход не завершён — закончите вход в claude.ai</span>`; return; }
     clearInterval(connTimer); haptic("notificationOccurred", "success");
-    $("connStatus").className = "result ok"; $("connStatus").textContent = "✅ " + c.title + " подключён!";
+    $("connStatus").className = "result ok"; $("connStatus").innerHTML = `${ic("check")}<span>${esc(c.title)} подключён</span>`;
     $("connNext").innerHTML = tryButton(c); mcpData = await api("/api/mcp");
-  } catch (e) { /* сеть моргнула — попробуем в следующий раз */ }
+  } catch (e) { /* сеть моргнула — следующая проверка через 10 с */ }
 }
-function tryButton(c) {
-  return `<p class="note" style="margin:10px 0 4px">Попробуйте — панель отправит это в сессию Claude:</p>
-    <button class="btn" data-try="${esc(c.example)}">«${esc(c.example)}»</button>`;
-}
+function tryButton(c) { return `<p class="note" style="margin:10px 0 4px">Попробуйте — панель отправит это в сессию Claude:</p><button class="btn" data-try="${esc(c.example)}">«${esc(c.example)}»</button>`; }
 $("mcpForm").addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-try]"); if (!t) return;
-  const s = sessions.find((x) => x.active && x.status !== "busy") || sessions.find((x) => x.status === "idle") || sessions[0];
-  if (!s) return toast("Нет открытых сессий — откройте новую в «Сессиях»", 4500);
-  await busy(t, "Отправляю…", async () => {
-    try { await api("/api/send", { w: s.id, text: t.dataset.try }); toast("Отправлено в «" + s.name + "»"); clearInterval(connTimer); open(s.id); }
-    catch (err) { toast("Не отправлено: " + err.message, 4500); }
-  });
-});
-
-function moreView() {
-  show("mcpForm"); $("title").textContent = "Другой сервис"; $("subtitle").textContent = "каталог и ручное подключение";
-  $("mcpForm").innerHTML = `<div class="panel">
-    <p style="margin-top:0">Сотни сервисов подключаются так же просто — через каталог claude.ai: найдите свой и нажмите «Подключить».</p>
-    <button class="btn" id="openCatalog">Открыть каталог claude.ai</button>
-    <p class="note">После подключения сервис появится в «Подключено» (нажмите «Обновить список»).</p>
-    <div class="section">Для продвинутых</div>
-    ${mcpData.presets.map((p, i) => `<button class="card" data-p2="${i}"><div class="row"><span class="name">${esc(p.title)}</span><span class="pill">＋</span></div>
-      <div class="meta" style="white-space:normal">${esc(p.about)}</div></button>`).join("")}
-    ${mcpData.servers.filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) =>
-      `<button class="btn ghost" data-login="${esc(s.name)}">🔑 Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
-  $("openCatalog").onclick = () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); };
-}
-$("mcpForm").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-try]");
+  if (t) {
+    const s = sessions.find((x) => x.active && x.status !== "busy") || sessions.find((x) => x.status === "idle") || sessions[0];
+    if (!s) return toast("Нет открытых сессий — откройте новую", 4500);
+    return busy(t, "Отправляю…", async () => {
+      try { await api("/api/send", { w: s.id, text: t.dataset.try }); toast("Отправлено в «" + s.name + "»"); clearInterval(connTimer); open(s.id); }
+      catch (err) { toast("Не отправлено: " + err.message, 4500); }
+    });
+  }
   const p = e.target.closest("[data-p2]"); if (p) return mcpForm(mcpData.presets[+p.dataset.p2]);
   const lg = e.target.closest("[data-login]"); if (lg) return startLogin(lg.dataset.login, lg);
 });
-
-// Вход в MCP-сервис целиком из панели: сервер сам открывает /mcp в свободной сессии и достаёт ссылку входа.
+function moreView() {
+  show("mcpForm"); $("title").textContent = "Другой сервис"; setSub("<span>каталог и ручное подключение</span>");
+  $("mcpForm").innerHTML = `<div class="panel">
+    <p style="margin-top:0">Сотни сервисов подключаются так же — через каталог claude.ai: найдите свой и нажмите «Подключить».</p>
+    <button class="btn" id="openCatalog">${ic("ext")}Открыть каталог claude.ai</button>
+    <p class="note">После подключения сервис появится в «Подключено» («Обновить список»).</p>
+    <div class="section">Для продвинутых</div>
+    ${mcpData.presets.map((p, i) => `<button class="card" data-p2="${i}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div><div class="meta" style="white-space:normal">${esc(p.about)}</div></div></div></button>`).join("")}
+    ${mcpData.servers.filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) => `<button class="btn ghost" data-login="${esc(s.name)}">${ic("key")}Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
+  $("openCatalog").onclick = () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); };
+}
 async function startLogin(name, btn) {
   await busy(btn, "Готовлю вход… (до 20 секунд)", async () => {
     try {
       const a = await api("/api/mcp/login", { name });
-      const box = document.createElement("div"); box.innerHTML = authCard(a, name, a.w) +
-        `<p class="note">Вход идёт через сессию «${esc(a.session)}». Ссылка действует несколько минут.</p>`;
+      const box = document.createElement("div"); box.innerHTML = authCard(a, name, a.w) + `<p class="note">Вход идёт через сессию «${esc(a.session)}». Ссылка действует несколько минут.</p>`;
       btn.replaceWith(box); box.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) { toast(e.message, 5000); }
   });
 }
-
 function mcpForm(p) {
-  show("mcpForm"); $("title").textContent = p.title; $("subtitle").textContent = "подключение MCP";
+  show("mcpForm"); $("title").textContent = p.title; setSub("<span>подключение</span>");
   const fields = p.fields.map((f) => `<div class="field"><label for="f_${f.key}">${esc(f.label)}${f.optional ? ' <span class="opt">— необязательно</span>' : ""}</label>
       <div class="inp">${f.multiline ? `<textarea id="f_${f.key}" rows="3" placeholder="${esc(f.placeholder || "")}"></textarea>`
         : `<input id="f_${f.key}" type="${f.secret ? "password" : "text"}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(f.placeholder || "")}">`}
-      ${f.secret && !f.multiline ? `<button class="icon" type="button" data-eye="f_${f.key}" aria-label="Показать">👁</button>` : ""}</div>
+      ${f.secret && !f.multiline ? `<button class="icon" type="button" data-eye="f_${f.key}" aria-label="Показать">${ic("eye")}</button>` : ""}</div>
       ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`).join("");
   $("mcpForm").innerHTML = `<div class="panel">
-      <p style="margin:0 0 12px">${esc(p.about)}</p>
+      <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
       ${p.id === "http" || p.id === "stdio" ? `<div class="field"><label for="f__name">Короткое название (латиницей)</label><input id="f__name" placeholder="например: crm" autocapitalize="off" spellcheck="false">
-        <div class="hint">Как этот инструмент будет называться у Claude. Это не логин — логин и пароль здесь не нужны.</div></div>` : `<input id="f__name" type="hidden" value="${esc(p.id)}">`}
-      ${!p.fields.length ? `<div class="result ok">Ключ не нужен. Нажмите «Подключить», затем «Войти» — откроется страница ${esc(p.title)}, где вы войдёте как обычно.</div>` : ""}
-      ${p.key_url ? `<button class="btn ghost" id="keyPage" type="button">Открыть страницу, где взять ключ</button>` : ""}
+        <div class="hint">Как инструмент будет называться у Claude. Это не логин — логин и пароль здесь не нужны.</div></div>` : `<input id="f__name" type="hidden" value="${esc(p.id)}">`}
+      ${!p.fields.length ? `<div class="result ok">${ic("check")}<span>Ключ не нужен. Нажмите «Подключить», затем «Войти».</span></div>` : ""}
+      ${p.key_url ? `<button class="btn ghost" id="keyPage" type="button">${ic("ext")}Открыть страницу, где взять ключ</button>` : ""}
       ${fields}
-      ${p.after ? `<div class="result ok">После подключения: ${esc(p.after)}</div>` : ""}
+      ${p.after ? `<div class="result wait"><span>После подключения: ${esc(clean(p.after))}</span></div>` : ""}
       <button class="btn" id="mcpAdd">Подключить</button>
       <div id="mcpResult"></div>
-      <p class="note">Ключи сохраняются только на вашем сервере (настройки Claude Code) и в панели больше не показываются.</p></div>`;
+      <p class="note">Ключи сохраняются только на вашем сервере и в панели больше не показываются.</p></div>`;
   $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
   $("keyPage")?.addEventListener("click", () => {
     const base = ($("f_base")?.value || "").trim().replace(/\/$/, "");
@@ -976,12 +1067,11 @@ function mcpForm(p) {
     try {
       const d = await api("/api/mcp/add", { preset: p.id, name: $("f__name").value.trim(), values });
       const needLogin = /не отвечает|вход/i.test(d.result);
-      $("mcpResult").innerHTML = `<div class="result ok">${esc(d.result.split(". Если")[0].split(". Вход")[0])}</div>` +
-        (needLogin ? `<button class="btn" data-login="${esc($("f__name").value.trim())}">🔑 Войти в ${esc(p.title)}</button>` : "") +
+      $("mcpResult").innerHTML = `<div class="result ok">${ic("check")}<span>${esc(clean(d.result.split(". Если")[0].split(". Вход")[0]))}</span></div>` +
+        (needLogin ? `<button class="btn" data-login="${esc($("f__name").value.trim())}">${ic("key")}Войти в ${esc(p.title)}</button>` : "") +
         `<button class="btn ghost" id="mcpDone">Готово — к списку</button>`;
       $("mcpDone").onclick = back; haptic("notificationOccurred", "success");
-      $("mcpResult").querySelector("[data-login]")?.addEventListener("click", (ev) => startLogin(ev.target.dataset.login, ev.target));
-    } catch (err) { $("mcpResult").innerHTML = `<div class="result bad">${esc(err.message)}</div>`; haptic("notificationOccurred", "error"); }
+    } catch (err) { $("mcpResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
   });
 }
 
@@ -992,8 +1082,8 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
-    { label: "↻ Перезагрузить панель", sub: "если что-то выглядит старым или зависло", run: () => location.reload() },
-    ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
+    { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: () => location.reload() },
+    ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
 };
 $("backBtn").onclick = back;
@@ -1001,14 +1091,14 @@ $("updateBar").onclick = () => location.reload();
 
 // ---------- старт ----------
 async function start() {
-  try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; return; }
+  try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
   const wn = meta.whatsnew?.[0];
-  if (wn && store("whatsnew") !== wn.id && !DEMO) {            // один раз после обновления
+  if (wn && store("whatsnew") !== wn.id && !DEMO) {
     store("whatsnew", wn.id);
-    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ label: "• " + t, run: () => {} })));
+    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ label: t, icon: "check", run: () => {} })));
   }
   store("seenAny", "1");
   if (!start.timer) start.timer = setInterval(refresh, 3000);
@@ -1023,19 +1113,22 @@ async function start() {
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
 }
 
+paintIcons();
 applyTheme();
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); }
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
 if (DEMO) $("demoBar").hidden = false;
 if (DEMO && params.get("view") === "login") showLogin(); else start();
 
-// ---------- демо-данные (?demo) — только для показа и скриншотов, сервер не трогается ----------
+// ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "feature/rooms", status: "busy", context: 41, active: true, channel: false },
-    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false },
-    { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "feature/rooms", status: "busy", context: 41, active: true, channel: false, rev: "a" },
+    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b" },
+    { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2" },
+    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d" },
   ];
+  if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Верхняя панель прячется при прокрутке\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
@@ -1047,11 +1140,11 @@ function demoApi(path, body) {
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
                   connectors_url: "https://claude.ai/customize/connectors",
-                  connectors: [{ id: "notion", title: "Notion", icon: "📝", match: "Notion", about: "Заметки, страницы и базы", example: "Найди в Notion мои заметки за неделю" },
-                               { id: "gmail", title: "Gmail", icon: "✉️", match: "Gmail", about: "Почта: найти, прочитать, ответить", example: "Что важного в почте?" },
-                               { id: "gcal", title: "Google Календарь", icon: "📅", match: "Calendar", about: "Встречи и планы", example: "Что у меня завтра?" },
-                               { id: "gdrive", title: "Google Диск", icon: "🗂", match: "Drive", about: "Документы и таблицы", example: "Найди договор" }],
-                  presets: [{ id: "github", icon: "🐙", key_url: "https://github.com/settings/personal-access-tokens/new", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
+                  connectors: [{ id: "notion", title: "Notion", match: "Notion", about: "Заметки, страницы и базы", example: "Найди в Notion мои заметки за неделю" },
+                               { id: "gmail", title: "Gmail", match: "Gmail", about: "Почта: найти, прочитать, ответить", example: "Что важного в почте?" },
+                               { id: "gcal", title: "Google Календарь", match: "Calendar", about: "Встречи и планы", example: "Что у меня завтра?" },
+                               { id: "gdrive", title: "Google Диск", match: "Drive", about: "Документы и таблицы", example: "Найди договор" }],
+                  presets: [{ id: "github", key_url: "https://github.com/settings/personal-access-tokens/new", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
                             { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", fields: [], after: "" },
                             { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
   };
@@ -1069,21 +1162,12 @@ function demoApi(path, body) {
   if (key === "/api/send") {
     const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20;
     demoApi.h.push({ i: n, role: "user", text: body.text, ts: now });
-    setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now,
-      text: "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и кнопкой 🔊." }), 2500);
+    setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now, text: "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и озвучкой." }), 2500);
     return Promise.resolve({ ok: true });
   }
   if (key === "/api/history") return Promise.resolve({ more: true, rev: String(demoApi.h.length), items: demoApi.h.slice(-30),
-    ...(path.includes("rev=" + demoApi.h.length + "") && path.includes("rev=") && !path.endsWith("rev=") ? { same: true } : {}) });
+    ...(new URLSearchParams(path.split("?")[1]).get("rev") === String(demoApi.h.length) ? { same: true } : {}) });
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
-  if (key === "/api/last") return Promise.resolve({ text: answer });
-  if (key === "/api/history") return Promise.resolve({ more: true, items: [
-    { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
-    { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
-    { i: 9, role: "user", text: "Проверь сборку и запусти тесты", ts: "2026-10-29 09:20" },
-    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" },
-    { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" },
-    { i: 12, role: "user", text: "Ещё проверь интеграции", ts: "2026-10-29 09:23", queued: "wait" }] });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
   return Promise.resolve(R[key] || { ok: true });

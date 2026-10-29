@@ -121,7 +121,8 @@ class Panel:
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch,
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
-                        "active": w["id"] == act, "channel": w["channel"]})
+                        "active": w["id"] == act, "channel": w["channel"],
+                        "rev": transcripts.revision(w["path"])})      # изменился журнал → в списке «новый ответ»
         return out
 
     def meta(self) -> dict:
