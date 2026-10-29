@@ -159,6 +159,15 @@
   .steps li { position: relative; padding: 0 0 12px 34px; }
   .steps li::before { counter-increment: st; content: counter(st); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%;
                       background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .tile { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 14px 10px; text-align: center; box-shadow: var(--shadow); }
+  .tile b { display: block; font-size: 30px; line-height: 1.2; margin-bottom: 4px; font-weight: 400; }
+  .tile span { font-weight: 600; } .tile small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .tile.on { border-color: var(--ok); } .tile.on::after { content: "✓ подключено"; display: block; color: var(--ok); font-size: 12px; margin-top: 4px; }
+  .hero { text-align: center; margin: 4px 0 14px; } .hero b { font-size: 46px; display: block; font-weight: 400; }
+  .hero h2 { margin: 4px 0 2px; font-size: 21px; } .hero p { margin: 0; color: var(--muted); }
+  .conn { display: flex; flex-wrap: wrap; gap: 6px; }
+  .conn span { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: 13px; }
   .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
 
@@ -322,7 +331,7 @@ function show(v) {
   $("top").classList.remove("hide"); window.scrollTo(0, 0);
 }
 function back() {
-  if (view === "mcpForm") { show("home"); return setHome("integrations"); }
+  if (view === "mcpForm") { clearInterval(connTimer); show("home"); return setHome("integrations"); }
   current = null; stopPlayer(); closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
 
@@ -714,7 +723,7 @@ setInterval(() => { if (!$("dock").hidden) sync(); }, 700);
 let prov = null;
 async function loadMcp(fresh) {
   $("subtitle").textContent = "голос, ключи API и MCP";
-  $("integrationsView").innerHTML = '<div id="voiceBox"><div class="empty">загружаю…</div></div><div id="mcpBox"><div class="empty">Проверяю MCP-подключения… (до 30 секунд)</div></div>';
+  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="voiceBox"></div>';
   api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
   catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${esc(e.message)}</div>`; }
@@ -768,33 +777,98 @@ $("integrationsView").addEventListener("change", async (e) => {
   if (e.target.id === "elVoice") { await api("/api/providers", { el_voice: e.target.value }).catch((err) => toast(err.message)); toast("Голос выбран"); }
 });
 
+const isOn = (c) => mcpData.servers.some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
+const pname = (s) => s.name.replace(/^claude\.ai /, "").replace(/^plugin:[^:]+:/, "");
 function renderMcp() {
-  const srv = mcpData.servers;
+  const srv = mcpData.servers, ok = srv.filter((s) => s.ok), bad = srv.filter((s) => !s.ok && s.removable);
+  const keyTiles = mcpData.presets.filter((p) => p.key_url);
   $("mcpBox").innerHTML = `
-    <div class="section">MCP — инструменты Claude</div>
-    <p class="note">MCP-сервер даёт Claude доступ к сервису: задачам, документам, умному дому. Подключение действует во всех сессиях; уже открытые увидят его после перезапуска.</p>
-    ${srv.length ? srv.map((s, i) => `<div class="card"><div class="row"><span class="name">${esc(s.name)}</span>
-        <span class="pill ${s.ok ? "ok" : "bad"}">${s.ok ? "работает" : /auth/i.test(s.state) ? "нужен вход" : "не подключается"}</span></div>
-        <div class="meta">${esc(s.target)}</div>${s.ok ? "" : `<div class="meta" style="white-space:normal">${/auth/i.test(s.state)
-          ? "Сервису нужен ваш вход — нажмите «Войти» ниже" : esc(s.state)}</div>`}
-        ${!s.ok && /auth/i.test(s.state) ? `<button class="btn" data-login="${esc(s.name)}" style="margin:8px 0 0;padding:9px">🔑 Войти в ${esc(s.name)}</button>` : ""}
-        ${s.removable ? `<button class="btn danger" data-rm="${i}" style="margin:8px 0 0;padding:8px">Отключить</button>` : ""}</div>`).join("")
-      : '<div class="empty">Пока ничего не подключено.</div>'}
-    <button class="btn ghost" id="mcpRefresh">Проверить заново</button>
-    <div class="section">Подключить</div>
-    ${mcpData.presets.map((p, i) => `<button class="card" data-p="${i}"><div class="row"><span class="name">${esc(p.title)}</span><span class="pill">＋</span></div>
-      <div class="meta" style="white-space:normal">${esc(p.about)}</div></button>`).join("")}`;
+    <div class="section">Подключено</div>
+    ${ok.length ? `<div class="conn">${ok.map((s) => `<span>✅ ${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
+    ${bad.map((s) => `<div class="card" style="margin-top:8px"><div class="row"><span class="name">⚠️ ${esc(pname(s))}</span><span class="pill bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span></div>
+      <button class="btn danger" data-rm="${srv.indexOf(s)}" style="margin:8px 0 0;padding:8px">Убрать</button></div>`).join("")}
+    <div class="section">Подключить сервис</div>
+    <p class="note">Нажмите на сервис — дальше всё по шагам. Claude сможет работать с ним по вашей просьбе.</p>
+    <div class="tiles">
+      ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}"><b>${c.icon}</b><span>${esc(c.title)}</span><small>${esc(c.about)}</small></button>`).join("")}
+      ${keyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}"><b>${p.icon || "🔑"}</b><span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0])}</small></button>`).join("")}
+      <button class="tile" data-more="1"><b>🧰</b><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
+    </div>
+    <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">Обновить список</button>`;
 }
 $("integrationsView").addEventListener("click", (e) => {
-  const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), lg = e.target.closest("[data-login]");
-  if (lg) return startLogin(lg.dataset.login, lg);
+  const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), c = e.target.closest("[data-c]"), more = e.target.closest("[data-more]");
   if (e.target.id === "mcpRefresh") return busy(e.target, "Проверяю…", () => loadMcp(true));
   if (rm) {
     const s = mcpData.servers[+rm.dataset.rm];
-    const go = () => busy(rm, "Отключаю…", async () => { try { await api("/api/mcp/remove", { name: s.name }); toast("«" + s.name + "» отключён"); loadMcp(true); } catch (err) { toast(err.message, 4500); } });
-    return tg?.showConfirm ? tg.showConfirm(`Отключить «${s.name}»?`, (ok) => ok && go()) : confirm(`Отключить «${s.name}»?`) && go();
+    const go = () => busy(rm, "Убираю…", async () => { try { await api("/api/mcp/remove", { name: s.name }); toast("«" + pname(s) + "» убран"); loadMcp(true); } catch (err) { toast(err.message, 4500); } });
+    return tg?.showConfirm ? tg.showConfirm(`Убрать «${pname(s)}»?`, (ok) => ok && go()) : confirm(`Убрать «${pname(s)}»?`) && go();
   }
-  if (p) mcpForm(mcpData.presets[+p.dataset.p]);
+  if (c) return connectorView(mcpData.connectors[+c.dataset.c]);
+  if (p) return mcpForm(mcpData.presets[+p.dataset.p]);
+  if (more) return moreView();
+});
+
+// Подключение в одно касание: человек жмёт «Подключить» в claude.ai, панель сама ждёт, когда Claude Code его увидит.
+let connTimer = null;
+function connectorView(c) {
+  show("mcpForm"); $("title").textContent = c.title; $("subtitle").textContent = "подключение";
+  const on = isOn(c);
+  $("mcpForm").innerHTML = `<div class="panel">
+    <div class="hero"><b>${c.icon}</b><h2 class="serif">${esc(c.title)}</h2><p>${esc(c.about)}</p></div>
+    ${on ? "" : `<ol class="steps">
+      <li><button class="btn" id="openClaude" style="margin:0">Открыть claude.ai</button>
+        <div class="hint" style="margin-top:4px">Откроется страница «Коннекторы». Если попросит войти — тем же аккаунтом Claude, что и на сервере.</div></li>
+      <li>Найдите <b>${esc(c.title)}</b> и нажмите <b>«Подключить»</b> (Connect). Войдите в ${esc(c.title)} как обычно — почтой или через Google.</li>
+      <li>Вернитесь сюда. Галочка появится сама.</li></ol>`}
+    <div id="connStatus" class="result ${on ? "ok" : ""}">${on ? `✅ ${esc(c.title)} подключён` : "⏳ Жду подключения — проверяю каждые 10 секунд…"}</div>
+    <div id="connNext">${on ? tryButton(c) : '<button class="btn ghost" id="connCheck">Проверить сейчас</button>'}</div>
+    <details style="margin-top:10px"><summary class="note" style="display:inline">Не получается?</summary>
+      <p class="note">• Галочка не появляется 2–3 минуты — нажмите «Проверить сейчас».<br>• В claude.ai нет ${esc(c.title)} — значит, его подключают иначе: «Другой сервис» → «Для продвинутых».<br>• Уже открытые сессии увидят ${esc(c.title)} после перезапуска, новые — сразу.</p></details></div>`;
+  $("openClaude")?.addEventListener("click", () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); });
+  $("connCheck")?.addEventListener("click", (e) => busy(e.target, "Проверяю…", () => checkConn(c)));
+  clearInterval(connTimer);
+  if (!on) connTimer = setInterval(() => { if (view !== "mcpForm") return clearInterval(connTimer); checkConn(c); }, 10000);
+}
+async function checkConn(c) {
+  try {
+    const d = await api("/api/mcp/connected?id=" + c.id);
+    if (!d.ok) { if (d.found) $("connStatus").textContent = "⏳ Claude видит " + c.title + ", но вход ещё не завершён — закончите вход в claude.ai"; return; }
+    clearInterval(connTimer); haptic("notificationOccurred", "success");
+    $("connStatus").className = "result ok"; $("connStatus").textContent = "✅ " + c.title + " подключён!";
+    $("connNext").innerHTML = tryButton(c); mcpData = await api("/api/mcp");
+  } catch (e) { /* сеть моргнула — попробуем в следующий раз */ }
+}
+function tryButton(c) {
+  return `<p class="note" style="margin:10px 0 4px">Попробуйте — панель отправит это в сессию Claude:</p>
+    <button class="btn" data-try="${esc(c.example)}">«${esc(c.example)}»</button>`;
+}
+$("mcpForm").addEventListener("click", async (e) => {
+  const t = e.target.closest("[data-try]"); if (!t) return;
+  const s = sessions.find((x) => x.active && x.status !== "busy") || sessions.find((x) => x.status === "idle") || sessions[0];
+  if (!s) return toast("Нет открытых сессий — откройте новую в «Сессиях»", 4500);
+  await busy(t, "Отправляю…", async () => {
+    try { await api("/api/send", { w: s.id, text: t.dataset.try }); toast("Отправлено в «" + s.name + "»"); clearInterval(connTimer); open(s.id); }
+    catch (err) { toast("Не отправлено: " + err.message, 4500); }
+  });
+});
+
+function moreView() {
+  show("mcpForm"); $("title").textContent = "Другой сервис"; $("subtitle").textContent = "каталог и ручное подключение";
+  $("mcpForm").innerHTML = `<div class="panel">
+    <p style="margin-top:0">Сотни сервисов подключаются так же просто — через каталог claude.ai: найдите свой и нажмите «Подключить».</p>
+    <button class="btn" id="openCatalog">Открыть каталог claude.ai</button>
+    <p class="note">После подключения сервис появится в «Подключено» (нажмите «Обновить список»).</p>
+    <div class="section">Для продвинутых</div>
+    ${mcpData.presets.map((p, i) => `<button class="card" data-p2="${i}"><div class="row"><span class="name">${esc(p.title)}</span><span class="pill">＋</span></div>
+      <div class="meta" style="white-space:normal">${esc(p.about)}</div></button>`).join("")}
+    ${mcpData.servers.filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) =>
+      `<button class="btn ghost" data-login="${esc(s.name)}">🔑 Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
+  $("openCatalog").onclick = () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); };
+}
+$("mcpForm").addEventListener("click", (e) => {
+  const p = e.target.closest("[data-p2]"); if (p) return mcpForm(mcpData.presets[+p.dataset.p2]);
+  const lg = e.target.closest("[data-login]"); if (lg) return startLogin(lg.dataset.login, lg);
 });
 
 // Вход в MCP-сервис целиком из панели: сервер сам открывает /mcp в свободной сессии и достаёт ссылку входа.
@@ -821,12 +895,19 @@ function mcpForm(p) {
       ${p.id === "http" || p.id === "stdio" ? `<div class="field"><label for="f__name">Короткое название (латиницей)</label><input id="f__name" placeholder="например: crm" autocapitalize="off" spellcheck="false">
         <div class="hint">Как этот инструмент будет называться у Claude. Это не логин — логин и пароль здесь не нужны.</div></div>` : `<input id="f__name" type="hidden" value="${esc(p.id)}">`}
       ${!p.fields.length ? `<div class="result ok">Ключ не нужен. Нажмите «Подключить», затем «Войти» — откроется страница ${esc(p.title)}, где вы войдёте как обычно.</div>` : ""}
+      ${p.key_url ? `<button class="btn ghost" id="keyPage" type="button">Открыть страницу, где взять ключ</button>` : ""}
       ${fields}
       ${p.after ? `<div class="result ok">После подключения: ${esc(p.after)}</div>` : ""}
       <button class="btn" id="mcpAdd">Подключить</button>
       <div id="mcpResult"></div>
       <p class="note">Ключи сохраняются только на вашем сервере (настройки Claude Code) и в панели больше не показываются.</p></div>`;
   $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
+  $("keyPage")?.addEventListener("click", () => {
+    const base = ($("f_base")?.value || "").trim().replace(/\/$/, "");
+    if (p.key_url.includes("{base}") && !base) return toast("Сначала впишите адрес " + p.title + " — поле ниже", 4000);
+    const url = p.key_url.replace("{base}", base);
+    tg?.openLink ? tg.openLink(url) : window.open(url, "_blank");
+  });
   $("mcpAdd").onclick = (e) => busy(e.target, "Подключаю и проверяю…", async () => {
     const values = Object.fromEntries(p.fields.map((f) => [f.key, $("f_" + f.key).value]));
     try {
@@ -874,6 +955,7 @@ async function start() {
     if (params.get("pending")) { pending = [{ text: "Проверь, что сообщение видно сразу", state: "sent" }]; renderChat(false); }
     if (params.get("files")) { files = [{ name: "фото-стенда.jpg", path: "/x" }, { name: "отчёт-П8.xlsx", path: null }]; renderFiles(); }
   }
+  if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
 }
 
@@ -900,7 +982,12 @@ function demoApi(path, body) {
     "/api/sessions": { host: "ubuntu", sessions: S },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
-                  presets: [{ id: "github", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
+                  connectors_url: "https://claude.ai/customize/connectors",
+                  connectors: [{ id: "notion", title: "Notion", icon: "📝", match: "Notion", about: "Заметки, страницы и базы", example: "Найди в Notion мои заметки за неделю" },
+                               { id: "gmail", title: "Gmail", icon: "✉️", match: "Gmail", about: "Почта: найти, прочитать, ответить", example: "Что важного в почте?" },
+                               { id: "gcal", title: "Google Календарь", icon: "📅", match: "Calendar", about: "Встречи и планы", example: "Что у меня завтра?" },
+                               { id: "gdrive", title: "Google Диск", icon: "🗂", match: "Drive", about: "Документы и таблицы", example: "Найди договор" }],
+                  presets: [{ id: "github", icon: "🐙", key_url: "https://github.com/settings/personal-access-tokens/new", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
                             { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", fields: [], after: "" },
                             { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
   };

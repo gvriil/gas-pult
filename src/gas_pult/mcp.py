@@ -1,7 +1,12 @@
-"""MCP-серверы Claude Code из панели: список со статусом, добавление по шаблону или вручную, удаление.
+"""MCP-серверы Claude Code из панели: список со статусом, подключение в одно касание, по ключу или вручную.
 
-Всё через ``claude mcp`` (уровень user — видно во всех проектах). Новые сессии видят сервер сразу,
-открытые — после перезапуска. Ключи сохраняются в настройках Claude Code (``~/.claude.json``) на сервере.
+Три пути — от простого к сложному:
+1. **Коннекторы claude.ai** (``CONNECTORS``): человек жмёт «Подключить» в claude.ai и входит как обычно; Claude Code
+   сам подтягивает подключённые коннекторы аккаунта — панель только ждёт, когда в ``claude mcp list`` появится
+   «claude.ai <Сервис>» со статусом ✔. Ничего не копируется, ключей нет.
+2. **По ключу** (``PRESETS`` с полями): кнопка открывает страницу, где сервис выдаёт ключ, ключ — в одно поле.
+3. **Для продвинутых**: свой адрес или своя программа (``add-json -s user``).
+Ключи сохраняются в настройках Claude Code (``~/.claude.json``) на сервере.
 """
 
 from __future__ import annotations
@@ -16,11 +21,36 @@ NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}$")
 LINE = re.compile(r"^(?P<name>.+?): (?P<target>.+) - (?P<mark>[✔✘⚠!])\s*(?P<state>.*)$")
 TIMEOUT = 90
 
+CONNECTORS_URL = "https://claude.ai/customize/connectors"
+
+# Подключение в одно касание через claude.ai: match — как сервис называется в «claude mcp list» (claude.ai <match>).
+CONNECTORS = [
+    {"id": "notion", "title": "Notion", "icon": "📝", "match": "Notion", "about": "Заметки, страницы и базы",
+     "example": "Найди в Notion мои заметки за последнюю неделю и сделай краткую сводку"},
+    {"id": "gmail", "title": "Gmail", "icon": "✉️", "match": "Gmail",
+     "about": "Почта: найти, прочитать, подготовить ответ",
+     "example": "Какие важные письма пришли сегодня в Gmail? Коротко по каждому"},
+    {"id": "gcal", "title": "Google Календарь", "icon": "📅", "match": "Calendar", "about": "Встречи и планы",
+     "example": "Что у меня в календаре на завтра?"},
+    {"id": "gdrive", "title": "Google Диск", "icon": "🗂", "match": "Drive", "about": "Документы и таблицы на Диске",
+     "example": "Найди на Google Диске последний договор и перескажи главное"},
+    {"id": "slack", "title": "Slack", "icon": "💬", "match": "Slack", "about": "Каналы и сообщения команды",
+     "example": "Что важного обсуждали сегодня в Slack?"},
+    {"id": "linear", "title": "Linear", "icon": "✅", "match": "Linear", "about": "Задачи и проекты",
+     "example": "Какие задачи в Linear назначены на меня и что срочно?"},
+    {"id": "atlassian", "title": "Jira и Confluence", "icon": "🧩", "match": "Atlassian", "about": "Задачи и вики",
+     "example": "Покажи мои открытые задачи в Jira"},
+    {"id": "figma", "title": "Figma", "icon": "🎨", "match": "Figma", "about": "Макеты и дизайн",
+     "example": "Опиши последний макет в Figma"},
+]
+
 # Шаблоны: что это, куда подключаемся и какие поля спросить у человека (с подсказкой, где взять значение).
 PRESETS = [
     {"id": "context7", "title": "Context7", "about": "Свежая документация библиотек и фреймворков — Claude меньше "
      "ошибается в API", "type": "http", "url": "https://mcp.context7.com/mcp", "fields": [], "after": ""},
-    {"id": "github", "title": "GitHub", "about": "Репозитории, issues, PR — читать, комментировать, создавать",
+    {"id": "github", "title": "GitHub", "icon": "🐙",
+     "about": "Репозитории, issues, PR — читать, комментировать, создавать",
+     "key_url": "https://github.com/settings/personal-access-tokens/new",
      "type": "http", "url": "https://api.githubcopilot.com/mcp/",
      "fields": [{"key": "token", "label": "Токен GitHub", "secret": True, "header": "Authorization",
                  "format": "Bearer {}", "placeholder": "github_pat_…",
@@ -36,8 +66,8 @@ PRESETS = [
     {"id": "notion", "title": "Notion", "about": "Страницы и базы Notion — читать и обновлять", "type": "http",
      "url": "https://mcp.notion.com/mcp", "fields": [],
      "after": "Вход через Notion: сессия → ☰ → ⚡ Команды → /mcp → notion → Authenticate — с компьютера."},
-    {"id": "homeassistant", "title": "Home Assistant", "about": "Умный дом: состояние устройств, свет, "
-     "сценарии", "type": "http", "url": "{base}/api/mcp",
+    {"id": "homeassistant", "title": "Home Assistant", "icon": "🏠", "about": "Умный дом: свет, отопление, датчики, "
+     "сценарии", "key_url": "{base}/profile/security", "type": "http", "url": "{base}/api/mcp",
      "fields": [{"key": "base", "label": "Адрес Home Assistant", "placeholder": "https://home.example.com:8123",
                  "hint": "Тот адрес, по которому открываете Home Assistant в браузере. В самом HA включите "
                          "интеграцию «Model Context Protocol Server»."},
@@ -70,6 +100,11 @@ def _claude(*args: str) -> subprocess.CompletedProcess:
 class Mcp:
     def __init__(self):
         self.cache: tuple[float, list[dict]] = (0, [])
+
+    def connected(self, match: str) -> dict | None:
+        """Коннектор claude.ai подключён? Ищем «claude.ai …match…» со статусом ✔ (свежий список)."""
+        return next((s for s in self.list(fresh=True)
+                     if s["name"].startswith("claude.ai ") and match.lower() in s["name"].lower()), None)
 
     def list(self, fresh: bool = False) -> list[dict]:
         if not fresh and time.time() - self.cache[0] < 30:

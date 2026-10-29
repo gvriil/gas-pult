@@ -57,3 +57,14 @@ def test_add_stdio_with_env(fake):
 def test_remove_refuses_foreign(fake):
     with pytest.raises(ValueError):
         mcp.Mcp().remove("claude.ai Docs")
+
+
+def test_connected_finds_claude_ai_connector(monkeypatch):
+    def fake(*args):
+        out = ("claude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected\n"
+               "notion: https://mcp.notion.com/mcp (HTTP) - ⚠ Needs authentication\n")
+        return subprocess.CompletedProcess(args, 0, out, "")
+    monkeypatch.setattr(mcp, "_claude", fake)
+    s = mcp.Mcp().connected("Notion")
+    assert s["name"] == "claude.ai Notion" and s["ok"]
+    assert mcp.Mcp().connected("Gmail") is None

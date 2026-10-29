@@ -34,7 +34,7 @@ from gas_pult import providers, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, TAIL, execute, extract
 from gas_pult.config import Config
-from gas_pult.mcp import PRESETS, Mcp
+from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -452,7 +452,14 @@ def handler(panel: Panel):
             if path == "/api/meta":
                 return {**panel.meta(), "via": self.via(), "build": build, "whatsnew": whatsnew[:1]}
             if path == "/api/mcp":
-                return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS}
+                return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS,
+                        "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL}
+            if path == "/api/mcp/connected":
+                c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
+                if not c:
+                    raise LookupError("нет такого сервиса")
+                s = panel.mcp.connected(c["match"])
+                return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
