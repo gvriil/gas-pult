@@ -476,8 +476,11 @@ def handler(panel: Panel):
                 return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg))
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
+                rev = transcripts.revision(w["path"])
+                if before is None and q.get("rev") and q["rev"] == rev:
+                    return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
                 items, more = transcripts.history(w["path"], 30, before)
-                return {"items": items, "more": more}
+                return {"items": items, "more": more, "rev": rev}
             raise KeyError
 
         def do_POST(self):

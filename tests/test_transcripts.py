@@ -105,3 +105,16 @@ def test_history_shows_queued_messages(tmp_path, monkeypatch):
     items, _ = t.history("/home/u/q")
     assert [(x["text"], x.get("queued")) for x in items if x["role"] == "user"] == \
         [("сделай", None), ("а ещё вот", "read"), ("и это", "wait")]
+
+
+def test_revision_changes_when_transcript_grows(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/r")
+    d.mkdir(parents=True)
+    assert t.revision("/home/u/r") == ""
+    f = d / "s.jsonl"
+    f.write_text('{"type":"user","message":{"content":"а"}}\n')
+    r1 = t.revision("/home/u/r")
+    with open(f, "a") as fh:
+        fh.write('{"type":"user","message":{"content":"б"}}\n')
+    assert t.revision("/home/u/r") != r1

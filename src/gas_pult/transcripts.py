@@ -98,6 +98,16 @@ class Tail:
 PASTED = re.compile(r"</?pasted_content[^>]*>")
 
 
+def revision(path: str) -> str:
+    """Отпечаток последнего транскрипта папки (файл, размер, время) — изменился ли журнал с прошлого раза."""
+    files = transcripts(path)
+    if not files:
+        return ""
+    f = max(files, key=lambda p: p.stat().st_mtime)
+    st = f.stat()
+    return f"{f.stem[:8]}-{st.st_size}-{st.st_mtime_ns}"
+
+
 def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list[dict], bool]:
     """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
 

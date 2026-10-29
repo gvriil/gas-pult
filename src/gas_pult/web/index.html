@@ -168,6 +168,16 @@
   .hero h2 { margin: 4px 0 2px; font-size: 21px; } .hero p { margin: 0; color: var(--muted); }
   .conn { display: flex; flex-wrap: wrap; gap: 6px; }
   .conn span { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: 13px; }
+  .live { color: var(--muted); font-size: 12px; margin: -4px 4px 8px; display: flex; align-items: center; gap: 6px; }
+  .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+  .live.stale i { background: var(--warn); }
+  .recbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--danger); border-radius: 20px;
+            padding: 4px 6px 4px 12px; background: color-mix(in srgb, var(--danger) 8%, var(--surface)); height: 42px; }
+  .recbar .dotrec { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; flex: none; }
+  .recbar canvas { flex: 1; min-width: 0; height: 28px; }
+  .recbar .t { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--danger); flex: none; }
+  .recbar button { border: 0; border-radius: 16px; padding: 6px 10px; font-size: 13px; flex: none; }
+  .recbar .ok { background: var(--accent); color: var(--on-accent); } .recbar .no { background: var(--surface2); }
   .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
 
@@ -188,7 +198,7 @@
 </head>
 <body>
 <button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
-<div class="demo" id="demoBar" hidden>Демо-данные — так панель выглядит; ваши сессии не затронуты</div>
+<div class="demo" id="demoBar" hidden>Демо-режим: панель на примерах, ваши действия никуда не уходят · <a href="/" style="color:inherit">войти</a></div>
 <div class="top" id="top">
   <button class="icon" id="backBtn" hidden aria-label="Назад">‹</button>
   <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle">загружаю…</div></div>
@@ -204,6 +214,8 @@
       <p class="note" style="margin:0 0 12px">Пароль не нужен: мы пришлём одноразовый код в Telegram владельцу бота. Код действует 5 минут.</p>
       <div id="loginStep1">
         <button class="btn" id="getCode">Получить код в Telegram</button>
+        <button class="btn ghost" id="tryDemo">Посмотреть демо — без входа</button>
+        <p class="note" style="margin:6px 0 0">Демо — та же панель на примерах: можно всё нажимать, писать и подключать, ничего никуда не уходит.</p>
       </div>
       <div id="loginStep2" hidden>
         <div class="field">
@@ -228,6 +240,7 @@
   <!-- одна сессия -->
   <section id="session" hidden>
     <div class="seg" id="tabs"><button data-tab="chat" class="on">Переписка</button><button data-tab="screen">Экран</button></div>
+    <div class="live" id="live"><i></i><span>обновляется каждые 3 секунды</span></div>
     <div id="ask"></div>
     <div class="keys" id="keys" hidden></div>
     <div id="content"></div>
@@ -264,7 +277,7 @@ const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
 const STATUS = { idle: "свободна", busy: "работает", dialog: "ждёт вашего выбора" };
-let BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
+let histRev = "", lastOk = 0, BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false, lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -349,6 +362,7 @@ function showLogin() {
   show("login"); $("title").textContent = "Пульт"; $("subtitle").textContent = "вход по коду из Telegram";
 }
 $("getCode").onclick = (e) => requestCode(e.target);
+$("tryDemo").onclick = () => { location.href = "/?demo"; };
 $("resend").onclick = (e) => requestCode(e.target);
 async function requestCode(btn) {
   await busy(btn, "Отправляю…", async () => {
@@ -403,6 +417,7 @@ async function refresh() {
     $("subtitle").textContent = `${STATUS[s.status]} · ${folder(s.path)}${s.branch ? " · " + s.branch : ""}${s.context == null ? "" : " · контекст " + s.context + "%"}`;
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "chat"); }
     else if (tab === "screen" || s.status === "dialog") loadContent();
+    else liveChat();
     lastStatus = s.status;
   } catch (e) { if (view !== "login") $("subtitle").textContent = "нет связи: " + e.message; }
 }
@@ -453,9 +468,35 @@ async function loadContent() {
     $("keys").hidden = tab !== "screen" && cur()?.status !== "dialog";
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
+      histRev = h.rev || ""; markFresh();
       if (!hist.length || grew) { hist = h.items; histMore = h.more; renderChat(true); }
     } else { $("content").className = "panel"; $("content").innerHTML = `<pre class="screen">${esc(scr.lines.join("\n"))}</pre>`; }
   } catch (e) { $("content").className = "panel"; $("content").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+// Живая переписка: каждые 3 с спрашиваем, менялся ли журнал сессии; изменился — дорисовываем, не сбивая прокрутку.
+async function liveChat() {
+  if (!current || tab !== "chat") return;
+  try {
+    const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
+    markFresh();
+    if (h.same) return;
+    const atBottom = innerHeight + scrollY > document.body.scrollHeight - 220;
+    const first = h.items[0]?.i ?? Infinity;
+    hist = [...hist.filter((m) => m.i < first), ...h.items]; histRev = h.rev || "";
+    if (!hist.some((m) => m.i < first)) histMore = h.more;
+    renderChat(atBottom);
+  } catch (e) { $("live").classList.add("stale"); $("live").querySelector("span").textContent = "нет связи — повторю через 3 секунды"; }
+}
+function markFresh() {
+  lastOk = Date.now(); $("live").classList.remove("stale");
+  $("live").querySelector("span").textContent = "в реальном времени · обновлено " + new Date().toLocaleTimeString("ru-RU");
+}
+// Вернулись в приложение — сразу обновить и снова не давать экрану гаснуть.
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); keepAwake(); } });
+let wake = null;
+async function keepAwake() {
+  try { if (navigator.wakeLock && !document.hidden && (!wake || wake.released)) wake = await navigator.wakeLock.request("screen"); } catch (e) {}
 }
 
 // Переписка: все сообщения сессии; у ответа Claude — озвучка кратко/целиком и копирование.
@@ -607,6 +648,7 @@ async function act(path, body, okText) {
 }
 
 async function say(full, btn, msg) {
+  if (DEMO) return toast("В демо озвучки нет — в настоящей панели ответ прочитает голос", 3500);
   await busy(btn, "⏳ Готовлю…", async () => {
     try {
       const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
@@ -694,24 +736,45 @@ async function toggleMic() {
   if (rec) return rec.stop();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
     return toast("Этот Telegram не даёт панели микрофон — диктуйте кнопкой микрофона на клавиатуре", 5000);
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
-    const chunks = []; rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
-    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-    rec.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop()); $("mic").classList.remove("rec"); $("mic").textContent = "🎙"; rec = null;
-      const blob = new Blob(chunks, { type: (type || "audio/webm").split(";")[0] });
-      toast("Распознаю…", 8000);
-      try {
-        const d = await api("/api/stt", blob, blob.type);
-        $("input").value = ($("input").value + " " + d.text).trim(); grow(); $("input").focus();
-        toast("Проверьте текст и нажмите ➤", 3500);
-      } catch (e) { toast("Не распознал: " + e.message, 4500); }
-    };
-    rec.start(); $("mic").classList.add("rec"); $("mic").textContent = "■"; haptic("impactOccurred", "medium");
-    toast("Говорите. Нажмите ■, чтобы закончить", 3000);
-  } catch (e) { toast("Нет доступа к микрофону: " + e.message, 5000); }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { return toast("Нет доступа к микрофону: " + e.message, 5000); }
+  const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  const chunks = []; let cancelled = false, raf = 0;
+  rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  // полоска записи вместо поля: живая громкость, таймер, «Отмена» и «Готово»
+  const bar = document.createElement("div"); bar.className = "recbar";
+  bar.innerHTML = '<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no">✕</button><button class="ok">Готово</button>';
+  $("input").hidden = true; $("mic").hidden = true; $("send").hidden = true; $("input").after(bar);
+  const cv = bar.querySelector("canvas"), g = cv.getContext("2d"), t0 = Date.now();
+  const ac = new (window.AudioContext || window.webkitAudioContext)(), an = ac.createAnalyser();
+  an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an);
+  const lv = new Uint8Array(an.frequencyBinCount), levels = [];
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--danger").trim();
+  (function draw() {
+    an.getByteTimeDomainData(lv);
+    let peak = 0; for (const v of lv) peak = Math.max(peak, Math.abs(v - 128));
+    levels.push(Math.min(1, peak / 64)); const w = cv.width = cv.clientWidth * 2, h = cv.height = 56, n = Math.floor(w / 8);
+    g.fillStyle = color; levels.slice(-n).forEach((v, i) => { const bh = Math.max(4, v * h); g.fillRect(i * 8, (h - bh) / 2, 5, bh); });
+    const sec = Math.floor((Date.now() - t0) / 1000); bar.querySelector(".t").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+    raf = requestAnimationFrame(draw);
+  })();
+  const finish = () => { cancelAnimationFrame(raf); ac.close(); stream.getTracks().forEach((t) => t.stop()); bar.remove(); $("input").hidden = false; rec = null; sync(); padDock(); };
+  bar.querySelector(".no").onclick = () => { cancelled = true; rec.stop(); };
+  bar.querySelector(".ok").onclick = () => rec.stop();
+  rec.onstop = async () => {
+    finish();
+    if (cancelled) return toast("Запись отменена");
+    const blob = new Blob(chunks, { type: (type || "audio/webm").split(";")[0] });
+    toast("Распознаю…", 8000);
+    try {
+      const d = await api("/api/stt", blob, blob.type);
+      $("input").value = ($("input").value + " " + d.text).trim(); grow(); $("input").focus();
+      toast("Проверьте текст и нажмите ➤", 3500);
+    } catch (e) { toast("Не распознал: " + e.message, 4500); }
+  };
+  rec.start(); haptic("impactOccurred", "medium"); padDock();
 }
 function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; sync(); padDock(); }
 $("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
@@ -948,7 +1011,8 @@ async function start() {
     if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ label: "• " + t, run: () => {} })));
   }
   store("seenAny", "1");
-  if (!start.timer) start.timer = setInterval(refresh, 4000);
+  if (!start.timer) start.timer = setInterval(refresh, 3000);
+  keepAwake();
   if (DEMO && params.get("open")) {
     await refresh(); await open(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
@@ -996,6 +1060,22 @@ function demoApi(path, body) {
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
+  if (!demoApi.h) demoApi.h = [
+    { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
+    { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
+    { i: 9, role: "user", text: "Проверь сборку и запусти тесты", ts: "2026-10-29 09:20" },
+    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" },
+    { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
+  if (key === "/api/send") {
+    const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20;
+    demoApi.h.push({ i: n, role: "user", text: body.text, ts: now });
+    setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now,
+      text: "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и кнопкой 🔊." }), 2500);
+    return Promise.resolve({ ok: true });
+  }
+  if (key === "/api/history") return Promise.resolve({ more: true, rev: String(demoApi.h.length), items: demoApi.h.slice(-30),
+    ...(path.includes("rev=" + demoApi.h.length + "") && path.includes("rev=") && !path.endsWith("rev=") ? { same: true } : {}) });
+  if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/last") return Promise.resolve({ text: answer });
   if (key === "/api/history") return Promise.resolve({ more: true, items: [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
