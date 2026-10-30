@@ -293,6 +293,13 @@
   .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
   .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; animation: fade .15s ease;
            background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: 14px; max-width: 92vw; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  /* Потянуть вниз — обновить: кружок едет за пальцем; дотянули — цвет акцента, отпустили — крутится, пока обновляется */
+  .ptr { position: fixed; left: 50%; top: calc(6px + env(safe-area-inset-top)); z-index: 16; width: 40px; height: 40px; margin-left: -20px;
+         border-radius: 50%; display: grid; place-items: center; background: var(--bg-surface); color: var(--text-secondary);
+         border: 1px solid var(--border-subtle); box-shadow: 0 4px 16px rgba(0,0,0,.18); opacity: 0; transform: translateY(-50px); pointer-events: none; }
+  .ptr.go { color: var(--accent-primary); }
+  .ptr.busy .i { animation: spin .8s linear infinite; }
+  .ptr.back { transition: transform .2s ease, opacity .2s ease; }
   .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: 12px; text-align: center; padding: 5px 8px; }
   .brand { display: none; } .brand h1 { margin: 0; font-size: 20px; font-weight: 600; }
   .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
@@ -362,6 +369,7 @@
 </main>
 
 <button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
+<div class="ptr" id="ptr" aria-hidden="true"></div>
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
 
 <div class="dock" id="dock" hidden>
@@ -550,6 +558,50 @@ addEventListener("scroll", () => {
   }
   lastY = y;
 }, { passive: true });
+// Потянуть вниз от самого верха — обновить, как в приложениях. Родной жест выключен: в Telegram он закрывает окно
+// (disableVerticalSwipes), в браузере — overscroll-behavior: none. В листах, меню, поле ввода и терминале не срабатывает.
+const PTR_GO = 64, PTR_MAX = 90;
+let ptrY0 = null, ptrPull = 0, ptrBusy = false;
+$("ptr").innerHTML = ic("refresh");
+function ptrShow(px, cls = "") {
+  const el = $("ptr"); el.className = "ptr " + cls;
+  el.style.opacity = Math.min(1, px / PTR_GO);
+  el.style.transform = `translateY(${px - 50}px) rotate(${px * 4}deg)`;
+}
+addEventListener("touchstart", (e) => {
+  ptrY0 = null;
+  if (ptrBusy || e.touches.length !== 1 || scrollY > 0 || split() || document.querySelector(".sheet-bg")) return;
+  if (e.target.closest?.(".dock, .menu, .term, pre, textarea, input, select")) return;
+  ptrY0 = e.touches[0].clientY; ptrPull = 0;
+}, { passive: true });
+addEventListener("touchmove", (e) => {
+  if (ptrY0 === null) return;
+  const d = e.touches[0].clientY - ptrY0;
+  if (scrollY > 0 || d < 0) { ptrY0 = null; return ptrShow(0, "back"); }
+  const armed = ptrPull >= PTR_GO; ptrPull = Math.min(PTR_MAX, d * 0.5);
+  if (!armed && ptrPull >= PTR_GO) haptic("impactOccurred", "light");
+  ptrShow(ptrPull, ptrPull >= PTR_GO ? "go" : "");
+}, { passive: true });
+addEventListener("touchend", () => {
+  if (ptrY0 === null) return;
+  ptrY0 = null;
+  if (ptrPull < PTR_GO) return ptrShow(0, "back");
+  ptrBusy = true; ptrShow(PTR_GO, "go busy back");
+  const seen = new Promise((r) => setTimeout(r, 500));                 // крутится хотя бы полсекунды — видно, что обновили
+  Promise.all([pullRefresh(), seen]).then(([ok]) => {
+    ptrBusy = false; ptrShow(0, "back");
+    if (ok) setTimeout(() => toast("Обновлено", 1500), 200);            // после кружка — на том же месте
+  });
+});
+addEventListener("touchcancel", () => { if (ptrY0 !== null) { ptrY0 = null; ptrShow(0, "back"); } });
+async function pullRefresh() {
+  if (!$("updateBar").hidden || view === "login" || !start.done) return location.reload();   // новая версия, вход, нет связи — целиком
+  try {
+    if (view === "session") { hist = []; await loadContent(); }
+    if (view === "home" && homeView === "integrations") loadMcp();
+    await refresh(); return true;
+  } catch (e) { toast("Не обновилось: " + e.message, 3500); }
+}
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
