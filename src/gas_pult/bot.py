@@ -27,12 +27,16 @@ from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
 
-DIALOG = re.compile(r"Do you want|Enter to confirm|Do you trust|❯ \d\.|Select model|Esc to (cancel|close|go back)")
+# Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
+# сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
+HINT = r"(?:[^·\n]{1,40}·\s*)*"          # подсказки внизу меню могут идти после других: «↑/↓ to navigate · Enter to …»
+DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model)|^\s*" + HINT +
+                    r"(Enter to (confirm|select)|Esc to (cancel|close|go back))", re.M)
 BUSY = re.compile(r"esc to interrupt", re.I)
 # Готовность окна к тексту. Вопрос Claude (разрешение, выбор пункта): Esc там значит «нет» — за человека не отвечаем.
 # Меню и панели (/status, /model, /config, /usage…): Esc безопасен — закрываем, иначе текст уйдёт в меню и пропадёт.
-QUESTION = re.compile(r"Do you want|Do you trust|❯ \d\.|Enter to confirm|Enter to select")
-PANEL = re.compile(r"Esc to (cancel|close|exit|go back)|Settings\s+Status\s+Config", re.I)
+QUESTION = re.compile(r"^\s*Do you (want|trust)|^\s*" + HINT + r"Enter to (confirm|select)", re.M)
+PANEL = re.compile(r"^\s*" + HINT + r"Esc to (cancel|close|exit|go back)|Settings\s+Status\s+Config", re.I | re.M)
 PROMPT = re.compile(r"^\s*❯(?!\s*\d\.)", re.M)
 
 
