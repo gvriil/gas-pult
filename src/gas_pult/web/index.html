@@ -76,6 +76,11 @@
   .chip.new, .chip.ok { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); }
   .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
   .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
+  .manual { margin: 4px 0 8px; } .manual summary { cursor: pointer; padding: 6px 2px; }
+  .picker .search { position: sticky; top: -8px; background: var(--bg-surface); padding: 4px 16px 8px; z-index: 1; }
+  .picker .search input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); outline: none; }
+  .picker .search input:focus { border-color: var(--border-focus); }
+  .picker .mid { font: 12px ui-monospace, Menlo, monospace; color: var(--text-secondary); }
   .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
 
   /* ===== Список сессий ===== */
@@ -1071,26 +1076,38 @@ function renderModels() {
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
 async function reloadProfiles() { try { meta.profiles = (await api("/api/meta")).profiles; } catch (e) { /* покажем старое */ } }
-function profileForm(p) {
+let orLink = null, orTimer = null;
+function profileForm(p, connected) {
   show("mcpForm"); $("title").textContent = p.title; setSub("<span>модели поставщика</span>");
+  clearInterval(orTimer);
   $("mcpForm").innerHTML = `<div class="panel">
     <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
+    ${connected ? `<div class="result ok">${ic("check")}<span>${esc(p.title)} подключён — ключ сохранён на сервере.</span></div>
+      <button class="btn" id="profStart0">${ic("newsess")}Новая сессия с ${esc(p.title)}</button>` : ""}
     <div class="result wait">${ic("warn")}<span>Код и переписка сессий с ${esc(p.title)} уходят ${esc(p.title)}; оплата — по их тарифу.
       В таких сессиях не работают коннекторы claude.ai (Notion, Gmail…) — только MCP-серверы, подключённые на сервере.</span></div>
-    <div class="section">Ключ API</div>
+    <div class="section">${p.oauth ? "Аккаунт" : "Ключ API"}</div>
+    ${p.oauth ? `${p.key ? `<div class="panel" id="orAcct" style="box-shadow:none"><span class="note">Проверяю аккаунт…</span></div>` : ""}
+      <button class="btn${p.key ? " quiet" : ""}" id="orLogin">${ic("ext")}${p.key ? "Войти заново" : "Войти через " + esc(p.title)}</button>
+      <div class="hint" style="margin:0 2px 8px">Откроется ${esc(p.title)}: войдите (Google, GitHub или почта) и нажмите «Authorize». Ключ сам вернётся на сервер — копировать ничего не нужно.</div>
+      <div id="orWait" hidden></div>
+      <details class="manual"><summary class="note" style="display:inline">Или вставить ключ вручную</summary>` : ""}
     ${p.key_url ? `<button class="btn ghost" id="profKeyPage">${ic("ext")}Где взять ключ</button>` : ""}
     <div class="field"><label for="profKey">${p.key ? "Заменить ключ (сейчас " + esc(p.key.tail) + ")" : "Ключ"}</label>
       <div class="inp"><input id="profKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="вставьте ключ">
       <button class="icon" type="button" data-eye="profKey" aria-label="Показать">${ic("eye")}</button></div>
       <div class="hint">Хранится только на сервере (права 600) и в панель больше не возвращается — копию держите в менеджере паролей.</div></div>
     <button class="btn" id="profSave">Сохранить ключ</button>
+    ${p.oauth ? "</details>" : ""}
     ${p.key ? '<button class="btn danger" id="profDel">Удалить ключ</button>' : ""}
     <div id="profResult"></div>
     <div class="section">Модели</div>
     <div class="field"><label for="profMain">Основная</label><input id="profMain" autocapitalize="off" spellcheck="false" value="${esc(p.main)}" placeholder="${esc(p.default_main || "пусто — модели Claude")}">
-      <div class="hint">Для opus и sonnet. ${esc(p.hint || "")}</div></div>
+      <div class="hint">Для opus и sonnet. ${esc(p.hint || "")}</div>
+      ${p.oauth ? `<button class="btn quiet sm" style="margin-top:8px" data-cat="profMain">${ic("grid", "s16")}Выбрать из каталога</button>` : ""}</div>
     <div class="field"><label for="profFast">Быстрая</label><input id="profFast" autocapitalize="off" spellcheck="false" value="${esc(p.fast)}" placeholder="${esc(p.default_fast || "пусто — модели Claude")}">
-      <div class="hint">Для haiku, фоновых задач и субагентов.</div></div>
+      <div class="hint">Для haiku, фоновых задач и субагентов.</div>
+      ${p.oauth ? `<button class="btn quiet sm" style="margin-top:8px" data-cat="profFast">${ic("grid", "s16")}Выбрать из каталога</button>` : ""}</div>
     <button class="btn quiet" id="profModels">Сохранить модели</button>
     <button class="btn ghost" id="profDefaults">Вернуть по умолчанию</button>
     <p class="note">Изменения моделей и ключа действуют для новых сессий и после «Сменить поставщика».</p></div>`;
@@ -1111,6 +1128,63 @@ function profileForm(p) {
   const saveModels = (main, fast) => api("/api/models", { profile: p.id, main, fast }).then((d) => { meta.profiles = d.profiles; toast("Модели сохранены"); profileForm(profileOf(p.id)); }).catch((err) => toast(err.message, 4500));
   $("profModels").onclick = () => saveModels($("profMain").value.trim(), $("profFast").value.trim());
   $("profDefaults").onclick = () => saveModels(p.default_main, p.default_fast);
+  $("profStart0")?.addEventListener("click", () => newSession(p.id));
+  $("mcpForm").querySelectorAll("[data-cat]").forEach((b) => b.onclick = () => openCatalog($(b.dataset.cat)));
+  if (p.oauth) oauthWire(p);
+}
+// Вход в OpenRouter: ссылку готовим заранее, чтобы открыть её прямо в нажатии (браузеры не любят окна после ожидания).
+function oauthWire(p) {
+  const fetchLink = () => api("/api/openrouter/start", {}).then((d) => (orLink = { url: d.url, t: Date.now() }));
+  if (!orLink || Date.now() - orLink.t > 8 * 60000) fetchLink().catch(() => {});
+  if (p.key) api("/api/openrouter/info").then((a) => {
+    const usd = (v) => v == null ? "—" : "$" + (+v).toFixed(2);
+    document.getElementById("orAcct").innerHTML = `<div class="row"><span class="name" style="flex:1">${esc(a.label || "ключ " + p.key.tail)}</span>
+      <span class="chip ok">${a.is_free_tier ? "бесплатный тариф" : "подключён"}</span></div>
+      <p class="note" style="margin:8px 0 0">Потрачено всего ${usd(a.usage)}, за месяц ${usd(a.usage_monthly)} · ${a.limit == null ? "без лимита на ключ" : "лимит " + usd(a.limit) + ", осталось " + usd(a.limit_remaining)}</p>`;
+  }).catch((e) => { document.getElementById("orAcct").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
+  $("orLogin").onclick = async () => {
+    let url = orLink && Date.now() - orLink.t < 9 * 60000 ? orLink.url : null;
+    orLink = null;
+    if (!url) { toast("Готовлю вход…"); try { url = (await fetchLink()).url; orLink = null; } catch (e) { return toast(e.message, 4500); } }
+    tg?.openLink ? tg.openLink(url) : window.open(url, "_blank");
+    const before = p.key?.tail || "", t0 = Date.now();
+    $("orWait").hidden = false;
+    $("orWait").innerHTML = `<div class="result wait">${ic("wait")}<span>Жду ключ от ${esc(p.title)} — войдите и нажмите «Authorize». Проверяю каждые 3 секунды…</span></div>`;
+    clearInterval(orTimer);
+    orTimer = setInterval(async () => {
+      if (view !== "mcpForm" || Date.now() - t0 > 10 * 60000) return clearInterval(orTimer);
+      await reloadProfiles();
+      const np = profileOf(p.id);
+      if (np?.key && np.key.tail !== before) { clearInterval(orTimer); haptic("notificationOccurred", "success"); profileForm(np, true); }
+    }, 3000);
+    fetchLink().catch(() => {});                       // на случай «попробовать ещё раз»
+  };
+}
+// Каталог моделей OpenRouter: поиск по названию и id; модели Anthropic — первыми (с ними Claude Code надёжен).
+function openCatalog(input) {
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet picker" role="dialog"><h3>Модели OpenRouter</h3>
+    <div class="search"><input id="catQ" type="search" autocapitalize="off" spellcheck="false" placeholder="поиск: claude, glm, deepseek, gemini…"></div>
+    <div id="catList"><div class="empty">Загружаю каталог…</div></div><button class="cancel" data-close>Отмена</button></div>`;
+  document.body.append(bg);
+  let all = [];
+  const fmt = (m) => [m.ctx ? Math.round(m.ctx / 1000) + "K контекста" : "", m.in == null ? "" : `$${m.in} / $${m.out} за 1 млн`].filter(Boolean).join(" · ");
+  const draw = () => {
+    const q = bg.querySelector("#catQ").value.trim().toLowerCase();
+    const hits = all.filter((m) => !q || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+      .sort((a, b) => (b.id.startsWith("anthropic/") - a.id.startsWith("anthropic/")) || a.name.localeCompare(b.name)).slice(0, 60);
+    bg.querySelector("#catList").innerHTML = hits.length ? hits.map((m) => `<button data-id="${esc(m.id)}">${ic("chip")}<span>${esc(m.name)}
+      <small><span class="mid">${esc(m.id)}</span>${fmt(m) ? " · " + esc(fmt(m)) : ""}${m.id.startsWith("anthropic/") ? " · надёжно с Claude Code" : ""}</small></span></button>`).join("")
+      : '<div class="empty">Ничего не нашлось</div>';
+  };
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();
+    if (b?.dataset.id) { input.value = b.dataset.id; bg.remove(); toast("Выбрано — нажмите «Сохранить модели»", 3500); }
+  });
+  bg.querySelector("#catQ").addEventListener("input", draw);
+  api("/api/openrouter/models").then((d) => { all = d.models; draw(); })
+    .catch((e) => { bg.querySelector("#catList").innerHTML = `<div class="result bad" style="margin:0 16px">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
 }
 function renderVoice() {
   const el = prov.keys.elevenlabs, seg = (name, val, opts) => `<div class="seg" data-prov="${name}">${opts.map(([v, label]) =>
@@ -1327,7 +1401,7 @@ async function start() {
       toggleMic();
     }
   }
-  if (DEMO && params.get("prof")) profileForm(profileOf(params.get("prof")));
+  if (DEMO && params.get("prof")) { profileForm(profileOf(params.get("prof")), params.has("connected")); if (params.get("cat")) openCatalog($("profMain")); }
   if (DEMO && params.get("pick")) pickProfile(() => {});
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
@@ -1359,7 +1433,7 @@ function demoApi(path, body) {
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
                    projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina",
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
-                     { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, key: null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
+                     { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S },
@@ -1377,6 +1451,14 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  R["/api/openrouter/start"] = { url: "https://openrouter.ai/auth?demo" };
+  R["/api/openrouter/info"] = { key: true, label: "gas-pult", usage: 4.27, usage_monthly: 1.9, limit: 20, limit_remaining: 15.73, is_free_tier: false };
+  R["/api/openrouter/models"] = { models: [
+    { id: "anthropic/claude-opus-5.5", name: "Anthropic: Claude Opus 5.5", ctx: 1000000, in: 5, out: 25 },
+    { id: "anthropic/claude-sonnet-5.5", name: "Anthropic: Claude Sonnet 5.5", ctx: 1000000, in: 3, out: 15 },
+    { id: "z-ai/glm-5.3-flash", name: "Z.ai: GLM 5.3 Flash", ctx: 200000, in: 0.1, out: 0.4 },
+    { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek: V4.1 Flash", ctx: 786432, in: 0.07, out: 0.28 },
+    { id: "openrouter/auto", name: "Auto Router", ctx: 2000000, in: null, out: null }] };
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];

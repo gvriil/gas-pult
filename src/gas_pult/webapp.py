@@ -27,6 +27,7 @@ import threading
 import time
 import urllib.parse
 import uuid
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
@@ -35,6 +36,7 @@ from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
+from gas_pult.openrouter import CALLBACK, OpenRouter
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -101,6 +103,8 @@ class Panel:
         self.locks: dict[str, threading.Lock] = {}      # одно окно — одна вставка за раз
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
         self.mcp = Mcp()
+        self.openrouter = OpenRouter()
+        self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
 
     def lock(self, wid: str) -> threading.Lock:
@@ -337,6 +341,14 @@ class Panel:
         if provider == "elevenlabs":                         # голос возвращается на сервер; модели не трогаем
             self.pult.set_state(tts_provider="local", stt_provider="local")
 
+    def openrouter_done(self, code: str, state: str):
+        """Возврат из OpenRouter после «Authorize»: код → ключ → secrets.json (как ключ, вставленный вручную)."""
+        providers.save_key("openrouter", self.openrouter.finish(code, state))
+
+    def openrouter_info(self) -> dict:
+        key = providers.load_keys().get("openrouter")
+        return {"key": False} if not key else {"key": True, **self.openrouter.info(key)}
+
     def set_models(self, profile: str, main: str, fast: str):
         self.pult.set_state(model_profiles=models.set_models(self.pult.state(), profile, main, fast))
 
@@ -416,6 +428,13 @@ class Panel:
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL}
 
 
+# Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
+DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+             '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
+             'sans-serif;background:#F6F5F0;color:#181816;text-align:center"><h1 style="font:600 22px Georgia,serif">'
+             '{title}</h1><p style="color:#6E6C65">{text}</p></body>')
+
+
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
     build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
@@ -474,6 +493,8 @@ def handler(panel: Panel):
             url = urllib.parse.urlparse(self.path)
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8")
+            if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
+                return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
             if not url.path.startswith("/api/"):
                 return self.json({"error": "нет такой страницы"}, 404)
             if not self.owner():
@@ -495,6 +516,10 @@ def handler(panel: Panel):
                     raise LookupError("нет такого сервиса")
                 s = panel.mcp.connected(c["match"])
                 return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
+            if path == "/api/openrouter/info":
+                return panel.openrouter_info()
+            if path == "/api/openrouter/models":
+                return {"models": panel.openrouter.models()}
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
@@ -517,6 +542,15 @@ def handler(panel: Panel):
                 items, more = transcripts.history(w["path"], 30, before)
                 return {"items": items, "more": more, "rev": rev}
             raise KeyError
+
+        def openrouter_back(self, q: dict):
+            try:
+                panel.openrouter_done(q.get("code", ""), q.get("state", ""))
+                title, text = "Ключ OpenRouter сохранён", "Вернитесь в панель — ключ на месте. Вкладку можно закрыть."
+            except ValueError as e:
+                title, text = "Не получилось", str(e)
+            done = DONE_PAGE.format(title=escape(title), text=escape(text))
+            self.reply(200, done.encode(), "text/html; charset=utf-8")
 
         def do_POST(self):
             path = urllib.parse.urlparse(self.path).path
@@ -559,6 +593,9 @@ def handler(panel: Panel):
                 return panel.mcp_login(str(b.get("name", "")))
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
+            if path == "/api/openrouter/start":
+                base = panel.public_url or f"https://{self.headers.get('Host', '')}"
+                return {"url": panel.openrouter.start(base)}
             if path == "/api/models":
                 panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
                 return {"profiles": models.public(panel.pult.state())}
@@ -630,11 +667,13 @@ def set_menu(api: Api, owners: list[int], url: str):
 
 
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler(Panel(cfg)))
+    panel = Panel(cfg)
+    srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
     proc = None
     if use_tunnel:
         proc, url = tunnel(port)
     if url:
+        panel.public_url = url
         try:
             set_menu(Api(cfg.token), cfg.owners, url)
         except TelegramError as e:
