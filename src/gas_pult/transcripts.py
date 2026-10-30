@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF"
+                   "\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
 
 
 def text_of(content) -> str:
@@ -44,7 +46,8 @@ def clean(md: str) -> str:
     md = md.replace("|", ", ")
     md = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", md)
     md = re.sub(r"https?://\S+", " ссылка ", md)
-    md = re.sub(r"[`*_#>]", "", md)
+    md = re.sub(r"[`*_#>\\]", "", md)
+    md = EMOJI.sub("", md)                      # эмодзи и стрелки синтез читает словами («треугольник вправо»)
     md = re.sub(r"[ \t]+", " ", md)
     return re.sub(r"\n{2,}", "\n", md).strip()
 
@@ -90,6 +93,120 @@ class Tail:
                 yield json.loads(line)
             except ValueError:
                 pass
+
+
+PASTED = re.compile(r"</?pasted_content[^>]*>")
+
+
+def revision(path: str) -> str:
+    """Отпечаток последнего транскрипта папки (файл, размер, время) — изменился ли журнал с прошлого раза."""
+    files = transcripts(path)
+    if not files:
+        return ""
+    f = max(files, key=lambda p: p.stat().st_mtime)
+    st = f.stat()
+    return f"{f.stem[:8]}-{st.st_size}-{st.st_mtime_ns}"
+
+
+def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list[dict], bool]:
+    """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
+
+    Ответ Claude — весь текст хода до следующего запроса человека (как в чате), субагенты пропускаются.
+    Сообщение, отправленное, пока Claude занят, Claude Code ставит в очередь (``queue-operation``) и отдаёт
+    по ходу работы (``attachment: queued_command``): такие показываем сразу, с пометкой
+    ``queued`` = "wait" (ещё в очереди) или "read" (прочитано по ходу работы).
+    """
+    files = transcripts(path)
+    if not files:
+        return [], False
+    items: list[dict] = []
+    with open(max(files, key=lambda p: p.stat().st_mtime), encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if e.get("isSidechain"):
+                continue
+            ts = e.get("timestamp", "")[:16].replace("T", " ")
+            kind = e.get("type")
+            if kind == "queue-operation" and e.get("operation") == "enqueue" and str(e.get("content", "")).strip():
+                items.append({"role": "user", "text": PASTED.sub("", e["content"]).strip(), "ts": ts, "queued": "wait"})
+            elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "queued_command":
+                text = PASTED.sub("", str(e["attachment"].get("prompt", ""))).strip()
+                q = next((x for x in reversed(items) if x.get("queued") == "wait" and x["text"] == text), None)
+                if q:
+                    q["queued"] = "read"
+                elif text:
+                    items.append({"role": "user", "text": text, "ts": ts, "queued": "read"})
+            elif kind == "user" and is_real_prompt(e):
+                text = PASTED.sub("", text_of(e["message"]["content"])).strip()
+                # очередь, которую Claude взял обычным ходом, — не дублируем
+                items = [x for x in items if not (x.get("queued") == "wait" and x["text"] == text)]
+                items.append({"role": "user", "text": text, "ts": ts})
+            elif e.get("type") == "assistant" and (t := text_of((e.get("message") or {}).get("content")).strip()):
+                if items and items[-1]["role"] == "assistant":
+                    items[-1]["text"] += "\n\n" + t
+                else:
+                    items.append({"role": "assistant", "text": t, "ts": ts})
+    for i, it in enumerate(items):
+        it["i"] = i
+    end = len(items) if before is None else max(0, min(before, len(items)))
+    start = max(0, end - limit)
+    return items[start:end], start > 0
+
+
+TOOLS = {"Bash": "команда", "Read": "читает", "Edit": "правит", "MultiEdit": "правит", "Write": "пишет",
+         "Grep": "ищет", "Glob": "ищет файлы", "WebFetch": "открывает", "WebSearch": "ищет в сети",
+         "Task": "поручил агенту", "Agent": "поручил агенту", "TodoWrite": "план"}
+
+
+def preview(path: str, tail: int = 262144) -> str:
+    """Одна строка о том, что сейчас в сессии: последний ответ Claude, его действие или ваш запрос.
+
+    Читается только хвост журнала (``tail`` байт) — дёшево даже при опросе раз в 3 секунды.
+    """
+    files = transcripts(path)
+    if not files:
+        return ""
+    with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
+        start = max(0, fh.seek(0, 2) - tail)
+        fh.seek(start)
+        lines = fh.read().decode("utf-8", "replace").splitlines()[1 if start else 0:]   # первая строка хвоста — обрывок
+    for line in reversed(lines):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("isSidechain"):
+            continue
+        content, found = (e.get("message") or {}).get("content"), ""
+        if e.get("type") == "assistant":
+            found = _line(text_of(content))
+            use = next((b for b in content or [] if isinstance(b, dict) and b.get("type") == "tool_use"), None)
+            if not found and use:
+                arg = use.get("input") or {}
+                what = (arg.get("description") or arg.get("command") or arg.get("file_path") or arg.get("pattern")
+                        or arg.get("url") or arg.get("query") or "")
+                verb = TOOLS.get(use.get("name", ""), use.get("name", "").split("__")[-1])
+                found = _line(f"{verb[:1].upper()}{verb[1:]}: {what}" if what else verb)
+        elif e.get("type") == "user" and is_real_prompt(e) and not text_of(content).startswith("[Request interrupted"):
+            found = _line("Вы: " + PASTED.sub("", text_of(content)))
+        if found:
+            return found
+    return ""
+
+
+def _line(text: str, limit: int = 140) -> str:
+    """Первая содержательная строка без разметки Markdown и эмодзи."""
+    for raw in text.splitlines():
+        t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)                 # ссылка → подпись
+        t = re.sub(r"^\s*(#+|>|[-+*](?=\s))\s*", "", t)               # заголовок, цитата, пункт списка
+        t = EMOJI.sub("", re.sub(r"[`*]", "", t).replace("|", " "))     # «#» и «_» в адресах не трогаем
+        t = re.sub(r"\s+", " ", t).strip(" :-")
+        if re.search(r"\w", t):                        # строки из одних знаков («·», «---») пропускаем
+            return t[:limit]
+    return ""
 
 
 def last_answer(path: str) -> str:

@@ -40,7 +40,9 @@ class Tmux:
         return next((w for w in self.windows() if w["id"] == wid), None)
 
     def screen(self, wid: str, n: int = 25) -> list[str]:
-        return [line for line in self.run("capture-pane", "-p", "-t", wid).splitlines() if line.strip()][-n:]
+        # -J склеивает строки, перенесённые по ширине окна (длинные ссылки, пути) — читаются целиком
+        out = self.run("capture-pane", "-p", "-J", "-t", wid)
+        return [line.rstrip() for line in out.splitlines() if line.strip()][-n:]
 
     def paste(self, wid: str, text: str):
         """Bracketed paste: многострочный текст не отправится раньше времени; Enter — отдельно."""

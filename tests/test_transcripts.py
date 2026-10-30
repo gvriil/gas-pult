@@ -65,3 +65,86 @@ def test_last_answer(tmp_path, monkeypatch):
             assistant("б", "end_turn")]
     (d / "x.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     assert t.last_answer("/home/u/proj") == "а\n\nб"
+
+
+def test_clean_drops_emoji_and_backslashes():
+    out = t.clean("Чего нет: кнопки «▶️ Выполнить» и 🔊 озвучки \\ ✅")
+    assert "▶" not in out and "🔊" not in out and "\\" not in out and "✅" not in out
+    assert "Выполнить" in out and "озвучки" in out
+
+
+def test_history_pairs_turns(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/p")
+    d.mkdir(parents=True)
+    rows = [{"type": "user", "message": {"content": "привет"}, "timestamp": "2026-10-29T10:00:00"},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "а"}]}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "б"}], "stop_reason": "end_turn"}},
+            {"type": "assistant", "isSidechain": True, "message": {"content": [{"type": "text", "text": "суб"}]}},
+            {"type": "user", "message": {"content": "ещё"}, "timestamp": "2026-10-29T10:05:00"}]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    items, more = t.history("/home/u/p")
+    assert [(x["role"], x["text"]) for x in items] == [("user", "привет"), ("assistant", "а\n\nб"), ("user", "ещё")]
+    assert not more and items[1]["i"] == 1
+    items, more = t.history("/home/u/p", limit=1, before=2)
+    assert [x["i"] for x in items] == [1] and more
+
+
+def test_history_shows_queued_messages(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/q")
+    d.mkdir(parents=True)
+    pasted = '<pasted_content id="x">\nа ещё вот\n</pasted_content id="x">'
+    rows = [{"type": "user", "message": {"content": "сделай"}, "timestamp": "2026-10-29T10:00:00"},
+            {"type": "queue-operation", "operation": "enqueue", "content": pasted},
+            {"type": "attachment", "attachment": {"type": "queued_command", "prompt": pasted}},
+            {"type": "queue-operation", "operation": "enqueue", "content": "и это"},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "готово"}],
+                                              "stop_reason": "end_turn"}}]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    items, _ = t.history("/home/u/q")
+    assert [(x["text"], x.get("queued")) for x in items if x["role"] == "user"] == \
+        [("сделай", None), ("а ещё вот", "read"), ("и это", "wait")]
+
+
+def test_revision_changes_when_transcript_grows(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/r")
+    d.mkdir(parents=True)
+    assert t.revision("/home/u/r") == ""
+    f = d / "s.jsonl"
+    f.write_text('{"type":"user","message":{"content":"а"}}\n')
+    r1 = t.revision("/home/u/r")
+    with open(f, "a") as fh:
+        fh.write('{"type":"user","message":{"content":"б"}}\n')
+    assert t.revision("/home/u/r") != r1
+
+
+def test_preview_shows_last_answer_action_or_prompt(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/v")
+    d.mkdir(parents=True)
+    f = d / "s.jsonl"
+    assert t.preview("/home/u/v") == ""
+    rows = [user("почини тесты"),
+            assistant("## ✅ Готово: **тесты** зелёные\n\nподробности", "end_turn")]
+    f.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert t.preview("/home/u/v") == "Готово: тесты зелёные"
+    use = {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Bash", "input": {"command": "npm test", "description": "Запуск тестов"}}]}}
+    with open(f, "a") as fh:
+        fh.write(json.dumps(user("а теперь сборку")) + "\n")
+    assert t.preview("/home/u/v") == "Вы: а теперь сборку"
+    with open(f, "a") as fh:
+        fh.write(json.dumps(use) + "\n")
+    assert t.preview("/home/u/v") == "Команда: Запуск тестов"
+
+
+def test_preview_keeps_urls_and_skips_interrupts(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/w")
+    d.mkdir(parents=True)
+    rows = [assistant("- Отчёт: https://github.com/o/r/issues/1#issuecomment-5 и [PR](https://x/y)", "end_turn"),
+            user("[Request interrupted by user]")]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert t.preview("/home/u/w") == "Отчёт: https://github.com/o/r/issues/1#issuecomment-5 и PR"

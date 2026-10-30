@@ -4,7 +4,8 @@
 - Команды для другой машины (macOS-пути на Linux и наоборот, свои шаблоны из ``foreign``) — без кнопки.
 - sudo — только из списка ``sudo_allow`` (и только если у пользователя настроен sudo без пароля).
 - Опасное (rm -r, push --force, DROP, reboot …) — второе подтверждение.
-- Выполнение: ``bash -lc`` в папке окна, без stdin, таймаут 10 минут; похожее на токены в выводе маскируется.
+- Выполнение: ``bash -o pipefail -lc`` в папке окна (упавший ``curl … | bash`` не покажет «код 0»), без stdin,
+  таймаут 10 минут; похожее на токены в выводе маскируется.
 """
 
 from __future__ import annotations
@@ -49,6 +50,19 @@ def extract(text: str) -> list[str]:
 
 def mask(out: str) -> str:
     return SECRET.sub(lambda m: (m.group(1) + "=" if m.group(1) else "") + "•••", out)
+
+
+def execute(cmd: str, cwd: str | None) -> tuple[int | str, float, str]:
+    """Выполнить команду: (код возврата или «timeout», секунды, вывод с замаскированными секретами)."""
+    cmd = re.sub(r"(^|[;&|]\s*)sudo\s+(?!-n\b)", r"\1sudo -n ", cmd, flags=re.M)   # sudo не ждёт пароль
+    t0 = time.time()
+    try:
+        r = subprocess.run(["bash", "-o", "pipefail", "-lc", cmd], cwd=cwd if cwd and os.path.isdir(cwd) else None,
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=TIMEOUT)
+        out, code = (r.stdout + ("\n" + r.stderr if r.stderr else "")).strip(), r.returncode
+    except subprocess.TimeoutExpired:
+        out, code = f"прервано: дольше {TIMEOUT // 60} минут", "timeout"
+    return code, time.time() - t0, mask(out)
 
 
 class Commands:
@@ -109,17 +123,9 @@ class Commands:
             return send(f"⚠️ Команда меняет или удаляет данные:\n<pre>{html.escape(c['cmd'][:1500])}</pre>",
                         parse_mode="HTML",
                         reply_markup=kb([[("⚠️ Да, выполнить", f"runok:{cid}"), ("Отмена", "noop:")]]))
-        cmd = re.sub(r"(^|[;&|]\s*)sudo\s+(?!-n\b)", r"\1sudo -n ", c["cmd"], flags=re.M)   # sudo не ждёт пароль
         send(f"⏳ [{html.escape(c['win'])}] выполняю…", parse_mode="HTML")
-        t0 = time.time()
-        try:
-            r = subprocess.run(["bash", "-lc", cmd], cwd=c["cwd"] if os.path.isdir(c["cwd"]) else None,
-                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=TIMEOUT)
-            out, code = (r.stdout + ("\n" + r.stderr if r.stderr else "")).strip(), r.returncode
-        except subprocess.TimeoutExpired:
-            out, code = f"прервано: дольше {TIMEOUT // 60} минут", "timeout"
-        out = mask(out)
+        code, secs, out = execute(c["cmd"], c["cwd"])
         tail = out[-TAIL:]
         mark = "✅" if code == 0 else "❌"
-        send(f"{mark} код {code} · {time.time() - t0:.0f} с" + (" · показан конец вывода" if len(out) > TAIL else "")
+        send(f"{mark} код {code} · {secs:.0f} с" + (" · показан конец вывода" if len(out) > TAIL else "")
              + (f"\n<pre>{html.escape(tail)}</pre>" if tail else " · вывода нет"), parse_mode="HTML")

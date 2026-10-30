@@ -1,4 +1,4 @@
-"""Командная строка: ``gas-pult [run|init|doctor|voices|service|last|version]``."""
+"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|last|version]``."""
 
 from __future__ import annotations
 
@@ -172,6 +172,19 @@ WantedBy=default.target
         print(f"  Чтобы пульт работал без входа в систему: sudo loginctl enable-linger {os.environ.get('USER', '')}")
 
 
+def cmd_webapp(a):
+    from gas_pult import webapp
+
+    try:
+        cfg = config.load()
+    except config.ConfigError as e:
+        raise SystemExit(str(e)) from None
+    if a.tunnel and not shutil.which("cloudflared"):
+        raise SystemExit("Для --tunnel нужен cloudflared: https://developers.cloudflare.com/cloudflare-one/"
+                         "connections/connect-networks/downloads/")
+    webapp.serve(cfg, a.port, a.tunnel, a.url)
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -192,6 +205,12 @@ def main(argv: list[str] | None = None):
     s = sub.add_parser("service", help="фоновая служба: install | uninstall")
     s.add_argument("action", choices=["install", "uninstall"])
     s.set_defaults(fn=cmd_service)
+    s = sub.add_parser("webapp", help="Mini App: панель сессий в Telegram")
+    s.add_argument("--port", type=int, default=8765)
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--tunnel", action="store_true", help="временный HTTPS-адрес Cloudflare (нужен cloudflared)")
+    g.add_argument("--url", help="постоянный HTTPS-адрес перед сервером (обратный прокси)")
+    s.set_defaults(fn=cmd_webapp)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)
