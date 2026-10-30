@@ -42,9 +42,15 @@ def test_own_models_override_defaults_and_empty_means_claude_names(cfgdir):
     models.command("claude", "openrouter", st)
     env = json.loads((cfgdir / "profiles" / "openrouter.json").read_text())["env"]
     assert env["ANTHROPIC_MODEL"] == "openrouter/auto" and "ANTHROPIC_DEFAULT_HAIKU_MODEL" not in env
-    models.command("claude", "openrouter", {})
+    models.command("claude", "openrouter", {})                # по умолчанию — явные модели Claude, не «как повезёт»
     env = json.loads((cfgdir / "profiles" / "openrouter.json").read_text())["env"]
-    assert "ANTHROPIC_MODEL" not in env and env["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+    assert env["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-5.5"
+    assert env["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+    assert env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "anthropic/claude-haiku-5.5"
+    st = {"model_profiles": models.set_models({}, "openrouter", "", "")}
+    models.command("claude", "openrouter", st)              # пустые поля — модели Claude по их обычным именам
+    env = json.loads((cfgdir / "profiles" / "openrouter.json").read_text())["env"]
+    assert "ANTHROPIC_MODEL" not in env
 
 
 def test_set_models_validates(cfgdir):

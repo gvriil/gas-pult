@@ -27,9 +27,10 @@ PROFILES = [
     {"id": "claude", "title": "Claude", "short": "Claude",
      "about": "Anthropic — как сейчас: подписка или ключ сервера. Работают коннекторы claude.ai"},
     {"id": "openrouter", "title": "OpenRouter", "short": "OpenRouter", "key": "openrouter",
-     "base_url": "https://openrouter.ai/api", "main": "", "fast": "",
+     "base_url": "https://openrouter.ai/api",
+     "main": "anthropic/claude-sonnet-5.5", "fast": "anthropic/claude-haiku-5.5",
      "key_url": "https://openrouter.ai/settings/keys", "oauth": True,     # вход в одно касание (openrouter.py)
-     "about": "Один ключ — сотни моделей, оплата по факту. Пустые поля моделей — Claude через OpenRouter",
+     "about": "Один ключ — сотни моделей, оплата по факту. По умолчанию — Claude Sonnet и Haiku через OpenRouter",
      "hint": "id модели из каталога openrouter.ai/models. Надёжно работают только модели Anthropic — "
              "с другими Claude Code может ошибаться",
      "env": {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"}},

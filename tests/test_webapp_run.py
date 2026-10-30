@@ -101,7 +101,9 @@ def test_new_session_in_profile_and_restart(panel, monkeypatch):
         panel.restart({"id": "@1", "name": "a-0900", "path": "/p/a"}, "deepseek")
     monkeypatch.setattr(panel, "close", lambda w: "закрыто")
     assert panel.restart({"id": "@1", "name": "a-0900", "path": "/p/a"}, "deepseek") == {"id": "@9"}
-    assert opened[-1] == ("a-0900", "/p/a", "claude [deepseek]")
+    assert opened[-1] == ("a-0900", "/p/a", "claude [deepseek] --continue")      # по умолчанию разговор продолжается
+    panel.restart({"id": "@1", "name": "a-0900", "path": "/p/a"}, "zai", keep=False)
+    assert opened[-1][2] == "claude [zai]"
 
 
 def test_model_key_saved_without_voice_reset(panel, monkeypatch):

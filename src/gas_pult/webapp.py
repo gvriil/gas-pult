@@ -45,6 +45,7 @@ MAX_BODY = 50 << 20                     # голосовое и файлы — �
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
+MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 
 
@@ -121,12 +122,13 @@ class Panel:
             if w["cmd"] != "claude":
                 continue
             scr = "\n".join(self.tmux.screen(w["id"], 40))
-            ctx = CONTEXT.search(scr)
+            ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
             branch = subprocess.run(["git", "-C", w["path"], "rev-parse", "--abbrev-ref", "HEAD"],
                                     capture_output=True, text=True).stdout.strip()
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch,
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
+                        "model": mdl.group(1).strip() if mdl else "",             # на чём реально работает сессия
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev)})
@@ -272,9 +274,14 @@ class Panel:
         self.pult.set_state(active=wid)
         return {"id": wid}
 
-    def restart(self, w: dict, profile: str) -> dict:
-        """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем (новый разговор)."""
+    def restart(self, w: dict, profile: str, keep: bool = True) -> dict:
+        """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
+
+        ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
+        не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
+        """
         cmd = models.command(self.cfg.claude, profile, self.pult.state())    # нет ключа — ошибка до закрытия
+        cmd += " --continue" if keep else ""
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
@@ -622,7 +629,7 @@ def handler(panel: Panel):
             if path == "/api/close":
                 return {"result": panel.close(w)}
             if path == "/api/restart":
-                return panel.restart(w, str(b.get("profile", "")))
+                return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False)
             if path == "/api/run":
                 return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError

@@ -210,7 +210,10 @@
   .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas); border-top: 1px solid var(--border-subtle);
           padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78vh; overflow-y: auto; }
   .targetrow { display: flex; align-items: center; gap: 10px; padding: 0 4px 6px; min-width: 0; }
-  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; }
+  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; white-space: nowrap; }
+  .target b { flex: 0 0 auto; max-width: 55%; }            /* имя сессии — главное: куда уйдёт сообщение */
+  .target > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 440px) { .live .lw { display: none; } }
   .target b { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .compose { display: flex; gap: 6px; align-items: flex-end; }
   .compose textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--border-subtle); border-radius: 22px; padding: 10px 14px;
@@ -575,7 +578,7 @@ function card(s) {
   const st = ST[s.status];
   return `<div class="card ${st.cls}${s.active ? " active" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
-      <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}</div></div>
+      <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
@@ -615,7 +618,7 @@ async function refresh() {
 function paintSession(s) {
   const st = ST[s.status];
   $("title").textContent = s.name;
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span>Пишете в <b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
 }
 $("sessionsView").addEventListener("click", (e) => {
@@ -714,7 +717,7 @@ async function liveChat() {                         // каждые 3 с: мен
     if (!atBottom) $("toBottom").classList.add("new");
   } catch (e) { /* связь показывает индикатор: нет ответа сервера 15 с — янтарная плашка */ }
 }
-function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU"); }
+function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").innerHTML = '<span class="lw">обновлено </span>' + new Date().toLocaleTimeString("ru-RU"); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
 // Честный индикатор: 15 секунд без ответа сервера — янтарная плашка с «Переподключить».
 setInterval(() => {
@@ -945,12 +948,20 @@ const ACTIONS = {
   close: () => confirmClose(current),
 };
 $("menu").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; closeMenu(); ACTIONS[b.dataset.act](b); };
+// Смена поставщика перезапускает окно. По умолчанию разговор продолжается (claude --continue) — контекст не теряется.
 function switchProfile(s) {
-  pickProfile((pid) => confirmDanger(`Перезапустить «${s.name}» с ${profileOf(pid)?.title || pid}? Текущий разговор закончится (он останется в истории), новый начнётся в той же папке.`, async () => {
-    toast("Перезапускаю…", 6000);
-    try { const d = await api("/api/restart", { w: s.id, profile: pid }); await refresh(); open(d.id); toast("Готово: " + (profileOf(pid)?.title || pid)); }
-    catch (err) { toast("Не вышло: " + err.message, 5000); }
-  }), s.profile || "claude");
+  pickProfile((pid) => {
+    const title = profileOf(pid)?.title || pid;
+    const go = async (keep) => {
+      toast("Перезапускаю…", 6000);
+      try { const d = await api("/api/restart", { w: s.id, profile: pid, keep }); await refresh(); open(d.id); toast(`Готово: ${title}${keep ? " — разговор продолжается" : ""}`); }
+      catch (err) { toast("Не вышло: " + err.message, 5000); }
+    };
+    sheet(`Перезапустить «${s.name}» с ${title}`, [
+      { label: "Продолжить этот разговор", icon: "chat", sub: `${title} получит всю переписку — контекст сохранится`, run: () => go(true) },
+      { label: "Начать заново", icon: "refresh", sub: "чистый контекст: быстрее и дешевле; старый разговор останется в истории", run: () => go(false) },
+    ]);
+  }, s.profile || "claude");
 }
 async function closeSession(id = current) {
   try {
@@ -1419,10 +1430,10 @@ if (DEMO && params.get("view") === "login") showLogin(); else start();
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
     { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?" },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
-    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
+    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
   ];
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
