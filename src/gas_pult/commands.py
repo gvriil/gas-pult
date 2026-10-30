@@ -2,6 +2,7 @@
 
 - Блок ```bash / ```sh / ``` без языка = команда; блоки-промпты (проза) пропускаются.
 - Команды для другой машины (macOS-пути на Linux и наоборот, свои шаблоны из ``foreign``) — без кнопки.
+- Команды, которые спрашивают пароль (pass, gpg, ssh-add, read -s …), — без кнопки: у ▶️ нет терминала.
 - sudo — только из списка ``sudo_allow`` (и только если у пользователя настроен sudo без пароля).
 - Опасное (rm -r, push --force, DROP, reboot …) — второе подтверждение.
 - Выполнение: ``bash -o pipefail -lc`` в папке окна (упавший ``curl … | bash`` не покажет «код 0»), без stdin,
@@ -25,6 +26,8 @@ SHELL = {"", "bash", "sh", "shell", "zsh", "console"}
 ON_LINUX_FOREIGN = [r"/Users/", r"\bbrew\b", r"\blaunchctl\b", r"\bpbcopy\b", r"\bosascript\b", r"\bcaffeinate\b",
                     r"~/\.zshrc"]
 ON_MAC_FOREIGN = [r"\bapt(-get)?\s", r"\bsystemctl\b", r"\bjournalctl\b", r"/home/\w+"]
+TTY = re.compile(r"(^|[;&|(]\s*)(pass(\s+show)?\s|gpg\s+(--passwd|--edit-key|-d\b|--decrypt)|ssh-add\b|passwd\b|"
+                 r"su\s|keepassxc-cli\s|read\s+-\w*s)")   # спросит пароль — у кнопки ▶️ нет терминала
 DANGER = re.compile(r"\brm\s+-\w*[rf]|\bgit\s+(push\b.*(--force|\s-f\b)|reset\s+--hard|clean\s+-\w*f)|\bdrop\s+"
                     r"(table|schema|database)\b|\btruncate\b|\breboot\b|\bshutdown\b|\bmkfs|\bdd\s+if=|--apply\b|"
                     r"--write\b|--force\b|\bkill(all)?\b", re.I)
@@ -76,6 +79,8 @@ class Commands:
     def kind(self, cmd: str) -> str:
         if self.foreign.search(cmd):
             return "foreign"
+        if TTY.search(cmd):
+            return "tty"
         sudo = [line for line in cmd.splitlines() if re.search(r"(^|[;&|]\s*)sudo\s", line)]
         if any(not self.sudo_ok.match(line) for line in sudo):
             return "sudo"
@@ -105,6 +110,9 @@ class Commands:
             body = f'<pre><code class="language-bash">{html.escape(cmd)}</code></pre>'
             if k == "foreign":
                 send(f"{head} · 💻 для другой машины — нажми, чтобы скопировать\n{body}", parse_mode="HTML")
+            elif k == "tty":
+                send(f"{head} · ⌨️ спросит пароль — только в терминале, кнопкой не выполнится\n{body}",
+                     parse_mode="HTML")
             elif k == "sudo":
                 send(f"{head} · 🔐 sudo вне разрешённого списка — только вручную\n{body}", parse_mode="HTML")
             else:

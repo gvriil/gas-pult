@@ -76,3 +76,13 @@ def test_preview_cached_by_revision(panel, monkeypatch):
     assert panel.preview("/p", "r1") == "строка" and panel.preview("/p", "r1") == "строка"
     panel.preview("/p", "r2")
     assert calls == ["/p", "/p"]
+
+
+def test_new_reuses_window_in_same_folder(panel, monkeypatch):
+    monkeypatch.setattr(panel.pult, "projects", lambda: ["/p/a", "/p/b"])
+    monkeypatch.setattr(panel.pult, "project_window",
+                        lambda path: {"id": "@7", "name": "a-0900"} if path == "/p/a" else None)
+    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd: "@9")
+    monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
+    assert panel.new(0) == {"id": "@7", "existing": "a-0900"}
+    assert panel.new(1) == {"id": "@9"}

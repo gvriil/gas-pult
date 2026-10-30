@@ -138,7 +138,19 @@ class Pult:
         text, kw = self.screen_msg(w, title)
         self.send(chat, text, **kw)
 
+    def project_window(self, path: str) -> dict | None:
+        """Окно Claude, уже работающее в этой папке (правило: одно окно на проект)."""
+        real = os.path.realpath(path)
+        return next((w for w in self.tmux.windows()
+                     if w["cmd"] == "claude" and os.path.realpath(w["path"]) == real), None)
+
     def open_session(self, chat: int, name: str, path: str, first: str | None = None):
+        if w := self.project_window(path):
+            self.set_state(active=w["id"])
+            self.send(chat, f"↪️ В {self.short(path)} уже работает «{w['name']}» — пишу туда (одно окно на проект).")
+            if first:
+                self.to_claude(w, first)
+            return
         try:
             wid = self.tmux.new_window(name, path, self.cfg.claude)
         except (RuntimeError, OSError) as e:
