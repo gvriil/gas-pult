@@ -138,3 +138,13 @@ def test_preview_shows_last_answer_action_or_prompt(tmp_path, monkeypatch):
     with open(f, "a") as fh:
         fh.write(json.dumps(use) + "\n")
     assert t.preview("/home/u/v") == "Команда: Запуск тестов"
+
+
+def test_preview_keeps_urls_and_skips_interrupts(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/w")
+    d.mkdir(parents=True)
+    rows = [assistant("- Отчёт: https://github.com/o/r/issues/1#issuecomment-5 и [PR](https://x/y)", "end_turn"),
+            user("[Request interrupted by user]")]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert t.preview("/home/u/w") == "Отчёт: https://github.com/o/r/issues/1#issuecomment-5 и PR"

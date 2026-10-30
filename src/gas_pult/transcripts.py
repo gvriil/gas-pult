@@ -190,7 +190,7 @@ def preview(path: str, tail: int = 262144) -> str:
                         or arg.get("url") or arg.get("query") or "")
                 verb = TOOLS.get(use.get("name", ""), use.get("name", "").split("__")[-1])
                 found = _line(f"{verb[:1].upper()}{verb[1:]}: {what}" if what else verb)
-        elif e.get("type") == "user" and is_real_prompt(e):
+        elif e.get("type") == "user" and is_real_prompt(e) and not text_of(content).startswith("[Request interrupted"):
             found = _line("Вы: " + PASTED.sub("", text_of(content)))
         if found:
             return found
@@ -200,7 +200,9 @@ def preview(path: str, tail: int = 262144) -> str:
 def _line(text: str, limit: int = 140) -> str:
     """Первая содержательная строка без разметки Markdown и эмодзи."""
     for raw in text.splitlines():
-        t = EMOJI.sub("", re.sub(r"[`*_#>|]|^\s*[-+]\s+|\[([^\]]+)\]\([^)]+\)", lambda m: m.group(1) or "", raw))
+        t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)                 # ссылка → подпись
+        t = re.sub(r"^\s*(#+|>|[-+*](?=\s))\s*", "", t)               # заголовок, цитата, пункт списка
+        t = EMOJI.sub("", re.sub(r"[`*]", "", t).replace("|", " "))     # «#» и «_» в адресах не трогаем
         t = re.sub(r"\s+", " ", t).strip(" :-")
         if re.search(r"\w", t):                        # строки из одних знаков («·», «---») пропускаем
             return t[:limit]
