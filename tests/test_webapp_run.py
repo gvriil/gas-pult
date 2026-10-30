@@ -82,7 +82,7 @@ def test_new_reuses_window_in_same_folder(panel, monkeypatch):
     monkeypatch.setattr(panel.pult, "projects", lambda: ["/p/a", "/p/b"])
     monkeypatch.setattr(panel.pult, "project_window",
                         lambda path: {"id": "@7", "name": "a-0900"} if path == "/p/a" else None)
-    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd: "@9")
+    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd, **kw: "@9")
     monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
     assert panel.new(0) == {"id": "@7", "existing": "a-0900"}
     assert panel.new(1) == {"id": "@9"}
@@ -93,7 +93,8 @@ def test_new_session_in_profile_and_restart(panel, monkeypatch):
     monkeypatch.setattr(panel.pult, "projects", lambda: ["/p/a"])
     monkeypatch.setattr(panel.pult, "project_window", lambda path: None)
     monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
-    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd: opened.append((name, path, cmd)) or "@9")
+    monkeypatch.setattr(panel.tmux, "new_window",
+                        lambda name, path, cmd, **kw: opened.append((name, path, cmd)) or "@9")
     monkeypatch.setattr(webapp.models, "command", lambda base, profile, st: f"{base} [{profile or 'claude'}]")
     assert panel.new(0, "zai") == {"id": "@9"} and opened[-1][2] == "claude [zai]"
     monkeypatch.setattr(panel, "close", lambda w: "Claude не вышел (возможно, занят) — посмотрите экран")
@@ -138,3 +139,20 @@ def test_service_worker_served_from_root(panel):
         assert r.headers["Content-Type"].startswith("text/javascript") and b"notificationclick" in r.read()
     finally:
         srv.shutdown()
+
+
+def test_stopped_session_listed_and_revived(panel, monkeypatch):
+    stopped = {"id": "@3", "name": "shop", "path": "/tmp", "cmd": "zsh", "mark": "zai", "stopped": True,
+               "channel": False, "profile": ""}
+    monkeypatch.setattr(panel.tmux, "windows", lambda: [stopped])
+    monkeypatch.setattr(panel.tmux, "window", lambda wid: stopped if wid == "@3" else None)
+    s = panel.sessions()
+    assert s[0]["status"] == "stopped" and s[0]["profile"] == "zai"
+    calls = []
+    monkeypatch.setattr(webapp.models, "command", lambda base, profile, st: f"claude [{profile}]")
+    monkeypatch.setattr(panel.tmux, "respawn", lambda wid, path, cmd, mark: calls.append((wid, cmd, mark)))
+    monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
+    assert panel.revive("@3") == {"id": "@3"}
+    assert calls == [("@3", "claude [zai] --continue", "zai")]     # тот же поставщик, разговор продолжается
+    with pytest.raises(ValueError):
+        panel.revive("@9")

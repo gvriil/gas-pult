@@ -13,7 +13,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from gas_pult.config import config_dir
+from gas_pult.config import config_dir, write_private
 
 EL_API = "https://api.elevenlabs.io/v1"
 EL_TTS_MODEL = "eleven_multilingual_v2"     # русский поддерживается
@@ -38,11 +38,7 @@ def save_key(provider: str, key: str | None):
         d[provider] = key
     else:
         d.pop(provider, None)
-    f = secrets_file()
-    f.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    f.touch(mode=0o600, exist_ok=True)
-    f.chmod(0o600)
-    f.write_text(json.dumps(d))
+    write_private(secrets_file(), json.dumps(d))
 
 
 def key_info() -> dict:

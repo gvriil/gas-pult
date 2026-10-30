@@ -16,6 +16,8 @@ import threading
 import time
 from pathlib import Path
 
+from gas_pult.config import write_private
+
 ROLES = ("member", "viewer")
 RANK = {"viewer": 1, "member": 2, "owner": 3}
 TITLES = {"owner": "владелец", "member": "участник", "viewer": "наблюдатель"}
@@ -32,11 +34,7 @@ class People:
             return {}
 
     def _save(self, d: dict):
-        self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        tmp = self.store.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d, ensure_ascii=False))
-        tmp.chmod(0o600)
-        tmp.replace(self.store)
+        write_private(self.store, json.dumps(d, ensure_ascii=False))
 
     def role(self, uid) -> str | None:
         """«owner», «member», «viewer» или None (нет доступа)."""

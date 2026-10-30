@@ -175,6 +175,10 @@ class Pult:
 
     def ready_for_text(self, wid: str, limit: int = 40):
         """Довести окно до строки ввода: меню закрыть (Esc), на вопрос — не отвечать, свежий Claude — дождаться."""
+        w = self.tmux.window(wid)
+        if w and w.get("cmd") != "claude" and w.get("mark"):     # Claude завершился — в окне оболочка, не печатаем
+            raise NotReady("Claude в этом окне остановлен — текст в командную строку не отправляю. Перезапустите "
+                           "сессию: в панели «Перезапустить» или 🆕 в той же папке")
         escapes = 0
         for _ in range(limit):
             scr = "\n".join(self.tmux.screen(wid, 15))

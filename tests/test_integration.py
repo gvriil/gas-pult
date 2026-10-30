@@ -126,8 +126,11 @@ def test_one_window_per_project(pult):
 
 class Screens:
     """tmux, у которого экран меняется по сценарию; запоминает нажатые клавиши и вставки."""
-    def __init__(self, *screens):
-        self.screens, self.keys_sent, self.pasted = list(screens), [], []
+    def __init__(self, *screens, cmd="claude"):
+        self.screens, self.keys_sent, self.pasted, self.cmd = list(screens), [], [], cmd
+
+    def window(self, wid):
+        return {"id": wid, "cmd": self.cmd, "mark": "claude"}
 
     def screen(self, wid, n=25):
         return self.screens[0].splitlines()
@@ -220,3 +223,11 @@ def test_prose_about_hints_is_not_a_menu():
     from gas_pult import bot
     prose = "● Настоящее меню узнаём по подсказке внизу («Enter to confirm», «Esc to cancel»).\n──────\n❯ \n──────"
     assert not bot.DIALOG.search(prose) and not bot.QUESTION.search(prose) and not bot.PANEL.search(prose)
+
+
+def test_text_never_goes_to_bare_shell(monkeypatch):
+    tm = Screens("user@host:~/p$ \n❯ ", cmd="zsh")             # Claude вышел, в окне оболочка (и даже с «❯»)
+    p, bot = make_pult(monkeypatch, tm)
+    with pytest.raises(bot.NotReady, match="остановлен"):
+        p.to_claude({"id": "@1"}, "rm -rf что-нибудь")
+    assert tm.pasted == []
