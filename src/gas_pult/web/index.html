@@ -83,6 +83,9 @@
   .picker .search input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); outline: none; }
   .picker .search input:focus { border-color: var(--border-focus); }
   .picker .mid { font: 12px ui-monospace, Menlo, monospace; color: var(--text-secondary); }
+  body:not([data-role="owner"]) [data-owner] { display: none !important; }      /* только владельцу */
+  body[data-role="viewer"] #composer, body[data-role="viewer"] #menu, body[data-role="viewer"] #keys, body[data-role="viewer"] #ask button { display: none !important; }
+  .viewonly { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 10px; }
   .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
 
   /* ===== Список сессий ===== */
@@ -322,9 +325,11 @@
   <section id="login" hidden>
     <div class="panel">
       <h2 class="serif" style="margin:2px 0 6px;font-size:21px">Вход в пульт</h2>
-      <p class="note" style="margin:0 0 12px">Пароль не нужен: одноразовый код придёт в Telegram владельцу бота. Код действует 5 минут.</p>
+      <p class="note" style="margin:0 0 12px">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
       <div id="loginStep1">
-        <button class="btn" id="getCode">Получить код в Telegram</button>
+        <button class="btn" id="tgLogin">Войти через Telegram</button>
+        <div id="tgWait" hidden></div>
+        <button class="btn ghost" id="getCode">Код владельцу бота</button>
         <button class="btn ghost" id="tryDemo">Посмотреть демо — без входа</button>
         <p class="note" style="margin:6px 0 0">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
       </div>
@@ -343,7 +348,7 @@
 
   <section id="home" hidden>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations">Интеграции</button></div>
+    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations" data-owner>Интеграции</button></div>
     <div id="sessionsView"></div>
     <div id="integrationsView" hidden></div>
   </section>
@@ -449,7 +454,7 @@ function paintIcons() {
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
-  $("menu").innerHTML = `<button data-act="close" class="danger">${ic("power")}Завершить</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"],
+  $("menu").innerHTML = `<button data-act="close" class="danger" data-owner>${ic("power")}Завершить</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"],
     ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
     .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("");
 }
@@ -480,7 +485,7 @@ async function api(path, body, raw, extra) {
   let r;
   try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined }); }
   catch (e) { throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
-  if (r.status === 403 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }
+  if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "ошибка " + r.status);
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
@@ -546,9 +551,29 @@ addEventListener("scroll", () => {
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход по коду из Telegram</span>"); }
+function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход через Telegram</span>"); }
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
+// Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
+let tgTimer = null;
+$("tgLogin").onclick = (e) => busy(e.currentTarget, "Готовлю вход…", async () => {
+  try {
+    const d = await api("/api/login/tg", {});
+    tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");   // в браузере — новой вкладкой, не уходя со страницы
+    $("tgWait").hidden = false;
+    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>В Telegram нажмите «Start», затем «Войти». Жду подтверждения…</span></div>
+      <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}Открыть Telegram ещё раз</a>`;
+    clearInterval(tgTimer); const t0 = Date.now();
+    tgTimer = setInterval(async () => {
+      if (Date.now() - t0 > d.ttl * 1000) { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>Ссылка устарела — нажмите «Войти через Telegram» ещё раз.</span></div>`; return; }
+      try {
+        const r = await api("/api/login/tg?id=" + encodeURIComponent(d.id));
+        if (r.state === "ok") { clearInterval(tgTimer); $("tgWait").hidden = true; haptic("notificationOccurred", "success"); await start(); }
+        else if (r.state !== "wait") { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${r.state === "no" ? "Вход отклонён в Telegram." : "Ссылка устарела — начните заново."}</span></div>`; }
+      } catch (err) { /* сеть моргнула — следующая попытка через 2 с */ }
+    }, 2000);
+  } catch (err) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
+});
 $("resend").onclick = (e) => requestCode(e.target);
 async function requestCode(btn) {
   await busy(btn, "Отправляю…", async () => {
@@ -673,7 +698,7 @@ function sessionSheet(id) {
   sheet(s.name, [
     { label: "Открыть", icon: "chat", run: () => open(id) },
     { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) },
-    { label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) },
+    ...(meta?.role === "owner" ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
   ]);
 }
 function confirmClose(id) {
@@ -831,7 +856,7 @@ async function renderCmds() {
   if (!d?.cmds?.length || tab !== "chat") return;
   const box = document.createElement("div");
   box.innerHTML = `<div class="section">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd">
-    <pre>${esc(c.cmd)}</pre>${c.kind === "local"
+    <pre>${esc(c.cmd)}</pre>${c.kind === "local" && meta?.role === "owner"
       ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(d.host)}</button>`
       : `<div class="hint">${{ sudo: ic("lock", "s16") + "sudo вне разрешённого списка — выполните вручную в терминале",
           tty: ic("key", "s16") + "спросит пароль — выполните вручную в терминале" }[c.kind] || ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
@@ -973,7 +998,7 @@ const ACTIONS = {
       ...meta.models.map((m) => ({ label: m, icon: "chip", sub: [{ opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], real(m)].filter(Boolean).join(" · "),
         run: async () => { await act("/api/model", { name: m }, "Модель: " + m); if (!own) effortSheet(); } })),
       { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) },
-      { label: "Сменить поставщика…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — сессия перезапустится", run: () => switchProfile(s) }]);
+      ...(meta.role === "owner" ? [{ label: "Сменить поставщика…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — сессия перезапустится", run: () => switchProfile(s) }] : [])]);
   },
   effort: () => effortSheet(),
   switch: () => $("switchBtn").onclick(),
@@ -1447,6 +1472,25 @@ function watchSessions(list) {                       // переходы ста�
 if (canNotify() && "serviceWorker" in navigator && !DEMO) navigator.serviceWorker.register("/sw.js").catch(() => {});
 navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.open) open(e.data.open); });
 
+// ---------- люди (только владелец) ----------
+const ROLE = { owner: "владелец", member: "участник", viewer: "наблюдатель" };
+async function peopleSheet() {
+  let d; try { d = await api("/api/people"); } catch (e) { return toast(e.message, 4000); }
+  sheet("Люди", [...d.people.map((p) => ({
+    label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: "pin",
+    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить"),
+    run: () => p.role !== "owner" && personSheet(p) })),
+    { label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить", run: () => {} }]);
+}
+function personSheet(p) {
+  const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
+  sheet(p.name || "ID " + p.id, [
+    { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
+    { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
+    { label: "Убрать доступ", icon: "power", danger: true, sub: "вход перестанет работать сразу", run: () => confirmDanger(`Убрать доступ у ${p.name || p.id}?`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Доступ убран"))) },
+  ]);
+}
+
 // ---------- настройки ----------
 $("settingsBtn").onclick = () => {
   const mode = store("theme") || "auto";
@@ -1455,6 +1499,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: () => location.reload() },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
@@ -1465,6 +1510,8 @@ $("updateBar").onclick = () => location.reload();
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
+  document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
+  if (meta.role === "viewer" && !$("viewOnly")) $("composer").insertAdjacentHTML("afterend", '<div class="viewonly" id="viewOnly">Доступ только на просмотр</div>');
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
@@ -1519,12 +1566,14 @@ function demoApi(path, body) {
   const R = {
     "/api/meta": { host: "ubuntu", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
-                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina",
+                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner",
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S },
+    "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "" }, { id: 2, role: "member", name: "Алексей", username: "alexey" }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
+    "/api/login/tg": { id: "demo", link: "https://t.me/rc_cld_bot?start=login_demo", ttl: 300, state: "wait" },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
                   connectors_url: "https://claude.ai/customize/connectors",

@@ -37,6 +37,7 @@ from gas_pult.commands import DANGER, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
+from gas_pult.people import People, allowed
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -106,6 +107,9 @@ class Panel:
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
         self.mcp = Mcp()
         self.openrouter = OpenRouter()
+        self.people = People(cfg.data / "people.json", cfg.owners)
+        self.logins = webauth.TgLogins(cfg.data / "tg_logins.json")
+        self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
 
@@ -354,6 +358,17 @@ class Panel:
         if provider == "elevenlabs":                         # голос возвращается на сервер; модели не трогаем
             self.pult.set_state(tts_provider="local", stt_provider="local")
 
+    def bot_username(self) -> str:
+        if not self._bot:
+            self._bot = self.pult.api("getMe")["username"]
+        return self._bot
+
+    def set_role(self, uid: int, role: str):
+        p = next((x for x in self.people.list() if x["id"] == uid), None)
+        if not p or p["role"] == "owner":
+            raise ValueError("такого человека нет в списке")
+        self.people.add(uid, role, p.get("name", ""), p.get("username", ""))
+
     def openrouter_done(self, code: str, state: str):
         """Возврат из OpenRouter после «Authorize»: код → ключ → secrets.json (как ключ, вставленный вручную)."""
         providers.save_key("openrouter", self.openrouter.finish(code, state))
@@ -452,6 +467,12 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 });
 """
 
+# Только владельцу: выполнение команд, закрытие сессий, ключи, интеграции, модели, люди.
+OWNER_ONLY = {"/api/run", "/api/close", "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
+              "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
+              "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
+              "/api/people", "/api/people/role", "/api/people/remove"}
+
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
@@ -482,20 +503,35 @@ def handler(panel: Panel):
         def json(self, data, code: int = 200):
             self.reply(code, json.dumps(data, ensure_ascii=False).encode())
 
-        def via(self) -> str:
-            """Кто спрашивает: «telegram» (подпись владельца), «browser» (сессия по коду) или ""."""
+        def who(self) -> tuple[str, str | None, int | None]:
+            """(откуда: «telegram» / «browser» / "", роль, Telegram ID). Роль — на каждый запрос, из people.json."""
             user = verify(self.headers.get("X-Telegram-Init-Data", ""), panel.cfg.token)
-            if user and user.get("id") in panel.cfg.owners:
-                return "telegram"
-            return "browser" if panel.auth.check(self.session()) else ""
+            if user and (role := panel.people.role(user.get("id"))):
+                return "telegram", role, int(user["id"])
+            uid = panel.auth.uid(self.session())
+            if uid is None:
+                return "", None, None
+            role = "owner" if uid == webauth.LEGACY else panel.people.role(uid)
+            return ("browser", role, uid) if role else ("", None, None)
+
+        def via(self) -> str:
+            return self.who()[0]
 
         def session(self) -> str:
             return webauth.cookie_value(self.headers.get("Cookie", ""))
 
-        def owner(self) -> bool:
-            if self.via():
+        def permit(self, path: str, method: str) -> bool:
+            """Не вошёл — 401 (панель покажет вход); не хватает роли — 403 с причиной."""
+            role = self.who()[1]
+            if not role:
+                self.json({"error": "нужен вход"}, 401)
+                return False
+            need = ("owner" if path in OWNER_ONLY else
+                    "member" if method == "POST" and path != "/api/logout" else "viewer")
+            if allowed(role, need):
                 return True
-            self.json({"error": "нет доступа"}, 403)
+            why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
+            self.json({"error": why}, 403)
             return False
 
         def client(self) -> tuple[str, str]:
@@ -523,16 +559,21 @@ def handler(panel: Panel):
                 return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
             if not url.path.startswith("/api/"):
                 return self.json({"error": "нет такой страницы"}, 404)
-            if not self.owner():
-                return None
             q = dict(urllib.parse.parse_qsl(url.query))
+            if url.path == "/api/login/tg":              # браузер ждёт подтверждения из Telegram (по своему rid)
+                return self.dispatch(lambda: self.tg_poll(q))
+            if not self.permit(url.path, "GET"):
+                return None
             self.dispatch(lambda: self.get(url.path, q))
 
         def get(self, path: str, q: dict):
             if path == "/api/sessions":
                 return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build}
             if path == "/api/meta":
-                return {**panel.meta(), "via": self.via(), "build": build, "whatsnew": whatsnew[:1]}
+                kind, role, uid = self.who()
+                return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1]}
+            if path == "/api/people":
+                return {"people": panel.people.list()}
             if path == "/api/mcp":
                 return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS,
                         "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL}
@@ -584,9 +625,22 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: {"id": panel.login_start(*self.client())})
             if path == "/api/login/verify":
                 return self.dispatch(self.login)
-            if not path.startswith("/api/") or not self.owner():
+            if path == "/api/login/tg":
+                return self.dispatch(self.tg_start)
+            if not path.startswith("/api/") or not self.permit(path, "POST"):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             self.dispatch(lambda: self.post(path))
+
+        def tg_start(self):
+            rid, nonce = panel.logins.start(*self.client())
+            return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
+                    "ttl": webauth.LOGIN_TTL}
+
+        def tg_poll(self, q: dict):
+            state, uid = panel.logins.poll(q.get("id", ""))
+            if state == "ok":
+                return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
+            return {"state": state}
 
         def login(self):
             b = json.loads(self.body() or b"{}")
@@ -599,6 +653,12 @@ def handler(panel: Panel):
             if path == "/api/stt":
                 return {"text": panel.stt(self.body(), self.headers.get("Content-Type", ""))}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/people/role":
+                panel.set_role(int(b.get("id", 0)), str(b.get("role", "")))
+                return {"people": panel.people.list()}
+            if path == "/api/people/remove":
+                panel.people.remove(int(b.get("id", 0)))
+                return {"people": panel.people.list()}
             if path == "/api/logout":
                 panel.auth.logout(self.session())
                 return ("cookie", webauth.set_cookie("", 0), {"ok": True})
@@ -696,6 +756,7 @@ def set_menu(api: Api, owners: list[int], url: str):
 
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
     panel = Panel(cfg)
+    menu_for = cfg.owners + [p["id"] for p in panel.people.list() if p["role"] != "owner"]   # кнопка «📱 Панель»
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
     proc = None
     if use_tunnel:
@@ -703,7 +764,7 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
     if url:
         panel.public_url = url
         try:
-            set_menu(Api(cfg.token), cfg.owners, url)
+            set_menu(Api(cfg.token), menu_for, url)
         except TelegramError as e:
             print("menu:", e, flush=True)
     print(f"gas-pult webapp: http://127.0.0.1:{port}" + (f" → {url} · кнопка «📱 Панель» в меню бота" if url else ""),

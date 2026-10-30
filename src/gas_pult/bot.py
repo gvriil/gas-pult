@@ -5,7 +5,8 @@
 - Монитор: любой законченный ход Claude и любой диалог на экране (разрешения, /model, /mcp) приходят сами,
   с кнопками 🔊 ✅ ✏️ и 1/2/3/↑/↓.
 - Номер задачи (GAS-123) — новая сессия по задаче. Команды из ответа — отдельными сообщениями с ▶️.
-Пускает только владельцев из ``owners``; остальных молча игнорирует.
+Пускает только владельцев из ``owners``; от остальных принимает лишь вход в панель «через Telegram»
+(``/start login_…`` и кнопки «Войти / Это не я») — остальное молча игнорирует.
 """
 
 from __future__ import annotations
@@ -23,9 +24,11 @@ from pathlib import Path
 from gas_pult import transcripts, voice
 from gas_pult.commands import Commands
 from gas_pult.config import Config
+from gas_pult.people import TITLES, People
 from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
+from gas_pult.webauth import TgLogins
 
 # Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
 # сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
@@ -46,6 +49,13 @@ NOISE = re.compile(r"🤖|ctx used|⏵⏵|esc to interrupt|^\s*[✻✶✳✢·*]
 
 def dialog_hash(scr: str) -> str:
     return hashlib.md5("\n".join(x for x in scr.splitlines() if not NOISE.search(x)).encode()).hexdigest()
+
+
+def public(u: dict) -> bool:
+    """Что принимаем и от незнакомых: начало входа в панель и кнопки подтверждения входа."""
+    if m := u.get("message"):
+        return (m.get("text") or "").startswith("/start login_")
+    return (u.get("callback_query") or {}).get("data", "").startswith("lg:")
 
 
 class NotReady(RuntimeError):
@@ -78,6 +88,9 @@ class Pult:
         self.counter = 0
         self.waiting: dict[int, str] = {}                 # чат → чего ждём следующим сообщением
         self.home = os.path.expanduser("~")
+        self.people = People(cfg.data / "people.json", cfg.owners)
+        self.logins = TgLogins(cfg.data / "tg_logins.json")
+        self.requests: dict[int, dict] = {}                # кто просит доступ: Telegram ID → имя, @username
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -389,6 +402,16 @@ class Pult:
         send = self.to(chat)
         if kind == "noop":
             return
+        if kind == "lg":                                   # человек подтверждает вход в панель из своего Telegram
+            verdict, _, nonce = arg.partition(":")
+            uid = q["from"]["id"]
+            if verdict == "ok" and not self.people.role(uid):
+                return send("Доступа к пульту нет.")
+            if not self.logins.decide(nonce, uid, verdict == "ok"):
+                return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
+            return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
+        if kind == "pp":                                   # владелец решает, пускать ли человека
+            return self.grant(chat, arg)
         if kind == "mk":
             self.waiting[chat] = "name"
             return send("Имя новой папки (латиница, дефис), например: shop-bot", reply_markup={"force_reply": True})
@@ -468,10 +491,61 @@ class Pult:
         except TelegramError:
             pass
 
+    # ---------- вход в панель «через Telegram» и люди ----------
+    def login_request(self, m: dict, nonce: str):
+        u, send = m["from"], self.to(m["chat"]["id"])
+        info = self.logins.info(nonce)
+        if not info:
+            return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
+        role = self.people.role(u["id"])
+        if role:
+            return send(f"Войти в панель пульта ({TITLES[role]})?\n\nБраузер: {info['ua'] or '—'}\n"
+                        f"Адрес: {info['ip'] or '—'}\n\nЕсли входите не вы — нажмите «Это не я».",
+                        reply_markup=kb([[("✅ Войти", f"lg:ok:{nonce}"), ("✖️ Это не я", f"lg:no:{nonce}")]]))
+        name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or str(u["id"])
+        self.requests[u["id"]] = {"name": name, "username": u.get("username", "")}
+        send("У вас пока нет доступа к пульту. Я спросил владельца — когда он ответит, нажмите «Войти через Telegram» "
+             "в браузере ещё раз.")
+        self.broadcast(f"🔐 {name} (@{u.get('username') or '—'}, ID {u['id']}) просит доступ к панели пульта.",
+                       reply_markup=kb([[("👤 Участник", f"pp:member:{u['id']}"),
+                                         ("👁 Наблюдатель", f"pp:viewer:{u['id']}")],
+                                        [("✖️ Отказать", f"pp:no:{u['id']}")]]))
+
+    def grant(self, chat: int, arg: str):
+        role, _, uid = arg.partition(":")
+        uid = int(uid)
+        req = self.requests.pop(uid, {})
+        who = req.get("name") or str(uid)
+        if role not in ("member", "viewer"):
+            self.send(chat, f"Отказано: {who}.")
+            return self.notify(uid, "Владелец не дал доступ к пульту.")
+        self.people.add(uid, role, req.get("name", ""), req.get("username", ""))
+        self.menu_for(uid)
+        self.send(chat, f"Готово: {who} — {TITLES[role]}. Убрать или поменять роль — «Настройки» → «Люди» в панели.")
+        self.notify(uid, f"Владелец дал доступ к пульту ({TITLES[role]}). Нажмите «Войти через Telegram» в браузере "
+                         "ещё раз — или кнопку «📱 Панель» внизу этого чата.")
+
+    def notify(self, uid: int, text: str):
+        try:
+            self.send(uid, text)
+        except TelegramError as e:
+            print("notify:", e, flush=True)
+
+    def menu_for(self, uid: int):
+        """Кнопка «📱 Панель» — как у владельца (адрес панели знает только она)."""
+        try:
+            mb = self.api("getChatMenuButton", chat_id=self.cfg.owners[0])
+            if mb.get("type") == "web_app":
+                self.api("setChatMenuButton", chat_id=uid, menu_button=mb)
+        except TelegramError as e:
+            print("menu:", e, flush=True)
+
     def on_message(self, m: dict):
         chat = m["chat"]["id"]
         send = self.to(chat)
         t = (m.get("text") or m.get("caption") or "").strip()
+        if t.startswith("/start login_"):
+            return self.login_request(m, t.removeprefix("/start login_").strip())
         if self.waiting.pop(chat, None) == "name" and m.get("text") and not t.startswith(MENU_PREFIXES):
             return self.new_folder(chat, t.lower())
         if t.startswith("🆕"):
@@ -535,7 +609,7 @@ class Pult:
                 for u in self.api("getUpdates", timeout=60, **({"offset": offset} if offset else {})):
                     offset = u["update_id"] + 1
                     src = u.get("message") or u.get("callback_query") or {}
-                    if src.get("from", {}).get("id") not in self.cfg.owners:   # чужих молча игнорируем
+                    if src.get("from", {}).get("id") not in self.cfg.owners and not public(u):   # чужих — молча
                         continue
                     threading.Thread(target=self.handle, args=(u,), daemon=True).start()
             except Exception as e:
