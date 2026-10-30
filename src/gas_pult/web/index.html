@@ -403,6 +403,8 @@ const wideMQ = matchMedia("(min-width: 1024px)");
 const split = () => wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
+// Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
+const openUrl = (url) => (tg?.initData ? tg.openLink(url) : window.open(url, "_blank", "noopener"));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const clean = (s) => String(s ?? "").replace(/[\p{Extended_Pictographic}️‍]/gu, "").replace(/\s+/g, " ").trim();   // без системных эмодзи
 const folder = (p) => p.split("/").filter(Boolean).pop() || "~";
@@ -564,7 +566,8 @@ $("tgLogin").onclick = (e) => busy(e.currentTarget, "Готовлю вход…"
     const d = await api("/api/login/tg", {});
     tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");   // в браузере — новой вкладкой, не уходя со страницы
     $("tgWait").hidden = false;
-    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>В Telegram нажмите «Start», затем «Войти». Жду подтверждения…</span></div>
+    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>В Telegram нажмите «Запустить» (Start), затем «Войти». Жду подтверждения…</span></div>
+      <p class="note" style="margin:6px 2px">Не открылся Telegram или нет кнопки? Внизу чата с ботом нажмите «Запустить» (Start) — даже если бот уже запущен.</p>
       <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}Открыть Telegram ещё раз</a>`;
     clearInterval(tgTimer); const t0 = Date.now();
     tgTimer = setInterval(async () => {
@@ -671,10 +674,10 @@ function paintSession(s) {
   paintWorking(s);
 }
 $("sessionsView").addEventListener("click", (e) => {
-  const r = e.target.closest("[data-reply]"); if (r) return open(r.dataset.reply, "screen");
+  const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
-  const c = e.target.closest(".card[data-id]"); if (c) open(c.dataset.id);
+  const c = e.target.closest(".card[data-id]"); if (c) openSession(c.dataset.id);
 });
 $("newBtn").onclick = () => newSession();
 function newSession(profile) {
@@ -694,14 +697,14 @@ function pickProfile(go, exclude) {
 async function startSession(i, profile) {
   toast(profile && profile !== "claude" ? `Запускаю Claude Code с ${profileOf(profile)?.title || profile}…` : "Запускаю Claude…", 3000);
   try {
-    const d = await api("/api/new", { i, profile }); await refresh(); open(d.id);
+    const d = await api("/api/new", { i, profile }); await refresh(); openSession(d.id);
     if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);
   } catch (err) { toast("Не вышло: " + err.message, 4500); }
 }
 function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   sheet(s.name, [
-    { label: "Открыть", icon: "chat", run: () => open(id) },
+    { label: "Открыть", icon: "chat", run: () => openSession(id) },
     { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) },
     ...(meta?.role === "owner" ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
   ]);
@@ -712,7 +715,8 @@ function confirmClose(id) {
 }
 
 // ---------- сессия ----------
-async function open(id, startTab) {
+// Не «open»: функция верхнего уровня стала бы window.open и ломала внешние ссылки в браузере.
+async function openSession(id, startTab) {
   current = id; termAll = false; show("session");
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
@@ -731,7 +735,7 @@ $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab
 
 // Остановленная сессия: Claude в окне завершился. Текст туда не шлём — предлагаем перезапустить с продолжением разговора.
 async function revive(id, btn) {
-  const go = async () => { try { await api("/api/revive", { w: id }); toast("Claude запускается — разговор продолжится", 3500); await refresh(); open(id); } catch (err) { toast(err.message, 5000); } };
+  const go = async () => { try { await api("/api/revive", { w: id }); toast("Claude запускается — разговор продолжится", 3500); await refresh(); openSession(id); } catch (err) { toast(err.message, 5000); } };
   return btn ? busy(btn, "Запускаю…", go) : go();
 }
 async function loadContent() {
@@ -908,7 +912,7 @@ function authCard(a, name, w) {
 }
 document.addEventListener("click", async (e) => {
   const o = e.target.closest("[data-openauth]");
-  if (o) { tg?.openLink ? tg.openLink(o.dataset.openauth) : window.open(o.dataset.openauth, "_blank"); return; }
+  if (o) { openUrl(o.dataset.openauth); return; }
   const f = e.target.closest("[data-finish]"); if (!f) return;
   const url = $("authUrl").value.trim();
   if (!url) return toast("Вставьте адрес страницы после входа");
@@ -1034,7 +1038,7 @@ function switchProfile(s) {
     const title = profileOf(pid)?.title || pid;
     const go = async (keep) => {
       toast("Перезапускаю…", 6000);
-      try { const d = await api("/api/restart", { w: s.id, profile: pid, keep }); await refresh(); open(d.id); toast(`Готово: ${title}${keep ? " — разговор продолжается" : ""}`); }
+      try { const d = await api("/api/restart", { w: s.id, profile: pid, keep }); await refresh(); openSession(d.id); toast(`Готово: ${title}${keep ? " — разговор продолжается" : ""}`); }
       catch (err) { toast("Не вышло: " + err.message, 5000); }
     };
     sheet(`Перезапустить «${s.name}» с ${title}`, [
@@ -1056,7 +1060,7 @@ async function closeSession(id = current) {
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
 $("switchBtn").onclick = () => sheet("Перейти в сессию", [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((s) => ({
-  label: s.name, sub: `${ST[s.status].label} · ${folder(s.path)}`, icon: s.status === "dialog" ? "warn" : "chat", on: s.id === current, run: () => open(s.id) })));
+  label: s.name, sub: `${ST[s.status].label} · ${folder(s.path)}`, icon: s.status === "dialog" ? "warn" : "chat", on: s.id === current, run: () => openSession(s.id) })));
 
 // ---------- ввод ----------
 async function sendText() {
@@ -1210,7 +1214,7 @@ function profileForm(p, connected) {
     <button class="btn ghost" id="profDefaults">Вернуть по умолчанию</button>
     <p class="note">Изменения моделей и ключа действуют для новых сессий и после «Сменить поставщика».</p></div>`;
   $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
-  $("profKeyPage")?.addEventListener("click", () => { tg?.openLink ? tg.openLink(p.key_url) : window.open(p.key_url, "_blank"); });
+  $("profKeyPage")?.addEventListener("click", () => { openUrl(p.key_url); });
   $("profSave").onclick = (e) => busy(e.currentTarget, "Проверяю ключ…", async () => {
     try {
       const d = await api("/api/keys", { provider: p.id, key: $("profKey").value });
@@ -1244,7 +1248,7 @@ function oauthWire(p) {
     let url = orLink && Date.now() - orLink.t < 9 * 60000 ? orLink.url : null;
     orLink = null;
     if (!url) { toast("Готовлю вход…"); try { url = (await fetchLink()).url; orLink = null; } catch (e) { return toast(e.message, 4500); } }
-    tg?.openLink ? tg.openLink(url) : window.open(url, "_blank");
+    openUrl(url);
     const before = p.key?.tail || "", t0 = Date.now();
     $("orWait").hidden = false;
     $("orWait").innerHTML = `<div class="result wait">${ic("wait")}<span>Жду ключ от ${esc(p.title)} — войдите и нажмите «Authorize». Проверяю каждые 3 секунды…</span></div>`;
@@ -1372,7 +1376,7 @@ function connectorView(c) {
     <div id="connNext">${on ? tryButton(c) : '<button class="btn ghost" id="connCheck">Проверить сейчас</button>'}</div>
     <details style="margin-top:10px"><summary class="note" style="display:inline">Не получается?</summary>
       <p class="note">Отметка не появляется 2–3 минуты — нажмите «Проверить сейчас». В claude.ai нет ${esc(c.title)} — «Другой сервис» → «Для продвинутых». Открытые сессии увидят сервис после перезапуска, новые — сразу.</p></details></div>`;
-  $("openClaude")?.addEventListener("click", () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); });
+  $("openClaude")?.addEventListener("click", () => { openUrl(mcpData.connectors_url); });
   $("connCheck")?.addEventListener("click", (e) => busy(e.target, "Проверяю…", () => checkConn(c)));
   clearInterval(connTimer);
   if (!on) connTimer = setInterval(() => { if (view !== "mcpForm") return clearInterval(connTimer); checkConn(c); }, 10000);
@@ -1393,7 +1397,7 @@ $("mcpForm").addEventListener("click", async (e) => {
     const s = sessions.find((x) => x.active && x.status !== "busy") || sessions.find((x) => x.status === "idle") || sessions[0];
     if (!s) return toast("Нет открытых сессий — откройте новую", 4500);
     return busy(t, "Отправляю…", async () => {
-      try { await api("/api/send", { w: s.id, text: t.dataset.try }); toast("Отправлено в «" + s.name + "»"); clearInterval(connTimer); open(s.id); }
+      try { await api("/api/send", { w: s.id, text: t.dataset.try }); toast("Отправлено в «" + s.name + "»"); clearInterval(connTimer); openSession(s.id); }
       catch (err) { toast("Не отправлено: " + err.message, 4500); }
     });
   }
@@ -1409,7 +1413,7 @@ function moreView() {
     <div class="section">Для продвинутых</div>
     ${mcpData.presets.map((p, i) => `<button class="card" data-p2="${i}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div><div class="meta" style="white-space:normal">${esc(p.about)}</div></div></div></button>`).join("")}
     ${mcpData.servers.filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) => `<button class="btn ghost" data-login="${esc(s.name)}">${ic("key")}Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
-  $("openCatalog").onclick = () => { tg?.openLink ? tg.openLink(mcpData.connectors_url) : window.open(mcpData.connectors_url, "_blank"); };
+  $("openCatalog").onclick = () => { openUrl(mcpData.connectors_url); };
 }
 async function startLogin(name, btn) {
   await busy(btn, "Готовлю вход… (до 20 секунд)", async () => {
@@ -1443,7 +1447,7 @@ function mcpForm(p) {
     const base = ($("f_base")?.value || "").trim().replace(/\/$/, "");
     if (p.key_url.includes("{base}") && !base) return toast("Сначала впишите адрес " + p.title + " — поле ниже", 4000);
     const url = p.key_url.replace("{base}", base);
-    tg?.openLink ? tg.openLink(url) : window.open(url, "_blank");
+    openUrl(url);
   });
   $("mcpAdd").onclick = (e) => busy(e.target, "Подключаю и проверяю…", async () => {
     const values = Object.fromEntries(p.fields.map((f) => [f.key, $("f_" + f.key).value]));
@@ -1491,7 +1495,7 @@ function watchSessions(list) {                       // переходы ста�
   }
 }
 if (canNotify() && "serviceWorker" in navigator && !DEMO) navigator.serviceWorker.register("/sw.js").catch(() => {});
-navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.open) open(e.data.open); });
+navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.open) openSession(e.data.open); });
 
 // ---------- люди (только владелец) ----------
 const ROLE = { owner: "владелец", member: "участник", viewer: "наблюдатель" };
@@ -1546,7 +1550,7 @@ async function start() {
   start.done = true;
   keepAwake();
   if (DEMO && params.get("open")) {
-    await refresh(); await open(params.get("open"));
+    await refresh(); await openSession(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
     if (params.get("pending")) { pending = [{ text: "Проверь, что сообщение видно сразу", state: "sent" }]; renderChat(false); }
     if (params.get("files")) { files = [{ name: "фото-стенда.jpg", path: "/x" }, { name: "отчёт-П8.xlsx", path: null }]; renderFiles(); }
