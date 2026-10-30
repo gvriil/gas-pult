@@ -111,3 +111,14 @@ def test_settings_reject_unknown_values(pult):
 def test_is_claude(argv, ok):
     from gas_pult.tmux import is_claude
     assert is_claude(argv) is ok
+
+
+def test_one_window_per_project(pult):
+    p, proj = pult
+    p.open_session(1, "demo-1", str(proj))
+    assert wait(lambda: (p.active() or {}).get("path") == str(proj))
+    first = p.active()["id"]
+    p.open_session(1, "demo-2", str(proj))                  # вторая сессия в той же папке — не создаётся
+    assert p.active()["id"] == first
+    assert len([w for w in p.tmux.windows() if w["cmd"] == "claude"]) == 1
+    assert "уже работает «demo-1»" in p.api.texts()[-1]

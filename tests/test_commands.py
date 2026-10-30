@@ -64,3 +64,11 @@ def test_execute_pipefail_reports_failure():
     assert code != 0                         # без pipefail было бы 0 — ложный «✅»
     code, _, out = execute("echo token=abcdef123456", None)
     assert code == 0 and "abcdef123456" not in out
+
+
+def test_password_commands_have_no_button(tmp_path):
+    c = cmds(tmp_path)
+    for cmd in ("pass show work/db >/dev/null", "gpg --passwd ABCD", "ssh-add ~/.ssh/id_ed25519",
+                "read -rsp 'Токен: ' T"):
+        assert c.kind(cmd) == "tty", cmd
+    assert c.kind("git log --oneline") == "local"

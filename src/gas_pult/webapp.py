@@ -253,15 +253,18 @@ class Panel:
                 time.sleep(0.25)
         raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
 
-    def new(self, i: int) -> str:
+    def new(self, i: int) -> dict:
         dirs = self.pult.projects()
         if not 0 <= i < len(dirs):
             raise ValueError("список папок изменился — обновите панель")
         path = dirs[i]
+        if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
+            self.pult.set_state(active=w["id"])
+            return {"id": w["id"], "existing": w["name"]}
         base = os.path.basename(path) if path != self.pult.home else "home"
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, self.cfg.claude)
         self.pult.set_state(active=wid)
-        return wid
+        return {"id": wid}
 
     def close(self, w: dict) -> str:
         with self.lock(w["id"]):
@@ -383,8 +386,8 @@ class Panel:
         if not c:
             raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
         if c["kind"] != "local":
-            raise ValueError("эту команду выполняйте вручную: " +
-                             ("sudo вне разрешённого списка" if c["kind"] == "sudo" else "она для другой машины"))
+            raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
+                             "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
         if c["danger"] and not confirmed:
             return {"confirm": True}
         code, secs, out = execute(c["cmd"], w["path"])
@@ -533,7 +536,7 @@ def handler(panel: Panel):
             if path == "/api/mcp/login":
                 return panel.mcp_login(str(b.get("name", "")))
             if path == "/api/new":
-                return {"id": panel.new(int(b.get("i", -1)))}
+                return panel.new(int(b.get("i", -1)))
             w = self.win(b.get("w"))
             if path == "/api/send":
                 text = str(b.get("text", "")).strip()

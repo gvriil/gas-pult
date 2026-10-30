@@ -616,7 +616,10 @@ $("sessionsView").addEventListener("click", (e) => {
 $("newBtn").onclick = () => sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
   label, icon: "file", run: async () => {
     toast("Запускаю Claude…", 3000);
-    try { const d = await api("/api/new", { i }); await refresh(); open(d.id); } catch (err) { toast("Не вышло: " + err.message, 4500); }
+    try {
+      const d = await api("/api/new", { i }); await refresh(); open(d.id);
+      if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);
+    } catch (err) { toast("Не вышло: " + err.message, 4500); }
   },
 })));
 function sessionSheet(id) {
@@ -770,7 +773,8 @@ async function renderCmds() {
   box.innerHTML = `<div class="section">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd">
     <pre>${esc(c.cmd)}</pre>${c.kind === "local"
       ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(d.host)}</button>`
-      : `<div class="hint">${c.kind === "sudo" ? ic("lock", "s16") + "sudo вне разрешённого списка — выполните вручную в терминале" : ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
+      : `<div class="hint">${{ sudo: ic("lock", "s16") + "sudo вне разрешённого списка — выполните вручную в терминале",
+          tty: ic("key", "s16") + "спросит пароль — выполните вручную в терминале" }[c.kind] || ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
     <div class="out-wrap"></div></div>`).join("");
   $("content").append(box);
 }
