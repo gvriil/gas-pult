@@ -21,7 +21,7 @@ from itertools import pairwise
 from pathlib import Path
 
 from gas_pult import providers
-from gas_pult.config import config_dir
+from gas_pult.config import config_dir, write_private
 
 PROFILES = [
     {"id": "claude", "title": "Claude", "short": "Claude",
@@ -36,12 +36,14 @@ PROFILES = [
      "env": {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"}},
     {"id": "zai", "title": "GLM (Z.ai)", "short": "GLM", "key": "zai",
      "base_url": "https://api.z.ai/api/anthropic", "main": "glm-5.3[1m]", "fast": "glm-5.3-flash[1m]",
+     "long_context": True,                       # «[1m]» — по документации Z.ai
      "key_url": "https://z.ai/manage-apikey/apikey-list",
      "about": "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает",
      "env": {"API_TIMEOUT_MS": "3000000", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
              "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
     {"id": "deepseek", "title": "DeepSeek", "short": "DeepSeek", "key": "deepseek",
      "base_url": "https://api.deepseek.com/anthropic", "main": "deepseek-v4-pro[1m]", "fast": "deepseek-flash",
+     "long_context": True,                       # «[1m]» — по документации DeepSeek
      "key_url": "https://platform.deepseek.com/api_keys",
      "about": "DeepSeek V4: быстро и очень дёшево. Основная — V4 Pro, быстрая — Flash",
      "hint": "в документации DeepSeek основная по умолчанию — deepseek-flash[1m] (быстрее и дешевле)",
@@ -59,7 +61,10 @@ def profiles_dir() -> Path:
 def models_of(p: dict, state: dict) -> tuple[str, str]:
     """Основная и быстрая модель профиля: ваш выбор из панели или значение по умолчанию."""
     own = (state.get("model_profiles") or {}).get(p["id"]) or {}
-    return own.get("main", p.get("main", "")), own.get("fast", p.get("fast", ""))
+    main, fast = own.get("main") or p.get("main", ""), own.get("fast") or p.get("fast", "")
+    if not p.get("long_context"):                # «[1m]» — режим 1M контекста Claude Code; кто его не знает — без него
+        main, fast = main.removesuffix("[1m]"), fast.removesuffix("[1m]")
+    return main, fast
 
 
 def env_of(p: dict, key: str, state: dict) -> dict:
@@ -82,12 +87,8 @@ def command(base: str, profile: str, state: dict) -> str:
     key = providers.load_keys().get(p["key"])
     if not key:
         raise ValueError(f"нет ключа {p['title']} — добавьте его в «Интеграции» → «Модели»")
-    d = profiles_dir()
-    d.mkdir(parents=True, exist_ok=True, mode=0o700)
-    f = d / f"{profile}.json"
-    f.touch(mode=0o600, exist_ok=True)
-    f.chmod(0o600)
-    f.write_text(json.dumps({"env": env_of(p, key, state)}, ensure_ascii=False))
+    f = profiles_dir() / f"{profile}.json"
+    write_private(f, json.dumps({"env": env_of(p, key, state)}, ensure_ascii=False))
     return f"{base} --settings {shlex.quote(str(f))}"
 
 

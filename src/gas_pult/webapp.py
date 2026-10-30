@@ -124,13 +124,22 @@ class Panel:
     def sessions(self) -> list[dict]:
         act, out = self.pult.state().get("active"), []
         for w in self.tmux.windows():
+            def branch(path=w["path"]) -> str:
+                return subprocess.run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
+                                      capture_output=True, text=True).stdout.strip()
+            if w.get("stopped"):                     # Claude завершился, в окне оболочка — «остановлена»
+                out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
+                            "status": "stopped", "context": None, "model": "", "active": w["id"] == act,
+                            "channel": False, "profile": w["mark"] if w["mark"] in models.BY_ID else "claude",
+                            "rev": "", "preview": ""})
+                continue
             if w["cmd"] != "claude":
                 continue
+            if not w.get("mark"):                    # окна до метки: помечаем, чтобы и они потом стали «остановлена»
+                self.tmux.run("set-option", "-w", "-t", w["id"], "@gas_pult", w.get("profile") or "claude")
             scr = "\n".join(self.tmux.screen(w["id"], 40))
             ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
-            branch = subprocess.run(["git", "-C", w["path"], "rev-parse", "--abbrev-ref", "HEAD"],
-                                    capture_output=True, text=True).stdout.strip()
-            out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch,
+            out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
                         "model": mdl.group(1).strip() if mdl else "",             # на чём реально работает сессия
@@ -280,7 +289,18 @@ class Panel:
             return {"id": w["id"], "existing": w["name"]}
         base = os.path.basename(path) if path != self.pult.home else "home"
         cmd = models.command(self.cfg.claude, profile, self.pult.state())
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd)
+        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude")
+        self.pult.set_state(active=wid)
+        return {"id": wid}
+
+    def revive(self, wid: str) -> dict:
+        """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора."""
+        w = self.tmux.window(wid)
+        if not w or not w.get("stopped"):
+            raise ValueError("сессия не остановлена — перезапускать нечего")
+        profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
+        cmd = models.command(self.cfg.claude, profile, self.pult.state()) + " --continue"   # нет ключа — ошибка здесь
+        self.tmux.respawn(wid, w["path"], cmd, mark=profile)
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -295,7 +315,7 @@ class Panel:
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
-        wid = self.tmux.new_window(w["name"], w["path"], cmd)
+        wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude")
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -546,7 +566,9 @@ def handler(panel: Panel):
 
         def win(self, wid) -> dict:
             if not (w := panel.window(str(wid or ""))):
-                raise LookupError("окна уже нет")
+                t = panel.tmux.window(str(wid or ""))
+                raise LookupError("Claude в этой сессии остановлен — текст в командную строку не отправляю. "
+                                  "Нажмите «Перезапустить»" if t and t.get("stopped") else "окна уже нет")
             return w
 
         def do_GET(self):
@@ -709,6 +731,8 @@ def handler(panel: Panel):
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")))}
             if path == "/api/close":
                 return {"result": panel.close(w)}
+            if path == "/api/revive":
+                return panel.revive(str(b.get("w", "")))
             if path == "/api/restart":
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False)
             if path == "/api/run":

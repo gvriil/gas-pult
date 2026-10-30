@@ -18,6 +18,24 @@ def config_dir() -> Path:
     return Path(os.environ.get("GAS_PULT_CONFIG_DIR") or Path.home() / ".config" / "gas-pult")
 
 
+def write_private(path: Path, text: str):
+    """Секреты и всё рядом с ними: файл сразу создаётся с правами 0600 (os.open, без окна «чужим видно») и подменяется
+    целиком (os.replace) — читатель видит либо старое, либо новое, никогда не половину."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, 0o600)                     # если файл остался от прошлого раза с другими правами
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def data_dir() -> Path:
     return Path(os.environ.get("GAS_PULT_DATA_DIR") or Path.home() / ".local" / "share" / "gas-pult")
 

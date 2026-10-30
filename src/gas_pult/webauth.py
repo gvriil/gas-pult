@@ -21,6 +21,8 @@ import threading
 import time
 from pathlib import Path
 
+from gas_pult.config import write_private
+
 CODE_TTL = 300
 CODE_TRIES = 5
 START_LIMIT = (5, 600)                   # не больше 5 кодов за 10 минут — чтобы бот не засыпали
@@ -47,9 +49,7 @@ class Auth:
             return {}
 
     def _save(self, d: dict):
-        self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.store.write_text(json.dumps(d))
-        self.store.chmod(0o600)
+        write_private(self.store, json.dumps(d))
 
     def start(self) -> tuple[str, str]:
         """Новый код: (id запроса, код). Код уходит владельцу, id — браузеру."""
@@ -132,11 +132,7 @@ class TgLogins:
         return {k: v for k, v in d.items() if v["exp"] > now}
 
     def _save(self, d: dict):
-        self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        tmp = self.store.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d))
-        tmp.chmod(0o600)
-        tmp.replace(self.store)
+        write_private(self.store, json.dumps(d))
 
     def start(self, ip: str = "", ua: str = "") -> tuple[str, str]:
         """(rid — браузеру для опроса, nonce — в ссылку на бота)."""

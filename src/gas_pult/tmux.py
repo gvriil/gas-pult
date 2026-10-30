@@ -17,6 +17,9 @@ def is_claude(argv: list[str]) -> bool:
     return any(os.path.basename(a) == "claude" or "/@anthropic-ai/claude-code/" in a for a in argv[:2])
 
 
+SHELLS = {"bash", "zsh", "sh", "fish", "dash", "ksh"}
+
+
 class Tmux:
     def __init__(self, session: str):
         self.session = session
@@ -26,8 +29,8 @@ class Tmux:
 
     def windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
-                       "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}")
-        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty"), line.split("\t"), strict=False))
+                       "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}")
+        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark"), line.split("\t"), strict=False))
               for line in out.splitlines()]
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             ps = subprocess.run(["ps", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "args="],
@@ -37,6 +40,8 @@ class Tmux:
                 w["cmd"] = "claude"
             w["profile"] = profile_of(claude[0]) if claude else ""   # у какого поставщика модели (models.py)
             w["channel"] = any("--channels" in p for p in claude)   # у окна свой Telegram — не дублируем
+            # окно открыл пульт (метка — поставщик), а Claude в нём завершился и осталась оболочка — «остановлена»
+            w["stopped"] = not claude and bool(w.get("mark")) and w["cmd"] in SHELLS
         return ws
 
     def window(self, wid: str) -> dict | None:
@@ -73,8 +78,11 @@ class Tmux:
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
         subprocess.run(cmd, check=True)
 
-    def new_window(self, name: str, path: str, command: str) -> str:
-        """Новое окно с командой (Claude); после её выхода остаётся шелл. Возвращает id окна."""
+    def new_window(self, name: str, path: str, command: str, mark: str = "claude") -> str:
+        """Новое окно с командой (Claude); после её выхода остаётся шелл. Возвращает id окна.
+
+        ``mark`` (поставщик модели) пишется в опцию окна ``@gas_pult``: по ней видно, что окно — сессия пульта, даже
+        когда Claude в нём завершился (тогда сессия «остановлена», а не пропадает)."""
         self.ensure_session()
         shell = os.environ.get("SHELL", "/bin/bash")
         r = subprocess.run(["tmux", "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
@@ -82,4 +90,15 @@ class Tmux:
                            capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip() or "tmux new-window не сработал")
-        return r.stdout.split()[0]
+        wid = r.stdout.split()[0]
+        self.run("set-option", "-w", "-t", wid, "@gas_pult", mark or "claude")
+        return wid
+
+    def respawn(self, wid: str, path: str, command: str, mark: str = "claude"):
+        """Запустить Claude заново в том же окне (то же имя и id): оболочку — закрыть, команду — запустить."""
+        shell = os.environ.get("SHELL", "/bin/bash")
+        r = subprocess.run(["tmux", "respawn-window", "-k", "-t", wid, "-c", path,
+                            f"{command}; exec {shlex.quote(shell)}"], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip() or "tmux respawn-window не сработал")
+        self.run("set-option", "-w", "-t", wid, "@gas_pult", mark or "claude")

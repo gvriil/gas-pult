@@ -86,6 +86,8 @@
   body:not([data-role="owner"]) [data-owner] { display: none !important; }      /* только владельцу */
   body[data-role="viewer"] #composer, body[data-role="viewer"] #menu, body[data-role="viewer"] #keys, body[data-role="viewer"] #ask button { display: none !important; }
   .viewonly { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 10px; }
+  .s-stopped .sdot, .sdot.s-stopped { background: transparent; border: 1.5px solid var(--status-idle); }
+  .card.s-stopped { opacity: .85; }
   .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
 
   /* ===== Список сессий ===== */
@@ -391,8 +393,9 @@ const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
-const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" } };
-const ORDER = { dialog: 0, busy: 1, idle: 2 };
+const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
+             stopped: { label: "остановлена", cls: "s-stopped" } };      // Claude завершился, в окне — командная строка
+const ORDER = { dialog: 0, busy: 1, idle: 2, stopped: 3 };
 let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
     lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false,
     termWrap = false, lastOk = Date.now(), openLogs = new Set();
@@ -628,7 +631,8 @@ function card(s) {
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
       ${ctxMeter(s)}</div>
-    ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}</div>`;
+    ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
+    ${s.status === "stopped" && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-revive="${esc(s.id)}">${ic("refresh", "s16")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
 }
 async function refresh() {
   try {
@@ -646,7 +650,7 @@ async function refresh() {
         const sorted = [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.active - a.active));
         $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
-            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span></div>`
+            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}</div>`
             + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>');
       }
     }
@@ -655,7 +659,7 @@ async function refresh() {
     if (!s) { toast("Сессия закрыта"); return back(); }
     paintSession(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
-    else if (tab === "screen" || s.status === "dialog") loadContent();
+    else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
     else liveChat();
     lastStatus = s.status;
   } catch (e) { if (view !== "login" && !e.net) setSub(`<span style="color:var(--status-danger)">ошибка: ${esc(e.message)}</span>`); }   // обрыв сети — плашка через 15 с
@@ -671,6 +675,7 @@ function paintSession(s) {
 }
 $("sessionsView").addEventListener("click", (e) => {
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
+  const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
   const c = e.target.closest(".card[data-id]"); if (c) openSession(c.dataset.id);
 });
@@ -728,8 +733,19 @@ function setTab(t) {
 }
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
 
+// Остановленная сессия: Claude в окне завершился. Текст туда не шлём — предлагаем перезапустить с продолжением разговора.
+async function revive(id, btn) {
+  const go = async () => { try { await api("/api/revive", { w: id }); toast("Claude запускается — разговор продолжится", 3500); await refresh(); openSession(id); } catch (err) { toast(err.message, 5000); } };
+  return btn ? busy(btn, "Запускаю…", go) : go();
+}
 async function loadContent() {
   if (!current) return;
+  if (cur()?.status === "stopped") {
+    $("content").className = ""; setAsk("");
+    $("content").innerHTML = `<div class="panel"><p style="margin-top:0"><b>Claude в этой сессии остановлен.</b> В окне осталась командная строка — сообщения туда не отправляются, чтобы не выполнить их как команды.</p>
+      ${meta?.role !== "viewer" ? `<button class="btn" data-revive="${esc(current)}">${ic("refresh")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
+    return;
+  }
   try {
     const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]);
     renderAsk(scr.lines, scr.auth);
@@ -754,7 +770,7 @@ function renderTerm(lines) {
 }
 
 async function liveChat() {                         // каждые 3 с: менялся ли журнал; изменился — дорисовываем, не сбивая прокрутку
-  if (!current || tab !== "chat") return;
+  if (!current || tab !== "chat" || cur()?.status === "stopped") return;
   try {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
     markFresh();
@@ -836,6 +852,7 @@ function renderChat(toBottom) {
   if (cur()) paintWorking(cur());
   if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(document.body.scrollHeight));
 }
+$("content").addEventListener("click", (e) => { const v = e.target.closest("[data-revive]"); if (v) revive(v.dataset.revive, v); });
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
   const k = e.target.dataset?.log; if (k) e.target.open ? openLogs.add(k) : openLogs.delete(k);
 }, true);
@@ -997,10 +1014,13 @@ const ACTIONS = {
   }))),
   models: () => {
     const s = cur(), p = profileOf(s?.profile || "claude"), own = p && p.needs_key;
-    const real = (m) => own ? (m === "haiku" ? p.fast : p.main) || "модель Claude через " + p.title : "";
+    const items = own
+      ? [[p.main || p.default_main, "основная", "opus"], [p.fast || p.default_fast, "быстрая — рутина и субагенты", "haiku"]]
+          .map(([name, sub, alias]) => ({ label: name, icon: "chip", sub, run: () => act("/api/model", { name: alias }, "Модель: " + name) }))
+      : meta.models.map((m) => ({ label: m, icon: "chip", sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m],
+          run: async () => { await act("/api/model", { name: m }, "Модель: " + m); effortSheet(); } }));
     sheet(`Модель · ${p?.title || "Claude"}`, [
-      ...meta.models.map((m) => ({ label: m, icon: "chip", sub: [{ opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], real(m)].filter(Boolean).join(" · "),
-        run: async () => { await act("/api/model", { name: m }, "Модель: " + m); if (!own) effortSheet(); } })),
+      ...items,
       { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) },
       ...(meta.role === "owner" ? [{ label: "Сменить поставщика…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — сессия перезапустится", run: () => switchProfile(s) }] : [])]);
   },
@@ -1044,6 +1064,7 @@ $("switchBtn").onclick = () => sheet("Перейти в сессию", [...sessi
 
 // ---------- ввод ----------
 async function sendText() {
+  if (cur()?.status === "stopped") return toast("Сессия остановлена — сначала «Перезапустить»", 4000);
   if (files.some((f) => !f.path)) return toast("Подождите — файл ещё загружается");
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
@@ -1183,10 +1204,10 @@ function profileForm(p, connected) {
     ${p.key ? '<button class="btn danger" id="profDel">Удалить ключ</button>' : ""}
     <div id="profResult"></div>
     <div class="section">Модели</div>
-    <div class="field"><label for="profMain">Основная</label><input id="profMain" autocapitalize="off" spellcheck="false" value="${esc(p.main)}" placeholder="${esc(p.default_main || "пусто — модели Claude")}">
+    <div class="field"><label for="profMain">Основная</label><input id="profMain" autocapitalize="off" spellcheck="false" value="${esc(p.main)}" placeholder="${esc(p.default_main || "пусто — по умолчанию поставщика")}">
       <div class="hint">Для opus и sonnet. ${esc(p.hint || "")}</div>
       ${p.oauth ? `<button class="btn quiet sm" style="margin-top:8px" data-cat="profMain">${ic("grid", "s16")}Выбрать из каталога</button>` : ""}</div>
-    <div class="field"><label for="profFast">Быстрая</label><input id="profFast" autocapitalize="off" spellcheck="false" value="${esc(p.fast)}" placeholder="${esc(p.default_fast || "пусто — модели Claude")}">
+    <div class="field"><label for="profFast">Быстрая</label><input id="profFast" autocapitalize="off" spellcheck="false" value="${esc(p.fast)}" placeholder="${esc(p.default_fast || "пусто — по умолчанию поставщика")}">
       <div class="hint">Для haiku, фоновых задач и субагентов.</div>
       ${p.oauth ? `<button class="btn quiet sm" style="margin-top:8px" data-cat="profFast">${ic("grid", "s16")}Выбрать из каталога</button>` : ""}</div>
     <button class="btn quiet" id="profModels">Сохранить модели</button>
@@ -1561,6 +1582,7 @@ function demoApi(path, body) {
     { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
     { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?" },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
+    { id: "@5", name: "shop-bot", path: "/home/u/projects/shop-bot", branch: "main", status: "stopped", context: null, model: "", active: false, channel: false, rev: "", preview: "", profile: "zai" },
     { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
   ];
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
