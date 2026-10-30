@@ -86,3 +86,32 @@ def test_new_reuses_window_in_same_folder(panel, monkeypatch):
     monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
     assert panel.new(0) == {"id": "@7", "existing": "a-0900"}
     assert panel.new(1) == {"id": "@9"}
+
+
+def test_new_session_in_profile_and_restart(panel, monkeypatch):
+    opened = []
+    monkeypatch.setattr(panel.pult, "projects", lambda: ["/p/a"])
+    monkeypatch.setattr(panel.pult, "project_window", lambda path: None)
+    monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
+    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd: opened.append((name, path, cmd)) or "@9")
+    monkeypatch.setattr(webapp.models, "command", lambda base, profile, st: f"{base} [{profile or 'claude'}]")
+    assert panel.new(0, "zai") == {"id": "@9"} and opened[-1][2] == "claude [zai]"
+    monkeypatch.setattr(panel, "close", lambda w: "Claude не вышел (возможно, занят) — посмотрите экран")
+    with pytest.raises(ValueError, match="не вышел"):
+        panel.restart({"id": "@1", "name": "a-0900", "path": "/p/a"}, "deepseek")
+    monkeypatch.setattr(panel, "close", lambda w: "закрыто")
+    assert panel.restart({"id": "@1", "name": "a-0900", "path": "/p/a"}, "deepseek") == {"id": "@9"}
+    assert opened[-1] == ("a-0900", "/p/a", "claude [deepseek]")
+
+
+def test_model_key_saved_without_voice_reset(panel, monkeypatch):
+    saved, state = {}, {}
+    monkeypatch.setattr(webapp.providers, "check_model_key", lambda p, k: True)
+    monkeypatch.setattr(webapp.providers, "save_key", lambda p, k: saved.__setitem__(p, k))
+    monkeypatch.setattr(panel.pult, "set_state", lambda **kw: state.update(kw))
+    assert panel.set_key("deepseek", " sk-0123456789abcdef ") == {"checked": True}
+    assert saved == {"deepseek": "sk-0123456789abcdef"}
+    with pytest.raises(ValueError, match="не похоже"):
+        panel.set_key("zai", "short")
+    panel.remove_key("deepseek")
+    assert "tts_provider" not in state                     # голос не сбрасывается из-за ключа модели

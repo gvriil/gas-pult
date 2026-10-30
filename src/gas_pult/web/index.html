@@ -76,6 +76,7 @@
   .chip.new, .chip.ok { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); }
   .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
   .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
+  .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
 
   /* ===== Список сессий ===== */
   .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 2px 12px; }
@@ -556,6 +557,10 @@ function isNew(s) {                                   // журнал измен
   if (seen == null) { if (s.rev) store(seenKey(s), s.rev); return false; }
   return s.status === "idle" && s.rev && s.rev !== seen;
 }
+// Поставщик модели сессии (models.py): у обычных сессий Claude метки нет — не шумим.
+const profileOf = (id) => meta?.profiles?.find((p) => p.id === id);
+const provName = (s) => s.profile && s.profile !== "claude" ? (profileOf(s.profile)?.short || s.profile) : "";
+const provChip = (s) => provName(s) ? `<span class="chip prov">${esc(provName(s))}</span>` : "";
 const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
 function ctxMeter(s) {
   const u = ctxUsed(s);
@@ -568,7 +573,7 @@ function card(s) {
       <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}</div></div>
       <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
       ${ctxMeter(s)}</div>
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}</div>`;
 }
@@ -605,23 +610,36 @@ async function refresh() {
 function paintSession(s) {
   const st = ST[s.status];
   $("title").textContent = s.name;
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span><span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
-  $("target").innerHTML = `<span class="sdot ${st.cls}"></span>Пишете в <b>${esc(s.name)}</b><span>· ${st.label}</span>`;
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
+  $("target").innerHTML = `<span class="sdot ${st.cls}"></span>Пишете в <b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
 }
 $("sessionsView").addEventListener("click", (e) => {
   const r = e.target.closest("[data-reply]"); if (r) return open(r.dataset.reply, "screen");
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
   const c = e.target.closest(".card[data-id]"); if (c) open(c.dataset.id);
 });
-$("newBtn").onclick = () => sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
-  label, icon: "file", run: async () => {
-    toast("Запускаю Claude…", 3000);
-    try {
-      const d = await api("/api/new", { i }); await refresh(); open(d.id);
-      if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);
-    } catch (err) { toast("Не вышло: " + err.message, 4500); }
-  },
-})));
+$("newBtn").onclick = () => newSession();
+function newSession(profile) {
+  sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
+    label, icon: "file", run: () => profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)),
+  })));
+}
+// Выбор модели — только если есть ключ хоть одного поставщика кроме Claude; иначе сразу Claude (ноль лишних шагов).
+function pickProfile(go, exclude) {
+  const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key));
+  if (!exclude && ready.length < 2) return go("claude");
+  sheet(exclude ? "Перезапустить с поставщиком" : "В какой модели работать?", [
+    ...ready.map((p) => ({ label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) })),
+    ...(meta.profiles || []).filter((p) => p.needs_key && !p.key).map((p) => ({ label: p.title, icon: "key", sub: "нет ключа — добавить", run: () => profileForm(p) })),
+  ]);
+}
+async function startSession(i, profile) {
+  toast(profile && profile !== "claude" ? `Запускаю Claude Code с ${profileOf(profile)?.title || profile}…` : "Запускаю Claude…", 3000);
+  try {
+    const d = await api("/api/new", { i, profile }); await refresh(); open(d.id);
+    if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);
+  } catch (err) { toast("Не вышло: " + err.message, 4500); }
+}
 function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   sheet(s.name, [
@@ -906,9 +924,15 @@ const ACTIONS = {
   commands: () => sheet("Команды Claude", meta.commands.map((label, i) => ({
     label: clean(label), icon: "bolt", run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
   }))),
-  models: () => sheet("Модель для этой сессии", [
-    ...meta.models.map((m) => ({ label: m, icon: "chip", sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], run: () => act("/api/model", { name: m }, "Модель: " + m) })),
-    { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) }]),
+  models: () => {
+    const s = cur(), p = profileOf(s?.profile || "claude"), own = p && p.needs_key;
+    const real = (m) => own ? (m === "haiku" ? p.fast : p.main) || "модель Claude через " + p.title : "";
+    sheet(`Модель · ${p?.title || "Claude"}`, [
+      ...meta.models.map((m) => ({ label: m, icon: "chip", sub: [{ opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], real(m)].filter(Boolean).join(" · "),
+        run: () => act("/api/model", { name: m }, "Модель: " + m) })),
+      { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) },
+      { label: "Сменить поставщика…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — сессия перезапустится", run: () => switchProfile(s) }]);
+  },
   switch: () => $("switchBtn").onclick(),
   active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
   refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
@@ -916,6 +940,13 @@ const ACTIONS = {
   close: () => confirmClose(current),
 };
 $("menu").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; closeMenu(); ACTIONS[b.dataset.act](b); };
+function switchProfile(s) {
+  pickProfile((pid) => confirmDanger(`Перезапустить «${s.name}» с ${profileOf(pid)?.title || pid}? Текущий разговор закончится (он останется в истории), новый начнётся в той же папке.`, async () => {
+    toast("Перезапускаю…", 6000);
+    try { const d = await api("/api/restart", { w: s.id, profile: pid }); await refresh(); open(d.id); toast("Готово: " + (profileOf(pid)?.title || pid)); }
+    catch (err) { toast("Не вышло: " + err.message, 5000); }
+  }), s.profile || "claude");
+}
 async function closeSession(id = current) {
   try {
     const d = await api("/api/close", { w: id }); toast("Завершение: " + d.result, 4500);
@@ -1025,10 +1056,61 @@ const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", lin
 const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase())}</span>`;
 async function loadMcp(fresh) {
   if (view === "home") setSub("<span>голос, ключи API и сервисы</span>");
-  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="voiceBox"></div>';
+  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="modelsBox"></div><div id="voiceBox"></div>';
+  renderModels();
   api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
   catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
+}
+function renderModels() {
+  const list = (meta?.profiles || []).filter((p) => p.needs_key);
+  $("modelsBox").innerHTML = `<div class="section">Модели</div>
+    <p class="note">Кроме Claude сессия может работать на моделях других поставщиков — по их ключу. Поставщик выбирается при «Новой сессии».</p>
+    ${list.map((p) => `<button class="card" data-prof="${p.id}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div>
+      <div class="meta">${esc(p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key ? "ok" : ""}">${p.key ? "ключ " + esc(p.key.tail) : "нет ключа"}</span></div></button>`).join("")}`;
+}
+$("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
+async function reloadProfiles() { try { meta.profiles = (await api("/api/meta")).profiles; } catch (e) { /* покажем старое */ } }
+function profileForm(p) {
+  show("mcpForm"); $("title").textContent = p.title; setSub("<span>модели поставщика</span>");
+  $("mcpForm").innerHTML = `<div class="panel">
+    <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
+    <div class="result wait">${ic("warn")}<span>Код и переписка сессий с ${esc(p.title)} уходят ${esc(p.title)}; оплата — по их тарифу.
+      В таких сессиях не работают коннекторы claude.ai (Notion, Gmail…) — только MCP-серверы, подключённые на сервере.</span></div>
+    <div class="section">Ключ API</div>
+    ${p.key_url ? `<button class="btn ghost" id="profKeyPage">${ic("ext")}Где взять ключ</button>` : ""}
+    <div class="field"><label for="profKey">${p.key ? "Заменить ключ (сейчас " + esc(p.key.tail) + ")" : "Ключ"}</label>
+      <div class="inp"><input id="profKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="вставьте ключ">
+      <button class="icon" type="button" data-eye="profKey" aria-label="Показать">${ic("eye")}</button></div>
+      <div class="hint">Хранится только на сервере (права 600) и в панель больше не возвращается — копию держите в менеджере паролей.</div></div>
+    <button class="btn" id="profSave">Сохранить ключ</button>
+    ${p.key ? '<button class="btn danger" id="profDel">Удалить ключ</button>' : ""}
+    <div id="profResult"></div>
+    <div class="section">Модели</div>
+    <div class="field"><label for="profMain">Основная</label><input id="profMain" autocapitalize="off" spellcheck="false" value="${esc(p.main)}" placeholder="${esc(p.default_main || "пусто — модели Claude")}">
+      <div class="hint">Для opus и sonnet. ${esc(p.hint || "")}</div></div>
+    <div class="field"><label for="profFast">Быстрая</label><input id="profFast" autocapitalize="off" spellcheck="false" value="${esc(p.fast)}" placeholder="${esc(p.default_fast || "пусто — модели Claude")}">
+      <div class="hint">Для haiku, фоновых задач и субагентов.</div></div>
+    <button class="btn quiet" id="profModels">Сохранить модели</button>
+    <button class="btn ghost" id="profDefaults">Вернуть по умолчанию</button>
+    <p class="note">Изменения моделей и ключа действуют для новых сессий и после «Сменить поставщика».</p></div>`;
+  $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
+  $("profKeyPage")?.addEventListener("click", () => { tg?.openLink ? tg.openLink(p.key_url) : window.open(p.key_url, "_blank"); });
+  $("profSave").onclick = (e) => busy(e.currentTarget, "Проверяю ключ…", async () => {
+    try {
+      const d = await api("/api/keys", { provider: p.id, key: $("profKey").value });
+      await reloadProfiles(); haptic("notificationOccurred", "success");
+      $("profResult").innerHTML = `<div class="result ok">${ic("check")}<span>${d.checked ? "Ключ работает" : "Ключ сохранён — проверится при первом запуске сессии"}.</span></div>
+        <button class="btn" id="profStart">${ic("newsess")}Новая сессия с ${esc(p.title)}</button>`;
+      $("profStart").onclick = () => newSession(p.id); $("profKey").value = "";
+    } catch (err) { $("profResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
+  });
+  $("profDel")?.addEventListener("click", () => confirmDanger(`Удалить ключ ${p.title}? Уже открытые сессии доработают, новые с ним не запустятся.`, async () => {
+    await api("/api/keys/remove", { provider: p.id }); await reloadProfiles(); toast("Ключ удалён"); profileForm(profileOf(p.id));
+  }));
+  const saveModels = (main, fast) => api("/api/models", { profile: p.id, main, fast }).then((d) => { meta.profiles = d.profiles; toast("Модели сохранены"); profileForm(profileOf(p.id)); }).catch((err) => toast(err.message, 4500));
+  $("profModels").onclick = () => saveModels($("profMain").value.trim(), $("profFast").value.trim());
+  $("profDefaults").onclick = () => saveModels(p.default_main, p.default_fast);
 }
 function renderVoice() {
   const el = prov.keys.elevenlabs, seg = (name, val, opts) => `<div class="seg" data-prov="${name}">${opts.map(([v, label]) =>
@@ -1238,12 +1320,15 @@ async function start() {
     if (params.get("menu")) $("menuBtn").click();
     if (params.get("pending")) { pending = [{ text: "Проверь, что сообщение видно сразу", state: "sent" }]; renderChat(false); }
     if (params.get("files")) { files = [{ name: "фото-стенда.jpg", path: "/x" }, { name: "отчёт-П8.xlsx", path: null }]; renderFiles(); }
+    if (params.get("model")) ACTIONS.models();
     if (params.get("expand")) setTimeout(() => document.querySelectorAll("details.log").forEach((d) => (d.open = true)), 1500);
     if (params.get("mic")) {                        // для скриншота: вместо микрофона — синтетический звук
       navigator.mediaDevices.getUserMedia = async () => { const c = new AudioContext(), o = c.createOscillator(), d = c.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream; };
       toggleMic();
     }
   }
+  if (DEMO && params.get("prof")) profileForm(profileOf(params.get("prof")));
+  if (DEMO && params.get("pick")) pickProfile(() => {});
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
 }
@@ -1263,7 +1348,7 @@ function demoApi(path, body) {
     { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
     { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?" },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
-    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю" },
+    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
   ];
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
@@ -1272,7 +1357,11 @@ function demoApi(path, body) {
   const R = {
     "/api/meta": { host: "ubuntu", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
-                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina" },
+                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina",
+                   profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
+                     { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, key: null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
+                     { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
+                     { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
@@ -1287,6 +1376,7 @@ function demoApi(path, body) {
   };
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
+  R["/api/restart"] = { id: "@4" };
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];

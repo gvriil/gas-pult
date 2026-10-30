@@ -130,6 +130,9 @@ gas-pult service install         # фоновая служба (systemd --user /
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | на вашем сервере | распознавание голосовых | `gas-pult[voice]` |
 | [ElevenLabs](https://elevenlabs.io) | облако, ваш ключ | голоса аккаунта, распознавание Scribe | ключ в панели → «Интеграции» |
 
+Модели сессий — не только Claude: в панели «Интеграции» → «Модели» можно добавить ключ OpenRouter, GLM (Z.ai) или
+DeepSeek и выбирать поставщика при «Новой сессии» ([подробнее](docs/MINI_APP.md#модели-других-поставщиков--по-шагам)).
+
 `gas-pult voices` — что установлено, `gas-pult voices install irina xenia` — скачать.
 
 ## Настройки
