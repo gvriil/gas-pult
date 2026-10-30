@@ -43,6 +43,7 @@ from gas_pult.voice import catalog
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
 MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+EFFORTS = ("auto", "low", "medium", "high", "xhigh", "max")   # /effort <уровень> — Claude Code принимает аргументом
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
@@ -192,6 +193,11 @@ class Panel:
             return {"lines": self.slash(w, cmd)}
         self.send(w, cmd)
         return {"sent": True}
+
+    def effort(self, w: dict, level: str) -> list[str]:
+        if level not in EFFORTS:
+            raise ValueError("такого уровня усилий нет")
+        return self.slash(w, f"/effort {level}")
 
     def model(self, w: dict, name: str) -> list[str]:
         if name not in self.cfg.models and name != "":
@@ -435,6 +441,17 @@ class Panel:
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL}
 
 
+# Сервис-воркер: только клик по уведомлению — открыть панель на нужной сессии. Ни кэша, ни фоновых запросов.
+SW_JS = """self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const id = e.notification.data && e.notification.data.id;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+    if (cs[0]) { cs[0].focus(); cs[0].postMessage({ open: id }); return null; }
+    return self.clients.openWindow("/");
+  }));
+});
+"""
+
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
@@ -500,6 +517,8 @@ def handler(panel: Panel):
             url = urllib.parse.urlparse(self.path)
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8")
+            if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
+                return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
                 return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
             if not url.path.startswith("/api/"):
@@ -620,6 +639,8 @@ def handler(panel: Panel):
                 return panel.command(w, int(b.get("i", -1)))
             if path == "/api/model":
                 return {"lines": panel.model(w, str(b.get("name", "")))}
+            if path == "/api/effort":
+                return {"lines": panel.effort(w, str(b.get("level", "")))}
             if path == "/api/key":
                 return {"lines": panel.key(w, str(b.get("key", "")))}
             if path == "/api/select":

@@ -117,3 +117,24 @@ def test_model_key_saved_without_voice_reset(panel, monkeypatch):
         panel.set_key("zai", "short")
     panel.remove_key("deepseek")
     assert "tts_provider" not in state                     # голос не сбрасывается из-за ключа модели
+
+
+def test_effort_only_known_levels(panel, monkeypatch):
+    sent = []
+    monkeypatch.setattr(panel, "slash", lambda w, cmd: sent.append(cmd) or ["ok"])
+    assert panel.effort(W, "xhigh") == ["ok"] and sent == ["/effort xhigh"]
+    with pytest.raises(ValueError):
+        panel.effort(W, "xhigh; rm -rf /")
+
+
+def test_service_worker_served_from_root(panel):
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(panel))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        r = urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/sw.js")
+        assert r.headers["Content-Type"].startswith("text/javascript") and b"notificationclick" in r.read()
+    finally:
+        srv.shutdown()

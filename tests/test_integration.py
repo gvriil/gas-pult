@@ -181,3 +181,19 @@ def test_not_ready_is_reported_not_pasted_blind(monkeypatch):
     with pytest.raises(bot.NotReady, match="не готово"):
         p.to_claude({"id": "@1"}, "привет")
     assert tm.pasted == []
+
+
+def test_open_menu_is_one_message_edited_in_place(monkeypatch):
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    p.cfg = type("C", (), {"owners": [1]})()
+    calls = []
+    p.api = lambda method, **kw: calls.append((method, kw.get("message_id"))) or {"message_id": 77}
+    p.screen_msg = lambda w, title: (title, {})
+    clock = iter([100, 101, 110, 120])
+    monkeypatch.setattr(bot.time, "time", lambda: next(clock))
+    shown, w = {}, {"id": "@1"}
+    p.show_dialog(w, "❯ 1. Opus\n  2. Sonnet\n  🤖 Opus · ctx used 10%", shown)       # новое меню — одно сообщение
+    p.show_dialog(w, "❯ 1. Opus\n  2. Sonnet\n  🤖 Opus · ctx used 11%", shown)       # статус сменился — ничего
+    p.show_dialog(w, "  1. Opus\n❯ 2. Sonnet\n  🤖 Opus · ctx used 11%", shown)       # сдвинули выбор — правим
+    assert calls == [("sendMessage", None), ("editMessageText", 77)]
