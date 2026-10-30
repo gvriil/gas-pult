@@ -197,3 +197,26 @@ def test_open_menu_is_one_message_edited_in_place(monkeypatch):
     p.show_dialog(w, "❯ 1. Opus\n  2. Sonnet\n  🤖 Opus · ctx used 11%", shown)       # статус сменился — ничего
     p.show_dialog(w, "  1. Opus\n❯ 2. Sonnet\n  🤖 Opus · ctx used 11%", shown)       # сдвинули выбор — правим
     assert calls == [("sendMessage", None), ("editMessageText", 77)]
+
+
+def test_own_numbered_message_is_not_a_question(monkeypatch):
+    echo = "❯ 1. Слить PR #10 и перезапустить панель?\n  2. Начинать волну 2?\n● Понял, делаю.\n──────\n❯ \n──────"
+    tm = Screens(echo)
+    p, bot = make_pult(monkeypatch, tm)
+    assert not bot.DIALOG.search(echo)
+    p.to_claude({"id": "@1"}, "ещё")
+    assert tm.pasted == ["ещё"] and tm.keys_sent == []
+
+
+def test_real_menus_still_recognised():
+    from gas_pult import bot
+    picker = " Select model\n ❯ 1. Default\n   2. Opus\n Enter to confirm · Esc to exit"
+    ask = " Какой вариант?\n ❯ 1. Первый\n   2. Второй\n Enter to select · ↑/↓ to navigate · Esc to cancel"
+    perm = " Do you want to proceed?\n ❯ 1. Yes\n   2. No"
+    assert all(bot.DIALOG.search(x) and bot.QUESTION.search(x) for x in (picker, ask, perm))
+
+
+def test_prose_about_hints_is_not_a_menu():
+    from gas_pult import bot
+    prose = "● Настоящее меню узнаём по подсказке внизу («Enter to confirm», «Esc to cancel»).\n──────\n❯ \n──────"
+    assert not bot.DIALOG.search(prose) and not bot.QUESTION.search(prose) and not bot.PANEL.search(prose)

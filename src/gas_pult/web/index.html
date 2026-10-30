@@ -892,7 +892,7 @@ function renderAsk(lines, auth) {
     if (m) { opts.unshift({ n: m[2], text: m[3], sel: !!m[1] }); end = end < 0 ? i : end; }
     else if (opts.length) break;
   }
-  const asking = cur()?.status === "dialog" || lines.slice(Math.max(0, end - 12), end + 1).some((l) => /\?\s*$/.test(l));
+  const asking = cur()?.status === "dialog";          // нумерованные строки с «?» бывают и вашими сообщениями — верим серверу
   if (!asking || opts.length < 2) return setAsk(plainOptions(lines));
   const qi = lines.findLastIndex((l, i) => i < end - opts.length + 1 && /\?\s*$/.test(l));
   const q = qi >= 0 ? lines[qi].trim() : "Claude ждёт выбора";
