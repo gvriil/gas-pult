@@ -41,6 +41,7 @@ from gas_pult.voice import catalog
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
 MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 
@@ -100,6 +101,7 @@ class Panel:
         self.locks: dict[str, threading.Lock] = {}      # одно окно — одна вставка за раз
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
         self.mcp = Mcp()
+        self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
 
     def lock(self, wid: str) -> threading.Lock:
         with self.pult.lock:
@@ -122,15 +124,22 @@ class Panel:
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
                         "active": w["id"] == act, "channel": w["channel"],
-                        "rev": transcripts.revision(w["path"])})      # изменился журнал → в списке «новый ответ»
+                        "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
+                        "preview": self.preview(w["path"], rev)})
         return out
+
+    def preview(self, path: str, rev: str) -> str:
+        """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""
+        if self.previews.get(path, ("",))[0] != rev:
+            self.previews[path] = (rev, transcripts.preview(path))
+        return self.previews[path][1]
 
     def meta(self) -> dict:
         voices = catalog.installed()
         return {"host": self.cfg.host,
                 "commands": [t for t, _ in self.pult.command_list()],
                 "models": self.cfg.models,
-                "keys": [{"label": t, "key": k} for t, k in KEYS],
+                "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
                 "projects": [self.pult.short(p) for p in self.pult.projects()],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
                 "voice": self.voice(voices)}
@@ -183,7 +192,7 @@ class Panel:
         return self.slash(w, f"/model {name}".strip())
 
     def key(self, w: dict, key: str) -> list[str]:
-        if key not in {k for _, k in KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты диалога
+        if key not in {k for _, k in KEYS + PANEL_KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты
             raise ValueError("неизвестная клавиша")
         self.tmux.keys(w["id"], key)
         time.sleep(1)

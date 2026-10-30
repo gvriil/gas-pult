@@ -118,3 +118,23 @@ def test_revision_changes_when_transcript_grows(tmp_path, monkeypatch):
     with open(f, "a") as fh:
         fh.write('{"type":"user","message":{"content":"б"}}\n')
     assert t.revision("/home/u/r") != r1
+
+
+def test_preview_shows_last_answer_action_or_prompt(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/v")
+    d.mkdir(parents=True)
+    f = d / "s.jsonl"
+    assert t.preview("/home/u/v") == ""
+    rows = [user("почини тесты"),
+            assistant("## ✅ Готово: **тесты** зелёные\n\nподробности", "end_turn")]
+    f.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert t.preview("/home/u/v") == "Готово: тесты зелёные"
+    use = {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Bash", "input": {"command": "npm test", "description": "Запуск тестов"}}]}}
+    with open(f, "a") as fh:
+        fh.write(json.dumps(user("а теперь сборку")) + "\n")
+    assert t.preview("/home/u/v") == "Вы: а теперь сборку"
+    with open(f, "a") as fh:
+        fh.write(json.dumps(use) + "\n")
+    assert t.preview("/home/u/v") == "Команда: Запуск тестов"

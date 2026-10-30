@@ -156,6 +156,57 @@ def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list
     return items[start:end], start > 0
 
 
+TOOLS = {"Bash": "команда", "Read": "читает", "Edit": "правит", "MultiEdit": "правит", "Write": "пишет",
+         "Grep": "ищет", "Glob": "ищет файлы", "WebFetch": "открывает", "WebSearch": "ищет в сети",
+         "Task": "поручил агенту", "Agent": "поручил агенту", "TodoWrite": "план"}
+
+
+def preview(path: str, tail: int = 262144) -> str:
+    """Одна строка о том, что сейчас в сессии: последний ответ Claude, его действие или ваш запрос.
+
+    Читается только хвост журнала (``tail`` байт) — дёшево даже при опросе раз в 3 секунды.
+    """
+    files = transcripts(path)
+    if not files:
+        return ""
+    with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
+        start = max(0, fh.seek(0, 2) - tail)
+        fh.seek(start)
+        lines = fh.read().decode("utf-8", "replace").splitlines()[1 if start else 0:]   # первая строка хвоста — обрывок
+    for line in reversed(lines):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("isSidechain"):
+            continue
+        content, found = (e.get("message") or {}).get("content"), ""
+        if e.get("type") == "assistant":
+            found = _line(text_of(content))
+            use = next((b for b in content or [] if isinstance(b, dict) and b.get("type") == "tool_use"), None)
+            if not found and use:
+                arg = use.get("input") or {}
+                what = (arg.get("description") or arg.get("command") or arg.get("file_path") or arg.get("pattern")
+                        or arg.get("url") or arg.get("query") or "")
+                verb = TOOLS.get(use.get("name", ""), use.get("name", "").split("__")[-1])
+                found = _line(f"{verb[:1].upper()}{verb[1:]}: {what}" if what else verb)
+        elif e.get("type") == "user" and is_real_prompt(e):
+            found = _line("Вы: " + PASTED.sub("", text_of(content)))
+        if found:
+            return found
+    return ""
+
+
+def _line(text: str, limit: int = 140) -> str:
+    """Первая содержательная строка без разметки Markdown и эмодзи."""
+    for raw in text.splitlines():
+        t = EMOJI.sub("", re.sub(r"[`*_#>|]|^\s*[-+]\s+|\[([^\]]+)\]\([^)]+\)", lambda m: m.group(1) or "", raw))
+        t = re.sub(r"\s+", " ", t).strip(" :-")
+        if re.search(r"\w", t):                        # строки из одних знаков («·», «---») пропускаем
+            return t[:limit]
+    return ""
+
+
 def last_answer(path: str) -> str:
     """Последний полный ответ Claude в папке (для «💬 Последний ответ»)."""
     files = transcripts(path)

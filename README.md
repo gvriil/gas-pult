@@ -12,6 +12,7 @@
 
 <img src="docs/img/sessions.png" width="190" alt="Список сессий"> <img src="docs/img/chat.png" width="190" alt="Переписка с озвучкой">
 <img src="docs/img/dialog.png" width="190" alt="Диалог Claude кнопками"> <img src="docs/img/integrations.png" width="190" alt="Интеграции и голос">
+<br><img src="docs/img/desktop.png" width="390" alt="На компьютере — две колонки: список сессий и открытая сессия">
 
 </div>
 

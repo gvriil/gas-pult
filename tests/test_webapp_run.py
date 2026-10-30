@@ -58,3 +58,21 @@ def test_find_auth_joins_wrapped_url():
     assert a["service"] == "notion" and a["paste"]
     assert a["url"].endswith("callback&state=abc") and "code_challenge_method=S256" in a["url"]
     assert find_auth(["❯ ", "просто экран"]) is None
+
+
+def test_key_allows_ctrl_c_only_from_list(panel, monkeypatch):
+    sent = []
+    monkeypatch.setattr(panel.tmux, "keys", lambda wid, k: sent.append(k))
+    monkeypatch.setattr(panel.tmux, "screen", lambda wid, n: ["ok"])
+    monkeypatch.setattr(webapp.time, "sleep", lambda s: None)
+    assert panel.key(W, "C-c") == ["ok"] and sent == ["C-c"]
+    with pytest.raises(ValueError):
+        panel.key(W, "C-d")
+
+
+def test_preview_cached_by_revision(panel, monkeypatch):
+    calls = []
+    monkeypatch.setattr(webapp.transcripts, "preview", lambda path: calls.append(path) or "строка")
+    assert panel.preview("/p", "r1") == "строка" and panel.preview("/p", "r1") == "строка"
+    panel.preview("/p", "r2")
+    assert calls == ["/p", "/p"]

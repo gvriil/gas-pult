@@ -32,7 +32,7 @@
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { overflow-x: hidden; max-width: 100%; }
-  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none;
+  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
          font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   button:disabled { opacity: .5; cursor: default; }
@@ -89,7 +89,12 @@
   .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta { color: var(--text-secondary); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cfoot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 0 18px; }
-  .ctx-txt { margin-left: auto; padding-right: 6px; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ctx { margin-left: auto; padding-right: 6px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
+  .ctx .bar { width: 52px; height: 4px; border-radius: 2px; background: var(--bg-subtle); overflow: hidden; }
+  .ctx .bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
+  .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
+  .preview { color: var(--text-secondary); font-size: 13px; margin: 6px 6px 0 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card.current { border-color: var(--border-focus); box-shadow: 0 0 0 1px var(--border-focus); }
   .kebab { width: 36px; height: 36px; border: 0; background: transparent; border-radius: 10px; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
   .kebab:active { background: var(--bg-subtle); }
   .reply { margin: 10px 6px 0 18px; }
@@ -125,7 +130,12 @@
   /* ===== Переписка ===== */
   .live { color: var(--text-muted); font-size: 12px; margin: -4px 4px 10px; display: flex; align-items: center; gap: 6px; }
   .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); display: inline-block; }
-  .live.stale { color: var(--status-danger); } .live.stale i { background: var(--status-danger); }
+  .live.stale { color: var(--status-approval); } .live.stale i { background: var(--status-approval); }
+  .net { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); z-index: 15; display: flex; align-items: center; gap: 8px;
+         background: var(--status-approval-bg); color: var(--text-primary); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent);
+         border-radius: var(--radius-md); padding: 6px 6px 6px 12px; font-size: 14px; box-shadow: var(--shadow-lg); animation: fade .2s ease; }
+  .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
+  .net button { border: 0; background: var(--bg-surface); border-radius: var(--radius-pill); padding: 7px 12px; font-weight: 600; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; flex: none; }
   .chat .msg { margin: 0 0 14px; animation: fade .2s ease; }
   .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
   .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
@@ -138,6 +148,17 @@
   .chat .acts button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--text-secondary);
                        border-radius: var(--radius-pill); padding: 5px 9px; font-size: 13px; }
   .chat .acts button:active { background: var(--bg-subtle); }
+  .log { border: 1px solid var(--border-subtle); background: var(--bg-subtle); border-radius: var(--radius-md); margin: 6px 0; overflow: hidden; width: 100%; }
+  .chat .me .log { max-width: 88%; }
+  .log summary { list-style: none; cursor: pointer; padding: 9px 12px; font-size: 13px; color: var(--text-secondary); display: flex; gap: 8px; align-items: center; }
+  .log summary::-webkit-details-marker { display: none; }
+  .log summary .i { transition: transform .15s ease; } .log[open] summary .i { transform: rotate(90deg); }
+  .log summary b { color: var(--text-primary); font-weight: 600; flex: none; } .log summary em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .log pre { margin: 0; padding: 10px 12px; background: var(--bg-terminal); color: #E8E6DE; overflow-x: auto; white-space: pre; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; animation: fade .2s ease; }
+  .md .log pre { border-radius: 0; }
+  .tobottom { position: fixed; right: 14px; z-index: 7; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-surface);
+              border: 1px solid var(--border-subtle); box-shadow: 0 4px 16px rgba(0,0,0,.14); color: var(--text-primary); animation: fade .15s ease; }
+  .tobottom.new::after { content: ""; position: absolute; top: 3px; right: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-surface); }
   .md { font-size: 15px; } .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
   .md h1, .md h2, .md h3 { font-family: ui-serif, "Iowan Old Style", Georgia, serif; font-weight: 600; margin: 14px 0 6px; line-height: 1.25; }
   .md h1 { font-size: 20px; } .md h2 { font-size: 18px; } .md h3 { font-size: 16px; }
@@ -151,9 +172,13 @@
   .md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--border-subtle); color: var(--text-secondary); }
 
   /* ===== Экран (терминал) — всегда контрастный, без простыни ===== */
-  .term { background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-md); padding: 12px 12px 10px; }
-  .term pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; }
-  .term .more { display: block; width: 100%; margin: 10px 0 0; border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-sm); padding: 8px; font-size: 13px; }
+  .term { background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-md); padding: 8px 0 10px; overflow: hidden; }
+  .termbar { display: flex; gap: 6px; padding: 0 8px 8px; }
+  .termbar button { border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-pill); padding: 5px 11px; font-size: 12.5px; }
+  .termbar button.on { color: #E8E6DE; border-color: #57544E; }
+  .term pre { margin: 0; padding: 0 12px; white-space: pre; overflow-x: auto; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; }
+  .term.wrap pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .term .more { display: block; width: calc(100% - 24px); margin: 10px 12px 0; border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-sm); padding: 8px; font-size: 13px; }
 
   /* ===== Вопрос Claude — у большого пальца ===== */
   .ask { background: var(--status-approval-bg); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent); border-radius: var(--radius-lg);
@@ -165,8 +190,10 @@
   .ask button.opt.sel { border-color: var(--status-approval); }
   .ask button.opt b { color: var(--status-approval); min-width: 14px; font-variant-numeric: tabular-nums; }
   .ask button.opt:last-child { margin-bottom: 0; }
-  .keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 0 0 8px; }
-  .keys button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 10px; padding: 9px 0; font-weight: 600; font-size: 14px; }
+  .keys { display: grid; grid-template-columns: repeat(7, 1fr) 1.5fr; gap: 5px; margin: 0 0 8px; }
+  .keys button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 10px; min-height: 40px; padding: 0; font-weight: 600; font-size: 14px; transition: transform .08s; }
+  .keys button:not(:disabled):active { transform: scale(.96); background: var(--bg-subtle); }
+  .keys .ctrlc { color: var(--status-danger); font-size: 12.5px; }
   .steps { counter-reset: st; margin: 6px 0 0; padding: 0; list-style: none; }
   .steps li { position: relative; padding: 0 0 12px 34px; }
   .steps li::before { counter-increment: st; content: counter(st); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%;
@@ -186,10 +213,10 @@
   .round.send { background: var(--accent-primary); color: var(--on-accent); border: 0; }
   .round.on { background: var(--bg-subtle); }
   .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 0 8px; animation: up .18s ease; }
-  .menu button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 10px 2px 8px; font-size: 12px;
-                 display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--text-primary); line-height: 1.2; }
-  .menu button .i { color: var(--text-secondary); }
-  .menu .danger { grid-column: 1 / -1; margin-bottom: 4px; flex-direction: row; justify-content: center; color: var(--status-danger); padding: 11px; font-size: 14px; }
+  .menu button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 7px 2px 6px; min-height: 52px; font-size: 12px;
+                 display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-primary); line-height: 1.15; }
+  .menu button .i { width: 18px; height: 18px; color: var(--text-secondary); }
+  .menu .danger { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 35%, var(--border-subtle)); }
   .menu .danger .i { color: var(--status-danger); }
   .attach { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 6px; scrollbar-width: none; }
   .attach span { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 70vw; border: 1px solid var(--border-subtle);
@@ -204,7 +231,8 @@
   .recbar canvas { flex: 1; min-width: 0; height: 28px; }
   .recbar .t { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--status-danger); flex: none; }
   .recbar button { border: 0; border-radius: var(--radius-pill); height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; flex: none; display: grid; place-items: center; }
-  .recbar .ok { background: var(--accent-primary); color: var(--on-accent); } .recbar .no { background: var(--bg-subtle); width: 36px; padding: 0; }
+  .recbar .ok { background: var(--accent-primary); color: var(--on-accent); width: 36px; padding: 0; } .recbar .no { background: var(--bg-subtle); width: 36px; padding: 0; }
+  .recbar .txt { background: var(--bg-subtle); color: var(--text-primary); display: inline-flex; align-items: center; gap: 5px; padding: 0 11px 0 9px; }
 
   /* ===== Команды из ответа ===== */
   .cmd { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px; margin: 8px 0; background: var(--bg-surface); }
@@ -241,12 +269,22 @@
   .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; animation: fade .15s ease;
            background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: 14px; max-width: 92vw; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
   .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: 12px; text-align: center; padding: 5px 8px; }
+  .brand { display: none; } .brand h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
+  .pick h2 { color: var(--text-primary); font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  body.split #home { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; overflow-y: auto; padding: 14px 12px 88px; z-index: 4;
+                     border-right: 1px solid var(--border-subtle); background: var(--bg-canvas); }
+  body.split .brand { display: block; padding: 2px 4px 12px; }
+  body.split .top, body.split main, body.split .demo { margin-left: 340px; }
+  body.split .dock { left: 340px; } body.split .homebar { right: auto; width: 340px; } body.split .net, body.split .update { left: 352px; }
+  body.split #session, body.split #mcpForm, body.split .dock > * { max-width: 860px; margin-left: auto; margin-right: auto; }
   .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; width: auto; box-shadow: var(--shadow-lg); }
 </style>
 </head>
 <body>
 <button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
 <div class="demo" id="demoBar" hidden>Демо-режим: панель на примерах, ваши действия никуда не уходят · <a href="/" style="color:inherit">войти</a></div>
+<div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 <div class="top" id="top">
   <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
   <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
@@ -278,6 +316,7 @@
   </section>
 
   <section id="home" hidden>
+    <div class="brand"><h1 class="serif">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations">Интеграции</button></div>
     <div id="sessionsView"></div>
     <div id="integrationsView" hidden></div>
@@ -290,8 +329,10 @@
   </section>
 
   <section id="mcpForm" hidden></section>
+  <section id="pick" hidden><div class="pick"><span id="pickIcon"></span><h2 class="serif">Выберите сессию</h2><p>Слева — все сессии и их статус. Нажмите карточку, чтобы открыть переписку.</p></div></section>
 </main>
 
+<button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
 
 <div class="dock" id="dock" hidden>
@@ -321,7 +362,10 @@ const DEMO = params.has("demo");
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" } };
 const ORDER = { dialog: 0, busy: 1, idle: 2 };
 let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
-    lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false;
+    lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false,
+    termWrap = false, lastOk = Date.now(), openLogs = new Set();
+const wideMQ = matchMedia("(min-width: 1024px)");
+const split = () => wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -363,17 +407,21 @@ const P = {
   hash: '<path d="M9.5 4l-2 16M16.5 4l-2 16M4.5 9h16M3.5 15h16"/>', home: '<path d="M4 11l8-6.5 8 6.5M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>',
   book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
   code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
+  down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
   $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
+  $("netIcon").innerHTML = ic("warn"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
+  $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down");
   $("playerClose").innerHTML = ic("x"); $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
-  $("menu").innerHTML = `<button data-act="close" class="danger">${ic("power")}Завершить сессию</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"], ["commands", "bolt", "Команды"], ["models", "chip", "Модель"],
-    ["switch", "swap", "Сессии"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["top", "top", "В начало"]]
+  // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
+  $("menu").innerHTML = `<button data-act="close" class="danger">${ic("power")}Завершить</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"],
+    ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
     .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("");
 }
 
@@ -395,12 +443,16 @@ function toast(text, ms = 2600) {
 
 // ---------- сеть ----------
 async function api(path, body, raw, extra) {
-  if (DEMO) return demoApi(path, body);
+  if (DEMO && params.has("offline") && start.done) throw Object.assign(new Error("нет сети"), { net: true });
+  if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
   const headers = { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
-  const r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined });
+  let r;
+  try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined }); }
+  catch (e) { throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
   if (r.status === 403 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }
+  lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "ошибка " + r.status);
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
@@ -426,12 +478,18 @@ function confirmDanger(text, go) { tg?.showConfirm ? tg.showConfirm(text, (ok) =
 function show(v) {
   view = v;
   for (const id of ["login", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
+  const two = split();
+  document.body.classList.toggle("split", two);
+  if (two && v !== "login") $("home").hidden = false;               // список всегда на виду
+  $("pick").hidden = !(two && v === "home");
   $("dock").hidden = v !== "session";
-  $("homeBar").hidden = !(v === "home" && homeView === "sessions");
-  $("backBtn").hidden = !(v === "session" || v === "mcpForm");
-  $("switchBtn").hidden = v !== "session";
+  $("homeBar").hidden = !((v === "home" || two) && v !== "login" && homeView === "sessions");
+  const canBack = v === "mcpForm" || (v === "session" && !two);
+  $("backBtn").hidden = !canBack;
+  $("switchBtn").hidden = v !== "session" || two;
   $("settingsBtn").hidden = v === "login";
-  if (tg) (v === "session" || v === "mcpForm") ? tg.BackButton.show() : tg.BackButton.hide();
+  $("toBottom").hidden = true;
+  if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
   $("top").classList.remove("hide"); window.scrollTo(0, 0);
 }
 function back() {
@@ -441,6 +499,9 @@ function back() {
 let lastY = 0;
 addEventListener("scroll", () => {
   const y = scrollY;
+  const far = document.body.scrollHeight - (innerHeight + y) > 200;  // пролистали вверх — кнопка «к последнему»
+  $("toBottom").hidden = !(view === "session" && far);
+  if (!far) $("toBottom").classList.remove("new");
   $("top").classList.toggle("edge", y > 4);
   if (y > lastY + 6 && y > 70) $("top").classList.add("hide");
   else if (y < lastY - 6 || y < 30) $("top").classList.remove("hide");
@@ -473,8 +534,8 @@ function setHome(v) {
   homeView = v;
   document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
   $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
-  $("homeBar").hidden = !(view === "home" && v === "sessions");
-  $("title").textContent = "Пульт";
+  $("homeBar").hidden = !((view === "home" || split()) && v === "sessions");
+  if (view === "home") $("title").textContent = "Пульт";
   if (v === "integrations") loadMcp(); else refresh();
 }
 $("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
@@ -485,14 +546,20 @@ function isNew(s) {                                   // журнал измен
   if (seen == null) { if (s.rev) store(seenKey(s), s.rev); return false; }
   return s.status === "idle" && s.rev && s.rev !== seen;
 }
+const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
+function ctxMeter(s) {
+  const u = ctxUsed(s);
+  return u == null ? "" : `<span class="ctx ${u > 70 ? "warn" : ""}" title="${u > 70 ? "Контекст почти заполнен — пора /compact" : "Заполнение контекста"}">Контекст: ${u}%<span class="bar"><i style="width:${u}%"></i></span></span>`;
+}
 function card(s) {
   const st = ST[s.status];
-  return `<div class="card ${st.cls}${s.active ? " active" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
+  return `<div class="card ${st.cls}${s.active ? " active" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
       <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}</div></div>
       <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
+    ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
-      ${s.context == null ? "" : `<span class="ctx-txt">контекст: ${s.context}% свободно</span>`}</div>
+      ${ctxMeter(s)}</div>
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}</div>`;
 }
 async function refresh() {
@@ -500,34 +567,35 @@ async function refresh() {
     const d = await api("/api/sessions");
     sessions = d.sessions;
     if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
-    if (view === "home") {
+    if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
+    const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
+    $("brandSub").textContent = hostLine;
+    if (view === "home" && homeView === "sessions") setSub(`<span>${esc(hostLine)}</span>`);
+    if (!$("home").hidden) {
       const n = (k) => sessions.filter((s) => s.status === k).length;
       if (homeView === "sessions") {
-        setSub(`<span>${esc(d.host)} · обновлено ${new Date().toLocaleTimeString("ru-RU")}</span>`);
         const sorted = [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.active - a.active));
         $("sessionsView").innerHTML = (sessions.length ? `<div class="summary">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span></div>`
             + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>');
       }
-      return;
     }
     if (view !== "session") return;
     const s = cur();
     if (!s) { toast("Сессия закрыта"); return back(); }
-    if (s.rev) store(seenKey(s), s.rev);              // вы в сессии — значит, видели
     paintSession(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "chat"); }
     else if (tab === "screen" || s.status === "dialog") loadContent();
     else liveChat();
     lastStatus = s.status;
-  } catch (e) { if (view !== "login") setSub(`<span style="color:var(--status-danger)">нет связи: ${esc(e.message)}</span>`); }
+  } catch (e) { if (view !== "login" && !e.net) setSub(`<span style="color:var(--status-danger)">ошибка: ${esc(e.message)}</span>`); }   // обрыв сети — плашка через 15 с
 }
 // Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
 function paintSession(s) {
   const st = ST[s.status];
   $("title").textContent = s.name;
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span><span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.context == null ? "" : " · контекст " + s.context + "%"}</span>`);
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span><span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span>Пишете в <b>${esc(s.name)}</b><span>· ${st.label}</span>`;
 }
 $("sessionsView").addEventListener("click", (e) => {
@@ -583,14 +651,17 @@ async function loadContent() {
       if (!hist.length || grew) { hist = h.items; histMore = h.more; renderChat(true); }
     } else renderTerm(scr.lines);
     padDock();
-  } catch (e) { $("content").className = ""; $("content").innerHTML = `<div class="panel"><div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div></div>`; }
+  } catch (e) {
+    if (e.net && $("content").firstElementChild && !$("content").querySelector(".empty")) return;   // при обрыве — оставляем то, что видно
+    $("content").className = ""; $("content").innerHTML = `<div class="panel"><div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div></div>`; }
 }
 // Экран — контрастный терминал: последние строки, остальное по кнопке.
 function renderTerm(lines) {
   const box = $("content"); box.className = "";
   const shown = termAll ? lines : lines.slice(-18);
-  box.innerHTML = `<div class="term"><pre>${esc(shown.join("\n"))}</pre>${lines.length > 18 ? `<button class="more" id="termMore">${termAll ? "Свернуть" : "Показать весь экран · " + lines.length + " строк"}</button>` : ""}</div>`;
+  box.innerHTML = `<div class="term${termWrap ? " wrap" : ""}"><div class="termbar"><button id="termWrap" class="${termWrap ? "on" : ""}">Перенос строк: ${termWrap ? "вкл" : "выкл"}</button></div><pre>${esc(shown.join("\n"))}</pre>${lines.length > 18 ? `<button class="more" id="termMore">${termAll ? "Свернуть" : "Показать весь экран · " + lines.length + " строк"}</button>` : ""}</div>`;
   $("termMore")?.addEventListener("click", () => { termAll = !termAll; renderTerm(lines); });
+  $("termWrap").addEventListener("click", () => { termWrap = !termWrap; store("termWrap", termWrap ? "1" : ""); renderTerm(lines); });
 }
 
 async function liveChat() {                         // каждые 3 с: менялся ли журнал; изменился — дорисовываем, не сбивая прокрутку
@@ -604,13 +675,42 @@ async function liveChat() {                         // каждые 3 с: мен
     hist = [...hist.filter((m) => m.i < first), ...h.items]; histRev = h.rev || "";
     if (!hist.some((m) => m.i < first)) histMore = h.more;
     renderChat(atBottom);
-  } catch (e) { $("live").classList.add("stale"); $("live").querySelector("span").textContent = "нет связи — повторю через 3 секунды"; }
+    if (!atBottom) $("toBottom").classList.add("new");
+  } catch (e) { /* связь показывает индикатор: нет ответа сервера 15 с — янтарная плашка */ }
 }
-function markFresh() { $("live").classList.remove("stale"); $("live").querySelector("span").textContent = "в реальном времени · " + new Date().toLocaleTimeString("ru-RU"); }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); keepAwake(); } });
+function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").textContent = "в реальном времени · " + new Date().toLocaleTimeString("ru-RU"); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
+// Честный индикатор: 15 секунд без ответа сервера — янтарная плашка с «Переподключить».
+setInterval(() => {
+  if (document.hidden || view === "login") return;
+  const sec = Math.round((Date.now() - lastOk) / 1000), bad = sec >= 15;
+  $("net").hidden = !bad; $("live").classList.toggle("stale", bad);
+  if (bad) { $("netText").textContent = `Нет связи с сервером · ${sec} с`; $("live").querySelector("span").textContent = `нет связи с сервером · ${sec} с`; }
+}, 1000);
+$("netRetry").onclick = (e) => busy(e.currentTarget, "Подключаюсь…", async () => {
+  await refresh(); if (view === "session") await loadContent();
+  if (Date.now() - lastOk < 3000) { $("net").hidden = true; $("live").classList.remove("stale"); markFresh(); toast("Связь есть"); }
+  else toast("Сервер пока не отвечает — проверьте интернет", 3500);
+});
+$("toBottom").onclick = () => { $("toBottom").classList.remove("new"); scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); };
 let wake = null;
 async function keepAwake() { try { if (navigator.wakeLock && !document.hidden && (!wake || wake.released)) wake = await navigator.wakeLock.request("screen"); } catch (e) {} }
 
+// Строки, по которым видно вывод терминала: приглашение, ssh/lsof, предупреждения, листинги, трассировки.
+const TECH = /^\s*(\$ |# |❯ |Last login|WARNING:|\*\* |COMMAND\s+PID|(tcp|udp)\s|LISTEN|Connection (to|closed)|ssh[: ]|lsof|sudo |\[sudo\]|total \d+|[dl-][rwx-]{9}|Traceback|File "|npm (ERR|WARN)|error:|E: |fatal:|[\w.-]+@[\w.-]+[:~]|[─━═]{6,}|\s*\d+\s+\d+\s+\d+)/;
+const plural = (n, f) => f[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
+function logBlock(key, label, text, hint) {
+  const n = text.split("\n").length;
+  return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em></summary><pre>${esc(text)}</pre></details>`;
+}
+function userMsg(m) {                               // вставленный вывод терминала — свёрнут, ваш текст — открыт
+  const lines = m.text.split("\n"), k = lines.findIndex((l) => TECH.test(l));
+  const body = k < 0 ? [] : lines.slice(k);
+  if (body.length < 4 || body.filter((l) => TECH.test(l)).length < 2) return `<div class="bubble">${esc(m.text)}</div>`;
+  const head = lines.slice(0, k).join("\n").trim();
+  const first = body.find((l) => l.trim())?.trim().slice(0, 60);
+  return (head ? `<div class="bubble">${esc(head)}</div>` : "") + logBlock(m.i + ":u", "Терминал", body.join("\n"), first);
+}
 function renderChat(toBottom) {
   const box = $("content"); box.className = "chat";
   if (!hist.length && !pending.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
@@ -619,15 +719,24 @@ function renderChat(toBottom) {
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
-    ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div>${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
+    ? `<div class="msg me">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
     : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(m.ts)}</span></div></div>`).join("")
     + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : p.state === "fail" ? "bad" : "wait"}">${
       { sending: "отправляется…", sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"), fail: "не отправлено — " + esc(p.err || "") }[p.state]}</div></div>`).join("");
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+  box.querySelectorAll(".msg.ai").forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
+    const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
+    if (n <= 15) return;
+    const key = el.querySelector("[data-copy]")?.dataset.copy + ":p" + j, t = document.createElement("div");
+    t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
+  }));
   if (hist.at(-1)?.role === "assistant") renderCmds();
   if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollTo(0, document.body.scrollHeight));
 }
+$("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
+  const k = e.target.dataset?.log; if (k) e.target.open ? openLogs.add(k) : openLogs.delete(k);
+}, true);
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.id === "older") return busy(b, "Загружаю…", async () => {
@@ -742,6 +851,10 @@ async function pick(text, btn) {
 }
 $("keys").onclick = (e) => { const b = e.target.closest("button[data-key]"); if (b) press(b.dataset.key); };
 async function press(key) {
+  if (key === "C-c") {                              // второй Ctrl+C подряд закрывает Claude Code — не даём
+    if (Date.now() - (press.cc || 0) < 3000) return toast("Ctrl+C уже отправлен. Второй подряд закроет Claude Code — подождите 3 секунды", 4000);
+    press.cc = Date.now(); toast("Ctrl+C отправлен — команда прервана");
+  }
   haptic("impactOccurred", "light");
   try { const d = await api("/api/key", { w: current, key }); renderAsk(d.lines); if (tab === "screen") renderTerm(d.lines); setTimeout(refresh, 800); }
   catch (e) { toast("Не вышло: " + e.message, 4000); }
@@ -769,7 +882,7 @@ async function say(full, btn, msg) {
 }
 function stopPlayer() { $("player").pause(); $("playerBox").hidden = true; padDock(); }
 $("playerClose").onclick = stopPlayer;
-function padDock() { requestAnimationFrame(() => { $("session").style.paddingBottom = ($("dock").offsetHeight + 16) + "px"; }); }
+function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight; $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (h + 12) + "px"; }); }
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
@@ -847,11 +960,11 @@ async function toggleMic() {
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (e) { return toast("Нет доступа к микрофону: " + e.message, 5000); }
   const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
-  const chunks = []; let cancelled = false, raf = 0;
+  const chunks = []; let cancelled = false, sendNow = false, raf = 0;
   rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const bar = document.createElement("div"); bar.className = "recbar";
-  bar.innerHTML = `<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no" aria-label="Отменить запись">${ic("x", "s16")}</button><button class="ok">Готово</button>`;
+  bar.innerHTML = `<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no" aria-label="Отменить запись">${ic("x", "s16")}</button><button class="txt" aria-label="Вставить текст в поле, чтобы проверить">${ic("pen", "s16")}В текст</button><button class="ok" aria-label="Распознать и отправить сразу">${ic("send", "s16")}</button>`;
   for (const id of ["input", "mic", "send", "plus", "menuBtn"]) $(id).hidden = true;
   $("input").after(bar);
   const cv = bar.querySelector("canvas"), g = cv.getContext("2d"), t0 = Date.now();
@@ -870,7 +983,8 @@ async function toggleMic() {
   const finish = () => { cancelAnimationFrame(raf); ac.close(); stream.getTracks().forEach((t) => t.stop()); bar.remove();
     for (const id of ["input", "mic", "plus", "menuBtn"]) $(id).hidden = false; rec = null; sync(); padDock(); };
   bar.querySelector(".no").onclick = () => { cancelled = true; rec.stop(); };
-  bar.querySelector(".ok").onclick = () => rec.stop();
+  bar.querySelector(".txt").onclick = () => rec.stop();
+  bar.querySelector(".ok").onclick = () => { sendNow = true; rec.stop(); };
   rec.onstop = async () => {
     finish();
     if (cancelled) return toast("Запись отменена");
@@ -878,8 +992,9 @@ async function toggleMic() {
     toast("Распознаю…", 8000);
     try {
       const d = await api("/api/stt", blob, blob.type);
-      $("input").value = ($("input").value + " " + d.text).trim(); grow(); $("input").focus();
-      toast("Проверьте текст и отправьте", 3500);
+      $("input").value = ($("input").value + " " + d.text).trim(); grow();
+      if (sendNow) return sendText();
+      $("input").focus(); toast("Проверьте текст и отправьте", 3500);
     } catch (e) { toast("Не распознал: " + e.message, 4500); }
   };
   rec.start(); haptic("impactOccurred", "medium"); padDock();
@@ -895,7 +1010,7 @@ const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", lin
                 github: "code", homeassistant: "home", context7: "book", http: "server", stdio: "term" };
 const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase())}</span>`;
 async function loadMcp(fresh) {
-  setSub("<span>голос, ключи API и сервисы</span>");
+  if (view === "home") setSub("<span>голос, ключи API и сервисы</span>");
   $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="voiceBox"></div>';
   api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
@@ -1092,7 +1207,7 @@ $("updateBar").onclick = () => location.reload();
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
-  $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}">${esc(k.label)}</button>`).join("");
+  $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
   const wn = meta.whatsnew?.[0];
@@ -1102,12 +1217,18 @@ async function start() {
   }
   store("seenAny", "1");
   if (!start.timer) start.timer = setInterval(refresh, 3000);
+  start.done = true;
   keepAwake();
   if (DEMO && params.get("open")) {
     await refresh(); await open(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
     if (params.get("pending")) { pending = [{ text: "Проверь, что сообщение видно сразу", state: "sent" }]; renderChat(false); }
     if (params.get("files")) { files = [{ name: "фото-стенда.jpg", path: "/x" }, { name: "отчёт-П8.xlsx", path: null }]; renderFiles(); }
+    if (params.get("expand")) setTimeout(() => document.querySelectorAll("details.log").forEach((d) => (d.open = true)), 1500);
+    if (params.get("mic")) {                        // для скриншота: вместо микрофона — синтетический звук
+      navigator.mediaDevices.getUserMedia = async () => { const c = new AudioContext(), o = c.createOscillator(), d = c.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream; };
+      toggleMic();
+    }
   }
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
@@ -1117,16 +1238,18 @@ paintIcons();
 applyTheme();
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); }
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
+wideMQ.addEventListener?.("change", () => { show(view); refresh(); });
+termWrap = store("termWrap") === "1";
 if (DEMO) $("demoBar").hidden = false;
 if (DEMO && params.get("view") === "login") showLogin(); else start();
 
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "feature/rooms", status: "busy", context: 41, active: true, channel: false, rev: "a" },
-    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b" },
-    { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2" },
-    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d" },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
+    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?" },
+    { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
+    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю" },
   ];
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
@@ -1134,7 +1257,7 @@ function demoApi(path, body) {
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Верхняя панель прячется при прокрутке\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
   const R = {
     "/api/meta": { host: "ubuntu", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
-                   keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"]].map(([label, key]) => ({ label, key })),
+                   keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
                    projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina" },
     "/api/sessions": { host: "ubuntu", sessions: S },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
@@ -1156,8 +1279,8 @@ function demoApi(path, body) {
   if (!demoApi.h) demoApi.h = [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
-    { i: 9, role: "user", text: "Проверь сборку и запусти тесты", ts: "2026-10-29 09:20" },
-    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```", ts: "2026-10-29 09:21" },
+    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 213.139.11.111\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh nl-hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
+    { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
   if (key === "/api/send") {
     const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20;
