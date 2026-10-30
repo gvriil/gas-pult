@@ -30,7 +30,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
-from gas_pult import providers, transcripts, voice, webauth
+from gas_pult import models, providers, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, TAIL, execute, extract
 from gas_pult.config import Config
@@ -123,7 +123,7 @@ class Panel:
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch,
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
-                        "active": w["id"] == act, "channel": w["channel"],
+                        "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev)})
         return out
@@ -140,6 +140,7 @@ class Panel:
                 "commands": [t for t, _ in self.pult.command_list()],
                 "models": self.cfg.models,
                 "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
+                "profiles": models.public(self.pult.state()),
                 "projects": [self.pult.short(p) for p in self.pult.projects()],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
                 "voice": self.voice(voices)}
@@ -253,7 +254,7 @@ class Panel:
                 time.sleep(0.25)
         raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
 
-    def new(self, i: int) -> dict:
+    def new(self, i: int, profile: str = "") -> dict:
         dirs = self.pult.projects()
         if not 0 <= i < len(dirs):
             raise ValueError("список папок изменился — обновите панель")
@@ -262,7 +263,18 @@ class Panel:
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
         base = os.path.basename(path) if path != self.pult.home else "home"
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, self.cfg.claude)
+        cmd = models.command(self.cfg.claude, profile, self.pult.state())
+        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd)
+        self.pult.set_state(active=wid)
+        return {"id": wid}
+
+    def restart(self, w: dict, profile: str) -> dict:
+        """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем (новый разговор)."""
+        cmd = models.command(self.cfg.claude, profile, self.pult.state())    # нет ключа — ошибка до закрытия
+        result = self.close(w)
+        if result != "закрыто":
+            raise ValueError(result)
+        wid = self.tmux.new_window(w["name"], w["path"], cmd)
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -302,21 +314,31 @@ class Panel:
         key = providers.load_keys().get("elevenlabs")
         return providers.el_voices(key) if key else []
 
-    def set_key(self, provider: str, key: str) -> list[dict]:
-        if provider != "elevenlabs":
-            raise ValueError("пока поддерживается только ElevenLabs")
+    def set_key(self, provider: str, key: str) -> dict:
         key = key.strip()
+        if provider in {p.get("key") for p in models.PROFILES} - {None}:
+            if len(key) < 16 or any(c.isspace() for c in key):
+                raise ValueError(f"это не похоже на ключ {providers.NAMES[provider]} — скопируйте его целиком")
+            checked = providers.check_model_key(provider, key)   # неверный ключ сюда не дойдёт
+            providers.save_key(provider, key)
+            return {"checked": checked}
+        if provider != "elevenlabs":
+            raise ValueError("такого поставщика нет")
         if len(key) < 20:
             raise ValueError("это не похоже на ключ ElevenLabs — скопируйте его целиком")
         voices = providers.el_voices(key)                 # проверка: неверный ключ сюда не дойдёт
         providers.save_key(provider, key)
         if voices and not self.pult.state().get("el_voice"):
             self.pult.set_state(el_voice=voices[0]["id"])
-        return voices
+        return {"voices": voices}
 
     def remove_key(self, provider: str):
         providers.save_key(provider, None)
-        self.pult.set_state(tts_provider="local", stt_provider="local")
+        if provider == "elevenlabs":                         # голос возвращается на сервер; модели не трогаем
+            self.pult.set_state(tts_provider="local", stt_provider="local")
+
+    def set_models(self, profile: str, main: str, fast: str):
+        self.pult.set_state(model_profiles=models.set_models(self.pult.state(), profile, main, fast))
 
     def set_providers(self, b: dict):
         el = "elevenlabs" in providers.key_info()
@@ -526,7 +548,7 @@ def handler(panel: Panel):
             if path == "/api/mcp/remove":
                 return {"result": panel.mcp.remove(str(b.get("name", "")))}
             if path == "/api/keys":
-                return {"voices": panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))}
+                return panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))
             if path == "/api/keys/remove":
                 panel.remove_key(str(b.get("provider", "")))
                 return {"ok": True}
@@ -536,7 +558,10 @@ def handler(panel: Panel):
             if path == "/api/mcp/login":
                 return panel.mcp_login(str(b.get("name", "")))
             if path == "/api/new":
-                return panel.new(int(b.get("i", -1)))
+                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
+            if path == "/api/models":
+                panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
+                return {"profiles": models.public(panel.pult.state())}
             w = self.win(b.get("w"))
             if path == "/api/send":
                 text = str(b.get("text", "")).strip()
@@ -559,6 +584,8 @@ def handler(panel: Panel):
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")))}
             if path == "/api/close":
                 return {"result": panel.close(w)}
+            if path == "/api/restart":
+                return panel.restart(w, str(b.get("profile", "")))
             if path == "/api/run":
                 return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError

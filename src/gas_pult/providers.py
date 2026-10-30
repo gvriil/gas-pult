@@ -74,6 +74,28 @@ def _el(path: str, key: str, body: bytes | None = None, ctype: str | None = None
     return json.loads(data) if accept == "application/json" else data
 
 
+# Проверка ключа поставщика моделей бесплатным служебным запросом (без генерации): адрес → чем проверяем.
+CHECK = {"openrouter": "https://openrouter.ai/api/v1/key", "deepseek": "https://api.deepseek.com/user/balance"}
+NAMES = {"openrouter": "OpenRouter", "zai": "Z.ai", "deepseek": "DeepSeek", "elevenlabs": "ElevenLabs"}
+
+
+def check_model_key(provider: str, key: str) -> bool:
+    """True — ключ проверен; False — проверить нечем (Z.ai, сеть, другой ответ): проверится при запуске сессии."""
+    url = CHECK.get(provider)
+    if not url:
+        return False
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20):
+            return True
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise ProviderError(f"{NAMES[provider]}: ключ не подошёл — скопируйте его целиком заново") from None
+        return False
+    except (urllib.error.URLError, TimeoutError):
+        return False
+
+
 def el_voices(key: str) -> list[dict]:
     """Голоса аккаунта — заодно проверка ключа."""
     return [{"id": v["voice_id"], "name": v.get("name", v["voice_id"])} for v in _el("/voices", key).get("voices", [])]

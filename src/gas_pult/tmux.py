@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from gas_pult.models import profile_of
+
 
 def is_claude(argv: list[str]) -> bool:
     """claude (нативный установщик), node …/@anthropic-ai/claude-code/cli.js (npm), bash /path/claude (обёртка)."""
@@ -33,6 +35,7 @@ class Tmux:
             claude = [p for p in (line.split() for line in ps.stdout.splitlines() if line.strip()) if is_claude(p)]
             if claude:
                 w["cmd"] = "claude"
+            w["profile"] = profile_of(claude[0]) if claude else ""   # у какого поставщика модели (models.py)
             w["channel"] = any("--channels" in p for p in claude)   # у окна свой Telegram — не дублируем
         return ws
 
