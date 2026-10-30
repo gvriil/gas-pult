@@ -29,6 +29,15 @@ from gas_pult.voice import catalog
 
 DIALOG = re.compile(r"Do you want|Enter to confirm|Do you trust|❯ \d\.|Select model|Esc to (cancel|close|go back)")
 BUSY = re.compile(r"esc to interrupt", re.I)
+# Готовность окна к тексту. Вопрос Claude (разрешение, выбор пункта): Esc там значит «нет» — за человека не отвечаем.
+# Меню и панели (/status, /model, /config, /usage…): Esc безопасен — закрываем, иначе текст уйдёт в меню и пропадёт.
+QUESTION = re.compile(r"Do you want|Do you trust|❯ \d\.|Enter to confirm|Enter to select")
+PANEL = re.compile(r"Esc to (cancel|close|exit|go back)|Settings\s+Status\s+Config", re.I)
+PROMPT = re.compile(r"^\s*❯(?!\s*\d\.)", re.M)
+
+
+class NotReady(RuntimeError):
+    """Окно не готово принять текст — сообщение не вставляем вслепую, а говорим человеку почему."""
 MENU = {"keyboard": [[{"text": "🆕 Новая"}, {"text": "🔀 Переключить"}, {"text": "📊 Сводка"}],
                      [{"text": "⚡ Команды"}, {"text": "📋 Окна"}, {"text": "⚙️ Настройки"}]],
         "resize_keyboard": True, "is_persistent": True}
@@ -116,13 +125,33 @@ class Pult:
             time.sleep(1)
         return False
 
+    def ready_for_text(self, wid: str, limit: int = 40):
+        """Довести окно до строки ввода: меню закрыть (Esc), на вопрос — не отвечать, свежий Claude — дождаться."""
+        escapes = 0
+        for _ in range(limit):
+            scr = "\n".join(self.tmux.screen(wid, 15))
+            if QUESTION.search(scr):
+                raise NotReady("Claude ждёт ответа на вопрос в этом окне — ответьте на экране (1 2 3 или Esc), "
+                               "потом пишите")
+            if PANEL.search(scr) and not BUSY.search(scr):
+                if escapes >= 3:
+                    raise NotReady("в окне открыто меню Claude и не закрывается — откройте «Экран» и нажмите Esc")
+                self.tmux.keys(wid, "Escape")
+                escapes += 1
+                time.sleep(0.8)
+                continue
+            if PROMPT.search(scr):
+                return
+            time.sleep(1)
+        raise NotReady("окно не готово к вводу 40 секунд — посмотрите «Экран»")
+
     def to_claude(self, w: dict, text: str):
-        self.wait_ready(w["id"])
+        self.ready_for_text(w["id"])
         self.tmux.paste(w["id"], text)
 
     def slash(self, chat: int, w: dict, cmd: str):
         """Слэш-команда: печатаем как с клавиатуры; меню (/model, /mcp) монитор пришлёт сам, остальное — экраном."""
-        self.wait_ready(w["id"])
+        self.ready_for_text(w["id"])
         self.tmux.type(w["id"], cmd)
         time.sleep(0.3)
         self.tmux.keys(w["id"], "Enter")

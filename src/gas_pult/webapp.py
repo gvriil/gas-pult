@@ -171,7 +171,7 @@ class Panel:
 
     def slash(self, w: dict, cmd: str) -> list[str]:
         with self.lock(w["id"]):
-            self.pult.wait_ready(w["id"])
+            self.pult.ready_for_text(w["id"])          # открытое меню закрыть, на вопрос Claude — не печатать
             self.tmux.type(w["id"], cmd)
             time.sleep(0.3)
             self.tmux.keys(w["id"], "Enter")
