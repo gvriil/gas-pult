@@ -19,3 +19,6 @@ inbox/
 *.onnx
 *.onnx.json
 *.pt
+
+# локальные заметки сервера для Claude Code
+CLAUDE.local.md

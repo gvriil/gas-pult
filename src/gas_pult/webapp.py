@@ -27,6 +27,7 @@ import threading
 import time
 import urllib.parse
 import uuid
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
@@ -35,14 +36,17 @@ from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
+from gas_pult.openrouter import CALLBACK, OpenRouter
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
 MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+EFFORTS = ("auto", "low", "medium", "high", "xhigh", "max")   # /effort <уровень> — Claude Code принимает аргументом
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
+MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 
 
@@ -101,6 +105,8 @@ class Panel:
         self.locks: dict[str, threading.Lock] = {}      # одно окно — одна вставка за раз
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
         self.mcp = Mcp()
+        self.openrouter = OpenRouter()
+        self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
 
     def lock(self, wid: str) -> threading.Lock:
@@ -117,12 +123,13 @@ class Panel:
             if w["cmd"] != "claude":
                 continue
             scr = "\n".join(self.tmux.screen(w["id"], 40))
-            ctx = CONTEXT.search(scr)
+            ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
             branch = subprocess.run(["git", "-C", w["path"], "rev-parse", "--abbrev-ref", "HEAD"],
                                     capture_output=True, text=True).stdout.strip()
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch,
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
+                        "model": mdl.group(1).strip() if mdl else "",             # на чём реально работает сессия
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev)})
@@ -165,7 +172,7 @@ class Panel:
 
     def slash(self, w: dict, cmd: str) -> list[str]:
         with self.lock(w["id"]):
-            self.pult.wait_ready(w["id"])
+            self.pult.ready_for_text(w["id"])          # открытое меню закрыть, на вопрос Claude — не печатать
             self.tmux.type(w["id"], cmd)
             time.sleep(0.3)
             self.tmux.keys(w["id"], "Enter")
@@ -186,6 +193,11 @@ class Panel:
             return {"lines": self.slash(w, cmd)}
         self.send(w, cmd)
         return {"sent": True}
+
+    def effort(self, w: dict, level: str) -> list[str]:
+        if level not in EFFORTS:
+            raise ValueError("такого уровня усилий нет")
+        return self.slash(w, f"/effort {level}")
 
     def model(self, w: dict, name: str) -> list[str]:
         if name not in self.cfg.models and name != "":
@@ -268,9 +280,14 @@ class Panel:
         self.pult.set_state(active=wid)
         return {"id": wid}
 
-    def restart(self, w: dict, profile: str) -> dict:
-        """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем (новый разговор)."""
+    def restart(self, w: dict, profile: str, keep: bool = True) -> dict:
+        """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
+
+        ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
+        не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
+        """
         cmd = models.command(self.cfg.claude, profile, self.pult.state())    # нет ключа — ошибка до закрытия
+        cmd += " --continue" if keep else ""
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
@@ -336,6 +353,14 @@ class Panel:
         providers.save_key(provider, None)
         if provider == "elevenlabs":                         # голос возвращается на сервер; модели не трогаем
             self.pult.set_state(tts_provider="local", stt_provider="local")
+
+    def openrouter_done(self, code: str, state: str):
+        """Возврат из OpenRouter после «Authorize»: код → ключ → secrets.json (как ключ, вставленный вручную)."""
+        providers.save_key("openrouter", self.openrouter.finish(code, state))
+
+    def openrouter_info(self) -> dict:
+        key = providers.load_keys().get("openrouter")
+        return {"key": False} if not key else {"key": True, **self.openrouter.info(key)}
 
     def set_models(self, profile: str, main: str, fast: str):
         self.pult.set_state(model_profiles=models.set_models(self.pult.state(), profile, main, fast))
@@ -416,6 +441,24 @@ class Panel:
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL}
 
 
+# Сервис-воркер: только клик по уведомлению — открыть панель на нужной сессии. Ни кэша, ни фоновых запросов.
+SW_JS = """self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const id = e.notification.data && e.notification.data.id;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+    if (cs[0]) { cs[0].focus(); cs[0].postMessage({ open: id }); return null; }
+    return self.clients.openWindow("/");
+  }));
+});
+"""
+
+# Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
+DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+             '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
+             'sans-serif;background:#F6F5F0;color:#181816;text-align:center"><h1 style="font:600 22px Georgia,serif">'
+             '{title}</h1><p style="color:#6E6C65">{text}</p></body>')
+
+
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
     build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
@@ -474,6 +517,10 @@ def handler(panel: Panel):
             url = urllib.parse.urlparse(self.path)
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8")
+            if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
+                return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
+            if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
+                return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
             if not url.path.startswith("/api/"):
                 return self.json({"error": "нет такой страницы"}, 404)
             if not self.owner():
@@ -495,6 +542,10 @@ def handler(panel: Panel):
                     raise LookupError("нет такого сервиса")
                 s = panel.mcp.connected(c["match"])
                 return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
+            if path == "/api/openrouter/info":
+                return panel.openrouter_info()
+            if path == "/api/openrouter/models":
+                return {"models": panel.openrouter.models()}
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
@@ -517,6 +568,15 @@ def handler(panel: Panel):
                 items, more = transcripts.history(w["path"], 30, before)
                 return {"items": items, "more": more, "rev": rev}
             raise KeyError
+
+        def openrouter_back(self, q: dict):
+            try:
+                panel.openrouter_done(q.get("code", ""), q.get("state", ""))
+                title, text = "Ключ OpenRouter сохранён", "Вернитесь в панель — ключ на месте. Вкладку можно закрыть."
+            except ValueError as e:
+                title, text = "Не получилось", str(e)
+            done = DONE_PAGE.format(title=escape(title), text=escape(text))
+            self.reply(200, done.encode(), "text/html; charset=utf-8")
 
         def do_POST(self):
             path = urllib.parse.urlparse(self.path).path
@@ -559,6 +619,9 @@ def handler(panel: Panel):
                 return panel.mcp_login(str(b.get("name", "")))
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
+            if path == "/api/openrouter/start":
+                base = panel.public_url or f"https://{self.headers.get('Host', '')}"
+                return {"url": panel.openrouter.start(base)}
             if path == "/api/models":
                 panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
                 return {"profiles": models.public(panel.pult.state())}
@@ -576,6 +639,8 @@ def handler(panel: Panel):
                 return panel.command(w, int(b.get("i", -1)))
             if path == "/api/model":
                 return {"lines": panel.model(w, str(b.get("name", "")))}
+            if path == "/api/effort":
+                return {"lines": panel.effort(w, str(b.get("level", "")))}
             if path == "/api/key":
                 return {"lines": panel.key(w, str(b.get("key", "")))}
             if path == "/api/select":
@@ -585,7 +650,7 @@ def handler(panel: Panel):
             if path == "/api/close":
                 return {"result": panel.close(w)}
             if path == "/api/restart":
-                return panel.restart(w, str(b.get("profile", "")))
+                return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False)
             if path == "/api/run":
                 return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError
@@ -630,11 +695,13 @@ def set_menu(api: Api, owners: list[int], url: str):
 
 
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler(Panel(cfg)))
+    panel = Panel(cfg)
+    srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
     proc = None
     if use_tunnel:
         proc, url = tunnel(port)
     if url:
+        panel.public_url = url
         try:
             set_menu(Api(cfg.token), cfg.owners, url)
         except TelegramError as e:

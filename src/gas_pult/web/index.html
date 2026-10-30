@@ -10,25 +10,26 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
   /* ===== Дизайн-система: тёплая бумага + терракота; статусы семантические (свободна ≠ зелёный) ===== */
+  /* ===== Палитра в духе Gemini (Material 3): белый и #F0F4F9, синий акцент; статусы — по смыслу ===== */
   :root, :root[data-theme="light"] {
-    --bg-canvas: #F6F5F0; --bg-surface: #FFFFFF; --bg-subtle: #ECEAE3; --bg-terminal: #161615;
-    --border-subtle: #E2DFD7; --border-focus: #C85A32;
-    --text-primary: #181816; --text-secondary: #6E6C65; --text-muted: #9E9B93;
-    --accent-primary: #C85A32; --accent-soft: #F9EBE6; --on-accent: #FFFFFF;
-    --status-idle: #8E8C84; --status-running: #2563EB; --status-approval: #D97706; --status-approval-bg: #FEF3C7;
-    --status-success: #15803D; --status-danger: #DC2626;
-    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-pill: 9999px;
-    --shadow-sm: 0 1px 2px rgba(24,24,22,.05), 0 1px 1px rgba(24,24,22,.03);
-    --shadow-lg: 0 -8px 32px rgba(24,24,22,.10);
+    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F0F4F9; --bg-terminal: #1E1F20;
+    --border-subtle: #E1E5EA; --border-focus: #0B57D0;
+    --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
+    --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
+    --status-idle: #747775; --status-running: #1A73E8; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
+    --status-success: #146C2E; --status-danger: #B3261E;
+    --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
+    --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
   }
   :root[data-theme="dark"] {
-    --bg-canvas: #111110; --bg-surface: #1A1918; --bg-subtle: #242321; --bg-terminal: #0C0C0B;
-    --border-subtle: #2E2D2A; --border-focus: #E06D44;
-    --text-primary: #F2F0E8; --text-secondary: #9E9B93; --text-muted: #6E6C65;
-    --accent-primary: #E06D44; --accent-soft: #2D1B14; --on-accent: #FFFFFF;
-    --status-idle: #6E6C65; --status-running: #60A5FA; --status-approval: #FBBF24; --status-approval-bg: #2E230B;
-    --status-success: #4ADE80; --status-danger: #F87171;
-    --shadow-sm: none; --shadow-lg: 0 -8px 32px rgba(0,0,0,.5);
+    --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
+    --border-subtle: #3C4043; --border-focus: #A8C7FA;
+    --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
+    --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
+    --status-idle: #8E918F; --status-running: #8AB4F8; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
+    --status-success: #6DD58C; --status-danger: #F2B8B5;
+    --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { overflow-x: clip; max-width: 100%; }   /* не hidden: иначе шапка не закрепляется */
@@ -37,7 +38,8 @@
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   button:disabled { opacity: .5; cursor: default; }
   button:not(:disabled):active { transform: scale(.97); }
-  .serif { font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif; letter-spacing: -.01em; }
+  .serif { font-weight: 500; letter-spacing: -.01em; }      /* заголовки — без засечек, как в Gemini */
+  .brand-text { background: var(--brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .i { width: 20px; height: 20px; flex: none; display: block; }
   .ic-16 .i, .i.s16 { width: 16px; height: 16px; }
   [hidden] { display: none !important; }
@@ -76,6 +78,11 @@
   .chip.new, .chip.ok { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); }
   .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
   .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
+  .manual { margin: 4px 0 8px; } .manual summary { cursor: pointer; padding: 6px 2px; }
+  .picker .search { position: sticky; top: -8px; background: var(--bg-surface); padding: 4px 16px 8px; z-index: 1; }
+  .picker .search input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); outline: none; }
+  .picker .search input:focus { border-color: var(--border-focus); }
+  .picker .mid { font: 12px ui-monospace, Menlo, monospace; color: var(--text-secondary); }
   .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
 
   /* ===== Список сессий ===== */
@@ -108,12 +115,12 @@
   #home { padding-bottom: 76px; }
 
   /* ===== Кнопки и формы ===== */
-  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-md); padding: 13px 14px;
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-pill); padding: 13px 18px;
          font-weight: 600; background: var(--accent-primary); color: var(--on-accent); margin: 8px 0; min-height: 48px; }
   .btn.ghost { background: transparent; color: var(--accent-primary); border: 1px solid var(--border-subtle); }
   .btn.quiet { background: var(--bg-subtle); color: var(--text-primary); }
   .btn.danger { background: transparent; color: var(--status-danger); border: 1px solid color-mix(in srgb, var(--status-danger) 35%, var(--border-subtle)); }
-  .btn.approval { background: var(--status-approval); color: #1b1300; }
+  .btn.approval { background: var(--status-approval); color: var(--on-approval); }
   .btn.sm { min-height: 40px; padding: 8px 12px; margin: 0; }
   .field { margin: 0 0 14px; }
   .field label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 4px; } .field .opt { color: var(--text-secondary); font-weight: 400; }
@@ -141,8 +148,16 @@
   .chat .msg { margin: 0 0 14px; animation: fade .2s ease; }
   .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
   .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
-  .chat .me .bubble { background: var(--accent-soft); border-bottom-right-radius: 6px; max-width: 88%; white-space: pre-wrap; }
-  .chat .ai .bubble { background: var(--bg-surface); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); border-bottom-left-radius: 6px; }
+  .chat .me .bubble { background: var(--bg-subtle); border-radius: 22px 22px 6px 22px; max-width: 85%; white-space: pre-wrap; }
+  .chat .ai .bubble { background: transparent; padding: 2px 2px 0; }            /* ответ — текстом во всю ширину */
+  .chat .msg { margin-bottom: 20px; }
+  .working { display: flex; align-items: center; gap: 10px; margin: 2px 2px 18px; color: var(--text-secondary); font-size: 14px; }
+  .working .spark { width: 22px; height: 22px; flex: none; animation: spin 2.4s linear infinite; }
+  .working b { font-weight: 500; background: var(--brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .notice { display: flex; gap: 10px; align-items: center; background: var(--bg-subtle); border-radius: var(--radius-lg); padding: 10px 12px; margin: 0 0 14px; font-size: 14px; }
+  .notice span { flex: 1; } .notice button { border: 0; background: none; color: var(--accent-primary); font-weight: 600; padding: 6px; }
   .chat .when { color: var(--text-muted); font-size: 12px; margin: 4px 4px 0; }
   .chat .state { font-size: 12px; margin: 4px 4px 0; text-align: right; color: var(--text-secondary); }
   .chat .state.ok { color: var(--status-success); } .chat .state.wait { color: var(--status-approval); } .chat .state.bad { color: var(--status-danger); }
@@ -162,7 +177,7 @@
               border: 1px solid var(--border-subtle); box-shadow: 0 4px 16px rgba(0,0,0,.14); color: var(--text-primary); animation: fade .15s ease; }
   .tobottom.new::after { content: ""; position: absolute; top: 3px; right: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-surface); }
   .md { font-size: 15px; } .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
-  .md h1, .md h2, .md h3 { font-family: ui-serif, "Iowan Old Style", Georgia, serif; font-weight: 600; margin: 14px 0 6px; line-height: 1.25; }
+  .md h1, .md h2, .md h3 { font-weight: 600; margin: 16px 0 6px; line-height: 1.3; }
   .md h1 { font-size: 20px; } .md h2 { font-size: 18px; } .md h3 { font-size: 16px; }
   .md p { margin: 6px 0; } .md ul, .md ol { padding-left: 20px; margin: 6px 0; }
   .md .tbl { overflow-x: auto; margin: 8px 0; }
@@ -202,19 +217,23 @@
                       background: var(--accent-primary); color: var(--on-accent); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
 
   /* ===== Нижняя панель сессии ===== */
-  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas); border-top: 1px solid var(--border-subtle);
-          padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78vh; overflow-y: auto; }
-  .targetrow { display: flex; align-items: center; gap: 10px; padding: 0 4px 6px; min-width: 0; }
-  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; }
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas);
+          padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78vh; overflow-y: auto; }
+  .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
+  .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
+  .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; }
+  .composer .attach { padding: 8px 6px 0; }
+  .ctools { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .tool { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
+  .tool:active, .tool.on { background: color-mix(in srgb, var(--text-primary) 9%, transparent); }
+  .tool.send { background: var(--accent-primary); color: var(--on-accent); }
+  .ctools .target { padding: 0 4px 0 6px; font-size: 12px; }
+  .ctools .live { font-size: 11.5px; padding-right: 2px; }
+  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; white-space: nowrap; }
+  .target b { flex: 0 0 auto; max-width: 55%; }            /* имя сессии — главное: куда уйдёт сообщение */
+  .target > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 440px) { .live .lw { display: none; } }
   .target b { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .compose { display: flex; gap: 6px; align-items: flex-end; }
-  .compose textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--border-subtle); border-radius: 22px; padding: 10px 14px;
-                      background: var(--bg-surface); max-height: 140px; outline: none; }
-  .compose textarea:focus { border-color: var(--border-focus); }
-  .round { width: 44px; height: 44px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--bg-surface);
-           border: 1px solid var(--border-subtle); color: var(--text-primary); }
-  .round.send { background: var(--accent-primary); color: var(--on-accent); border: 0; }
-  .round.on { background: var(--bg-subtle); }
   .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 0 8px; animation: up .18s ease; }
   .menu button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 7px 2px 6px; min-height: 52px; font-size: 12px;
                  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-primary); line-height: 1.15; }
@@ -323,7 +342,7 @@
   </section>
 
   <section id="home" hidden>
-    <div class="brand"><h1 class="serif">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
+    <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations">Интеграции</button></div>
     <div id="sessionsView"></div>
     <div id="integrationsView" hidden></div>
@@ -345,14 +364,17 @@
   <div class="keys" id="keys" hidden></div>
   <div class="playerbox" id="playerBox" hidden><audio id="player" controls></audio><button class="icon" id="playerClose" aria-label="Закрыть плеер"></button></div>
   <div class="menu" id="menu" hidden></div>
-  <div class="attach" id="attach" hidden></div>
-  <div class="targetrow"><div class="target" id="target"></div><div class="live" id="live"><i></i><span>обновляется</span></div></div>
-  <div class="compose">
-    <button class="round" id="menuBtn" aria-label="Меню действий"></button>
-    <button class="round" id="plus" aria-label="Прикрепить фото или файл"></button>
+  <div class="composer" id="composer">
+    <div class="attach" id="attach" hidden></div>
     <textarea id="input" rows="1" placeholder="Сообщение…"></textarea>
-    <button class="round" id="mic" aria-label="Записать голосовое"></button>
-    <button class="round send" id="send" aria-label="Отправить" hidden></button>
+    <div class="ctools" id="ctools">
+      <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
+      <button class="tool" id="menuBtn" aria-label="Меню действий"></button>
+      <div class="target" id="target"></div>
+      <div class="live" id="live"><i></i><span>обновляется</span></div>
+      <button class="tool" id="mic" aria-label="Записать голосовое"></button>
+      <button class="tool send" id="send" aria-label="Отправить" hidden></button>
+    </div>
   </div>
   <input type="file" id="fCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="fPhoto" accept="image/*,video/*" multiple hidden>
@@ -413,6 +435,8 @@ const P = {
   book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
   code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
   down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
+  spark: '<path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5-.6-4.9-4.6-8.9-9.5-9.5 4.9-.6 8.9-4.6 9.5-9.5z" fill="url(#gsp)" stroke="none"/><defs><linearGradient id="gsp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs>',
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
@@ -493,6 +517,7 @@ function show(v) {
   $("backBtn").hidden = !canBack;
   $("switchBtn").hidden = v !== "session" || two;
   $("settingsBtn").hidden = v === "login";
+  $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true;
   $("tabsBar").hidden = v !== "session";             // вкладки сессии — в закреплённой шапке
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
@@ -570,7 +595,7 @@ function card(s) {
   const st = ST[s.status];
   return `<div class="card ${st.cls}${s.active ? " active" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
-      <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}</div></div>
+      <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
@@ -581,6 +606,7 @@ async function refresh() {
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions;
+    watchSessions(sessions);
     if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
@@ -590,7 +616,7 @@ async function refresh() {
       const n = (k) => sessions.filter((s) => s.status === k).length;
       if (homeView === "sessions") {
         const sorted = [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.active - a.active));
-        $("sessionsView").innerHTML = (sessions.length ? `<div class="summary">
+        $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span></div>`
             + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>');
@@ -600,7 +626,7 @@ async function refresh() {
     const s = cur();
     if (!s) { toast("Сессия закрыта"); return back(); }
     paintSession(s);
-    if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); setTab(s.status === "dialog" ? "screen" : "chat"); }
+    if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog") loadContent();
     else liveChat();
     lastStatus = s.status;
@@ -610,8 +636,10 @@ async function refresh() {
 function paintSession(s) {
   const st = ST[s.status];
   $("title").textContent = s.name;
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
-  $("target").innerHTML = `<span class="sdot ${st.cls}"></span>Пишете в <b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
+  $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
+  $("input").placeholder = "Сообщение для " + s.name + "…";            // куда уйдёт — видно прямо в поле
+  paintWorking(s);
 }
 $("sessionsView").addEventListener("click", (e) => {
   const r = e.target.closest("[data-reply]"); if (r) return open(r.dataset.reply, "screen");
@@ -660,7 +688,8 @@ async function open(id, startTab) {
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
   $("content").innerHTML = '<div class="empty">загружаю…</div>'; setAsk("");
-  hist = []; setTab(startTab || (cur()?.status === "dialog" ? "screen" : "chat")); refresh(); haptic("selectionChanged"); padDock();
+  hist = []; setTab(startTab || "chat"); refresh(); haptic("selectionChanged"); padDock();
+  if (matchMedia("(pointer: fine)").matches) setTimeout(() => $("input").focus(), 300);   // на компьютере — сразу печатать
 }
 function setTab(t) {
   tab = t;
@@ -675,11 +704,11 @@ async function loadContent() {
   try {
     const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]);
     renderAsk(scr.lines, scr.auth);
-    $("keys").hidden = tab !== "screen" && cur()?.status !== "dialog";
+    $("keys").hidden = tab !== "screen";                    // клавиши — на «Экране»; в переписке вопрос — карточкой
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
       histRev = h.rev || ""; markFresh();
-      if (!hist.length || grew) { hist = h.items; histMore = h.more; renderChat(true); }
+      if (!hist.length || grew || $("content").className !== "chat") { hist = h.items; histMore = h.more; renderChat(true); }   // вернулись с «Экрана» — показать переписку
     } else renderTerm(scr.lines);
     padDock();
   } catch (e) {
@@ -709,7 +738,7 @@ async function liveChat() {                         // каждые 3 с: мен
     if (!atBottom) $("toBottom").classList.add("new");
   } catch (e) { /* связь показывает индикатор: нет ответа сервера 15 с — янтарная плашка */ }
 }
-function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU"); }
+function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").innerHTML = '<span class="lw">обновлено </span>' + new Date().toLocaleTimeString("ru-RU"); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
 // Честный индикатор: 15 секунд без ответа сервера — янтарная плашка с «Переподключить».
 setInterval(() => {
@@ -742,6 +771,17 @@ function userMsg(m) {                               // вставленный в
   const first = body.find((l) => l.trim())?.trim().slice(0, 60);
   return (head ? `<div class="bubble">${esc(head)}</div>` : "") + logBlock(m.i + ":u", "Терминал", body.join("\n"), first);
 }
+// Пока Claude работает — строка в конце переписки: сколько идёт и что делает (превью шага с сервера).
+const busySince = {};
+function paintWorking(s) {
+  if (s.status === "busy") busySince[s.id] ??= Date.now(); else delete busySince[s.id];
+  const row = document.getElementById("working");
+  if (!row) return;
+  row.hidden = s.status !== "busy" || tab !== "chat";
+  if (row.hidden) return;
+  const sec = Math.round((Date.now() - busySince[s.id]) / 1000);
+  row.querySelector("span").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}${s.preview ? " · " + s.preview : ""}`;
+}
 function renderChat(toBottom) {
   const box = $("content"); box.className = "chat";
   if (!hist.length && !pending.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
@@ -763,6 +803,8 @@ function renderChat(toBottom) {
     t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
   }));
   if (hist.at(-1)?.role === "assistant") renderCmds();
+  box.insertAdjacentHTML("beforeend", `<div class="working" id="working" hidden>${ic("spark", "spark")}<b>Claude работает</b><span></span></div>`);
+  if (cur()) paintWorking(cur());
   if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(document.body.scrollHeight));
 }
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
@@ -929,10 +971,11 @@ const ACTIONS = {
     const real = (m) => own ? (m === "haiku" ? p.fast : p.main) || "модель Claude через " + p.title : "";
     sheet(`Модель · ${p?.title || "Claude"}`, [
       ...meta.models.map((m) => ({ label: m, icon: "chip", sub: [{ opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m], real(m)].filter(Boolean).join(" · "),
-        run: () => act("/api/model", { name: m }, "Модель: " + m) })),
+        run: async () => { await act("/api/model", { name: m }, "Модель: " + m); if (!own) effortSheet(); } })),
       { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) },
       { label: "Сменить поставщика…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — сессия перезапустится", run: () => switchProfile(s) }]);
   },
+  effort: () => effortSheet(),
   switch: () => $("switchBtn").onclick(),
   active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
   refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
@@ -940,12 +983,26 @@ const ACTIONS = {
   close: () => confirmClose(current),
 };
 $("menu").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; closeMenu(); ACTIONS[b.dataset.act](b); };
+// Смена поставщика перезапускает окно. По умолчанию разговор продолжается (claude --continue) — контекст не теряется.
 function switchProfile(s) {
-  pickProfile((pid) => confirmDanger(`Перезапустить «${s.name}» с ${profileOf(pid)?.title || pid}? Текущий разговор закончится (он останется в истории), новый начнётся в той же папке.`, async () => {
-    toast("Перезапускаю…", 6000);
-    try { const d = await api("/api/restart", { w: s.id, profile: pid }); await refresh(); open(d.id); toast("Готово: " + (profileOf(pid)?.title || pid)); }
-    catch (err) { toast("Не вышло: " + err.message, 5000); }
-  }), s.profile || "claude");
+  pickProfile((pid) => {
+    const title = profileOf(pid)?.title || pid;
+    const go = async (keep) => {
+      toast("Перезапускаю…", 6000);
+      try { const d = await api("/api/restart", { w: s.id, profile: pid, keep }); await refresh(); open(d.id); toast(`Готово: ${title}${keep ? " — разговор продолжается" : ""}`); }
+      catch (err) { toast("Не вышло: " + err.message, 5000); }
+    };
+    sheet(`Перезапустить «${s.name}» с ${title}`, [
+      { label: "Продолжить этот разговор", icon: "chat", sub: `${title} получит всю переписку — контекст сохранится`, run: () => go(true) },
+      { label: "Начать заново", icon: "refresh", sub: "чистый контекст: быстрее и дешевле; старый разговор останется в истории", run: () => go(false) },
+    ]);
+  }, s.profile || "claude");
+}
+// После смены модели — сразу уровень усилий (как глубоко думать): одно касание вместо второго меню.
+function effortSheet() {
+  sheet("Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
+    ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
+    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
 }
 async function closeSession(id = current) {
   try {
@@ -964,12 +1021,12 @@ async function sendText() {
   const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
   const p = { text, state: "sending" }; pending.push(p);
   $("input").value = ""; const sent = files; files = []; renderFiles(); grow();
-  if (tab !== "chat") setTab("chat"); else renderChat(true);
+  if (tab === "chat") renderChat(true); else toast("Отправлено в «" + (cur()?.name || "сессию") + "»");
   try {
     await api("/api/send", { w: current, text });
     p.state = "sent"; haptic("notificationOccurred", "success");
     if (cur()?.status !== "busy") lastStatus = "busy";
-    setTimeout(() => { hist = []; loadContent(); }, 2000);
+    setTimeout(() => { if (tab === "chat") hist = []; loadContent(); }, tab === "chat" ? 2000 : 1200);
   } catch (e) {
     p.state = "fail"; p.err = e.message; $("input").value = typed; files = sent; renderFiles(); grow();
     haptic("notificationOccurred", "error");
@@ -1010,7 +1067,7 @@ async function toggleMic() {
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const bar = document.createElement("div"); bar.className = "recbar";
   bar.innerHTML = `<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no" aria-label="Отменить запись">${ic("x", "s16")}</button><button class="txt" aria-label="Вставить текст в поле, чтобы проверить">${ic("pen", "s16")}В текст</button><button class="ok" aria-label="Распознать и отправить сразу">${ic("send", "s16")}</button>`;
-  for (const id of ["input", "mic", "send", "plus", "menuBtn"]) $(id).hidden = true;
+  for (const id of ["input", "ctools"]) $(id).hidden = true;
   $("input").after(bar);
   const cv = bar.querySelector("canvas"), g = cv.getContext("2d"), t0 = Date.now();
   const ac = new (window.AudioContext || window.webkitAudioContext)(), an = ac.createAnalyser();
@@ -1026,7 +1083,7 @@ async function toggleMic() {
     raf = requestAnimationFrame(draw);
   })();
   const finish = () => { cancelAnimationFrame(raf); ac.close(); stream.getTracks().forEach((t) => t.stop()); bar.remove();
-    for (const id of ["input", "mic", "plus", "menuBtn"]) $(id).hidden = false; rec = null; sync(); padDock(); };
+    for (const id of ["input", "ctools"]) $(id).hidden = false; rec = null; sync(); padDock(); };
   bar.querySelector(".no").onclick = () => { cancelled = true; rec.stop(); };
   bar.querySelector(".txt").onclick = () => rec.stop();
   bar.querySelector(".ok").onclick = () => { sendNow = true; rec.stop(); };
@@ -1071,26 +1128,38 @@ function renderModels() {
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
 async function reloadProfiles() { try { meta.profiles = (await api("/api/meta")).profiles; } catch (e) { /* покажем старое */ } }
-function profileForm(p) {
+let orLink = null, orTimer = null;
+function profileForm(p, connected) {
   show("mcpForm"); $("title").textContent = p.title; setSub("<span>модели поставщика</span>");
+  clearInterval(orTimer);
   $("mcpForm").innerHTML = `<div class="panel">
     <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
+    ${connected ? `<div class="result ok">${ic("check")}<span>${esc(p.title)} подключён — ключ сохранён на сервере.</span></div>
+      <button class="btn" id="profStart0">${ic("newsess")}Новая сессия с ${esc(p.title)}</button>` : ""}
     <div class="result wait">${ic("warn")}<span>Код и переписка сессий с ${esc(p.title)} уходят ${esc(p.title)}; оплата — по их тарифу.
       В таких сессиях не работают коннекторы claude.ai (Notion, Gmail…) — только MCP-серверы, подключённые на сервере.</span></div>
-    <div class="section">Ключ API</div>
+    <div class="section">${p.oauth ? "Аккаунт" : "Ключ API"}</div>
+    ${p.oauth ? `${p.key ? `<div class="panel" id="orAcct" style="box-shadow:none"><span class="note">Проверяю аккаунт…</span></div>` : ""}
+      <button class="btn${p.key ? " quiet" : ""}" id="orLogin">${ic("ext")}${p.key ? "Войти заново" : "Войти через " + esc(p.title)}</button>
+      <div class="hint" style="margin:0 2px 8px">Откроется ${esc(p.title)}: войдите (Google, GitHub или почта) и нажмите «Authorize». Ключ сам вернётся на сервер — копировать ничего не нужно.</div>
+      <div id="orWait" hidden></div>
+      <details class="manual"><summary class="note" style="display:inline">Или вставить ключ вручную</summary>` : ""}
     ${p.key_url ? `<button class="btn ghost" id="profKeyPage">${ic("ext")}Где взять ключ</button>` : ""}
     <div class="field"><label for="profKey">${p.key ? "Заменить ключ (сейчас " + esc(p.key.tail) + ")" : "Ключ"}</label>
       <div class="inp"><input id="profKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="вставьте ключ">
       <button class="icon" type="button" data-eye="profKey" aria-label="Показать">${ic("eye")}</button></div>
       <div class="hint">Хранится только на сервере (права 600) и в панель больше не возвращается — копию держите в менеджере паролей.</div></div>
     <button class="btn" id="profSave">Сохранить ключ</button>
+    ${p.oauth ? "</details>" : ""}
     ${p.key ? '<button class="btn danger" id="profDel">Удалить ключ</button>' : ""}
     <div id="profResult"></div>
     <div class="section">Модели</div>
     <div class="field"><label for="profMain">Основная</label><input id="profMain" autocapitalize="off" spellcheck="false" value="${esc(p.main)}" placeholder="${esc(p.default_main || "пусто — модели Claude")}">
-      <div class="hint">Для opus и sonnet. ${esc(p.hint || "")}</div></div>
+      <div class="hint">Для opus и sonnet. ${esc(p.hint || "")}</div>
+      ${p.oauth ? `<button class="btn quiet sm" style="margin-top:8px" data-cat="profMain">${ic("grid", "s16")}Выбрать из каталога</button>` : ""}</div>
     <div class="field"><label for="profFast">Быстрая</label><input id="profFast" autocapitalize="off" spellcheck="false" value="${esc(p.fast)}" placeholder="${esc(p.default_fast || "пусто — модели Claude")}">
-      <div class="hint">Для haiku, фоновых задач и субагентов.</div></div>
+      <div class="hint">Для haiku, фоновых задач и субагентов.</div>
+      ${p.oauth ? `<button class="btn quiet sm" style="margin-top:8px" data-cat="profFast">${ic("grid", "s16")}Выбрать из каталога</button>` : ""}</div>
     <button class="btn quiet" id="profModels">Сохранить модели</button>
     <button class="btn ghost" id="profDefaults">Вернуть по умолчанию</button>
     <p class="note">Изменения моделей и ключа действуют для новых сессий и после «Сменить поставщика».</p></div>`;
@@ -1111,6 +1180,63 @@ function profileForm(p) {
   const saveModels = (main, fast) => api("/api/models", { profile: p.id, main, fast }).then((d) => { meta.profiles = d.profiles; toast("Модели сохранены"); profileForm(profileOf(p.id)); }).catch((err) => toast(err.message, 4500));
   $("profModels").onclick = () => saveModels($("profMain").value.trim(), $("profFast").value.trim());
   $("profDefaults").onclick = () => saveModels(p.default_main, p.default_fast);
+  $("profStart0")?.addEventListener("click", () => newSession(p.id));
+  $("mcpForm").querySelectorAll("[data-cat]").forEach((b) => b.onclick = () => openCatalog($(b.dataset.cat)));
+  if (p.oauth) oauthWire(p);
+}
+// Вход в OpenRouter: ссылку готовим заранее, чтобы открыть её прямо в нажатии (браузеры не любят окна после ожидания).
+function oauthWire(p) {
+  const fetchLink = () => api("/api/openrouter/start", {}).then((d) => (orLink = { url: d.url, t: Date.now() }));
+  if (!orLink || Date.now() - orLink.t > 8 * 60000) fetchLink().catch(() => {});
+  if (p.key) api("/api/openrouter/info").then((a) => {
+    const usd = (v) => v == null ? "—" : "$" + (+v).toFixed(2);
+    document.getElementById("orAcct").innerHTML = `<div class="row"><span class="name" style="flex:1">${esc(a.label || "ключ " + p.key.tail)}</span>
+      <span class="chip ok">${a.is_free_tier ? "бесплатный тариф" : "подключён"}</span></div>
+      <p class="note" style="margin:8px 0 0">Потрачено всего ${usd(a.usage)}, за месяц ${usd(a.usage_monthly)} · ${a.limit == null ? "без лимита на ключ" : "лимит " + usd(a.limit) + ", осталось " + usd(a.limit_remaining)}</p>`;
+  }).catch((e) => { document.getElementById("orAcct").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
+  $("orLogin").onclick = async () => {
+    let url = orLink && Date.now() - orLink.t < 9 * 60000 ? orLink.url : null;
+    orLink = null;
+    if (!url) { toast("Готовлю вход…"); try { url = (await fetchLink()).url; orLink = null; } catch (e) { return toast(e.message, 4500); } }
+    tg?.openLink ? tg.openLink(url) : window.open(url, "_blank");
+    const before = p.key?.tail || "", t0 = Date.now();
+    $("orWait").hidden = false;
+    $("orWait").innerHTML = `<div class="result wait">${ic("wait")}<span>Жду ключ от ${esc(p.title)} — войдите и нажмите «Authorize». Проверяю каждые 3 секунды…</span></div>`;
+    clearInterval(orTimer);
+    orTimer = setInterval(async () => {
+      if (view !== "mcpForm" || Date.now() - t0 > 10 * 60000) return clearInterval(orTimer);
+      await reloadProfiles();
+      const np = profileOf(p.id);
+      if (np?.key && np.key.tail !== before) { clearInterval(orTimer); haptic("notificationOccurred", "success"); profileForm(np, true); }
+    }, 3000);
+    fetchLink().catch(() => {});                       // на случай «попробовать ещё раз»
+  };
+}
+// Каталог моделей OpenRouter: поиск по названию и id; модели Anthropic — первыми (с ними Claude Code надёжен).
+function openCatalog(input) {
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet picker" role="dialog"><h3>Модели OpenRouter</h3>
+    <div class="search"><input id="catQ" type="search" autocapitalize="off" spellcheck="false" placeholder="поиск: claude, glm, deepseek, gemini…"></div>
+    <div id="catList"><div class="empty">Загружаю каталог…</div></div><button class="cancel" data-close>Отмена</button></div>`;
+  document.body.append(bg);
+  let all = [];
+  const fmt = (m) => [m.ctx ? Math.round(m.ctx / 1000) + "K контекста" : "", m.in == null ? "" : `$${m.in} / $${m.out} за 1 млн`].filter(Boolean).join(" · ");
+  const draw = () => {
+    const q = bg.querySelector("#catQ").value.trim().toLowerCase();
+    const hits = all.filter((m) => !q || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+      .sort((a, b) => (b.id.startsWith("anthropic/") - a.id.startsWith("anthropic/")) || a.name.localeCompare(b.name)).slice(0, 60);
+    bg.querySelector("#catList").innerHTML = hits.length ? hits.map((m) => `<button data-id="${esc(m.id)}">${ic("chip")}<span>${esc(m.name)}
+      <small><span class="mid">${esc(m.id)}</span>${fmt(m) ? " · " + esc(fmt(m)) : ""}${m.id.startsWith("anthropic/") ? " · надёжно с Claude Code" : ""}</small></span></button>`).join("")
+      : '<div class="empty">Ничего не нашлось</div>';
+  };
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();
+    if (b?.dataset.id) { input.value = b.dataset.id; bg.remove(); toast("Выбрано — нажмите «Сохранить модели»", 3500); }
+  });
+  bg.querySelector("#catQ").addEventListener("input", draw);
+  api("/api/openrouter/models").then((d) => { all = d.models; draw(); })
+    .catch((e) => { bg.querySelector("#catList").innerHTML = `<div class="result bad" style="margin:0 16px">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
 }
 function renderVoice() {
   const el = prov.keys.elevenlabs, seg = (name, val, opts) => `<div class="seg" data-prov="${name}">${opts.map(([v, label]) =>
@@ -1286,6 +1412,41 @@ function mcpForm(p) {
   });
 }
 
+// ---------- уведомления ----------
+// В Telegram уведомления присылает бот. В браузере — системные, когда вкладка скрыта: «готово» и «ждёт ответа».
+const canNotify = () => !tg?.initData && "Notification" in window;
+let lastSeen = {};
+async function askNotify() {
+  if (!canNotify()) return toast("Здесь уведомления присылает бот в Telegram");
+  const r = await Notification.requestPermission();
+  store("notifyAsked", "1"); toast(r === "granted" ? "Уведомления включены" : "Уведомления не разрешены — включите в настройках браузера", 4000);
+  document.getElementById("notifyCard")?.remove();
+}
+function notifyCard() {                              // спрашиваем один раз, ненавязчиво — карточкой над сессиями
+  if (!canNotify() || Notification.permission !== "default" || store("notifyAsked") || DEMO) return "";
+  return `<div class="notice" id="notifyCard">${ic("bell")}<span>Сообщать, когда Claude ответит или задаст вопрос?</span><button data-notify="yes">Включить</button><button data-notify="no" style="color:var(--text-secondary)">Нет</button></div>`;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-notify]"); if (!b) return;
+  if (b.dataset.notify === "yes") askNotify(); else { store("notifyAsked", "1"); document.getElementById("notifyCard")?.remove(); }
+});
+function watchSessions(list) {                       // переходы статусов → уведомление, если вкладка не на виду
+  for (const s of list) {
+    const was = lastSeen[s.id];
+    if (was && was !== s.status && document.hidden && canNotify() && Notification.permission === "granted") {
+      const text = s.status === "dialog" ? "ждёт вашего ответа" : was === "busy" && s.status === "idle" ? "ответил" : "";
+      if (text) {
+        const show = (reg) => (reg ? reg.showNotification(`${s.name}: ${text}`, { body: s.preview || "", tag: s.id, data: { id: s.id } })
+          : new Notification(`${s.name}: ${text}`, { body: s.preview || "", tag: s.id }));
+        navigator.serviceWorker?.getRegistration().then(show).catch(() => show(null));
+      }
+    }
+    lastSeen[s.id] = s.status;
+  }
+}
+if (canNotify() && "serviceWorker" in navigator && !DEMO) navigator.serviceWorker.register("/sw.js").catch(() => {});
+navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.open) open(e.data.open); });
+
 // ---------- настройки ----------
 $("settingsBtn").onclick = () => {
   const mode = store("theme") || "auto";
@@ -1293,6 +1454,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: () => location.reload() },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
@@ -1327,7 +1489,7 @@ async function start() {
       toggleMic();
     }
   }
-  if (DEMO && params.get("prof")) profileForm(profileOf(params.get("prof")));
+  if (DEMO && params.get("prof")) { profileForm(profileOf(params.get("prof")), params.has("connected")); if (params.get("cat")) openCatalog($("profMain")); }
   if (DEMO && params.get("pick")) pickProfile(() => {});
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
@@ -1345,10 +1507,10 @@ if (DEMO && params.get("view") === "login") showLogin(); else start();
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
     { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?" },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
-    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
+    { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
   ];
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
@@ -1359,7 +1521,7 @@ function demoApi(path, body) {
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
                    projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina",
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
-                     { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, key: null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
+                     { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S },
@@ -1377,6 +1539,14 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  R["/api/openrouter/start"] = { url: "https://openrouter.ai/auth?demo" };
+  R["/api/openrouter/info"] = { key: true, label: "gas-pult", usage: 4.27, usage_monthly: 1.9, limit: 20, limit_remaining: 15.73, is_free_tier: false };
+  R["/api/openrouter/models"] = { models: [
+    { id: "anthropic/claude-opus-5.5", name: "Anthropic: Claude Opus 5.5", ctx: 1000000, in: 5, out: 25 },
+    { id: "anthropic/claude-sonnet-5.5", name: "Anthropic: Claude Sonnet 5.5", ctx: 1000000, in: 3, out: 15 },
+    { id: "z-ai/glm-5.3-flash", name: "Z.ai: GLM 5.3 Flash", ctx: 200000, in: 0.1, out: 0.4 },
+    { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek: V4.1 Flash", ctx: 786432, in: 0.07, out: 0.28 },
+    { id: "openrouter/auto", name: "Auto Router", ctx: 2000000, in: null, out: null }] };
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];

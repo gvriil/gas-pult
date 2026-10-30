@@ -122,3 +122,78 @@ def test_one_window_per_project(pult):
     assert p.active()["id"] == first
     assert len([w for w in p.tmux.windows() if w["cmd"] == "claude"]) == 1
     assert "уже работает «demo-1»" in p.api.texts()[-1]
+
+
+class Screens:
+    """tmux, у которого экран меняется по сценарию; запоминает нажатые клавиши и вставки."""
+    def __init__(self, *screens):
+        self.screens, self.keys_sent, self.pasted = list(screens), [], []
+
+    def screen(self, wid, n=25):
+        return self.screens[0].splitlines()
+
+    def keys(self, wid, *keys):
+        self.keys_sent += keys
+        if len(self.screens) > 1:
+            self.screens.pop(0)
+
+    def paste(self, wid, text):
+        self.pasted.append(text)
+
+
+def make_pult(monkeypatch, tm):
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    p.tmux = tm
+    monkeypatch.setattr(bot.time, "sleep", lambda s: None)
+    return p, bot
+
+
+PROMPT = "● готово\n──────\n❯ \n──────\n  ⏵⏵ auto mode on"
+PANEL = "  Settings   Status   Config   Usage   Stats\n  Current session\n  Esc to cancel"
+
+
+def test_text_after_open_menu_closes_menu_first(monkeypatch):
+    tm = Screens(PANEL, PROMPT)
+    p, _ = make_pult(monkeypatch, tm)
+    p.to_claude({"id": "@1"}, "привет")
+    assert tm.keys_sent == ["Escape"] and tm.pasted == ["привет"]
+
+
+def test_question_is_not_answered_for_human(monkeypatch):
+    tm = Screens(" Do you want to proceed?\n ❯ 1. Yes\n   2. No")
+    p, bot = make_pult(monkeypatch, tm)
+    with pytest.raises(bot.NotReady, match="ждёт ответа"):
+        p.to_claude({"id": "@1"}, "привет")
+    assert tm.keys_sent == [] and tm.pasted == []          # ни Esc, ни вставки
+
+
+def test_busy_claude_still_takes_queued_text(monkeypatch):
+    tm = Screens("✻ Working… (12s · esc to interrupt)\n──────\n❯ \n──────")
+    p, _ = make_pult(monkeypatch, tm)
+    p.to_claude({"id": "@1"}, "ещё")
+    assert tm.keys_sent == [] and tm.pasted == ["ещё"]
+
+
+def test_not_ready_is_reported_not_pasted_blind(monkeypatch):
+    tm = Screens("Loading…")
+    p, bot = make_pult(monkeypatch, tm)
+    with pytest.raises(bot.NotReady, match="не готово"):
+        p.to_claude({"id": "@1"}, "привет")
+    assert tm.pasted == []
+
+
+def test_open_menu_is_one_message_edited_in_place(monkeypatch):
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    p.cfg = type("C", (), {"owners": [1]})()
+    calls = []
+    p.api = lambda method, **kw: calls.append((method, kw.get("message_id"))) or {"message_id": 77}
+    p.screen_msg = lambda w, title: (title, {})
+    clock = iter([100, 101, 110, 120])
+    monkeypatch.setattr(bot.time, "time", lambda: next(clock))
+    shown, w = {}, {"id": "@1"}
+    p.show_dialog(w, "❯ 1. Opus\n  2. Sonnet\n  🤖 Opus · ctx used 10%", shown)       # новое меню — одно сообщение
+    p.show_dialog(w, "❯ 1. Opus\n  2. Sonnet\n  🤖 Opus · ctx used 11%", shown)       # статус сменился — ничего
+    p.show_dialog(w, "  1. Opus\n❯ 2. Sonnet\n  🤖 Opus · ctx used 11%", shown)       # сдвинули выбор — правим
+    assert calls == [("sendMessage", None), ("editMessageText", 77)]

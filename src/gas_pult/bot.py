@@ -29,6 +29,23 @@ from gas_pult.voice import catalog
 
 DIALOG = re.compile(r"Do you want|Enter to confirm|Do you trust|❯ \d\.|Select model|Esc to (cancel|close|go back)")
 BUSY = re.compile(r"esc to interrupt", re.I)
+# Готовность окна к тексту. Вопрос Claude (разрешение, выбор пункта): Esc там значит «нет» — за человека не отвечаем.
+# Меню и панели (/status, /model, /config, /usage…): Esc безопасен — закрываем, иначе текст уйдёт в меню и пропадёт.
+QUESTION = re.compile(r"Do you want|Do you trust|❯ \d\.|Enter to confirm|Enter to select")
+PANEL = re.compile(r"Esc to (cancel|close|exit|go back)|Settings\s+Status\s+Config", re.I)
+PROMPT = re.compile(r"^\s*❯(?!\s*\d\.)", re.M)
+
+
+# Строка статуса и таймеры меняются каждые секунды — в отпечаток меню их не берём, иначе «изменение» без конца.
+NOISE = re.compile(r"🤖|ctx used|⏵⏵|esc to interrupt|^\s*[✻✶✳✢·*]\s", re.I)
+
+
+def dialog_hash(scr: str) -> str:
+    return hashlib.md5("\n".join(x for x in scr.splitlines() if not NOISE.search(x)).encode()).hexdigest()
+
+
+class NotReady(RuntimeError):
+    """Окно не готово принять текст — сообщение не вставляем вслепую, а говорим человеку почему."""
 MENU = {"keyboard": [[{"text": "🆕 Новая"}, {"text": "🔀 Переключить"}, {"text": "📊 Сводка"}],
                      [{"text": "⚡ Команды"}, {"text": "📋 Окна"}, {"text": "⚙️ Настройки"}]],
         "resize_keyboard": True, "is_persistent": True}
@@ -59,10 +76,33 @@ class Pult:
         self.home = os.path.expanduser("~")
 
     # ---------- Telegram ----------
-    def send(self, chat: int, text: str, **kw):
+    def send(self, chat: int, text: str, **kw) -> dict:
         parts = [text[i:i + 4000] for i in range(0, max(len(text), 1), 4000)] or ["—"]   # лимит — 4096
+        r = {}
         for i, c in enumerate(parts):  # кнопки — под последним куском
-            self.api("sendMessage", chat_id=chat, text=c or "—", **(kw if i == len(parts) - 1 else {}))
+            r = self.api("sendMessage", chat_id=chat, text=c or "—", **(kw if i == len(parts) - 1 else {}))
+        return r or {}
+
+    def show_dialog(self, w: dict, scr: str, shown: dict):
+        """Открытое меню/вопрос = одно сообщение каждому владельцу; изменилось — правим его, без новых уведомлений."""
+        h, ep, now = dialog_hash(scr), shown.get(w["id"]), time.time()
+        if ep and (ep["hash"] == h or now - ep["t"] < 4):
+            return
+        text, kw = self.screen_msg(w, "Claude ждёт выбора:")
+        msgs = ep["msgs"] if ep else {}
+        for chat in self.cfg.owners:
+            try:
+                if chat in msgs:
+                    try:
+                        self.api("editMessageText", chat_id=chat, message_id=msgs[chat], text=text[:4000], **kw)
+                        continue
+                    except TelegramError as e:
+                        if "not modified" in e.description:
+                            continue                     # то же самое — ничего не делаем; иначе (удалили) — заново
+                msgs[chat] = self.send(chat, text, **kw).get("message_id")
+            except TelegramError as e:
+                print("send:", e, flush=True)
+        shown[w["id"]] = {"msgs": msgs, "hash": h, "t": now}
 
     def broadcast(self, text: str, **kw):
         for chat in self.cfg.owners:
@@ -116,13 +156,33 @@ class Pult:
             time.sleep(1)
         return False
 
+    def ready_for_text(self, wid: str, limit: int = 40):
+        """Довести окно до строки ввода: меню закрыть (Esc), на вопрос — не отвечать, свежий Claude — дождаться."""
+        escapes = 0
+        for _ in range(limit):
+            scr = "\n".join(self.tmux.screen(wid, 15))
+            if QUESTION.search(scr):
+                raise NotReady("Claude ждёт ответа на вопрос в этом окне — ответьте на экране (1 2 3 или Esc), "
+                               "потом пишите")
+            if PANEL.search(scr) and not BUSY.search(scr):
+                if escapes >= 3:
+                    raise NotReady("в окне открыто меню Claude и не закрывается — откройте «Экран» и нажмите Esc")
+                self.tmux.keys(wid, "Escape")
+                escapes += 1
+                time.sleep(0.8)
+                continue
+            if PROMPT.search(scr):
+                return
+            time.sleep(1)
+        raise NotReady("окно не готово к вводу 40 секунд — посмотрите «Экран»")
+
     def to_claude(self, w: dict, text: str):
-        self.wait_ready(w["id"])
+        self.ready_for_text(w["id"])
         self.tmux.paste(w["id"], text)
 
     def slash(self, chat: int, w: dict, cmd: str):
         """Слэш-команда: печатаем как с клавиатуры; меню (/model, /mcp) монитор пришлёт сам, остальное — экраном."""
-        self.wait_ready(w["id"])
+        self.ready_for_text(w["id"])
         self.tmux.type(w["id"], cmd)
         time.sleep(0.3)
         self.tmux.keys(w["id"], "Enter")
@@ -245,10 +305,8 @@ class Pult:
                     scr = "\n".join(self.tmux.screen(w["id"]))
                     if not DIALOG.search(scr):
                         shown.pop(w["id"], None)
-                    elif not quiet and shown.get(w["id"]) != (h := hashlib.md5(scr.encode()).hexdigest()):
-                        shown[w["id"]] = h
-                        text, kw = self.screen_msg(w, "Claude ждёт выбора:")
-                        self.broadcast(text, **kw)
+                    elif not quiet:
+                        self.show_dialog(w, scr, shown)
             except Exception as e:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)

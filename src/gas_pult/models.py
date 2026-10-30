@@ -27,9 +27,10 @@ PROFILES = [
     {"id": "claude", "title": "Claude", "short": "Claude",
      "about": "Anthropic — как сейчас: подписка или ключ сервера. Работают коннекторы claude.ai"},
     {"id": "openrouter", "title": "OpenRouter", "short": "OpenRouter", "key": "openrouter",
-     "base_url": "https://openrouter.ai/api", "main": "", "fast": "",
-     "key_url": "https://openrouter.ai/settings/keys",
-     "about": "Один ключ — сотни моделей, оплата по факту. Пустые поля моделей — Claude через OpenRouter",
+     "base_url": "https://openrouter.ai/api",
+     "main": "anthropic/claude-sonnet-5.5", "fast": "anthropic/claude-haiku-5.5",
+     "key_url": "https://openrouter.ai/settings/keys", "oauth": True,     # вход в одно касание (openrouter.py)
+     "about": "Один ключ — сотни моделей, оплата по факту. По умолчанию — Claude Sonnet и Haiku через OpenRouter",
      "hint": "id модели из каталога openrouter.ai/models. Надёжно работают только модели Anthropic — "
              "с другими Claude Code может ошибаться",
      "env": {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"}},
@@ -106,7 +107,7 @@ def public(state: dict) -> list[dict]:
         main, fast = models_of(p, state) if p.get("key") else ("", "")
         out.append({k: p[k] for k in ("id", "title", "short", "about") if k in p}
                    | {"needs_key": bool(p.get("key")), "key": keys.get(p.get("key", "")),
-                      "key_url": p.get("key_url", ""), "hint": p.get("hint", ""),
+                      "key_url": p.get("key_url", ""), "hint": p.get("hint", ""), "oauth": bool(p.get("oauth")),
                       "main": main, "fast": fast, "default_main": p.get("main", ""),
                       "default_fast": p.get("fast", "")})
     return out
