@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
 <title>gas-pult · пульт</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -32,8 +32,13 @@
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { overflow-x: clip; max-width: 100%; }   /* не hidden: иначе шапка не закрепляется */
-  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
+  /* Каркас приложения, как в Telegram и ChatGPT: документ не прокручивается — прокручивается только лента (#scroller).
+     Поэтому поле ввода и кнопки внизу стоят на месте при любой прокрутке, «резинке» и открытой клавиатуре.
+     Высота = видимая область без клавиатуры (--app-h из visualViewport, fitViewport()). contain: layout делает body
+     опорой для position: fixed — нижняя панель встаёт ровно над клавиатурой, а не за ней. */
+  html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: var(--app-h, 100%); overflow: hidden; contain: layout;
+         margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
          font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   button:disabled { opacity: .5; cursor: default; }
@@ -46,6 +51,14 @@
   @keyframes pulse { 50% { opacity: .35; } }
   @keyframes up { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #scroller { height: 100%; overflow: hidden auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* «Потяните, чтобы обновить»: кружок выезжает из-под шапки, когда тянете ленту вниз в самом верху. */
+  .ptr { position: fixed; z-index: 4; width: 40px; height: 40px; margin: -40px 0 0 -20px; border-radius: 50%; display: grid; place-items: center;
+         background: var(--bg-surface); color: var(--text-secondary); box-shadow: 0 2px 10px rgba(0,0,0,.18); pointer-events: none; opacity: 0; }
+  .ptr.ready { color: var(--accent-primary); }
+  .ptr.back { transition: transform .2s ease, opacity .2s ease; }
+  .ptr.spin .i { animation: spin .8s linear infinite; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
   /* ===== Верхняя панель ===== */
@@ -223,7 +236,8 @@
 
   /* ===== Нижняя панель сессии ===== */
   .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas);
-          padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78vh; overflow-y: auto; }
+          padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78%; overflow-y: auto; overscroll-behavior: contain; }
+  .kb .dock { padding-bottom: 8px; }                    /* клавиатура открыта — полоса «домой» не нужна */
   .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
   .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
   .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; }
@@ -284,7 +298,7 @@
 
   /* ===== Листы, тосты, баннеры ===== */
   .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(17,17,16,.42); display: flex; align-items: flex-end; animation: fade .15s ease; }
-  .sheet { width: 100%; max-height: 80vh; overflow-y: auto; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  .sheet { width: 100%; max-height: 80%; overflow-y: auto; overscroll-behavior: contain; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
            padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow: var(--shadow-lg); animation: up .2s ease; }
   .sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border-subtle); margin: 0 auto 6px; }
   .sheet h3 { margin: 8px 16px 6px; font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -299,7 +313,7 @@
   .brand { display: none; } .brand h1 { margin: 0; font-size: 20px; font-weight: 600; }
   .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
   .pick h2 { color: var(--text-primary); font-size: 22px; font-weight: 600; margin: 0 0 6px; }
-  body.split #home { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; overflow-y: auto; padding: 14px 12px 88px; z-index: 4;
+  body.split #home { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; overflow-y: auto; overscroll-behavior: contain; padding: 14px 12px 88px; z-index: 4;
                      border-right: 1px solid var(--border-subtle); background: var(--bg-canvas); }
   body.split .brand { display: block; padding: 2px 4px 12px; }
   body.split .top, body.split main, body.split .demo { margin-left: 340px; }
@@ -311,6 +325,7 @@
 </head>
 <body>
 <button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
+<div id="scroller">
 <div class="demo" id="demoBar" hidden>Демо-режим: панель на примерах, ваши действия никуда не уходят · <a href="/" style="color:inherit">войти</a></div>
 <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 <header class="top" id="top">
@@ -362,6 +377,8 @@
   <section id="mcpForm" hidden></section>
   <section id="pick" hidden><div class="pick"><span id="pickIcon"></span><h2 class="serif">Выберите сессию</h2><p>Слева — все сессии и их статус. Нажмите карточку, чтобы открыть переписку.</p></div></section>
 </main>
+</div>
+<div class="ptr" id="ptr" aria-hidden="true"></div>
 
 <button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
@@ -453,7 +470,7 @@ const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="non
 function paintIcons() {
   $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
-  $("netIcon").innerHTML = ic("warn"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
+  $("netIcon").innerHTML = ic("warn"); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down");
   $("playerClose").innerHTML = ic("x"); $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
@@ -540,10 +557,12 @@ function back() {
 // Шапка (заголовок + вкладки) уходит, когда листаете вниз, — экрану больше воздуха; чуть вверх — сразу возвращается.
 // Прокрутку, которую делает сама панель (к новому сообщению), за жест не считаем.
 let lastY = 0, autoUntil = 0;
-function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
-addEventListener("scroll", () => {
-  const y = scrollY;
-  const far = document.body.scrollHeight - (innerHeight + y) > 200;  // пролистали вверх — кнопка «к последнему»
+const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
+const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
+function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); SC.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
+SC.addEventListener("scroll", () => {
+  const y = SC.scrollTop;
+  const far = !atEnd(200);                           // пролистали вверх — кнопка «к последнему»
   $("toBottom").hidden = !(view === "session" && far);
   if (!far) $("toBottom").classList.remove("new");
   $("top").classList.toggle("edge", y > 4);
@@ -553,6 +572,74 @@ addEventListener("scroll", () => {
   }
   lastY = y;
 }, { passive: true });
+
+// Каркас — ровно в видимой части экрана. iOS не сжимает страницу под клавиатуру, а сдвигает её, и поле ввода «ездит»
+// вместе с лентой; Android и Telegram сжимают сами. Высота и верх — из visualViewport, класс .kb — клавиатура открыта.
+let fullH = 0, fullW = 0;
+function fitViewport() {
+  const v = window.visualViewport, h = v ? v.height : innerHeight, root = document.documentElement;
+  if (innerWidth !== fullW) { fullW = innerWidth; fullH = 0; }          // повернули экран — меряем заново
+  fullH = Math.max(fullH, h);
+  root.style.setProperty("--app-h", h + "px");
+  root.style.setProperty("--app-top", (v ? v.offsetTop : 0) + "px");
+  const kb = fullH - h > 150;
+  root.classList.toggle("kb", kb);
+  if (!kb && window.scrollY) scrollTo(0, 0);           // iOS иногда оставляет страницу сдвинутой после клавиатуры
+}
+
+// Потяните ленту вниз в самом верху — панель обновится, как в мобильных приложениях. Свайпы Telegram, которые
+// сворачивают Mini App, отключены (disableVerticalSwipes), так что жест наш. Вбок и вверх — обычная прокрутка.
+const PULL = 64;                                     // насколько вытянуть кружок, чтобы обновить
+let pull = null;
+const pullBox = (t) => (split() && t.closest("#home") ? $("home") : t.closest("#scroller") ? SC : null);
+function onPullStart(e) {
+  const box = e.touches.length === 1 && view !== "login" && !document.querySelector(".sheet-bg") && pullBox(e.target);
+  if (!box || box.scrollTop > 0 || $("ptr").classList.contains("spin")) return;
+  const t = e.touches[0], r = (box === SC ? $("top") : box).getBoundingClientRect(), b = document.body.getBoundingClientRect();
+  pull = { box, x: t.clientX, y: t.clientY, d: 0, on: false, ready: false, top: (box === SC ? r.bottom : r.top) - b.top, mid: r.left + r.width / 2 - b.left };
+}
+function onPullMove(e) {
+  if (!pull) return;
+  const t = e.touches[0], dx = t.clientX - pull.x, dy = t.clientY - pull.y;
+  if (!pull.on) {
+    if (dy < 0 || Math.abs(dx) > Math.abs(dy) || pull.box.scrollTop > 0) { pull = null; return; }
+    if (dy < 10) return;
+    pull.on = true; pull.y = t.clientY;
+  }
+  e.preventDefault();                                // ленту не растягиваем — тянется только кружок
+  const d = Math.min(PULL * 1.6, Math.max(0, t.clientY - pull.y) * 0.5), ready = d >= PULL, el = $("ptr");   // кружок вдвое «вязче» пальца
+  if (ready && !pull.ready) haptic("impactOccurred", "light");
+  pull.d = d; pull.ready = ready;
+  el.classList.remove("back"); el.classList.toggle("ready", ready);
+  Object.assign(el.style, { left: pull.mid + "px", top: pull.top + "px", opacity: Math.min(1, d / PULL), transform: `translateY(${d}px) rotate(${d * 4}deg)` });
+}
+function onPullEnd() {
+  const p = pull; pull = null;
+  if (p?.on) p.ready ? pullRefresh() : hidePull();
+}
+function hidePull() {
+  const el = $("ptr"); el.classList.add("back"); el.classList.remove("ready", "spin");
+  Object.assign(el.style, { opacity: 0, transform: "translateY(0) scale(.6)" });
+}
+async function pullRefresh() {
+  const el = $("ptr"), t0 = Date.now();
+  el.classList.add("back", "spin"); el.style.transform = `translateY(${PULL * 0.8}px)`;
+  await refresh();
+  if (!$("updateBar").hidden) return reloadPanel();  // вышла новая версия панели — сразу её и загружаем
+  if (view === "session") await loadContent();
+  else if (view === "home" && homeView === "integrations") await loadMcp(true);
+  await new Promise((r) => setTimeout(r, Math.max(0, 500 - (Date.now() - t0))));   // кружок не мигает
+  hidePull();
+  if (lastOk < t0) toast("Нет связи с сервером — проверьте интернет", 3500);
+}
+SC.addEventListener("touchstart", onPullStart, { passive: true });     // список слева (split) тоже внутри ленты
+SC.addEventListener("touchmove", onPullMove, { passive: false });
+SC.addEventListener("touchend", onPullEnd); SC.addEventListener("touchcancel", onPullEnd);
+// Перезагрузка возвращает туда же: открытая сессия и вкладка переживают обновление страницы.
+function reloadPanel() {
+  try { sessionStorage.setItem("resume", JSON.stringify({ id: view === "session" ? current : null, tab })); } catch (e) {}
+  location.reload();
+}
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
@@ -775,7 +862,7 @@ async function liveChat() {                         // каждые 3 с: мен
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
     markFresh();
     if (h.same) return;
-    const atBottom = innerHeight + scrollY > document.body.scrollHeight - 220;
+    const atBottom = atEnd(220);
     const first = h.items[0]?.i ?? Infinity;
     hist = [...hist.filter((m) => m.i < first), ...h.items]; histRev = h.rev || "";
     if (!hist.some((m) => m.i < first)) histMore = h.more;
@@ -797,7 +884,7 @@ $("netRetry").onclick = (e) => busy(e.currentTarget, "Подключаюсь…"
   if (Date.now() - lastOk < 3000) { $("net").hidden = true; $("live").classList.remove("stale"); markFresh(); toast("Связь есть"); }
   else toast("Сервер пока не отвечает — проверьте интернет", 3500);
 });
-$("toBottom").onclick = () => { $("toBottom").classList.remove("new"); scrollToY(document.body.scrollHeight, true); };
+$("toBottom").onclick = () => { $("toBottom").classList.remove("new"); scrollToY(SC.scrollHeight, true); };
 let wake = null;
 async function keepAwake() { try { if (navigator.wakeLock && !document.hidden && (!wake || wake.released)) wake = await navigator.wakeLock.request("screen"); } catch (e) {} }
 
@@ -850,7 +937,7 @@ function renderChat(toBottom) {
   if (hist.at(-1)?.role === "assistant") renderCmds();
   box.insertAdjacentHTML("beforeend", `<div class="working" id="working" hidden>${ic("spark", "spark")}<b>Claude работает</b><span></span></div>`);
   if (cur()) paintWorking(cur());
-  if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(document.body.scrollHeight));
+  if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(SC.scrollHeight));
 }
 $("content").addEventListener("click", (e) => { const v = e.target.closest("[data-revive]"); if (v) revive(v.dataset.revive, v); });
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
@@ -860,8 +947,8 @@ $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.id === "older") return busy(b, "Загружаю…", async () => {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&before=${hist[0].i}`);
-    const y = document.body.scrollHeight - scrollY; hist = [...h.items, ...hist]; histMore = h.more; renderChat(false);
-    scrollToY(document.body.scrollHeight - y);
+    const y = SC.scrollHeight - SC.scrollTop; hist = [...h.items, ...hist]; histMore = h.more; renderChat(false);
+    scrollToY(SC.scrollHeight - y);
   });
   if (b.dataset.say) return say(false, b, +b.dataset.say);
   if (b.dataset.sayfull) return say(true, b, +b.dataset.sayfull);
@@ -1525,12 +1612,12 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
-    { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: () => location.reload() },
+    { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
 };
 $("backBtn").onclick = back;
-$("updateBar").onclick = () => location.reload();
+$("updateBar").onclick = reloadPanel;
 
 // ---------- старт ----------
 async function start() {
@@ -1549,6 +1636,9 @@ async function start() {
   if (!start.timer) start.timer = setInterval(refresh, 3000);
   start.done = true;
   keepAwake();
+  let resume = null;
+  try { resume = JSON.parse(sessionStorage.getItem("resume") || "null"); sessionStorage.removeItem("resume"); } catch (e) {}
+  if (resume?.id && !DEMO) { await refresh(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
   if (DEMO && params.get("open")) {
     await refresh(); await openSession(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
@@ -1569,7 +1659,11 @@ async function start() {
 
 paintIcons();
 applyTheme();
-if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); }
+if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", fitViewport); }
+fitViewport();
+window.visualViewport?.addEventListener("resize", fitViewport);
+window.visualViewport?.addEventListener("scroll", fitViewport);
+addEventListener("resize", fitViewport);
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
 wideMQ.addEventListener?.("change", () => { show(view); refresh(); });
 termWrap = store("termWrap") === "1";
