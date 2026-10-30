@@ -178,7 +178,7 @@ gas-pult webapp --port 8765   # панель локально; http://127.0.0.1:
 ```
 
 Архитектура, как добавить кнопку, голос или шаблон интеграции — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-Правила — [CONTRIBUTING.md](CONTRIBUTING.md). История — [CHANGELOG.md](CHANGELOG.md).
+Правила — [CONTRIBUTING.md](CONTRIBUTING.md). История — [CHANGELOG.md](CHANGELOG.md). Постановка задач с Gemini — [GEMINI.md](GEMINI.md).
 
 ## Лицензия
 
