@@ -156,3 +156,47 @@ def test_stopped_session_listed_and_revived(panel, monkeypatch):
     assert calls == [("@3", "claude [zai] --continue", "zai")]     # тот же поставщик, разговор продолжается
     with pytest.raises(ValueError):
         panel.revive("@9")
+
+
+class Menu:
+    """Меню Claude на экране: стрелки двигают ❯, Enter выбирает; цифры меню не принимает. Выше — ваше прошлое
+    сообщение с «❯ 1. …», как Claude Code показывает историю."""
+    def __init__(self, sel=1):
+        self.sel, self.keys_sent, self.chosen = sel, [], None
+
+    def screen(self, wid, n=25):
+        opts = [f" {'❯' if i == self.sel else ' '} {i}. Вариант {i}" for i in (1, 2, 3)]
+        return ["❯ 1. Мой пункт из прошлого сообщения", "● ответ", " Какой вариант?", *opts,
+                " Enter to select · ↑/↓ to navigate · Esc to cancel"]
+
+    def keys(self, wid, *keys):
+        self.keys_sent += keys
+        for k in keys:
+            self.sel = max(1, self.sel - 1) if k == "Up" else min(3, self.sel + 1) if k == "Down" else self.sel
+            if k == "Enter":
+                self.chosen = self.sel
+
+
+@pytest.fixture
+def menu(panel, monkeypatch):
+    m = Menu()
+    panel.tmux = m
+    monkeypatch.setattr(webapp.time, "sleep", lambda s: None)
+    return m
+
+
+def test_tap_highlights_without_choosing(panel, menu):
+    lines = panel.select(W, "", "3", go=False)
+    assert menu.sel == 3 and menu.chosen is None and "Enter" not in menu.keys_sent
+    assert any(x.startswith(" ❯ 3.") for x in lines)
+
+
+def test_second_tap_chooses_by_arrows_not_digit(panel, menu):
+    panel.select(W, "", "2")
+    assert menu.chosen == 2 and menu.keys_sent == ["Down", "Enter"]       # цифру «2» не шлём
+
+
+def test_old_message_with_number_is_not_the_menu(panel, menu):
+    menu.sel = 3
+    panel.select(W, "", "1")                       # «❯ 1. …» выше — ваше сообщение, не пункт меню
+    assert menu.chosen == 1 and menu.keys_sent == ["Up", "Up", "Enter"]

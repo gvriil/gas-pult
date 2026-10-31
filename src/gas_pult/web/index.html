@@ -223,6 +223,8 @@
   .ask button.opt { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 1px solid var(--border-subtle); background: var(--bg-surface);
                     border-radius: var(--radius-md); padding: 11px 12px; margin: 0 0 6px; min-height: 48px; }
   .ask button.opt.sel { border-color: var(--status-approval); }
+  .ask button.opt { touch-action: manipulation; }   /* без задержки и увеличения от двойного касания на iPhone */
+  .ask .tip { margin: 8px 0 0; font-size: 12px; color: var(--text-secondary); }
   .ask button.opt b { color: var(--status-approval); min-width: 14px; font-variant-numeric: tabular-nums; }
   .ask button.opt:last-child { margin-bottom: 0; }
   .keys { display: grid; grid-template-columns: repeat(7, 1fr) 1.5fr; gap: 5px; margin: 0 0 8px; }
@@ -1015,7 +1017,11 @@ document.addEventListener("click", async (e) => {
 const guessName = () => (document.querySelector(".ask .q span")?.textContent || "").replace("Вход в ", "").trim();
 
 // ---------- вопрос Claude → у большого пальца: варианты кнопками ----------
-function setAsk(html) { if ($("ask").dataset.html !== html) { $("ask").innerHTML = html; $("ask").dataset.html = html; } padDock(); }
+function setAsk(html, key = html) {
+  const box = $("ask");
+  if (box.dataset.key !== key) { box.innerHTML = html; box.dataset.key = key; }
+  padDock();
+}
 function renderAsk(lines, auth) {
   if (auth?.paste) { if (!$("authUrl")) setAsk(authCard(auth)); return; }
   const opts = [], re = /^\s*(❯)?\s*(\d+)\.\s+(.+?)\s*$/;
@@ -1025,17 +1031,39 @@ function renderAsk(lines, auth) {
     if (m) { opts.unshift({ n: m[2], text: m[3], sel: !!m[1] }); end = end < 0 ? i : end; }
     else if (opts.length) break;
   }
-  const asking = cur()?.status === "dialog";          // нумерованные строки с «?» бывают и вашими сообщениями — верим серверу
-  if (!asking || opts.length < 2) return setAsk(plainOptions(lines));
+  // нумерованные строки с «?» бывают и вашими сообщениями — верим серверу или подсказке меню под пунктами
+  const foot = end >= 0 && lines.slice(end + 1).some((l) => /Enter to (confirm|select)|Esc to (cancel|exit|go back)/.test(l));
+  if (!(cur()?.status === "dialog" || foot) || opts.length < 2) return setAsk(plainOptions(lines));
   const qi = lines.findLastIndex((l, i) => i < end - opts.length + 1 && /\?\s*$/.test(l));
   const q = qi >= 0 ? lines[qi].trim() : "Claude ждёт выбора";
+  // Карточку не перерисовываем, пока вопрос и пункты те же: кнопка под пальцем не подменяется до «click» (iPhone).
+  const key = q + "\n" + opts.map((o) => o.n + o.text).join("\n");
   setAsk(`<div class="ask"><p class="q">${ic("warn")}<span>${esc(q)}</span></p>${opts.map((o) =>
-    `<button class="opt ${o.sel ? "sel" : ""}" data-key="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}</div>`);
+    `<button class="opt" data-n="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}
+    <p class="tip">Коснитесь пункта — выделится, ещё раз — выбрать</p></div>`, key);
+  if (Date.now() - askTap.t > 1500) markAsk(opts.find((o) => o.sel)?.n);   // свежий тап — его выделение не сбиваем
 }
+function markAsk(n) { document.querySelectorAll("#ask button[data-n]").forEach((b) => b.classList.toggle("sel", b.dataset.n === n)); }
+// Касание — выделить пункт (стрелками до ❯), второе касание того же пункта или выделенного — выбрать (стрелки и Enter).
+// Цифрой не выбираем: не всякое меню Claude Code её принимает.
+const askTap = { n: "", t: 0 };
 $("ask").onclick = (e) => {
-  const b = e.target.closest("button[data-key]"); if (b) return press(b.dataset.key);
+  const b = e.target.closest("button[data-n]");
+  if (b) {
+    const n = b.dataset.n, go = b.classList.contains("sel") || (askTap.n === n && Date.now() - askTap.t < 600);
+    Object.assign(askTap, { n, t: Date.now() }); markAsk(n);
+    haptic("impactOccurred", go ? "medium" : "light");
+    return choose(n, go, b);
+  }
   const t = e.target.closest("button[data-pick]"); if (t) pick(t.dataset.pick, t);
 };
+async function choose(n, go, btn) {
+  const run = async () => {
+    try { const d = await api("/api/select", { w: current, text: "", n, go }); renderAsk(d.lines); if (tab === "screen") renderTerm(d.lines); if (go) setTimeout(refresh, 800); }
+    catch (e) { toast("Не вышло: " + e.message, 4500); }
+  };
+  return go ? busy(btn, "Выбираю…", run) : run();
+}
 function plainOptions(lines) {                      // меню без номеров (доверие к папке, /mcp)
   const foot = lines.findLastIndex((l) => /to navigate|Enter to confirm|Enter to select/.test(l));
   const sel = lines.findLastIndex((l, i) => i < foot && l.includes("❯"));
@@ -1680,7 +1708,7 @@ function demoApi(path, body) {
     { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
   ];
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
-  const screen = ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
+  const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
   const R = {
@@ -1733,6 +1761,11 @@ function demoApi(path, body) {
   }
   if (key === "/api/history") return Promise.resolve({ more: true, rev: String(demoApi.h.length), items: demoApi.h.slice(-30),
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === String(demoApi.h.length) ? { same: true } : {}) });
+  if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
+    if (body.go) return Promise.resolve({ lines: screen.splice(0, screen.length, "● Bash(npm run build)", "  ⎿  готово", "", "❯ ") && screen });
+    screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
+    return Promise.resolve({ lines: screen });
+  }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
