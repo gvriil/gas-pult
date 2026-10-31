@@ -3,6 +3,8 @@
 import json
 import os
 import shutil
+import subprocess
+import tempfile
 import threading
 import time
 
@@ -40,12 +42,24 @@ def wait(cond, timeout=10):
 
 
 @pytest.fixture
-def pult(tmp_path, monkeypatch):
-    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path / "tmux"))       # свой сервер tmux, чужие окна не видны
+def tmux_socket(monkeypatch):
+    """Свой сервер tmux по короткому сокету (`tmux -S`). 31.10 13:27 проверка с TMUX_TMPDIR в длинном каталоге:
+    путь сокета не поместился (лимит ~104 знака), и остановка «тестового» сервера закрыла боевой с 5 окнами.
+    Поэтому — только явный `-S` с коротким путём и проверкой длины; без `-S` tmux в тестах не вызываем."""
+    d = tempfile.mkdtemp(prefix="gp-", dir="/tmp")
+    sock = os.path.join(d, "s")
+    assert len(sock) < 100
+    monkeypatch.setenv("GAS_PULT_TMUX_SOCKET", sock)
     monkeypatch.delenv("TMUX", raising=False)
+    yield sock
+    subprocess.run(["tmux", "-S", sock, "kill-server"], capture_output=True)
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture
+def pult(tmp_path, monkeypatch, tmux_socket):
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(transcripts, "CLAUDE_PROJECTS", tmp_path / "claude-projects")
-    (tmp_path / "tmux").mkdir()
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     fake = bin_dir / "claude"            # «Claude»: показывает приглашение и печатает всё введённое
@@ -58,8 +72,8 @@ def pult(tmp_path, monkeypatch):
     p = Pult(cfg)
     p.api = FakeApi()
     p.home = str(tmp_path)
+    assert p.tmux.socket == tmux_socket                 # не боевой сервер
     yield p, proj
-    os.system(f"TMUX_TMPDIR={tmp_path / 'tmux'} tmux kill-server 2>/dev/null")
 
 
 def msg(text):
@@ -231,3 +245,13 @@ def test_text_never_goes_to_bare_shell(monkeypatch):
     with pytest.raises(bot.NotReady, match="остановлен"):
         p.to_claude({"id": "@1"}, "rm -rf что-нибудь")
     assert tm.pasted == []
+
+
+def test_tests_never_touch_default_tmux_server():
+    """Страховка: в тестах tmux — только с явным `-S` (свой сокет); голый kill-server закрыл бы окна владельца."""
+    import pathlib
+    import re
+    for f in pathlib.Path(__file__).parent.glob("*.py"):
+        for n, line in enumerate(f.read_text().splitlines(), 1):
+            if re.search(r"kill-server|kill-session", line) and "-S" not in line and "re.search" not in line:
+                raise AssertionError(f"{f.name}:{n}: tmux без -S — заденет боевой сервер")
