@@ -268,3 +268,27 @@ def test_bot_rename_flow(monkeypatch):
     p.waiting[1] = "ren:@4"
     p.on_message({"message_id": 1, "chat": {"id": 1}, "from": {"id": 1}, "text": "магазин"})
     assert renamed == [("@4", "магазин")] and "магазин" in sent[-1]
+
+
+def test_bot_adds_hint_button_to_answer(monkeypatch):
+    """Подсказка Claude появляется после ответа — бот дописывает к ответу кнопку «💡 …», нажатие — отправить её."""
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    p.cfg = type("C", (), {"owners": [1]})()
+    p.lock, p.counter, p.hint_wait, p.hints, calls, pasted = threading.Lock(), 0, {}, {}, [], []
+    p.api = lambda method, **kw: calls.append((method, kw)) or {"message_id": 5}
+    p.hint_wait["@2"] = {"t": time.time(), "msgs": {1: 5}, "rows": [[("🔊", "say:1")]]}
+    hint = [""]
+    p.tmux = type("T", (), {"hint": lambda self, wid: hint[0],
+                            "window": lambda self, wid: {"id": wid, "name": "shop"}})()
+    p.offer_hints()
+    assert calls == [] and "@2" in p.hint_wait                     # подсказки ещё нет — ждём
+    hint[0] = "запусти тесты"
+    p.offer_hints()
+    method, kw = calls[-1]
+    data = kw["reply_markup"]["inline_keyboard"][-1][0]
+    assert method == "editMessageReplyMarkup" and data["text"] == "💡 запусти тесты" and "@2" not in p.hint_wait
+    p.to_claude = lambda w, text: pasted.append((w["id"], text))
+    p.to = lambda chat: (lambda text, **kw: None)
+    p.on_callback({"id": "q", "from": {"id": 1}, "message": {"chat": {"id": 1}}, "data": data["callback_data"]})
+    assert pasted == [("@2", "запусти тесты")]

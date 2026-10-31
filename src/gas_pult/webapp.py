@@ -653,6 +653,8 @@ def handler(panel: Panel):
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
                 return {"lines": lines[-40:], "auth": find_auth(lines)}
+            if path == "/api/hint":
+                return {"hint": panel.tmux.hint(w["id"])}
             if path == "/api/cmds":
                 return {"cmds": panel.commands(w), "host": panel.cfg.host}
             if path == "/api/tts":

@@ -257,3 +257,14 @@ def test_rename_runs_tmux_on_own_server(panel, monkeypatch):
     monkeypatch.setattr(tm.subprocess, "run", lambda args, **kw: calls.append(args) or ok(args, 0, "", ""))
     assert panel.tmux.rename("@3", "shop") == "shop"
     assert calls[-1][-4:] == ["rename-window", "-t", "@3", "shop"] and "-S" in calls[-1]    # тесты — на своём сокете
+
+
+def test_prompt_hint_parsing():
+    from gas_pult.tmux import prompt_hint
+    box = "\x1b[38;5;246m────────\x1b[39m"
+    real = ["● Готово.", box, "\x1b[39m❯ \x1b[2mзапусти тесты и закоммить\x1b[22m", box, "  ⏵⏵ auto mode on"]
+    assert prompt_hint(real) == "запусти тесты и закоммить"
+    stub = "\x1b[39m❯\u00a0 \x1b[2mTry \"fix typecheck errors\""
+    assert prompt_hint(["● x", box, stub, box]) == ""                                # общая заглушка
+    assert prompt_hint(["● x", box, "\x1b[39m❯\u00a0мой текст", box]) == ""        # набранное — не подсказка
+    assert prompt_hint(["\x1b[2m❯ 1. Да\x1b[22m", "  2. Нет"]) == ""               # меню — не строка ввода

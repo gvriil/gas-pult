@@ -411,6 +411,7 @@
       <button class="tool" id="menuBtn" aria-label="Меню действий"></button>
       <div class="target" id="target"></div>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
+      <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
       <button class="tool" id="mic" aria-label="Записать голосовое"></button>
       <button class="tool send" id="send" aria-label="Отправить" hidden></button>
     </div>
@@ -428,6 +429,7 @@ const DEMO = params.has("demo");
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
              stopped: { label: "остановлена", cls: "s-stopped" } };      // Claude завершился, в окне — командная строка
 const ORDER = { dialog: 0, busy: 1, idle: 2, stopped: 3 };
+let hint = "";                                       // подсказка Claude Code для пустого поля ввода
 let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
     lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false,
     termWrap = false, lastOk = Date.now(), openLogs = new Set();
@@ -451,7 +453,7 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
-  chev: '<path d="M7 10l5 5 5-5"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  chev: '<path d="M7 10l5 5 5-5"/>', bulb: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.4 10.9c.6.4.9 1 .9 1.7V16h5v-.4c0-.7.3-1.3.9-1.7A6 6 0 0 0 12 3z"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
   volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
@@ -484,7 +486,7 @@ const P = {
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
-  $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
+  $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
   $("netIcon").innerHTML = ic("warn"); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down");
@@ -773,7 +775,7 @@ async function refresh() {
     if (view !== "session") return;
     const s = cur();
     if (!s) { toast("Сессия закрыта"); return back(); }
-    paintSession(s);
+    paintSession(s); loadHint(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
     else liveChat();
@@ -790,7 +792,7 @@ function paintSession(s) {
   }
   setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
-  $("input").placeholder = "Сообщение для " + s.name + "…";            // куда уйдёт — видно прямо в поле
+  $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
   paintWorking(s);
 }
 $("sessionsView").addEventListener("click", (e) => {
@@ -838,7 +840,7 @@ function confirmClose(id) {
 // ---------- сессия ----------
 // Не «open»: функция верхнего уровня стала бы window.open и ломала внешние ссылки в браузере.
 async function openSession(id, startTab) {
-  current = id; termAll = false; store("last", id); show("session");
+  current = id; termAll = false; store("last", id); hint = ""; show("session");
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
@@ -1314,7 +1316,21 @@ function renderFiles() {
 }
 $("attach").onclick = (e) => { const b = e.target.closest("[data-rmf]"); if (b) { files.splice(+b.dataset.rmf, 1); renderFiles(); } };
 // Микрофон всегда на месте (предсказуемо); «Отправить» появляется рядом, когда есть что отправить.
-function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; }
+function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; $("hintBtn").hidden = !hint || has; }
+// Подсказка Claude Code (бледный текст в его строке ввода): в пустом поле — вместо «Сообщение для …»;
+// «вставить» (или Tab на компьютере) — текст в поле, отправляете сами.
+function setHint(h) {
+  if (h === hint) return;
+  hint = h; sync();
+  const s = cur(); if (s) $("input").placeholder = hint || "Сообщение для " + s.name + "…";
+}
+async function loadHint(s) {
+  if (s.status !== "idle" || tab !== "chat" || meta?.role === "viewer") return setHint("");
+  try { const d = await api("/api/hint?w=" + encodeURIComponent(s.id)); if (s.id === current) setHint(d.hint || ""); } catch (e) {}
+}
+function takeHint() { if (!hint) return; $("input").value = hint; grow(); sync(); $("input").focus(); }
+$("hintBtn").onclick = takeHint;
+$("input").addEventListener("keydown", (e) => { if (e.key === "Tab" && hint && !$("input").value) { e.preventDefault(); takeHint(); } });
 async function toggleMic() {
   if (rec) return rec.stop();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
@@ -1870,6 +1886,7 @@ function demoApi(path, body) {
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
   }
+  if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],

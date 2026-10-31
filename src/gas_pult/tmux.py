@@ -21,6 +21,22 @@ def is_claude(argv: list[str]) -> bool:
 SHELLS = {"bash", "zsh", "sh", "fish", "dash", "ksh"}
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+HINT = re.compile(r"❯[\s\u00a0]*\x1b\[2m(.*?)(?:\x1b\[|$)")
+
+
+def prompt_hint(lines: list[str]) -> str:
+    """Подсказка Claude Code в строке ввода: бледный текст (ESC[2m) сразу после «❯» в последней строке ввода.
+    Общие заглушки вида «Try "…"» — не подсказка."""
+    for raw in reversed(lines[-20:]):
+        if not ANSI.sub("", raw).lstrip().startswith("❯"):
+            continue
+        m = HINT.search(raw)
+        text = " ".join(m.group(1).split()) if m else ""
+        return "" if not text or text.startswith('Try "') else text[:300]
+    return ""
+
+
 def window_name(name: str) -> str:
     """Имя сессии (окна tmux): 1–40 знаков, без «:» и «.» — в tmux это разделители цели (сессия:окно.панель)."""
     name = " ".join(str(name).split())
@@ -56,6 +72,10 @@ class Tmux:
             # окно открыл пульт (метка — поставщик), а Claude в нём завершился и осталась оболочка — «остановлена»
             w["stopped"] = not claude and bool(w.get("mark")) and w["cmd"] in SHELLS
         return ws
+
+    def hint(self, wid: str) -> str:
+        """Что Claude Code предлагает написать следующим (бледный текст в строке ввода); нет — пусто."""
+        return prompt_hint(self.run("capture-pane", "-p", "-e", "-J", "-t", wid).splitlines())
 
     def rename(self, wid: str, name: str) -> str:
         """Переименовать окно. Снимок claude-restore берёт имя из tmux — новое имя переживёт перезапуск."""
