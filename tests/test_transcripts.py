@@ -148,3 +148,53 @@ def test_preview_keeps_urls_and_skips_interrupts(tmp_path, monkeypatch):
             user("[Request interrupted by user]")]
     (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     assert t.preview("/home/u/w") == "Отчёт: https://github.com/o/r/issues/1#issuecomment-5 и PR"
+
+
+def line(n):
+    return json.dumps({"n": n}) + "\n"
+
+
+def test_old_journal_is_not_replayed_even_if_touched(tmp_path):
+    """31.10: у старых журналов на 11–18 МБ сменилось время изменения — бот переслал всю переписку (429)."""
+    f = tmp_path / "old.jsonl"
+    f.write_text("".join(line(i) for i in range(10000)))    # больше «свежего» порога
+    tail = t.Tail(started=0)                                 # монитор запущен «давно»: файл новее запуска
+    f.chmod(0o600)
+    tail.watch("p", [f])
+    assert list(tail.read(f)) == []
+    with open(f, "a") as fh:
+        fh.write(line("новое"))
+    assert list(tail.read(f)) == [{"n": "новое"}]
+
+
+def test_new_session_in_watched_folder_is_read_from_start(tmp_path):
+    tail = t.Tail(started=0)
+    tail.watch("p", [])
+    f = tmp_path / "new.jsonl"
+    f.write_text(line(1) + line(2))
+    tail.watch("p", [f])
+    assert list(tail.read(f)) == [{"n": 1}, {"n": 2}]
+
+
+def test_small_fresh_journal_on_first_look_is_read_from_start(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text(line(1))
+    tail = t.Tail(started=0)
+    tail.watch("p", [f])                                     # окно открыли вместе с сессией — первый ответ не теряем
+    assert list(tail.read(f)) == [{"n": 1}]
+
+
+def test_replaced_or_truncated_journal_is_not_replayed(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text(line(1))
+    tail = t.Tail(started=9e9)
+    tail.watch("p", [f])
+    new = tmp_path / "s.tmp"
+    new.write_text("".join(line(i) for i in range(50)))
+    new.replace(f)                                           # подменили целиком
+    assert list(tail.read(f)) == []
+    f.write_text("")                                         # укоротили
+    assert list(tail.read(f)) == []
+    with open(f, "a") as fh:
+        fh.write(line("дальше"))
+    assert list(tail.read(f)) == [{"n": "дальше"}]

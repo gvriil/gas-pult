@@ -76,6 +76,10 @@ DEFAULTS = {"notify": "all", "voice_always": False}
 
 
 class Pult:
+    pause_until = 0.0          # Telegram ответил 429 — до этого времени не шлём (повторы только продлевают запрет)
+    skipped = 0                # сколько сообщений не отправили за паузу — сказать одним сообщением после неё
+    BURST = 3                  # больше ответов окна за один обход монитора — шлём последний и счётчик
+
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.api = Api(cfg.token)
@@ -94,11 +98,27 @@ class Pult:
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
+        if (left := self.pause_until - time.time()) > 0:
+            self.skipped += 1
+            raise TelegramError("sendMessage", f"лимит Telegram — пауза ещё {left:.0f} с")
         parts = [text[i:i + 4000] for i in range(0, max(len(text), 1), 4000)] or ["—"]   # лимит — 4096
         r = {}
-        for i, c in enumerate(parts):  # кнопки — под последним куском
-            r = self.api("sendMessage", chat_id=chat, text=c or "—", **(kw if i == len(parts) - 1 else {}))
+        try:
+            for i, c in enumerate(parts):  # кнопки — под последним куском
+                r = self.api("sendMessage", chat_id=chat, text=c or "—", **(kw if i == len(parts) - 1 else {}))
+        except TelegramError as e:
+            if e.retry_after:
+                self.pause_until = time.time() + e.retry_after
+                self.skipped += 1
+            raise
         return r or {}
+
+    def after_pause(self):
+        """Пауза 429 кончилась — одно сообщение вместо пропущенных."""
+        if self.skipped and time.time() >= self.pause_until:
+            n, self.skipped = self.skipped, 0
+            self.broadcast(f"⏸ Telegram на время ограничил частоту сообщений — {n} уведомл. не отправлено. "
+                           "Ответы Claude — в панели.")
 
     def show_dialog(self, w: dict, scr: str, shown: dict):
         """Открытое меню/вопрос = одно сообщение каждому владельцу; изменилось — правим его, без новых уведомлений."""
@@ -304,9 +324,10 @@ class Pult:
                 threading.Thread(target=self.say, args=(chat, text), daemon=True).start()
 
     def monitor(self):
-        tail, turns, shown, started = transcripts.Tail(), {}, {}, time.time()
+        tail, turns, shown = transcripts.Tail(time.time()), {}, {}
         while True:
             try:
+                self.after_pause()
                 st = self.state()
                 ws = [w for w in self.tmux.windows() if w["cmd"] == "claude" and not w["channel"]]
                 by_path: dict[str, list[dict]] = {}     # окна в одной папке пишут в общий каталог транскриптов
@@ -315,12 +336,18 @@ class Pult:
                 for path, group in by_path.items():
                     w = next((x for x in group if x["id"] == st.get("active")), group[0])
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
-                    for f in transcripts.transcripts(path):
-                        tail.track(f, from_start=f.stat().st_ctime > started)   # старое не пересылаем
+                    files, texts = transcripts.transcripts(path), []
+                    tail.watch(path, files)                     # старое не пересылаем
+                    for f in files:
                         for e in tail.read(f):
-                            text = turns.setdefault(f, transcripts.Turns()).feed(e)
-                            if text and not quiet:
-                                self.deliver(w, text)
+                            if text := turns.setdefault(f, transcripts.Turns()).feed(e):
+                                texts.append(text)
+                    if texts and not quiet:
+                        if len(texts) > self.BURST:            # пачка за 3 с — сбой, а не переписка
+                            self.broadcast(f"[{w['name']}] пропущено ответов: {len(texts) - 1} — они в панели. "
+                                           "Последний:")
+                        for text in texts[-1:] if len(texts) > self.BURST else texts:
+                            self.deliver(w, text)
                 for w in ws:
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
                     scr = "\n".join(self.tmux.screen(w["id"]))
