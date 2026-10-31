@@ -261,17 +261,27 @@ class Panel:
             return f"✔ {name} подключён"
         return f"вход не подтвердился: {status['state'] if status else 'сервер не найден'} — попробуйте ещё раз"
 
-    def select(self, w: dict, target: str) -> list[str]:
-        """Пункт меню без номера (диалог доверия, /mcp): двигаем ❯ стрелками до строки с этим текстом и жмём Enter."""
+    def select(self, w: dict, target: str, n: str = "", go: bool = True) -> list[str]:
+        """Пункт меню: двигаем ❯ стрелками до строки с этим текстом (или номером n) и жмём Enter; go=False — только
+        выделить. Цифрой не выбираем — не всякое меню Claude её принимает. Выше меню бывают прошлые сообщения с «❯»
+        и «1. …» — номер ищем снизу (меню внизу экрана), а выделение — ближайшее к пункту."""
         target = target.strip()[:200]
         with self.lock(w["id"]):
             for _ in range(30):
                 lines = self.tmux.screen(w["id"], 60)
-                sel = next((i for i, x in enumerate(lines) if "❯" in x), None)
-                tgt = next((i for i, x in enumerate(lines) if target and target in x), None)
+                if n.isdigit():
+                    num = re.compile(rf"^\s*(❯\s*)?{int(n)}\.\s")
+                    tgt = next((i for i in reversed(range(len(lines))) if num.match(lines[i])), None)
+                    sel = next((i for i in reversed(range(len(lines))) if re.match(r"^\s*❯\s*\d+\.\s", lines[i])), None)
+                else:
+                    tgt = next((i for i, x in enumerate(lines) if target and target in x), None)
+                    marks = [i for i, x in enumerate(lines) if "❯" in x]
+                    sel = min(marks, key=lambda i: abs(i - tgt)) if marks and tgt is not None else None
                 if sel is None or tgt is None:
                     raise ValueError("пункт не найден на экране — обновите экран")
                 if sel == tgt:
+                    if not go:
+                        return lines[-40:]
                     self.tmux.keys(w["id"], "Enter")
                     time.sleep(1.5)
                     return self.tmux.screen(w["id"], 40)
@@ -726,7 +736,8 @@ def handler(panel: Panel):
             if path == "/api/key":
                 return {"lines": panel.key(w, str(b.get("key", "")))}
             if path == "/api/select":
-                return {"lines": panel.select(w, str(b.get("text", "")))}
+                go = b.get("go", True) is not False            # go: false — только выделить пункт
+                return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")))}
             if path == "/api/close":
