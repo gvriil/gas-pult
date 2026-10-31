@@ -21,11 +21,15 @@ SHELLS = {"bash", "zsh", "sh", "fish", "dash", "ksh"}
 
 
 class Tmux:
-    def __init__(self, session: str):
+    def __init__(self, session: str, socket: str = ""):
+        """``socket`` (или ``GAS_PULT_TMUX_SOCKET``) — свой сервер tmux по пути сокета (``tmux -S``): тесты и проверки
+        работают только с ним и не видят боевой сервер. Пусто — сервер tmux по умолчанию."""
         self.session = session
+        self.socket = socket or os.environ.get("GAS_PULT_TMUX_SOCKET", "")
+        self.tmux = ["tmux", "-S", self.socket] if self.socket else ["tmux"]
 
     def run(self, *args: str, input: str | None = None) -> str:
-        return subprocess.run(["tmux", *args], capture_output=True, text=True, input=input).stdout
+        return subprocess.run([*self.tmux, *args], capture_output=True, text=True, input=input).stdout
 
     def windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
@@ -69,10 +73,10 @@ class Tmux:
         self.run("kill-window", "-t", wid)
 
     def ensure_session(self):
-        if subprocess.run(["tmux", "has-session", "-t", self.session], capture_output=True).returncode == 0:
+        if subprocess.run([*self.tmux, "has-session", "-t", self.session], capture_output=True).returncode == 0:
             return
-        cmd = ["tmux", "new-session", "-d", "-s", self.session, "-c", os.path.expanduser("~")]
-        if sys.platform == "linux" and shutil.which("systemd-run"):
+        cmd = [*self.tmux, "new-session", "-d", "-s", self.session, "-c", os.path.expanduser("~")]
+        if sys.platform == "linux" and shutil.which("systemd-run") and not self.socket:
             # сервер tmux — в своей группе systemd: иначе перезапуск службы пульта убьёт все окна
             cmd = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
@@ -85,7 +89,7 @@ class Tmux:
         когда Claude в нём завершился (тогда сессия «остановлена», а не пропадает)."""
         self.ensure_session()
         shell = os.environ.get("SHELL", "/bin/bash")
-        r = subprocess.run(["tmux", "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
+        r = subprocess.run([*self.tmux, "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
                             "-n", name, "-c", path, f"{command}; exec {shlex.quote(shell)}"],
                            capture_output=True, text=True)
         if r.returncode != 0:
@@ -97,7 +101,7 @@ class Tmux:
     def respawn(self, wid: str, path: str, command: str, mark: str = "claude"):
         """Запустить Claude заново в том же окне (то же имя и id): оболочку — закрыть, команду — запустить."""
         shell = os.environ.get("SHELL", "/bin/bash")
-        r = subprocess.run(["tmux", "respawn-window", "-k", "-t", wid, "-c", path,
+        r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path,
                             f"{command}; exec {shlex.quote(shell)}"], capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip() or "tmux respawn-window не сработал")
