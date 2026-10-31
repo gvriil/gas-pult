@@ -9,6 +9,7 @@ src/gas_pult/
 ├── tmux.py         окна, экран, bracketed paste, новые окна с Claude
 ├── transcripts.py  jsonl Claude Code: Turns (сборка хода до end_turn), Tail, last_answer, clean
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
+├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, «да» из HANDOFF.md
 └── voice/
     ├── __init__.py synth() / transcribe() — запускают рабочий процесс
     ├── __main__.py рабочий процесс: Piper, Silero, faster-whisper, ffmpeg

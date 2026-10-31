@@ -19,9 +19,10 @@ import subprocess
 import threading
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
-from gas_pult import transcripts, voice
+from gas_pult import digest, transcripts, voice
 from gas_pult.commands import Commands
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People
@@ -97,6 +98,7 @@ class Pult:
         self.requests: dict[int, dict] = {}                # кто просит доступ: Telegram ID → имя, @username
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
+        self.digest = digest.Digest(cfg.data / "digest.json")
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -390,6 +392,67 @@ class Pult:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
 
+    # ---------- утренняя сводка «ждёт владельца» ----------
+    def digest_items(self) -> list[dict]:
+        items = []
+        if self.cfg.digest_github:
+            try:
+                items += digest.prs(self.cfg.digest_github, time.time())
+            except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
+                print("digest:", e, flush=True)
+        for w in self.tmux.windows():
+            if w["cmd"] == "claude" and DIALOG.search("\n".join(self.tmux.screen(w["id"]))):
+                items.append({"kind": "win", "key": digest.key("win", w["id"]), "id": w["id"], "name": w["name"]})
+        return items + digest.handoffs(self.cfg.roots())
+
+    def send_digest(self, chat: int | None = None):
+        """Сводка сейчас: в чат (команда /digest) или всем владельцам (по расписанию; пусто — молчим)."""
+        items = self.digest.fresh(self.digest_items(), time.time())
+        if not items:
+            return chat and self.send(chat, "☀️ Ничего не ждёт вашего решения.")
+        text, kbd = digest.render(items)
+        return self.send(chat, text, reply_markup=kbd) if chat else self.broadcast(text, reply_markup=kbd)
+
+    def digest_loop(self):
+        while True:
+            try:
+                now = datetime.now()
+                if self.digest.due(self.cfg.digest_at, now):
+                    self.digest.mark_sent(now.strftime("%Y-%m-%d"))      # сначала отметка — не слать дважды
+                    self.send_digest()
+            except Exception as e:
+                print("digest:", self.api.redact(e), flush=True)
+            time.sleep(60)
+
+    def on_digest(self, chat: int, arg: str):
+        """dg:y — «да» (PR и «да» штабу — с подтверждением dg:Y), dg:c — закрыть, dg:l — позже."""
+        act, _, k = arg.partition(":")
+        x, send = self.digest.item(k), self.to(chat)
+        if not x:
+            return send("Этот пункт уже не в сводке — пришлите /digest.")
+        if act == "c":
+            self.digest.snooze(k, digest.GONE)
+            return send("Убрал из сводок на месяц.")
+        if act == "l":
+            self.digest.snooze(k, digest.LATER)
+            return send("Напомню в следующей сводке.")
+        if x["kind"] == "win":
+            w = self.tmux.window(x["id"])
+            return self.send_screen(chat, w, "Claude ждёт ответа:") if w else send("Этого окна уже нет.")
+        if act == "y":
+            ask = (f"Слить {x['repo']}#{x['n']} «{x['title']}»?" if x["kind"] == "pr"
+                   else f"Передать «да» в окно {x['project']}: {x['text']}?")
+            return send(ask,
+                        reply_markup=kb([[("✅ Да", f"dg:Y:{k}"), ("Нет", "noop")]]))
+        if x["kind"] == "pr":
+            send(digest.merge(x["repo"], x["n"]))
+        elif w := self.project_window(x["path"]):
+            self.to_claude(w, f"Владелец отвечает «да» на пункт из HANDOFF.md: {x['text']}")
+            send(f"Передал «да» в «{w['name']}».")
+        else:
+            return send(f"Окна с Claude в {x['project']} нет — откройте сессию (🆕 Новая) и повторите.")
+        self.digest.snooze(k, digest.GONE)
+
     # ---------- экраны пульта ----------
     def show_windows(self, chat: int):
         ws = self.tmux.windows()
@@ -489,6 +552,8 @@ class Pult:
                 return send("Подсказка устарела или окна уже нет.")
             self.to_claude(w, h)
             return send(f"→ [{w['name']}]: {h}")
+        if kind == "dg":
+            return self.on_digest(chat, arg)
         if kind == "mk":
             self.waiting[chat] = "name"
             return send("Имя новой папки (латиница, дефис), например: shop-bot", reply_markup={"force_reply": True})
@@ -640,6 +705,8 @@ class Pult:
                            ("📋", self.show_windows), ("⚙️", self.show_settings)):
             if t.startswith(prefix):
                 return fn(chat)
+        if t == "/digest":
+            return self.send_digest(chat)
         if t in ("/start", "/menu", "/help"):
             return send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу.",
                         reply_markup=MENU)
@@ -686,6 +753,7 @@ class Pult:
         print(f"gas-pult: @{me['username']} · сессия tmux «{self.cfg.session}» · владельцев: {len(self.cfg.owners)}",
               flush=True)
         threading.Thread(target=self.monitor, daemon=True).start()
+        threading.Thread(target=self.digest_loop, daemon=True).start()
         offset = None
         while True:
             try:

@@ -67,6 +67,8 @@ class Config:
     task_pattern: str = r"[A-Z]{2,10}-\d+"                  # номер задачи трекера: GAS-123, PROJ-7
     task_prompt: str = "Возьми задачу {task} из трекера: прочитай описание и комментарии, составь план и приступай."
     commands: list[list[str]] = field(default_factory=list)  # свои кнопки ⚡: [["▶️ Старт", "/shtab start"]]
+    digest_at: str = "09:00"                                # утренняя сводка «ждёт владельца» (ЧЧ:ММ; "" — выкл.)
+    digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
 
     @property
     def data(self) -> Path:

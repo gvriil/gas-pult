@@ -145,6 +145,8 @@ session = "main"                      # сессия tmux
 project_roots = ["~/projects", "~/worktrees"]
 commands = [["▶️ Старт", "/shtab start"], ["🧪 Тесты", "Запусти тесты и доложи"]]   # свои кнопки ⚡
 foreign = ['\bssh\s+prod\b']          # такие команды — без кнопки ▶️
+digest_at = "09:00"                   # утренняя сводка «ждёт владельца» ("" — выкл.); /digest — сейчас
+digest_github = "ваш-логин"           # PR старше 2 дней или с красным CI — через gh
 ```
 
 После правки: `systemctl --user restart gas-pult` (macOS: `gas-pult service install`).
