@@ -255,3 +255,17 @@ def test_tests_never_touch_default_tmux_server():
         for n, line in enumerate(f.read_text().splitlines(), 1):
             if re.search(r"kill-server|kill-session", line) and "-S" not in line and "re.search" not in line:
                 raise AssertionError(f"{f.name}:{n}: tmux без -S — заденет боевой сервер")
+
+
+def test_claude_with_long_path_is_recognised(tmp_path, tmux_socket):
+    """ps без -ww режет строку до 80 знаков: Claude по длинному пути (npm, глубокая папка) не узнавался."""
+    from gas_pult.tmux import Tmux
+    deep = tmp_path / ("очень-длинная-папка-" * 4) / "bin"
+    deep.mkdir(parents=True)
+    fake = deep / "claude"
+    fake.write_text("#!/usr/bin/env bash\nwhile true; do read -r line; done\n")
+    fake.chmod(0o755)
+    assert len(str(fake)) > 120
+    t = Tmux("long")
+    wid = t.new_window("long", str(tmp_path), str(fake))
+    assert wait(lambda: (t.window(wid) or {}).get("cmd") == "claude")
