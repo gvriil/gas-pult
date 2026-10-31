@@ -319,6 +319,13 @@
   .sheet button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: 16px; min-height: 52px; }
   .sheet button .i { color: var(--text-secondary); }
   .sheet button span { flex: 1; min-width: 0; } .sheet button small { display: block; color: var(--text-secondary); font-size: 13px; }
+  .sheet button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — меню, не выделение */
+  .sheet button .sdot { margin: 0 3px; }
+  /* Чат прежде всего (телефон): имя сессии с ▾ — переключатель; тихая точка — что-то ждёт в другой сессии */
+  .top h1.sw { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .top h1.sw .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .top h1.sw .caret { flex: none; display: inline-grid; color: var(--text-secondary); }
+  .top h1.sw .sig { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--status-approval); }
   .sheet button.on { color: var(--accent-primary); font-weight: 600; } .sheet button.danger, .sheet button.danger .i { color: var(--status-danger); }
   .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
   .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; animation: fade .15s ease;
@@ -347,6 +354,7 @@
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
     <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="switchBtn" hidden aria-label="Другая сессия"></button>
+    <button class="icon" id="screenBtn" hidden aria-label="Экран терминала"></button>
     <button class="icon" id="settingsBtn" aria-label="Настройки"></button>
   </div>
   <div class="tabsbar" id="tabsBar" hidden><div class="seg" id="tabs"><button data-tab="chat" class="on"></button><button data-tab="screen"></button></div></div>
@@ -453,6 +461,7 @@ const P = {
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z"/>', pause: '<path d="M9 5.5v13M15 5.5v13"/>',
+  chev: '<path d="M7 10l5 5 5-5"/>',
   vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
   volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
@@ -533,12 +542,23 @@ async function busy(btn, text, fn) {              // кнопка показыв
   const old = btn.innerHTML; btn.disabled = true; btn.textContent = text;
   try { return await fn(); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
 }
-function sheet(title, items) {                     // [{label, sub, icon, run, danger, on}]
+function sheet(title, items) {                     // [{label, sub, icon | dot, run, hold, danger, on}]; hold — долгое нажатие
   const bg = document.createElement("div"); bg.className = "sheet-bg";
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>${esc(title)}</h3>${items.map((it, i) =>
-    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
+    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
     <button class="cancel" data-close>Отмена</button></div>`;
+  let hold = null, held = false;
+  bg.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest("button[data-i]"), it = b && items[+b.dataset.i];
+    if (!it?.hold) return;
+    hold = { x: e.clientX, y: e.clientY, t: setTimeout(() => { held = true; haptic("impactOccurred", "medium"); bg.remove(); it.hold(); }, 500) };
+  });
+  const unhold = () => { if (hold) clearTimeout(hold.t); hold = null; };
+  bg.addEventListener("pointerup", unhold); bg.addEventListener("pointercancel", unhold);
+  bg.addEventListener("pointermove", (e) => { if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) unhold(); });
+  bg.addEventListener("contextmenu", (e) => e.preventDefault());
   bg.addEventListener("click", (e) => {
+    if (held) { held = false; return; }               // долгое нажатие уже открыло своё меню
     const b = e.target.closest("button");
     if (e.target === bg || b) bg.remove();
     if (b && b.dataset.i) items[+b.dataset.i].run();
@@ -559,11 +579,13 @@ function show(v) {
   $("homeBar").hidden = !((v === "home" || two) && v !== "login" && homeView === "sessions");
   const canBack = v === "mcpForm" || (v === "session" && !two);
   $("backBtn").hidden = !canBack;
-  $("switchBtn").hidden = v !== "session" || two;
+  $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
+  $("screenBtn").hidden = v !== "session" || two;
+  $("title").classList.toggle("sw", v === "session" && !two);
   $("settingsBtn").hidden = v === "login";
   $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
-  $("tabsBar").hidden = v !== "session";             // вкладки сессии — в закреплённой шапке
+  $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
   $("top").classList.remove("hide"); scrollToY(0);
 }
@@ -771,7 +793,11 @@ async function refresh() {
 // Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
 function paintSession(s) {
   const st = ST[s.status];
-  $("title").textContent = s.name;
+  if (split()) $("title").textContent = s.name;
+  else {                                            // телефон: имя ▾ — шторка сессий; точка — что-то ждёт в другой сессии
+    const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
+    $("title").innerHTML = `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`;
+  }
   setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
   $("input").placeholder = "Сообщение для " + s.name + "…";            // куда уйдёт — видно прямо в поле
@@ -821,7 +847,7 @@ function confirmClose(id) {
 // ---------- сессия ----------
 // Не «open»: функция верхнего уровня стала бы window.open и ломала внешние ссылки в браузере.
 async function openSession(id, startTab) {
-  current = id; termAll = false; show("session");
+  current = id; termAll = false; store("last", id); show("session");
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
@@ -831,6 +857,7 @@ async function openSession(id, startTab) {
 }
 function setTab(t) {
   tab = t;
+  $("screenBtn").innerHTML = ic(t === "chat" ? "term" : "chat"); $("screenBtn").setAttribute("aria-label", t === "chat" ? "Экран терминала" : "Переписка");
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   $("live").hidden = t !== "chat";
   loadContent();
@@ -1262,8 +1289,38 @@ async function closeSession(id = current) {
     if (d.result === "закрыто") { if (id === current) back(); else refresh(); }
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
-$("switchBtn").onclick = () => sheet("Перейти в сессию", [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((s) => ({
-  label: s.name, sub: `${ST[s.status].label} · ${folder(s.path)}`, icon: s.status === "dialog" ? "warn" : "chat", on: s.id === current, run: () => openSession(s.id) })));
+// Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
+function openSwitcher() {
+  sheet("Сессии", [...[...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((s) => ({
+    label: s.name, sub: `${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
+    run: () => openSession(s.id), hold: () => sessionActions(s) })),
+    ...(meta?.role !== "viewer" ? [{ label: "Новая сессия", icon: "plus", run: () => newSession() }] : []),
+    { label: "Все сессии и интеграции", icon: "menu", run: back }]);
+}
+function sessionActions(s) {
+  sheet(s.name, [{ label: "Открыть", icon: "chat", run: () => openSession(s.id) },
+    ...(meta?.role === "owner" ? [{ label: "Завершить", icon: "power", danger: true, run: () => confirmDanger(`Завершить «${s.name}»?`, () => closeSession(s.id)) }] : [])]);
+}
+$("switchBtn").onclick = openSwitcher;
+$("title").onclick = () => { if (view === "session" && !split()) openSwitcher(); };
+$("screenBtn").onclick = () => setTab(tab === "chat" ? "screen" : "chat");
+// Жесты (телефон, в сессии): от левого края вправо — шторка сессий; по шапке влево-вправо — соседняя сессия.
+let swipe = null;
+addEventListener("touchstart", (e) => {
+  swipe = null;
+  if (view !== "session" || split() || e.touches.length !== 1 || document.querySelector(".sheet-bg")) return;
+  const t = e.touches[0], edge = t.clientX < 24, head = !!e.target.closest?.("#top") && !e.target.closest("button");
+  if (edge || head) swipe = { x: t.clientX, y: t.clientY, edge };
+}, { passive: true });
+addEventListener("touchend", (e) => {
+  const s = swipe; swipe = null;
+  if (!s) return;
+  const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
+  if (Math.abs(dx) < 60 || Math.abs(dy) > 40) return;
+  if (s.edge) { if (dx > 0) openSwitcher(); return; }
+  const i = sessions.findIndex((x) => x.id === current), next = sessions[i + (dx < 0 ? 1 : -1)];
+  if (next) { haptic("selectionChanged"); openSession(next.id); }
+}, { passive: true });
 
 // ---------- ввод ----------
 async function sendText() {
@@ -1769,6 +1826,14 @@ async function start() {
   let resume = null;
   try { resume = JSON.parse(sessionStorage.getItem("resume") || "null"); sessionStorage.removeItem("resume"); } catch (e) {}
   if (resume?.id && !DEMO) { await refresh(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
+  // Чат прежде всего: на телефоне панель сразу открывает последнюю сессию (открытую здесь, иначе активную в чате бота).
+  if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof")) {
+    if (!sessions.length) await refresh();
+    const live = sessions.filter((x) => x.status !== "stopped");
+    const pick = sessions.find((x) => x.id === store("last")) || live.find((x) => x.active)
+      || [...live].sort((a, b) => ORDER[a.status] - ORDER[b.status])[0];
+    if (pick) await openSession(pick.id);
+  }
   if (DEMO && params.get("open")) {
     await refresh(); await openSession(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
