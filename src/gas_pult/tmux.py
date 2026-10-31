@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -18,6 +19,14 @@ def is_claude(argv: list[str]) -> bool:
 
 
 SHELLS = {"bash", "zsh", "sh", "fish", "dash", "ksh"}
+
+
+def window_name(name: str) -> str:
+    """Имя сессии (окна tmux): 1–40 знаков, без «:» и «.» — в tmux это разделители цели (сессия:окно.панель)."""
+    name = " ".join(str(name).split())
+    if not name or len(name) > 40 or re.search(r"[:.]", name):
+        raise ValueError("имя — от 1 до 40 знаков, без «:» и «.»")
+    return name
 
 
 class Tmux:
@@ -47,6 +56,14 @@ class Tmux:
             # окно открыл пульт (метка — поставщик), а Claude в нём завершился и осталась оболочка — «остановлена»
             w["stopped"] = not claude and bool(w.get("mark")) and w["cmd"] in SHELLS
         return ws
+
+    def rename(self, wid: str, name: str) -> str:
+        """Переименовать окно. Снимок claude-restore берёт имя из tmux — новое имя переживёт перезапуск."""
+        name = window_name(name)
+        r = subprocess.run([*self.tmux, "rename-window", "-t", wid, name], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip() or "tmux rename-window не сработал")
+        return name
 
     def window(self, wid: str) -> dict | None:
         return next((w for w in self.windows() if w["id"] == wid), None)

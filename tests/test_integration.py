@@ -255,3 +255,16 @@ def test_tests_never_touch_default_tmux_server():
         for n, line in enumerate(f.read_text().splitlines(), 1):
             if re.search(r"kill-server|kill-session", line) and "-S" not in line and "re.search" not in line:
                 raise AssertionError(f"{f.name}:{n}: tmux без -S — заденет боевой сервер")
+
+
+def test_bot_rename_flow(monkeypatch):
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    p.waiting, sent, renamed = {}, [], []
+    p.send = lambda chat, text, **kw: sent.append(text)
+    p.to = lambda chat: (lambda text, **kw: sent.append(text))
+    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid, "name": "old"},
+                            "rename": lambda self, wid, name: renamed.append((wid, name)) or name})()
+    p.waiting[1] = "ren:@4"
+    p.on_message({"message_id": 1, "chat": {"id": 1}, "from": {"id": 1}, "text": "магазин"})
+    assert renamed == [("@4", "магазин")] and "магазин" in sent[-1]
