@@ -179,6 +179,7 @@
   .chat .when { color: var(--text-muted); font-size: 12px; margin: 4px 4px 0; }
   .chat .state { font-size: 12px; margin: 4px 4px 0; text-align: right; color: var(--text-secondary); }
   .chat .state.ok { color: var(--status-success); } .chat .state.wait { color: var(--status-approval); } .chat .state.bad { color: var(--status-danger); }
+  .chat .state button.link { border: 0; background: none; padding: 0 0 0 6px; font: inherit; font-weight: 600; color: var(--accent-primary); text-decoration: underline; cursor: pointer; }
   .chat .acts { display: flex; gap: 4px; align-items: center; margin: 6px 0 0; flex-wrap: wrap; }
   .chat .acts button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--text-secondary);
                        border-radius: var(--radius-pill); padding: 5px 9px; font-size: 13px; }
@@ -927,8 +928,11 @@ function renderChat(toBottom) {
     ? `<div class="msg me">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
     : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(m.ts)}</span></div></div>`).join("")
-    + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : p.state === "fail" ? "bad" : "wait"}">${
-      { sending: "отправляется…", sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"), fail: "не отправлено — " + esc(p.err || "") }[p.state]}</div></div>`).join("");
+    + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
+      { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
+        sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
+        fail: "не отправлено — " + esc(p.err || ""),
+        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div></div>`).join("");
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
   box.querySelectorAll(".msg.ai").forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
@@ -1184,20 +1188,34 @@ async function sendText() {
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
   const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
-  const p = { text, state: "sending" }; pending.push(p);
+  const p = { text, state: "sending", id: msgId(), w: current }; pending.push(p);
   $("input").value = ""; const sent = files; files = []; renderFiles(); grow();
   if (tab === "chat") renderChat(true); else toast("Отправлено в «" + (cur()?.name || "сессию") + "»");
-  try {
-    await api("/api/send", { w: current, text });
-    p.state = "sent"; haptic("notificationOccurred", "success");
-    if (cur()?.status !== "busy") lastStatus = "busy";
-    setTimeout(() => { if (tab === "chat") hist = []; loadContent(); }, tab === "chat" ? 2000 : 1200);
-  } catch (e) {
-    p.state = "fail"; p.err = e.message; $("input").value = typed; files = sent; renderFiles(); grow();
-    haptic("notificationOccurred", "error");
-  }
-  renderChat(true);
+  await deliver(p, () => { if (!$("input").value.trim()) { $("input").value = typed; files = sent; renderFiles(); grow(); } });
 }
+const msgId = () => crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2);
+// Обрыв связи — не «не отправлено»: текст мог уже дойти. Повторяем с тем же id (сервер второй раз не вставит), а
+// переписку сверяем — дошедшее сообщение уходит из «ожидающих» само. Отказ сервера — честная ошибка, текст — в поле.
+async function deliver(p, restore) {
+  for (const pause of [0, 1500, 4000, 8000]) {
+    if (pause) { p.state = "unsure"; renderChat(true); await new Promise((r) => setTimeout(r, pause)); }
+    if (!pending.includes(p)) return;               // уже видно в переписке — дошло
+    try {
+      await api("/api/send", { w: p.w, text: p.text, id: p.id });
+      p.state = "sent"; haptic("notificationOccurred", "success");
+      if (cur()?.status !== "busy") lastStatus = "busy";
+      setTimeout(() => { if (tab === "chat") hist = []; loadContent(); }, tab === "chat" ? 2000 : 1200);
+      return renderChat(true);
+    } catch (e) {
+      if (!e.net) { p.state = "fail"; p.err = e.message; restore?.(); haptic("notificationOccurred", "error"); return renderChat(true); }
+    }
+  }
+  p.state = "lost"; haptic("notificationOccurred", "warning"); renderChat(true);
+}
+$("content").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-resend]"), p = b && pending.find((x) => x.id === b.dataset.resend);
+  if (p) deliver(p);                                // тот же id — даже если первое дошло, второй раз не вставится
+});
 $("plus").onclick = () => sheet("Прикрепить", [
   { label: "Сфотографировать", icon: "camera", run: () => $("fCam").click() },
   { label: "Фото или видео из галереи", icon: "image", run: () => $("fPhoto").click() },

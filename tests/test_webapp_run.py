@@ -200,3 +200,43 @@ def test_old_message_with_number_is_not_the_menu(panel, menu):
     menu.sel = 3
     panel.select(W, "", "1")                       # «❯ 1. …» выше — ваше сообщение, не пункт меню
     assert menu.chosen == 1 and menu.keys_sent == ["Up", "Up", "Enter"]
+def test_same_message_id_is_pasted_once(panel, monkeypatch):
+    pasted = []
+    monkeypatch.setattr(panel.pult, "to_claude", lambda w, text: pasted.append(text))
+    assert panel.send(W, "привет", "m1") is False
+    assert panel.send(W, "привет", "m1") is True            # браузер повторил после обрыва — не вставляем
+    panel.send(W, "привет", "m2")
+    panel.send(W, "привет")                                  # без id — как раньше
+    assert pasted == ["привет", "привет", "привет"]
+
+
+def test_retry_during_slow_paste_waits_for_first(panel, monkeypatch):
+    import threading
+    import time as t
+    pasted, go = [], threading.Event()
+    monkeypatch.setattr(panel.pult, "to_claude", lambda w, text: go.wait(2) and pasted.append(text))
+    first = threading.Thread(target=panel.send, args=(W, "привет", "m1"))
+    first.start()
+    t.sleep(0.1)
+    res = []
+    retry = threading.Thread(target=lambda: res.append(panel.send(W, "привет", "m1")))
+    retry.start()
+    t.sleep(0.1)
+    go.set()
+    first.join(2)
+    retry.join(2)
+    assert pasted == ["привет"] and res == [True]
+
+
+def test_failed_paste_can_be_retried(panel, monkeypatch):
+    calls = []
+
+    def flaky(w, text):
+        calls.append(text)
+        if len(calls) == 1:
+            raise ValueError("окно не готово")
+
+    monkeypatch.setattr(panel.pult, "to_claude", flaky)
+    with pytest.raises(ValueError):
+        panel.send(W, "привет", "m1")
+    assert panel.send(W, "привет", "m1") is False and calls == ["привет", "привет"]   # не дошло — повтор вставляет
