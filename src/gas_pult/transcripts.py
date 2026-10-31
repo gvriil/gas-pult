@@ -74,15 +74,41 @@ class Turns:
 
 
 class Tail:
-    """Дочитывает новые целые строки jsonl; недописанную строку дочитает в следующий раз."""
+    """Дочитывает новые целые строки jsonl; недописанную строку дочитает в следующий раз.
 
-    def __init__(self):
+    Старое не пересылаем. Файлы, которые уже лежали в папке, когда её увидели впервые, читаем с конца; с начала —
+    только файл, появившийся позже (новая сессия), или маленький свежий — сессия, открытая вместе с окном. Время
+    изменения (ctime) старого журнала ничего не значит: его меняет любая запись или chmod — по нему 31.10 бот принял
+    журналы на 11–18 МБ за новые и переслал всю переписку (>170 сообщений, 429). Файл подменили или укоротили —
+    тоже с конца."""
+
+    FRESH = 64 * 1024                                       # «свежая сессия» при первом взгляде на папку — до 64 КБ
+
+    def __init__(self, started: float = 0.0):
         self.offsets: dict[Path, int] = {}
+        self.inodes: dict[Path, int] = {}
+        self.folders: set[str] = set()
+        self.started = started
 
     def track(self, f: Path, from_start: bool):
-        self.offsets.setdefault(f, 0 if from_start else f.stat().st_size)
+        if f not in self.offsets:
+            st = f.stat()
+            self.offsets[f], self.inodes[f] = (0 if from_start else st.st_size), st.st_ino
+
+    def watch(self, folder: str, files: list[Path]):
+        """Файлы папки: первый взгляд на папку — всё с конца (кроме маленьких свежих), потом новые — с начала."""
+        first = folder not in self.folders
+        self.folders.add(folder)
+        for f in files:
+            if f not in self.offsets:
+                st = f.stat()
+                self.track(f, not first or (st.st_size < self.FRESH and st.st_mtime > self.started))
 
     def read(self, f: Path):
+        st = f.stat()
+        if st.st_ino != self.inodes.get(f, st.st_ino) or st.st_size < self.offsets[f]:   # подменили / укоротили
+            self.offsets[f], self.inodes[f] = st.st_size, st.st_ino
+            return
         with open(f, "rb") as fh:
             fh.seek(self.offsets[f])
             chunk = fh.read()

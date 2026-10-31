@@ -13,9 +13,10 @@ from pathlib import Path
 
 
 class TelegramError(Exception):
-    def __init__(self, method: str, description: str):
+    def __init__(self, method: str, description: str, retry_after: int = 0):
         super().__init__(f"{method}: {description}")
         self.description = description
+        self.retry_after = retry_after                  # 429: сколько секунд Telegram просит молчать
 
 
 class Api:
@@ -41,10 +42,11 @@ class Api:
                 return json.load(r)["result"]
         except urllib.error.HTTPError as e:
             try:
-                desc = json.load(e).get("description", str(e))
+                data = json.load(e)
             except ValueError:
-                desc = str(e)
-            raise TelegramError(method, desc) from None
+                data = {}
+            raise TelegramError(method, data.get("description", str(e)),
+                                int((data.get("parameters") or {}).get("retry_after") or 0)) from None
 
     def download(self, file_id: str, dst_dir: Path, name: str | None = None) -> Path:
         path = self("getFile", file_id=file_id)["file_path"]
