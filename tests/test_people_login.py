@@ -60,7 +60,7 @@ def server(monkeypatch, tmp_path):
     panel.people.add(3, "viewer")
     monkeypatch.setattr(panel, "bot_username", lambda: "test_bot")
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "path": "/tmp", "name": "w"})
-    monkeypatch.setattr(panel, "send", lambda w, text: None)
+    monkeypatch.setattr(panel, "send", lambda w, text, mid="": False)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(panel))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield panel, f"http://127.0.0.1:{srv.server_address[1]}"

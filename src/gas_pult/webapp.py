@@ -112,6 +112,7 @@ class Panel:
         self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
+        self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
 
     def lock(self, wid: str) -> threading.Lock:
         with self.pult.lock:
@@ -179,9 +180,33 @@ class Panel:
         return rid
 
     # ---------- действия ----------
-    def send(self, w: dict, text: str):
-        with self.lock(w["id"]):
-            self.pult.to_claude(w, text)
+    def send(self, w: dict, text: str, mid: str = "") -> bool:
+        """mid — id сообщения от браузера. Связь телефона рвётся, пока текст вставляется, и браузер повторяет запрос:
+        с тем же id второй раз не вставляем (ответ True — «уже было»). Повтор, пришедший во время первой вставки, ждёт
+        её исхода; не удалась — пробует сам."""
+        if mid:
+            with self.pult.lock:
+                now = time.time()
+                for k in [k for k, (_, t) in self.sent.items() if now - t > 900]:
+                    del self.sent[k]
+                ev, first = self.sent.get(mid, (None, 0))[0], mid not in self.sent
+                if first:
+                    ev = threading.Event()
+                    self.sent[mid] = (ev, now)
+            if not first:
+                ev.wait(120)
+                return True if mid in self.sent else self.send(w, text, mid)
+        try:
+            with self.lock(w["id"]):
+                self.pult.to_claude(w, text)
+        except Exception:
+            with self.pult.lock:
+                self.sent.pop(mid, None)
+            raise
+        finally:
+            if mid:
+                ev.set()
+        return False
 
     def slash(self, w: dict, cmd: str) -> list[str]:
         with self.lock(w["id"]):
@@ -722,8 +747,7 @@ def handler(panel: Panel):
                 text = str(b.get("text", "")).strip()
                 if not text:
                     raise ValueError("пустое сообщение")
-                panel.send(w, text)
-                return {"ok": True}
+                return {"ok": True, "dup": panel.send(w, text, str(b.get("id", ""))[:64])}
             if path == "/api/active":
                 panel.pult.set_state(active=w["id"])
                 return {"ok": True}
