@@ -36,3 +36,11 @@ def test_expired_rejected():
 
 def test_empty_rejected():
     assert verify("", TOKEN) is None
+
+
+def test_server_tz_for_panel_times(monkeypatch):
+    from gas_pult import webapp
+    monkeypatch.setenv("TZ", "Europe/Amsterdam")
+    assert webapp.server_tz() == "Europe/Amsterdam"            # панель покажет время сервера на любом телефоне
+    monkeypatch.setenv("TZ", "UTC")
+    assert isinstance(webapp.server_tz(), str)               # TZ без «/» — берём пояс системы (бывает и просто «UTC»)
