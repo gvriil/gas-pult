@@ -406,7 +406,7 @@
       <div id="loginStep1">
         <button class="btn" id="tgLogin">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
-        <button class="btn ghost" id="getCode">Код владельцу бота</button>
+        <button class="btn ghost" id="getCode">Войти по коду — для владельца</button>
         <button class="btn ghost" id="tryDemo">Посмотреть демо — без входа</button>
         <p class="note" style="margin:6px 0 0">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
       </div>
@@ -608,12 +608,12 @@ async function busy(btn, text, fn) {              // кнопка показыв
 // из которой пришли. Нажатие вне шторок — уже новый путь: отметку сбрасываем.
 let sheetFrom = null;
 document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".sheet-bg")) sheetFrom = null; }, true);
-function sheet(title, items) {                     // [{label, sub, icon | dot | vis, run, hold, danger, on, info} | {head}]; hold — долгое нажатие
+function sheet(title, items, closeLabel = "Закрыть") {                     // [{label, sub, icon | dot | vis, run, hold, danger, on, info} | {head}]; hold — долгое нажатие
   const bg = document.createElement("div"); bg.className = "sheet-bg";
   const parent = sheetFrom && Date.now() - sheetFrom.t < 15000 ? sheetFrom : null; sheetFrom = null;
   bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.head ? `<h3 class="sub">${esc(it.head)}</h3>` :
     `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""} ${it.info ? "info" : ""}">${it.vis ? `<span class="vis">${it.vis}</span>` : it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
-    <button class="cancel" data-close>Отмена</button></div>`;
+    <button class="cancel" data-close>${esc(closeLabel)}</button></div>`;
   let hold = null, held = false;
   bg.addEventListener("pointerdown", (e) => {
     const b = e.target.closest("button[data-i]"), it = b && items[+b.dataset.i];
@@ -630,7 +630,7 @@ function sheet(title, items) {                     // [{label, sub, icon | dot |
     if (b?.dataset.i && items[+b.dataset.i].info) return;     // строка-пояснение: шторка остаётся
     if (e.target === bg || b) bg.remove();
     if (b?.dataset.back) return parent.open();
-    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; sheet(title, items); } }; items[+b.dataset.i].run(); }
+    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; sheet(title, items, closeLabel); } }; items[+b.dataset.i].run(); }
   });
   document.body.append(bg);
 }
@@ -912,7 +912,7 @@ async function refresh() {
     }
     if (view !== "session") return;
     const s = cur();
-    if (!s) { toast("Сессия закрыта"); return back(); }
+    if (!s) { toast("Сессия завершена"); return back(); }
     paintSession(s); loadHint(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
@@ -1527,7 +1527,7 @@ function effortSheet() {
 }
 async function closeSession(id = current) {
   try {
-    const d = await api("/api/close", { w: id }); toast("Завершение: " + d.result, 4500);
+    const d = await api("/api/close", { w: id }); toast(d.result === "закрыто" ? "Сессия завершена" : "Не завершена: " + d.result, 4500);
     if (d.result === "закрыто") { if (id === current) back(); else refresh(); }
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
@@ -2023,7 +2023,7 @@ async function askNotify() {
 }
 function notifyCard() {                              // спрашиваем один раз, ненавязчиво — карточкой над сессиями
   if (!canNotify() || Notification.permission !== "default" || store("notifyAsked") || DEMO) return "";
-  return `<div class="notice" id="notifyCard">${ic("bell")}<span>Сообщать, когда Claude ответит или задаст вопрос?</span><button data-notify="yes">Включить</button><button data-notify="no" style="color:var(--text-secondary)">Нет</button></div>`;
+  return `<div class="notice" id="notifyCard">${ic("bell")}<span>Сообщать, когда Claude ответит или задаст вопрос?</span><button data-notify="yes">Включить</button><button data-notify="no" style="color:var(--text-secondary)">Не сейчас</button></div>`;
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-notify]"); if (!b) return;
@@ -2054,7 +2054,7 @@ async function peopleSheet() {
     label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: "pin",
     sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить"),
     run: () => p.role !== "owner" && personSheet(p) })),
-    { label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить", run: () => {} }]);
+    { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" }]);
 }
 function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
@@ -2131,7 +2131,7 @@ async function start() {
   const wn = meta.whatsnew?.[0];
   if (wn && store("whatsnew") !== wn.id && !DEMO) {
     store("whatsnew", wn.id);
-    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ label: t, icon: "check", run: () => {} })));
+    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно");
   }
   store("seenAny", "1");
   if (!start.timer) start.timer = setInterval(refresh, 3000);
