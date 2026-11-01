@@ -485,7 +485,13 @@ class Pult:
             return self.send(chat, f"Не получилось послушать: {e}")
         name = "ElevenLabs" if vid == "elevenlabs" else catalog.label(vid)
         if ext == "ogg":
-            return self.api("sendVoice", chat_id=chat, caption=name, files={"voice": (f"{vid}.ogg", data)})
+            try:
+                return self.api("sendVoice", chat_id=chat, caption=name, files={"voice": (f"{vid}.ogg", data)})
+            except TelegramError as e:      # приватность Telegram запрещает голосовые → дальше аудиофайлом
+                if "VOICE_MESSAGES_FORBIDDEN" not in e.description:
+                    raise
+                self.set_state(audio_only=True)
+                return self.on_voice(chat, kind, vid, q)
         self.api("sendAudio", chat_id=chat, title=name, performer="gas-pult", files={"audio": (f"{vid}.mp3", data)})
 
     def remember(self, w: dict, text: str) -> int:
