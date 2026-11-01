@@ -6,16 +6,19 @@
    «claude.ai <Сервис>» со статусом ✔. Ничего не копируется, ключей нет.
 2. **По ключу** (``PRESETS`` с полями): кнопка открывает страницу, где сервис выдаёт ключ, ключ — в одно поле.
 3. **Для продвинутых**: свой адрес или своя программа (``add-json -s user``).
-Ключи сохраняются в настройках Claude Code (``~/.claude.json``) на сервере.
+Ключи сохраняются в настройках Claude Code на сервере: у владельца — ``~/.claude.json``, у человека из people.json —
+в его папке (``home`` = ``CLAUDE_CONFIG_DIR``, ``people.claude_dir``): интеграции у каждого свои.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
 import time
+from pathlib import Path
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}$")
 LINE = re.compile(r"^(?P<name>.+?): (?P<target>.+) - (?P<mark>[✔✘⚠!])\s*(?P<state>.*)$")
@@ -93,9 +96,10 @@ PRESETS = [
 ]
 
 
-def _claude(*args: str) -> subprocess.CompletedProcess:
+def _claude(*args: str, home: Path | None = None) -> subprocess.CompletedProcess:
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)} if home else None   # None — окружение пульта (владелец)
     try:
-        return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT)
+        return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT, env=env)
     except FileNotFoundError:                    # Claude Code не установлен: список пуст, добавление — понятной ошибкой
         return subprocess.CompletedProcess(["claude", "mcp", *args], 127, "",
                                            "Claude Code не установлен — сначала «Войти в Claude» в боте или панели")
@@ -103,26 +107,37 @@ def _claude(*args: str) -> subprocess.CompletedProcess:
 
 class Mcp:
     def __init__(self):
-        self.cache: tuple[float, list[dict]] = (0, [])
+        self.cache: tuple[float, list[dict]] = (0, [])          # владелец (~/.claude.json)
+        self.caches: dict[str, tuple[float, list[dict]]] = {}   # люди: папка → (когда, список)
 
-    def connected(self, match: str) -> dict | None:
+    def connected(self, match: str, home: Path | None = None) -> dict | None:
         """Коннектор claude.ai подключён? Ищем «claude.ai …match…» со статусом ✔ (свежий список)."""
-        return next((s for s in self.list(fresh=True)
+        return next((s for s in self.list(fresh=True, home=home)
                      if s["name"].startswith("claude.ai ") and match.lower() in s["name"].lower()), None)
 
-    def list(self, fresh: bool = False) -> list[dict]:
-        if not fresh and time.time() - self.cache[0] < 30:
-            return self.cache[1]
+    def _cached(self, home: Path | None) -> tuple[float, list[dict]]:
+        return self.caches.get(str(home), (0, [])) if home else self.cache
+
+    def _store(self, home: Path | None, value: tuple[float, list[dict]]):
+        if home:
+            self.caches[str(home)] = value
+        else:
+            self.cache = value
+
+    def list(self, fresh: bool = False, home: Path | None = None) -> list[dict]:
+        cached = self._cached(home)
+        if not fresh and time.time() - cached[0] < 30:
+            return cached[1]
         out = []
-        for line in _claude("list").stdout.splitlines():
+        for line in _claude("list", home=home).stdout.splitlines():
             if m := LINE.match(line.strip()):
                 name = m["name"]
                 out.append({"name": name, "target": m["target"], "ok": m["mark"] == "✔", "state": m["state"],
                             "removable": not name.startswith(("claude.ai ", "plugin:"))})
-        self.cache = (time.time(), out)
+        self._store(home, (time.time(), out))
         return out
 
-    def add(self, preset_id: str, name: str, values: dict) -> str:
+    def add(self, preset_id: str, name: str, values: dict, home: Path | None = None) -> str:
         p = next((x for x in PRESETS if x["id"] == preset_id), None)
         if not p:
             raise ValueError("нет такого шаблона")
@@ -146,20 +161,20 @@ class Mcp:
             env = dict(line.split("=", 1) for line in vals.get("env", "").splitlines() if "=" in line)
             cfg = {"type": "stdio", "command": cmd[0], "args": cmd[1:], "env": {k.strip(): v.strip()
                                                                                  for k, v in env.items()}}
-        r = _claude("add-json", name, json.dumps(cfg), "-s", "user")
+        r = _claude("add-json", name, json.dumps(cfg), "-s", "user", home=home)
         if r.returncode != 0:
             raise ValueError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip()
                              else "claude mcp add-json не сработал")
-        self.cache = (0, [])
-        status = next((s for s in self.list(fresh=True) if s["name"] == name), None)
+        self._store(home, (0, []))
+        status = next((s for s in self.list(fresh=True, home=home) if s["name"] == name), None)
         return (("✔ подключён" if status["ok"] else f"добавлен, но пока не отвечает: {status['state']}")
                 if status else "добавлен") + (f". {p['after']}" if p["after"] else "")
 
-    def remove(self, name: str) -> str:
+    def remove(self, name: str, home: Path | None = None) -> str:
         if not NAME.match(name):
             raise ValueError("этот сервер удаляется не отсюда")
-        r = _claude("remove", name, "-s", "user")
-        self.cache = (0, [])
+        r = _claude("remove", name, "-s", "user", home=home)
+        self._store(home, (0, []))
         if r.returncode != 0:
             raise ValueError((r.stderr or r.stdout).strip() or "не удалось удалить")
         return "удалён"

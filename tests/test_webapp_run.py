@@ -76,7 +76,7 @@ def test_key_allows_ctrl_c_only_from_list(panel, monkeypatch):
 
 def test_preview_cached_by_revision(panel, monkeypatch):
     calls = []
-    monkeypatch.setattr(webapp.transcripts, "preview", lambda path: calls.append(path) or "строка")
+    monkeypatch.setattr(webapp.transcripts, "preview", lambda path, **kw: calls.append(path) or "строка")
     assert panel.preview("/p", "r1") == "строка" and panel.preview("/p", "r1") == "строка"
     panel.preview("/p", "r2")
     assert calls == ["/p", "/p"]
@@ -99,7 +99,7 @@ def test_new_session_in_profile_and_restart(panel, monkeypatch):
     monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
     monkeypatch.setattr(panel.tmux, "new_window",
                         lambda name, path, cmd, **kw: opened.append((name, path, cmd)) or "@9")
-    monkeypatch.setattr(webapp.models, "command", lambda base, profile, st: f"{base} [{profile or 'claude'}]")
+    monkeypatch.setattr(webapp.models, "command", lambda base, profile, st, **kw: f"{base} [{profile or 'claude'}]")
     assert panel.new(0, "zai") == {"id": "@9"} and opened[-1][2] == "claude [zai]"
     monkeypatch.setattr(panel, "close", lambda w: "Claude не вышел (возможно, занят) — посмотрите экран")
     with pytest.raises(ValueError, match="не вышел"):
@@ -153,7 +153,7 @@ def test_stopped_session_listed_and_revived(panel, monkeypatch):
     s = panel.sessions()
     assert s[0]["status"] == "stopped" and s[0]["profile"] == "zai"
     calls = []
-    monkeypatch.setattr(webapp.models, "command", lambda base, profile, st: f"claude [{profile}]")
+    monkeypatch.setattr(webapp.models, "command", lambda base, profile, st, **kw: f"claude [{profile}]")
     monkeypatch.setattr(panel.tmux, "respawn", lambda wid, path, cmd, mark: calls.append((wid, cmd, mark)))
     monkeypatch.setattr(panel.pult, "set_state", lambda **kw: None)
     assert panel.revive("@3") == {"id": "@3"}

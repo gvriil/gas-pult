@@ -8,6 +8,10 @@
 (кнопкой в боте на запрос человека или в «Настройках» панели). Роль проверяется на каждый запрос — убрали человека,
 и его вход перестаёт работать сразу.
 
+У каждого человека из people.json — своя папка Claude Code ``<data>/people/<id>/claude`` (``CLAUDE_CONFIG_DIR``):
+свой вход в Claude, свои MCP и коннекторы claude.ai, свои журналы. Владелец — ``~/.claude``, как раньше
+(docs/adr/0001-claude-config-per-person.md).
+
 Согласие с условиями использования (``terms.py``): у человека из people.json — поле ``terms: {version, at}`` в его
 записи (``at`` — unix-время). Владельцев в people.json нет, поэтому их согласие (и любого, у кого нет записи) —
 в ``<data>/terms.json`` (0600): ``{"<Telegram ID>": {version, at}}``. Так формат people.json прежний: ``list()``,
@@ -26,7 +30,7 @@ import time
 from pathlib import Path
 
 from gas_pult import country as geo
-from gas_pult.config import write_private
+from gas_pult.config import data_dir, write_private
 from gas_pult.terms import VERSION as TERMS_VERSION
 
 ROLES = ("member", "viewer")
@@ -165,3 +169,24 @@ class People:
 
 def allowed(role: str | None, need: str) -> bool:
     return bool(role) and RANK[role] >= RANK[need]
+
+
+def claude_dir(data: Path, uid, owners) -> Path | None:
+    """Папка Claude Code человека (создаётся с правами 0700). Владелец или непонятный ID — None: ``~/.claude``."""
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return None
+    if uid in owners or uid <= 0:
+        return None
+    d = data / "people" / str(uid) / "claude"
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for x in (d, d.parent, d.parent.parent):
+        x.chmod(0o700)
+    return d
+
+
+def home_of(w: dict, data: Path | None = None) -> Path | None:
+    """Папка Claude Code окна — по отметке ``@gas_pult_by`` (кто открыл); без отметки — владельца (None)."""
+    by = str(w.get("by") or "")
+    return (data or data_dir()) / "people" / by / "claude" if by.isdigit() else None

@@ -102,6 +102,7 @@
   .picker .search input:focus { border-color: var(--border-focus); }
   .picker .mid { font: 12px ui-monospace, Menlo, monospace; color: var(--text-secondary); }
   body:not([data-role="owner"]) [data-owner] { display: none !important; }      /* только владельцу */
+  body[data-role="viewer"] [data-member] { display: none !important; }          /* участнику и владельцу */
   body[data-role="viewer"] #composer, body[data-role="viewer"] #menu, body[data-role="viewer"] #keys, body[data-role="viewer"] #ask button { display: none !important; }
   .viewonly { text-align: center; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); padding: 10px; }
   .s-stopped .sdot, .sdot.s-stopped { background: var(--status-stopped); }
@@ -484,7 +485,7 @@
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
     <div class="rail" id="rail" role="group" aria-label="Сессии"></div>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg">Команды</button><button data-v="integrations" data-owner>Интеграции</button></div>
+    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
     <div id="commandsView" hidden></div>
@@ -1935,9 +1936,15 @@ const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", lin
                 github: "code", homeassistant: "home", context7: "book", http: "server", stdio: "term" };
 const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase())}</span>`;
 async function loadMcp(fresh) {
-  if (view === "home") setSub("<span>голос, ключи API и сервисы</span>");
-  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="modelsBox"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>';
-  renderModels(); if (meta?.role === "owner") loadFallback();
+  const owner = meta?.role === "owner";                // участнику — только его сервисы; модели, ключи и голос — владельцу
+  if (view === "home") setSub(owner ? "<span>голос, ключи API и сервисы</span>" : "<span>ваши сервисы</span>");
+  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div>' + (owner ? '<div id="modelsBox"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
+  if (!owner) {
+    try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
+    catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
+    return;
+  }
+  renderModels(); loadFallback();
   api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
   catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
@@ -2157,6 +2164,8 @@ function renderMcp() {
   const srv = mcpData.servers, ok = srv.filter((s) => s.ok), bad = srv.filter((s) => !s.ok && s.removable);
   const keyTiles = mcpData.presets.filter((p) => p.key_url);
   $("mcpBox").innerHTML = `
+    <p class="note">${mcpData.personal ? "Интеграции у каждого свои: здесь — ваши, они работают в сессиях, которые открыли вы. В первой своей сессии войдите в Claude на «Экране» — без входа коннекторы claude.ai не появятся."
+      : "Интеграции у каждого человека пульта свои — здесь ваши."}</p>
     <div class="section">Подключено</div>
     ${ok.length ? `<div class="conn">${ok.map((s) => `<span class="chip ok">${ic("check", "s16")}${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
     ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row"><span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span></div>
@@ -2189,7 +2198,7 @@ function connectorView(c) {
     <div class="hero">${mono(c.title, c.id)}<h2 class="serif">${esc(c.title)}</h2><p>${esc(c.about)}</p></div>
     ${on ? "" : `<ol class="steps">
       <li><button class="btn sm" id="openClaude">${ic("ext")}Открыть claude.ai</button>
-        <div class="hint">Откроется страница «Коннекторы». Если попросит войти — тем же аккаунтом Claude, что и на сервере.</div></li>
+        <div class="hint">Откроется страница «Коннекторы». Если попросит войти — тем же аккаунтом Claude, ${mcpData.personal ? "которым вы вошли в своей сессии пульта" : "что и на сервере"}.</div></li>
       <li>Найдите <b>${esc(c.title)}</b> и нажмите <b>«Подключить»</b> (Connect). Войдите в ${esc(c.title)} как обычно.</li>
       <li>Вернитесь сюда. Отметка появится сама.</li></ol>`}
     <div id="connStatus" class="result ${on ? "ok" : "wait"}">${on ? `${ic("check")}<span>${esc(c.title)} подключён</span>` : `${ic("wait")}<span>Жду подключения — проверяю каждые 10 секунд…</span>`}</div>

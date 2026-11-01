@@ -143,10 +143,16 @@ def env_of(p: dict, key: str, state: dict) -> dict:
     return {**env, **p.get("env", {})}
 
 
-def command(base: str, profile: str, state: dict) -> str:
-    """Команда запуска Claude Code в профиле. Для «claude» — как раньше; иначе файл настроек с ключом (0600)."""
+def with_home(cmd: str, home: Path | None) -> str:
+    """Своя папка Claude Code человека (вход, MCP, журналы) — переменной перед командой; владелец (None) — как было."""
+    return f"CLAUDE_CONFIG_DIR={shlex.quote(str(home))} {cmd}" if home else cmd
+
+
+def command(base: str, profile: str, state: dict, home: Path | None = None) -> str:
+    """Команда запуска Claude Code в профиле. Для «claude» — как раньше; иначе файл настроек с ключом (0600).
+    ``home`` — папка Claude Code человека (``people.claude_dir``)."""
     if profile in ("", "claude"):
-        return base
+        return with_home(base, home)
     p = BY_ID.get(profile)
     if not p:
         raise ValueError("нет такого профиля")
@@ -155,7 +161,7 @@ def command(base: str, profile: str, state: dict) -> str:
         raise ValueError(f"нет ключа {p['title']} — добавьте его в «Интеграции» → «Модели»")
     f = profiles_dir() / f"{profile}.json"
     write_private(f, json.dumps({"env": env_of(p, key, state)}, ensure_ascii=False))
-    return f"{base} --settings {shlex.quote(str(f))}"
+    return with_home(f"{base} --settings {shlex.quote(str(f))}", home)
 
 
 def profile_of(argv: list[str]) -> str:

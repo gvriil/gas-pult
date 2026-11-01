@@ -58,8 +58,8 @@ class Tmux:
 
     def windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
-                       "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}")
-        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark"), line.split("\t"), strict=False))
+                       "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}")
+        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by"), line.split("\t"), strict=False))
               for line in out.splitlines()]
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             # -ww: без него ps режет строку до 80 знаков, и длинный путь к Claude (npm: node …/cli.js) не узнаётся
@@ -120,11 +120,12 @@ class Tmux:
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
         subprocess.run(cmd, check=True)
 
-    def new_window(self, name: str, path: str, command: str, mark: str = "claude") -> str:
+    def new_window(self, name: str, path: str, command: str, mark: str = "claude", by: str = "") -> str:
         """Новое окно с командой (Claude); после её выхода остаётся шелл. Возвращает id окна.
 
         ``mark`` (поставщик модели) пишется в опцию окна ``@gas_pult``: по ней видно, что окно — сессия пульта, даже
-        когда Claude в нём завершился (тогда сессия «остановлена», а не пропадает)."""
+        когда Claude в нём завершился (тогда сессия «остановлена», а не пропадает). ``by`` — Telegram ID человека,
+        открывшего окно со своей папкой Claude Code (``@gas_pult_by``); пусто — окно владельца."""
         self.ensure_session()
         shell = os.environ.get("SHELL", "/bin/bash")
         r = subprocess.run([*self.tmux, "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
@@ -134,6 +135,8 @@ class Tmux:
             raise RuntimeError(r.stderr.strip() or "tmux new-window не сработал")
         wid = r.stdout.split()[0]
         self.run("set-option", "-w", "-t", wid, "@gas_pult", mark or "claude")
+        if by:
+            self.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(by))
         return wid
 
     def respawn(self, wid: str, path: str, command: str, mark: str = "claude"):
