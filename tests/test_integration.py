@@ -269,3 +269,16 @@ def test_claude_with_long_path_is_recognised(tmp_path, tmux_socket):
     t = Tmux("long")
     wid = t.new_window("long", str(tmp_path), str(fake))
     assert wait(lambda: (t.window(wid) or {}).get("cmd") == "claude")
+
+
+def test_bot_rename_flow(monkeypatch):
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    p.waiting, sent, renamed = {}, [], []
+    p.send = lambda chat, text, **kw: sent.append(text)
+    p.to = lambda chat: (lambda text, **kw: sent.append(text))
+    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid, "name": "old"},
+                            "rename": lambda self, wid, name: renamed.append((wid, name)) or name})()
+    p.waiting[1] = "ren:@4"
+    p.on_message({"message_id": 1, "chat": {"id": 1}, "from": {"id": 1}, "text": "магазин"})
+    assert renamed == [("@4", "магазин")] and "магазин" in sent[-1]

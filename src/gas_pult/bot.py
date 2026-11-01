@@ -413,6 +413,14 @@ class Pult:
                         + ("" if voices else "\n(голоса не установлены: gas-pult voices install irina)"),
                   reply_markup=kb(rows))
 
+    def rename(self, chat: int, wid: str, name: str):
+        if not self.tmux.window(wid):
+            return self.send(chat, "Этого окна уже нет.")
+        try:
+            self.send(chat, f"✏️ Теперь сессия называется «{self.tmux.rename(wid, name)}».")
+        except (ValueError, RuntimeError) as e:
+            self.send(chat, f"Не переименовал: {e}. Нажмите ✏️ ещё раз.")
+
     def new_folder(self, chat: int, name: str):
         root = self.cfg.roots()[0] if self.cfg.project_roots else Path(self.home) / "projects"
         path = root / name
@@ -502,7 +510,10 @@ class Pult:
             send(f"«{w['name']}» · {w['path']}", reply_markup=kb([
                 [("🔀 Сделать активным", f"act:{w['id']}")],
                 [("📺 Экран", f"scr:{w['id']}"), ("💬 Последний ответ", f"last:{w['id']}")],
-                [("⛔ Закрыть", f"ask:{w['id']}")]]))
+                [("✏️ Переименовать", f"ren:{w['id']}"), ("⛔ Закрыть", f"ask:{w['id']}")]]))
+        elif kind == "ren":
+            self.waiting[chat] = f"ren:{w['id']}"
+            send(f"Новое имя для «{w['name']}» (до 40 знаков, без «:» и «.»):", reply_markup={"force_reply": True})
         elif kind == "scr":
             self.send_screen(chat, w, "экран:")
         elif kind == "last":
@@ -577,8 +588,11 @@ class Pult:
         t = (m.get("text") or m.get("caption") or "").strip()
         if t.startswith("/start login_"):
             return self.login_request(m, t.removeprefix("/start login_").strip())
-        if self.waiting.pop(chat, None) == "name" and m.get("text") and not t.startswith(MENU_PREFIXES):
+        wait = self.waiting.pop(chat, None) or ""
+        if wait == "name" and m.get("text") and not t.startswith(MENU_PREFIXES):
             return self.new_folder(chat, t.lower())
+        if wait.startswith("ren:") and m.get("text") and not t.startswith(MENU_PREFIXES):
+            return self.rename(chat, wait[4:], t)
         if t.startswith("🆕"):
             rows = [[("📁 Новая папка…", "mk:")]]
             rows += [[(self.short(p), f"new:{i}")] for i, p in enumerate(self.projects())]
