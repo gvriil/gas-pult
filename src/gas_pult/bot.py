@@ -7,6 +7,8 @@
 - Номер задачи (GAS-123) — новая сессия по задаче. Команды из ответа — отдельными сообщениями с ▶️.
 Пускает только владельцев из ``owners``; от остальных принимает лишь вход в панель «через Telegram»
 (``/start login_…`` и кнопки «Войти / Это не я») — остальное молча игнорирует.
+До согласия с условиями использования (``terms.py``) на любое действие бот отвечает текстом условий и кнопкой
+«Принимаю»; вход в панель через Telegram это не задерживает — условия человек примет в самой панели.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import digest, setup, transcripts, voice
+from gas_pult import digest, fallback, setup, terms, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People, allowed
@@ -110,6 +112,9 @@ class Pult:
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
+        # поставщик модели не отвечает — окно само уходит на запасной (fallback.py), владельцам — одна строка
+        self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
+                                          say=lambda line: self.broadcast("🔁 " + line), log=self.fallback_logged)
         # вход в Claude Code из пульта (setup.py); config_dir/env — когда у каждого человека будет своя папка Claude
         self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
 
@@ -180,6 +185,11 @@ class Pult:
             s = {**self.state(), **kw}
             self.state_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             self.state_file.write_text(json.dumps(s))
+
+    def fallback_logged(self, entry: dict):
+        """Переключение на запасной — в state.json (последние 20): панель показывает его строкой."""
+        log = list(self.state().get("fallback_log") or [])[-19:]
+        self.set_state(fallback_log=[*log, entry])
 
     # ---------- окна ----------
     def projects(self) -> list[str]:
@@ -412,6 +422,7 @@ class Pult:
                     tail.watch(path, files)                     # старое не пересылаем
                     for f in files:
                         for e in tail.read(f):
+                            self.fallback.seen(w["id"], e)      # ошибка API поставщика — ждём остановки окна
                             if text := turns.setdefault(f, transcripts.Turns()).feed(e):
                                 texts.append(text)
                     if texts and not quiet:
@@ -422,7 +433,11 @@ class Pult:
                             self.deliver(w, text)
                 for w in ws:
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
-                    scr = "\n".join(self.tmux.screen(w["id"]))
+                    lines = self.tmux.screen(w["id"])
+                    scr = "\n".join(lines)
+                    if w["id"] in self.fallback.pending:        # сессия стоит на ошибке, человек не набирает
+                        idle = not BUSY.search(scr) and not DIALOG.search(scr)
+                        self.fallback.step(w, idle and not fallback.typing(lines, self.tmux.hint(w["id"])))
                     if not DIALOG.search(scr):
                         shown.pop(w["id"], None)
                     elif not quiet:
@@ -539,7 +554,7 @@ class Pult:
         s, voices = self.state(), catalog.installed()
         rows = [[("🔔 Все", "set:notify=all"), ("🔕 Только активная", "set:notify=active"),
                  ("🚫 Выкл", "set:notify=off")],
-                [("🔊 Голосом: вкл/выкл", "set:voice_always"), ("🩺 Проверка", "su:check")]]
+                [("🔊 Голосом: вкл/выкл", "set:voice_always"), ("🩺 Проверка", "su:check")], [("👥 Люди", "ppl:")]]
         rows += [[(("✅ " if v == s["voice"] else "🗣 ") + catalog.label(v), f"set:voice={v}") for v in voices[i:i + 3]]
                  for i in range(0, len(voices), 3)]
         self.send(chat, f"⚙️ Уведомления: {NOTIFY.get(s['notify'], s['notify'])}\n"
@@ -603,6 +618,60 @@ class Pult:
         self.send(chat, f"📁 Создал {path} (git init).")
         self.open_session(chat, f"{name}-{time.strftime('%H%M')}", str(path))
 
+    # ---------- условия использования ----------
+    def show_terms(self, chat: int, note: str = ""):
+        self.send(chat, (note + "\n\n" if note else "") + terms.bot_text(),
+                  reply_markup=kb([[("✅ Принимаю", f"tm:{terms.VERSION}")]]),
+                  link_preview_options={"is_disabled": True})
+
+    def need_terms(self, u: dict) -> bool:
+        """Условия ещё не приняты — показать их вместо действия. Вход в панель (``public``) не задерживаем."""
+        if public(u):
+            return False
+        q = u.get("callback_query") or {}
+        src = u.get("message") or q
+        uid = (src.get("from") or {}).get("id")
+        if uid is None or self.people.accepted(uid) or q.get("data", "").startswith("tm:"):
+            return False
+        chat = (src.get("chat") or (q.get("message") or {}).get("chat") or {}).get("id") or uid
+        self.show_terms(chat)
+        return True
+
+    def on_terms(self, chat: int, uid: int, version: str):
+        if version != terms.VERSION:
+            return self.show_terms(chat, "Условия обновились — прочитайте новую версию.")
+        self.people.accept(uid, version)
+        self.send(chat, "Спасибо, условия приняты. Пульт сессий Claude Code: текст, голос и файлы уходят в "
+                        "активное окно. Кнопки внизу.", reply_markup=MENU)
+
+    # ---------- люди ----------
+    def show_people(self, chat: int):
+        rest = [p for p in self.people.list() if p["role"] != "owner"]
+        if not rest:
+            return self.send(chat, "Кроме владельца, доступа к пульту ни у кого нет. Добавить человека: пусть откроет "
+                                   "панель и нажмёт «Войти через Telegram» — я спрошу вас.")
+        rows = [[(f"⛔ Отключить: {p.get('name') or p.get('username') or p['id']}", f"off:{p['id']}")] for p in rest]
+        lines = [f"• {p.get('name') or '—'}" + (f" @{p['username']}" if p.get("username") else "")
+                 + f" — {TITLES[p['role']]}" + (", условия приняты" if self.people.accepted(p["id"]) else "")
+                 for p in rest]
+        self.send(chat, "👥 Люди пульта:\n" + "\n".join(lines) + "\n\nОтключить — доступ прекращается сразу, "
+                        "любой вход человека перестаёт работать.", reply_markup=kb(rows))
+
+    def switch_off(self, chat: int, arg: str):
+        """off:<id> — спросить; off:yes:<id> — отключить (роль и согласие удаляются)."""
+        yes, _, uid = arg.rpartition(":")
+        if not uid.lstrip("-").isdigit():
+            return
+        p = next((x for x in self.people.list() if x["id"] == int(uid) and x["role"] != "owner"), None)
+        if not p:
+            return self.send(chat, "Этого человека уже нет в списке.")
+        who = p.get("name") or p.get("username") or uid
+        if yes != "yes":
+            return self.send(chat, f"Отключить {who}? Доступ к пульту прекратится сразу.",
+                             reply_markup=kb([[("Да, отключить", f"off:yes:{uid}"), ("Нет", "noop:")]]))
+        self.people.remove(int(uid))
+        self.send(chat, f"Готово: {who} отключён(а) — вход больше не работает.")
+
     # ---------- обработчики ----------
     def on_callback(self, q: dict):
         chat = q["message"]["chat"]["id"] if q.get("message") else q["from"]["id"]
@@ -621,6 +690,12 @@ class Pult:
             return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
         if kind == "pp":                                   # владелец решает, пускать ли человека
             return self.grant(chat, arg)
+        if kind == "tm":                                   # «Принимаю» под условиями использования
+            return self.on_terms(chat, q["from"]["id"], arg)
+        if kind == "ppl":
+            return self.show_people(chat)
+        if kind == "off":                                  # «Отключить человека» (только владелец — как всё, кроме lg:)
+            return self.switch_off(chat, arg)
         if kind == "hint":                                 # 💡 под ответом — отправить подсказку Claude
             wid, h = self.hints.get(int(arg), ("", "")) if arg.isdigit() else ("", "")
             w = self.tmux.window(wid) if wid else None
@@ -852,7 +927,8 @@ class Pult:
             return self.notify(uid, "Владелец не дал доступ к пульту.")
         self.people.add(uid, role, req.get("name", ""), req.get("username", ""))
         self.menu_for(uid)
-        self.send(chat, f"Готово: {who} — {TITLES[role]}. Убрать или поменять роль — «Настройки» → «Люди» в панели.")
+        self.send(chat, f"Готово: {who} — {TITLES[role]}. Отключить или поменять роль — «Настройки» → «Люди» "
+                        "в панели или ⚙️ Настройки → 👥 Люди здесь.")
         self.notify(uid, f"Владелец дал доступ к пульту ({TITLES[role]}). Нажмите «Войти через Telegram» в браузере "
                          "ещё раз — или кнопку «📱 Панель» внизу этого чата.")
 
@@ -933,6 +1009,10 @@ class Pult:
     def handle(self, u: dict):
         chat = (u.get("message") or u.get("callback_query", {}).get("message") or {}).get("chat", {}).get("id")
         try:
+            if self.need_terms(u):
+                if "callback_query" in u:
+                    self.api("answerCallbackQuery", callback_query_id=u["callback_query"]["id"])
+                return
             if "callback_query" in u:
                 self.on_callback(u["callback_query"])
             else:

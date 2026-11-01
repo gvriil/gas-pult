@@ -42,6 +42,8 @@ src/gas_pult/
 | `state.json` | активное окно, уведомления, голос, «всегда голосом», `audio_only` |
 | `cmds.json` | последние 200 команд для ▶️ (0600) |
 | `commands-log.json` | вкладка «Команды» панели: последние 400 команд всех сессий, отметка «выполнено» и код, отпечатки ошибок, уже отправленных на разбор (0600) |
+| `people.json` | участники и наблюдатели: роль, имя, согласие с условиями `terms: {version, at}` (0600) |
+| `terms.json` | согласие с условиями использования владельцев (их нет в `people.json`) (0600) |
 | `locks/` | замки окон (`flock`): в окно пишет кто-то один — бот или панель |
 | `outputs/` | весь вывод выполненных команд (до 1 МБ, хранится месяц) — для «Копировать вывод» (0600) |
 | `inbox/` | файлы и голосовые из Telegram |
@@ -80,6 +82,7 @@ src/gas_pult/
 | `setup.py` | Мастер первого запуска: `status()` (`claude --version`, `claude auth status --json`, ключи), `Login` — `claude auth login` в окне `<сессия>-setup` с меткой `login`, ссылка с экрана, код в окно; `/api/setup/*` |
 | `mcp.py` | MCP-серверы Claude Code через `claude mcp`: список, шаблоны `PRESETS`, добавление, удаление |
 | `providers.py` | Ключи API (`secrets.json`, 600) и ElevenLabs: озвучка, распознавание, голоса |
+| `fallback.py` | Запасные: распознаёт отказ поставщика модели в транскрипте (`classify_entry`), выбирает следующего по цепочке `fallback_chain` (state.json) с учётом региона (`models.allowed`) и ключей, перезапускает окно с `--continue` и пишет одну строку; монитор бота вызывает `Switcher.seen/step`. `GET/POST /api/fallback` — цепочка в панели |
 
 Добавить шаблон интеграции — запись в `PRESETS` (`mcp.py`): `title`, `about`, `type`, `url`, `fields`
 (у поля `label`, `hint`, `placeholder`, `secret`, `header`/`format`). Форма в панели строится сама.

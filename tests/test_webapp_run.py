@@ -10,6 +10,7 @@ from gas_pult.config import Config
 def panel(monkeypatch, tmp_path):
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
     p = webapp.Panel(Config(token="1:T", owners=[1]))
+    p.people.accept(1)                     # условия использования приняты
     cmds = [{"i": 0, "cmd": "ls", "kind": "local", "danger": False, "sha": "aaa"},
             {"i": 1, "cmd": "rm -rf build", "kind": "local", "danger": True, "sha": "bbb"},
             {"i": 2, "cmd": "brew install x", "kind": "foreign", "danger": False, "sha": "ccc"}]
