@@ -198,3 +198,22 @@ def test_replaced_or_truncated_journal_is_not_replayed(tmp_path):
     with open(f, "a") as fh:
         fh.write(line("дальше"))
     assert list(tail.read(f)) == [{"n": "дальше"}]
+
+
+def test_last_model_from_journal(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/srv/x")
+    d.mkdir(parents=True)
+    rows = [{"type": "assistant", "message": {"model": "claude-sonnet-4-5-20250929", "content": "a"}},
+            {"type": "assistant", "isSidechain": True, "message": {"model": "claude-haiku-4-5", "content": "b"}},
+            {"type": "assistant", "message": {"model": "claude-opus-5-5", "content": "c"}},
+            {"type": "assistant", "message": {"model": "<synthetic>", "content": "d"}},
+            {"type": "user", "message": {"content": "e"}}]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert t.last_model("/srv/x") == "claude-opus-5-5"             # субагент и служебные ответы — мимо
+    assert t.model_title("claude-opus-5-5") == "Opus 5.5"
+    assert t.model_title("claude-sonnet-4-5-20250929") == "Sonnet 4.5"
+    assert t.model_title("claude-haiku-5-5") == "Haiku 5.5"
+    assert t.model_title("glm-5.3") == "glm-5.3"
+    assert t.last_model("/srv/none") == ""

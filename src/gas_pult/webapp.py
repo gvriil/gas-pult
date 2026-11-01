@@ -113,6 +113,7 @@ class Panel:
         self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
+        self.model_cache: dict[str, tuple[str, str]] = {}    # папка → (ревизия журнала, модель последнего ответа)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
         self.login = self.pult.login                                 # вход в Claude Code (setup.py) — общий с ботом
@@ -150,15 +151,22 @@ class Panel:
             if not w.get("mark"):                    # окна до метки: помечаем, чтобы и они потом стали «остановлена»
                 self.tmux.run("set-option", "-w", "-t", w["id"], "@gas_pult", w.get("profile") or "claude")
             scr = "\n".join(self.tmux.screen(w["id"], 40))
-            ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
+            ctx, mdl, rev = CONTEXT.search(scr), MODEL_LINE.search(scr), transcripts.revision(w["path"])
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
-                        "model": mdl.group(1).strip() if mdl else "",             # на чём реально работает сессия
+                        # на чём работает сессия: строка статуса «🤖 …», иначе — модель последнего ответа в журнале
+                        "model": mdl.group(1).strip() if mdl else self.model_of(w["path"], rev),
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
-                        "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
+                        "rev": rev,                                       # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev)})
         return out
+
+    def model_of(self, path: str, rev: str) -> str:
+        """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала."""
+        if self.model_cache.get(path, ("",))[0] != rev:
+            self.model_cache[path] = (rev, transcripts.model_title(transcripts.last_model(path)))
+        return self.model_cache[path][1]
 
     def preview(self, path: str, rev: str) -> str:
         """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""

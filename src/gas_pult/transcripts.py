@@ -223,6 +223,40 @@ def preview(path: str, tail: int = 262144) -> str:
     return ""
 
 
+def last_model(path: str, tail: int = 262144) -> str:
+    """На какой модели ответил Claude в последний раз — поле ``message.model`` в журнале (хвост ``tail`` байт).
+
+    Запасной источник, когда в строке статуса Claude Code нет «🤖 …»: id как есть (claude-opus-5-5, glm-5.3…),
+    подпись для людей — ``model_title``.
+    """
+    files = transcripts(path)
+    if not files:
+        return ""
+    with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
+        start = max(0, fh.seek(0, 2) - tail)
+        fh.seek(start)
+        lines = fh.read().decode("utf-8", "replace").splitlines()[1 if start else 0:]
+    for line in reversed(lines):
+        if '"model"' not in line:
+            continue
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        m = (e.get("message") or {}).get("model") if e.get("type") == "assistant" and not e.get("isSidechain") else ""
+        if m and not m.startswith("<"):              # «<synthetic>» — служебные ответы Claude Code, не модель
+            return m
+    return ""
+
+
+def model_title(model_id: str) -> str:
+    """claude-opus-5-5 → «Opus 5.5», claude-sonnet-4-5-20250929 → «Sonnet 4.5»; чужие id — как есть."""
+    m = re.match(r"claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$", model_id)
+    if not m:
+        return model_id
+    return f"{m.group(1).capitalize()} {m.group(2)}" + (f".{m.group(3)}" if m.group(3) else "")
+
+
 def _line(text: str, limit: int = 140) -> str:
     """Первая содержательная строка без разметки Markdown и эмодзи."""
     for raw in text.splitlines():
