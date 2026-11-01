@@ -6,6 +6,7 @@ src/gas_pult/
 ├── config.py       config.toml + токен; каталоги (GAS_PULT_CONFIG_DIR / GAS_PULT_DATA_DIR)
 ├── bot.py          Pult: опрос Telegram, обработчики, монитор окон
 ├── telegram.py     клиент Bot API на urllib (multipart, скачивание, маскирование токена)
+├── channels.py     интерфейс канала связи Channel (Incoming, Button, Caps) и TelegramChannel поверх telegram.Api
 ├── tmux.py         окна, экран, bracketed paste, новые окна с Claude
 ├── transcripts.py  jsonl Claude Code: Turns (сборка хода до end_turn), Tail, last_answer, clean
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
@@ -54,6 +55,9 @@ src/gas_pult/
 - **Движок синтеза** — функция `<движок>_wav(voice, src, wav)` в `voice/__main__.py`, ветка в `tts()`,
   голоса в `catalog`. Тяжёлые импорты — внутри функции.
 - **Распознавание** — `stt()` в `voice/__main__.py`. Модель задаётся ключом `whisper_model`.
+
+- **Канал связи** (MAX, VK, почта…) — класс с методами `Channel` из `channels.py` и разбором событий в `Incoming`.
+  Бот пока вызывает `telegram.Api` напрямую; обзор каналов и шаги перевода бота на интерфейс — `docs/CHANNELS.md`.
 
 ## Решения
 
