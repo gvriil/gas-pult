@@ -62,8 +62,12 @@
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
   /* ===== Верхняя панель ===== */
-  .top { position: sticky; top: 0; z-index: 5; background: var(--bg-canvas); border-bottom: 1px solid transparent; transition: transform .22s ease; }
+  .top { position: sticky; top: 0; z-index: 5; background: var(--bg-canvas); border-bottom: 1px solid transparent; transition: transform .2s ease; }
   .top.edge { border-bottom-color: var(--border-subtle); } .top.hide { transform: translateY(-105%); }
+  /* «‹ Назад» не уходит вместе с шапкой — остаётся на месте круглой кнопкой, как в любом меню */
+  #backBtn { transition: transform .2s ease, background .2s, box-shadow .2s; }
+  .top.hide #backBtn { transform: translateY(calc(var(--top-h, 56px) * 1.05)); background: var(--bg-surface);
+                       box-shadow: 0 2px 10px rgba(0,0,0,.18); border-radius: 50%; }
   .toprow { padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 4px; }
   .tabsbar { padding: 0 12px 8px; } .tabsbar .seg { margin: 0; }
   .titles { flex: 1; min-width: 0; padding: 0 4px; }
@@ -241,8 +245,8 @@
   .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas);
           padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78%; overflow-y: auto; overscroll-behavior: contain; }
   .kb .dock { padding-bottom: 8px; }                    /* клавиатура открыта — полоса «домой» не нужна */
-  .dock { transition: transform .22s ease; } .dock.hide { transform: translateY(calc(100% + 8px)); }
-  .tobottom { transition: bottom .22s ease; }
+  .dock { transition: transform .2s ease; } .dock.hide { transform: translateY(calc(100% + 8px)); }
+  .tobottom { transition: bottom .2s ease; }
   .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
   .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
   .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; }
@@ -458,6 +462,7 @@ const DEMO = params.has("demo");
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
              stopped: { label: "остановлена", cls: "s-stopped" } };      // Claude завершился, в окне — командная строка
 const ORDER = { dialog: 0, busy: 1, idle: 2, stopped: 3 };
+let lastY = 0, autoUntil = 0, barsShown = true, barsDir = 0, barsRun = 0, barsHidDir = 0;   // прячущиеся панели
 let voice = null;                                   // озвучка: { w, name, msg, state: "prep" | "play" | "pause" }
 let hint = "";                                       // подсказка Claude Code для пустого поля ввода
 let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
@@ -616,7 +621,7 @@ function show(v) {
   $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
-  $("top").classList.remove("hide"); hideDock(false); scrollToY(0);
+  setBars(true); scrollToY(0);
 }
 // «‹ Назад» слева в шапке — на любом вложенном экране: сессия (телефон), форма подключения, вкладки главной
 // «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
@@ -631,15 +636,27 @@ function back() {
   if (view === "mcpForm") { clearInterval(connTimer); show("home"); return setHome("integrations"); }
   current = null; closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
-// Шапка и нижняя панель с полем ввода уходят, когда листаете ленту дальше (палец снизу вверх), — экрану больше воздуха;
-// обратное движение — обе возвращаются. Поле ввода не прячем, пока в нём текст или вложения, открыта клавиатура,
-// меню или вопрос Claude; дочитали до конца — поле возвращается само (можно сразу ответить).
-// Прокрутку, которую делает сама панель (к новому сообщению), за жест не считаем.
-let lastY = 0, autoUntil = 0;
+// Шапка и поле ввода прячутся, как в Safari и Telegram на iOS:
+// - листаете ленту в любую сторону дальше 30 px — обе уходят, экран целиком под переписку;
+// - лёгкое обратное движение (10 px) или одиночный тап по ленте — обе возвращаются;
+// - в самом верху и в самом низу ленты (последние сообщения) панели видны всегда;
+// - не прячем, пока открыта клавиатура, в поле текст или вложения, идёт запись голоса, открыто меню или вопрос Claude;
+// - «резинку» iOS у границ (scrollTop за пределами ленты) и прокрутку самой панели (к новому сообщению) не считаем.
+const BARS_HIDE = 30, BARS_SHOW = 10, EDGE_TOP = 8, EDGE_END = 24;
+function barsLocked() {
+  return document.documentElement.classList.contains("kb") || document.activeElement === $("input") || !!$("input").value.trim()
+    || files.length > 0 || !!rec || !$("menu").hidden || !$("keys").hidden || $("ask").childElementCount > 0;
+}
+function setBars(show) {
+  if (!show && barsLocked()) show = true;
+  barsShown = show; barsRun = 0;
+  if (!show) document.documentElement.style.setProperty("--top-h", $("top").offsetHeight + "px");   // для «Назад»
+  $("top").classList.toggle("hide", !show);
+  hideDock(!show);
+}
 function hideDock(on) {
   const d = $("dock");
-  if (on && (d.hidden || document.documentElement.classList.contains("kb") || $("input").value.trim() || files.length
-    || !$("menu").hidden || !$("keys").hidden || $("ask").childElementCount || document.activeElement === $("input"))) on = false;
+  if (on && d.hidden) on = false;
   if (d.classList.contains("hide") === on) return;
   d.classList.toggle("hide", on);
   const h = on ? 0 : d.offsetHeight;                   // кнопка «к последнему» и мини-плеер — следом за панелью
@@ -649,18 +666,30 @@ const SC = $("scroller");                            // прокручивает
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
 function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); SC.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
 SC.addEventListener("scroll", () => {
-  const y = SC.scrollTop;
+  const max = SC.scrollHeight - SC.clientHeight, y = SC.scrollTop;
   const far = !atEnd(200);                           // пролистали вверх — кнопка «к последнему»
   $("toBottom").hidden = !(view === "session" && far);
   if (!far) $("toBottom").classList.remove("new");
   $("top").classList.toggle("edge", y > 4);
-  if (Date.now() > autoUntil) {
-    if (y > lastY + 8 && y > 120) { $("top").classList.add("hide"); hideDock(true); }
-    else if (y < lastY - 8 || y < 40) { $("top").classList.remove("hide"); hideDock(false); }
-    if (atEnd(24)) hideDock(false);
-  }
-  lastY = y;
+  if (y < 0 || y > max) return;                      // «резинка» iOS за границей ленты — не жест
+  const dy = y - lastY; lastY = y;
+  if (y <= EDGE_TOP || max - y <= EDGE_END) { if (!barsShown) setBars(true); barsDir = 0; barsRun = 0; return; }
+  if (Date.now() < autoUntil || !dy) return;
+  const dir = Math.sign(dy);
+  if (dir !== barsDir) { barsDir = dir; barsRun = 0; }
+  barsRun += Math.abs(dy);
+  if (barsShown && barsRun >= BARS_HIDE) { barsHidDir = dir; setBars(false); }
+  else if (!barsShown && dir !== barsHidDir && barsRun >= BARS_SHOW) setBars(true);
 }, { passive: true });
+// Одиночный тап по ленте (не жест прокрутки) — панели возвращаются.
+let tapAt = null;
+SC.addEventListener("pointerdown", (e) => { tapAt = { x: e.clientX, y: e.clientY, t: Date.now() }; }, { passive: true });
+SC.addEventListener("pointerup", (e) => {
+  if (tapAt && !barsShown && Date.now() - tapAt.t < 350 && Math.hypot(e.clientX - tapAt.x, e.clientY - tapAt.y) < 8) setBars(true);
+  tapAt = null;
+}, { passive: true });
+SC.addEventListener("pointercancel", () => { tapAt = null; }, { passive: true });
+$("input").addEventListener("focus", () => setBars(true));
 
 // Каркас — ровно в видимой части экрана. iOS не сжимает страницу под клавиатуру, а сдвигает её, и поле ввода «ездит»
 // вместе с лентой; Android и Telegram сжимают сами. Высота и верх — из visualViewport, класс .kb — клавиатура открыта.
@@ -673,6 +702,7 @@ function fitViewport() {
   root.style.setProperty("--app-top", (v ? v.offsetTop : 0) + "px");
   const kb = fullH - h > 150;
   root.classList.toggle("kb", kb);
+  if (kb && !barsShown) setBars(true);               // клавиатура открылась — поле ввода на виду
   if (!kb && window.scrollY) scrollTo(0, 0);           // iOS иногда оставляет страницу сдвинутой после клавиатуры
 }
 
@@ -1545,6 +1575,7 @@ async function toggleMic() {
   const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
   const chunks = []; let cancelled = false, sendNow = false, raf = 0;
   rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
+  setBars(true);                                     // идёт запись — панель с записью не прячем
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const bar = document.createElement("div"); bar.className = "recbar";
   bar.innerHTML = `<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no" aria-label="Отменить запись">${ic("x", "s16")}</button><button class="txt" aria-label="Вставить текст в поле, чтобы проверить">${ic("pen", "s16")}В текст</button><button class="ok" aria-label="Распознать и отправить сразу">${ic("send", "s16")}</button>`;
