@@ -70,6 +70,7 @@ class Config:
     digest_at: str = "09:00"                                # утренняя сводка «ждёт владельца» (ЧЧ:ММ; "" — выкл.)
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
+    personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
 
     @property
     def data(self) -> Path:
@@ -113,6 +114,8 @@ def load() -> Config:
     region = raw.get("region", "")
     if not isinstance(region, str) or (region and not re.fullmatch(r"[A-Za-z]{2}", region)):
         raise ConfigError(f"В {path} region — код страны из двух букв, например \"NL\"")
+    if not isinstance(raw.get("personal_voices", False), bool):
+        raise ConfigError(f"В {path} personal_voices — true или false")
     return Config(token=read_token(), **raw)
 
 

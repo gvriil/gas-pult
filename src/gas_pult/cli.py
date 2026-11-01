@@ -107,14 +107,18 @@ def cmd_doctor(_):
 
 def cmd_voices(a):
     if a.action == "list" or not a.names:
-        have = set(catalog.installed())
+        have = set(catalog.installed(personal=True))
         for group, names in (("Piper (быстрые, gas-pult[voice])", catalog.PIPER),
-                             ("Silero v5 (естественнее, gas-pult[silero])", catalog.SILERO)):
+                             ("Silero v5 (естественнее, gas-pult[silero]) — CC BY-NC-SA: только некоммерческое "
+                              "использование, видит лишь владелец при personal_voices = true", catalog.SILERO)):
             print(group)
             for n, lbl in names.items():
                 print(f"  {'✓' if n in have else ' '} {n:8} {lbl}")
         return
     for n in a.names:
+        if n in catalog.NONCOMMERCIAL:
+            print(f"! {n}: Silero — лицензия только некоммерческая (CC BY-NC-SA). В пульте голос появится у владельца "
+                  "лишь при personal_voices = true в config.toml; для клиентов не включайте.")
         try:
             catalog.install(n)
             print(f"✓ {n}")

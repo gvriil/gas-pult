@@ -31,9 +31,16 @@ def has(module: str) -> bool:
     return importlib.util.find_spec(module) is not None
 
 
-def installed() -> list[str]:
+# Лицензия только для некоммерческого использования (Silero — CC BY-NC-SA): владельцу лично, если разрешено в
+# config.toml (``personal_voices``); остальным людям и в установках для клиентов — скрыты.
+NONCOMMERCIAL = frozenset(SILERO)
+
+
+def installed(personal: bool = False) -> list[str]:
+    """Установленные голоса. ``personal`` — показать и некоммерческие (Silero): только владельцу при
+    ``personal_voices = true``; по умолчанию — нет."""
     out = [n for n in PIPER if piper_model(n).exists() and has("piper")]
-    if silero_model().exists() and has("torch"):
+    if personal and silero_model().exists() and has("torch"):
         out += list(SILERO)
     return out
 

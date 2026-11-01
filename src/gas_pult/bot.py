@@ -371,7 +371,7 @@ class Pult:
         if not clean:
             return
         v = self.state()["voice"]
-        if v not in catalog.installed():
+        if v not in catalog.installed(self.cfg.personal_voices):      # бот — только владельцам
             return self.send(chat, f"Голос «{catalog.label(v)}» не установлен: gas-pult voices install {v}")
         base = self.cfg.data / f"out-{uuid.uuid4().hex}"
         try:
@@ -583,7 +583,7 @@ class Pult:
                       reply_markup=kb([[(t, f"cmd:{i}") for i, (t, _) in r] for r in rows]))
 
     def show_settings(self, chat: int):
-        s, voices = self.state(), catalog.installed()
+        s, voices = self.state(), catalog.installed(self.cfg.personal_voices)
         rows = [[("🔔 Все", "set:notify=all"), ("🔕 Только активная", "set:notify=active"),
                  ("🚫 Выкл", "set:notify=off")],
                 [("🔊 Голосом: вкл/выкл", "set:voice_always"), ("🩺 Проверка", "su:check")], [("👥 Люди", "ppl:")]]
@@ -864,7 +864,8 @@ class Pult:
             key, _, val = arg.partition("=")
             if key == "voice_always":
                 self.set_state(voice_always=not self.state()["voice_always"])
-            elif (key == "notify" and val in NOTIFY) or (key == "voice" and val in catalog.installed()):
+            elif ((key == "notify" and val in NOTIFY)
+                  or (key == "voice" and val in catalog.installed(self.cfg.personal_voices))):
                 self.set_state(**{key: val})
             return self.show_settings(chat)
         if kind == "say":
