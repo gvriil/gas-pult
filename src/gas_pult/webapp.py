@@ -33,7 +33,7 @@ from importlib import resources
 
 from gas_pult import models, providers, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
-from gas_pult.commands import DANGER, TAIL, execute, extract
+from gas_pult.commands import DANGER, TAIL, Journal, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
@@ -113,6 +113,7 @@ class Panel:
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
+        self.journal = Journal(cfg.data / "commands-log.json")       # вкладка «Команды»: все команды всех сессий
 
     def lock(self, wid: str) -> threading.Lock:
         with self.pult.lock:
@@ -510,6 +511,37 @@ class Panel:
         code, secs, out = execute(c["cmd"], w["path"])
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL}
 
+    # ---------- вкладка «Команды»: все команды из ответов всех сессий (время — UTC, как в транскрипте) ----------
+    def command_log(self, can_run: bool) -> dict:
+        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude"]
+        self.journal.collect(wins, self.pult.cmds.kind)
+        items = self.journal.items()
+        if not can_run:
+            items = [{k: v for k, v in c.items() if k != "path"} for c in items]   # папки сервера — только владельцу
+        return {"items": items, "host": self.cfg.host}
+
+    def command_run(self, cid: str, confirmed: bool) -> dict:
+        c = self.journal.get(cid)
+        if not c:
+            raise LookupError("команды уже нет в списке")
+        if c["kind"] != "local":
+            raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
+                             "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
+        if c["danger"] and not confirmed:
+            return {"confirm": True}
+        code, secs, out = execute(c["cmd"], c["path"])
+        done = {"code": code, "seconds": round(secs), "at": utc_now(), "by": "panel",
+                "out": out[-TAIL:], "cut": len(out) > TAIL}
+        return {"item": self.journal.mark(cid, done)}
+
+    def command_mark(self, cid: str, done: bool) -> dict:
+        mark = {"code": None, "seconds": 0, "at": utc_now(), "by": "hand", "out": ""}
+        return {"item": self.journal.mark(cid, mark if done else None)}
+
+
+def utc_now() -> str:
+    return time.strftime("%Y-%m-%d %H:%M", time.gmtime())
+
 
 # Сервис-воркер: только клик по уведомлению — открыть панель на нужной сессии. Ни кэша, ни фоновых запросов.
 SW_JS = """self.addEventListener("notificationclick", (e) => {
@@ -523,7 +555,8 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 """
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, интеграции, модели, люди.
-OWNER_ONLY = {"/api/run", "/api/close", "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
+OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/close", "/api/restart", "/api/keys",
+              "/api/keys/remove", "/api/providers",
               "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
               "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove"}
@@ -647,6 +680,8 @@ def handler(panel: Panel):
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
+            if path == "/api/commands":
+                return panel.command_log(self.who()[1] == "owner")
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"])}
@@ -710,6 +745,10 @@ def handler(panel: Panel):
             if path == "/api/stt":
                 return {"text": panel.stt(self.body(), self.headers.get("Content-Type", ""))}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/commands/run":
+                return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
+            if path == "/api/commands/mark":
+                return panel.command_mark(str(b.get("id", "")), b.get("done", True) is not False)
             if path == "/api/people/role":
                 panel.set_role(int(b.get("id", 0)), str(b.get("role", "")))
                 return {"people": panel.people.list()}

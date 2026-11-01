@@ -7,19 +7,25 @@
 - Опасное (rm -r, push --force, DROP, reboot …) — второе подтверждение.
 - Выполнение: ``bash -o pipefail -lc`` в папке окна (упавший ``curl … | bash`` не покажет «код 0»), без stdin,
   таймаут 10 минут; похожее на токены в выводе маскируется.
+- ``Journal`` — вкладка «Команды» панели: все команды из ответов всех сессий одним списком, с пометкой
+  «выполнено» и кодом выхода; хранится на сервере (``commands-log.json``), переживает перезапуск и закрытие окна.
 """
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
+
+from gas_pult import transcripts
 
 FENCE = re.compile(r"```([\w+-]*)[ \t]*\n(.*?)```", re.S)
 SHELL = {"", "bash", "sh", "shell", "zsh", "console"}
@@ -37,9 +43,11 @@ TIMEOUT = 600
 TAIL = 3300
 
 
-def extract(text: str) -> list[str]:
+def blocks(text: str) -> list[tuple[str, str]]:
+    """Команды ответа с пояснением «для чего»: [(команда, пояснение)]."""
     out = []
-    for lang, body in FENCE.findall(text):
+    for m in FENCE.finditer(text):
+        lang, body = m.group(1), m.group(2)
         if lang.lower() not in SHELL:
             continue
         lines = [re.sub(r"^!\s+", "", line) for line in body.strip().splitlines()]   # префикс «!» Claude Code
@@ -47,8 +55,29 @@ def extract(text: str) -> list[str]:
                     and not line.lstrip().startswith("#"))
         if not lines or len("\n".join(lines)) > 3000 or (not lang and prose > len(lines) / 3):
             continue                     # промпт и прочая проза — не команда
-        out.append("\n".join(lines))
+        cmd = "\n".join(lines)
+        out.append((cmd, about(cmd, text[:m.start()])))
     return out
+
+
+def extract(text: str) -> list[str]:
+    return [cmd for cmd, _ in blocks(text)]
+
+
+def about(cmd: str, before: str) -> str:
+    """Для чего команда: первая строка-комментарий «# …» в блоке, иначе строка текста перед блоком."""
+    for line in cmd.splitlines():
+        if line.strip().startswith("#") and not line.startswith("#!"):
+            return line.strip().lstrip("#").strip()[:160]
+        if line.strip():
+            break
+    for line in reversed(before.rstrip().splitlines()):
+        line = re.sub(r"[*_`]+|^\s*(?:[-*+]|\d+[.)])\s+|^#+\s*", "", line).strip().rstrip(":").strip()
+        if line.startswith("```"):
+            break
+        if line:
+            return line[:160]
+    return ""
 
 
 def mask(out: str) -> str:
@@ -137,3 +166,74 @@ class Commands:
         mark = "✅" if code == 0 else "❌"
         send(f"{mark} код {code} · {secs:.0f} с" + (" · показан конец вывода" if len(out) > TAIL else "")
              + (f"\n<pre>{html.escape(tail)}</pre>" if tail else " · вывода нет"), parse_mode="HTML")
+
+
+class Journal:
+    """Все команды из ответов всех сессий — вкладка «Команды» панели (новые сверху).
+
+    Ключ команды — отпечаток (папка, время ответа, текст): одна и та же команда в разных ответах — разные строки.
+    Транскрипт папки перечитывается, только когда он изменился (``transcripts.revision``).
+    """
+
+    KEEP = 400
+
+    def __init__(self, store: Path):
+        self.store = store
+        self.lock = threading.Lock()         # панель многопоточная: сбор и отметка не затирают друг друга
+
+    def load(self) -> dict:
+        try:
+            d = json.loads(self.store.read_text())
+            return {"items": d.get("items", {}), "revs": d.get("revs", {})}
+        except (OSError, ValueError, AttributeError):
+            return {"items": {}, "revs": {}}
+
+    def save(self, d: dict):
+        self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        items = dict(sorted(d["items"].items(), key=lambda kv: (kv[1]["ts"], kv[1]["n"]))[-self.KEEP:])
+        tmp = self.store.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"items": items, "revs": d["revs"]}, ensure_ascii=False))
+        tmp.chmod(0o600)
+        tmp.replace(self.store)
+
+    def collect(self, windows: list[dict], kind) -> bool:
+        """Добавить команды из свежих ответов окон; kind(cmd) → local/foreign/tty/sudo. Изменилось ли что-то."""
+        with self.lock:
+            return self._collect(windows, kind)
+
+    def _collect(self, windows: list[dict], kind) -> bool:
+        d, changed = self.load(), False
+        for w in windows:
+            rev = transcripts.revision(w["path"])
+            if not rev or d["revs"].get(w["path"]) == rev:
+                continue
+            d["revs"][w["path"]], changed = rev, True
+            items, _ = transcripts.history(w["path"], 80)
+            for m in items:
+                if m["role"] != "assistant":
+                    continue
+                for n, (cmd, why) in enumerate(blocks(m["text"])):
+                    cid = hashlib.sha256(f"{w['path']}|{m['ts']}|{n}|{cmd}".encode()).hexdigest()[:12]
+                    if cid not in d["items"]:
+                        d["items"][cid] = {"id": cid, "cmd": cmd, "about": why, "win": w["name"], "wid": w["id"],
+                                           "path": w["path"], "ts": m["ts"], "n": n, "kind": kind(cmd),
+                                           "danger": bool(DANGER.search(cmd)), "done": None}
+        if changed:
+            self.save(d)
+        return changed
+
+    def items(self) -> list[dict]:
+        return sorted(self.load()["items"].values(), key=lambda x: (x["ts"], x["n"]), reverse=True)
+
+    def get(self, cid: str) -> dict | None:
+        return self.load()["items"].get(cid)
+
+    def mark(self, cid: str, done: dict | None) -> dict:
+        with self.lock:
+            d = self.load()
+            c = d["items"].get(cid)
+            if not c:
+                raise LookupError("команды уже нет в списке")
+            c["done"] = done
+            self.save(d)
+            return c

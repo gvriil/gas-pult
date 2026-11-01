@@ -295,6 +295,18 @@
              white-space: pre-wrap; overflow-wrap: anywhere; }
   .cmd .out { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 260px; overflow-y: auto; width: 100%; }
   .cmd .hint { display: flex; gap: 6px; align-items: flex-start; margin: 0; }
+  /* вкладка «Команды»: все команды всех сессий */
+  .cmd .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-secondary); margin: 0 2px 6px; }
+  .cmd .meta b { color: var(--text-primary); font-weight: 600; }
+  .cmd .meta .chip { margin-left: auto; }
+  .cmd .why { font-size: 14px; margin: 0 2px 8px; overflow-wrap: anywhere; }
+  .cmd .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cmd .acts .btn { width: auto; flex: 1 1 auto; }
+  .cmd .acts .btn.ghost { flex: 0 1 auto; }
+  .cmd.done pre { opacity: .7; }
+  .cmdbar { display: flex; align-items: center; gap: 8px; margin: 0 2px 4px; color: var(--text-secondary); font-size: 13px; }
+  .cmdbar label { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-primary); }
+  .cmdbar input { width: 18px; height: 18px; accent-color: var(--accent-primary); }
 
   /* ===== Интеграции ===== */
   .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -391,8 +403,9 @@
 
   <section id="home" hidden>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="integrations" data-owner>Интеграции</button></div>
+    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg">Команды</button><button data-v="integrations" data-owner>Интеграции</button></div>
     <div id="sessionsView"></div>
+    <div id="commandsView" hidden></div>
     <div id="integrationsView" hidden></div>
   </section>
 
@@ -672,6 +685,7 @@ async function pullRefresh() {
   if (!$("updateBar").hidden) return reloadPanel();  // вышла новая версия панели — сразу её и загружаем
   if (view === "session") await loadContent();
   else if (view === "home" && homeView === "integrations") await loadMcp(true);
+  else if (view === "home" && homeView === "commands") await loadCommands();
   await new Promise((r) => setTimeout(r, Math.max(0, 500 - (Date.now() - t0))));   // кружок не мигает
   hidePull();
   if (lastOk < t0) toast("Нет связи с сервером — проверьте интернет", 3500);
@@ -732,9 +746,10 @@ function setHome(v) {
   homeView = v;
   document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
   $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
+  $("commandsView").hidden = v !== "commands";
   $("homeBar").hidden = !((view === "home" || split()) && v === "sessions");
   if (view === "home") $("title").textContent = "Пульт";
-  if (v === "integrations") loadMcp(); else refresh();
+  if (v === "integrations") loadMcp(); else if (v === "commands") loadCommands(); else refresh();
 }
 $("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
 
@@ -774,7 +789,7 @@ async function refresh() {
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
     $("brandSub").textContent = hostLine;
-    if (view === "home" && homeView === "sessions") setSub(`<span>${esc(hostLine)}</span>`);
+    if (view === "home" && homeView !== "integrations") setSub(`<span>${esc(hostLine)}</span>`);
     if (!$("home").hidden) {
       const n = (k) => sessions.filter((s) => s.status === k).length;
       if (homeView === "sessions") {
@@ -784,6 +799,7 @@ async function refresh() {
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}</div>`
             + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>');
       }
+      if (homeView === "commands") loadCommands(true);
     }
     if (view !== "session") return;
     const s = cur();
@@ -1040,6 +1056,70 @@ $("content").addEventListener("click", (e) => {
   });
   const ask = () => confirmDanger("Команда меняет или удаляет данные:\n\n" + cmd.slice(0, 600) + "\n\nВыполнить?", () => go(true));
   b.classList.contains("danger") ? ask() : go(false);
+});
+
+// ---------- вкладка «Команды»: все команды из ответов всех сессий, новые сверху; хранятся на сервере ----------
+let cmdLog = null, cmdSig = "";
+const KIND_HINT = { sudo: ["lock", "sudo вне разрешённого списка — выполните вручную в терминале"],
+  tty: ["key", "спросит пароль — выполните вручную в терминале"], foreign: ["monitor", "для другой машины — скопируйте и выполните там"] };
+async function loadCommands(quiet) {
+  const box = $("commandsView");
+  if (!quiet && !cmdLog) box.innerHTML = '<div class="empty">Собираю команды из сессий…</div>';
+  try { cmdLog = await api("/api/commands"); } catch (e) { if (!quiet) box.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
+  const sig = JSON.stringify(cmdLog.items.map((c) => [c.id, c.done?.at, c.done?.code]));
+  if (quiet && sig === cmdSig) return;                // ничего нового — не перерисовываем (раскрытый вывод не схлопнется)
+  cmdSig = sig; renderCommands();
+}
+// время в журнале — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code); показываем местное
+const localTs = (t) => { const d = new Date(String(t).replace(" ", "T") + ":00Z"); return isNaN(d) ? t : d.toLocaleString("sv-SE").slice(0, 16); };
+function cmdDone(d) {
+  if (!d) return "";
+  if (d.by === "hand") return `<span class="chip ok">${ic("check", "s16")}выполнено вручную</span>`;
+  return `<span class="chip ${d.code === 0 ? "ok" : "bad"}">${ic(d.code === 0 ? "check" : "warn", "s16")}код ${esc(d.code)}</span>`;
+}
+function renderCommands() {
+  const todo = store("cmdsTodo") === "1", owner = meta?.role === "owner";
+  const all = cmdLog?.items || [], left = all.filter((c) => !c.done).length;
+  $("cmdsSeg").textContent = left ? `Команды · ${left}` : "Команды";
+  const items = todo ? all.filter((c) => !c.done) : all;
+  $("commandsView").innerHTML = `<div class="cmdbar"><span>${all.length ? `не выполнено ${left} из ${all.length}` : ""}</span>
+      <label><input type="checkbox" id="cmdsTodo" ${todo ? "checked" : ""}>Только невыполненные</label></div>`
+    + (items.length ? items.map((c) => {
+      const run = c.kind === "local" && owner && !c.done
+        ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(cmdLog.host)}</button>` : "";
+      const hint = c.kind !== "local" && !c.done ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
+      const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.cut ? " · показан конец вывода" : ""}
+          ${c.done.out ? `<pre class="out">${esc(c.done.out)}</pre>` : " · вывода нет"}</div></div>` : "";
+      return `<div class="cmd ${c.done ? "done" : ""}" data-cid="${c.id}">
+        <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span>${cmdDone(c.done)}</div>
+        ${c.about ? `<div class="why">${esc(c.about)}</div>` : ""}
+        <pre>${esc(c.cmd)}</pre>${hint}
+        <div class="acts">${run}<button class="btn sm ghost" data-ccopy="${c.id}">${ic("copy")}Копировать</button>${owner
+          ? `<button class="btn sm ghost" data-cmark="${c.id}" data-done="${c.done ? 0 : 1}">${c.done ? "Снять отметку" : ic("check") + "Выполнено"}</button>` : ""}</div>
+        <div class="out-wrap">${out}</div></div>`;
+    }).join("") : `<div class="empty">${all.length ? "Все команды выполнены." : "Команд пока нет — здесь появятся блоки кода из ответов всех сессий."}</div>`);
+}
+$("commandsView").addEventListener("change", (e) => { if (e.target.id === "cmdsTodo") { store("cmdsTodo", e.target.checked ? "1" : "0"); renderCommands(); } });
+$("commandsView").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const c = cmdLog?.items.find((x) => x.id === (b.dataset.crun || b.dataset.ccopy || b.dataset.cmark)); if (!c) return;
+  const put = (item) => { Object.assign(c, item); cmdSig = ""; renderCommands(); };
+  if (b.dataset.ccopy) {
+    try { await navigator.clipboard.writeText(c.cmd); toast("Скопировано"); } catch (err) { toast("Не удалось скопировать"); }
+    return;
+  }
+  if (b.dataset.cmark) return busy(b, "…", async () => {
+    try { put((await api("/api/commands/mark", { id: c.id, done: b.dataset.done === "1" })).item); } catch (err) { toast(err.message, 4000); }
+  });
+  const go = (confirmed) => busy(b, "Выполняю…", async () => {
+    try {
+      const r = await api("/api/commands/run", { id: c.id, confirmed });
+      if (r.confirm) return ask();
+      put(r.item); haptic("notificationOccurred", r.item.done.code === 0 ? "success" : "error");
+    } catch (err) { b.closest(".cmd").querySelector(".out-wrap").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
+  });
+  const ask = () => confirmDanger("Команда меняет или удаляет данные:\n\n" + c.cmd.slice(0, 600) + "\n\nВыполнить?", () => go(true));
+  c.danger ? ask() : go(false);
 });
 
 // ---------- вход в MCP-сервис (ссылка на экране Claude Code) ----------
@@ -1301,6 +1381,7 @@ function openSwitcher() {
     label: s.name, sub: `${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
     ...(meta?.role !== "viewer" ? [{ label: "Новая сессия", icon: "plus", run: () => newSession() }] : []),
+    { label: "Команды из всех сессий", icon: "term", run: () => { back(); setHome("commands"); } },
     { label: "Все сессии и интеграции", icon: "menu", run: back }]);
 }
 const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
@@ -1849,13 +1930,14 @@ async function start() {
   try { resume = JSON.parse(sessionStorage.getItem("resume") || "null"); sessionStorage.removeItem("resume"); } catch (e) {}
   if (resume?.id && !DEMO) { await refresh(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
   // Чат прежде всего: на телефоне панель сразу открывает последнюю сессию (открытую здесь, иначе активную в чате бота).
-  if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof")) {
+  if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof") && !params.has("cmds")) {
     if (!sessions.length) await refresh();
     const live = sessions.filter((x) => x.status !== "stopped");
     const pick = sessions.find((x) => x.id === store("last")) || live.find((x) => x.active)
       || [...live].sort((a, b) => ORDER[a.status] - ORDER[b.status])[0];
     if (pick) await openSession(pick.id);
   }
+  if (params.has("cmds")) setHome("commands");            // ?cmds — сразу вкладка «Команды»
   if (DEMO && params.get("open")) {
     await refresh(); await openSession(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
@@ -1954,6 +2036,19 @@ function demoApi(path, body) {
     if (body.go) return Promise.resolve({ lines: screen.splice(0, screen.length, "● Bash(npm run build)", "  ⎿  готово", "", "❯ ") && screen });
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
+  }
+  if (key.startsWith("/api/commands")) {            // демо: команды трёх сессий, одна уже выполнена
+    demoApi.cl ||= [
+      { id: "k1", win: "tgi-0904", ts: "2026-11-01 09:21", about: "Прогнать тесты комнат перед сборкой", cmd: "npm test", kind: "local", danger: false, done: null },
+      { id: "k2", win: "icon-1146", ts: "2026-11-01 09:05", about: "Пересобрать проект с нуля", cmd: "rm -rf dist && npm run build", kind: "local", danger: true, done: null },
+      { id: "k3", win: "gas-pult", ts: "2026-11-01 08:40", about: "перезапуск панели после обновления", cmd: "# перезапуск панели после обновления\nsystemctl --user restart gas-pult-webapp", kind: "local", danger: false,
+        done: { code: 0, seconds: 1, at: "2026-11-01 08:42", by: "panel", out: "" } },
+      { id: "k4", win: "gas-pult", ts: "2026-11-01 08:31", about: "Проверить правила DNAT на гипервизоре", cmd: "ssh nl-hv 'iptables -t nat -S PREROUTING'", kind: "foreign", danger: false, done: null },
+      { id: "k5", win: "digest-0716", ts: "2026-10-31 22:10", about: "", cmd: "git status --short", kind: "local", danger: false,
+        done: { code: 128, seconds: 0, at: "2026-10-31 22:11", by: "panel", out: "fatal: not a git repository" } }];
+    if (path.includes("/run")) { const c = demoApi.cl.find((x) => x.id === body.id); c.done = { code: 0, seconds: 2, at: new Date().toLocaleString("sv-SE").slice(0, 16), by: "panel", out: "PASS  58 из 58" }; return Promise.resolve({ item: c }); }
+    if (path.includes("/mark")) { const c = demoApi.cl.find((x) => x.id === body.id); c.done = body.done ? { code: null, seconds: 0, at: "сейчас", by: "hand", out: "" } : null; return Promise.resolve({ item: c }); }
+    return Promise.resolve({ host: "ubuntu", items: demoApi.cl });
   }
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });

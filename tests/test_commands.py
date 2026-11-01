@@ -72,3 +72,51 @@ def test_password_commands_have_no_button(tmp_path):
                 "read -rsp 'Токен: ' T"):
         assert c.kind(cmd) == "tty", cmd
     assert c.kind("git log --oneline") == "local"
+
+
+def test_about_from_comment_or_text_before():
+    from gas_pult.commands import blocks
+    text = ("Проверим службу:\n\n```bash\nsystemctl --user status gas-pult\n```\n\n"
+            "```bash\n# перезапуск панели\nsystemctl --user restart gas-pult-webapp\n```\n"
+            "1. **Обновите код:**\n```\ngit pull --ff-only\n```")
+    assert [why for _, why in blocks(text)] == ["Проверим службу", "перезапуск панели", "Обновите код"]
+
+
+def _transcript(tmp_path, monkeypatch, folder, answers):
+    import json
+
+    from gas_pult import transcripts
+    monkeypatch.setattr(transcripts, "CLAUDE_PROJECTS", tmp_path / "projects")
+    d = transcripts.project_dir(folder)
+    d.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for i, a in enumerate(answers):
+        ts = f"2026-11-01T10:{i:02d}:00Z"
+        lines.append({"type": "user", "timestamp": ts, "message": {"content": f"вопрос {i}"}})
+        lines.append({"type": "assistant", "timestamp": ts, "message": {"content": [{"type": "text", "text": a}]}})
+    (d / "s.jsonl").write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines) + "\n")
+
+
+def test_journal_collects_all_sessions_newest_first_and_survives_restart(tmp_path, monkeypatch):
+    from gas_pult.commands import Journal
+    _transcript(tmp_path, monkeypatch, "/srv/a", ["Смотрим:\n```bash\nls -la\n```", "```bash\nuptime\n```"])
+    _transcript(tmp_path, monkeypatch, "/srv/b", ["```\n# место на диске\ndf -h\n```"])
+    wins = [{"id": "@1", "name": "alpha", "path": "/srv/a"}, {"id": "@2", "name": "beta", "path": "/srv/b"}]
+    j = Journal(tmp_path / "log.json")
+    assert j.collect(wins, lambda c: "local")
+    assert [(c["win"], c["cmd"], c["about"]) for c in j.items()] == [
+        ("alpha", "uptime", ""), ("alpha", "ls -la", "Смотрим"), ("beta", "# место на диске\ndf -h", "место на диске")]
+    assert not j.collect(wins, lambda c: "local")            # журнал не менялся — не перечитываем
+    cid = j.items()[0]["id"]
+    j.mark(cid, {"code": 0})
+    again = Journal(tmp_path / "log.json")                    # перезапуск панели
+    assert again.get(cid)["done"] == {"code": 0} and len(again.items()) == 3
+
+
+def test_journal_keeps_commands_of_closed_window(tmp_path, monkeypatch):
+    from gas_pult.commands import Journal
+    _transcript(tmp_path, monkeypatch, "/srv/a", ["```bash\nls\n```"])
+    j = Journal(tmp_path / "log.json")
+    j.collect([{"id": "@1", "name": "alpha", "path": "/srv/a"}], lambda c: "local")
+    j.collect([], lambda c: "local")                          # окно закрыли
+    assert [c["cmd"] for c in j.items()] == ["ls"]
