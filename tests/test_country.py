@@ -277,7 +277,7 @@ def call(base, path, body=None, token="", ip="192.0.2.9"):
 def test_panel_country_gate_choice_and_ip(server):
     panel, base, told = server
     member = panel.auth.issue(2)
-    code, d = call(base, "/api/sessions", None, member, "192.0.2.9")
+    code, d = call(base, "/api/people/role", {"id": 2, "role": "member"}, member, "192.0.2.9")
     assert code == 403 and d["code"] == "country"                    # без страны — только выбор
     code, meta = call(base, "/api/meta", None, member, "192.0.2.9")
     assert code == 200 and meta["country"]["need"] and meta["country"]["ip_cc"] == "NL"   # IP сверили сразу
@@ -305,18 +305,18 @@ def test_panel_ip_rechecked_on_request_and_people_mark(server, monkeypatch):
     owner = panel.auth.issue(1)
     panel.people.set_country(1, chosen="NL")
     panel.people.set_country(2, chosen="NL")
-    call(base, "/api/sessions", None, owner, "192.0.2.9")
+    call(base, "/api/people", None, owner, "192.0.2.9")
     assert panel.people.country(1)["ip_cc"] == "NL" and not told
     panel.ip_seen.clear()                                            # прошло IP_EVERY
-    call(base, "/api/sessions", None, owner, "203.0.113.4")
+    call(base, "/api/people", None, owner, "203.0.113.4")
     assert panel.people.country(1)["ip_cc"] == "DE" and panel.people.country(1)["mismatch"] and told
     code, d = call(base, "/api/people", None, owner, "203.0.113.4")
     assert code == 200 and d["geoip"] and d["attribution"] == "IP Geolocation by DB-IP"
     me = next(p for p in d["people"] if p["id"] == 1)
     assert me["country"]["mismatch"] and me["country"]["ip_cc"] == "DE" and "phone_hash" not in json.dumps(d)
     panel.ip_seen.clear()
-    call(base, "/api/sessions", None, owner, "198.51.100.200")      # нет данных — не блокируем
-    assert panel.people.country(1)["ip_cc"] == "" and call(base, "/api/sessions", None, owner)[0] == 200
+    call(base, "/api/people", None, owner, "198.51.100.200")      # нет данных — не блокируем
+    assert panel.people.country(1)["ip_cc"] == "" and call(base, "/api/people", None, owner)[0] == 200
 
 
 def test_client_ip_trusts_proxy_headers_only_from_loopback(tmp_path, monkeypatch):

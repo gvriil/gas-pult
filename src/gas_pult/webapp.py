@@ -385,6 +385,8 @@ class Panel:
         raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
 
     def new(self, i: int, profile: str = "", uid=None) -> dict:
+        if uid is not None:
+            self.check(profile, uid)                     # поставщик не для страны — отказ сразу
         dirs = self.pult.projects()
         if not 0 <= i < len(dirs):
             raise ValueError("список папок изменился — обновите панель")
@@ -392,8 +394,6 @@ class Panel:
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
-        if uid is not None:
-            self.check(profile, uid)
         self.need_claude()
         base = os.path.basename(path) if path != self.pult.home else "home"
         cmd = models.command(self.cfg.claude, profile, self.pult.state())
