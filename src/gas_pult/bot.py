@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import digest, transcripts, voice
+from gas_pult import digest, fallback, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People
@@ -110,6 +110,9 @@ class Pult:
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
+        # поставщик модели не отвечает — окно само уходит на запасной (fallback.py), владельцам — одна строка
+        self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
+                                          say=lambda line: self.broadcast("🔁 " + line), log=self.fallback_logged)
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -178,6 +181,11 @@ class Pult:
             s = {**self.state(), **kw}
             self.state_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             self.state_file.write_text(json.dumps(s))
+
+    def fallback_logged(self, entry: dict):
+        """Переключение на запасной — в state.json (последние 20): панель показывает его строкой."""
+        log = list(self.state().get("fallback_log") or [])[-19:]
+        self.set_state(fallback_log=[*log, entry])
 
     # ---------- окна ----------
     def projects(self) -> list[str]:
@@ -408,6 +416,7 @@ class Pult:
                     tail.watch(path, files)                     # старое не пересылаем
                     for f in files:
                         for e in tail.read(f):
+                            self.fallback.seen(w["id"], e)      # ошибка API поставщика — ждём остановки окна
                             if text := turns.setdefault(f, transcripts.Turns()).feed(e):
                                 texts.append(text)
                     if texts and not quiet:
@@ -418,7 +427,11 @@ class Pult:
                             self.deliver(w, text)
                 for w in ws:
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
-                    scr = "\n".join(self.tmux.screen(w["id"]))
+                    lines = self.tmux.screen(w["id"])
+                    scr = "\n".join(lines)
+                    if w["id"] in self.fallback.pending:        # сессия стоит на ошибке, человек не набирает
+                        idle = not BUSY.search(scr) and not DIALOG.search(scr)
+                        self.fallback.step(w, idle and not fallback.typing(lines, self.tmux.hint(w["id"])))
                     if not DIALOG.search(scr):
                         shown.pop(w["id"], None)
                     elif not quiet:
