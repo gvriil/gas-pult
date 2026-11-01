@@ -93,7 +93,8 @@ class Pult:
         self.cfg = cfg
         self.api = Api(cfg.token)
         self.tmux = Tmux(cfg.session)
-        self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign, on_done=self.after_run)
+        self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign, on_done=self.after_run,
+                             on_start=self.before_run)
         self.journal = Journal(cfg.data / "commands-log.json")         # вкладка «Команды» панели
         self.task = re.compile(rf"^(?:/task\s+)?({cfg.task_pattern})$", re.I)
         self.state_file = cfg.data / "state.json"
@@ -541,6 +542,12 @@ class Pult:
                         f"🗣 Голос: {catalog.label(s['voice'])}"
                         + ("" if voices else "\n(голоса не установлены: gas-pult voices install irina)"),
                   reply_markup=kb(rows))
+
+    def before_run(self, cmd: str, path: str):
+        """▶️ в боте — во вкладке «Команды» панели сразу «выполняется»."""
+        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
+        self.journal.collect(wins, self.cmds.kind)
+        self.journal.flag_cmd(path, cmd, running=time.strftime("%Y-%m-%d %H:%M", time.gmtime()))
 
     def after_run(self, cmd: str, path: str, code, secs: float, out: str) -> str:
         """▶️ в боте: отметка «выполнено» во вкладке «Команды» панели; упала — на разбор в сессию. Строка для итога."""
