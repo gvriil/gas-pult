@@ -1086,6 +1086,7 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
 
     def learn_bot():                                       # имя бота — для ссылки «подтвердите номер в боте»
+        panel.geo.lookup("192.0.2.1")                      # и база GeoIP — в память заранее, не на первом входе
         try:
             panel.bot_username()
         except (TelegramError, OSError, KeyError) as e:
