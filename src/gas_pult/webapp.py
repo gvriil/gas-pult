@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import fallback, models, providers, setup, terms, transcripts, voice, webauth
+from gas_pult import country, fallback, models, providers, setup, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -118,6 +118,8 @@ class Panel:
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
         self.login = self.pult.login                                 # вход в Claude Code (setup.py) — общий с ботом
         self._setup: tuple[float, dict] = (0, {})
+        self.geo = country.GeoIP(cfg.data / "geoip")                 # страна по IP — локальная база db-ip lite
+        self.ip_seen: dict[int, tuple[float, str]] = {}              # кого и когда сверяли по IP (только в памяти)
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -174,13 +176,69 @@ class Panel:
             self.previews[path] = (rev, transcripts.preview(path))
         return self.previews[path][1]
 
-    def meta(self) -> dict:
+    # ---------- страна человека (country.py) ----------
+    def countries(self, uid) -> set[str]:
+        """Страны, по которым проверяем поставщика для этого человека: признаки и страна сервера; не выбрана — пусто."""
+        return country.check_set(self.people.country(uid), self.cfg.region)
+
+    def check(self, profile: str, uid):
+        """Поставщик не разрешён для какой-то из стран человека — отказ ровно этим текстом."""
+        if not models.allowed(profile or "claude", self.countries(uid)):
+            raise ValueError(country.DENY)
+
+    def mark_by(self, wid: str, uid):
+        """Чьё окно — для запасных (``fallback.Switcher``): по странам этого человека."""
+        if uid is not None:
+            self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(uid))
+
+    def seen_ip(self, uid, ip: str, force: bool = False):
+        """Страна по IP — при входе (``force``) и не чаще ``IP_EVERY`` на запросах. IP не храним — код и время."""
+        if uid is None:
+            return
+        now, last = time.time(), self.ip_seen.get(uid)
+        if not force and last and last[1] == ip and now - last[0] < country.IP_EVERY:
+            return
+        self.ip_seen[uid] = (now, ip)
+        rec, tell = self.people.set_country(uid, ip_cc=self.geo.lookup(ip) or "", ip_at=int(now))
+        if tell:
+            self.tell_owners(uid, rec)
+
+    def set_country(self, uid, code: str) -> dict:
+        c = country.norm(code)
+        if not c:
+            raise ValueError("нет такой страны — нужен код из двух букв, например NL")
+        rec, tell = self.people.set_country(uid, chosen=c)
+        if tell:
+            self.tell_owners(uid, rec)
+        return self.country_info(uid)
+
+    def tell_owners(self, uid, rec: dict):
+        """Признаки страны разошлись — одна строка владельцам (имя/ID и коды стран, без номера и IP)."""
+        p = next((x for x in self.people.list() if x["id"] == uid), {})
+        line = country.notice(p.get("name") or (f"@{p['username']}" if p.get("username") else "человек"), uid, rec)
+        for chat in self.cfg.owners:
+            try:
+                self.pult.api("sendMessage", chat_id=chat, text=line)
+            except (TelegramError, OSError) as e:
+                print("country:", e, file=sys.stderr, flush=True)
+
+    def country_info(self, uid) -> dict:
+        rec = self.people.country(uid)
+        return {**country.public(rec), **self.geo.info(), "need": not country.norm(rec.get("chosen")),
+                "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
+                "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
+
+    def people_list(self) -> list[dict]:
+        """Люди для панели: страна — кодами и временем, без хеша номера."""
+        return [{**p, "country": country.public(p.get("country"))} for p in self.people.list()]
+
+    def meta(self, uid=None) -> dict:
         voices = catalog.installed()
         return {"host": self.cfg.host, "tz": server_tz(),
                 "commands": [t for t, _ in self.pult.command_list()],
                 "models": self.cfg.models,
                 "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
-                "profiles": models.public(self.pult.state()),
+                "profiles": models.public(self.pult.state(), None if uid is None else self.countries(uid)),
                 "projects": [self.pult.short(p) for p in self.pult.projects()],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
                 "voice": self.voice(voices)}
@@ -326,7 +384,7 @@ class Panel:
                 time.sleep(0.25)
         raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
 
-    def new(self, i: int, profile: str = "") -> dict:
+    def new(self, i: int, profile: str = "", uid=None) -> dict:
         dirs = self.pult.projects()
         if not 0 <= i < len(dirs):
             raise ValueError("список папок изменился — обновите панель")
@@ -334,37 +392,45 @@ class Panel:
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
+        if uid is not None:
+            self.check(profile, uid)
         self.need_claude()
         base = os.path.basename(path) if path != self.pult.home else "home"
         cmd = models.command(self.cfg.claude, profile, self.pult.state())
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude")
+        self.mark_by(wid, uid)
         self.pult.set_state(active=wid)
         return {"id": wid}
 
-    def revive(self, wid: str) -> dict:
+    def revive(self, wid: str, uid=None) -> dict:
         """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора."""
         w = self.tmux.window(wid)
         if not w or not w.get("stopped"):
             raise ValueError("сессия не остановлена — перезапускать нечего")
-        self.need_claude()
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
+        if uid is not None:
+            self.check(profile, uid)
+        self.need_claude()
         cmd = models.command(self.cfg.claude, profile, self.pult.state()) + " --continue"   # нет ключа — ошибка здесь
         self.tmux.respawn(wid, w["path"], cmd, mark=profile)
         self.pult.set_state(active=wid)
         return {"id": wid}
 
-    def restart(self, w: dict, profile: str, keep: bool = True) -> dict:
+    def restart(self, w: dict, profile: str, keep: bool = True, uid=None) -> dict:
         """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
 
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
         не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
         """
+        if uid is not None:
+            self.check(profile, uid)                                          # не для страны — до закрытия
         cmd = models.command(self.cfg.claude, profile, self.pult.state())    # нет ключа — ошибка до закрытия
         cmd += " --continue" if keep else ""
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
         wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude")
+        self.mark_by(wid, uid)
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -463,13 +529,15 @@ class Panel:
         print(note, file=sys.stderr, flush=True)
         self.last_fallback = (time.time(), note)
 
-    def fallback_info(self) -> dict:
-        """Запасные для панели: цепочка поставщиков, регион, кто годится, последние переключения, голос (#53)."""
-        return {**fallback.public(self.pult.state(), self.cfg.region), "voice_note": self.fallback_note()}
+    def fallback_info(self, uid=None) -> dict:
+        """Запасные для панели: цепочка поставщиков, страны, кто годится, последние переключения, голос (#53)."""
+        cs = None if uid is None else self.countries(uid)
+        return {**fallback.public(self.pult.state(), self.cfg.region, countries=cs), "voice_note": self.fallback_note()}
 
-    def set_fallback(self, chain) -> dict:
-        self.pult.set_state(fallback_chain=fallback.validate(chain, self.cfg.region))
-        return self.fallback_info()
+    def set_fallback(self, chain, uid=None) -> dict:
+        cs = self.cfg.region if uid is None else self.countries(uid)
+        self.pult.set_state(fallback_chain=fallback.validate(chain, cs))
+        return self.fallback_info(uid)
 
     def fallback_note(self) -> str:
         t, note = getattr(self, "last_fallback", (0, ""))
@@ -637,6 +705,10 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
 
 # До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
 TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout"}
+# До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
+COUNTRY_FREE = TERMS_FREE | {"/api/country"}
+# Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
+LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -696,20 +768,37 @@ def handler(panel: Panel):
             if not role:
                 self.json({"error": "нужен вход"}, 401)
                 return False
-            if path not in TERMS_FREE and not panel.people.accepted(self.terms_uid()):
+            uid = self.terms_uid()
+            panel.seen_ip(uid, self.client_ip())                   # страна по IP — не чаще раза в IP_EVERY
+            if path not in TERMS_FREE and not panel.people.accepted(uid):
                 self.json({"error": "сначала примите условия использования пульта", "code": "terms"}, 403)
                 return False
+            if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
+                self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
+                return False
+            free = ("/api/logout", "/api/terms/accept", "/api/country")      # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
-                    "member" if method == "POST" and path not in ("/api/logout", "/api/terms/accept") else "viewer")
+                    "member" if method == "POST" and path not in free else "viewer")
             if allowed(role, need):
                 return True
             why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
             self.json({"error": why}, 403)
             return False
 
+        def client_ip(self) -> str:
+            """Адрес клиента. За обратным прокси на этой машине — из ``X-Forwarded-For`` (последний адрес: его дописал
+            наш прокси, начало строки присылает сам клиент) или ``X-Real-IP``; с других адресов заголовкам не верим."""
+            peer = self.client_address[0]
+            if peer in LOOPBACK:
+                xff = [x.strip() for x in self.headers.get("X-Forwarded-For", "").split(",") if x.strip()]
+                if xff:
+                    return xff[-1]
+                if real := self.headers.get("X-Real-IP", "").strip():
+                    return real
+            return peer
+
         def client(self) -> tuple[str, str]:
-            ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
-            return ip, self.headers.get("User-Agent", "")
+            return self.client_ip(), self.headers.get("User-Agent", "")
 
         def body(self) -> bytes:
             n = int(self.headers.get("Content-Length", 0))
@@ -748,12 +837,18 @@ def handler(panel: Panel):
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/meta":
                 kind, role, uid = self.who()
-                return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1],
-                        "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(self.terms_uid())}}
+                tu = self.terms_uid()
+                cinfo = panel.country_info(tu)
+                return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
+                        "whatsnew": whatsnew[:1],
+                        "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
+                        "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
+            if path == "/api/country":
+                return panel.country_info(self.terms_uid())
             if path == "/api/people":
-                return {"people": panel.people.list()}
+                return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/setup/status":
                 return panel.setup_status(q.get("fresh") == "1")
             if path == "/api/mcp":
@@ -770,7 +865,7 @@ def handler(panel: Panel):
             if path == "/api/openrouter/models":
                 return {"models": panel.openrouter.models()}
             if path == "/api/fallback":
-                return panel.fallback_info()
+                return panel.fallback_info(self.terms_uid())
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
@@ -832,12 +927,14 @@ def handler(panel: Panel):
         def tg_poll(self, q: dict):
             state, uid = panel.logins.poll(q.get("id", ""))
             if state == "ok":
+                panel.seen_ip(uid, self.client_ip(), force=True)            # вход — сверяем страну по IP
                 return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
             return {"state": state}
 
         def login(self):
             b = json.loads(self.body() or b"{}")
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
+            panel.seen_ip((panel.cfg.owners or [None])[0], self.client_ip(), force=True)   # вход кодом — владелец
             return ("cookie", webauth.set_cookie(token), {"ok": True})
 
         def terms_info(self) -> dict:
@@ -859,16 +956,18 @@ def handler(panel: Panel):
                     raise ValueError("условия обновились — прочитайте новую версию")
                 panel.people.accept(self.terms_uid(), terms.VERSION)
                 return self.terms_info()
+            if path == "/api/country":
+                return panel.set_country(self.terms_uid(), str(b.get("code", "")))
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
             if path == "/api/commands/mark":
                 return panel.command_mark(str(b.get("id", "")), b.get("done", True) is not False)
             if path == "/api/people/role":
                 panel.set_role(int(b.get("id", 0)), str(b.get("role", "")))
-                return {"people": panel.people.list()}
+                return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/people/remove":
                 panel.people.remove(int(b.get("id", 0)))
-                return {"people": panel.people.list()}
+                return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/logout":
                 panel.auth.logout(self.session())
                 return ("cookie", webauth.set_cookie("", 0), {"ok": True})
@@ -897,16 +996,20 @@ def handler(panel: Panel):
                 panel.login.cancel()
                 return {"ok": True}
             if path == "/api/new":
-                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
+                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.terms_uid())
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}
             if path == "/api/fallback":
-                return panel.set_fallback(b.get("chain"))
+                return panel.set_fallback(b.get("chain"), self.terms_uid())
             if path == "/api/models":
                 panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
-                return {"profiles": models.public(panel.pult.state())}
+                return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
+            if path == "/api/revive":
+                return panel.revive(str(b.get("w", "")), self.terms_uid())
             w = self.win(b.get("w"))
+            if path in ("/api/send", "/api/command", "/api/select", "/api/key", "/api/model"):
+                panel.check(w.get("profile") or "claude", self.terms_uid())   # сессия этого поставщика — для страны?
             if path == "/api/send":
                 text = str(b.get("text", "")).strip()
                 if not text:
@@ -932,10 +1035,8 @@ def handler(panel: Panel):
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")))}
             if path == "/api/close":
                 return {"result": panel.close(w)}
-            if path == "/api/revive":
-                return panel.revive(str(b.get("w", "")))
             if path == "/api/restart":
-                return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False)
+                return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
             if path == "/api/run":
                 return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError
@@ -983,6 +1084,13 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
     panel = Panel(cfg)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list() if p["role"] != "owner"]   # кнопка «📱 Панель»
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
+
+    def learn_bot():                                       # имя бота — для ссылки «подтвердите номер в боте»
+        try:
+            panel.bot_username()
+        except (TelegramError, OSError, KeyError) as e:
+            print("bot:", e, flush=True)
+    threading.Thread(target=learn_bot, daemon=True).start()
     proc = None
     if use_tunnel:
         proc, url = tunnel(port)

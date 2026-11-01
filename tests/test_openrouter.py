@@ -54,6 +54,7 @@ def test_callback_page_works_without_login_and_saves_key(monkeypatch, tmp_path):
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     panel.people.accept(1)                     # условия использования приняты
+    panel.people.set_country(1, chosen="NL")   # и страна выбрана
     saved = {}
     monkeypatch.setattr(webapp.providers, "save_key", lambda p, k: saved.__setitem__(p, k))
     monkeypatch.setattr(orr, "_http", lambda url, body=None, key=None: {"key": "sk-or-v1-from-oauth"})

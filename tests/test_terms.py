@@ -57,8 +57,9 @@ def test_switch_off_removes_access_and_consent(tmp_path):
 @pytest.fixture
 def pult(tmp_path):
     p = bot.Pult.__new__(bot.Pult)
-    p.cfg = type("C", (), {"owners": [1]})()
+    p.cfg = type("C", (), {"owners": [1], "data": tmp_path, "region": "NL"})()
     p.people, p.logins, p.requests = People(tmp_path / "people.json", [1]), webauth.TgLogins(tmp_path / "tg.json"), {}
+    p.waiting = {}
     p.sent, p.handled = [], []
     p.send = lambda chat, text, **kw: p.sent.append((chat, text, kw))
     p.to = lambda chat: (lambda text, **kw: p.sent.append((chat, text, kw)))
@@ -84,7 +85,17 @@ def test_bot_shows_terms_until_accepted(pult):
     assert "обновились" in p.sent[0][1] and not p.people.accepted(1)       # старая кнопка — не согласие
     p.sent.clear()
     p.handle(cb(f"tm:{terms.VERSION}"))
-    assert p.people.accepted(1) and p.sent[0][2]["reply_markup"] == bot.MENU   # после — обычное меню
+    assert p.people.accepted(1) and "Из какой страны" in p.sent[0][1]          # после условий — страна
+    assert "cc:NL" in json.dumps(p.sent[0][2])
+    p.sent.clear()
+    p.handle({"message": {"chat": {"id": 1}, "from": {"id": 1}, "text": "/start"}})
+    assert not p.handled and "Из какой страны" in p.sent[0][1]                # без страны — снова выбор
+    p.sent.clear()
+    p.handle(cb("cc:NL"))
+    assert p.people.country(1)["chosen"] == "NL" and p.sent[0][2]["reply_markup"] == bot.PHONE_KB
+    p.sent.clear()
+    bot.Pult.on_message(p, {"chat": {"id": 1}, "from": {"id": 1}, "text": "Позже"})
+    assert p.sent[0][2]["reply_markup"] == bot.MENU                             # потом — обычное меню
     p.sent.clear()
     p.handle({"message": {"chat": {"id": 1}, "from": {"id": 1}, "text": "/start"}})
     assert p.handled == ["/start"] and not p.sent
@@ -115,6 +126,8 @@ def server(monkeypatch, tmp_path):
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     panel.people.add(2, "member")
     panel.people.add(3, "viewer")
+    for uid in (1, 2, 3):
+        panel.people.set_country(uid, chosen="NL")
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "path": "/tmp", "name": "w"})
     monkeypatch.setattr(panel, "send", lambda w, text, mid="": False)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(panel))

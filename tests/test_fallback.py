@@ -54,7 +54,7 @@ def test_classify_entry_only_api_errors_of_main_session():
 
 def test_regions():
     assert not models.allowed("claude", "RU") and not models.allowed("openrouter", "ru")
-    assert models.allowed("claude", "NL") and models.allowed("claude", "")
+    assert models.allowed("claude", "NL") and not models.allowed("claude", "")      # страна неизвестна — нельзя
     assert not models.allowed("zai", "RU") and models.allowed("zai", "NL")
     assert not models.allowed("nope", "NL")
 
@@ -71,7 +71,7 @@ def test_chain_and_next_ok():
 
 def test_validate_refuses_region_forbidden():
     assert fallback.validate(["openrouter", "claude", "claude"], "NL") == ["openrouter", "claude"]
-    with pytest.raises(ValueError, match="региона RU"):
+    with pytest.raises(ValueError, match=models.DENY):
         fallback.validate(["claude"], "RU")
     with pytest.raises(ValueError, match="нет такого"):
         fallback.validate(["x"], "NL")
@@ -148,7 +148,7 @@ def test_region_forbidden_fallback_is_not_used(sw):
     sw.st["fallback_chain"] = ["claude"]
     sw.seen("@1", entry("API Error: 429", 429))
     line = sw.step({**W, "profile": "zai"}, idle=True)
-    assert sw.tmux.calls == [] and "запасных нет (Claude — не для региона RU)" in line
+    assert sw.tmux.calls == [] and "запасных нет (Claude — не для страны RU)" in line
 
 
 def test_missing_key_skipped(sw):
@@ -177,6 +177,7 @@ def test_api_fallback_owner_only(monkeypatch, tmp_path):
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path / "data"))
     panel = webapp.Panel(Config(token="1:T", owners=[1], region="NL"))
     panel.people.accept(1)                     # условия использования приняты
+    panel.people.set_country(1, chosen="NL")
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(panel))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}/api/fallback"
@@ -198,6 +199,7 @@ def test_api_fallback_owner_only(monkeypatch, tmp_path):
         assert e.value.code == 400
         panel.people.add(2, "member")
         panel.people.accept(2)
+        panel.people.set_country(2, chosen="NL")
         with pytest.raises(urllib.error.HTTPError) as e:
             call(uid=2)
         assert e.value.code == 403
@@ -211,6 +213,7 @@ def test_bot_wiring_one_line_to_owners_and_log_for_panel(monkeypatch, tmp_path):
     monkeypatch.setenv("GAS_PULT_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path / "data"))
     p = bot.Pult(Config(token="1:T", owners=[1, 2], region="NL"))
+    p.people.set_country(1, chosen="NL")              # запасные — по странам владельца окна (здесь — первого)
     sent, spawned = [], []
     monkeypatch.setattr(p, "send", lambda chat, text, **kw: sent.append((chat, text)) or {})
     monkeypatch.setattr(p.tmux, "respawn", lambda wid, path, cmd, mark="claude": spawned.append((cmd, mark)))
