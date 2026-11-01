@@ -1699,7 +1699,7 @@ async function toggleMic() {
     const blob = new Blob(chunks, { type: (type || "audio/webm").split(";")[0] });
     toast("Распознаю…", 8000);
     try {
-      const d = await api("/api/stt", blob, blob.type);
+      const d = await api("/api/stt", blob, blob.type); if (d.fallback) toast("ElevenLabs не ответил — распознал локально", 3500);
       $("input").value = ($("input").value + " " + d.text).trim(); grow();
       if (sendNow) return sendText();
       $("input").focus(); toast("Проверьте текст и отправьте", 3500);
@@ -1853,6 +1853,8 @@ function renderVoice() {
       <div class="field"><label>Озвучка ответов</label>${seg("tts", prov.tts, [["local", "На сервере · " + (prov.local_voice || "Piper")], ["elevenlabs", "ElevenLabs"]])}
         ${prov.tts === "elevenlabs" && prov.el_voices.length ? `<select id="elVoice">${prov.el_voices.map((v) =>
           `<option value="${esc(v.id)}" ${v.id === prov.el_voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>` : ""}
+        ${prov.tts === "local" && (prov.local_voices || []).length > 1 ? `<select id="localVoice">${prov.local_voices.map((v) =>
+          `<option value="${esc(v.id)}" ${v.id === prov.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>` : ""}
         <div class="hint">На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs.</div></div>
       <div class="field" style="margin:0"><label>Распознавание голосовых</label>${seg("stt", prov.stt, [["local", "На сервере · whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
         <div class="hint">ElevenLabs точнее на терминах и именах; запись голоса уходит в ElevenLabs.</div></div>
@@ -1885,6 +1887,7 @@ $("integrationsView").addEventListener("click", async (e) => {
   if (e.target.id === "elDel") confirmDanger("Удалить ключ ElevenLabs?", async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); prov = await api("/api/providers"); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); });
 });
 $("integrationsView").addEventListener("change", async (e) => {
+  if (e.target.id === "localVoice") { await api("/api/providers", { voice: e.target.value }).then(() => { prov.voice = e.target.value; toast("Голос выбран"); }, (err) => toast(err.message)); return; }
   if (e.target.id === "elVoice") { await api("/api/providers", { el_voice: e.target.value }).catch((err) => toast(err.message)); toast("Голос выбран"); }
 });
 const isOn = (c) => mcpData.servers.some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));

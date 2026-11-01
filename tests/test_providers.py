@@ -40,3 +40,23 @@ def test_el_voices_and_bad_key(monkeypatch):
     monkeypatch.setattr(providers.urllib.request, "urlopen", deny)
     with pytest.raises(providers.ProviderError, match="ключ не подошёл"):
         providers.el_voices("bad")
+
+
+def test_tts_falls_back_to_local_when_elevenlabs_fails(monkeypatch, tmp_path):
+    """ElevenLabs отказал — озвучка уходит в локальный голос, а не в ошибку."""
+    from gas_pult import providers, webapp
+
+    panel = webapp.Panel.__new__(webapp.Panel)
+    monkeypatch.setattr(panel, "message", lambda w, i: "Привет", raising=False)
+    monkeypatch.setattr(panel, "voice_settings", lambda: {"tts": "elevenlabs", "el_voice": "v1"}, raising=False)
+    monkeypatch.setattr(panel, "voice", lambda: "irina", raising=False)
+    panel.cfg = type("C", (), {"data": tmp_path})()
+
+    def boom(*a):
+        raise providers.ProviderError("ElevenLabs недоступен")
+
+    monkeypatch.setattr(providers, "el_tts", boom)
+    monkeypatch.setattr(providers, "load_keys", lambda: {"elevenlabs": "k"})
+    monkeypatch.setattr(webapp.voice, "synth", lambda v, text, out: out.write_bytes(b"mp3"))
+    assert panel.tts({}, True) == b"mp3"
+    assert "переключился на локальный" in panel.fallback_note()
