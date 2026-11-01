@@ -95,6 +95,8 @@ class Pult:
         self.people = People(cfg.data / "people.json", cfg.owners)
         self.logins = TgLogins(cfg.data / "tg_logins.json")
         self.requests: dict[int, dict] = {}                # кто просит доступ: Telegram ID → имя, @username
+        self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
+        self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -316,12 +318,40 @@ class Pult:
     # ---------- монитор: ответы и диалоги всех окон ----------
     def deliver(self, w: dict, text: str):
         n = self.remember(w, text)
-        self.broadcast(f"[{w['name']}]\n{text}", reply_markup=kb([[
-            ("🔊", f"say:{n}"), ("✅ Да", f"yes:{w['id']}"), ("✏️ Ответить", f"act:{w['id']}")]]))
+        rows, msgs = [[("🔊", f"say:{n}"), ("✅ Да", f"yes:{w['id']}"), ("✏️ Ответить", f"act:{w['id']}")]], {}
+        for chat in self.cfg.owners:
+            try:
+                msgs[chat] = self.send(chat, f"[{w['name']}]\n{text}", reply_markup=kb(rows)).get("message_id")
+            except TelegramError as e:
+                print("send:", e, flush=True)
+        self.hint_wait[w["id"]] = {"t": time.time(), "msgs": msgs, "rows": rows}
         self.cmds.offer(w, text, self.broadcast, kb)
         if self.state()["voice_always"]:
             for chat in self.cfg.owners:
                 threading.Thread(target=self.say, args=(chat, text), daemon=True).start()
+
+    def offer_hints(self):
+        """Подсказка Claude появляется через секунды после ответа — дописываем к ответу кнопку «💡 …» (ждём 90 с)."""
+        for wid, x in list(self.hint_wait.items()):
+            if time.time() - x["t"] > 90:
+                self.hint_wait.pop(wid, None)
+                continue
+            if not (h := self.tmux.hint(wid)):
+                continue
+            self.hint_wait.pop(wid, None)
+            with self.lock:
+                self.counter += 1
+                n = self.counter
+                self.hints[n] = (wid, h)
+                for old in [k for k in self.hints if k <= n - 100]:
+                    del self.hints[old]
+            label = "💡 " + (h if len(h) <= 40 else h[:39].rstrip() + "…")
+            for chat, mid in x["msgs"].items():
+                try:
+                    self.api("editMessageReplyMarkup", chat_id=chat, message_id=mid,
+                             reply_markup=kb([*x["rows"], [(label, f"hint:{n}")]]))
+                except TelegramError as e:
+                    print("hint:", e, flush=True)
 
     def monitor(self):
         tail, turns, shown = transcripts.Tail(time.time()), {}, {}
@@ -355,6 +385,7 @@ class Pult:
                         shown.pop(w["id"], None)
                     elif not quiet:
                         self.show_dialog(w, scr, shown)
+                self.offer_hints()
             except Exception as e:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
@@ -451,6 +482,13 @@ class Pult:
             return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
         if kind == "pp":                                   # владелец решает, пускать ли человека
             return self.grant(chat, arg)
+        if kind == "hint":                                 # 💡 под ответом — отправить подсказку Claude
+            wid, h = self.hints.get(int(arg), ("", "")) if arg.isdigit() else ("", "")
+            w = self.tmux.window(wid) if wid else None
+            if not w:
+                return send("Подсказка устарела или окна уже нет.")
+            self.to_claude(w, h)
+            return send(f"→ [{w['name']}]: {h}")
         if kind == "mk":
             self.waiting[chat] = "name"
             return send("Имя новой папки (латиница, дефис), например: shop-bot", reply_markup={"force_reply": True})
