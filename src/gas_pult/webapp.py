@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import models, providers, setup, transcripts, voice, webauth
+from gas_pult import fallback, models, providers, setup, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -477,6 +477,14 @@ class Panel:
         print(note, file=sys.stderr, flush=True)
         self.last_fallback = (time.time(), note)
 
+    def fallback_info(self) -> dict:
+        """Запасные для панели: цепочка поставщиков, регион, кто годится, последние переключения, голос (#53)."""
+        return {**fallback.public(self.pult.state(), self.cfg.region), "voice_note": self.fallback_note()}
+
+    def set_fallback(self, chain) -> dict:
+        self.pult.set_state(fallback_chain=fallback.validate(chain, self.cfg.region))
+        return self.fallback_info()
+
     def fallback_note(self) -> str:
         t, note = getattr(self, "last_fallback", (0, ""))
         return note if time.time() - t < 3600 else ""
@@ -638,11 +646,14 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
-              "/api/people", "/api/people/role", "/api/people/remove",
+              "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
+
+# До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
+TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout"}
 
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -701,14 +712,23 @@ def handler(panel: Panel):
         def session(self) -> str:
             return webauth.cookie_value(self.headers.get("Cookie", ""))
 
+        def terms_uid(self) -> int | None:
+            """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
+            uid = self.who()[2]
+            return (panel.cfg.owners or [None])[0] if uid == webauth.LEGACY else uid
+
         def permit(self, path: str, method: str) -> bool:
-            """Не вошёл — 401 (панель покажет вход); не хватает роли — 403 с причиной."""
+            """Не вошёл — 401 (панель покажет вход); не принял условия — 403 code=terms; не хватает роли — 403."""
             role = self.who()[1]
             if not role:
                 self.json({"error": "нужен вход"}, 401)
                 return False
+            if path not in TERMS_FREE and not panel.people.accepted(self.terms_uid()):
+                self.json({"error": "сначала примите условия использования пульта", "code": "terms"}, 403)
+                return False
             need = ("owner" if path in OWNER_ONLY else
-                    "member" if (method == "POST" and path != "/api/logout") or path in MEMBER_ONLY else "viewer")
+                    "member" if (method == "POST" and path not in ("/api/logout", "/api/terms/accept"))
+                    or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
                 return True
             why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
@@ -751,10 +771,15 @@ def handler(panel: Panel):
 
         def get(self, path: str, q: dict):
             if path == "/api/sessions":
-                return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build}
+                return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build,
+                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
+                                     for x in fallback.recent(panel.pult.state())]}
             if path == "/api/meta":
                 kind, role, uid = self.who()
-                return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1]}
+                return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1],
+                        "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(self.terms_uid())}}
+            if path == "/api/terms":
+                return self.terms_info()
             if path == "/api/people":
                 return {"people": panel.people.list()}
             if path == "/api/setup/status":
@@ -775,6 +800,8 @@ def handler(panel: Panel):
                 return panel.openrouter_info()
             if path == "/api/openrouter/models":
                 return {"models": panel.openrouter.models()}
+            if path == "/api/fallback":
+                return panel.fallback_info()
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
@@ -844,6 +871,11 @@ def handler(panel: Panel):
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
             return ("cookie", webauth.set_cookie(token), {"ok": True})
 
+        def terms_info(self) -> dict:
+            rec = panel.people.terms(self.terms_uid()) or {}
+            return {"version": terms.VERSION, "title": terms.TITLE, "points": list(terms.POINTS), "url": terms.URL,
+                    "accepted": rec.get("version") == terms.VERSION, "at": rec.get("at")}
+
         def post(self, path: str):
             if path == "/api/upload":
                 return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
@@ -853,6 +885,11 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/terms/accept":
+                if str(b.get("version", "")) != terms.VERSION:
+                    raise ValueError("условия обновились — прочитайте новую версию")
+                panel.people.accept(self.terms_uid(), terms.VERSION)
+                return self.terms_info()
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
             if path == "/api/commands/mark":
@@ -897,6 +934,8 @@ def handler(panel: Panel):
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}
+            if path == "/api/fallback":
+                return panel.set_fallback(b.get("chain"))
             if path == "/api/models":
                 panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
                 return {"profiles": models.public(panel.pult.state())}

@@ -97,6 +97,8 @@ def panel(monkeypatch, tmp_path):
     p = webapp.Panel(Config(token="1:T", owners=[OWNER]))
     p.people.add(MEMBER, "member")
     p.people.add(VIEWER, "viewer")
+    for uid in (OWNER, MEMBER, VIEWER):             # условия использования приняты
+        p.people.accept(uid)
     monkeypatch.setattr(p.pult, "set_state", lambda **kw: None)
     monkeypatch.setattr(p.pult, "projects", lambda: ["/p/a"])
     monkeypatch.setattr(p.pult, "project_window", lambda path: None)

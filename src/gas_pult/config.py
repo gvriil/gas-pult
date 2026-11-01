@@ -69,6 +69,7 @@ class Config:
     commands: list[list[str]] = field(default_factory=list)  # свои кнопки ⚡: [["▶️ Старт", "/shtab start"]]
     digest_at: str = "09:00"                                # утренняя сводка «ждёт владельца» (ЧЧ:ММ; "" — выкл.)
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
+    region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
 
     @property
     def data(self) -> Path:
@@ -109,6 +110,9 @@ def load() -> Config:
             re.compile(p)
     except re.error as e:
         raise ConfigError(f"Неверное регулярное выражение в {path}: {e}") from None
+    region = raw.get("region", "")
+    if not isinstance(region, str) or (region and not re.fullmatch(r"[A-Za-z]{2}", region)):
+        raise ConfigError(f"В {path} region — код страны из двух букв, например \"NL\"")
     return Config(token=read_token(), **raw)
 
 

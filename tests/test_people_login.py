@@ -15,7 +15,7 @@ from gas_pult.people import People, allowed
 def test_roles_and_owner_protection(tmp_path):
     p = People(tmp_path / "people.json", [1])
     assert p.role(1) == "owner" and p.role(2) is None and p.role("x") is None
-    p.add(2, "member", "Алексей", "alexey")
+    p.add(2, "member", "Иван", "ivan")
     p.add(3, "viewer")
     assert p.role(2) == "member" and p.role(3) == "viewer"
     assert (tmp_path / "people.json").stat().st_mode & 0o777 == 0o600
@@ -58,6 +58,8 @@ def server(monkeypatch, tmp_path):
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     panel.people.add(2, "member")
     panel.people.add(3, "viewer")
+    for uid in (1, 2, 3):
+        panel.people.accept(uid)                             # условия использования приняты
     monkeypatch.setattr(panel, "bot_username", lambda: "test_bot")
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "path": "/tmp", "name": "w"})
     monkeypatch.setattr(panel, "send", lambda w, text, mid="": False)

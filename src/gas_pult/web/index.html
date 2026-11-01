@@ -158,7 +158,22 @@
   .result.ok { background: color-mix(in srgb, var(--status-success) 10%, var(--bg-surface)); }
   .result.bad { background: color-mix(in srgb, var(--status-danger) 10%, var(--bg-surface)); }
   .result.wait { background: var(--bg-subtle); }
+  /* Условия использования: первый вход — прочитать и нажать «Принимаю»; до этого остальное не показываем */
+  .terms h2 { margin: 2px 0 4px; font-size: calc(21px * var(--fz, 1)); } .terms .ver { color: var(--text-muted); font-size: calc(13px * var(--fz, 1)); margin: 0 0 12px; }
+  .terms ol { margin: 0 0 12px; padding-left: 22px; } .terms li { margin: 0 0 10px; color: var(--text-primary); }
+  .terms li::marker { color: var(--text-muted); }
+  .terms .full { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary); text-decoration: none; font-size: calc(14px * var(--fz, 1)); margin: 0 0 14px; }
+  .terms .btn { margin: 0 0 8px; } #terms { max-width: 620px; margin: 8px auto 0; }
   .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
+  /* «Запасные»: порядок поставщиков, на которые сессия переходит сама */
+  .fb-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
+  .fb-row:first-child { border-top: 0; padding-top: 0; }
+  .fb-n { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: calc(12px * var(--fz, 1)); font-weight: 600; background: var(--bg-subtle); color: var(--text-secondary); }
+  .fb-row .ctext { flex: 1; min-width: 0; } .fb-why { color: var(--status-danger); font-size: calc(12px * var(--fz, 1)); white-space: normal; }
+  .fb-row .icon { width: 36px; height: 36px; color: var(--text-secondary); }
+  .fb-add { display: flex; gap: 8px; margin-top: 12px; } .fb-add select { flex: 1; } .fb-add .btn { width: auto; flex: none; }
+  .fb-log { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 6px 0 0; padding: 0; list-style: none; }
+  .fb-log li { padding: 3px 0; } .fb-log time { color: var(--text-muted); margin-right: 6px; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: calc(24px * var(--fz, 1)) !important; }
 
   /* ===== Переписка ===== */
@@ -453,6 +468,8 @@
     </div>
   </section>
 
+  <section id="terms" hidden><div class="panel terms" id="termsBox"></div></section>
+
   <section id="home" hidden>
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
     <div class="rail" id="rail" role="group" aria-label="Сессии"></div>
@@ -566,7 +583,7 @@ const P = {
   hash: '<path d="M9.5 4l-2 16M16.5 4l-2 16M4.5 9h16M3.5 15h16"/>', home: '<path d="M4 11l8-6.5 8 6.5M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>',
   book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
   code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
-  down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
+  down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', up: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
   spark: '<path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5-.6-4.9-4.6-8.9-9.5-9.5 4.9-.6 8.9-4.6 9.5-9.5z" fill="url(#gsp)" stroke="none"/><defs><linearGradient id="gsp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs>',
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/>',
@@ -716,7 +733,11 @@ async function api(path, body, raw, extra) {
   catch (e) { throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "ошибка " + r.status);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
+    throw new Error(err.error || "ошибка " + r.status);
+  }
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
 async function busy(btn, text, fn) {              // кнопка показывает, что работает, и не нажимается дважды
@@ -765,20 +786,21 @@ function confirmDanger(text, go) {
 // ---------- навигация ----------
 function show(v) {
   view = v;
-  for (const id of ["login", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
-  const two = split();
+  for (const id of ["login", "terms", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
+  const gate = v === "login" || v === "terms";                    // вход и условия — без списка, меню и настроек
+  const two = split() && v !== "terms";                          // условия — одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
   applyWide(); renderRail();
-  if (two && v !== "login") $("home").hidden = false;               // список всегда на виду
+  if (two && !gate) $("home").hidden = false;                     // список всегда на виду
   $("pick").hidden = !(two && v === "home");
   $("dock").hidden = v !== "session";
-  $("homeBar").hidden = !((v === "home" || two) && v !== "login" && homeView === "sessions");
+  $("homeBar").hidden = !((v === "home" || two) && !gate && homeView === "sessions");
   syncBack();
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
   $("title").classList.toggle("sw", v === "session" && !two);
-  $("settingsBtn").hidden = v === "login";
-  $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
+  $("settingsBtn").hidden = gate;
+  $("title").classList.toggle("brand-text", v === "home" || gate);   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
   setBars(true); scrollToY(0);
@@ -924,6 +946,24 @@ function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
 function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход через Telegram</span>"); }
+// Условия использования: при первом входе и после смены версии. До «Принимаю» панель не показывает остальное.
+async function showTerms() {
+  if (view === "terms") return;
+  clearInterval(start.timer); start.timer = null;                 // фоновые запросы — после согласия
+  show("terms"); $("title").textContent = "Пульт"; setSub("<span>условия использования</span>");
+  let d; try { d = await api("/api/terms"); } catch (e) { $("termsBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
+  $("termsBox").innerHTML = `<h2 class="serif">${esc(d.title)}</h2><p class="ver">Версия от ${esc(d.version.split("-").reverse().join("."))} · прочитайте перед началом работы</p>
+    <ol>${d.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>
+    <a class="full" href="${esc(d.url)}" target="_blank" rel="noopener">${ic("book", "s16")}Полный текст условий</a>
+    <button class="btn" id="termsOk">${ic("check")}Принимаю</button>
+    ${meta?.via === "browser" ? '<button class="btn ghost" id="termsOut">Не принимаю — выйти</button>' : ""}
+    <div id="termsResult"></div>`;
+  $("termsOk").onclick = (e) => busy(e.currentTarget, "Сохраняю…", async () => {
+    try { await api("/api/terms/accept", { version: d.version }); haptic("notificationOccurred", "success"); await start(); }
+    catch (err) { $("termsResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
+  });
+  if ($("termsOut")) $("termsOut").onclick = async () => { try { await api("/api/logout", {}); } catch (e) {} showLogin(); };
+}
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
@@ -1010,11 +1050,21 @@ function card(s) {
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
     ${s.status === "stopped" && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-revive="${esc(s.id)}">${ic("refresh", "s16")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
 }
+// переключение на запасного поставщика (бот сделал сам) — одна строка, один раз
+const fbSeen = new Set();
+function fallbackNotices(list) {
+  let seen = ""; try { seen = localStorage.getItem("fbSeen") || ""; } catch (e) { /* без хранилища — только в памяти */ }
+  const fresh = list.filter((x) => !fbSeen.has(x.ts) && String(x.ts) > seen);
+  list.forEach((x) => fbSeen.add(x.ts));
+  if (!fresh.length) return;
+  toast(fresh.at(-1).text, 6000);
+  try { localStorage.setItem("fbSeen", String(fresh.at(-1).ts)); } catch (e) { /* не страшно */ }
+}
 async function refresh() {
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions;
-    watchSessions(sessions);
+    watchSessions(sessions); fallbackNotices(d.fallback || []);
     if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
@@ -1840,13 +1890,13 @@ const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(cl
 async function loadMcp(fresh) {
   const owner = meta?.role === "owner";                // участнику — только его сервисы; модели, ключи и голос — владельцу
   if (view === "home") setSub(owner ? "<span>голос, ключи API и сервисы</span>" : "<span>ваши сервисы</span>");
-  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div>' + (owner ? '<div id="modelsBox"></div><div id="voiceBox"></div>' : "");
+  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div>' + (owner ? '<div id="modelsBox"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
   if (!owner) {
     try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
     catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
     return;
   }
-  renderModels();
+  renderModels(); loadFallback();
   api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
   catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
@@ -1859,6 +1909,50 @@ function renderModels() {
       <div class="meta">${esc(p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key ? "ok" : ""}">${p.key ? "ключ " + esc(p.key.tail) : "нет ключа"}</span></div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
+
+// «Запасные»: поставщик не ответил (ключ, лимит, сбой, нет связи) — сессия сама продолжает разговор у следующего
+let fb = null;
+async function loadFallback() {
+  try { fb = await api("/api/fallback"); renderFallback(); }
+  catch (e) { $("fbBox").innerHTML = `<div class="section">Запасные</div><div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
+}
+function renderFallback() {
+  const opt = Object.fromEntries(fb.options.map((o) => [o.id, o])), title = (id) => opt[id]?.title || id;
+  const rest = fb.options.filter((o) => !fb.chain.includes(o.id) && !/регион/.test(o.why));
+  const voice = (k) => fb.voice[k].map(esc).join(" → ");
+  $("fbBox").innerHTML = `<div class="section">Запасные</div>
+    <p class="note">Поставщик не ответил (ключ, лимит, сбой, нет связи) — сессия сама продолжит разговор у первого подходящего по списку, и вы получите одну строку в Telegram.${fb.region ? ` Регион сервера — ${esc(fb.region)}: поставщики не для этой страны не выбираются.` : ""}</p>
+    <div class="panel">
+      ${fb.chain.length ? fb.chain.map((id, i) => `<div class="fb-row"><span class="fb-n">${i + 1}</span>
+        <div class="ctext"><div class="name">${esc(title(id))}</div>${opt[id]?.why ? `<div class="meta fb-why">${esc(opt[id].why)} — пропускается</div>` : ""}</div>
+        <button class="icon" data-fb-up="${i}" aria-label="Выше" ${i ? "" : "disabled"}>${ic("up")}</button>
+        <button class="icon" data-fb-down="${i}" aria-label="Ниже" ${i < fb.chain.length - 1 ? "" : "disabled"}>${ic("down")}</button>
+        <button class="icon" data-fb-rm="${i}" aria-label="Убрать">${ic("x")}</button></div>`).join("")
+        : '<p class="note" style="margin:0">Список пуст — пульт не переключает сессии сам.</p>'}
+      ${rest.length ? `<div class="fb-add"><select id="fbAdd" aria-label="Добавить запасного">${rest.map((o) => `<option value="${esc(o.id)}">${esc(o.title)}${o.why ? " · " + esc(o.why) : ""}</option>`).join("")}</select>
+        <button class="btn ghost sm" id="fbAddBtn">${ic("plus")}Добавить</button></div>` : ""}
+      ${fb.log.length ? `<div class="section" style="margin:16px 0 4px">Последние переключения</div>
+        <ul class="fb-log">${fb.log.slice(-3).reverse().map((x) => `<li><time>${esc(x.t || "")}</time>${esc(x.text || "")}</li>`).join("")}</ul>` : ""}
+    </div>
+    <div class="panel" style="margin-top:8px">
+      <div class="name">Голос — переключается сам</div>
+      <div class="hint">Озвучка: ${voice("tts")}<br>Распознавание: ${voice("stt")}</div>
+      ${fb.voice_note ? `<div class="result wait">${ic("warn")}<span>${esc(fb.voice_note)}</span></div>` : ""}
+    </div>`;
+}
+async function saveChain(chain, msg) {
+  try { fb = await api("/api/fallback", { chain }); renderFallback(); toast(msg); }
+  catch (e) { toast(e.message, 4500); }
+}
+$("integrationsView").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fb-up],[data-fb-down],[data-fb-rm],#fbAddBtn"); if (!b || !fb) return;
+  const c = [...fb.chain];
+  if (b.id === "fbAddBtn") return saveChain([...c, $("fbAdd").value], "Запасной добавлен");
+  const i = +(b.dataset.fbUp ?? b.dataset.fbDown ?? b.dataset.fbRm);
+  if (b.dataset.fbRm != null) { c.splice(i, 1); return saveChain(c, "Убран из запасных"); }
+  const j = b.dataset.fbUp != null ? i - 1 : i + 1; [c[i], c[j]] = [c[j], c[i]];
+  saveChain(c, "Порядок сохранён");
+});
 async function reloadProfiles() { try { meta.profiles = (await api("/api/meta")).profiles; } catch (e) { /* покажем старое */ } }
 let orLink = null, orTimer = null;
 function profileForm(p, connected) {
@@ -2190,7 +2284,7 @@ async function peopleSheet() {
   let d; try { d = await api("/api/people"); } catch (e) { return toast(e.message, 4000); }
   sheet("Люди", [...d.people.map((p) => ({
     label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: "pin",
-    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить"),
+    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
     run: () => p.role !== "owner" && personSheet(p) })),
     { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" }]);
 }
@@ -2199,7 +2293,7 @@ function personSheet(p) {
   sheet(p.name || "ID " + p.id, [
     { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
     { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
-    { label: "Убрать доступ", icon: "power", danger: true, sub: "вход перестанет работать сразу", run: () => confirmDanger(`Убрать доступ у ${p.name || p.id}?`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Доступ убран"))) },
+    { label: "Отключить", icon: "power", danger: true, sub: "доступ прекратится сразу: вход перестанет работать на всех устройствах", run: () => confirmDanger(`Отключить ${p.name || "ID " + p.id}? Доступ к пульту прекратится сразу.`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Отключён: " + (p.name || "ID " + p.id))).catch((e) => toast(e.message, 4000))) },
   ]);
 }
 
@@ -2328,6 +2422,7 @@ $("setupView").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.t
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
+  if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
   if (meta.role === "viewer" && !$("viewOnly")) $("composer").insertAdjacentHTML("afterend", '<div class="viewonly" id="viewOnly">Доступ только на просмотр</div>');
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
@@ -2403,13 +2498,18 @@ function demoApi(path, body) {
   const R = {
     "/api/meta": { host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
-                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner",
+                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", terms: { version: "2026-11-01", accepted: !params.has("terms") || !!demoApi.terms },
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name })) },
-    "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "" }, { id: 2, role: "member", name: "Алексей", username: "alexey" }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
+    "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "", terms: { version: "2026-11-01", at: 1793491200 } }, { id: 2, role: "member", name: "Иван", username: "ivan", terms: { version: "2026-11-01", at: 1793491200 } }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
+    "/api/terms": { version: "2026-11-01", title: "Условия использования пульта", url: "https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md", accepted: false, at: null, points: [
+      "Пульт — инструмент: он передаёт ваши сообщения в сессии Claude Code и другие модели. Модели предоставляют их поставщики (Anthropic, OpenRouter и другие) по своим условиям.",
+      "Вы сами отвечаете за соблюдение условий поставщиков моделей и законов: у вас свой аккаунт или ключ, вы не делитесь подпиской и не перепродаёте её, работаете только из поддерживаемых поставщиком стран.",
+      "При нарушении этих условий или правил поставщика владелец пульта вправе в любой момент и без предупреждения прекратить ваш доступ.",
+      "Нажимая «Принимаю», вы подтверждаете, что прочитали условия. Дата согласия сохраняется на сервере пульта."] },
     "/api/login/tg": { id: "demo", link: "https://t.me/rc_cld_bot?start=login_demo", ttl: 300, state: "wait" },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
@@ -2425,6 +2525,14 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  demoApi.fb ||= ["openrouter", "claude"];
+  if (path === "/api/fallback" && body) demoApi.fb = body.chain;
+  R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
+    options: [{ id: "claude", title: "Claude", why: "" }, { id: "openrouter", title: "OpenRouter", why: params.get("orkey") ? "" : "нет ключа" },
+              { id: "zai", title: "GLM (Z.ai)", why: "" }, { id: "deepseek", title: "DeepSeek", why: "" }],
+    log: [{ t: "2026-11-01 14:20", text: "Поставщик DeepSeek не отвечает (429) — сессия «digest-0716» переключена на OpenRouter" },
+          { t: "2026-11-01 16:05", text: "Поставщик OpenRouter не отвечает (529) — сессия «digest-0716» переключена на Claude" }],
+    voice: { tts: ["ElevenLabs", "На сервере · Piper"], stt: ["ElevenLabs Scribe", "На сервере · whisper"] } };
   // ?setup=login — вход не выполнен, ?setup=none — Claude Code не установлен; без параметра — всё готово
   const su = params.get("setup"), inst = su !== "none";
   R["/api/setup/status"] = { ready: !su, claude: { installed: inst, path: inst ? "/usr/local/bin/claude" : "", version: inst ? "2.1.316 (Claude Code)" : "" },
@@ -2491,6 +2599,7 @@ function demoApi(path, body) {
   }
   if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
+  if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
