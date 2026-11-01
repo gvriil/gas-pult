@@ -22,7 +22,8 @@ W = {"id": "@1", "path": "/tmp"}
 
 
 def test_run_ok(panel):
-    assert panel.run(W, 0, "aaa", False) == {"code": 0, "seconds": 0, "out": "ran ls", "cut": False}
+    assert panel.run(W, 0, "aaa", False) == {"code": 0, "seconds": 0, "out": "ran ls", "cut": False,
+                                             "triage": "", "triage_to": ""}
 
 
 def test_run_rejects_changed_answer(panel):
@@ -304,3 +305,22 @@ def test_prompt_hint_parsing():
     assert prompt_hint(["● x", box, stub, box]) == ""                                # общая заглушка
     assert prompt_hint(["● x", box, "\x1b[39m❯\u00a0мой текст", box]) == ""        # набранное — не подсказка
     assert prompt_hint(["\x1b[2m❯ 1. Да\x1b[22m", "  2. Нет"]) == ""               # меню — не строка ввода
+
+
+def test_failed_command_in_tab_is_triaged_and_full_output_kept(logged, monkeypatch):
+    from gas_pult import webapp as wa
+    big = "\n".join(f"line {i}" for i in range(2000))
+    monkeypatch.setattr(wa, "execute", lambda cmd, cwd: (2, 0.1, big))
+    monkeypatch.setattr(logged.pult, "triage", lambda path, wid, cmd, code, out, paste=None: ("sent", "alpha"))
+    item = logged.command_run("c1", False)["item"]
+    assert item["done"]["code"] == 2 and item["done"]["triage"] == "sent" and item["done"]["triage_to"] == "alpha"
+    assert item["done"]["cut"] and logged.journal.output("c1") == big       # весь вывод — для «Копировать»
+    assert logged.journal.output("../../etc/passwd") is None
+
+
+def test_chat_block_run_returns_full_output_when_cut(panel, monkeypatch):
+    big = "y" * 5000
+    monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: (0, 0.1, big))
+    monkeypatch.setattr(panel.tmux, "windows", lambda: [])
+    r = panel.run(W, 0, "aaa", False)
+    assert r["cut"] and r["full"] == big and len(r["out"]) < len(big)

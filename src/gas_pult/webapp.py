@@ -33,7 +33,7 @@ from importlib import resources
 
 from gas_pult import models, providers, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
-from gas_pult.commands import DANGER, TAIL, Journal, execute, extract
+from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
@@ -112,7 +112,7 @@ class Panel:
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
-        self.journal = Journal(cfg.data / "commands-log.json")       # вкладка «Команды»: все команды всех сессий
+        self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
 
     def window(self, wid: str) -> dict | None:
         w = self.tmux.window(wid)
@@ -487,7 +487,24 @@ class Panel:
         if c["danger"] and not confirmed:
             return {"confirm": True}
         code, secs, out = execute(c["cmd"], w["path"])
-        return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL}
+        tri, to = self.triage(w["path"], w["id"], c["cmd"], code, out)
+        self.journal.collect([w], self.pult.cmds.kind)               # та же отметка — во вкладке «Команды»
+        self.journal.mark_cmd(w["path"], c["cmd"], self.done(code, secs, out, "panel", tri, to), out)
+        return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
+                **({"full": out[-FULL:]} if len(out) > TAIL else {}), "triage": tri, "triage_to": to}
+
+    def triage(self, path: str, wid: str, cmd: str, code, out: str) -> tuple[str, str]:
+        """Упала — в сессию на разбор (одну ошибку — один раз); вставка — под замком окна, как обычное сообщение."""
+        try:
+            return self.pult.triage(path, wid, cmd, code, out, paste=lambda w, text: self.send(w, text))
+        except Exception as e:                                      # разбор — не повод потерять итог выполнения
+            print(f"gas-pult webapp: не отправил ошибку на разбор: {e}", flush=True)
+            return "error", ""
+
+    @staticmethod
+    def done(code, secs: float, out: str, by: str, tri: str = "", to: str = "") -> dict:
+        return {"code": code, "seconds": round(secs), "at": utc_now(), "by": by, "out": out[-TAIL:],
+                "cut": len(out) > TAIL, "triage": tri, "triage_to": to}
 
     # ---------- вкладка «Команды»: все команды из ответов всех сессий (время — UTC, как в транскрипте) ----------
     def command_log(self, can_run: bool) -> dict:
@@ -508,9 +525,10 @@ class Panel:
         if c["danger"] and not confirmed:
             return {"confirm": True}
         code, secs, out = execute(c["cmd"], c["path"])
-        done = {"code": code, "seconds": round(secs), "at": utc_now(), "by": "panel",
-                "out": out[-TAIL:], "cut": len(out) > TAIL}
-        return {"item": self.journal.mark(cid, done)}
+        tri, to = self.triage(c["path"], c.get("wid", ""), c["cmd"], code, out)
+        item = self.journal.mark(cid, self.done(code, secs, out, "panel", tri, to))
+        self.journal.save_output(cid, out)
+        return {"item": item}
 
     def command_mark(self, cid: str, done: bool) -> dict:
         mark = {"code": None, "seconds": 0, "at": utc_now(), "by": "hand", "out": ""}
@@ -533,8 +551,8 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 """
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, интеграции, модели, люди.
-OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/close", "/api/restart", "/api/keys",
-              "/api/keys/remove", "/api/providers",
+OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
+              "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
               "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
               "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove"}
@@ -660,6 +678,11 @@ def handler(panel: Panel):
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
             if path == "/api/commands":
                 return panel.command_log(self.who()[1] == "owner")
+            if path == "/api/commands/output":
+                out = panel.journal.output(q.get("id", ""))
+                if out is None:
+                    raise LookupError("вывода этой команды уже нет")
+                return {"out": out}
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"])}

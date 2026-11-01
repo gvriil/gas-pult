@@ -156,3 +156,57 @@ def test_mark_failure_does_not_lose_result(tmp_path, monkeypatch):
     sent = []
     c.run(next(iter(c._load())), False, lambda text, **k: sent.append(text), lambda rows: rows)
     assert any("код 0" in t for t in sent)
+
+
+def test_triage_text_has_command_code_and_last_lines():
+    from gas_pult.commands import FAIL_LINES, triage_text
+    out = "\n".join(f"строка {i}" for i in range(200))
+    t = triage_text("make build", 2, out)
+    assert t.startswith("Команда упала — разбери и предложи исправление:")
+    assert "make build" in t and "Код выхода: 2" in t
+    assert "строка 199" in t and f"строка {199 - FAIL_LINES}" not in t and f"строка {200 - FAIL_LINES}" in t
+
+
+def _pult(tmp_path, wins):
+    from gas_pult import bot
+    from gas_pult.commands import Journal
+    p = bot.Pult.__new__(bot.Pult)
+    p.journal = Journal(tmp_path / "log.json")
+    p.tmux = type("T", (), {"windows": lambda self: wins})()
+    p.pasted = []
+    p.to_claude = lambda w, text: p.pasted.append((w["id"], text))
+    return p
+
+
+def test_failed_command_goes_to_its_session_once(tmp_path):
+    p = _pult(tmp_path, [{"id": "@1", "name": "a", "path": "/srv/a", "cmd": "claude"},
+                         {"id": "@2", "name": "b", "path": "/srv/a", "cmd": "claude"}])
+    assert p.triage("/srv/a", "@2", "ls", 0, "") == ("", "")                 # успех — не шлём
+    assert p.triage("/srv/a", "@2", "ls x", 2, "нет такого файла") == ("sent", "b")   # в то окно, откуда пришла
+    assert p.triage("/srv/a", "@2", "ls x", 2, "нет такого файла") == ("dup", "b")    # та же ошибка — второй раз нет
+    assert p.triage("/srv/a", "@9", "ls y", 2, "нет") == ("sent", "a")        # окна нет — другое окно той же папки
+    assert [w for w, _ in p.pasted] == ["@2", "@1"]
+    assert p.triage("/srv/zzz", "", "ls", 1, "") == ("closed", "")
+
+
+def test_triage_retries_when_claude_was_asking(tmp_path):
+    from gas_pult import bot
+    p = _pult(tmp_path, [{"id": "@1", "name": "a", "path": "/srv/a", "cmd": "claude"}])
+
+    def busy(w, text):
+        raise bot.NotReady("Claude ждёт ответа")
+    assert p.triage("/srv/a", "@1", "ls", 2, "x", paste=busy) == ("busy", "a")
+    assert p.triage("/srv/a", "@1", "ls", 2, "x") == ("sent", "a")           # в прошлый раз не дошло — шлём
+
+
+def test_bot_sends_full_output_as_file_when_cut(tmp_path, monkeypatch):
+    from gas_pult import commands
+    from gas_pult.commands import TAIL, Commands
+    c = Commands("h", tmp_path / "cmds.json", [], [], platform="linux", on_done=lambda *a: "🔎 note")
+    big = "x" * (TAIL + 500)
+    monkeypatch.setattr(commands, "execute", lambda cmd, cwd: (1, 0.1, big))
+    c.offer({"name": "a", "path": "/tmp"}, "```bash\nls\n```", lambda *a, **k: None, lambda rows: rows)
+    sent, files = [], []
+    c.run(next(iter(c._load())), False, lambda text, **k: sent.append(text), lambda rows: rows,
+          send_file=lambda name, data: files.append((name, data)))
+    assert files == [("output.txt", big.encode())] and "файлом" in sent[-1] and "note" in sent[-1]
