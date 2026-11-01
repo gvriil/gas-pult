@@ -257,7 +257,10 @@
   .tool.send { background: var(--accent-primary); color: var(--on-accent); }
   .ctools .target { padding: 0 4px 0 6px; font-size: 12px; }
   .ctools .live { font-size: 11.5px; padding-right: 2px; }
-  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; white-space: nowrap; }
+  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; white-space: nowrap;
+            border: 0; background: transparent; font-family: inherit; text-align: left; min-height: 36px; border-radius: var(--radius-pill); cursor: pointer; }
+  .target:active { background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+  .target .caret { flex: none; display: inline-flex; color: var(--text-muted); }
   .target b { flex: 0 0 auto; max-width: 55%; }            /* имя сессии — главное: куда уйдёт сообщение */
   .target > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   @media (max-width: 440px) { .live .lw { display: none; } }
@@ -442,7 +445,7 @@
     <div class="ctools" id="ctools">
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
       <button class="tool" id="menuBtn" aria-label="Меню действий"></button>
-      <div class="target" id="target"></div>
+      <button class="target" id="target" type="button" aria-label="Сменить сессию"></button>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
       <button class="tool" id="mic" aria-label="Записать голосовое"></button>
@@ -889,7 +892,7 @@ function paintSession(s) {
     $("title").innerHTML = `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`;
   }
   setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
-  $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span>${provName(s) ? "· " + esc(provName(s)) + " " : ""}· ${st.label}</span>`;
+  $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${st.label}</span>`;
   $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
   paintWorking(s);
 }
@@ -1992,6 +1995,7 @@ $("settingsBtn").onclick = () => {
   ]);
 };
 $("backBtn").onclick = back;
+$("target").onclick = () => { haptic("selectionChanged"); openSwitcher(); };   // «куда уйдёт» у поля ввода — сменить сессию
 $("updateBar").onclick = reloadPanel;
 
 // ---------- старт ----------
