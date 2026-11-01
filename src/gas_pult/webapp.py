@@ -23,6 +23,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -363,7 +364,9 @@ class Panel:
         el = "elevenlabs" in keys
         return {"tts": st.get("tts_provider", "local") if el else "local",
                 "stt": st.get("stt_provider", "local") if el else "local",
-                "el_voice": st.get("el_voice"), "keys": keys, "local_voice": catalog.label(self.voice() or "")}
+                "el_voice": st.get("el_voice"), "keys": keys, "local_voice": catalog.label(self.voice() or ""),
+                "fallback": self.fallback_note(), "voice": self.voice(),
+                "local_voices": [{"id": v, "name": catalog.label(v)} for v in catalog.installed()]}
 
     def el_voices(self) -> list[dict]:
         key = providers.load_keys().get("elevenlabs")
@@ -424,12 +427,29 @@ class Panel:
                 upd[f"{k}_provider"] = b[k]
         if b.get("el_voice"):
             upd["el_voice"] = str(b["el_voice"])
+        if b.get("voice"):
+            if b["voice"] not in catalog.installed():
+                raise ValueError("этот голос не установлен: gas-pult voices install <имя>")
+            upd["voice"] = str(b["voice"])
         self.pult.set_state(**upd)
+
+    def voice_fallback(self, what: str, e: Exception):
+        """ElevenLabs отказал — работаем локально и говорим об этом: в журнал службы и панели (``fallback`` в /api/voice)."""
+        note = f"ElevenLabs недоступен ({what}): {e} — переключился на локальный голос"
+        print(note, file=sys.stderr, flush=True)
+        self.last_fallback = (time.time(), note)
+
+    def fallback_note(self) -> str:
+        t, note = getattr(self, "last_fallback", (0, ""))
+        return note if time.time() - t < 3600 else ""
 
     def stt(self, data: bytes, ctype: str) -> str:
         ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
         if self.voice_settings()["stt"] == "elevenlabs":
-            return providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}")
+            try:
+                return providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}")
+            except (providers.ProviderError, KeyError) as e:     # запасной путь — локальный whisper, молча не падаем
+                self.voice_fallback("распознавание", e)
         path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{ext}"
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_bytes(data)
@@ -456,7 +476,10 @@ class Panel:
             voice_id = vs["el_voice"] or next(iter(self.el_voices()), {}).get("id")
             if not voice_id:
                 raise ValueError("в аккаунте ElevenLabs нет голосов")
-            return providers.el_tts(providers.load_keys()["elevenlabs"], voice_id, text)
+            try:
+                return providers.el_tts(providers.load_keys()["elevenlabs"], voice_id, text)
+            except (providers.ProviderError, KeyError) as e:     # запасной путь — локальный голос
+                self.voice_fallback("озвучка", e)
         v = self.voice()
         if not v:
             raise ValueError("голоса не установлены: gas-pult voices install irina")
@@ -751,7 +774,10 @@ def handler(panel: Panel):
             if path == "/api/upload":
                 return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
             if path == "/api/stt":
-                return {"text": panel.stt(self.body(), self.headers.get("Content-Type", ""))}
+                before = panel.fallback_note()
+                text = panel.stt(self.body(), self.headers.get("Content-Type", ""))
+                now = panel.fallback_note()
+                return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
