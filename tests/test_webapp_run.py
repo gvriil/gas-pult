@@ -240,3 +240,20 @@ def test_failed_paste_can_be_retried(panel, monkeypatch):
     with pytest.raises(ValueError):
         panel.send(W, "привет", "m1")
     assert panel.send(W, "привет", "m1") is False and calls == ["привет", "привет"]   # не дошло — повтор вставляет
+
+
+def test_window_name_rules():
+    from gas_pult.tmux import window_name
+    assert window_name("  магазин   бот ") == "магазин бот"
+    for bad in ("", "   ", "a:b", "v1.2", "x" * 41):
+        with pytest.raises(ValueError):
+            window_name(bad)
+
+
+def test_rename_runs_tmux_on_own_server(panel, monkeypatch):
+    calls = []
+    import gas_pult.tmux as tm
+    ok = tm.subprocess.CompletedProcess
+    monkeypatch.setattr(tm.subprocess, "run", lambda args, **kw: calls.append(args) or ok(args, 0, "", ""))
+    assert panel.tmux.rename("@3", "shop") == "shop"
+    assert calls[-1][-4:] == ["rename-window", "-t", "@3", "shop"] and "-S" in calls[-1]    # тесты — на своём сокете

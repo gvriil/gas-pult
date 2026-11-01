@@ -321,6 +321,10 @@
   .sheet button span { flex: 1; min-width: 0; } .sheet button small { display: block; color: var(--text-secondary); font-size: 13px; }
   .sheet button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — меню, не выделение */
   .sheet button .sdot { margin: 0 3px; }
+  .sheet .row2 { display: flex; gap: 8px; padding: 12px 16px 4px; }
+  .sheet .row2 .btn { flex: 1; margin: 0; min-height: 0; justify-content: center; font-size: 15px; }   /* .btn, а не пункт шторки */
+  .sheet .row2 .btn:not(.ghost) { background: var(--accent-primary); color: var(--on-accent); }
+  .sheet .row2 .btn.ghost { border: 1px solid var(--border-subtle); }
   /* Чат прежде всего (телефон): имя сессии с ▾ — переключатель; тихая точка — что-то ждёт в другой сессии */
   .top h1.sw { cursor: pointer; display: flex; align-items: center; gap: 4px; }
   .top h1.sw .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -462,6 +466,7 @@ const P = {
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z"/>', pause: '<path d="M9 5.5v13M15 5.5v13"/>',
   chev: '<path d="M7 10l5 5 5-5"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
   volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
@@ -836,6 +841,7 @@ function sessionSheet(id) {
   sheet(s.name, [
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
     { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) },
+    ...(meta?.role !== "viewer" ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
   ]);
 }
@@ -1297,9 +1303,25 @@ function openSwitcher() {
     ...(meta?.role !== "viewer" ? [{ label: "Новая сессия", icon: "plus", run: () => newSession() }] : []),
     { label: "Все сессии и интеграции", icon: "menu", run: back }]);
 }
-function sessionActions(s) {
-  sheet(s.name, [{ label: "Открыть", icon: "chat", run: () => openSession(s.id) },
-    ...(meta?.role === "owner" ? [{ label: "Завершить", icon: "power", danger: true, run: () => confirmDanger(`Завершить «${s.name}»?`, () => closeSession(s.id)) }] : [])]);
+const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
+// Переименовать: своё поле ввода (prompt() в Telegram на iPhone ненадёжен). Имя — как в tmux: без «:» и «.».
+function renameSession(s) {
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Переименовать сессию</h3>
+    <div class="field" style="margin:4px 16px 0"><input id="renName" maxlength="40" autocomplete="off" value="${esc(s.name)}"></div>
+    <p class="note" id="renErr" style="margin:6px 16px 0">До 40 знаков, без «:» и «.»</p>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="renOk">Сохранить</button></div></div>`;
+  document.body.append(bg);
+  const inp = $("renName"); inp.focus(); inp.select();
+  const save = async () => {
+    const name = inp.value.trim().replace(/\s+/g, " ");
+    if (!name || /[:.]/.test(name)) { $("renErr").style.color = "var(--status-danger)"; return; }
+    try { await api("/api/rename", { w: s.id, name }); bg.remove(); toast("Теперь: " + name); haptic("notificationOccurred", "success"); await refresh(); if (s.id === current) paintSession(cur()); }
+    catch (e) { $("renErr").textContent = e.message; $("renErr").style.color = "var(--status-danger)"; }
+  };
+  $("renOk").onclick = save;
+  inp.onkeydown = (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") bg.remove(); };
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
 }
 $("switchBtn").onclick = openSwitcher;
 $("title").onclick = () => { if (view === "session" && !split()) openSwitcher(); };
@@ -1886,7 +1908,7 @@ function demoApi(path, body) {
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
-    "/api/sessions": { host: "ubuntu", sessions: S },
+    "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name })) },
     "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "" }, { id: 2, role: "member", name: "Алексей", username: "alexey" }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
     "/api/login/tg": { id: "demo", link: "https://t.me/rc_cld_bot?start=login_demo", ttl: 300, state: "wait" },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
@@ -1933,6 +1955,7 @@ function demoApi(path, body) {
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
   }
+  if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });

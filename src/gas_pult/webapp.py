@@ -748,6 +748,8 @@ def handler(panel: Panel):
                 if not text:
                     raise ValueError("пустое сообщение")
                 return {"ok": True, "dup": panel.send(w, text, str(b.get("id", ""))[:64])}
+            if path == "/api/rename":
+                return {"name": panel.tmux.rename(w["id"], str(b.get("name", "")))}
             if path == "/api/active":
                 panel.pult.set_state(active=w["id"])
                 return {"ok": True}
