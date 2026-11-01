@@ -15,6 +15,14 @@ SILERO_URL = "https://models.silero.ai/models/tts/ru/v5_ru.pt"
 SILERO = {"xenia": "Ксения", "baya": "Бая", "kseniya": "Ксения-2", "aidar": "Айдар", "eugene": "Евгений"}
 
 
+# Порядок карточек на экране «Голос» и в боте (/voice): сначала Silero, затем Piper.
+ORDER = ["xenia", "baya", "aidar", "eugene", "kseniya", "irina", "dmitri", "denis", "ruslan"]
+# Подпись карточки одним словом — пол голоса.
+KIND = {"xenia": "женский", "baya": "женский", "aidar": "мужской", "eugene": "мужской", "kseniya": "женский",
+        "irina": "женский", "dmitri": "мужской", "denis": "мужской", "ruslan": "мужской"}
+PREVIEW = "Привет! Так я буду читать ответы Claude."      # фраза «Послушать»
+
+
 def label(name: str) -> str:
     return PIPER.get(name) or SILERO.get(name) or name
 
@@ -69,3 +77,18 @@ def install(name: str, log=print):
             _fetch(SILERO_URL, silero_model(), log)
     else:
         raise RuntimeError(f"Неизвестный голос «{name}». Есть: {', '.join([*PIPER, *SILERO])}")
+
+
+def cards(personal: bool = False, owner: bool = False) -> list[dict]:
+    """Карточки локальных голосов в порядке ``ORDER``. Silero — только при ``personal`` (иначе их нет вовсе);
+    не установленные — только владельцу, с командой установки; остальным — только установленные."""
+    have = set(installed(personal))
+    out = []
+    for n in ORDER:
+        if n in NONCOMMERCIAL and not personal:
+            continue
+        ok = n in have
+        if ok or owner:
+            out.append({"id": n, "name": label(n), "kind": KIND.get(n, ""), "ok": ok,
+                        "why": "" if ok else "не установлен", "install": "" if ok else f"gas-pult voices install {n}"})
+    return out

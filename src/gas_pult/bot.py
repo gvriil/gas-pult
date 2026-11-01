@@ -29,7 +29,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import country, digest, fallback, models, people, setup, terms, transcripts, voice
+from gas_pult import country, digest, fallback, models, people, providers, setup, terms, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People, allowed
@@ -391,6 +391,103 @@ class Pult:
             for ext in (".ogg", ".mp3"):
                 base.with_suffix(ext).unlink(missing_ok=True)
 
+    # ---------- выбор голоса: /voice и ⚙️ Настройки (карточки — как на экране «Голос» панели) ----------
+    def el_voice_id(self) -> str | None:
+        """Голос ElevenLabs: выбранный или первый из аккаунта."""
+        key = providers.load_keys().get("elevenlabs")
+        if not key:
+            return None
+        return self.state().get("el_voice") or next(iter(providers.el_voices(key)), {}).get("id")
+
+    def choose_voice(self, vid: str):
+        """Выбор карточкой — одно действие: локальный голос — ``tts_provider=local`` и ``voice``; ElevenLabs —
+        ``tts_provider=elevenlabs`` (голос ElevenLabs — выбранный раньше или первый из аккаунта)."""
+        if vid == "elevenlabs":
+            if "elevenlabs" not in providers.key_info():
+                raise ValueError("нужен ключ ElevenLabs — панель → Интеграции → Ключи API")
+            upd = {"tts_provider": "elevenlabs"}
+            if not self.state().get("el_voice") and (first := self.el_voice_id()):
+                upd["el_voice"] = first
+            return self.set_state(**upd)
+        if vid not in catalog.installed(self.cfg.personal_voices):            # выбирает владелец
+            raise ValueError(f"этот голос не установлен: gas-pult voices install {vid}")
+        self.set_state(tts_provider="local", voice=vid)
+
+    def voice_preview(self, vid: str, personal: bool, ext: str = "mp3") -> tuple[bytes, str]:
+        """«Послушать»: фраза из кеша ``<data>/voice-preview`` → (данные, расширение). Silero — только при
+        ``personal`` (владельцу при ``personal_voices``); ElevenLabs — всегда mp3, запрос — только в первый раз."""
+        cache = self.cfg.data / "voice-preview"
+        if vid == "elevenlabs":
+            key = providers.load_keys().get("elevenlabs")
+            if not key or not (el := self.el_voice_id()):
+                raise ValueError("нужен ключ ElevenLabs")
+            return voice.preview(cache, vid, el=(key, el)), "mp3"
+        if vid not in catalog.installed(personal):
+            raise ValueError("этот голос недоступен")
+        return voice.preview(cache, vid, ext), ext
+
+    def current_voice(self) -> str:
+        s = self.state()
+        return "elevenlabs" if s.get("tts_provider") == "elevenlabs" and "elevenlabs" in providers.key_info() \
+            else s["voice"]
+
+    def voice_rows(self) -> list:
+        """Сетка: на голос — «▶ имя» (послушать) и «✅ имя · пол» (выбрать); не установленные — одной кнопкой."""
+        cur, rows = self.current_voice(), []
+        if "elevenlabs" in providers.key_info():
+            rows.append([("▶ ElevenLabs", "vp:elevenlabs"), (("✅ " if cur == "elevenlabs" else "") + "ElevenLabs",
+                                                             "vs:elevenlabs")])
+        else:
+            rows.append([("ElevenLabs — нужен ключ", "vi:elevenlabs")])
+        for c in catalog.cards(self.cfg.personal_voices, owner=True):
+            if c["ok"]:
+                rows.append([(f"▶ {c['name']}", f"vp:{c['id']}"),
+                             (("✅ " if c["id"] == cur else "") + f"{c['name']} · {c['kind']}", f"vs:{c['id']}")])
+            else:
+                rows.append([(f"⬇ {c['name']} — не установлен", f"vi:{c['id']}")])
+        return rows
+
+    def voice_text(self) -> str:
+        cur, s = self.current_voice(), self.state()
+        if cur == "elevenlabs":
+            line = f"🗣 Голос: ElevenLabs (озвучка в панели); голосовые бота — {catalog.label(s['voice'])}"
+        else:
+            line = f"🗣 Голос: {catalog.label(cur)}"
+        return line + "\n▶ — послушать, имя — выбрать."
+
+    def show_voice(self, chat: int, q: dict | None = None):
+        """/voice. Из кнопки — обновляем то же сообщение (галочка переезжает), иначе — новое."""
+        text, markup = self.voice_text(), kb(self.voice_rows())
+        msg = (q or {}).get("message") or {}
+        if msg.get("message_id"):
+            try:
+                return self.api("editMessageText", chat_id=chat, message_id=msg["message_id"], text=text,
+                                reply_markup=markup)
+            except TelegramError:
+                pass
+        self.send(chat, text, reply_markup=markup)
+
+    def on_voice(self, chat: int, kind: str, vid: str, q: dict):
+        if kind == "vi":
+            if vid == "elevenlabs":
+                return self.send(chat, "Ключ ElevenLabs — в панели: Интеграции → Голос → Ключи API.")
+            return self.send(chat, f"«{catalog.label(vid)}» не установлен. На сервере: gas-pult voices install {vid}")
+        if kind == "vs":
+            try:
+                self.choose_voice(vid)
+            except ValueError as e:
+                return self.send(chat, str(e))
+            return self.show_voice(chat, q)
+        ext = "mp3" if self.state().get("audio_only") else "ogg"
+        try:
+            data, ext = self.voice_preview(vid, self.cfg.personal_voices, ext)
+        except (ValueError, RuntimeError, OSError, providers.ProviderError) as e:
+            return self.send(chat, f"Не получилось послушать: {e}")
+        name = "ElevenLabs" if vid == "elevenlabs" else catalog.label(vid)
+        if ext == "ogg":
+            return self.api("sendVoice", chat_id=chat, caption=name, files={"voice": (f"{vid}.ogg", data)})
+        self.api("sendAudio", chat_id=chat, title=name, performer="gas-pult", files={"audio": (f"{vid}.mp3", data)})
+
     def remember(self, w: dict, text: str) -> int:
         with self.lock:
             self.counter += 1
@@ -587,11 +684,9 @@ class Pult:
         rows = [[("🔔 Все", "set:notify=all"), ("🔕 Только активная", "set:notify=active"),
                  ("🚫 Выкл", "set:notify=off")],
                 [("🔊 Голосом: вкл/выкл", "set:voice_always"), ("🩺 Проверка", "su:check")], [("👥 Люди", "ppl:")]]
-        rows += [[(("✅ " if v == s["voice"] else "🗣 ") + catalog.label(v), f"set:voice={v}") for v in voices[i:i + 3]]
-                 for i in range(0, len(voices), 3)]
+        rows += self.voice_rows()                          # та же сетка, что /voice: ▶ — послушать, имя — выбрать
         self.send(chat, f"⚙️ Уведомления: {NOTIFY.get(s['notify'], s['notify'])}\n"
-                        f"🔊 Всегда голосом: {'да' if s['voice_always'] else 'нет'}\n"
-                        f"🗣 Голос: {catalog.label(s['voice'])}"
+                        f"🔊 Всегда голосом: {'да' if s['voice_always'] else 'нет'}\n" + self.voice_text()
                         + ("" if voices else "\n(голоса не установлены: gas-pult voices install irina)"),
                   reply_markup=kb(rows))
 
@@ -868,6 +963,8 @@ class Pult:
                   or (key == "voice" and val in catalog.installed(self.cfg.personal_voices))):
                 self.set_state(**{key: val})
             return self.show_settings(chat)
+        if kind in ("vp", "vs", "vi"):                     # голос: послушать / выбрать / как установить
+            return self.on_voice(chat, kind, arg, q)
         if kind == "say":
             a = self.answers.get(int(arg)) if arg.isdigit() else None
             return self.say(chat, a[1]) if a else send("Этот ответ уже забыт — открой 💬 Последний ответ.")
@@ -1122,13 +1219,15 @@ class Pult:
         if t == "/digest":
             return self.send_digest(chat)
         if t in ("/start", "/menu", "/help"):
-            send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу.",
+            send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice.",
                  reply_markup=MENU)
             if t == "/start" and not (st := self.setup_status())["ready"]:
                 self.show_setup(chat, st)
             return None
         if t == "/setup":
             return self.show_setup(chat)
+        if t == "/voice":
+            return self.show_voice(chat)
         task = self.task.match(t) if m.get("text") else None
         if task:
             tid = task.group(1).upper()
