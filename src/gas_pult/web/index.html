@@ -157,6 +157,12 @@
   .result.ok { background: color-mix(in srgb, var(--status-success) 10%, var(--bg-surface)); }
   .result.bad { background: color-mix(in srgb, var(--status-danger) 10%, var(--bg-surface)); }
   .result.wait { background: var(--bg-subtle); }
+  /* Условия использования: первый вход — прочитать и нажать «Принимаю»; до этого остальное не показываем */
+  .terms h2 { margin: 2px 0 4px; font-size: 21px; } .terms .ver { color: var(--text-muted); font-size: 13px; margin: 0 0 12px; }
+  .terms ol { margin: 0 0 12px; padding-left: 22px; } .terms li { margin: 0 0 10px; color: var(--text-primary); }
+  .terms li::marker { color: var(--text-muted); }
+  .terms .full { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary); text-decoration: none; font-size: 14px; margin: 0 0 14px; }
+  .terms .btn { margin: 0 0 8px; } #terms { max-width: 620px; margin: 8px auto 0; }
   .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
 
@@ -423,6 +429,8 @@
     </div>
   </section>
 
+  <section id="terms" hidden><div class="panel terms" id="termsBox"></div></section>
+
   <section id="home" hidden>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg">Команды</button><button data-v="integrations" data-owner>Интеграции</button></div>
@@ -597,7 +605,11 @@ async function api(path, body, raw, extra) {
   catch (e) { throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "ошибка " + r.status);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
+    throw new Error(err.error || "ошибка " + r.status);
+  }
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
 async function busy(btn, text, fn) {              // кнопка показывает, что работает, и не нажимается дважды
@@ -646,19 +658,20 @@ function confirmDanger(text, go) {
 // ---------- навигация ----------
 function show(v) {
   view = v;
-  for (const id of ["login", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
-  const two = split();
+  for (const id of ["login", "terms", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
+  const gate = v === "login" || v === "terms";                    // вход и условия — без списка, меню и настроек
+  const two = split() && v !== "terms";                          // условия — одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
-  if (two && v !== "login") $("home").hidden = false;               // список всегда на виду
+  if (two && !gate) $("home").hidden = false;                     // список всегда на виду
   $("pick").hidden = !(two && v === "home");
   $("dock").hidden = v !== "session";
-  $("homeBar").hidden = !((v === "home" || two) && v !== "login" && homeView === "sessions");
+  $("homeBar").hidden = !((v === "home" || two) && !gate && homeView === "sessions");
   syncBack();
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
   $("title").classList.toggle("sw", v === "session" && !two);
-  $("settingsBtn").hidden = v === "login";
-  $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
+  $("settingsBtn").hidden = gate;
+  $("title").classList.toggle("brand-text", v === "home" || gate);   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
   setBars(true); scrollToY(0);
@@ -804,6 +817,24 @@ function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
 function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход через Telegram</span>"); }
+// Условия использования: при первом входе и после смены версии. До «Принимаю» панель не показывает остальное.
+async function showTerms() {
+  if (view === "terms") return;
+  clearInterval(start.timer); start.timer = null;                 // фоновые запросы — после согласия
+  show("terms"); $("title").textContent = "Пульт"; setSub("<span>условия использования</span>");
+  let d; try { d = await api("/api/terms"); } catch (e) { $("termsBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
+  $("termsBox").innerHTML = `<h2 class="serif">${esc(d.title)}</h2><p class="ver">Версия от ${esc(d.version.split("-").reverse().join("."))} · прочитайте перед началом работы</p>
+    <ol>${d.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>
+    <a class="full" href="${esc(d.url)}" target="_blank" rel="noopener">${ic("book", "s16")}Полный текст условий</a>
+    <button class="btn" id="termsOk">${ic("check")}Принимаю</button>
+    ${meta?.via === "browser" ? '<button class="btn ghost" id="termsOut">Не принимаю — выйти</button>' : ""}
+    <div id="termsResult"></div>`;
+  $("termsOk").onclick = (e) => busy(e.currentTarget, "Сохраняю…", async () => {
+    try { await api("/api/terms/accept", { version: d.version }); haptic("notificationOccurred", "success"); await start(); }
+    catch (err) { $("termsResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
+  });
+  if ($("termsOut")) $("termsOut").onclick = async () => { try { await api("/api/logout", {}); } catch (e) {} showLogin(); };
+}
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
@@ -2062,7 +2093,7 @@ async function peopleSheet() {
   let d; try { d = await api("/api/people"); } catch (e) { return toast(e.message, 4000); }
   sheet("Люди", [...d.people.map((p) => ({
     label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: "pin",
-    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить"),
+    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
     run: () => p.role !== "owner" && personSheet(p) })),
     { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" }]);
 }
@@ -2071,7 +2102,7 @@ function personSheet(p) {
   sheet(p.name || "ID " + p.id, [
     { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
     { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
-    { label: "Убрать доступ", icon: "power", danger: true, sub: "вход перестанет работать сразу", run: () => confirmDanger(`Убрать доступ у ${p.name || p.id}?`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Доступ убран"))) },
+    { label: "Отключить", icon: "power", danger: true, sub: "доступ прекратится сразу: вход перестанет работать на всех устройствах", run: () => confirmDanger(`Отключить ${p.name || "ID " + p.id}? Доступ к пульту прекратится сразу.`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Отключён: " + (p.name || "ID " + p.id))).catch((e) => toast(e.message, 4000))) },
   ]);
 }
 
@@ -2133,6 +2164,7 @@ $("updateBar").onclick = reloadPanel;
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
+  if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
   if (meta.role === "viewer" && !$("viewOnly")) $("composer").insertAdjacentHTML("afterend", '<div class="viewonly" id="viewOnly">Доступ только на просмотр</div>');
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
@@ -2206,13 +2238,18 @@ function demoApi(path, body) {
   const R = {
     "/api/meta": { host: "ubuntu", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
-                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner",
+                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", terms: { version: "2026-11-01", accepted: !params.has("terms") || !!demoApi.terms },
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name })) },
-    "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "" }, { id: 2, role: "member", name: "Алексей", username: "alexey" }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
+    "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "", terms: { version: "2026-11-01", at: 1793491200 } }, { id: 2, role: "member", name: "Алексей", username: "alexey", terms: { version: "2026-11-01", at: 1793491200 } }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
+    "/api/terms": { version: "2026-11-01", title: "Условия использования пульта", url: "https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md", accepted: false, at: null, points: [
+      "Пульт — инструмент: он передаёт ваши сообщения в сессии Claude Code и другие модели. Модели предоставляют их поставщики (Anthropic, OpenRouter и другие) по своим условиям.",
+      "Вы сами отвечаете за соблюдение условий поставщиков моделей и законов: у вас свой аккаунт или ключ, вы не делитесь подпиской и не перепродаёте её, работаете только из поддерживаемых поставщиком стран.",
+      "При нарушении этих условий или правил поставщика владелец пульта вправе в любой момент и без предупреждения прекратить ваш доступ.",
+      "Нажимая «Принимаю», вы подтверждаете, что прочитали условия. Дата согласия сохраняется на сервере пульта."] },
     "/api/login/tg": { id: "demo", link: "https://t.me/rc_cld_bot?start=login_demo", ttl: 300, state: "wait" },
     "/api/mcp": { servers: [{ name: "claude.ai Claude Docs", target: "https://api.anthropic.com/v1/pages/mcp", ok: true, state: "Connected", removable: false },
                             { name: "github", target: "https://api.githubcopilot.com/mcp/ (HTTP)", ok: false, state: "Failed to connect", removable: true }],
@@ -2286,6 +2323,7 @@ function demoApi(path, body) {
   }
   if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
+  if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });

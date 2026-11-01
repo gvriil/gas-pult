@@ -32,7 +32,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
-from gas_pult import models, providers, transcripts, voice, webauth
+from gas_pult import models, providers, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -585,6 +585,9 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove"}
 
+# До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
+TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout"}
+
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
@@ -632,14 +635,22 @@ def handler(panel: Panel):
         def session(self) -> str:
             return webauth.cookie_value(self.headers.get("Cookie", ""))
 
+        def terms_uid(self) -> int | None:
+            """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
+            uid = self.who()[2]
+            return (panel.cfg.owners or [None])[0] if uid == webauth.LEGACY else uid
+
         def permit(self, path: str, method: str) -> bool:
-            """Не вошёл — 401 (панель покажет вход); не хватает роли — 403 с причиной."""
+            """Не вошёл — 401 (панель покажет вход); не принял условия — 403 code=terms; не хватает роли — 403."""
             role = self.who()[1]
             if not role:
                 self.json({"error": "нужен вход"}, 401)
                 return False
+            if path not in TERMS_FREE and not panel.people.accepted(self.terms_uid()):
+                self.json({"error": "сначала примите условия использования пульта", "code": "terms"}, 403)
+                return False
             need = ("owner" if path in OWNER_ONLY else
-                    "member" if method == "POST" and path != "/api/logout" else "viewer")
+                    "member" if method == "POST" and path not in ("/api/logout", "/api/terms/accept") else "viewer")
             if allowed(role, need):
                 return True
             why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
@@ -685,7 +696,10 @@ def handler(panel: Panel):
                 return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build}
             if path == "/api/meta":
                 kind, role, uid = self.who()
-                return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1]}
+                return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1],
+                        "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(self.terms_uid())}}
+            if path == "/api/terms":
+                return self.terms_info()
             if path == "/api/people":
                 return {"people": panel.people.list()}
             if path == "/api/mcp":
@@ -770,6 +784,11 @@ def handler(panel: Panel):
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
             return ("cookie", webauth.set_cookie(token), {"ok": True})
 
+        def terms_info(self) -> dict:
+            rec = panel.people.terms(self.terms_uid()) or {}
+            return {"version": terms.VERSION, "title": terms.TITLE, "points": list(terms.POINTS), "url": terms.URL,
+                    "accepted": rec.get("version") == terms.VERSION, "at": rec.get("at")}
+
         def post(self, path: str):
             if path == "/api/upload":
                 return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
@@ -779,6 +798,11 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/terms/accept":
+                if str(b.get("version", "")) != terms.VERSION:
+                    raise ValueError("условия обновились — прочитайте новую версию")
+                panel.people.accept(self.terms_uid(), terms.VERSION)
+                return self.terms_info()
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
             if path == "/api/commands/mark":

@@ -58,6 +58,8 @@ def server(monkeypatch, tmp_path):
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     panel.people.add(2, "member")
     panel.people.add(3, "viewer")
+    for uid in (1, 2, 3):
+        panel.people.accept(uid)                             # условия использования приняты
     monkeypatch.setattr(panel, "bot_username", lambda: "test_bot")
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "path": "/tmp", "name": "w"})
     monkeypatch.setattr(panel, "send", lambda w, text, mid="": False)
