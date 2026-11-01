@@ -488,6 +488,38 @@ class Panel:
         key = providers.load_keys().get("elevenlabs")
         return providers.el_voices(key) if key else []
 
+    def el_voice_name(self, vid: str | None) -> str:
+        """Имя голоса ElevenLabs для карточки (список аккаунта — не чаще раза в 10 минут)."""
+        t, voices = getattr(self, "_el_names", (0.0, []))
+        if time.time() - t > 600:
+            try:
+                voices = self.el_voices()
+            except providers.ProviderError:
+                voices = []
+            self._el_names = (time.time(), voices)
+        return next((v["name"] for v in voices if v["id"] == vid), "")
+
+    # ---------- карточки голосов: экран «Голос», шторка у ответа, /voice в боте ----------
+    def voice_cards(self, owner: bool) -> dict:
+        """Голоса, доступные этому человеку: ElevenLabs первой, затем локальные (``catalog.ORDER``). Silero — только
+        владельцу при ``personal_voices``; не установленные — только владельцу. Выбирает — владелец."""
+        personal = owner and self.cfg.personal_voices
+        st, key = self.pult.state(), "elevenlabs" in providers.key_info()
+        out = []
+        if key or owner:
+            vid = st.get("el_voice") if key else None
+            out.append({"id": "elevenlabs", "name": (self.el_voice_name(vid) if vid else "") or "ElevenLabs",
+                        "kind": "облачный", "ok": key, "why": "" if key else "нужен ключ ElevenLabs", "install": ""})
+        out += catalog.cards(personal, owner)
+        cur = "elevenlabs" if key and st.get("tts_provider") == "elevenlabs" else self.voice(personal=personal)
+        return {"cards": out, "current": cur, "can_choose": owner}
+
+    def choose_voice(self, vid: str):
+        self.pult.choose_voice(vid)                          # общее с ботом (/voice)
+
+    def voice_preview(self, vid: str, owner: bool) -> bytes:
+        return self.pult.voice_preview(vid, owner and self.cfg.personal_voices)[0]
+
     def set_key(self, provider: str, key: str) -> dict:
         key = key.strip()
         if provider in {p.get("key") for p in models.PROFILES} - {None}:
@@ -724,7 +756,7 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
 OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
-              "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
+              "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
@@ -918,6 +950,10 @@ def handler(panel: Panel):
                 if out is None:
                     raise LookupError("вывода этой команды уже нет")
                 return {"out": out}
+            if path == "/api/voice/cards":
+                return panel.voice_cards(self.who()[1] == "owner")
+            if path == "/api/voice/preview":
+                return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w))}
@@ -1029,6 +1065,9 @@ def handler(panel: Panel):
             if path == "/api/providers":
                 panel.set_providers(b)
                 return {"ok": True}
+            if path == "/api/voice/choose":
+                panel.choose_voice(str(b.get("id", "")))
+                return panel.voice_cards(True)
             if path == "/api/mcp/login":
                 return panel.mcp_login(str(b.get("name", "")), self.home())
             if path == "/api/setup/login":                  # окно входа и ссылка с экрана (до 20 с)

@@ -220,6 +220,26 @@
   .chat .acts button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--text-secondary);
                        border-radius: var(--radius-pill); padding: 5px 9px; font-size: calc(13px * var(--fz, 1)); }
   .chat .acts button:active { background: var(--bg-subtle); }
+  .chat .acts [data-say], .chat .acts [data-sayfull] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — выбор голоса */
+  /* Голос: карточки. Нажатие на карточку — сразу выбрать (галочка), ▶ — послушать короткую фразу (кеш на сервере) */
+  .vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 2px 0 8px; }
+  .vcard { display: flex; align-items: center; gap: 2px; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); padding: 0 6px 0 0; }
+  .vcard.on { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .vcard.off { background: var(--bg-subtle); border-style: dashed; }
+  .vcard .vpick { flex: 1; min-width: 0; width: auto; display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 8px 4px 8px 12px; min-height: 56px;
+                  text-align: left; color: var(--text-primary); font-size: calc(15px * var(--fz, 1)); border-radius: var(--radius-md); }
+  .vcard .vpick span { flex: 1; min-width: 0; }
+  .vcard .vpick b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vcard .vpick small { display: block; color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); line-height: 1.3; }
+  .vcard.off .vpick b { color: var(--text-muted); font-weight: 500; }
+  .vcard .vpick .i, .sheet .vcard .vpick .i { color: var(--accent-primary); }
+  .vcard .vplay { width: 40px; height: 40px; min-height: 0; flex: none; padding: 0; border: 0; border-radius: 50%; background: var(--bg-subtle); color: var(--text-primary);
+                  display: grid; place-items: center; }
+  .vcard.on .vplay { background: var(--bg-surface); }
+  .vcard .vplay .i, .sheet .vcard .vplay .i { color: var(--text-primary); }
+  .vcard .vplay.wait .i { animation: pulse 1s ease-in-out infinite; }
+  .vcard button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+  .sheet [data-vgrid] { padding: 2px 16px 4px; } .sheet .vnote { margin: 4px 16px 8px; }
   .log { border: 1px solid var(--border-subtle); background: var(--bg-subtle); border-radius: var(--radius-md); margin: 6px 0; overflow: hidden; width: 100%; }
   .chat .me .log { max-width: 88%; }
   .log summary { list-style: none; cursor: pointer; padding: 9px 12px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); display: flex; gap: 8px; align-items: center; }
@@ -1342,8 +1362,19 @@ $("content").addEventListener("click", (e) => { const v = e.target.closest("[dat
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
   const k = e.target.dataset?.log; if (k) e.target.open ? openLogs.add(k) : openLogs.delete(k);
 }, true);
+// Долгое нажатие (~0,5 с) на «Кратко»/«Целиком» — шторка выбора голоса; сдвиг пальца отменяет; обычное — озвучка.
+let sayHold = null, sayHeld = false;
+$("content").addEventListener("pointerdown", (e) => {
+  sayHeld = false; const b = e.target.closest("[data-say], [data-sayfull]"); if (!b) return;
+  sayHold = { x: e.clientX, y: e.clientY, t: setTimeout(() => { sayHold = null; sayHeld = true; haptic("impactOccurred", "medium"); openVoiceSheet(); }, 500) };
+});
+const sayUnhold = () => { if (sayHold) clearTimeout(sayHold.t); sayHold = null; };
+$("content").addEventListener("pointerup", sayUnhold); $("content").addEventListener("pointercancel", sayUnhold);
+$("content").addEventListener("pointermove", (e) => { if (sayHold && Math.hypot(e.clientX - sayHold.x, e.clientY - sayHold.y) > 10) sayUnhold(); });
+$("content").addEventListener("contextmenu", (e) => { if (e.target.closest("[data-say], [data-sayfull]")) e.preventDefault(); });
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
+  if ((b.dataset.say || b.dataset.sayfull) && sayHeld) { sayHeld = false; return; }   // долгое нажатие уже открыло шторку
   if (b.id === "older") return busy(b, "Загружаю…", async () => {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&before=${hist[0].i}`);
     const y = SC.scrollHeight - SC.scrollTop; hist = [...h.items, ...hist]; histMore = h.more; renderChat(false);
@@ -1683,8 +1714,8 @@ document.addEventListener("click", (e) => {
     document.querySelector("[data-voice]")?.scrollIntoView({ block: "center", behavior: "smooth" }); voiceUi();
   }, 600));
 });
-function demoTone() {                               // демо: 6 с тихого тона вместо настоящей озвучки
-  const rate = 8000, n = rate * 6, b = new DataView(new ArrayBuffer(44 + n * 2));
+function demoTone(sec = 6) {                        // демо: 6 с тихого тона вместо настоящей озвучки
+  const rate = 8000, n = rate * sec, b = new DataView(new ArrayBuffer(44 + n * 2));
   const str = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
   str(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
   b.setUint32(24, rate, true); b.setUint32(28, rate * 2, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); str(36, "data"); b.setUint32(40, n * 2, true);
@@ -1945,7 +1976,7 @@ async function loadMcp(fresh) {
     return;
   }
   renderModels(); loadFallback();
-  api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
+  Promise.all([api("/api/providers"), api("/api/voice/cards")]).then(([d, c]) => { prov = d; vcards = c; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
   catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
 }
@@ -2112,18 +2143,78 @@ function openCatalog(input) {
   api("/api/openrouter/models").then((d) => { all = d.models; draw(); })
     .catch((e) => { bg.querySelector("#catList").innerHTML = `<div class="result bad" style="margin:0 16px">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
 }
+// ---------- голос: карточки (экран «Голос», шторка по долгому нажатию у ответа) ----------
+let vcards = null, vPlaying = null, vWait = null;   // /api/voice/cards: { cards, current, can_choose }; что сейчас слушаем
+const vAudio = new Audio();                         // «Послушать» — свой плеер: озвучку ответа не трогает
+function voiceGrid() {
+  if (!vcards) return '<div class="empty">Загружаю голоса…</div>';
+  if (!vcards.cards.length) return '<div class="empty">Голоса не установлены: gas-pult voices install irina</div>';
+  return `<div class="vgrid">${vcards.cards.map((c) => {
+    const on = c.ok && c.id === vcards.current, sub = c.ok ? c.kind : c.why + (c.install ? " · нажмите — команда" : "");
+    return `<div class="vcard ${on ? "on" : ""} ${c.ok ? "" : "off"}">
+      <button class="vpick" data-vpick="${esc(c.id)}" aria-pressed="${on}"><span><b>${esc(c.name)}</b><small>${esc(sub)}</small></span>${on ? ic("check") : ""}</button>
+      ${c.ok ? `<button class="vplay ${vWait === c.id ? "wait" : ""}" data-vplay="${esc(c.id)}" aria-label="Послушать: ${esc(c.name)}">${ic(vPlaying === c.id && vWait !== c.id ? "pause" : "play", "s16")}</button>` : ""}
+    </div>`; }).join("")}</div>`;
+}
+function paintVoiceGrids() { document.querySelectorAll("[data-vgrid]").forEach((el) => { el.innerHTML = voiceGrid(); }); }
+function stopPreview() { vAudio.pause(); vPlaying = vWait = null; paintVoiceGrids(); }
+vAudio.addEventListener("ended", stopPreview);
+async function previewVoice(id) {
+  if (vPlaying === id) return stopPreview();
+  vAudio.pause(); if (!player().paused) player().pause();
+  vPlaying = vWait = id; paintVoiceGrids();
+  try {
+    const blob = DEMO ? demoTone(1.5) : await api("/api/voice/preview?id=" + encodeURIComponent(id));
+    if (vPlaying !== id) return;                    // пока готовили — нажали другой
+    if (vAudio.src) URL.revokeObjectURL(vAudio.src);
+    vAudio.src = URL.createObjectURL(blob); vWait = null; paintVoiceGrids();
+    await vAudio.play();
+  } catch (e) { if (vPlaying === id) stopPreview(); if (e.name !== "AbortError") toast("Послушать: " + e.message, 4500); }
+}
+async function voiceGridClick(e) {
+  const play = e.target.closest("[data-vplay]"), pick = e.target.closest("[data-vpick]");
+  if (play) return previewVoice(play.dataset.vplay);
+  const c = pick && vcards?.cards.find((x) => x.id === pick.dataset.vpick); if (!c) return;
+  if (!c.ok) {
+    if (c.install) return copyText(c.install, "Команда скопирована — выполните её на сервере");
+    const k = $("elKey");
+    if (k?.isConnected && !k.closest(".sheet-bg")) { k.scrollIntoView({ block: "center", behavior: "smooth" }); return k.focus({ preventScroll: true }); }
+    return toast("Нужен ключ ElevenLabs: Интеграции → Голос → Ключи API", 4000);
+  }
+  if (!vcards.can_choose) return toast("Голос выбирает владелец пульта — здесь можно послушать", 3500);
+  if (c.id === vcards.current) return c.id === "elevenlabs" ? elVoiceSheet() : undefined;
+  try {
+    vcards = await api("/api/voice/choose", { id: c.id }); haptic("selectionChanged"); paintVoiceGrids(); toast("Голос: " + c.name);
+    if (prov && $("voiceBox")?.isConnected) renderVoice();
+  } catch (err) { toast(err.message, 4500); }
+}
+function elVoiceSheet() {                           // голос внутри ElevenLabs — шторкой, без выпадающего списка
+  if (!prov?.el_voices?.length) return;
+  sheet("Голос ElevenLabs", prov.el_voices.map((v) => ({ label: v.name, icon: "vol", on: v.id === prov.el_voice, run: async () => {
+    try { await api("/api/providers", { el_voice: v.id }); prov.el_voice = v.id; vcards = await api("/api/voice/cards"); paintVoiceGrids(); toast("Голос: " + v.name); }
+    catch (err) { toast(err.message, 4500); } } })));
+}
+async function openVoiceSheet() {                   // долгое нажатие на «Кратко»/«Целиком»: те же карточки шторкой
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Голос озвучки</h3><div data-vgrid>${voiceGrid()}</div><p class="note vnote"></p><button class="cancel" data-close>Закрыть</button></div>`;
+  const close = () => { bg.remove(); if (vPlaying) stopPreview(); };
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) return close(); voiceGridClick(e); });
+  bg.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.body.append(bg);
+  try { vcards = await api("/api/voice/cards"); paintVoiceGrids(); }
+  catch (err) { bg.querySelector("[data-vgrid]").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; return; }
+  bg.querySelector(".vnote").textContent = vcards.can_choose ? "Нажмите на голос — он сразу станет голосом озвучки; круглая кнопка справа — послушать." : "Голос выбирает владелец пульта — здесь можно послушать.";
+}
 function renderVoice() {
   const el = prov.keys.elevenlabs, seg = (name, val, opts) => `<div class="seg" data-prov="${name}">${opts.map(([v, label]) =>
     `<button data-val="${v}" class="${val === v ? "on" : ""}" ${v === "elevenlabs" && !el ? "disabled" : ""}>${esc(label)}</button>`).join("")}</div>`;
   $("voiceBox").innerHTML = `
     <div class="section">Голос</div>
     <div class="panel">
-      <div class="field"><label>Озвучка ответов</label>${seg("tts", prov.tts, [["local", "На сервере · " + (prov.local_voice || "Piper")], ["elevenlabs", "ElevenLabs"]])}
-        ${prov.tts === "elevenlabs" && prov.el_voices.length ? `<select id="elVoice">${prov.el_voices.map((v) =>
-          `<option value="${esc(v.id)}" ${v.id === prov.el_voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>` : ""}
-        ${prov.tts === "local" && (prov.local_voices || []).length > 1 ? `<select id="localVoice">${prov.local_voices.map((v) =>
-          `<option value="${esc(v.id)}" ${v.id === prov.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>` : ""}
-        <div class="hint">На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs.</div></div>
+      <div class="field"><label>Озвучка ответов</label>
+        <div data-vgrid>${voiceGrid()}</div>
+        ${vcards?.current === "elevenlabs" && prov.el_voices.length > 1 ? `<button class="btn ghost" id="elOther">${ic("vol", "s16")}Другой голос ElevenLabs</button>` : ""}
+        <div class="hint">Нажмите на голос — он сразу станет голосом озвучки; круглая кнопка справа — послушать. На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs. Быстрый путь — долгое нажатие на «Кратко» или «Целиком» у ответа.</div></div>
       <div class="field" style="margin:0"><label>Распознавание голосовых</label>${seg("stt", prov.stt, [["local", "На сервере · whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
         <div class="hint">ElevenLabs точнее на терминах и именах; запись голоса уходит в ElevenLabs.</div></div>
     </div>
@@ -2140,6 +2231,8 @@ function renderVoice() {
     </div>`;
 }
 $("integrationsView").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-vgrid]")) return voiceGridClick(e);
+  if (e.target.closest("#elOther")) return elVoiceSheet();
   const segBtn = e.target.closest("[data-prov] button");
   if (segBtn && !segBtn.disabled) {
     try { await api("/api/providers", { [segBtn.parentElement.dataset.prov]: segBtn.dataset.val }); prov = await api("/api/providers"); renderVoice(); toast("Сохранено"); }
@@ -2148,15 +2241,11 @@ $("integrationsView").addEventListener("click", async (e) => {
   const eye = e.target.closest("[data-eye]"); if (eye) { const i = $(eye.dataset.eye); i.type = i.type === "password" ? "text" : "password"; }
   if (e.target.id === "elSave") busy(e.target, "Проверяю ключ…", async () => {
     try { const d = await api("/api/keys", { provider: "elevenlabs", key: $("elKey").value });
-          prov = await api("/api/providers"); renderVoice();
-          $("elResult").innerHTML = `<div class="result ok">${ic("check")}<span>Ключ работает, голосов в аккаунте: ${d.voices.length}. Выберите ElevenLabs выше.</span></div>`; haptic("notificationOccurred", "success"); }
+          [prov, vcards] = await Promise.all([api("/api/providers"), api("/api/voice/cards")]); renderVoice();
+          $("elResult").innerHTML = `<div class="result ok">${ic("check")}<span>Ключ работает, голосов в аккаунте: ${d.voices.length}. Нажмите карточку ElevenLabs выше.</span></div>`; haptic("notificationOccurred", "success"); }
     catch (err) { $("elResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
   });
-  if (e.target.id === "elDel") confirmDanger("Удалить ключ ElevenLabs?", async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); prov = await api("/api/providers"); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); });
-});
-$("integrationsView").addEventListener("change", async (e) => {
-  if (e.target.id === "localVoice") { await api("/api/providers", { voice: e.target.value }).then(() => { prov.voice = e.target.value; toast("Голос выбран"); }, (err) => toast(err.message)); return; }
-  if (e.target.id === "elVoice") { await api("/api/providers", { el_voice: e.target.value }).catch((err) => toast(err.message)); toast("Голос выбран"); }
+  if (e.target.id === "elDel") confirmDanger("Удалить ключ ElevenLabs?", async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); [prov, vcards] = await Promise.all([api("/api/providers"), api("/api/voice/cards")]); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); });
 });
 const isOn = (c) => mcpData.servers.some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
 const pname = (s) => s.name.replace(/^claude\.ai /, "").replace(/^plugin:[^:]+:/, "");
@@ -2592,6 +2681,13 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  if (path.startsWith("/api/voice/choose")) demoApi.vcur = body.id;       // демо: голоса — Ксения выбрана, Денис и Руслан не установлены
+  { const own = (params.get("role") || "owner") === "owner", K = { xenia: ["Ксения", "женский"], baya: ["Бая", "женский"], aidar: ["Айдар", "мужской"], eugene: ["Евгений", "мужской"],
+      kseniya: ["Ксения-2", "женский"], irina: ["Ирина", "женский"], dmitri: ["Дмитрий", "мужской"], denis: ["Денис", "мужской"], ruslan: ["Руслан", "мужской"] };
+    const loc = Object.entries(K).filter(([id]) => own || ["irina", "dmitri"].includes(id)).map(([id, [name, kind]]) => { const ok = !["denis", "ruslan"].includes(id);
+      return { id, name, kind, ok, why: ok ? "" : "не установлен", install: ok ? "" : "gas-pult voices install " + id }; });
+    R["/api/voice/cards"] = R["/api/voice/choose"] = { can_choose: own, current: own ? (demoApi.vcur || "xenia") : "irina",
+      cards: [{ id: "elevenlabs", name: "Ксения (клон)", kind: "облачный", ok: true, why: "", install: "" }, ...loc] }; }
   demoApi.fb ||= ["openrouter", "claude"];
   if (path === "/api/fallback" && body) demoApi.fb = body.chain;
   R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
