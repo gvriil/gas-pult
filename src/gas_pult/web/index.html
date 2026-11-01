@@ -594,6 +594,12 @@ async function copyText(text, what = "Скопировано") {
   bg.onclick = (e) => { if (e.target === bg || e.target.closest("button")) bg.remove(); };
   document.body.append(bg); ta.focus(); ta.setSelectionRange(0, text.length);
 }
+// Время в журналах — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code). Показываем в часовом поясе сервера
+// (meta.tz, например Europe/Amsterdam) — одинаково на любом телефоне; пояс неизвестен — время телефона.
+const localTs = (t) => {
+  const d = new Date(String(t).replace(" ", "T") + ":00Z"); if (isNaN(d)) return t;
+  try { return d.toLocaleString("sv-SE", meta?.tz ? { timeZone: meta.tz } : {}).slice(0, 16); } catch (e) { return d.toLocaleString("sv-SE").slice(0, 16); }
+};
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
 function toast(text, ms = 2600) {
@@ -1147,9 +1153,9 @@ function renderChat(toBottom) {
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
-    ? `<div class="msg me">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
+    ? `<div class="msg me">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
     : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
-        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(m.ts)}</span></div>${voiceRow(m)}</div>`).join("")
+        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
@@ -1242,8 +1248,6 @@ function triageNote(t, to) {
     error: ["warn", "На разбор отправить не удалось"] }[t];
   return m ? `<div class="hint tri">${ic(m[0], "s16")}<span>${m[1]}</span></div>` : "";
 }
-// время в журнале — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code); показываем местное
-const localTs = (t) => { const d = new Date(String(t).replace(" ", "T") + ":00Z"); return isNaN(d) ? t : d.toLocaleString("sv-SE").slice(0, 16); };
 // Честный статус команды — только по настоящему запуску через пульт (панель или ▶️ в боте):
 // выполняется · код 0 · код N · не запускалась; «сделано вручную» — отдельная пометка, карточка остаётся в списке.
 const STALE = 12 * 60 * 1000;                        // дольше таймаута выполнения (10 мин) — запуск прервался
@@ -2299,7 +2303,7 @@ function demoApi(path, body) {
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
   const R = {
-    "/api/meta": { host: "ubuntu", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
+    "/api/meta": { host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
                    projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", terms: { version: "2026-11-01", accepted: !params.has("terms") || !!demoApi.terms },
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },

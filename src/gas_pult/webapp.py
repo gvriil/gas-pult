@@ -31,6 +31,7 @@ import uuid
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
+from pathlib import Path
 
 from gas_pult import fallback, models, providers, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
@@ -154,7 +155,7 @@ class Panel:
 
     def meta(self) -> dict:
         voices = catalog.installed()
-        return {"host": self.cfg.host,
+        return {"host": self.cfg.host, "tz": server_tz(),
                 "commands": [t for t, _ in self.pult.command_list()],
                 "models": self.cfg.models,
                 "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
@@ -569,6 +570,23 @@ class Panel:
     def command_mark(self, cid: str, done: bool) -> dict:
         """«Отметить: сделано вручную» — отдельная пометка; итог настоящего запуска (done) не трогаем."""
         return {"item": self.journal.update(cid, manual={"at": utc_now()} if done else None)}
+
+
+def server_tz() -> str:
+    """Часовой пояс сервера (Europe/Amsterdam): панель показывает время в нём, где бы ни был телефон. Время в журналах
+    Claude Code и пульта — UTC. Не нашли имя пояса — "" (панель покажет время телефона)."""
+    if os.environ.get("TZ", "").count("/"):
+        return os.environ["TZ"].lstrip(":")
+    try:                                            # как timedatectl: системный пояс — ссылка /etc/localtime
+        link = os.readlink("/etc/localtime")
+        if "zoneinfo/" in link:
+            return link.split("zoneinfo/", 1)[1]
+    except OSError:
+        pass
+    try:                                            # /etc/timezone бывает устаревшим — только запасной путь
+        return Path("/etc/timezone").read_text().strip()
+    except OSError:
+        return ""
 
 
 def utc_now() -> str:
