@@ -241,6 +241,8 @@
   .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas);
           padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78%; overflow-y: auto; overscroll-behavior: contain; }
   .kb .dock { padding-bottom: 8px; }                    /* клавиатура открыта — полоса «домой» не нужна */
+  .dock { transition: transform .22s ease; } .dock.hide { transform: translateY(calc(100% + 8px)); }
+  .tobottom { transition: bottom .22s ease; }
   .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
   .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
   .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; }
@@ -327,6 +329,8 @@
   .sheet { width: 100%; max-height: 80%; overflow-y: auto; overscroll-behavior: contain; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
            padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow: var(--shadow-lg); animation: up .2s ease; }
   .sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border-subtle); margin: 0 auto 6px; }
+  .sheet .sback { display: inline-flex; align-items: center; gap: 4px; width: auto; min-height: 36px; margin: 4px 8px 0; padding: 6px 10px;
+                  border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--accent-primary); font: inherit; font-size: 15px; }
   .sheet h3 { margin: 8px 16px 6px; font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
   .sheet button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: 16px; min-height: 52px; }
   .sheet button .i { color: var(--text-secondary); }
@@ -563,9 +567,14 @@ async function busy(btn, text, fn) {              // кнопка показыв
   const old = btn.innerHTML; btn.disabled = true; btn.textContent = text;
   try { return await fn(); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
 }
+// Шторка, открытая пунктом другой шторки (Настройки → Люди → человек, папка → модель → усилия), — с «‹ Назад» к той,
+// из которой пришли. Нажатие вне шторок — уже новый путь: отметку сбрасываем.
+let sheetFrom = null;
+document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".sheet-bg")) sheetFrom = null; }, true);
 function sheet(title, items) {                     // [{label, sub, icon | dot, run, hold, danger, on}]; hold — долгое нажатие
   const bg = document.createElement("div"); bg.className = "sheet-bg";
-  bg.innerHTML = `<div class="sheet" role="dialog"><h3>${esc(title)}</h3>${items.map((it, i) =>
+  const parent = sheetFrom && Date.now() - sheetFrom.t < 15000 ? sheetFrom : null; sheetFrom = null;
+  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) =>
     `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
     <button class="cancel" data-close>Отмена</button></div>`;
   let hold = null, held = false;
@@ -582,7 +591,8 @@ function sheet(title, items) {                     // [{label, sub, icon | dot, 
     if (held) { held = false; return; }               // долгое нажатие уже открыло своё меню
     const b = e.target.closest("button");
     if (e.target === bg || b) bg.remove();
-    if (b && b.dataset.i) items[+b.dataset.i].run();
+    if (b?.dataset.back) return parent.open();
+    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; sheet(title, items); } }; items[+b.dataset.i].run(); }
   });
   document.body.append(bg);
 }
@@ -598,8 +608,7 @@ function show(v) {
   $("pick").hidden = !(two && v === "home");
   $("dock").hidden = v !== "session";
   $("homeBar").hidden = !((v === "home" || two) && v !== "login" && homeView === "sessions");
-  const canBack = v === "mcpForm" || (v === "session" && !two);
-  $("backBtn").hidden = !canBack;
+  syncBack();
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
   $("title").classList.toggle("sw", v === "session" && !two);
@@ -607,16 +616,35 @@ function show(v) {
   $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
+  $("top").classList.remove("hide"); hideDock(false); scrollToY(0);
+}
+// «‹ Назад» слева в шапке — на любом вложенном экране: сессия (телефон), форма подключения, вкладки главной
+// «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
+function syncBack() {
+  const two = split();
+  const canBack = view === "mcpForm" || (view === "session" && !two) || (view === "home" && !two && homeView !== "sessions");
+  $("backBtn").hidden = !canBack;
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
-  $("top").classList.remove("hide"); scrollToY(0);
 }
 function back() {
+  if (view === "home" && homeView !== "sessions") { setHome("sessions"); return scrollToY(0); }
   if (view === "mcpForm") { clearInterval(connTimer); show("home"); return setHome("integrations"); }
   current = null; closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
-// Шапка (заголовок + вкладки) уходит, когда листаете вниз, — экрану больше воздуха; чуть вверх — сразу возвращается.
+// Шапка и нижняя панель с полем ввода уходят, когда листаете ленту дальше (палец снизу вверх), — экрану больше воздуха;
+// обратное движение — обе возвращаются. Поле ввода не прячем, пока в нём текст или вложения, открыта клавиатура,
+// меню или вопрос Claude; дочитали до конца — поле возвращается само (можно сразу ответить).
 // Прокрутку, которую делает сама панель (к новому сообщению), за жест не считаем.
 let lastY = 0, autoUntil = 0;
+function hideDock(on) {
+  const d = $("dock");
+  if (on && (d.hidden || document.documentElement.classList.contains("kb") || $("input").value.trim() || files.length
+    || !$("menu").hidden || !$("keys").hidden || $("ask").childElementCount || document.activeElement === $("input"))) on = false;
+  if (d.classList.contains("hide") === on) return;
+  d.classList.toggle("hide", on);
+  const h = on ? 0 : d.offsetHeight;                   // кнопка «к последнему» и мини-плеер — следом за панелью
+  $("toBottom").style.bottom = (h + 12) + "px"; document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
+}
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
 function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); SC.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
@@ -627,8 +655,9 @@ SC.addEventListener("scroll", () => {
   if (!far) $("toBottom").classList.remove("new");
   $("top").classList.toggle("edge", y > 4);
   if (Date.now() > autoUntil) {
-    if (y > lastY + 8 && y > 120) $("top").classList.add("hide");
-    else if (y < lastY - 8 || y < 40) $("top").classList.remove("hide");
+    if (y > lastY + 8 && y > 120) { $("top").classList.add("hide"); hideDock(true); }
+    else if (y < lastY - 8 || y < 40) { $("top").classList.remove("hide"); hideDock(false); }
+    if (atEnd(24)) hideDock(false);
   }
   lastY = y;
 }, { passive: true });
@@ -751,7 +780,14 @@ function setHome(v) {
   $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
   $("commandsView").hidden = v !== "commands";
   $("homeBar").hidden = !((view === "home" || split()) && v === "sessions");
-  if (view === "home") $("title").textContent = "Пульт";
+  const two = split();
+  if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
+    const sub = v !== "sessions" && !two;
+    $("title").textContent = sub ? { commands: "Команды", integrations: "Интеграции" }[v] : "Пульт";
+    $("title").classList.toggle("brand-text", !sub);
+    $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
+  }
+  syncBack();
   if (v === "integrations") loadMcp(); else if (v === "commands") loadCommands(); else refresh();
 }
 $("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
@@ -1091,7 +1127,7 @@ function renderCommands() {
       const run = c.kind === "local" && owner && !c.done
         ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(cmdLog.host)}</button>` : "";
       const hint = c.kind !== "local" && !c.done ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
-      const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.cut ? " · показан конец вывода" : ""}
+      const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.by === "bot" ? " · кнопкой в боте" : ""}${c.done.cut ? " · показан конец вывода" : ""}
           ${c.done.out ? `<pre class="out">${esc(c.done.out)}</pre>` : " · вывода нет"}</div></div>` : "";
       return `<div class="cmd ${c.done ? "done" : ""}" data-cid="${c.id}">
         <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span>${cmdDone(c.done)}</div>
@@ -1268,7 +1304,7 @@ function voiceTick() {                              // прогресс — бе
   document.querySelectorAll(".voice .t").forEach((t) => { t.textContent = mmss(p.currentTime); });
 }
 function placeMini() {                              // над нижней панелью или кнопкой «Новая сессия»
-  const h = !$("dock").hidden ? $("dock").offsetHeight : !$("homeBar").hidden ? $("homeBar").offsetHeight : 0;
+  const h = !$("dock").hidden ? ($("dock").classList.contains("hide") ? 0 : $("dock").offsetHeight) : !$("homeBar").hidden ? $("homeBar").offsetHeight : 0;
   document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
 }
 async function say(full, btn, msg) {
@@ -1321,7 +1357,8 @@ function demoTone() {                               // демо: 6 с тихог
   for (let i = 0; i < n; i++) b.setInt16(44 + i * 2, Math.sin(i / rate * 2 * Math.PI * 440) * 600, true);
   return new Blob([b], { type: "audio/wav" });
 }
-function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight; $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (h + 12) + "px"; placeMini(); }); }
+function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight, shown = $("dock").classList.contains("hide") ? 0 : h;
+  $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (shown + 12) + "px"; placeMini(); }); }
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
