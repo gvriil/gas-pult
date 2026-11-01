@@ -16,8 +16,8 @@
     --border-subtle: #E1E5EA; --border-focus: #0B57D0;
     --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
     --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
-    --status-idle: #747775; --status-running: #1A73E8; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
-    --status-success: #146C2E; --status-danger: #B3261E;
+    --status-idle: #747775; --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
+    --status-success: #146C2E; --status-danger: #B3261E; --status-stopped: #D93025;
     --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
     --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
@@ -27,8 +27,8 @@
     --border-subtle: #3C4043; --border-focus: #A8C7FA;
     --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
     --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
-    --status-idle: #8E918F; --status-running: #8AB4F8; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
-    --status-success: #6DD58C; --status-danger: #F2B8B5;
+    --status-idle: #8E918F; --status-running: #81C995; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
+    --status-success: #6DD58C; --status-danger: #F2B8B5; --status-stopped: #EE675C;
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -84,7 +84,8 @@
                 display: flex; align-items: center; justify-content: center; gap: 6px; }
   .seg button.on { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; box-shadow: var(--shadow-sm); }
 
-  /* ===== Статусы ===== */
+  /* ===== Статусы сессии — одни цвета везде (экран «Обозначения», docs/MINI_APP.md):
+     зелёная, мигает — работает; жёлтая — ждёт вашего ответа; серая — свободна; красная — остановлена (нет процесса Claude) */
   .sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--status-idle); }
   .s-running .sdot, .sdot.s-running { background: var(--status-running); animation: pulse 1.4s infinite; }
   .s-approval .sdot, .sdot.s-approval { background: var(--status-approval); }
@@ -103,7 +104,8 @@
   body:not([data-role="owner"]) [data-owner] { display: none !important; }      /* только владельцу */
   body[data-role="viewer"] #composer, body[data-role="viewer"] #menu, body[data-role="viewer"] #keys, body[data-role="viewer"] #ask button { display: none !important; }
   .viewonly { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 10px; }
-  .s-stopped .sdot, .sdot.s-stopped { background: transparent; border: 1.5px solid var(--status-idle); }
+  .s-stopped .sdot, .sdot.s-stopped { background: var(--status-stopped); }
+  .sdot.hollow { background: transparent; border: 1.5px solid var(--status-idle); }
   .card.s-stopped { opacity: .85; }
   .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
 
@@ -342,6 +344,11 @@
   .sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border-subtle); margin: 0 auto 6px; }
   .sheet .sback { display: inline-flex; align-items: center; gap: 4px; width: auto; min-height: 36px; margin: 4px 8px 0; padding: 6px 10px;
                   border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--accent-primary); font: inherit; font-size: 15px; }
+  .sheet h3.sub { margin-top: 14px; }
+  .sheet button.info { cursor: default; }
+  .sheet .vis { width: 44px; flex: none; display: flex; justify-content: center; align-items: center; }
+  .sheet .vis .sdot, .sheet button.info > .sdot { width: 10px; height: 10px; }
+  .sheet button.info > .sdot, .sheet button.info > .i { margin: 0 9px; }
   .sheet h3 { margin: 8px 16px 6px; font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
   .sheet button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: 16px; min-height: 52px; }
   .sheet button .i { color: var(--text-secondary); }
@@ -492,6 +499,7 @@ const P = {
   back: '<path d="M15 18l-6-6 6-6"/>', swap: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
   settings: '<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>',
   menu: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6M12 17.2v.1"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
@@ -600,11 +608,11 @@ async function busy(btn, text, fn) {              // кнопка показыв
 // из которой пришли. Нажатие вне шторок — уже новый путь: отметку сбрасываем.
 let sheetFrom = null;
 document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".sheet-bg")) sheetFrom = null; }, true);
-function sheet(title, items) {                     // [{label, sub, icon | dot, run, hold, danger, on}]; hold — долгое нажатие
+function sheet(title, items) {                     // [{label, sub, icon | dot | vis, run, hold, danger, on, info} | {head}]; hold — долгое нажатие
   const bg = document.createElement("div"); bg.className = "sheet-bg";
   const parent = sheetFrom && Date.now() - sheetFrom.t < 15000 ? sheetFrom : null; sheetFrom = null;
-  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) =>
-    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""}">${it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
+  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.head ? `<h3 class="sub">${esc(it.head)}</h3>` :
+    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""} ${it.info ? "info" : ""}">${it.vis ? `<span class="vis">${it.vis}</span>` : it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
     <button class="cancel" data-close>Отмена</button></div>`;
   let hold = null, held = false;
   bg.addEventListener("pointerdown", (e) => {
@@ -619,6 +627,7 @@ function sheet(title, items) {                     // [{label, sub, icon | dot, 
   bg.addEventListener("click", (e) => {
     if (held) { held = false; return; }               // долгое нажатие уже открыло своё меню
     const b = e.target.closest("button");
+    if (b?.dataset.i && items[+b.dataset.i].info) return;     // строка-пояснение: шторка остаётся
     if (e.target === bg || b) bg.remove();
     if (b?.dataset.back) return parent.open();
     if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; sheet(title, items); } }; items[+b.dataset.i].run(); }
@@ -1502,7 +1511,8 @@ function openSwitcher() {
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
     ...(meta?.role !== "viewer" ? [{ label: "Новая сессия", icon: "plus", run: () => newSession() }] : []),
     { label: "Команды из всех сессий", icon: "term", run: () => { back(); setHome("commands"); } },
-    { label: "Все сессии и интеграции", icon: "menu", run: back }]);
+    { label: "Все сессии и интеграции", icon: "menu", run: back },
+    { label: "Обозначения", icon: "help", sub: "что значат цвета точек", run: legend }]);
 }
 const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
 // Переименовать: своё поле ввода (prompt() в Telegram на iPhone ненадёжен). Имя — как в tmux: без «:» и «.».
@@ -2029,6 +2039,37 @@ function personSheet(p) {
 }
 
 // ---------- настройки ----------
+// «Обозначения»: что значат точки, цвета и значки панели — одним экраном (в настройках и в шторке сессий).
+function legend() {
+  const chip = (cls, t) => `<span class="chip ${cls}" style="font-size:11px;padding:1px 6px">${t}</span>`;
+  sheet("Обозначения", [
+    { head: "Точка статуса сессии" },
+    { info: true, dot: "s-running", label: "Зелёная, мигает — работает", sub: "Claude выполняет задачу; можно писать — сообщение встанет в очередь" },
+    { info: true, dot: "s-approval", label: "Жёлтая — ждёт вашего ответа", sub: "Claude задал вопрос или просит разрешения — ответьте кнопками на экране" },
+    { info: true, dot: "s-idle", label: "Серая — свободна", sub: "готова к новому сообщению" },
+    { info: true, dot: "s-stopped", label: "Красная — остановлена", sub: "Claude в окне не запущен (нет процесса) — «Перезапустить» или новая сессия" },
+    { head: "Метки" },
+    { info: true, vis: '<i class="sdot s-approval"></i>', label: "Точка у имени сессии ▾", sub: "в другой сессии вопрос или новый ответ — нажмите имя, чтобы перейти" },
+    { info: true, vis: chip("new", "новый"), label: "Новый ответ", sub: "ответ, который вы ещё не открывали" },
+    { info: true, vis: chip("s-approval", "ждут"), label: "Ждут ответа", sub: "сколько сессий ждут вас — на главной" },
+    { info: true, vis: '<span class="ctx warn"><span class="bar"><i style="width:80%"></i></span></span>', label: "Контекст: N%", sub: "сколько памяти разговора занято; жёлтая — больше 70%, пора «Сжать» (/compact)" },
+    { info: true, vis: '<span class="live"><i></i></span>', label: "Зелёная точка «обновлено»", sub: "панель на связи; жёлтая — связь прервалась, данные могут быть старыми" },
+    { head: "Кнопки" },
+    { info: true, icon: "menu", label: "Меню действий", sub: "озвучить, команды Claude, модель, активная сессия, обновить, завершить" },
+    { info: true, icon: "vol", label: "Кратко / Целиком", sub: "озвучить ответ голосом — коротко или полностью" },
+    { info: true, icon: "bolt", label: "Команды Claude", sub: "/compact, /clear, /status и другие — кнопками" },
+    { info: true, icon: "chip", label: "Модель", sub: "в какой модели работает сессия" },
+    { info: true, icon: "pin", label: "Активная", sub: "ответы в чате бота — от этой сессии" },
+    { info: true, icon: "term", label: "Экран", sub: "терминал сессии как есть; вариант ответа — кнопкой" },
+    { info: true, icon: "attach", label: "Прикрепить", sub: "фото или файл — Claude получит путь к нему" },
+    { info: true, icon: "mic", label: "Голосом", sub: "надиктовать сообщение — панель распознает текст" },
+    { info: true, icon: "play", label: "Выполнить", sub: "команду из ответа — на сервере пульта" },
+    { info: true, icon: "warn", label: "Опасная команда", sub: "меняет или удаляет данные — спросим подтверждение" },
+    { info: true, icon: "monitor", label: "Для другой машины", sub: "скопируйте и выполните там (Mac, гипервизор)" },
+    { info: true, icon: "lock", label: "sudo вне списка / пароль", sub: "только вручную в терминале" },
+    { info: true, icon: "copy", label: "Копировать", sub: "текст ответа или команды — в буфер обмена" },
+  ]);
+}
 $("settingsBtn").onclick = () => {
   const mode = store("theme") || "auto";
   sheet("Настройки", [
@@ -2037,6 +2078,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
+    { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
