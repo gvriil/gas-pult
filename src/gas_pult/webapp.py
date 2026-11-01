@@ -235,8 +235,15 @@ class Panel:
         """Люди для панели: страна — кодами и временем, без хеша номера."""
         return [{**p, "country": country.public(p.get("country"))} for p in self.people.list()]
 
+    def personal(self, uid) -> bool:
+        """Некоммерческие голоса (Silero) — только владельцу и только при ``personal_voices = true``."""
+        try:
+            return self.cfg.personal_voices and int(uid) in self.cfg.owners
+        except (TypeError, ValueError):
+            return False
+
     def meta(self, uid=None) -> dict:
-        voices = catalog.installed()
+        voices = catalog.installed(self.personal(uid))
         return {"host": self.cfg.host, "tz": server_tz(),
                 "commands": [t for t, _ in self.pult.command_list()],
                 "models": self.cfg.models,
@@ -246,8 +253,9 @@ class Panel:
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
                 "voice": self.voice(voices)}
 
-    def voice(self, voices: list[str] | None = None) -> str | None:
-        voices = catalog.installed() if voices is None else voices
+    def voice(self, voices: list[str] | None = None, personal: bool = False) -> str | None:
+        """Голос из настроек, если он доступен этому человеку; иначе — первый доступный (Silero → Piper)."""
+        voices = catalog.installed(personal) if voices is None else voices
         v = self.pult.state().get("voice")
         return v if v in voices else (voices[0] if voices else None)
 
@@ -468,12 +476,13 @@ class Panel:
     # ---------- голос: локально или ElevenLabs ----------
     def voice_settings(self) -> dict:
         st, keys = self.pult.state(), providers.key_info()
-        el = "elevenlabs" in keys
+        el, own = "elevenlabs" in keys, self.cfg.personal_voices        # настройки голоса — только владельцу
         return {"tts": st.get("tts_provider", "local") if el else "local",
                 "stt": st.get("stt_provider", "local") if el else "local",
-                "el_voice": st.get("el_voice"), "keys": keys, "local_voice": catalog.label(self.voice() or ""),
-                "fallback": self.fallback_note(), "voice": self.voice(),
-                "local_voices": [{"id": v, "name": catalog.label(v)} for v in catalog.installed()]}
+                "el_voice": st.get("el_voice"), "keys": keys,
+                "local_voice": catalog.label(self.voice(personal=own) or ""),
+                "fallback": self.fallback_note(), "voice": self.voice(personal=own),
+                "local_voices": [{"id": v, "name": catalog.label(v)} for v in catalog.installed(own)]}
 
     def el_voices(self) -> list[dict]:
         key = providers.load_keys().get("elevenlabs")
@@ -535,7 +544,7 @@ class Panel:
         if b.get("el_voice"):
             upd["el_voice"] = str(b["el_voice"])
         if b.get("voice"):
-            if b["voice"] not in catalog.installed():
+            if b["voice"] not in catalog.installed(self.cfg.personal_voices):   # настройки голоса — владельцу
                 raise ValueError("этот голос не установлен: gas-pult voices install <имя>")
             upd["voice"] = str(b["voice"])
         self.pult.set_state(**upd)
@@ -584,7 +593,7 @@ class Panel:
             raise ValueError("сообщение не найдено — обновите переписку")
         return items[0]["text"]
 
-    def tts(self, w: dict, full: bool, msg: int | None = None) -> bytes:
+    def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False) -> bytes:
         text = transcripts.clean(self.message(w, msg))
         text = (text if full else brief(text))[:3500]
         if not text:
@@ -598,7 +607,7 @@ class Panel:
                 return providers.el_tts(providers.load_keys()["elevenlabs"], voice_id, text)
             except (providers.ProviderError, KeyError) as e:     # запасной путь — локальный голос
                 self.voice_fallback("озвучка", e)
-        v = self.voice()
+        v = self.voice(personal=personal)                # Silero — только владельцу лично, остальным — Piper
         if not v:
             raise ValueError("голоса не установлены: gas-pult voices install irina")
         out = self.cfg.data / f"web-{uuid.uuid4().hex}.mp3"
@@ -921,7 +930,8 @@ def handler(panel: Panel):
                 return {"cmds": panel.commands(w), "host": panel.cfg.host}
             if path == "/api/tts":
                 msg = int(q["msg"]) if q.get("msg", "").isdigit() else None
-                return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg))
+                return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg,
+                                                 panel.cfg.personal_voices and self.who()[1] == "owner"))
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 rev = transcripts.revision(w["path"], home := panel.pult.home_of(w))
