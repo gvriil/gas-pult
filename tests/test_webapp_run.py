@@ -257,3 +257,39 @@ def test_rename_runs_tmux_on_own_server(panel, monkeypatch):
     monkeypatch.setattr(tm.subprocess, "run", lambda args, **kw: calls.append(args) or ok(args, 0, "", ""))
     assert panel.tmux.rename("@3", "shop") == "shop"
     assert calls[-1][-4:] == ["rename-window", "-t", "@3", "shop"] and "-S" in calls[-1]    # тесты — на своём сокете
+
+
+@pytest.fixture
+def logged(panel, monkeypatch, tmp_path):
+    items = {"c1": {"id": "c1", "cmd": "ls", "kind": "local", "danger": False, "path": "/tmp", "ts": "1", "n": 0,
+                    "done": None},
+             "c2": {"id": "c2", "cmd": "rm -rf build", "kind": "local", "danger": True, "path": "/tmp", "ts": "2",
+                    "n": 0, "done": None},
+             "c3": {"id": "c3", "cmd": "brew up", "kind": "foreign", "danger": False, "path": "/tmp", "ts": "3",
+                    "n": 0, "done": None}}
+    panel.journal.save({"items": items, "revs": {}})
+    monkeypatch.setattr(panel.tmux, "windows", lambda: [])
+    return panel
+
+
+def test_command_run_marks_done_with_exit_code(logged):
+    r = logged.command_run("c1", False)["item"]
+    assert r["done"]["code"] == 0 and r["done"]["out"] == "ran ls"
+    assert logged.journal.get("c1")["done"]["code"] == 0
+
+
+def test_command_run_danger_and_foreign(logged):
+    assert logged.command_run("c2", False) == {"confirm": True}
+    assert logged.journal.get("c2")["done"] is None
+    with pytest.raises(ValueError, match="вручную"):
+        logged.command_run("c3", True)
+
+
+def test_command_mark_by_hand_and_undo(logged):
+    assert logged.command_mark("c3", True)["item"]["done"]["by"] == "hand"
+    assert logged.command_mark("c3", False)["item"]["done"] is None
+
+
+def test_command_log_hides_paths_from_non_owner(logged):
+    assert all("path" in c for c in logged.command_log(True)["items"])
+    assert not any("path" in c for c in logged.command_log(False)["items"])
