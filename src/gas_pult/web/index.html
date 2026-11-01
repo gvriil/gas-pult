@@ -181,6 +181,10 @@
   .working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .notice { display: flex; gap: 10px; align-items: center; background: var(--bg-subtle); border-radius: var(--radius-lg); padding: 10px 12px; margin: 0 0 14px; font-size: calc(14px * var(--fz, 1)); }
+  .setup { cursor: default; padding: 14px; } .setup .meta { white-space: normal; }
+  .setup .chk { display: flex; gap: 8px; align-items: flex-start; font-size: calc(14px * var(--fz, 1)); margin: 6px 0; } .setup .chk .i { flex: none; }
+  .setup .chk.bad { color: var(--status-danger); } .setup .chk small { display: block; color: var(--text-secondary); }
+  .setup .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; } .setup .acts .btn { width: auto; flex: 1 1 140px; white-space: nowrap; }
   .notice span { flex: 1; } .notice button { border: 0; background: none; color: var(--accent-primary); font-weight: 600; padding: 6px; }
   .chat .when { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); margin: 4px 4px 0; }
   .chat .state { font-size: calc(12px * var(--fz, 1)); margin: 4px 4px 0; text-align: right; color: var(--text-secondary); }
@@ -453,6 +457,7 @@
     <div class="rail" id="rail" role="group" aria-label="Сессии"></div>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg">Команды</button><button data-v="integrations" data-owner>Интеграции</button></div>
+    <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
     <div id="commandsView" hidden></div>
     <div id="integrationsView" hidden></div>
@@ -962,6 +967,7 @@ function setHome(v) {
   homeView = v;
   document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
   $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
+  renderSetup();
   $("commandsView").hidden = v !== "commands";
   $("homeBar").hidden = !((view === "home" || split()) && v === "sessions");
   const two = split();
@@ -2233,6 +2239,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
@@ -2243,6 +2250,72 @@ $("backBtn").onclick = back;
 $("target").onclick = () => { haptic("selectionChanged"); openSwitcher(); };   // «куда уйдёт» у поля ввода — сменить сессию
 $("updateBar").onclick = reloadPanel;
 
+// ---------- мастер: Claude Code не установлен или вход не выполнен (setup.py) ----------
+let setupData = null, setupMsg = "";
+async function loadSetup(fresh) {
+  try { setupData = await api("/api/setup/status" + (fresh ? "?fresh=1" : "")); } catch (e) { setupData = null; }
+  renderSetup();
+}
+function renderSetup() {
+  const box = $("setupView"), d = setupData;
+  box.hidden = !(d && !d.ready && homeView === "sessions");
+  if (box.hidden) return;
+  const lg = d.login, inst = d.claude?.installed;
+  box.innerHTML = `<div class="card setup"><div class="name">Claude не готов</div>
+    <div class="meta">${inst ? "Claude Code установлен, но вход не выполнен. Бот и панель работают — войдите, чтобы открывать сессии." : "Claude Code на сервере не установлен. Установите его и нажмите «Проверка»."}</div>
+    ${(d.checks || []).map((c) => `<div class="chk ${c.ok ? "" : "bad"}">${ic(c.ok ? "check" : "warn", "s16")}<span>${esc(c.name)}${c.hint ? `<small>${esc(c.hint)}</small>` : ""}</span></div>`).join("")}
+    ${lg?.url ? `<div class="section">Вход в Claude</div>
+      <p class="note">1. Откройте страницу входа и войдите в аккаунт Claude. 2. Скопируйте код со страницы и вставьте сюда.</p>
+      <button class="btn quiet" data-su="open">${ic("ext", "s16")}Открыть страницу входа</button>
+      <div class="field" style="margin-top:10px"><div class="inp"><input id="suCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="код со страницы входа">
+        <button class="btn sm" style="width:auto" data-su="code">Отправить</button></div></div>` : ""}
+    <div id="suResult">${setupMsg}</div>
+    <div class="acts">
+      ${inst ? `<button class="btn sm" data-su="login">${ic("key", "s16")}${lg?.url ? "Начать заново" : "Войти в Claude"}</button>` : ""}
+      <button class="btn quiet sm" data-su="int">${ic("plus", "s16")}Интеграции</button>
+      <button class="btn quiet sm" data-su="keys">${ic("key", "s16")}Ключ провайдера</button>
+      <button class="btn quiet sm" data-su="check">${ic("refresh", "s16")}Проверка</button>
+      <button class="btn ghost sm" data-su="doc">${ic("book", "s16")}Инструкция</button></div></div>`;
+}
+function setupSheet() {
+  const d = setupData;
+  sheet(d?.ready ? "Claude Code готов" : "Claude не готов", [
+    ...(d?.checks || []).map((c) => ({ info: true, icon: c.ok ? "check" : "warn", label: c.name, sub: c.hint })),
+    ...(d && !d.ready && d.claude?.installed ? [{ label: "Войти в Claude", icon: "key", run: () => { show("home"); setHome("sessions"); setupAct("login"); } }] : []),
+    { label: "Проверить ещё раз", icon: "refresh", run: async () => { await loadSetup(true); setupSheet(); } },
+    { label: "Инструкция: если вход через пульт невозможен", icon: "book", run: () => openUrl(d?.doc || "https://github.com/gvriil/gas-pult/blob/main/docs/SETUP-CLAUDE.md") },
+  ]);
+}
+const suNote = (cls, text) => `<div class="result ${cls}">${ic(cls === "ok" ? "check" : cls === "bad" ? "warn" : "wait")}<span>${esc(text)}</span></div>`;
+async function setupAct(act, btn) {
+  const say = (cls, text) => { setupMsg = suNote(cls, text); renderSetup(); };
+  if (act === "open") return openUrl(setupData.login.url);
+  if (act === "doc") return openUrl(setupData.doc);
+  if (act === "int" || act === "keys") { setHome("integrations"); if (act === "keys") setTimeout(() => $("modelsBox")?.scrollIntoView({ behavior: "smooth" }), 300); return; }
+  if (act === "check") { setupMsg = ""; return busy(btn, "Проверяю…", () => loadSetup(true)); }
+  if (act === "login") {
+    say("wait", "Запускаю вход в отдельном окне tmux — до 20 секунд…");
+    try {
+      const r = await api("/api/setup/login", {});
+      setupData = { ...setupData, login: r };
+      setupMsg = r.url ? "" : suNote("bad", "Claude Code не показал ссылку входа. " + (r.lines || []).slice(-3).join(" · "));
+    } catch (e) { setupMsg = suNote("bad", e.message); }
+    return renderSetup();
+  }
+  if (act === "code") {
+    const code = $("suCode").value.trim(); if (!code) return $("suCode").focus();
+    return busy(btn, "Проверяю…", async () => {
+      try {
+        const r = await api("/api/setup/code", { code });
+        if (r.ok) { setupMsg = ""; toast("Вход в Claude выполнен"); await loadSetup(true); return; }
+        say("bad", "Вход не подтвердился" + (r.error ? ": " + r.error : "") + ". Проверьте код и отправьте ещё раз.");
+      } catch (e) { say("bad", e.message); }
+    });
+  }
+}
+$("setupView").addEventListener("click", (e) => { const b = e.target.closest("[data-su]"); if (b) setupAct(b.dataset.su, b); });
+$("setupView").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "suCode") { e.preventDefault(); setupAct("code", e.target.nextElementSibling); } });
+
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
@@ -2250,6 +2323,7 @@ async function start() {
   if (meta.role === "viewer" && !$("viewOnly")) $("composer").insertAdjacentHTML("afterend", '<div class="viewonly" id="viewOnly">Доступ только на просмотр</div>');
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
+  if (meta.role === "owner") await loadSetup();
   show("home"); setHome(params.get("view") === "integrations" ? "integrations" : "sessions");
   const wn = meta.whatsnew?.[0];
   if (wn && store("whatsnew") !== wn.id && !DEMO) {
@@ -2264,7 +2338,8 @@ async function start() {
   try { resume = JSON.parse(sessionStorage.getItem("resume") || "null"); sessionStorage.removeItem("resume"); } catch (e) {}
   if (resume?.id && !DEMO) { await refresh(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
   // Чат прежде всего: на телефоне панель сразу открывает последнюю сессию (открытую здесь, иначе активную в чате бота).
-  if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof") && !params.has("cmds")) {
+  if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof") && !params.has("cmds")
+      && !params.has("view") && !(setupData && !setupData.ready)) {
     if (!sessions.length) await refresh();
     const live = sessions.filter((x) => x.status !== "stopped");
     const pick = sessions.find((x) => x.id === store("last")) || live.find((x) => x.active)
@@ -2341,6 +2416,14 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  // ?setup=login — вход не выполнен, ?setup=none — Claude Code не установлен; без параметра — всё готово
+  const su = params.get("setup"), inst = su !== "none";
+  R["/api/setup/status"] = { ready: !su, claude: { installed: inst, path: inst ? "/usr/local/bin/claude" : "", version: inst ? "2.1.316 (Claude Code)" : "" },
+    auth: { logged_in: !su, method: su ? "" : "claude.ai" }, keys: ["zai"], doc: "https://github.com/gvriil/gas-pult/blob/main/docs/SETUP-CLAUDE.md", login: demoApi.login || null,
+    checks: [{ name: "tmux", ok: true, hint: "" }, { name: inst ? "Claude Code 2.1.316 (Claude Code)" : "Claude Code", ok: inst, hint: inst ? "" : "установите: https://docs.claude.com/en/docs/claude-code/setup" },
+      ...(inst ? [{ name: su ? "вход не выполнен" : "вход выполнен (claude.ai)", ok: !su, hint: su ? "«Войти в Claude» в боте или панели" : "" }] : []), { name: "ключи поставщиков: Z.ai", ok: true, hint: "" }] };
+  if (path === "/api/setup/login") return Promise.resolve(demoApi.login = { active: true, w: "@9", url: "https://claude.ai/oauth/authorize?code=true&client_id=demo", code: true, done: false, error: "", lines: [] });
+  if (path === "/api/setup/code") return Promise.resolve({ ok: false, error: "демо: код никуда не уходит", lines: [] });
   R["/api/openrouter/start"] = { url: "https://openrouter.ai/auth?demo" };
   R["/api/openrouter/info"] = { key: true, label: "gas-pult", usage: 4.27, usage_monthly: 1.9, limit: 20, limit_remaining: 15.73, is_free_tier: false };
   R["/api/openrouter/models"] = { models: [

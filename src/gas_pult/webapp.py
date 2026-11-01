@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import models, providers, transcripts, voice, webauth
+from gas_pult import models, providers, setup, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -115,6 +115,19 @@ class Panel:
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
+        self.login = self.pult.login                                 # вход в Claude Code (setup.py) — общий с ботом
+        self._setup: tuple[float, dict] = (0, {})
+
+    def setup_status(self, fresh: bool = False) -> dict:
+        """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
+        if fresh or time.time() - self._setup[0] > 20:
+            self._setup = (time.time(), setup.status(self.cfg.claude))
+        login = self.login.read()
+        return {**self._setup[1], "login": login if login.get("w") else None}
+
+    def need_claude(self):
+        if not setup.installed(self.cfg.claude):
+            raise ValueError("Claude Code на сервере не установлен — главная → «Claude не готов» → «Инструкция»")
 
     def window(self, wid: str) -> dict | None:
         w = self.tmux.window(wid)
@@ -313,6 +326,7 @@ class Panel:
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
+        self.need_claude()
         base = os.path.basename(path) if path != self.pult.home else "home"
         cmd = models.command(self.cfg.claude, profile, self.pult.state())
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude")
@@ -324,6 +338,7 @@ class Panel:
         w = self.tmux.window(wid)
         if not w or not w.get("stopped"):
             raise ValueError("сессия не остановлена — перезапускать нечего")
+        self.need_claude()
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
         cmd = models.command(self.cfg.claude, profile, self.pult.state()) + " --continue"   # нет ключа — ошибка здесь
         self.tmux.respawn(wid, w["path"], cmd, mark=profile)
@@ -601,7 +616,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
               "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
               "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
-              "/api/people", "/api/people/role", "/api/people/remove"}
+              "/api/people", "/api/people/role", "/api/people/remove",
+              "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -706,6 +722,8 @@ def handler(panel: Panel):
                 return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1]}
             if path == "/api/people":
                 return {"people": panel.people.list()}
+            if path == "/api/setup/status":
+                return panel.setup_status(q.get("fresh") == "1")
             if path == "/api/mcp":
                 return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS,
                         "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL}
@@ -825,6 +843,15 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/mcp/login":
                 return panel.mcp_login(str(b.get("name", "")))
+            if path == "/api/setup/login":                  # окно входа и ссылка с экрана (до 20 с)
+                return panel.login.start()
+            if path == "/api/setup/code":
+                r = panel.login.send_code(str(b.get("code", "")))
+                panel._setup = (0, {})
+                return r
+            if path == "/api/setup/cancel":
+                panel.login.cancel()
+                return {"ok": True}
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
             if path == "/api/openrouter/start":

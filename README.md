@@ -85,7 +85,7 @@ flowchart LR
 | Система | Linux (systemd) или macOS (launchd) | — |
 | Python | 3.11+ с `venv` (Ubuntu: `sudo apt install python3-venv`) | — |
 | tmux | любой современный (`sudo apt install tmux` / `brew install tmux`) | — |
-| Claude Code | [установлен](https://docs.claude.com/en/docs/claude-code) и вошли в аккаунт (`claude` → `/login`) | — |
+| Claude Code | [установлен](https://docs.claude.com/en/docs/claude-code) и вошли в аккаунт — можно потом, из бота (`/start` → «Войти в Claude»; не выходит — [docs/SETUP-CLAUDE.md](docs/SETUP-CLAUDE.md)) | — |
 | Telegram | бот от [@BotFather](https://t.me/BotFather) | — |
 | Голос | — | от 2 ГБ свободной памяти и ~1 ГБ диска (Piper + Whisper); Silero ещё ~1 ГБ; или ключ ElevenLabs |
 | Панель | — | HTTPS: `cloudflared` (временный адрес) или свой домен + Caddy |
