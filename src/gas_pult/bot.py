@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -19,6 +20,7 @@ import subprocess
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -89,6 +91,7 @@ class Pult:
         self.journal = Journal(cfg.data / "commands-log.json")         # вкладка «Команды» панели
         self.task = re.compile(rf"^(?:/task\s+)?({cfg.task_pattern})$", re.I)
         self.state_file = cfg.data / "state.json"
+        self.locks = cfg.data / "locks"                     # замки окон — общие для бота и панели
         self.lock = threading.Lock()
         self.answers: dict[int, tuple[str, str]] = {}     # n → (окно, текст) для 🔊; последние 100
         self.counter = 0
@@ -222,18 +225,33 @@ class Pult:
             time.sleep(1)
         raise NotReady("окно не готово к вводу 40 секунд — посмотрите «Экран»")
 
+    @contextmanager
+    def hold(self, wid: str):
+        """В окно пишет кто-то один. Бот и панель — разные процессы, поэтому замок — файл (flock), а не threading.Lock;
+        снимается сам, когда файл закрыт, — даже если процесс упал. Не вкладывать: второй hold того же окна ждёт."""
+        self.locks.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with open(self.locks / (re.sub(r"[^\w@-]", "_", wid) + ".lock"), "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            yield
+
     def to_claude(self, w: dict, text: str):
-        self.ready_for_text(w["id"])
-        self.tmux.paste(w["id"], text)
+        with self.hold(w["id"]):
+            self.ready_for_text(w["id"])
+            self.tmux.paste(w["id"], text)
+
+    def run_slash(self, wid: str, cmd: str) -> list[str]:
+        """Слэш-команда как с клавиатуры — одна для бота и панели; через 2,5 с — экран (меню или ответ)."""
+        with self.hold(wid):
+            self.ready_for_text(wid)                   # открытое меню закрыть, на вопрос Claude — не печатать
+            self.tmux.type(wid, cmd)
+            time.sleep(0.3)
+            self.tmux.keys(wid, "Enter")
+        time.sleep(2.5)
+        return self.tmux.screen(wid, 40)
 
     def slash(self, chat: int, w: dict, cmd: str):
-        """Слэш-команда: печатаем как с клавиатуры; меню (/model, /mcp) монитор пришлёт сам, остальное — экраном."""
-        self.ready_for_text(w["id"])
-        self.tmux.type(w["id"], cmd)
-        time.sleep(0.3)
-        self.tmux.keys(w["id"], "Enter")
-        time.sleep(2.5)
-        if not DIALOG.search("\n".join(self.tmux.screen(w["id"]))):
+        """Меню (/model, /mcp) монитор пришлёт сам, остальное — экраном."""
+        if not DIALOG.search("\n".join(self.run_slash(w["id"], cmd)[-25:])):
             self.send_screen(chat, w, cmd)
 
     def screen_msg(self, w: dict, title: str) -> tuple[str, dict]:
@@ -268,20 +286,30 @@ class Pult:
             if w := self.tmux.window(wid):
                 self.to_claude(w, first)
 
-    def close(self, chat: int, w: dict):
-        if w["cmd"] == "claude":            # выходим штатно, чтобы переписка сохранилась
+    def quit(self, w: dict) -> str:
+        """Выйти из Claude штатно (/exit — переписка сохранится) и закрыть окно — одно для бота и панели.
+        «closed» — закрыто; «background» — у сессии фоновые задачи, не закрываем; «busy» — Claude не вышел."""
+        with self.hold(w["id"]):
             self.tmux.keys(w["id"], "C-c")
             self.tmux.type(w["id"], "/exit")
             self.tmux.keys(w["id"], "Enter")
             time.sleep(4)
             if "Enter to confirm" in "\n".join(self.tmux.screen(w["id"])):
                 self.tmux.keys(w["id"], "Escape")
-                return self.send(chat, f"«{w['name']}» не закрыл: у сессии есть фоновые задачи, они бы "
-                                       "остановились. Реши в самом окне.")
-            w = self.tmux.window(w["id"]) or w
-            if w["cmd"] == "claude":
-                return self.send(chat, f"«{w['name']}»: Claude не вышел (возможно, занят). Посмотри 📺 Экран.")
-        self.tmux.kill(w["id"])
+                return "background"
+            if (self.tmux.window(w["id"]) or w)["cmd"] == "claude":
+                return "busy"
+            self.tmux.kill(w["id"])
+            return "closed"
+
+    def close(self, chat: int, w: dict):
+        if w["cmd"] != "claude":
+            self.tmux.kill(w["id"])
+        elif (done := self.quit(w)) == "background":
+            return self.send(chat, f"«{w['name']}» не закрыл: у сессии есть фоновые задачи, они бы "
+                                   "остановились. Реши в самом окне.")
+        elif done == "busy":
+            return self.send(chat, f"«{w['name']}»: Claude не вышел (возможно, занят). Посмотри 📺 Экран.")
         self.send(chat, f"«{w['name']}» закрыто.")
 
     # ---------- голос ----------
