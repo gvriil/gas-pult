@@ -524,15 +524,20 @@ class Panel:
                              "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
         if c["danger"] and not confirmed:
             return {"confirm": True}
-        code, secs, out = execute(c["cmd"], c["path"])
+        self.journal.update(cid, running=utc_now())                  # другим устройствам — «выполняется»
+        try:
+            code, secs, out = execute(c["cmd"], c["path"])
+        except Exception:
+            self.journal.update(cid, running=None)
+            raise
         tri, to = self.triage(c["path"], c.get("wid", ""), c["cmd"], code, out)
-        item = self.journal.mark(cid, self.done(code, secs, out, "panel", tri, to))
+        item = self.journal.update(cid, running=None, done=self.done(code, secs, out, "panel", tri, to))
         self.journal.save_output(cid, out)
         return {"item": item}
 
     def command_mark(self, cid: str, done: bool) -> dict:
-        mark = {"code": None, "seconds": 0, "at": utc_now(), "by": "hand", "out": ""}
-        return {"item": self.journal.mark(cid, mark if done else None)}
+        """«Отметить: сделано вручную» — отдельная пометка; итог настоящего запуска (done) не трогаем."""
+        return {"item": self.journal.update(cid, manual={"at": utc_now()} if done else None)}
 
 
 def utc_now() -> str:

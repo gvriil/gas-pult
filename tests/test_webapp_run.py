@@ -286,9 +286,29 @@ def test_command_run_danger_and_foreign(logged):
         logged.command_run("c3", True)
 
 
-def test_command_mark_by_hand_and_undo(logged):
-    assert logged.command_mark("c3", True)["item"]["done"]["by"] == "hand"
-    assert logged.command_mark("c3", False)["item"]["done"] is None
+def test_command_mark_by_hand_is_separate_and_undo(logged):
+    item = logged.command_mark("c3", True)["item"]
+    assert item["manual"]["at"] and item["done"] is None                 # ручная отметка — не «запуск»
+    assert logged.command_mark("c3", False)["item"]["manual"] is None
+    logged.command_run("c1", False)
+    item = logged.command_mark("c1", True)["item"]
+    assert item["done"]["code"] == 0 and item["manual"]                  # итог запуска не стирается
+
+
+def test_command_shows_running_while_executing(logged, monkeypatch):
+    from gas_pult import webapp as wa
+    seen = []
+    monkeypatch.setattr(wa, "execute", lambda cmd, cwd: seen.append(logged.journal.get("c1")["running"]) or (0, 1, ""))
+    item = logged.command_run("c1", False)["item"]
+    assert seen[0] and item["running"] is None and item["done"]["code"] == 0
+
+
+def test_old_hand_mark_becomes_manual(logged):
+    d = logged.journal.load()
+    d["items"]["c2"]["done"] = {"code": None, "by": "hand", "at": "2026-11-01 10:00"}
+    logged.journal.save(d)
+    c = logged.journal.get("c2")
+    assert c["done"] is None and c["manual"] == {"at": "2026-11-01 10:00"}
 
 
 def test_command_log_hides_paths_from_non_owner(logged):

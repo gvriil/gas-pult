@@ -210,3 +210,20 @@ def test_bot_sends_full_output_as_file_when_cut(tmp_path, monkeypatch):
     c.run(next(iter(c._load())), False, lambda text, **k: sent.append(text), lambda rows: rows,
           send_file=lambda name, data: files.append((name, data)))
     assert files == [("output.txt", big.encode())] and "файлом" in sent[-1] and "note" in sent[-1]
+
+
+def test_bot_run_shows_running_then_result(tmp_path, monkeypatch):
+    from gas_pult import commands
+    from gas_pult.commands import Commands, Journal
+    _transcript(tmp_path, monkeypatch, "/srv/a", ["```bash\nmake\n```"])
+    j = Journal(tmp_path / "log.json")
+    j.collect([{"id": "@1", "name": "a", "path": "/srv/a"}], lambda c: "local")
+    seen = []
+    c = Commands("h", tmp_path / "cmds.json", [], [], platform="linux",
+                 on_start=lambda cmd, path: j.flag_cmd(path, cmd, running="2026-11-01 10:00"),
+                 on_done=lambda cmd, path, code, secs, out: j.mark_cmd(path, cmd, {"code": code}))
+    monkeypatch.setattr(commands, "execute", lambda cmd, cwd: seen.append(j.items()[0]["running"]) or (0, 0.1, ""))
+    c.offer({"name": "a", "path": "/srv/a"}, "```bash\nmake\n```", lambda *a, **k: None, lambda rows: rows)
+    c.run(next(iter(c._load())), False, lambda *a, **k: None, lambda rows: rows)
+    assert seen == ["2026-11-01 10:00"]
+    assert j.items()[0]["running"] is None and j.items()[0]["done"] == {"code": 0}

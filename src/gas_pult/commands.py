@@ -116,8 +116,9 @@ def execute(cmd: str, cwd: str | None) -> tuple[int | str, float, str]:
 
 class Commands:
     def __init__(self, host: str, store: Path, sudo_allow: list[str], foreign: list[str], platform: str = sys.platform,
-                 on_done=None):
+                 on_done=None, on_start=None):
         self.host, self.store = host, store
+        self.on_start = on_start            # (команда, папка) — «выполняется» во вкладке «Команды»
         self.on_done = on_done              # (команда, папка, код, секунды, вывод) — отметить во вкладке «Команды»
         self.sudo_ok = re.compile(r"^\s*sudo\s+(-n\s+)?(" + "|".join(f"(?:{p})" for p in sudo_allow) + ")"
                                   if sudo_allow else r"(?!)")
@@ -180,11 +181,17 @@ class Commands:
                         parse_mode="HTML",
                         reply_markup=kb([[("⚠️ Да, выполнить", f"runok:{cid}"), ("Отмена", "noop:")]]))
         send(f"⏳ [{html.escape(c['win'])}] выполняю…", parse_mode="HTML")
+        if self.on_start:
+            try:
+                self.on_start(c["cmd"], c["cwd"])
+            except Exception as e:
+                print(f"gas-pult: перед выполнением команды: {e}", file=sys.stderr)
         code, secs, out = execute(c["cmd"], c["cwd"])
         note = ""
         if self.on_done:
             try:
-                note = self.on_done(c["cmd"], c["cwd"], code, secs, out) or ""
+                r = self.on_done(c["cmd"], c["cwd"], code, secs, out)
+                note = r if isinstance(r, str) else ""
             except Exception as e:          # отметка и разбор — не повод потерять итог выполнения
                 print(f"gas-pult: после выполнения команды: {e}", file=sys.stderr)
         tail = out[-TAIL:]
@@ -261,11 +268,48 @@ class Journal:
             self.save(d)
         return changed
 
+    @staticmethod
+    def status(c: dict) -> dict:
+        """Честный статус: ``done`` — только настоящий запуск через пульт; ``manual`` — отметка «сделано вручную»;
+        ``running`` — выполняется сейчас (UTC, когда начали). Старая отметка вручную (done.by=hand) — в ``manual``."""
+        c = dict(c)
+        if (c.get("done") or {}).get("by") == "hand":
+            c["manual"], c["done"] = {"at": c["done"].get("at", "")}, None
+        c.setdefault("manual", None)
+        c.setdefault("running", None)
+        return c
+
     def items(self) -> list[dict]:
-        return sorted(self.load()["items"].values(), key=lambda x: (x["ts"], x["n"]), reverse=True)
+        return sorted((self.status(c) for c in self.load()["items"].values()), key=lambda x: (x["ts"], x["n"]),
+                      reverse=True)
 
     def get(self, cid: str) -> dict | None:
-        return self.load()["items"].get(cid)
+        c = self.load()["items"].get(cid)
+        return self.status(c) if c else None
+
+    def update(self, cid: str, **fields) -> dict:
+        """Поменять поля команды (running, done, manual) — под замком; вернуть команду со статусом."""
+        with self.locked():
+            d = self.load()
+            c = d["items"].get(cid)
+            if not c:
+                raise LookupError("команды уже нет в списке")
+            c.update(self.status(c))
+            c.update(fields)
+            self.save(d)
+            return dict(c)
+
+    def flag_cmd(self, path: str, cmd: str, **fields) -> str | None:
+        """Самая свежая такая команда этой папки (её запускают кнопкой ▶️ в боте) — поменять поля; её id."""
+        with self.locked():
+            d = self.load()
+            same = sorted((c for c in d["items"].values() if c["path"] == path and c["cmd"] == cmd),
+                          key=lambda c: (c.get("done") is None, c["ts"], c["n"]))
+            if not same:
+                return None
+            same[-1].update(fields)
+            self.save(d)
+            return same[-1]["id"]
 
     def triage_once(self, key: str) -> bool:
         """Эту ошибку ещё не отправляли на разбор — запомнить и вернуть True; уже отправляли — False."""
@@ -312,7 +356,7 @@ class Journal:
                           key=lambda c: (c["done"] is None, c["ts"], c["n"]))
             if not same:
                 return False
-            same[-1]["done"] = done
+            same[-1]["done"], same[-1]["running"] = done, None
             self.save(d)
         if out is not None:
             self.save_output(same[-1]["id"], out)

@@ -309,19 +309,19 @@
   /* вкладка «Команды»: все команды всех сессий */
   .cmd .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-secondary); margin: 0 2px 6px; }
   .cmd .meta b { color: var(--text-primary); font-weight: 600; }
-  .cmd .meta .chip { margin-left: auto; }
+
   .cmd .why { font-size: 14px; margin: 0 2px 8px; overflow-wrap: anywhere; }
   .cmd .acts, .cmd .cmdacts { display: flex; gap: 6px; flex-wrap: wrap; }
   .cmd .cmdacts { margin-top: 6px; }
   .cmd .cmdacts .btn { width: auto; }
   .cmd .acts .btn { width: auto; flex: 1 1 auto; }
   .cmd .acts .btn.ghost { flex: 0 1 auto; }
-  .cmd.done pre { opacity: .7; }
+  .cmd .meta .chips { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .cmd .chip .sdot { width: 7px; height: 7px; }
+  .cmd .chip .sdot.hollow { background: transparent; border: 1.5px solid var(--status-idle); }
+  .seg.cmdf { margin: 0 0 8px; } .seg.cmdf button { flex: auto; white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: 12.5px; }
   .cmd .cpout { width: auto; margin-top: 8px; }
   .cmd .tri { display: flex; gap: 6px; align-items: flex-start; margin: 0 2px 6px; }
-  .cmdbar { display: flex; align-items: center; gap: 8px; margin: 0 2px 4px; color: var(--text-secondary); font-size: 13px; }
-  .cmdbar label { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-primary); }
-  .cmdbar input { width: 18px; height: 18px; accent-color: var(--accent-primary); }
 
   /* ===== Интеграции ===== */
   .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -1179,7 +1179,7 @@ async function loadCommands(quiet) {
   const box = $("commandsView");
   if (!quiet && !cmdLog) box.innerHTML = '<div class="empty">Собираю команды из сессий…</div>';
   try { cmdLog = await api("/api/commands"); } catch (e) { if (!quiet) box.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
-  const sig = JSON.stringify(cmdLog.items.map((c) => [c.id, c.done?.at, c.done?.code]));
+  const sig = JSON.stringify(cmdLog.items.map((c) => [c.id, c.done?.at, c.done?.code, c.running, c.manual?.at]));
   if (quiet && sig === cmdSig) return;                // ничего нового — не перерисовываем (раскрытый вывод не схлопнется)
   cmdSig = sig; renderCommands();
 }
@@ -1194,38 +1194,59 @@ function triageNote(t, to) {
 }
 // время в журнале — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code); показываем местное
 const localTs = (t) => { const d = new Date(String(t).replace(" ", "T") + ":00Z"); return isNaN(d) ? t : d.toLocaleString("sv-SE").slice(0, 16); };
-function cmdDone(d) {
-  if (!d) return "";
-  if (d.by === "hand") return `<span class="chip ok">${ic("check", "s16")}выполнено вручную</span>`;
-  if (d.triage === "sent" || d.triage === "dup") return `<span class="chip bad">${ic("chat", "s16")}код ${esc(d.code)} · на разборе</span>`;
-  return `<span class="chip ${d.code === 0 ? "ok" : "bad"}">${ic(d.code === 0 ? "check" : "warn", "s16")}код ${esc(d.code)}</span>`;
+// Честный статус команды — только по настоящему запуску через пульт (панель или ▶️ в боте):
+// выполняется · код 0 · код N · не запускалась; «сделано вручную» — отдельная пометка, карточка остаётся в списке.
+const STALE = 12 * 60 * 1000;                        // дольше таймаута выполнения (10 мин) — запуск прервался
+const tsMs = (t) => new Date(String(t).replace(" ", "T") + ":00Z").getTime();
+function cmdState(c) {
+  if (c.running) return Date.now() - tsMs(c.running) < STALE ? "running" : "lost";
+  if (c.done) return c.done.code === 0 ? "ok" : "fail";
+  return "new";
 }
+function cmdChip(c) {
+  const st = cmdState(c), d = c.done;
+  const chip = {
+    running: `<span class="chip s-running">${ic("wait", "s16")}выполняется</span>`,
+    lost: `<span class="chip bad">${ic("warn", "s16")}запуск прервался</span>`,
+    ok: `<span class="chip ok">${ic("check", "s16")}код 0</span>`,
+    fail: `<span class="chip bad">${ic("warn", "s16")}код ${esc(d?.code)}${d?.triage === "sent" || d?.triage === "dup" ? " · на разборе" : ""}</span>`,
+    new: `<span class="chip"><span class="sdot hollow"></span>не запускалась</span>`,
+  }[st];
+  const manual = c.manual ? `<span class="chip accent">${ic("check", "s16")}сделано вручную</span>` : "";
+  return st === "new" && manual ? manual : chip + manual;          // не запускалась, но сделана вручную — одна пометка
+}
+const CMD_FILTERS = [["all", "Все"], ["new", "Не запускались"], ["fail", "С ошибкой"]];
+const cmdIn = (f, c) => f === "all" || (f === "new" ? cmdState(c) === "new" && !c.manual : ["fail", "lost"].includes(cmdState(c)));
 function renderCommands() {
-  const todo = store("cmdsTodo") === "1", owner = meta?.role === "owner";
-  const all = cmdLog?.items || [], left = all.filter((c) => !c.done).length;
-  $("cmdsSeg").textContent = left ? `Команды · ${left}` : "Команды";
-  const items = todo ? all.filter((c) => !c.done) : all;
-  $("commandsView").innerHTML = `<div class="cmdbar"><span>${all.length ? `не выполнено ${left} из ${all.length}` : ""}</span>
-      <label><input type="checkbox" id="cmdsTodo" ${todo ? "checked" : ""}>Только невыполненные</label></div>`
+  const owner = meta?.role === "owner", all = cmdLog?.items || [];
+  let f = store("cmdsFilter") || "all"; if (!CMD_FILTERS.some(([k]) => k === f)) f = "all";
+  const fresh = all.filter((c) => cmdIn("new", c)).length;
+  $("cmdsSeg").textContent = fresh ? `Команды · ${fresh}` : "Команды";
+  const items = all.filter((c) => cmdIn(f, c));
+  $("commandsView").innerHTML = `<div class="seg cmdf">${CMD_FILTERS.map(([k, label]) => {
+      const n = all.filter((c) => cmdIn(k, c)).length;
+      return `<button data-cf="${k}" class="${k === f ? "on" : ""}">${label}${n ? ` · ${n}` : ""}</button>`; }).join("")}</div>`
     + (items.length ? items.map((c) => {
-      const again = c.done && c.done.by !== "hand" && c.done.code !== 0;          // упала — исправили и снова
-      const run = c.kind === "local" && owner && (!c.done || again)
-        ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}${again ? "Выполнить снова" : "Выполнить на " + esc(cmdLog.host)}</button>` : "";
-      const hint = c.kind !== "local" && !c.done ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
-      const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.by === "bot" ? " · кнопкой в боте" : ""}${c.done.cut ? " · показан конец вывода" : ""}
-          ${c.done.out ? `<pre class="out">${esc(c.done.out)}</pre><button class="btn sm ghost cpout" data-cout="${c.id}">${ic("copy")}Копировать вывод${c.done.cut ? " целиком" : ""}</button>` : " · вывода нет"}</div></div>${triageNote(c.done.triage, c.done.triage_to)}` : "";
-      return `<div class="cmd ${c.done ? "done" : ""}" data-cid="${c.id}">
-        <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span>${cmdDone(c.done)}</div>
+      const st = cmdState(c), d = c.done;
+      const run = c.kind === "local" && owner && st !== "running"
+        ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}${d ? "Выполнить снова" : "Выполнить на " + esc(cmdLog.host)}</button>` : "";
+      const hint = c.kind !== "local" && !d ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
+      const out = d ? `<div class="result ${d.code === 0 ? "ok" : "bad"}"><div style="width:100%">${d.code === 0 ? "Готово" : "Ошибка"} · код ${esc(d.code)} · ${d.seconds} с · ${esc(localTs(d.at))}${d.by === "bot" ? " · кнопкой в боте" : ""}${d.cut ? " · показан конец вывода" : ""}
+          ${d.out ? `<pre class="out">${esc(d.out)}</pre><button class="btn sm ghost cpout" data-cout="${c.id}">${ic("copy")}Копировать вывод${d.cut ? " целиком" : ""}</button>` : " · вывода нет"}</div></div>${triageNote(d.triage, d.triage_to)}`
+        : st === "running" ? `<div class="result wait">${ic("wait")}<span>Выполняется с ${esc(localTs(c.running).slice(11))}…</span></div>` : "";
+      return `<div class="cmd st-${st}" data-cid="${c.id}">
+        <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span><span class="chips">${cmdChip(c)}</span></div>
         ${c.about ? `<div class="why">${esc(c.about)}</div>` : ""}
         <pre>${esc(c.cmd)}</pre>${hint}
         <div class="acts">${run}<button class="btn sm ghost" data-ccopy="${c.id}">${ic("copy")}Копировать</button>${owner
-          ? `<button class="btn sm ghost" data-cmark="${c.id}" data-done="${c.done ? 0 : 1}">${c.done ? "Снять отметку" : ic("check") + "Выполнено"}</button>` : ""}</div>
+          ? `<button class="btn sm ghost" data-cmark="${c.id}" data-done="${c.manual ? 0 : 1}">${c.manual ? "Снять пометку «вручную»" : ic("check") + "Отметить: сделано вручную"}</button>` : ""}</div>
         <div class="out-wrap">${out}</div></div>`;
-    }).join("") : `<div class="empty">${all.length ? "Все команды выполнены." : "Команд пока нет — здесь появятся блоки кода из ответов всех сессий."}</div>`);
+    }).join("") : `<div class="empty">${!all.length ? "Команд пока нет — здесь появятся блоки кода из ответов всех сессий."
+      : f === "new" ? "Все команды запускались или отмечены вручную." : "Команд с ошибкой нет."}</div>`);
 }
-$("commandsView").addEventListener("change", (e) => { if (e.target.id === "cmdsTodo") { store("cmdsTodo", e.target.checked ? "1" : "0"); renderCommands(); } });
 $("commandsView").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.cf) { store("cmdsFilter", b.dataset.cf); return renderCommands(); }
   const c = cmdLog?.items.find((x) => x.id === (b.dataset.crun || b.dataset.ccopy || b.dataset.cmark || b.dataset.cout)); if (!c) return;
   if (b.dataset.cout) {                               // весь вывод — с сервера (в списке только хвост)
     if (!c.done.cut) return copyText(c.done.out, "Вывод скопирован");
@@ -1240,11 +1261,17 @@ $("commandsView").addEventListener("click", async (e) => {
     try { put((await api("/api/commands/mark", { id: c.id, done: b.dataset.done === "1" })).item); } catch (err) { toast(err.message, 4000); }
   });
   const go = (confirmed) => busy(b, "Выполняю…", async () => {
+    const card = b.closest(".cmd");
     try {
+      c.running = new Date().toISOString().slice(0, 16).replace("T", " ");    // сразу «выполняется» — не ждём ответа
+      card.querySelector(".chips").innerHTML = cmdChip(c);
       const r = await api("/api/commands/run", { id: c.id, confirmed });
-      if (r.confirm) return ask();
+      if (r.confirm) { c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c); return ask(); }
       put(r.item); haptic("notificationOccurred", r.item.done.code === 0 ? "success" : "error");
-    } catch (err) { b.closest(".cmd").querySelector(".out-wrap").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
+    } catch (err) {
+      c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c);
+      card.querySelector(".out-wrap").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`;
+    }
   });
   const ask = () => confirmDanger("Команда меняет или удаляет данные:\n\n" + c.cmd.slice(0, 600) + "\n\nВыполнить?", () => go(true));
   c.danger ? ask() : go(false);
@@ -2054,6 +2081,12 @@ function legend() {
     { info: true, vis: chip("s-approval", "ждут"), label: "Ждут ответа", sub: "сколько сессий ждут вас — на главной" },
     { info: true, vis: '<span class="ctx warn"><span class="bar"><i style="width:80%"></i></span></span>', label: "Контекст: N%", sub: "сколько памяти разговора занято; жёлтая — больше 70%, пора «Сжать» (/compact)" },
     { info: true, vis: '<span class="live"><i></i></span>', label: "Зелёная точка «обновлено»", sub: "панель на связи; жёлтая — связь прервалась, данные могут быть старыми" },
+    { head: "Вкладка «Команды»" },
+    { info: true, vis: chip("s-running", "идёт"), label: "Выполняется", sub: "команду запустили через пульт — ждём итог" },
+    { info: true, vis: chip("ok", "код 0"), label: "Код 0 — успешно", sub: "выполнена через пульт без ошибок" },
+    { info: true, vis: chip("bad", "код N"), label: "Код N — ошибка", sub: "вывод под командой; «на разборе» — ушла в свою сессию, Claude предложит исправление" },
+    { info: true, vis: '<span class="chip"><i class="sdot hollow"></i></span>', label: "Не запускалась", sub: "через пульт её ещё не выполняли" },
+    { info: true, vis: chip("accent", "вручную"), label: "Сделано вручную", sub: "вы отметили, что выполнили сами — команда остаётся в списке" },
     { head: "Кнопки" },
     { info: true, icon: "menu", label: "Меню действий", sub: "озвучить, команды Claude, модель, активная сессия, обновить, завершить" },
     { info: true, icon: "vol", label: "Кратко / Целиком", sub: "озвучить ответ голосом — коротко или полностью" },
@@ -2222,21 +2255,23 @@ function demoApi(path, body) {
   }
   if (key.startsWith("/api/commands")) {            // демо: команды трёх сессий, одна уже выполнена
     demoApi.cl ||= [
+      { id: "k0", win: "shop-bot", ts: "2026-11-01 09:30", about: "Собрать образ и выложить", cmd: "docker compose build && docker compose up -d", kind: "local", danger: false, done: null,
+        running: new Date(Date.now() - 90000).toISOString().slice(0, 16).replace("T", " ") },
       { id: "k1", win: "tgi-0904", ts: "2026-11-01 09:21", about: "Прогнать тесты комнат перед сборкой", cmd: "npm test", kind: "local", danger: false, done: null },
       { id: "k2", win: "icon-1146", ts: "2026-11-01 09:05", about: "Пересобрать проект с нуля", cmd: "rm -rf dist && npm run build", kind: "local", danger: true, done: null },
       { id: "k3", win: "gas-pult", ts: "2026-11-01 08:40", about: "перезапуск панели после обновления", cmd: "# перезапуск панели после обновления\nsystemctl --user restart gas-pult-webapp", kind: "local", danger: false,
         done: { code: 0, seconds: 1, at: "2026-11-01 08:42", by: "panel", out: "" } },
-      { id: "k4", win: "gas-pult", ts: "2026-11-01 08:31", about: "Проверить правила DNAT на гипервизоре", cmd: "ssh nl-hv 'iptables -t nat -S PREROUTING'", kind: "foreign", danger: false, done: null },
+      { id: "k4", win: "gas-pult", ts: "2026-11-01 08:31", about: "Проверить правила DNAT на гипервизоре", cmd: "ssh nl-hv 'iptables -t nat -S PREROUTING'", kind: "foreign", danger: false, done: null, manual: { at: "2026-11-01 08:36" } },
       { id: "k5", win: "digest-0716", ts: "2026-10-31 22:10", about: "", cmd: "git status --short", kind: "local", danger: false,
         done: { code: 128, seconds: 0, at: "2026-10-31 22:11", by: "panel", out: "…\nfatal: not a git repository (or any of the parent directories): .git", cut: true, triage: "sent", triage_to: "digest-0716" } }];
     if (path.includes("/output")) return Promise.resolve({ out: Array.from({ length: 300 }, (_, k) => `строка вывода ${k + 1}`).join("\n") + "\nfatal: not a git repository (or any of the parent directories): .git" });
     if (path.includes("/run")) {                    // демо: опасная сборка падает и уходит на разбор, остальное — успех
       const c = demoApi.cl.find((x) => x.id === body.id), bad = c.id === "k2", at = new Date().toISOString().slice(0, 16).replace("T", " ");
-      c.done = bad ? { code: 1, seconds: 14, at, by: "panel", out: "> build\nsrc/rooms.ts(42,7): error TS2322: Type 'string' is not assignable to type 'number'.", cut: false, triage: "sent", triage_to: c.win }
+      c.running = null; c.done = bad ? { code: 1, seconds: 14, at, by: "panel", out: "> build\nsrc/rooms.ts(42,7): error TS2322: Type 'string' is not assignable to type 'number'.", cut: false, triage: "sent", triage_to: c.win }
         : { code: 0, seconds: 2, at, by: "panel", out: "PASS  58 из 58", cut: false };
       return Promise.resolve({ item: c });
     }
-    if (path.includes("/mark")) { const c = demoApi.cl.find((x) => x.id === body.id); c.done = body.done ? { code: null, seconds: 0, at: "сейчас", by: "hand", out: "" } : null; return Promise.resolve({ item: c }); }
+    if (path.includes("/mark")) { const c = demoApi.cl.find((x) => x.id === body.id); c.manual = body.done ? { at: new Date().toISOString().slice(0, 16).replace("T", " ") } : null; return Promise.resolve({ item: c }); }
     return Promise.resolve({ host: "ubuntu", items: demoApi.cl });
   }
   if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
