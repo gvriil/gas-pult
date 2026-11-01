@@ -2,8 +2,9 @@
 
 Общее правило (голос — с #53, модели — здесь):
 - цепочка — упорядоченный список замен (``Chain``); ``next_ok`` берёт первую подходящую, кроме уже упавших;
-- подходящая — разрешена для региона человека и есть чем запустить (ключ); запрещённая для региона — не берётся
-  никогда, даже если других нет: тогда не переключаемся, а сообщаем;
+- подходящая — разрешена для стран человека, чьё это окно (``@gas_pult_by``, иначе владельца; ``country.py``), и есть
+  чем запустить (ключ); запрещённая для этих стран — не берётся никогда, даже если других нет: тогда не
+  переключаемся, а сообщаем;
 - о переключении — одна строка: в Telegram владельцам и в панель (``fallback_log`` в state.json).
 
 Модели. Цепочка поставщиков — ``fallback_chain`` в ``state.json`` пульта (меняется в панели: «Интеграции» →
@@ -136,25 +137,30 @@ def next_ok(chain, failed: str, allowed=lambda p: True, tried=()) -> str | None:
     return next((p for p in Chain(chain).after(failed) if p not in tried and allowed(p)), None)
 
 
-def reason(profile: str, region: str, keys: dict) -> str:
-    """Почему профиль не годится в запасные: «» — годится."""
-    if not models.allowed(profile, region):
-        return f"не для региона {region.upper()}"
+def where(countries) -> str:
+    cs = sorted(models.countries_of(countries))
+    return ", ".join(cs) if cs else "—"
+
+
+def reason(profile: str, countries, keys: dict) -> str:
+    """Почему профиль не годится в запасные: «» — годится. ``countries`` — страна или набор стран."""
+    if not models.allowed(profile, countries):
+        return f"не для страны {where(countries)}"
     if not models.has_key(profile, keys):
         return "нет ключа"
     return ""
 
 
-def validate(items, region: str) -> list[str]:
-    """Цепочка из панели: только известные профили, без повторов; запрещённый для региона — ошибка."""
+def validate(items, countries) -> list[str]:
+    """Цепочка из панели: только известные профили, без повторов; запрещённый для стран — ошибка."""
     if not isinstance(items, list) or not all(isinstance(x, str) for x in items):
         raise ValueError("цепочка — список поставщиков")
     bad = [x for x in items if x not in models.BY_ID]
     if bad:
         raise ValueError(f"нет такого поставщика: {bad[0][:30]}")
     for x in items:
-        if not models.allowed(x, region):
-            raise ValueError(f"{name(x)} не разрешён для региона {region.upper()} — в запасные его не ставлю")
+        if not models.allowed(x, countries):
+            raise ValueError(f"{name(x)}: {models.DENY} ({where(countries)})")
     return list(Chain(items))
 
 
@@ -164,12 +170,15 @@ def recent(state: dict, secs: int = 900, now: float | None = None) -> list[dict]
     return [x for x in state.get("fallback_log") or [] if now - float(x.get("ts") or 0) < secs]
 
 
-def public(state: dict, region: str, keys: dict | None = None) -> dict:
-    """Для панели: цепочка, все поставщики с пометкой «годится / почему нет», последние переключения."""
+def public(state: dict, region: str, keys: dict | None = None, countries=None) -> dict:
+    """Для панели: цепочка, все поставщики с пометкой «годится / почему нет», последние переключения. ``countries`` —
+    страны, по которым проверяем (нет — страна сервера ``region``)."""
     keys = providers.load_keys() if keys is None else keys
+    cs = region if countries is None else countries
     return {"chain": list(chain_of(state)), "region": (region or "").upper(),
-            "options": [{"id": p["id"], "title": p["title"], "why": reason(p["id"], region, keys)}
-                        for p in models.PROFILES],
+            "countries": sorted(models.countries_of(cs)),
+            "options": [{"id": p["id"], "title": p["title"], "why": reason(p["id"], cs, keys),
+                         "denied": not models.allowed(p["id"], cs)} for p in models.PROFILES],
             "log": list(state.get("fallback_log") or [])[-10:], "voice": VOICE}
 
 
@@ -200,8 +209,11 @@ class Switcher:
     FORGET = 3600           # упавшие поставщики окна помнятся час
     STALE = 300             # ошибка старше 5 минут (старый журнал, повтор истории после --continue) — не повод
 
-    def __init__(self, tmux, state, base: str, region: str = "", say=print, log=None, keys=None, clock=time.time):
+    def __init__(self, tmux, state, base: str, region: str = "", say=print, log=None, keys=None, clock=time.time,
+                 countries=None):
         self.tmux, self.state, self.base, self.region = tmux, state, base, (region or "").upper()
+        # страны человека, чьё окно (``countries(w) -> set``); не задано — только страна сервера
+        self.countries = countries
         self.say, self.log = say, log or (lambda entry: None)
         self.keys = keys or providers.load_keys
         self.clock = clock
@@ -231,9 +243,10 @@ class Switcher:
         del self.pending[w["id"]]
         return self.act(w, p["kind"], p["code"])
 
-    def act(self, w: dict, kind: str, code: int | None, region: str | None = None) -> str | None:
+    def act(self, w: dict, kind: str, code: int | None, region=None) -> str | None:
         now, wid = self.clock(), w["id"]
-        region = self.region if region is None else region.upper()
+        if region is None:
+            region = self.countries(w) if self.countries else self.region
         mem = self.windows.setdefault(wid, {"t": 0, "tried": {}})
         failed = w.get("profile") or "claude"
         mem["tried"] = {p: t for p, t in mem["tried"].items() if now - t < self.FORGET}

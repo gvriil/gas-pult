@@ -60,6 +60,7 @@ def server(monkeypatch, tmp_path):
     panel.people.add(3, "viewer")
     for uid in (1, 2, 3):
         panel.people.accept(uid)                             # условия использования приняты
+        panel.people.set_country(uid, chosen="NL")           # и страна выбрана
     monkeypatch.setattr(panel, "bot_username", lambda: "test_bot")
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "path": "/tmp", "name": "w"})
     monkeypatch.setattr(panel, "send", lambda w, text, mid="": False)

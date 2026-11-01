@@ -1,4 +1,4 @@
-"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|last|version]``."""
+"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|last|version]``."""
 
 from __future__ import annotations
 
@@ -190,6 +190,30 @@ def cmd_webapp(a):
     webapp.serve(cfg, a.port, a.tunnel, a.url)
 
 
+def cmd_geoip(a):
+    """База GeoIP (db-ip lite, CC BY 4.0): ``status`` — есть ли и от какого числа; ``update`` — скачать свежую.
+    Скачивается только по этой команде владельца; страна по IP дальше ищется локально, без внешних запросов."""
+    from gas_pult import country
+
+    folder = config.data_dir() / "geoip"
+    if a.action == "update":
+        print(f"Скачиваю базу стран по IP с db-ip.com в {folder} …", flush=True)
+        try:
+            path = country.update(folder)
+        except RuntimeError as e:
+            raise SystemExit(f"GeoIP: {e}") from None
+        print(f"✓ {path} ({path.stat().st_size // 1024} КБ). {country.ATTRIBUTION} — {country.ATTRIBUTION_URL}, "
+              "лицензия CC BY 4.0.\n  Панель подхватит новый файл сама, перезапуск не нужен.")
+        return
+    g = country.GeoIP(folder)
+    if not (p := g.path()):
+        return print(f"Базы GeoIP нет ({folder}). Страна по IP — «нет данных». Загрузить: gas-pult geoip update")
+    print(f"База GeoIP: {p} · от {time.strftime('%d.%m.%Y', time.localtime(p.stat().st_mtime))} · "
+          f"{country.ATTRIBUTION} ({country.ATTRIBUTION_URL}, CC BY 4.0)")
+    for ip in a.ips:
+        print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -216,6 +240,10 @@ def main(argv: list[str] | None = None):
     g.add_argument("--tunnel", action="store_true", help="временный HTTPS-адрес Cloudflare (нужен cloudflared)")
     g.add_argument("--url", help="постоянный HTTPS-адрес перед сервером (обратный прокси)")
     s.set_defaults(fn=cmd_webapp)
+    s = sub.add_parser("geoip", help="страна по IP: status [IP…] | update (скачать базу db-ip lite)")
+    s.add_argument("action", choices=["status", "update"], nargs="?", default="status")
+    s.add_argument("ips", nargs="*", help="проверить адреса (только для status)")
+    s.set_defaults(fn=cmd_geoip)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

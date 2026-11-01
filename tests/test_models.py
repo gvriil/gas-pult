@@ -103,6 +103,7 @@ def test_restart_without_key_is_refused_before_touching_window(cfgdir, monkeypat
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path / "data"))
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     panel.people.accept(1)                     # условия использования приняты
+    panel.people.set_country(1, chosen="NL")   # и страна выбрана
     touched = []
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "name": "w", "path": "/tmp"})
     monkeypatch.setattr(panel, "close", lambda w: touched.append("close") or "закрыто")
@@ -134,6 +135,7 @@ def test_keys_never_leak_to_api_state_or_argv(cfgdir, monkeypatch, tmp_path):
     providers.save_key("openrouter", secret)
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     panel.people.accept(1)                     # условия использования приняты
+    panel.people.set_country(1, chosen="NL")   # и страна выбрана
     monkeypatch.setattr(panel.tmux, "windows", lambda: [])
     cmd = models.command("claude", "openrouter", panel.pult.state())
     panel.set_models("openrouter", "anthropic/claude-sonnet-5.5", "")

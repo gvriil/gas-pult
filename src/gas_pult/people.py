@@ -16,6 +16,10 @@
 записи (``at`` — unix-время). Владельцев в people.json нет, поэтому их согласие (и любого, у кого нет записи) —
 в ``<data>/terms.json`` (0600): ``{"<Telegram ID>": {version, at}}``. Так формат people.json прежний: ``list()``,
 ``role()`` и старые версии пульта его читают как раньше. Убрали человека — его согласие удаляется вместе с ним.
+
+Страна (``country.py``): у человека из people.json — поле ``country: {chosen, phone_cc, phone_hash, phone_at, ip_cc,
+ip_at, mismatch}``; у владельцев (и у тех, кого нет в people.json) — рядом, в ``<data>/countries.json`` (0600), тем же
+видом. Номер телефона и IP не хранятся — только хеш номера с солью и коды стран.
 """
 
 from __future__ import annotations
@@ -25,10 +29,12 @@ import threading
 import time
 from pathlib import Path
 
+from gas_pult import country as geo
 from gas_pult.config import data_dir, write_private
 from gas_pult.terms import VERSION as TERMS_VERSION
 
 ROLES = ("member", "viewer")
+FIELDS = ("chosen", "phone_cc", "phone_hash", "phone_at", "ip_cc", "ip_at")
 RANK = {"viewer": 1, "member": 2, "owner": 3}
 TITLES = {"owner": "владелец", "member": "участник", "viewer": "наблюдатель"}
 
@@ -37,6 +43,7 @@ class People:
     def __init__(self, store: Path, owners: list[int]):
         self.store, self.owners, self.lock = store, list(owners), threading.Lock()
         self.terms_store = store.with_name("terms.json")      # согласие владельцев и тех, кого нет в people.json
+        self.country_store = store.with_name("countries.json")   # их же страна (признаки — country.py)
 
     def _load(self) -> dict:
         try:
@@ -48,8 +55,12 @@ class People:
         write_private(self.store, json.dumps(d, ensure_ascii=False))
 
     def _load_terms(self) -> dict:
+        return self._load_side(self.terms_store)
+
+    @staticmethod
+    def _load_side(f: Path) -> dict:
         try:
-            d = json.loads(self.terms_store.read_text())
+            d = json.loads(f.read_text())
             return d if isinstance(d, dict) else {}
         except (OSError, ValueError):
             return {}
@@ -75,8 +86,9 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            if old.get("terms"):                                   # смена роли не сбрасывает согласие
-                rec["terms"] = old["terms"]
+            for k in ("terms", "country"):                         # смена роли не сбрасывает согласие и страну
+                if old.get(k):
+                    rec[k] = old[k]
             d[str(int(uid))] = rec
             self._save(d)
 
@@ -86,9 +98,10 @@ class People:
             d = self._load()
             if d.pop(str(int(uid)), None) is not None:
                 self._save(d)
-            t = self._load_terms()
-            if t.pop(str(int(uid)), None) is not None:
-                write_private(self.terms_store, json.dumps(t))
+            for f in (self.terms_store, self.country_store):
+                t = self._load_side(f)
+                if t.pop(str(int(uid)), None) is not None:
+                    write_private(f, json.dumps(t))
 
     def accept(self, uid: int, version: str = TERMS_VERSION):
         """Человек принял условия версии ``version`` — запомнить с датой."""
@@ -116,10 +129,40 @@ class People:
         """Принял ли человек условия именно этой версии (версия сменилась — спрашиваем заново)."""
         return (self.terms(uid) or {}).get("version") == version
 
+    def country(self, uid) -> dict:
+        """Страна человека — запись признаков (``country.py``); нет — пустая."""
+        try:
+            uid = int(uid)
+        except (TypeError, ValueError):
+            return {}
+        p = None if uid in self.owners else self._load().get(str(uid))
+        rec = (p or {}).get("country") if p else self._load_side(self.country_store).get(str(uid))
+        return dict(rec) if isinstance(rec, dict) else {}
+
+    def set_country(self, uid: int, **fields) -> tuple[dict, bool]:
+        """Обновить признаки страны. Возвращает (запись, сказать ли владельцам): признаки разошлись впервые или
+        набор стран при расхождении поменялся."""
+        uid = int(uid)
+        with self.lock:
+            d = self._load()
+            mine = uid not in self.owners and str(uid) in d
+            side = {} if mine else self._load_side(self.country_store)
+            old = dict((d[str(uid)].get("country") if mine else side.get(str(uid))) or {})
+            rec = {**old, **{k: v for k, v in fields.items() if k in FIELDS}}
+            rec["mismatch"] = geo.is_mismatch(rec)
+            tell = rec["mismatch"] and (not old.get("mismatch") or geo.effective(old) != geo.effective(rec))
+            if mine:
+                d[str(uid)]["country"] = rec
+                self._save(d)
+            else:
+                side[str(uid)] = rec
+                write_private(self.country_store, json.dumps(side))
+        return rec, tell
+
     def list(self) -> list[dict]:
-        t = self._load_terms()
-        out = [{"id": o, "role": "owner", "name": "", "username": "", **({"terms": t[str(o)]} if str(o) in t else {})}
-               for o in self.owners]
+        t, c = self._load_terms(), self._load_side(self.country_store)
+        out = [{"id": o, "role": "owner", "name": "", "username": "", **({"terms": t[str(o)]} if str(o) in t else {}),
+                **({"country": c[str(o)]} if str(o) in c else {})} for o in self.owners]
         out += [{"id": int(k), **v} for k, v in self._load().items()]
         return out
 

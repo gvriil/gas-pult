@@ -11,10 +11,10 @@ Claude Code говорит с любым Anthropic-совместимым API: �
 Значения по умолчанию — из документации поставщиков (октябрь 2026); названия моделей меняются, поэтому основную
 и быструю модель можно поменять в панели (хранятся в ``state.json`` пульта, ключи — в ``secrets.json``).
 
-Регионы: у профиля ``blocked`` — страны (ISO 3166-1, две буквы), откуда трафика к этому поставщику быть не должно,
-и, если нужно, ``regions`` — явный список разрешённых. ``allowed(profile, region)`` — можно ли; регион по умолчанию —
-``region`` из config.toml (страна сервера). Регион не задан — разрешено всё, что явно не запрещено. Списки — по
-условиям поставщиков на октябрь 2026; уточняются отдельно (соблюдение условий поставщиков).
+Страны (ISO 3166-1, две буквы): у профиля ``regions`` — список разрешённых (allowlist) там, где у поставщика есть
+официальный список, и ``blocked`` — запреты и санкционные страны. ``allowed(profile, countries)`` — разрешён, только
+если разрешён для **каждой** страны набора (страны человека по трём признакам и страна сервера, ``country.py``);
+пустой набор — не разрешено ничего (страна неизвестна). Подробно — ``docs/COMPLIANCE.md``.
 """
 
 from __future__ import annotations
@@ -28,14 +28,36 @@ from pathlib import Path
 from gas_pult import providers
 from gas_pult.config import config_dir, write_private
 
-# Страны, где модели поставщиков не поддерживаются (санкции, условия поставщиков). Россия — для всех.
+# Санкционные страны: запрещены у всех поставщиков (Z.ai и DeepSeek запрещают санкционные регионы без перечня;
+# Z.ai называет Иран, КНДР, Кубу и регионы Украины — их по коду страны не отличить, см. COMPLIANCE.md).
 UNSUPPORTED = ("RU", "BY", "KP", "IR", "SY", "CU")
 NOT_FOR_ANTHROPIC = (*UNSUPPORTED, "CN", "HK", "MO")      # Anthropic: Китая в списке поддерживаемых нет
+
+# Anthropic — Supported Regions Policy, https://www.anthropic.com/supported-countries, сверено 01.11.2026
+# (на странице 185 стран, «действует с 12.11.2026»). Одна страница для claude.ai, Claude Code и API. Страна не в
+# списке — не поддерживается. Украина — кроме Крыма, Донецкой, Херсонской, Луганской и Запорожской областей
+# (по коду страны их не отличить — см. COMPLIANCE.md).
+_ANTHROPIC_LISTED = """
+AL DZ AD AO AG AR AM AU AT AZ BS BH BD BB BE BZ BJ BT BO BA BW BR BN BG BF BI CV KH CM CA CF TD CL CO KM CG CD CR
+CI HR CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FJ FI FR GA GM GE DE GH GR GD GT GN GW GY HT HN HU IS IN ID IQ IE
+IL IT JM JP JO KZ KE KI KW KG LA LV LB LS LR LY LI LT LU MG MW MY MV ML MT MH MR MU MX FM MD MC MN ME MA MZ NA NR
+NP NL NZ NI NE NG MK NO OM PK PW PS PA PG PY PE PH PL PT QA RO RW KN LC VC WS SM ST SA SN RS SC SL SG SK SI SO SB
+ZA KR SS ES LK SD SR SE CH TW TJ TZ TH TL TG TO TT TN TR TM TV UG UA AE GB US UY UZ VU VA VN ZM ZW
+"""
+ANTHROPIC_LISTED = frozenset(_ANTHROPIC_LISTED.split())
+# «Территории и зависимые территории страны из списка тоже поддерживаются (например, Пуэрто-Рико — США)».
+TERRITORIES = {
+    "US": "PR GU VI AS MP UM", "FR": "GF GP MQ RE YT PM BL MF NC PF WF TF", "NL": "AW CW SX BQ", "DK": "GL FO",
+    "GB": "GI BM KY VG AI MS TC FK SH IO GS PN GG JE IM", "AU": "CX CC NF HM", "NZ": "CK NU TK", "NO": "SJ BV",
+    "FI": "AX",
+}
+ANTHROPIC = ANTHROPIC_LISTED | {t for k, v in TERRITORIES.items() if k in ANTHROPIC_LISTED for t in v.split()}
+DENY = "Этот сервис недоступен в вашей стране по условиям поставщика"
 
 PROFILES = [
     {"id": "claude", "title": "Claude", "short": "Claude",
      "about": "Anthropic — как сейчас: подписка или ключ сервера. Работают коннекторы claude.ai",
-     "blocked": NOT_FOR_ANTHROPIC},
+     "regions": ANTHROPIC, "blocked": NOT_FOR_ANTHROPIC},
     {"id": "openrouter", "title": "OpenRouter", "short": "OpenRouter", "key": "openrouter",
      "base_url": "https://openrouter.ai/api",
      "main": "anthropic/claude-sonnet-5.5", "fast": "anthropic/claude-haiku-5.5",
@@ -44,7 +66,9 @@ PROFILES = [
      "hint": "id модели из каталога openrouter.ai/models. Надёжно работают только модели Anthropic — "
              "с другими Claude Code может ошибаться",
      "env": {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"},
-     "blocked": NOT_FOR_ANTHROPIC},                 # по умолчанию — модели Anthropic через OpenRouter
+     # своего списка стран у OpenRouter нет: по умолчанию — модели Anthropic, значит, список Anthropic (у OpenAI и
+     # Gemini списки шире — для их моделей через OpenRouter список Anthropic строже, а не мягче)
+     "regions": ANTHROPIC, "blocked": NOT_FOR_ANTHROPIC},
     {"id": "zai", "title": "GLM (Z.ai)", "short": "GLM", "key": "zai",
      "base_url": "https://api.z.ai/api/anthropic", "main": "glm-5.3[1m]", "fast": "glm-5.3-flash[1m]",
      "long_context": True,                       # «[1m]» — по документации Z.ai
@@ -67,17 +91,23 @@ SETTINGS = re.compile(r"/profiles/([a-z0-9-]+)\.json$")
 MODEL = re.compile(r"^[\w./:@~\[\]-]{1,120}$")
 
 
-def allowed(profile: str, region: str = "") -> bool:
-    """Можно ли этому поставщику принимать трафик из страны ``region``. Неизвестный профиль — нельзя.
+def countries_of(x) -> set[str]:
+    """«NL», {"NL", "DE"}, «US/CA», "" → множество кодов стран."""
+    if not x:
+        return set()
+    if isinstance(x, str):
+        return {c for c in re.split(r"[/,\s]+", x.strip().upper()) if c}
+    return {str(c).strip().upper() for c in x if c}
 
-    Есть ``regions`` — только они; иначе — всё, кроме ``blocked``. Регион не задан — всё, что явно не запрещено."""
+
+def allowed(profile: str, countries="") -> bool:
+    """Разрешён ли поставщик для **каждой** страны набора (строка — одна страна). Неизвестный профиль или пустой
+    набор (страна неизвестна) — нельзя. Есть ``regions`` — страна должна быть в нём; ``blocked`` — нельзя никогда."""
     p = BY_ID.get(profile or "claude")
-    if not p:
+    cs = countries_of(countries)
+    if not p or not cs:
         return False
-    region = (region or "").strip().upper()
-    if p.get("regions"):
-        return region in p["regions"]
-    return region not in p.get("blocked", ())
+    return all(c not in p.get("blocked", ()) and (not p.get("regions") or c in p["regions"]) for c in cs)
 
 
 def has_key(profile: str, keys: dict | None = None) -> bool:
@@ -142,8 +172,9 @@ def profile_of(argv: list[str]) -> str:
     return "claude"
 
 
-def public(state: dict) -> list[dict]:
-    """Профили для панели: без ключей — только «ключ есть», хвост и модели."""
+def public(state: dict, countries=None) -> list[dict]:
+    """Профили для панели: без ключей — только «ключ есть», хвост и модели. ``countries`` — страны человека: поле
+    ``allowed`` (недоступный — с пометкой ``denied``, текст отказа)."""
     keys = providers.key_info()
     out = []
     for p in PROFILES:
@@ -153,6 +184,9 @@ def public(state: dict) -> list[dict]:
                       "key_url": p.get("key_url", ""), "hint": p.get("hint", ""), "oauth": bool(p.get("oauth")),
                       "main": main, "fast": fast, "default_main": p.get("main", ""),
                       "default_fast": p.get("fast", "")})
+        if countries is not None:
+            ok = allowed(p["id"], countries)
+            out[-1] |= {"allowed": ok, "denied": "" if ok else DENY}
     return out
 
 

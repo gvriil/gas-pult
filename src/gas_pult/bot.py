@@ -9,6 +9,9 @@
 (``/start login_…`` и кнопки «Войти / Это не я») — остальное молча игнорирует.
 До согласия с условиями использования (``terms.py``) на любое действие бот отвечает текстом условий и кнопкой
 «Принимаю»; вход в панель через Telegram это не задерживает — условия человек примет в самой панели.
+После условий — страна (``country.py``): выбор кнопками или кодом, затем «Поделиться номером» (берём код страны,
+номер — только хешем). Участники и наблюдатели пишут боту только это (и вход в панель); остальное — как раньше.
+Новая сессия и текст в окно — только если поставщик окна разрешён для стран человека; иначе — ``country.DENY``.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import digest, fallback, models, people, setup, terms, transcripts, voice
+from gas_pult import country, digest, fallback, models, people, setup, terms, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People, allowed
@@ -65,6 +68,14 @@ def public(u: dict) -> bool:
 
 class NotReady(RuntimeError):
     """Окно не готово принять текст — сообщение не вставляем вслепую, а говорим человеку почему."""
+
+
+class Denied(RuntimeError):
+    """Поставщик окна не разрешён для стран человека — отвечаем ровно ``country.DENY``."""
+
+
+PHONE_KB = {"keyboard": [[{"text": "📱 Поделиться номером", "request_contact": True}], [{"text": "Позже"}]],
+            "resize_keyboard": True, "one_time_keyboard": True}
 MENU = {"keyboard": [[{"text": "🆕 Новая"}, {"text": "🔀 Переключить"}, {"text": "📊 Сводка"}],
                      [{"text": "⚡ Команды"}, {"text": "📋 Окна"}, {"text": "⚙️ Настройки"}]],
         "resize_keyboard": True, "is_persistent": True}
@@ -90,6 +101,7 @@ class Pult:
     pause_until = 0.0          # Telegram ответил 429 — до этого времени не шлём (повторы только продлевают запрет)
     skipped = 0                # сколько сообщений не отправили за паузу — сказать одним сообщением после неё
     BURST = 3                  # больше ответов окна за один обход монитора — шлём последний и счётчик
+    actor = threading.local()  # кто сейчас действует (Telegram ID; у каждого потока свой) — для проверки страны
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -113,8 +125,10 @@ class Pult:
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
         # поставщик модели не отвечает — окно само уходит на запасной (fallback.py), владельцам — одна строка
+        # запасные — по странам человека, чьё окно (@gas_pult_by), иначе первого владельца
         self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
-                                          say=lambda line: self.broadcast("🔁 " + line), log=self.fallback_logged)
+                                          say=lambda line: self.broadcast("🔁 " + line), log=self.fallback_logged,
+                                          countries=self.window_countries)
         # вход в Claude Code из пульта (setup.py); config_dir/env — когда у каждого человека будет своя папка Claude
         self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
 
@@ -254,6 +268,9 @@ class Pult:
             yield
 
     def to_claude(self, w: dict, text: str):
+        uid = getattr(self.actor, "uid", None)             # из бота — человек; из панели и монитора — проверено там
+        if uid is not None and not models.allowed(w.get("profile") or "claude", self.countries(uid)):
+            raise Denied(country.DENY)
         with self.hold(w["id"]):
             self.ready_for_text(w["id"])
             self.tmux.paste(w["id"], text)
@@ -304,10 +321,15 @@ class Pult:
             if first:
                 self.to_claude(w, first)
             return
+        uid = getattr(self.actor, "uid", None)
+        if uid is not None and not models.allowed("claude", self.countries(uid)):
+            return self.send(chat, country.DENY)
         try:
             home = self.claude_dir(chat)                # чат с ботом — личный: chat = Telegram ID того, кто открыл
             wid = self.tmux.new_window(name, path, models.with_home(self.cfg.claude, home),
                                        by=str(chat) if home else "")
+            if uid is not None and not home:            # окно владельца — тоже с меткой: запасные по его странам
+                self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(uid))
         except (RuntimeError, OSError) as e:
             return self.send(chat, f"Не вышло: {e}")
         self.set_state(active=wid)
@@ -651,8 +673,101 @@ class Pult:
         if version != terms.VERSION:
             return self.show_terms(chat, "Условия обновились — прочитайте новую версию.")
         self.people.accept(uid, version)
+        if not self.has_country(uid):
+            return self.show_country(chat, "Спасибо, условия приняты.")
         self.send(chat, "Спасибо, условия приняты. Пульт сессий Claude Code: текст, голос и файлы уходят в "
-                        "активное окно. Кнопки внизу.", reply_markup=MENU)
+                        "активное окно. Кнопки внизу.", reply_markup=self.menu_of(uid))
+
+    # ---------- страна человека (country.py) ----------
+    def countries(self, uid) -> set[str]:
+        return country.check_set(self.people.country(uid), self.cfg.region)
+
+    def has_country(self, uid) -> bool:
+        return bool(country.norm(self.people.country(uid).get("chosen")))
+
+    def window_countries(self, w: dict) -> set[str]:
+        """Чьё окно: метка ``@gas_pult_by`` (кто открыл), иначе первый владелец — его страны для запасных."""
+        by = ""
+        try:
+            by = self.tmux.run("show-options", "-wqv", "-t", w["id"], "@gas_pult_by").strip()
+        except (OSError, AttributeError):
+            pass
+        uid = int(by) if by.lstrip("-").isdigit() else (self.cfg.owners or [None])[0]
+        return self.countries(uid)
+
+    def menu_of(self, uid) -> dict:
+        """Владельцу — постоянное меню; остальным бот нужен только для входа и страны — клавиатуру убираем."""
+        return MENU if uid in self.cfg.owners else {"remove_keyboard": True}
+
+    def show_country(self, chat: int, note: str = ""):
+        codes = list(country.COMMON)
+        rows = [[(country.name(c), f"cc:{c}") for c in codes[i:i + 3]] for i in range(0, len(codes), 3)]
+        rows.append([("Другая — ввести код", "cc:other")])
+        self.waiting[chat] = "cc"
+        self.send(chat, (note + "\n\n" if note else "") + "🌍 Из какой страны вы работаете? Выберите кнопкой или "
+                  "пришлите код страны из двух букв (например, NL). Доступно будет то, что поставщики моделей "
+                  "разрешают для вашей страны.", reply_markup=kb(rows))
+
+    def on_country(self, chat: int, uid: int, code: str):
+        if code == "other":
+            self.waiting[chat] = "cc"
+            return self.send(chat, "Пришлите код страны из двух букв (ISO 3166-1), например NL или DE.",
+                             reply_markup={"force_reply": True})
+        c = country.norm(code)
+        if not c:
+            self.waiting[chat] = "cc"
+            return self.send(chat, "Не знаю такой страны — пришлите код из двух букв, например NL.")
+        self.waiting.pop(chat, None)
+        rec, tell = self.people.set_country(uid, chosen=c)
+        self.tell_country(uid, rec, tell)
+        self.ask_phone(chat, f"Страна: {country.name(c)} ({c}).")
+
+    def ask_phone(self, chat: int, note: str = ""):
+        self.send(chat, (note + "\n\n" if note else "") + "Подтвердите страну номером телефона: нажмите «📱 Поделиться "
+                  "номером» внизу. Храним только код страны номера и его хеш — сам номер не сохраняется.",
+                  reply_markup=PHONE_KB)
+
+    def on_contact(self, m: dict):
+        """Контакт из «Поделиться номером»: только свой (``contact.user_id`` — тот, кто прислал)."""
+        chat, uid, c = m["chat"]["id"], m["from"]["id"], m.get("contact") or {}
+        if c.get("user_id") != uid:
+            return self.send(chat, "Это не ваш номер. Нажмите «📱 Поделиться номером», чтобы отправить свой.",
+                             reply_markup=PHONE_KB)
+        rec, tell = self.people.set_country(uid, **country.phone_record(c.get("phone_number", ""), self.cfg.data))
+        self.tell_country(uid, rec, tell)
+        cc = rec.get("phone_cc") or "не определён"
+        done = "Номер подтверждён: код страны " + cc + "."
+        if uid not in self.cfg.owners:
+            done += " Вернитесь в панель."
+        self.send(chat, done, reply_markup=self.menu_of(uid))
+
+    def tell_country(self, uid: int, rec: dict, tell: bool):
+        if not tell:
+            return
+        p = next((x for x in self.people.list() if x["id"] == uid), {})
+        who = p.get("name") or (f"@{p['username']}" if p.get("username") else "человек")
+        self.broadcast(country.notice(who, uid, rec))
+
+    def country_update(self, u: dict) -> bool:
+        """От участников и наблюдателей бот принимает только страну: кнопки, код, контакт, «Позже», /start phone."""
+        if q := u.get("callback_query"):
+            return q.get("data", "").startswith(("cc:", "tm:"))
+        m = u.get("message") or {}
+        t = (m.get("text") or "").strip()
+        waiting = self.waiting.get((m.get("chat") or {}).get("id")) == "cc" and t and not t.startswith("/")
+        return bool(m.get("contact") or t in ("/start phone", "Позже") or waiting)
+
+    def need_country(self, u: dict) -> bool:
+        """Условия приняты, а страны нет — сначала страна (как условия). Вход в панель и сама страна — без задержки."""
+        if public(u) or self.country_update(u):
+            return False
+        src = u.get("message") or u.get("callback_query") or {}
+        uid = (src.get("from") or {}).get("id")
+        if uid is None or self.has_country(uid):
+            return False
+        chat = (src.get("chat") or (src.get("message") or {}).get("chat") or {}).get("id") or uid
+        self.show_country(chat)
+        return True
 
     # ---------- люди ----------
     def show_people(self, chat: int):
@@ -663,9 +778,19 @@ class Pult:
         rows = [[(f"⛔ Отключить: {p.get('name') or p.get('username') or p['id']}", f"off:{p['id']}")] for p in rest]
         lines = [f"• {p.get('name') or '—'}" + (f" @{p['username']}" if p.get("username") else "")
                  + f" — {TITLES[p['role']]}" + (", условия приняты" if self.people.accepted(p["id"]) else "")
-                 for p in rest]
+                 + self.country_line(p.get("country")) for p in rest]
         self.send(chat, "👥 Люди пульта:\n" + "\n".join(lines) + "\n\nОтключить — доступ прекращается сразу, "
                         "любой вход человека перестаёт работать.", reply_markup=kb(rows))
+
+    @staticmethod
+    def country_line(rec: dict | None) -> str:
+        """Страна в «Людях»: коды признаков; расхождение — пометкой. Номер и IP не показываем."""
+        rec = rec or {}
+        if not rec.get("chosen"):
+            return ", страна не выбрана"
+        out = (f", страна {rec['chosen']} · номер {rec.get('phone_cc') or 'не подтверждён'}"
+               f" · IP {rec.get('ip_cc') or 'нет данных'}")
+        return out + (" — ⚠️ признаки расходятся" if rec.get("mismatch") else "")
 
     def switch_off(self, chat: int, arg: str):
         """off:<id> — спросить; off:yes:<id> — отключить (роль и согласие удаляются)."""
@@ -698,10 +823,14 @@ class Pult:
             if not self.logins.decide(nonce, uid, verdict == "ok"):
                 return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
             return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
+        if q["from"]["id"] not in self.cfg.owners and kind not in ("tm", "cc"):
+            return                                         # участникам кнопки бота — только условия и страна
         if kind == "pp":                                   # владелец решает, пускать ли человека
             return self.grant(chat, arg)
         if kind == "tm":                                   # «Принимаю» под условиями использования
             return self.on_terms(chat, q["from"]["id"], arg)
+        if kind == "cc":                                   # выбор страны
+            return self.on_country(chat, q["from"]["id"], arg)
         if kind == "ppl":
             return self.show_people(chat)
         if kind == "off":                                  # «Отключить человека» (только владелец — как всё, кроме lg:)
@@ -963,6 +1092,16 @@ class Pult:
         t = (m.get("text") or m.get("caption") or "").strip()
         if t.startswith("/start login_"):
             return self.login_request(m, t.removeprefix("/start login_").strip())
+        uid = (m.get("from") or {}).get("id")
+        if m.get("contact"):
+            return self.on_contact(m)
+        if t == "/start phone":                            # из панели: «подтвердите номер в боте»
+            return self.ask_phone(chat) if self.has_country(uid) else self.show_country(chat)
+        if t == "Позже":
+            return send("Хорошо, номер можно подтвердить позже: /start phone.", reply_markup=self.menu_of(uid))
+        if self.waiting.get(chat) == "cc" and m.get("text") and not t.startswith((*MENU_PREFIXES, "/")):
+            self.waiting.pop(chat, None)
+            return self.on_country(chat, uid, t)
         wait = self.waiting.pop(chat, None) or ""
         if wait == "name" and m.get("text") and not t.startswith(MENU_PREFIXES):
             return self.new_folder(chat, t.lower())
@@ -1019,7 +1158,9 @@ class Pult:
     def handle(self, u: dict):
         chat = (u.get("message") or u.get("callback_query", {}).get("message") or {}).get("chat", {}).get("id")
         try:
-            if self.need_terms(u):
+            src = u.get("message") or u.get("callback_query") or {}
+            self.actor.uid = (src.get("from") or {}).get("id")
+            if self.need_terms(u) or self.need_country(u):
                 if "callback_query" in u:
                     self.api("answerCallbackQuery", callback_query_id=u["callback_query"]["id"])
                 return
@@ -1027,6 +1168,9 @@ class Pult:
                 self.on_callback(u["callback_query"])
             else:
                 self.on_message(u["message"])
+        except Denied as e:
+            if chat:
+                self.send(chat, str(e))
         except Exception as e:
             if chat:
                 self.send(chat, f"Ошибка: {self.api.redact(e)}")
@@ -1047,7 +1191,9 @@ class Pult:
                 for u in self.api("getUpdates", timeout=60, **({"offset": offset} if offset else {})):
                     offset = u["update_id"] + 1
                     src = u.get("message") or u.get("callback_query") or {}
-                    if src.get("from", {}).get("id") not in self.cfg.owners and not public(u):   # чужих — молча
+                    uid = src.get("from", {}).get("id")
+                    if uid not in self.cfg.owners and not public(u) and not (
+                            self.people.role(uid) and self.country_update(u)):   # чужих — молча; людям — страна
                         continue
                     threading.Thread(target=self.handle, args=(u,), daemon=True).start()
             except Exception as e:

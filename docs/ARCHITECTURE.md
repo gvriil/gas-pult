@@ -2,7 +2,7 @@
 
 ```
 src/gas_pult/
-├── cli.py          команды: run, init, doctor, voices, service, last
+├── cli.py          команды: run, init, doctor, voices, service, webapp, geoip, last
 ├── config.py       config.toml + токен; каталоги (GAS_PULT_CONFIG_DIR / GAS_PULT_DATA_DIR)
 ├── bot.py          Pult: опрос Telegram, обработчики, монитор окон
 ├── telegram.py     клиент Bot API на urllib (multipart, скачивание, маскирование токена)
@@ -12,6 +12,7 @@ src/gas_pult/
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
 ├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, «да» из HANDOFF.md
 ├── setup.py        мастер без Claude: status() (установлен, вход, ключи), вход claude auth login в окне tmux
+├── country.py      страна человека: выбор, код номера (хеш с солью), GeoIP по локальной базе db-ip lite
 └── voice/
     ├── __init__.py synth() / transcribe() — запускают рабочий процесс
     ├── __main__.py рабочий процесс: Piper, Silero, faster-whisper, ffmpeg
@@ -44,6 +45,9 @@ src/gas_pult/
 | `commands-log.json` | вкладка «Команды» панели: последние 400 команд всех сессий, отметка «выполнено» и код, отпечатки ошибок, уже отправленных на разбор (0600) |
 | `people.json` | участники и наблюдатели: роль, имя, согласие с условиями `terms: {version, at}` (0600) |
 | `terms.json` | согласие с условиями использования владельцев (их нет в `people.json`) (0600) |
+| `countries.json` | страна владельцев (признаки: выбор, код номера и его хеш, страна по IP; у остальных — `country` в `people.json`) (0600) |
+| `country_salt` | соль установки для хеша номеров телефонов (0600, создаётся один раз) |
+| `geoip/dbip-country-lite.csv.gz` | база стран по IP (db-ip lite, CC BY 4.0) — `gas-pult geoip update` |
 | `locks/` | замки окон (`flock`): в окно пишет кто-то один — бот или панель |
 | `outputs/` | весь вывод выполненных команд (до 1 МБ, хранится месяц) — для «Копировать вывод» (0600) |
 | `inbox/` | файлы и голосовые из Telegram |

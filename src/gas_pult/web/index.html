@@ -163,7 +163,17 @@
   .terms ol { margin: 0 0 12px; padding-left: 22px; } .terms li { margin: 0 0 10px; color: var(--text-primary); }
   .terms li::marker { color: var(--text-muted); }
   .terms .full { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary); text-decoration: none; font-size: calc(14px * var(--fz, 1)); margin: 0 0 14px; }
-  .terms .btn { margin: 0 0 8px; } #terms { max-width: 620px; margin: 8px auto 0; }
+  .terms .btn { margin: 0 0 8px; } #terms, #country { max-width: 620px; margin: 8px auto 0; }
+  /* Страна человека: выбор кнопками частых или кодом; номер подтверждается в боте; отметка страны по IP */
+  .cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 0 0 14px; }
+  .cc-grid button { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-subtle);
+    background: var(--bg-surface); color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); text-align: left; cursor: pointer; }
+  .cc-grid button.on { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .cc-grid button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+  .cc-grid .code { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .cc-sig { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: calc(14px * var(--fz, 1)); }
+  .cc-sig .i { flex: none; color: var(--text-secondary); margin-top: 1px; } .cc-sig b { font-weight: 600; }
+  .cc-sig .hint { margin-top: 2px; } .cc-sig a { color: var(--accent-primary); }
   .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
   /* «Запасные»: порядок поставщиков, на которые сессия переходит сама */
   .fb-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
@@ -469,6 +479,7 @@
   </section>
 
   <section id="terms" hidden><div class="panel terms" id="termsBox"></div></section>
+  <section id="country" hidden><div class="panel terms" id="countryBox"></div></section>
 
   <section id="home" hidden>
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
@@ -589,6 +600,8 @@ const P = {
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/>',
   sideopen: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15M13.5 10l2 2-2 2"/>',
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/>',
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17.5h2"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
@@ -736,6 +749,7 @@ async function api(path, body, raw, extra) {
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
+    if (r.status === 403 && err.code === "country") showCountry();  // страна ещё не выбрана
     throw new Error(err.error || "ошибка " + r.status);
   }
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
@@ -786,9 +800,9 @@ function confirmDanger(text, go) {
 // ---------- навигация ----------
 function show(v) {
   view = v;
-  for (const id of ["login", "terms", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
-  const gate = v === "login" || v === "terms";                    // вход и условия — без списка, меню и настроек
-  const two = split() && v !== "terms";                          // условия — одной колонкой, без списка сессий
+  for (const id of ["login", "terms", "country", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
+  const gate = v === "login" || v === "terms" || v === "country";  // вход, условия, страна — без списка, меню и настроек
+  const two = split() && !["terms", "country"].includes(v);       // условия и страна — одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
   applyWide(); renderRail();
   if (two && !gate) $("home").hidden = false;                     // список всегда на виду
@@ -964,6 +978,38 @@ async function showTerms() {
   });
   if ($("termsOut")) $("termsOut").onclick = async () => { try { await api("/api/logout", {}); } catch (e) {} showLogin(); };
 }
+// Страна человека: после условий (и в «Настройках» — поменять). Доступно то, что поставщики разрешают для страны;
+// номер подтверждается в боте («Поделиться номером»), страна по IP — локальной базой (IP Geolocation by DB-IP).
+const DENY = "Этот сервис недоступен в вашей стране по условиям поставщика";
+const ccDate = (t) => t ? new Date(t * 1000).toLocaleDateString("ru-RU") : "";
+function ipMark(c) {                              // отметка страны по IP — с атрибуцией базы (CC BY 4.0)
+  const by = `<a href="${esc(c.attribution_url || "https://db-ip.com")}" target="_blank" rel="noopener">${esc(c.attribution || "IP Geolocation by DB-IP")}</a>`;
+  return !c.geoip ? "нет данных — база стран по IP не загружена" : c.ip_cc ? `${esc(c.ip_cc)}${c.ip_at ? " · " + ccDate(c.ip_at) : ""} · ${by}` : `нет данных · ${by}`;
+}
+async function showCountry(change) {
+  if (view === "country" && !change) return;
+  clearInterval(start.timer); start.timer = null;
+  show("country"); $("title").textContent = "Пульт"; setSub("<span>ваша страна</span>");
+  let d; try { d = await api("/api/country"); } catch (e) { $("countryBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
+  const bot = d.bot ? `https://t.me/${encodeURIComponent(d.bot)}?start=phone` : "";
+  $("countryBox").innerHTML = `<h2 class="serif">Из какой страны вы работаете?</h2>
+    <p class="ver">Модели доступны по спискам стран их поставщиков: пульт покажет то, что разрешено для вашей страны.</p>
+    <div class="cc-grid" role="group" aria-label="Страна">${d.options.map((o) => `<button data-cc="${esc(o.code)}" class="${o.code === d.chosen ? "on" : ""}" aria-pressed="${o.code === d.chosen}">${esc(o.name)}<span class="code">${esc(o.code)}</span></button>`).join("")}</div>
+    <div class="field"><label for="ccCode">Другая страна <span class="opt">— код из двух букв (ISO 3166-1)</span></label>
+      <div class="inp"><input id="ccCode" maxlength="2" autocomplete="off" autocapitalize="characters" placeholder="например, CH" value="${d.chosen && !d.options.some((o) => o.code === d.chosen) ? esc(d.chosen) : ""}"><button class="btn sm" id="ccGo" style="width:auto">Выбрать</button></div></div>
+    <div class="cc-sig">${ic("phone")}<div><b>Номер телефона:</b> ${d.phone ? `подтверждён · код страны ${esc(d.phone_cc || "не определён")}` : "не подтверждён"}
+      <div class="hint">Подтвердите номер в боте: «Поделиться номером» — хранится только код страны и хеш номера.${bot ? ` <a href="${bot}" target="_blank" rel="noopener">Открыть бота</a>` : ""}</div></div></div>
+    <div class="cc-sig">${ic("globe")}<div><b>Страна по IP:</b> ${ipMark(d)}<div class="hint">Сверяется при каждом входе; адрес не сохраняется — только код страны.</div></div></div>
+    ${d.mismatch ? `<div class="result wait">${ic("warn")}<span>Признаки страны не совпадают — доступны только сервисы, разрешённые для всех: ${esc(d.effective.join(", "))}.</span></div>` : ""}
+    <div id="ccResult"></div>`;
+  const choose = async (code, btn) => busy(btn, "Сохраняю…", async () => {
+    try { await api("/api/country", { code }); haptic("notificationOccurred", "success"); if (change) toast("Страна: " + code.toUpperCase()); await start(); }
+    catch (err) { $("ccResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
+  });
+  $("countryBox").querySelectorAll("[data-cc]").forEach((b) => (b.onclick = () => choose(b.dataset.cc, b)));
+  $("ccGo").onclick = (e) => choose($("ccCode").value.trim(), e.currentTarget);
+  $("ccCode").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("ccGo").click(); } };
+}
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
@@ -1118,11 +1164,13 @@ function newSession(profile) {
   })));
 }
 // Выбор модели — только если есть ключ хоть одного поставщика кроме Claude; иначе сразу Claude (ноль лишних шагов).
+// Недоступный для страны человека — в списке с пометкой; нажатие — отказ тем же текстом, что у сервера.
 function pickProfile(go, exclude) {
   const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key));
-  if (!exclude && ready.length < 2) return go("claude");
+  if (!exclude && ready.length < 2 && profileOf("claude")?.allowed !== false) return go("claude");
   sheet(exclude ? "Перезапустить с поставщиком" : "В какой модели работать?", [
-    ...ready.map((p) => ({ label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) })),
+    ...ready.map((p) => p.allowed === false ? { label: p.title, icon: "lock", sub: p.denied || DENY, run: () => toast(p.denied || DENY, 4500) }
+      : { label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) }),
     ...(meta.profiles || []).filter((p) => p.needs_key && !p.key).map((p) => ({ label: p.title, icon: "key", sub: "нет ключа — добавить", run: () => profileForm(p) })),
   ]);
 }
@@ -1906,7 +1954,7 @@ function renderModels() {
   $("modelsBox").innerHTML = `<div class="section">Модели</div>
     <p class="note">Кроме Claude сессия может работать на моделях других поставщиков — по их ключу. Поставщик выбирается при «Новой сессии».</p>
     ${list.map((p) => `<button class="card" data-prof="${p.id}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div>
-      <div class="meta">${esc(p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key ? "ok" : ""}">${p.key ? "ключ " + esc(p.key.tail) : "нет ключа"}</span></div></button>`).join("")}`;
+      <div class="meta">${esc(p.allowed === false ? p.denied || DENY : p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key ? "ok" : ""}">${p.key ? "ключ " + esc(p.key.tail) : "нет ключа"}</span></div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
 
@@ -1918,10 +1966,10 @@ async function loadFallback() {
 }
 function renderFallback() {
   const opt = Object.fromEntries(fb.options.map((o) => [o.id, o])), title = (id) => opt[id]?.title || id;
-  const rest = fb.options.filter((o) => !fb.chain.includes(o.id) && !/регион/.test(o.why));
+  const rest = fb.options.filter((o) => !fb.chain.includes(o.id) && !(o.denied ?? /стран|регион/.test(o.why)));
   const voice = (k) => fb.voice[k].map(esc).join(" → ");
   $("fbBox").innerHTML = `<div class="section">Запасные</div>
-    <p class="note">Поставщик не ответил (ключ, лимит, сбой, нет связи) — сессия сама продолжит разговор у первого подходящего по списку, и вы получите одну строку в Telegram.${fb.region ? ` Регион сервера — ${esc(fb.region)}: поставщики не для этой страны не выбираются.` : ""}</p>
+    <p class="note">Поставщик не ответил (ключ, лимит, сбой, нет связи) — сессия сама продолжит разговор у первого подходящего по списку, и вы получите одну строку в Telegram.${fb.countries?.length ? ` Страны проверки — ${esc(fb.countries.join(", "))} (ваша и сервера): поставщики не для этих стран не выбираются.` : fb.region ? ` Страна сервера — ${esc(fb.region)}: поставщики не для этой страны не выбираются.` : ""}</p>
     <div class="panel">
       ${fb.chain.length ? fb.chain.map((id, i) => `<div class="fb-row"><span class="fb-n">${i + 1}</span>
         <div class="ctext"><div class="name">${esc(title(id))}</div>${opt[id]?.why ? `<div class="meta fb-why">${esc(opt[id].why)} — пропускается</div>` : ""}</div>
@@ -2280,13 +2328,21 @@ navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.open
 
 // ---------- люди (только владелец) ----------
 const ROLE = { owner: "владелец", member: "участник", viewer: "наблюдатель" };
+// Страна в «Людях»: выбор · код номера · страна по IP; расхождение — пометкой (номер и IP не показываются — их нет)
+function countryLine(c, geoip) {
+  if (!c?.chosen) return " · страна не выбрана";
+  const ip = !geoip ? "нет базы" : c.ip_cc || "нет данных";
+  return ` · страна ${c.chosen}, номер ${c.phone ? c.phone_cc || "?" : "не подтверждён"}, IP ${ip}` + (c.mismatch ? " — признаки расходятся" : "");
+}
 async function peopleSheet() {
   let d; try { d = await api("/api/people"); } catch (e) { return toast(e.message, 4000); }
-  sheet("Люди", [...d.people.map((p) => ({
-    label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: "pin",
-    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
+  sheet("Люди", [...(d.geoip === false ? [{ info: true, icon: "warn", label: "Страна по IP: нет данных", sub: "база стран по IP не загружена — на сервере: gas-pult geoip update" }] : []),
+    ...d.people.map((p) => ({
+    label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: p.country?.mismatch ? "warn" : "pin",
+    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + countryLine(p.country, d.geoip) + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
     run: () => p.role !== "owner" && personSheet(p) })),
-    { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" }]);
+    { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" },
+    ...(d.geoip ? [{ info: true, icon: "globe", label: "Страна по IP", sub: (d.attribution || "IP Geolocation by DB-IP") + " · db-ip.com, CC BY 4.0" }] : [])]);
 }
 function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
@@ -2341,6 +2397,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
@@ -2423,6 +2480,7 @@ $("setupView").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.t
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
+  if (meta.country?.need) return showCountry();                   // потом — страна
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
   if (meta.role === "viewer" && !$("viewOnly")) $("composer").insertAdjacentHTML("afterend", '<div class="viewonly" id="viewOnly">Доступ только на просмотр</div>');
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
@@ -2498,16 +2556,25 @@ function demoApi(path, body) {
   const R = {
     "/api/meta": { host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
-                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", terms: { version: "2026-11-01", accepted: !params.has("terms") || !!demoApi.terms },
+                   projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", terms: { version: "2026-11-02", accepted: !params.has("terms") || !!demoApi.terms },
+                   country: { chosen: demoApi.cc || (params.has("country") ? "" : "NL"), need: params.has("country") && !demoApi.cc, mismatch: false, phone: !params.has("country"), ip_cc: "NL", check: ["NL"] },
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
     "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name })) },
-    "/api/people": { people: [{ id: 1, role: "owner", name: "", username: "", terms: { version: "2026-11-01", at: 1793491200 } }, { id: 2, role: "member", name: "Иван", username: "ivan", terms: { version: "2026-11-01", at: 1793491200 } }, { id: 3, role: "viewer", name: "Анна", username: "" }] },
-    "/api/terms": { version: "2026-11-01", title: "Условия использования пульта", url: "https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md", accepted: false, at: null, points: [
+    "/api/people": { geoip: true, attribution: "IP Geolocation by DB-IP", attribution_url: "https://db-ip.com", people: [
+      { id: 1, role: "owner", name: "", username: "", terms: { version: "2026-11-02", at: 1793491200 }, country: { chosen: "NL", phone: true, phone_cc: "NL", ip_cc: "NL", mismatch: false } },
+      { id: 2, role: "member", name: "Иван", username: "ivan", terms: { version: "2026-11-02", at: 1793491200 }, country: { chosen: "NL", phone: true, phone_cc: "RU", ip_cc: "RU", mismatch: true } },
+      { id: 3, role: "viewer", name: "Анна", username: "", country: { chosen: "" } }] },
+    "/api/country": { chosen: demoApi.cc || (params.has("country") ? "" : "NL"), phone: !params.has("country"), phone_cc: params.has("country") ? "" : "NL", ip_cc: "NL", ip_at: 1793491200, mismatch: false, effective: ["NL"],
+      need: params.has("country") && !demoApi.cc, server: "NL", check: ["NL"], geoip: true, geoip_at: 1793491200, attribution: "IP Geolocation by DB-IP", attribution_url: "https://db-ip.com", bot: "pult_demo_bot",
+      options: [["NL", "Нидерланды"], ["DE", "Германия"], ["GB", "Великобритания"], ["FR", "Франция"], ["ES", "Испания"], ["PT", "Португалия"], ["PL", "Польша"], ["CY", "Кипр"], ["RS", "Сербия"],
+        ["TR", "Турция"], ["GE", "Грузия"], ["AM", "Армения"], ["KZ", "Казахстан"], ["AE", "ОАЭ"], ["IL", "Израиль"], ["US", "США"], ["RU", "Россия"], ["BY", "Беларусь"]].map(([code, name]) => ({ code, name })) },
+    "/api/terms": { version: "2026-11-02", title: "Условия использования пульта", url: "https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md", accepted: false, at: null, points: [
       "Пульт — инструмент: он передаёт ваши сообщения в сессии Claude Code и другие модели. Модели предоставляют их поставщики (Anthropic, OpenRouter и другие) по своим условиям.",
       "Вы сами отвечаете за соблюдение условий поставщиков моделей и законов: у вас свой аккаунт или ключ, вы не делитесь подпиской и не перепродаёте её, работаете только из поддерживаемых поставщиком стран.",
+      "Модели доступны только в странах, которые поддерживает поставщик. Страну пульт определяет по вашему выбору, коду страны номера телефона (если вы поделились им в боте) и стране IP-адреса при входе в панель. Храним только коды стран и хеш номера — сам номер и IP-адрес не сохраняются.",
       "При нарушении этих условий или правил поставщика владелец пульта вправе в любой момент и без предупреждения прекратить ваш доступ.",
       "Нажимая «Принимаю», вы подтверждаете, что прочитали условия. Дата согласия сохраняется на сервере пульта."] },
     "/api/login/tg": { id: "demo", link: "https://t.me/rc_cld_bot?start=login_demo", ttl: 300, state: "wait" },
@@ -2599,6 +2666,7 @@ function demoApi(path, body) {
   }
   if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
+  if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
   if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
