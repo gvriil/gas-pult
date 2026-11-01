@@ -98,7 +98,11 @@ PRESETS = [
 
 def _claude(*args: str, home: Path | None = None) -> subprocess.CompletedProcess:
     env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)} if home else None   # None — окружение пульта (владелец)
-    return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT, env=env)
+    try:
+        return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT, env=env)
+    except FileNotFoundError:                    # Claude Code не установлен: список пуст, добавление — понятной ошибкой
+        return subprocess.CompletedProcess(["claude", "mcp", *args], 127, "",
+                                           "Claude Code не установлен — сначала «Войти в Claude» в боте или панели")
 
 
 class Mcp:
