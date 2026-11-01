@@ -267,8 +267,19 @@
                  background: var(--bg-surface); border-radius: var(--radius-pill); padding: 4px 4px 4px 10px; font-size: 13px; }
   .attach span em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .attach span button { border: 0; background: none; color: var(--text-secondary); padding: 2px; display: grid; place-items: center; }
-  .playerbox { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; }
-  .playerbox audio { flex: 1; min-width: 0; height: 36px; }
+  /* Озвучка: состояние — прямо в сообщении; на других экранах — мини-плеер. Плеер один на всю панель. */
+  .voice { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; padding: 6px 8px; border-radius: var(--radius-md, 12px);
+           background: var(--bg-surface); border: 1px solid var(--border-subtle); font-size: 13px; color: var(--text-secondary); }
+  .voice button { border: 0; background: none; color: var(--text-primary); padding: 4px; display: grid; place-items: center; cursor: pointer; }
+  .voice .bar { flex: 1; height: 4px; padding: 8px 0; background-clip: content-box; cursor: pointer; border-radius: 2px; background: var(--border-subtle); overflow: hidden; }
+  .voice .bar i { display: block; height: 100%; width: 0; background: var(--accent-primary); }
+  .voice .t { font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+  .voice.prep .bar i { width: 30%; animation: vprep 1.2s ease-in-out infinite; }
+  @keyframes vprep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .mini { position: fixed; z-index: 15; left: 50%; transform: translateX(-50%); bottom: calc(var(--mini-b, 16px) + env(safe-area-inset-bottom));
+          width: min(360px, calc(100% - 32px)); margin: 0; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+  .mini .name { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);
+                border: 0; background: none; font: inherit; text-align: left; cursor: pointer; padding: 4px; }
   .recbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--status-danger); border-radius: 22px;
             padding: 4px 4px 4px 12px; background: color-mix(in srgb, var(--status-danger) 7%, var(--bg-surface)); height: 44px; }
   .recbar .dotrec { width: 9px; height: 9px; border-radius: 50%; background: var(--status-danger); animation: pulse 1s infinite; flex: none; }
@@ -382,6 +393,8 @@
 </main>
 </div>
 <div class="ptr" id="ptr" aria-hidden="true"></div>
+<audio id="player" preload="auto"></audio>
+<div class="voice mini" id="mini" hidden></div>
 
 <button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
@@ -389,7 +402,6 @@
 <div class="dock" id="dock" hidden>
   <div id="ask"></div>
   <div class="keys" id="keys" hidden></div>
-  <div class="playerbox" id="playerBox" hidden><audio id="player" controls></audio><button class="icon" id="playerClose" aria-label="Закрыть плеер"></button></div>
   <div class="menu" id="menu" hidden></div>
   <div class="composer" id="composer">
     <div class="attach" id="attach" hidden></div>
@@ -416,6 +428,7 @@ const DEMO = params.has("demo");
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
              stopped: { label: "остановлена", cls: "s-stopped" } };      // Claude завершился, в окне — командная строка
 const ORDER = { dialog: 0, busy: 1, idle: 2, stopped: 3 };
+let voice = null;                                   // озвучка: { w, name, msg, state: "prep" | "play" | "pause" }
 let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
     lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false,
     termWrap = false, lastOk = Date.now(), openLogs = new Set();
@@ -439,6 +452,7 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>', pause: '<path d="M9 5.5v13M15 5.5v13"/>',
   vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
   volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
@@ -475,7 +489,7 @@ function paintIcons() {
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
   $("netIcon").innerHTML = ic("warn"); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down");
-  $("playerClose").innerHTML = ic("x"); $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
+  $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
@@ -548,14 +562,14 @@ function show(v) {
   $("switchBtn").hidden = v !== "session" || two;
   $("settingsBtn").hidden = v === "login";
   $("title").classList.toggle("brand-text", v === "home" || v === "login");   // «Пульт» — фирменным градиентом
-  $("toBottom").hidden = true;
+  $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session";             // вкладки сессии — в закреплённой шапке
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
   $("top").classList.remove("hide"); scrollToY(0);
 }
 function back() {
   if (view === "mcpForm") { clearInterval(connTimer); show("home"); return setHome("integrations"); }
-  current = null; stopPlayer(); closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
+  current = null; closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
 // Шапка (заголовок + вкладки) уходит, когда листаете вниз, — экрану больше воздуха; чуть вверх — сразу возвращается.
 // Прокрутку, которую делает сама панель (к новому сообщению), за жест не считаем.
@@ -927,12 +941,13 @@ function renderChat(toBottom) {
   box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
     ? `<div class="msg me">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(m.ts)}</div></div>`
     : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
-        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(m.ts)}</span></div></div>`).join("")
+        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(m.ts)}</span></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
         fail: "не отправлено — " + esc(p.err || ""),
         lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div></div>`).join("");
+  voiceUi();
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
   box.querySelectorAll(".msg.ai").forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
@@ -1109,19 +1124,88 @@ async function act(path, body, okText) {
 }
 
 // ---------- озвучка ----------
-async function say(full, btn, msg) {
-  if (DEMO) return toast("В демо озвучки нет — в настоящей панели ответ прочитает голос", 3500);
-  await busy(btn, "Готовлю…", async () => {
-    try {
-      const blob = await api(`/api/tts?w=${encodeURIComponent(current)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
-      const p = $("player"); p.src = URL.createObjectURL(blob); $("playerBox").hidden = false; padDock();
-      p.play().catch(() => toast("Нажмите воспроизведение на плеере"));
-    } catch (e) { toast("Озвучка: " + e.message, 4500); }
-  });
+// Плеер один на всю панель: играет при переходах по меню и между сессиями, останавливается только кнопкой ✕.
+// Состояние — на том сообщении, где нажали «Кратко»/«Целиком»; на других экранах — мини-плеер (тап — к сообщению).
+const player = () => $("player");
+const mmss = (t) => (isFinite(t) ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}` : "");
+function voiceRow(m) {
+  if (!voice || voice.w !== current || voice.msg !== m.i) return "";
+  return `<div class="voice ${voice.state}" data-voice>${voiceInner(false)}</div>`;
 }
-function stopPlayer() { $("player").pause(); $("playerBox").hidden = true; padDock(); }
-$("playerClose").onclick = stopPlayer;
-function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight; $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (h + 12) + "px"; }); }
+function voiceInner(mini) {
+  const prep = voice.state === "prep", p = player();
+  return (mini ? `<button class="name" data-vgo>${esc(voice.name)}</button>` : "")
+    + (prep ? `${ic("wait", "s16")}<span>Готовлю…</span><span class="bar"><i></i></span>`
+      : `<button data-vtoggle aria-label="${voice.state === "play" ? "Пауза" : "Играть"}">${ic(voice.state === "play" ? "pause" : "play", "s16")}</button>
+         <span class="bar"><i style="width:${p.duration ? (100 * p.currentTime / p.duration).toFixed(1) : 0}%"></i></span><span class="t">${mmss(p.currentTime)}</span>`)
+    + `<button data-vstop aria-label="Остановить">${ic("x", "s16")}</button>`;
+}
+function voiceUi() {                                // перерисовать состояние везде, где оно видно
+  document.querySelectorAll("[data-voice]").forEach((el) => voice ? (el.className = "voice " + voice.state, el.innerHTML = voiceInner(false)) : el.remove());
+  const onMsg = voice && document.querySelector("[data-voice]")?.isConnected && view === "session" && current === voice.w;
+  $("mini").hidden = !voice || onMsg;
+  if (!$("mini").hidden) { $("mini").className = "voice mini " + voice.state; $("mini").innerHTML = voiceInner(true); placeMini(); }
+}
+function voiceTick() {                              // прогресс — без перерисовки, каждые ~250 мс
+  const p = player(), w = p.duration ? (100 * p.currentTime / p.duration).toFixed(1) + "%" : "0";
+  document.querySelectorAll(".voice:not(.prep) .bar i").forEach((i) => { i.style.width = w; });
+  document.querySelectorAll(".voice .t").forEach((t) => { t.textContent = mmss(p.currentTime); });
+}
+function placeMini() {                              // над нижней панелью или кнопкой «Новая сессия»
+  const h = !$("dock").hidden ? $("dock").offsetHeight : !$("homeBar").hidden ? $("homeBar").offsetHeight : 0;
+  document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
+}
+async function say(full, btn, msg) {
+  const w = current, name = cur()?.name || "сессия";
+  if (msg == null) msg = hist.findLast?.((m) => m.role === "assistant")?.i ?? null;   // из меню — последний ответ
+  stopPlayer(); voice = { w, name, msg, state: "prep" }; renderChat(false); voiceUi();
+  try {
+    const blob = DEMO ? demoTone() : await api(`/api/tts?w=${encodeURIComponent(w)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
+    if (!voice || voice.w !== w || voice.msg !== msg) return;            // пока готовили — остановили или начали другое
+    const p = player(); if (p.src) URL.revokeObjectURL(p.src);
+    p.src = URL.createObjectURL(blob);
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: full ? "Ответ Claude целиком" : "Ответ Claude кратко", artist: name, album: "Пульт" });
+      navigator.mediaSession.setActionHandler("play", () => player().play());
+      navigator.mediaSession.setActionHandler("pause", () => player().pause());
+      navigator.mediaSession.setActionHandler("stop", stopPlayer);
+    }
+    await p.play().catch(() => { voice.state = "pause"; voiceUi(); toast("Нажмите ▶, чтобы слушать"); });
+  } catch (e) { voice = null; voiceUi(); toast("Озвучка: " + e.message, 4500); }
+}
+function stopPlayer() {
+  const p = player(); p.pause(); if (p.src) { URL.revokeObjectURL(p.src); p.removeAttribute("src"); p.load(); }
+  if ("mediaSession" in navigator) navigator.mediaSession.metadata = null;
+  voice = null; voiceUi();
+}
+player().addEventListener("play", () => { if (voice) { voice.state = "play"; voiceUi(); } });
+player().addEventListener("pause", () => { if (voice && voice.state !== "prep" && !player().ended) { voice.state = "pause"; voiceUi(); } });
+player().addEventListener("ended", stopPlayer);
+player().addEventListener("timeupdate", voiceTick);
+document.addEventListener("click", (e) => {
+  const bar = voice && e.target.closest(".voice:not(.prep) .bar");
+  if (bar && player().duration) {                  // перемотка: коснулись полоски — туда и перескочили
+    const r = bar.getBoundingClientRect();
+    player().currentTime = player().duration * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); return voiceTick();
+  }
+  const b = e.target.closest("[data-vtoggle], [data-vstop], [data-vgo]"); if (!b || !voice) return;
+  if (b.dataset.vstop != null) return stopPlayer();
+  if (b.dataset.vtoggle != null) return player().paused ? player().play() : player().pause();
+  const v = voice;                                  // мини-плеер: вернуться к сообщению
+  (current === v.w && view === "session" ? Promise.resolve() : openSession(v.w)).then?.(() => setTimeout(() => {
+    if (tab !== "chat") setTab("chat");
+    document.querySelector("[data-voice]")?.scrollIntoView({ block: "center", behavior: "smooth" }); voiceUi();
+  }, 600));
+});
+function demoTone() {                               // демо: 6 с тихого тона вместо настоящей озвучки
+  const rate = 8000, n = rate * 6, b = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+  b.setUint32(24, rate, true); b.setUint32(28, rate * 2, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); str(36, "data"); b.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) b.setInt16(44 + i * 2, Math.sin(i / rate * 2 * Math.PI * 440) * 600, true);
+  return new Blob([b], { type: "audio/wav" });
+}
+function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight; $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (h + 12) + "px"; placeMini(); }); }
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
