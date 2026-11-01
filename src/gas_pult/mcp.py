@@ -94,7 +94,11 @@ PRESETS = [
 
 
 def _claude(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT)
+    try:
+        return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT)
+    except FileNotFoundError:                    # Claude Code не установлен: список пуст, добавление — понятной ошибкой
+        return subprocess.CompletedProcess(["claude", "mcp", *args], 127, "",
+                                           "Claude Code не установлен — сначала «Войти в Claude» в боте или панели")
 
 
 class Mcp:

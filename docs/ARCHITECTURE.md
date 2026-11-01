@@ -11,6 +11,7 @@ src/gas_pult/
 ├── transcripts.py  jsonl Claude Code: Turns (сборка хода до end_turn), Tail, last_answer, clean
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
 ├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, «да» из HANDOFF.md
+├── setup.py        мастер без Claude: status() (установлен, вход, ключи), вход claude auth login в окне tmux
 └── voice/
     ├── __init__.py synth() / transcribe() — запускают рабочий процесс
     ├── __main__.py рабочий процесс: Piper, Silero, faster-whisper, ffmpeg
@@ -78,6 +79,7 @@ src/gas_pult/
 | `web/index.html` | Весь интерфейс одной страницей (Telegram WebApp JS, marked + DOMPurify); `?demo` — демо-данные для показа и скриншотов |
 | `web/whatsnew.json` | «Что нового» — показывается один раз после обновления |
 | `webauth.py` | Вход из браузера: код в Telegram, cookie-сессия, хранятся только хеши |
+| `setup.py` | Мастер первого запуска: `status()` (`claude --version`, `claude auth status --json`, ключи), `Login` — `claude auth login` в окне `<сессия>-setup` с меткой `login`, ссылка с экрана, код в окно; `/api/setup/*` |
 | `mcp.py` | MCP-серверы Claude Code через `claude mcp`: список, шаблоны `PRESETS`, добавление, удаление |
 | `providers.py` | Ключи API (`secrets.json`, 600) и ElevenLabs: озвучка, распознавание, голоса |
 | `fallback.py` | Запасные: распознаёт отказ поставщика модели в транскрипте (`classify_entry`), выбирает следующего по цепочке `fallback_chain` (state.json) с учётом региона (`models.allowed`) и ключей, перезапускает окно с `--continue` и пишет одну строку; монитор бота вызывает `Switcher.seen/step`. `GET/POST /api/fallback` — цепочка в панели |

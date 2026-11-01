@@ -16,6 +16,7 @@ def panel(monkeypatch, tmp_path):
             {"i": 2, "cmd": "brew install x", "kind": "foreign", "danger": False, "sha": "ccc"}]
     monkeypatch.setattr(p, "commands", lambda w: cmds)
     monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: (0, 0.1, f"ran {cmd}"))
+    monkeypatch.setattr(webapp.setup, "installed", lambda claude="claude": "/usr/bin/claude")   # в CI Claude Code нет
     return p
 
 

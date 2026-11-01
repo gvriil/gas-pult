@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import fallback, models, providers, terms, transcripts, voice, webauth
+from gas_pult import fallback, models, providers, setup, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -113,8 +113,22 @@ class Panel:
         self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
+        self.model_cache: dict[str, tuple[str, str]] = {}    # папка → (ревизия журнала, модель последнего ответа)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
+        self.login = self.pult.login                                 # вход в Claude Code (setup.py) — общий с ботом
+        self._setup: tuple[float, dict] = (0, {})
+
+    def setup_status(self, fresh: bool = False) -> dict:
+        """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
+        if fresh or time.time() - self._setup[0] > 20:
+            self._setup = (time.time(), setup.status(self.cfg.claude))
+        login = self.login.read()
+        return {**self._setup[1], "login": login if login.get("w") else None}
+
+    def need_claude(self):
+        if not setup.installed(self.cfg.claude):
+            raise ValueError("Claude Code на сервере не установлен — главная → «Claude не готов» → «Инструкция»")
 
     def window(self, wid: str) -> dict | None:
         w = self.tmux.window(wid)
@@ -137,15 +151,22 @@ class Panel:
             if not w.get("mark"):                    # окна до метки: помечаем, чтобы и они потом стали «остановлена»
                 self.tmux.run("set-option", "-w", "-t", w["id"], "@gas_pult", w.get("profile") or "claude")
             scr = "\n".join(self.tmux.screen(w["id"], 40))
-            ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
+            ctx, mdl, rev = CONTEXT.search(scr), MODEL_LINE.search(scr), transcripts.revision(w["path"])
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
-                        "model": mdl.group(1).strip() if mdl else "",             # на чём реально работает сессия
+                        # на чём работает сессия: строка статуса «🤖 …», иначе — модель последнего ответа в журнале
+                        "model": mdl.group(1).strip() if mdl else self.model_of(w["path"], rev),
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
-                        "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
+                        "rev": rev,                                       # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev)})
         return out
+
+    def model_of(self, path: str, rev: str) -> str:
+        """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала."""
+        if self.model_cache.get(path, ("",))[0] != rev:
+            self.model_cache[path] = (rev, transcripts.model_title(transcripts.last_model(path)))
+        return self.model_cache[path][1]
 
     def preview(self, path: str, rev: str) -> str:
         """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""
@@ -313,6 +334,7 @@ class Panel:
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
+        self.need_claude()
         base = os.path.basename(path) if path != self.pult.home else "home"
         cmd = models.command(self.cfg.claude, profile, self.pult.state())
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude")
@@ -324,6 +346,7 @@ class Panel:
         w = self.tmux.window(wid)
         if not w or not w.get("stopped"):
             raise ValueError("сессия не остановлена — перезапускать нечего")
+        self.need_claude()
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
         cmd = models.command(self.cfg.claude, profile, self.pult.state()) + " --continue"   # нет ключа — ошибка здесь
         self.tmux.respawn(wid, w["path"], cmd, mark=profile)
@@ -609,7 +632,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
               "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
               "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
-              "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback"}
+              "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback",
+              "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 
 # До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
 TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout"}
@@ -730,6 +754,8 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/people":
                 return {"people": panel.people.list()}
+            if path == "/api/setup/status":
+                return panel.setup_status(q.get("fresh") == "1")
             if path == "/api/mcp":
                 return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS,
                         "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL}
@@ -861,6 +887,15 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/mcp/login":
                 return panel.mcp_login(str(b.get("name", "")))
+            if path == "/api/setup/login":                  # окно входа и ссылка с экрана (до 20 с)
+                return panel.login.start()
+            if path == "/api/setup/code":
+                r = panel.login.send_code(str(b.get("code", "")))
+                panel._setup = (0, {})
+                return r
+            if path == "/api/setup/cancel":
+                panel.login.cancel()
+                return {"ok": True}
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
             if path == "/api/openrouter/start":

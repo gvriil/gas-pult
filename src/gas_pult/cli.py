@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from gas_pult import __version__, config, transcripts
+from gas_pult import __version__, config, setup, transcripts
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -87,7 +87,12 @@ def cmd_doctor(_):
         check("настройки", False, str(e))
         return sys.exit(1)
     check(f"настройки: владельцы {cfg.owners}, сессия «{cfg.session}», хост «{cfg.host}»", True)
-    check(f"Claude Code ({cfg.claude})", shutil.which(cfg.claude.split()[0]), "https://docs.claude.com/claude-code")
+    st = setup.status(cfg.claude)                      # то же, что «Проверка» в боте и панели
+    for c in st["checks"]:
+        if c["name"] != "tmux":
+            check(c["name"], c["ok"], c["hint"])
+    if not st["ready"]:
+        print(f"  Бот и панель работают и без Claude: /start в боте — мастер входа. Вручную — {setup.DOC_URL}")
     try:
         check(f"бот @{Api(cfg.token)('getMe')['username']}", True)
     except (TelegramError, OSError) as e:
