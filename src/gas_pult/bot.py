@@ -776,7 +776,10 @@ class Pult:
                     "Ключи поставщиков моделей (OpenRouter, GLM, DeepSeek)")
             return send(f"{what} подключаются в панели: «Интеграции». Панель запускается командой "
                         "gas-pult webapp --url https://<ваш адрес> (или --tunnel) — после этого у бота появится "
-                        "кнопка «📱 Панель». Подробно — docs/MINI_APP.md в репозитории.")
+                        "кнопка «📱 Панель». Подробно — docs/MINI_APP.md в репозитории."
+                        + ("\n\nПоставщик — только тот, что поддерживает страну, откуда идёт работа. Для российских "
+                           "каналов (MAX, VK) — не Claude: Россия не входит в список стран Anthropic. Правила — "
+                           "docs/COMPLIANCE.md." if arg == "keys" else ""))
         return None
 
     def setup_login(self, chat: int):
