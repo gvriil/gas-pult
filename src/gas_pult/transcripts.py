@@ -1,4 +1,7 @@
-"""Транскрипты Claude Code (``~/.claude/projects/<папка>/*.jsonl``): ответы, границы ходов, очистка для озвучки."""
+"""Транскрипты Claude Code (``~/.claude/projects/<папка>/*.jsonl``): ответы, границы ходов, очистка для озвучки.
+
+``home`` — папка Claude Code человека (``CLAUDE_CONFIG_DIR``, ``people.home_of``): его журналы — в ``<home>/projects``.
+Без неё — ``~/.claude``, как раньше."""
 
 from __future__ import annotations
 
@@ -30,13 +33,13 @@ def is_real_prompt(entry: dict) -> bool:
     return not re.match(r"<(bash-|local-command|command-|system-reminder|task-notification)", t)
 
 
-def project_dir(path: str) -> Path:
+def project_dir(path: str, home: Path | None = None) -> Path:
     """Так Claude Code называет каталог транскриптов папки проекта."""
-    return CLAUDE_PROJECTS / re.sub(r"[^A-Za-z0-9]", "-", path)
+    return (home / "projects" if home else CLAUDE_PROJECTS) / re.sub(r"[^A-Za-z0-9]", "-", path)
 
 
-def transcripts(path: str) -> list[Path]:
-    return sorted(project_dir(path).glob("*.jsonl"))
+def transcripts(path: str, home: Path | None = None) -> list[Path]:
+    return sorted(project_dir(path, home).glob("*.jsonl"))
 
 
 def clean(md: str) -> str:
@@ -124,9 +127,9 @@ class Tail:
 PASTED = re.compile(r"</?pasted_content[^>]*>")
 
 
-def revision(path: str) -> str:
+def revision(path: str, home: Path | None = None) -> str:
     """Отпечаток последнего транскрипта папки (файл, размер, время) — изменился ли журнал с прошлого раза."""
-    files = transcripts(path)
+    files = transcripts(path, home)
     if not files:
         return ""
     f = max(files, key=lambda p: p.stat().st_mtime)
@@ -134,7 +137,8 @@ def revision(path: str) -> str:
     return f"{f.stem[:8]}-{st.st_size}-{st.st_mtime_ns}"
 
 
-def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list[dict], bool]:
+def history(path: str, limit: int = 30, before: int | None = None,
+            home: Path | None = None) -> tuple[list[dict], bool]:
     """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
 
     Ответ Claude — весь текст хода до следующего запроса человека (как в чате), субагенты пропускаются.
@@ -142,7 +146,7 @@ def history(path: str, limit: int = 30, before: int | None = None) -> tuple[list
     по ходу работы (``attachment: queued_command``): такие показываем сразу, с пометкой
     ``queued`` = "wait" (ещё в очереди) или "read" (прочитано по ходу работы).
     """
-    files = transcripts(path)
+    files = transcripts(path, home)
     if not files:
         return [], False
     items: list[dict] = []
@@ -187,12 +191,12 @@ TOOLS = {"Bash": "команда", "Read": "читает", "Edit": "правит
          "Task": "поручил агенту", "Agent": "поручил агенту", "TodoWrite": "план"}
 
 
-def preview(path: str, tail: int = 262144) -> str:
+def preview(path: str, tail: int = 262144, home: Path | None = None) -> str:
     """Одна строка о том, что сейчас в сессии: последний ответ Claude, его действие или ваш запрос.
 
     Читается только хвост журнала (``tail`` байт) — дёшево даже при опросе раз в 3 секунды.
     """
-    files = transcripts(path)
+    files = transcripts(path, home)
     if not files:
         return ""
     with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
@@ -223,13 +227,13 @@ def preview(path: str, tail: int = 262144) -> str:
     return ""
 
 
-def last_model(path: str, tail: int = 262144) -> str:
+def last_model(path: str, tail: int = 262144, home: Path | None = None) -> str:
     """На какой модели ответил Claude в последний раз — поле ``message.model`` в журнале (хвост ``tail`` байт).
 
     Запасной источник, когда в строке статуса Claude Code нет «🤖 …»: id как есть (claude-opus-5-5, glm-5.3…),
     подпись для людей — ``model_title``.
     """
-    files = transcripts(path)
+    files = transcripts(path, home)
     if not files:
         return ""
     with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
@@ -269,9 +273,9 @@ def _line(text: str, limit: int = 140) -> str:
     return ""
 
 
-def last_answer(path: str) -> str:
+def last_answer(path: str, home: Path | None = None) -> str:
     """Последний полный ответ Claude в папке (для «💬 Последний ответ»)."""
-    files = transcripts(path)
+    files = transcripts(path, home)
     if not files:
         return ""
     entries = []
