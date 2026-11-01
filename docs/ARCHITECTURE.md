@@ -76,6 +76,7 @@ src/gas_pult/
 | `webauth.py` | Вход из браузера: код в Telegram, cookie-сессия, хранятся только хеши |
 | `mcp.py` | MCP-серверы Claude Code через `claude mcp`: список, шаблоны `PRESETS`, добавление, удаление |
 | `providers.py` | Ключи API (`secrets.json`, 600) и ElevenLabs: озвучка, распознавание, голоса |
+| `fallback.py` | Запасные: распознаёт отказ поставщика модели в транскрипте (`classify_entry`), выбирает следующего по цепочке `fallback_chain` (state.json) с учётом региона (`models.allowed`) и ключей, перезапускает окно с `--continue` и пишет одну строку; монитор бота вызывает `Switcher.seen/step`. `GET/POST /api/fallback` — цепочка в панели |
 
 Добавить шаблон интеграции — запись в `PRESETS` (`mcp.py`): `title`, `about`, `type`, `url`, `fields`
 (у поля `label`, `hint`, `placeholder`, `secret`, `header`/`format`). Форма в панели строится сама.

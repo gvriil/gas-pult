@@ -32,7 +32,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 
-from gas_pult import models, providers, terms, transcripts, voice, webauth
+from gas_pult import fallback, models, providers, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -439,6 +439,14 @@ class Panel:
         print(note, file=sys.stderr, flush=True)
         self.last_fallback = (time.time(), note)
 
+    def fallback_info(self) -> dict:
+        """Запасные для панели: цепочка поставщиков, регион, кто годится, последние переключения, голос (#53)."""
+        return {**fallback.public(self.pult.state(), self.cfg.region), "voice_note": self.fallback_note()}
+
+    def set_fallback(self, chain) -> dict:
+        self.pult.set_state(fallback_chain=fallback.validate(chain, self.cfg.region))
+        return self.fallback_info()
+
     def fallback_note(self) -> str:
         t, note = getattr(self, "last_fallback", (0, ""))
         return note if time.time() - t < 3600 else ""
@@ -583,7 +591,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
               "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
               "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
-              "/api/people", "/api/people/role", "/api/people/remove"}
+              "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback"}
 
 # До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
 TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout"}
@@ -693,7 +701,9 @@ def handler(panel: Panel):
 
         def get(self, path: str, q: dict):
             if path == "/api/sessions":
-                return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build}
+                return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build,
+                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
+                                     for x in fallback.recent(panel.pult.state())]}
             if path == "/api/meta":
                 kind, role, uid = self.who()
                 return {**panel.meta(), "via": kind, "role": role, "uid": uid, "build": build, "whatsnew": whatsnew[:1],
@@ -715,6 +725,8 @@ def handler(panel: Panel):
                 return panel.openrouter_info()
             if path == "/api/openrouter/models":
                 return {"models": panel.openrouter.models()}
+            if path == "/api/fallback":
+                return panel.fallback_info()
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
@@ -836,6 +848,8 @@ def handler(panel: Panel):
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}
+            if path == "/api/fallback":
+                return panel.set_fallback(b.get("chain"))
             if path == "/api/models":
                 panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
                 return {"profiles": models.public(panel.pult.state())}

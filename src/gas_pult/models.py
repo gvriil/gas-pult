@@ -10,6 +10,11 @@ Claude Code говорит с любым Anthropic-совместимым API: �
 
 Значения по умолчанию — из документации поставщиков (октябрь 2026); названия моделей меняются, поэтому основную
 и быструю модель можно поменять в панели (хранятся в ``state.json`` пульта, ключи — в ``secrets.json``).
+
+Регионы: у профиля ``blocked`` — страны (ISO 3166-1, две буквы), откуда трафика к этому поставщику быть не должно,
+и, если нужно, ``regions`` — явный список разрешённых. ``allowed(profile, region)`` — можно ли; регион по умолчанию —
+``region`` из config.toml (страна сервера). Регион не задан — разрешено всё, что явно не запрещено. Списки — по
+условиям поставщиков на октябрь 2026; уточняются отдельно (соблюдение условий поставщиков).
 """
 
 from __future__ import annotations
@@ -23,9 +28,14 @@ from pathlib import Path
 from gas_pult import providers
 from gas_pult.config import config_dir, write_private
 
+# Страны, где модели поставщиков не поддерживаются (санкции, условия поставщиков). Россия — для всех.
+UNSUPPORTED = ("RU", "BY", "KP", "IR", "SY", "CU")
+NOT_FOR_ANTHROPIC = (*UNSUPPORTED, "CN", "HK", "MO")      # Anthropic: Китая в списке поддерживаемых нет
+
 PROFILES = [
     {"id": "claude", "title": "Claude", "short": "Claude",
-     "about": "Anthropic — как сейчас: подписка или ключ сервера. Работают коннекторы claude.ai"},
+     "about": "Anthropic — как сейчас: подписка или ключ сервера. Работают коннекторы claude.ai",
+     "blocked": NOT_FOR_ANTHROPIC},
     {"id": "openrouter", "title": "OpenRouter", "short": "OpenRouter", "key": "openrouter",
      "base_url": "https://openrouter.ai/api",
      "main": "anthropic/claude-sonnet-5.5", "fast": "anthropic/claude-haiku-5.5",
@@ -33,25 +43,51 @@ PROFILES = [
      "about": "Один ключ — сотни моделей, оплата по факту. По умолчанию — Claude Sonnet и Haiku через OpenRouter",
      "hint": "id модели из каталога openrouter.ai/models. Надёжно работают только модели Anthropic — "
              "с другими Claude Code может ошибаться",
-     "env": {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"}},
+     "env": {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"},
+     "blocked": NOT_FOR_ANTHROPIC},                 # по умолчанию — модели Anthropic через OpenRouter
     {"id": "zai", "title": "GLM (Z.ai)", "short": "GLM", "key": "zai",
      "base_url": "https://api.z.ai/api/anthropic", "main": "glm-5.3[1m]", "fast": "glm-5.3-flash[1m]",
      "long_context": True,                       # «[1m]» — по документации Z.ai
      "key_url": "https://z.ai/manage-apikey/apikey-list",
      "about": "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает",
      "env": {"API_TIMEOUT_MS": "3000000", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
-             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
+             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+     "blocked": UNSUPPORTED},
     {"id": "deepseek", "title": "DeepSeek", "short": "DeepSeek", "key": "deepseek",
      "base_url": "https://api.deepseek.com/anthropic", "main": "deepseek-v4-pro[1m]", "fast": "deepseek-flash",
      "long_context": True,                       # «[1m]» — по документации DeepSeek
      "key_url": "https://platform.deepseek.com/api_keys",
      "about": "DeepSeek V4: быстро и очень дёшево. Основная — V4 Pro, быстрая — Flash",
      "hint": "в документации DeepSeek основная по умолчанию — deepseek-flash[1m] (быстрее и дешевле)",
-     "env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "786432"}},
+     "env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "786432"},
+     "blocked": UNSUPPORTED},
 ]
 BY_ID = {p["id"]: p for p in PROFILES}
 SETTINGS = re.compile(r"/profiles/([a-z0-9-]+)\.json$")
 MODEL = re.compile(r"^[\w./:@~\[\]-]{1,120}$")
+
+
+def allowed(profile: str, region: str = "") -> bool:
+    """Можно ли этому поставщику принимать трафик из страны ``region``. Неизвестный профиль — нельзя.
+
+    Есть ``regions`` — только они; иначе — всё, кроме ``blocked``. Регион не задан — всё, что явно не запрещено."""
+    p = BY_ID.get(profile or "claude")
+    if not p:
+        return False
+    region = (region or "").strip().upper()
+    if p.get("regions"):
+        return region in p["regions"]
+    return region not in p.get("blocked", ())
+
+
+def has_key(profile: str, keys: dict | None = None) -> bool:
+    """Есть ли чем запустить профиль: «Claude» — всегда (подписка или ключ сервера), остальным нужен ключ."""
+    p = BY_ID.get(profile or "claude")
+    if not p:
+        return False
+    if not p.get("key"):
+        return True
+    return bool((providers.load_keys() if keys is None else keys).get(p["key"]))
 
 
 def profiles_dir() -> Path:

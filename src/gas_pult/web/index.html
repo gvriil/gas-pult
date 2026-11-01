@@ -164,6 +164,15 @@
   .terms .full { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary); text-decoration: none; font-size: 14px; margin: 0 0 14px; }
   .terms .btn { margin: 0 0 8px; } #terms { max-width: 620px; margin: 8px auto 0; }
   .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
+  /* «Запасные»: порядок поставщиков, на которые сессия переходит сама */
+  .fb-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
+  .fb-row:first-child { border-top: 0; padding-top: 0; }
+  .fb-n { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--bg-subtle); color: var(--text-secondary); }
+  .fb-row .ctext { flex: 1; min-width: 0; } .fb-why { color: var(--status-danger); font-size: 12px; white-space: normal; }
+  .fb-row .icon { width: 36px; height: 36px; color: var(--text-secondary); }
+  .fb-add { display: flex; gap: 8px; margin-top: 12px; } .fb-add select { flex: 1; } .fb-add .btn { width: auto; flex: none; }
+  .fb-log { color: var(--text-secondary); font-size: 13px; margin: 6px 0 0; padding: 0; list-style: none; }
+  .fb-log li { padding: 3px 0; } .fb-log time { color: var(--text-muted); margin-right: 6px; }
   .code-input { letter-spacing: .4em; text-align: center; font-size: 24px !important; }
 
   /* ===== Переписка ===== */
@@ -540,7 +549,7 @@ const P = {
   hash: '<path d="M9.5 4l-2 16M16.5 4l-2 16M4.5 9h16M3.5 15h16"/>', home: '<path d="M4 11l8-6.5 8 6.5M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>',
   book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
   code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
-  down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
+  down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', up: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
   spark: '<path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5-.6-4.9-4.6-8.9-9.5-9.5 4.9-.6 8.9-4.6 9.5-9.5z" fill="url(#gsp)" stroke="none"/><defs><linearGradient id="gsp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs>',
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
@@ -920,11 +929,21 @@ function card(s) {
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
     ${s.status === "stopped" && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-revive="${esc(s.id)}">${ic("refresh", "s16")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
 }
+// переключение на запасного поставщика (бот сделал сам) — одна строка, один раз
+const fbSeen = new Set();
+function fallbackNotices(list) {
+  let seen = ""; try { seen = localStorage.getItem("fbSeen") || ""; } catch (e) { /* без хранилища — только в памяти */ }
+  const fresh = list.filter((x) => !fbSeen.has(x.ts) && String(x.ts) > seen);
+  list.forEach((x) => fbSeen.add(x.ts));
+  if (!fresh.length) return;
+  toast(fresh.at(-1).text, 6000);
+  try { localStorage.setItem("fbSeen", String(fresh.at(-1).ts)); } catch (e) { /* не страшно */ }
+}
 async function refresh() {
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions;
-    watchSessions(sessions);
+    watchSessions(sessions); fallbackNotices(d.fallback || []);
     if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
@@ -1750,8 +1769,8 @@ const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", lin
 const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase())}</span>`;
 async function loadMcp(fresh) {
   if (view === "home") setSub("<span>голос, ключи API и сервисы</span>");
-  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="modelsBox"></div><div id="voiceBox"></div>';
-  renderModels();
+  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div><div id="modelsBox"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>';
+  renderModels(); if (meta?.role === "owner") loadFallback();
   api("/api/providers").then((d) => { prov = d; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
   catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
@@ -1764,6 +1783,50 @@ function renderModels() {
       <div class="meta">${esc(p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key ? "ok" : ""}">${p.key ? "ключ " + esc(p.key.tail) : "нет ключа"}</span></div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
+
+// «Запасные»: поставщик не ответил (ключ, лимит, сбой, нет связи) — сессия сама продолжает разговор у следующего
+let fb = null;
+async function loadFallback() {
+  try { fb = await api("/api/fallback"); renderFallback(); }
+  catch (e) { $("fbBox").innerHTML = `<div class="section">Запасные</div><div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
+}
+function renderFallback() {
+  const opt = Object.fromEntries(fb.options.map((o) => [o.id, o])), title = (id) => opt[id]?.title || id;
+  const rest = fb.options.filter((o) => !fb.chain.includes(o.id) && !/регион/.test(o.why));
+  const voice = (k) => fb.voice[k].map(esc).join(" → ");
+  $("fbBox").innerHTML = `<div class="section">Запасные</div>
+    <p class="note">Поставщик не ответил (ключ, лимит, сбой, нет связи) — сессия сама продолжит разговор у первого подходящего по списку, и вы получите одну строку в Telegram.${fb.region ? ` Регион сервера — ${esc(fb.region)}: поставщики не для этой страны не выбираются.` : ""}</p>
+    <div class="panel">
+      ${fb.chain.length ? fb.chain.map((id, i) => `<div class="fb-row"><span class="fb-n">${i + 1}</span>
+        <div class="ctext"><div class="name">${esc(title(id))}</div>${opt[id]?.why ? `<div class="meta fb-why">${esc(opt[id].why)} — пропускается</div>` : ""}</div>
+        <button class="icon" data-fb-up="${i}" aria-label="Выше" ${i ? "" : "disabled"}>${ic("up")}</button>
+        <button class="icon" data-fb-down="${i}" aria-label="Ниже" ${i < fb.chain.length - 1 ? "" : "disabled"}>${ic("down")}</button>
+        <button class="icon" data-fb-rm="${i}" aria-label="Убрать">${ic("x")}</button></div>`).join("")
+        : '<p class="note" style="margin:0">Список пуст — пульт не переключает сессии сам.</p>'}
+      ${rest.length ? `<div class="fb-add"><select id="fbAdd" aria-label="Добавить запасного">${rest.map((o) => `<option value="${esc(o.id)}">${esc(o.title)}${o.why ? " · " + esc(o.why) : ""}</option>`).join("")}</select>
+        <button class="btn ghost sm" id="fbAddBtn">${ic("plus")}Добавить</button></div>` : ""}
+      ${fb.log.length ? `<div class="section" style="margin:16px 0 4px">Последние переключения</div>
+        <ul class="fb-log">${fb.log.slice(-3).reverse().map((x) => `<li><time>${esc(x.t || "")}</time>${esc(x.text || "")}</li>`).join("")}</ul>` : ""}
+    </div>
+    <div class="panel" style="margin-top:8px">
+      <div class="name">Голос — переключается сам</div>
+      <div class="hint">Озвучка: ${voice("tts")}<br>Распознавание: ${voice("stt")}</div>
+      ${fb.voice_note ? `<div class="result wait">${ic("warn")}<span>${esc(fb.voice_note)}</span></div>` : ""}
+    </div>`;
+}
+async function saveChain(chain, msg) {
+  try { fb = await api("/api/fallback", { chain }); renderFallback(); toast(msg); }
+  catch (e) { toast(e.message, 4500); }
+}
+$("integrationsView").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fb-up],[data-fb-down],[data-fb-rm],#fbAddBtn"); if (!b || !fb) return;
+  const c = [...fb.chain];
+  if (b.id === "fbAddBtn") return saveChain([...c, $("fbAdd").value], "Запасной добавлен");
+  const i = +(b.dataset.fbUp ?? b.dataset.fbDown ?? b.dataset.fbRm);
+  if (b.dataset.fbRm != null) { c.splice(i, 1); return saveChain(c, "Убран из запасных"); }
+  const j = b.dataset.fbUp != null ? i - 1 : i + 1; [c[i], c[j]] = [c[j], c[i]];
+  saveChain(c, "Порядок сохранён");
+});
 async function reloadProfiles() { try { meta.profiles = (await api("/api/meta")).profiles; } catch (e) { /* покажем старое */ } }
 let orLink = null, orTimer = null;
 function profileForm(p, connected) {
@@ -2265,6 +2328,14 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  demoApi.fb ||= ["openrouter", "claude"];
+  if (path === "/api/fallback" && body) demoApi.fb = body.chain;
+  R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
+    options: [{ id: "claude", title: "Claude", why: "" }, { id: "openrouter", title: "OpenRouter", why: params.get("orkey") ? "" : "нет ключа" },
+              { id: "zai", title: "GLM (Z.ai)", why: "" }, { id: "deepseek", title: "DeepSeek", why: "" }],
+    log: [{ t: "2026-11-01 14:20", text: "Поставщик DeepSeek не отвечает (429) — сессия «digest-0716» переключена на OpenRouter" },
+          { t: "2026-11-01 16:05", text: "Поставщик OpenRouter не отвечает (529) — сессия «digest-0716» переключена на Claude" }],
+    voice: { tts: ["ElevenLabs", "На сервере · Piper"], stt: ["ElevenLabs Scribe", "На сервере · whisper"] } };
   R["/api/openrouter/start"] = { url: "https://openrouter.ai/auth?demo" };
   R["/api/openrouter/info"] = { key: true, label: "gas-pult", usage: 4.27, usage_monthly: 1.9, limit: 20, limit_remaining: 15.73, is_free_tier: false };
   R["/api/openrouter/models"] = { models: [
