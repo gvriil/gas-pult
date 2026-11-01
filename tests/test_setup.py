@@ -247,5 +247,13 @@ def test_panel_setup_owner_only_and_no_session_without_claude(monkeypatch, cfgdi
     panel = webapp.Panel(Config(token="1:T", owners=[1]))
     st = panel.setup_status()
     assert not st["ready"] and st["login"] is None
+    monkeypatch.setattr(panel.pult, "project_window", lambda path: None)     # в этой папке сессии нет
     with pytest.raises(ValueError, match="не установлен"):
         panel.new(0)
+
+
+def test_login_without_tmux(monkeypatch):
+    def nope(*a, **k):
+        raise FileNotFoundError("tmux")
+    monkeypatch.setattr(setup.Tmux, "windows", nope)
+    assert setup.Login("main").read()["active"] is False

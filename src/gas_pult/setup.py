@@ -159,7 +159,10 @@ class Login:
         return (f"env {env} " if env else "") + f"{shlex.quote(executable(self.claude))} auth login"
 
     def window(self) -> dict | None:
-        return next((w for w in self.tmux.windows() if w.get("mark") == MARK), None)
+        try:
+            return next((w for w in self.tmux.windows() if w.get("mark") == MARK), None)
+        except OSError:                              # tmux не установлен — окна входа нет
+            return None
 
     def read(self) -> dict:
         w = self.window()

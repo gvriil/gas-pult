@@ -323,10 +323,10 @@ class Panel:
         if not 0 <= i < len(dirs):
             raise ValueError("список папок изменился — обновите панель")
         path = dirs[i]
-        self.need_claude()
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
+        self.need_claude()
         base = os.path.basename(path) if path != self.pult.home else "home"
         cmd = models.command(self.cfg.claude, profile, self.pult.state())
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude")
