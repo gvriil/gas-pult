@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import digest, transcripts, voice
+from gas_pult import digest, models, people, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People
@@ -275,6 +275,14 @@ class Pult:
         return next((w for w in self.tmux.windows()
                      if w["cmd"] == "claude" and os.path.realpath(w["path"]) == real), None)
 
+    def claude_dir(self, uid) -> Path | None:
+        """Папка Claude Code человека для новых окон; владелец — None (``~/.claude``)."""
+        return people.claude_dir(self.cfg.data, uid, self.cfg.owners)
+
+    def home_of(self, w: dict) -> Path | None:
+        """Папка Claude Code окна: того, кто его открыл (``@gas_pult_by``), а не того, кто сейчас нажал."""
+        return people.home_of(w, self.cfg.data)
+
     def open_session(self, chat: int, name: str, path: str, first: str | None = None):
         if w := self.project_window(path):
             self.set_state(active=w["id"])
@@ -283,7 +291,9 @@ class Pult:
                 self.to_claude(w, first)
             return
         try:
-            wid = self.tmux.new_window(name, path, self.cfg.claude)
+            home = self.claude_dir(chat)                # чат с ботом — личный: chat = Telegram ID того, кто открыл
+            wid = self.tmux.new_window(name, path, models.with_home(self.cfg.claude, home),
+                                       by=str(chat) if home else "")
         except (RuntimeError, OSError) as e:
             return self.send(chat, f"Не вышло: {e}")
         self.set_state(active=wid)
@@ -398,14 +408,14 @@ class Pult:
                 self.after_pause()
                 st = self.state()
                 ws = [w for w in self.tmux.windows() if w["cmd"] == "claude" and not w["channel"]]
-                by_path: dict[str, list[dict]] = {}     # окна в одной папке пишут в общий каталог транскриптов
-                for w in ws:
-                    by_path.setdefault(w["path"], []).append(w)
-                for path, group in by_path.items():
+                by_path: dict[tuple, list[dict]] = {}   # окна в одной папке пишут в общий каталог транскриптов
+                for w in ws:                            # (у человека со своей папкой Claude — свой каталог)
+                    by_path.setdefault((w["path"], self.home_of(w)), []).append(w)
+                for (path, home), group in by_path.items():
                     w = next((x for x in group if x["id"] == st.get("active")), group[0])
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
-                    files, texts = transcripts.transcripts(path), []
-                    tail.watch(path, files)                     # старое не пересылаем
+                    files, texts = transcripts.transcripts(path, home), []
+                    tail.watch(f"{home}|{path}" if home else path, files)    # старое не пересылаем
                     for f in files:
                         for e in tail.read(f):
                             if text := turns.setdefault(f, transcripts.Turns()).feed(e):
@@ -693,7 +703,7 @@ class Pult:
         elif kind == "scr":
             self.send_screen(chat, w, "экран:")
         elif kind == "last":
-            text = transcripts.last_answer(w["path"])
+            text = transcripts.last_answer(w["path"], self.home_of(w))
             if not text:
                 return send("Ответов Claude в этой папке не нашёл.")
             send(text, reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))

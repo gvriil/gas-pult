@@ -143,15 +143,16 @@ class Panel:
                         "context": int(ctx.group(1)) if ctx else None,
                         "model": mdl.group(1).strip() if mdl else "",             # на чём реально работает сессия
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
-                        "rev": (rev := transcripts.revision(w["path"])),   # изменился журнал → «новый ответ»
-                        "preview": self.preview(w["path"], rev)})
+                        "rev": (rev := transcripts.revision(w["path"], home := self.pult.home_of(w))),   # → «новый»
+                        "preview": self.preview(w["path"], rev, home)})
         return out
 
-    def preview(self, path: str, rev: str) -> str:
+    def preview(self, path: str, rev: str, home=None) -> str:
         """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""
-        if self.previews.get(path, ("",))[0] != rev:
-            self.previews[path] = (rev, transcripts.preview(path))
-        return self.previews[path][1]
+        key = f"{home}|{path}" if home else path
+        if self.previews.get(key, ("",))[0] != rev:
+            self.previews[key] = (rev, transcripts.preview(path, home=home))
+        return self.previews[key][1]
 
     def meta(self) -> dict:
         voices = catalog.installed()
@@ -240,17 +241,21 @@ class Panel:
         time.sleep(1)
         return self.tmux.screen(w["id"], 40)
 
-    def login_window(self) -> dict:
-        """Окно для входа в MCP: активная сессия, если свободна, иначе любая свободная."""
-        sess = [s for s in self.sessions() if s["status"] == "idle"]
+    def login_window(self, home=None) -> dict:
+        """Окно для входа в MCP: активная сессия, если свободна, иначе любая свободная — только того же человека
+        (``home`` — его папка Claude Code; вход сохранится у него, а не у хозяина чужого окна)."""
+        mine = {w["id"] for w in self.tmux.windows() if self.pult.home_of(w) == home}
+        sess = [s for s in self.sessions() if s["status"] == "idle" and s["id"] in mine]
         pick = next((s for s in sess if s["active"]), None) or (sess[0] if sess else None)
         if not pick:
-            raise ValueError("нет свободной сессии Claude — откройте новую («Сессии» → ＋) и повторите")
+            raise ValueError("нет свободной сессии Claude — откройте новую («Сессии» → ＋) и повторите"
+                             if not home else "нет вашей свободной сессии Claude — откройте свою («Сессии» → ＋) "
+                             "и повторите: вход сохранится в ваших интеграциях")
         return self.window(pick["id"])
 
-    def mcp_login(self, name: str) -> dict:
+    def mcp_login(self, name: str, home=None) -> dict:
         """Запуск входа в MCP-сервис из панели: /mcp → сервер → Authenticate → ссылка входа с экрана."""
-        w = self.login_window()
+        w = self.login_window(home)
         self.slash(w, "/mcp")
         self.select(w, name)
         self.select(w, "Authenticate")
@@ -262,8 +267,10 @@ class Panel:
         self.tmux.keys(w["id"], "Escape")
         raise ValueError("Claude Code не показал ссылку входа — откройте сессию и проверьте «Экран»")
 
-    def mcp_finish(self, w: dict, url: str, name: str) -> str:
+    def mcp_finish(self, w: dict, url: str, name: str, home=None) -> str:
         """Адрес страницы после входа (http://localhost…/callback?code=…) → в поле «URL >» Claude Code."""
+        if self.pult.home_of(w) != home:
+            raise ValueError("это сессия другого человека — вход начните заново из своих «Интеграций»")
         u = urllib.parse.urlparse(url.strip())
         if u.scheme != "http" or u.hostname not in ("localhost", "127.0.0.1") or "code=" not in u.query:
             raise ValueError("нужен адрес страницы после входа: начинается с http://localhost и содержит code=")
@@ -272,7 +279,7 @@ class Panel:
         self.tmux.keys(w["id"], "Escape")              # закрыть меню /mcp, вернуться к вводу
         time.sleep(1)
         self.tmux.keys(w["id"], "Escape")
-        status = next((s for s in self.mcp.list(fresh=True) if s["name"] == name), None)
+        status = next((s for s in self.mcp.list(fresh=True, home=home) if s["name"] == name), None)
         if status and status["ok"]:
             return f"✔ {name} подключён"
         return f"вход не подтвердился: {status['state'] if status else 'сервер не найден'} — попробуйте ещё раз"
@@ -305,7 +312,8 @@ class Panel:
                 time.sleep(0.25)
         raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
 
-    def new(self, i: int, profile: str = "") -> dict:
+    def new(self, i: int, profile: str = "", person: int | None = None) -> dict:
+        """``person`` — Telegram ID участника: окно с его папкой Claude Code (вход, MCP); None — владелец."""
         dirs = self.pult.projects()
         if not 0 <= i < len(dirs):
             raise ValueError("список папок изменился — обновите панель")
@@ -314,8 +322,10 @@ class Panel:
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
         base = os.path.basename(path) if path != self.pult.home else "home"
-        cmd = models.command(self.cfg.claude, profile, self.pult.state())
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude")
+        home = self.pult.claude_dir(person) if person is not None else None
+        cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=home)
+        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude",
+                                   by=str(person) if home else "")
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -325,8 +335,8 @@ class Panel:
         if not w or not w.get("stopped"):
             raise ValueError("сессия не остановлена — перезапускать нечего")
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
-        cmd = models.command(self.cfg.claude, profile, self.pult.state()) + " --continue"   # нет ключа — ошибка здесь
-        self.tmux.respawn(wid, w["path"], cmd, mark=profile)
+        cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=self.pult.home_of(w))  # нет ключа — тут
+        self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)   # @gas_pult_by окна остаётся
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -336,12 +346,14 @@ class Panel:
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
         не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
         """
-        cmd = models.command(self.cfg.claude, profile, self.pult.state())    # нет ключа — ошибка до закрытия
+        home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал
+        cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=home)   # нет ключа — ошибка до закрытия
         cmd += " --continue" if keep else ""
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
-        wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude")
+        wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude",
+                                   by=w.get("by", "") if home else "")
         self.pult.set_state(active=wid)
         return {"id": wid}
 
@@ -460,9 +472,10 @@ class Panel:
             path.unlink(missing_ok=True)                 # голос не храним
 
     def message(self, w: dict, i: int | None) -> str:
+        home = self.pult.home_of(w)
         if i is None:
-            return transcripts.last_answer(w["path"])
-        items, _ = transcripts.history(w["path"], limit=1, before=i + 1)
+            return transcripts.last_answer(w["path"], home)
+        items, _ = transcripts.history(w["path"], limit=1, before=i + 1, home=home)
         if not items or items[0]["i"] != i:
             raise ValueError("сообщение не найдено — обновите переписку")
         return items[0]["text"]
@@ -495,7 +508,7 @@ class Panel:
     # ---------- ▶️ команды из последнего ответа ----------
     def commands(self, w: dict) -> list[dict]:
         out = []
-        for i, cmd in enumerate(extract(transcripts.last_answer(w["path"]))):
+        for i, cmd in enumerate(extract(transcripts.last_answer(w["path"], self.pult.home_of(w)))):
             kind = self.pult.cmds.kind(cmd)
             out.append({"i": i, "cmd": cmd, "kind": kind, "danger": bool(DANGER.search(cmd)),
                         "sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})
@@ -596,12 +609,14 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 });
 """
 
-# Только владельцу: выполнение команд, закрытие сессий, ключи, интеграции, модели, люди.
+# Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
 OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers",
-              "/api/models", "/api/mcp", "/api/mcp/add", "/api/mcp/remove", "/api/mcp/login", "/api/mcp/finish",
-              "/api/mcp/connected", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
+              "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove"}
+# Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
+MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
+OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -647,6 +662,16 @@ def handler(panel: Panel):
         def via(self) -> str:
             return self.who()[0]
 
+        def person(self) -> int | None:
+            """Telegram ID вошедшего, если это не владелец: его окна и интеграции — в его папке Claude Code."""
+            _, role, uid = self.who()
+            return None if role == "owner" or uid is None else uid
+
+        def home(self):
+            """Папка Claude Code вошедшего (``people.claude_dir``); владелец — None (``~/.claude``)."""
+            uid = self.person()
+            return panel.pult.claude_dir(uid) if uid is not None else None
+
         def session(self) -> str:
             return webauth.cookie_value(self.headers.get("Cookie", ""))
 
@@ -657,7 +682,7 @@ def handler(panel: Panel):
                 self.json({"error": "нужен вход"}, 401)
                 return False
             need = ("owner" if path in OWNER_ONLY else
-                    "member" if method == "POST" and path != "/api/logout" else "viewer")
+                    "member" if (method == "POST" and path != "/api/logout") or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
                 return True
             why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
@@ -707,13 +732,16 @@ def handler(panel: Panel):
             if path == "/api/people":
                 return {"people": panel.people.list()}
             if path == "/api/mcp":
-                return {"servers": panel.mcp.list(q.get("fresh") == "1"), "presets": PRESETS,
-                        "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL}
+                home = self.home()
+                return {"servers": panel.mcp.list(q.get("fresh") == "1", home=home),
+                        "presets": [p for p in PRESETS if not home or p["id"] not in OWNER_PRESETS],
+                        "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL,
+                        "personal": home is not None}          # список — свой у человека, не общий с владельцем
             if path == "/api/mcp/connected":
                 c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
                 if not c:
                     raise LookupError("нет такого сервиса")
-                s = panel.mcp.connected(c["match"])
+                s = panel.mcp.connected(c["match"], self.home())
                 return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
             if path == "/api/openrouter/info":
                 return panel.openrouter_info()
@@ -731,7 +759,7 @@ def handler(panel: Panel):
                 return {"out": out}
             w = self.win(q.get("w"))
             if path == "/api/last":
-                return {"text": transcripts.last_answer(w["path"])}
+                return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w))}
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
                 return {"lines": lines[-40:], "auth": find_auth(lines)}
@@ -744,10 +772,10 @@ def handler(panel: Panel):
                 return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg))
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
-                rev = transcripts.revision(w["path"])
+                rev = transcripts.revision(w["path"], home := panel.pult.home_of(w))
                 if before is None and q.get("rev") and q["rev"] == rev:
                     return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
-                items, more = transcripts.history(w["path"], 30, before)
+                items, more = transcripts.history(w["path"], 30, before, home=home)
                 return {"items": items, "more": more, "rev": rev}
             raise KeyError
 
@@ -811,10 +839,12 @@ def handler(panel: Panel):
                 panel.auth.logout(self.session())
                 return ("cookie", webauth.set_cookie("", 0), {"ok": True})
             if path == "/api/mcp/add":
-                return {"result": panel.mcp.add(str(b.get("preset", "")), str(b.get("name", "")),
-                                                b.get("values") or {})}
+                home, preset = self.home(), str(b.get("preset", ""))
+                if home and preset in OWNER_PRESETS:
+                    raise ValueError("свою программу на сервере подключает только владелец")
+                return {"result": panel.mcp.add(preset, str(b.get("name", "")), b.get("values") or {}, home=home)}
             if path == "/api/mcp/remove":
-                return {"result": panel.mcp.remove(str(b.get("name", "")))}
+                return {"result": panel.mcp.remove(str(b.get("name", "")), home=self.home())}
             if path == "/api/keys":
                 return panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))
             if path == "/api/keys/remove":
@@ -824,9 +854,9 @@ def handler(panel: Panel):
                 panel.set_providers(b)
                 return {"ok": True}
             if path == "/api/mcp/login":
-                return panel.mcp_login(str(b.get("name", "")))
+                return panel.mcp_login(str(b.get("name", "")), self.home())
             if path == "/api/new":
-                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")))
+                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person())
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}
@@ -856,7 +886,7 @@ def handler(panel: Panel):
                 go = b.get("go", True) is not False            # go: false — только выделить пункт
                 return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
             if path == "/api/mcp/finish":
-                return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")))}
+                return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
             if path == "/api/close":
                 return {"result": panel.close(w)}
             if path == "/api/revive":

@@ -9,9 +9,11 @@ from gas_pult import mcp
 class Fake:
     def __init__(self):
         self.calls = []
+        self.homes = []
 
-    def __call__(self, *args):
+    def __call__(self, *args, home=None):
         self.calls.append(args)
+        self.homes.append(home)
         out = ("Checking MCP server health…\n\nclaude.ai Docs: https://x - ✔ Connected\n"
                "gh: https://api.githubcopilot.com/mcp/ (HTTP) - ✘ Failed to connect\n")
         return subprocess.CompletedProcess(args, 0, out if args[0] == "list" else "", "")
@@ -60,7 +62,7 @@ def test_remove_refuses_foreign(fake):
 
 
 def test_connected_finds_claude_ai_connector(monkeypatch):
-    def fake(*args):
+    def fake(*args, home=None):
         out = ("claude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected\n"
                "notion: https://mcp.notion.com/mcp (HTTP) - ⚠ Needs authentication\n")
         return subprocess.CompletedProcess(args, 0, out, "")

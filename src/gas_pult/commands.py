@@ -27,7 +27,7 @@ import time
 import uuid
 from pathlib import Path
 
-from gas_pult import transcripts
+from gas_pult import people, transcripts
 
 FENCE = re.compile(r"```([\w+-]*)[ \t]*\n(.*?)```", re.S)
 SHELL = {"", "bash", "sh", "shell", "zsh", "console"}
@@ -250,11 +250,11 @@ class Journal:
     def _collect(self, windows: list[dict], kind) -> bool:
         d, changed = self.load(), False
         for w in windows:
-            rev = transcripts.revision(w["path"])
+            rev = transcripts.revision(w["path"], people.home_of(w))
             if not rev or d["revs"].get(w["path"]) == rev:
                 continue
             d["revs"][w["path"]], changed = rev, True
-            items, _ = transcripts.history(w["path"], 80)
+            items, _ = transcripts.history(w["path"], 80, home=people.home_of(w))
             for m in items:
                 if m["role"] != "assistant":
                     continue
