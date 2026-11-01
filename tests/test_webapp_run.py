@@ -293,3 +293,14 @@ def test_command_mark_by_hand_and_undo(logged):
 def test_command_log_hides_paths_from_non_owner(logged):
     assert all("path" in c for c in logged.command_log(True)["items"])
     assert not any("path" in c for c in logged.command_log(False)["items"])
+
+
+def test_prompt_hint_parsing():
+    from gas_pult.tmux import prompt_hint
+    box = "\x1b[38;5;246m────────\x1b[39m"
+    real = ["● Готово.", box, "\x1b[39m❯ \x1b[2mзапусти тесты и закоммить\x1b[22m", box, "  ⏵⏵ auto mode on"]
+    assert prompt_hint(real) == "запусти тесты и закоммить"
+    stub = "\x1b[39m❯\u00a0 \x1b[2mTry \"fix typecheck errors\""
+    assert prompt_hint(["● x", box, stub, box]) == ""                                # общая заглушка
+    assert prompt_hint(["● x", box, "\x1b[39m❯\u00a0мой текст", box]) == ""        # набранное — не подсказка
+    assert prompt_hint(["\x1b[2m❯ 1. Да\x1b[22m", "  2. Нет"]) == ""               # меню — не строка ввода
