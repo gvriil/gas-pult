@@ -318,6 +318,7 @@
   .cmd .acts .btn.ghost { flex: 0 1 auto; }
   .cmd .meta .chips { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
   .cmd .chip .sdot { width: 7px; height: 7px; }
+  .cmd .chip .sdot.hollow { background: transparent; border: 1.5px solid var(--status-idle); }
   .seg.cmdf { margin: 0 0 8px; } .seg.cmdf button { flex: auto; white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: 12.5px; }
   .cmd .cpout { width: auto; margin-top: 8px; }
   .cmd .tri { display: flex; gap: 6px; align-items: flex-start; margin: 0 2px 6px; }
@@ -1209,7 +1210,7 @@ function cmdChip(c) {
     lost: `<span class="chip bad">${ic("warn", "s16")}запуск прервался</span>`,
     ok: `<span class="chip ok">${ic("check", "s16")}код 0</span>`,
     fail: `<span class="chip bad">${ic("warn", "s16")}код ${esc(d?.code)}${d?.triage === "sent" || d?.triage === "dup" ? " · на разборе" : ""}</span>`,
-    new: `<span class="chip"><span class="sdot s-stopped"></span>не запускалась</span>`,
+    new: `<span class="chip"><span class="sdot hollow"></span>не запускалась</span>`,
   }[st];
   const manual = c.manual ? `<span class="chip accent">${ic("check", "s16")}сделано вручную</span>` : "";
   return st === "new" && manual ? manual : chip + manual;          // не запускалась, но сделана вручную — одна пометка
