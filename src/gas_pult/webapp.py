@@ -103,7 +103,6 @@ class Panel:
     def __init__(self, cfg: Config):
         self.cfg, self.pult = cfg, Pult(cfg)
         self.tmux = self.pult.tmux
-        self.locks: dict[str, threading.Lock] = {}      # одно окно — одна вставка за раз
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
         self.mcp = Mcp()
         self.openrouter = OpenRouter()
@@ -114,10 +113,6 @@ class Panel:
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.journal = Journal(cfg.data / "commands-log.json")       # вкладка «Команды»: все команды всех сессий
-
-    def lock(self, wid: str) -> threading.Lock:
-        with self.pult.lock:
-            return self.locks.setdefault(wid, threading.Lock())
 
     def window(self, wid: str) -> dict | None:
         w = self.tmux.window(wid)
@@ -198,8 +193,7 @@ class Panel:
                 ev.wait(120)
                 return True if mid in self.sent else self.send(w, text, mid)
         try:
-            with self.lock(w["id"]):
-                self.pult.to_claude(w, text)
+            self.pult.to_claude(w, text)               # под замком окна — общим с ботом (flock)
         except Exception:
             with self.pult.lock:
                 self.sent.pop(mid, None)
@@ -210,13 +204,7 @@ class Panel:
         return False
 
     def slash(self, w: dict, cmd: str) -> list[str]:
-        with self.lock(w["id"]):
-            self.pult.ready_for_text(w["id"])          # открытое меню закрыть, на вопрос Claude — не печатать
-            self.tmux.type(w["id"], cmd)
-            time.sleep(0.3)
-            self.tmux.keys(w["id"], "Enter")
-        time.sleep(2.5)
-        return self.tmux.screen(w["id"], 40)
+        return self.pult.run_slash(w["id"], cmd)
 
     def command(self, w: dict, i: int) -> dict:
         cmds = self.pult.command_list()
@@ -292,7 +280,7 @@ class Panel:
         выделить. Цифрой не выбираем — не всякое меню Claude её принимает. Выше меню бывают прошлые сообщения с «❯»
         и «1. …» — номер ищем снизу (меню внизу экрана), а выделение — ближайшее к пункту."""
         target = target.strip()[:200]
-        with self.lock(w["id"]):
+        with self.pult.hold(w["id"]):
             for _ in range(30):
                 lines = self.tmux.screen(w["id"], 60)
                 if n.isdigit():
@@ -356,18 +344,8 @@ class Panel:
         return {"id": wid}
 
     def close(self, w: dict) -> str:
-        with self.lock(w["id"]):
-            self.tmux.keys(w["id"], "C-c")
-            self.tmux.type(w["id"], "/exit")
-            self.tmux.keys(w["id"], "Enter")
-            time.sleep(4)
-            if "Enter to confirm" in "\n".join(self.tmux.screen(w["id"])):
-                self.tmux.keys(w["id"], "Escape")
-                return "не закрыл: у сессии есть фоновые задачи — решите в самом окне"
-            if (self.tmux.window(w["id"]) or w)["cmd"] == "claude":
-                return "Claude не вышел (возможно, занят) — посмотрите экран"
-            self.tmux.kill(w["id"])
-            return "закрыто"
+        return {"background": "не закрыл: у сессии есть фоновые задачи — решите в самом окне",
+                "busy": "Claude не вышел (возможно, занят) — посмотрите экран"}.get(self.pult.quit(w), "закрыто")
 
     def upload(self, name: str, data: bytes) -> str:
         """Файл из панели → inbox пульта; Claude получает путь (как файлы из чата бота)."""

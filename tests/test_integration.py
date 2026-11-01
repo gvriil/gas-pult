@@ -1,12 +1,15 @@
 """Сквозной тест без сети: настоящий tmux (изолированный сервер), фальшивый `claude`, фальшивый Telegram."""
 
+import fcntl
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -162,6 +165,7 @@ def make_pult(monkeypatch, tm):
     from gas_pult import bot
     p = bot.Pult.__new__(bot.Pult)
     p.tmux = tm
+    p.locks = Path(tempfile.mkdtemp(prefix="gas-pult-locks-"))
     monkeypatch.setattr(bot.time, "sleep", lambda s: None)
     return p, bot
 
@@ -306,3 +310,52 @@ def test_bot_adds_hint_button_to_answer(monkeypatch):
     p.to = lambda chat: (lambda text, **kw: None)
     p.on_callback({"id": "q", "from": {"id": 1}, "message": {"chat": {"id": 1}}, "data": data["callback_data"]})
     assert pasted == [("@2", "запусти тесты")]
+
+
+def locked(path) -> bool:
+    """Занят ли замок окна — проверка из отдельного процесса, как его увидел бы бот при открытой панели."""
+    probe = "import fcntl, sys; fcntl.flock(open(sys.argv[1], 'a'), fcntl.LOCK_EX | fcntl.LOCK_NB)"
+    return subprocess.run([sys.executable, "-c", probe, str(path)], capture_output=True).returncode != 0
+
+
+def test_window_lock_is_seen_by_other_process(monkeypatch):
+    p, _ = make_pult(monkeypatch, Screens(PROMPT))
+    with p.hold("@1"):
+        assert locked(p.locks / "@1.lock")              # бот и панель — разные процессы
+        assert not locked(p.locks / "@2.lock")          # другое окно свободно
+    assert not locked(p.locks / "@1.lock")
+
+
+def test_second_writer_waits_for_the_first(monkeypatch):
+    p, _ = make_pult(monkeypatch, Screens(PROMPT))
+    got = []
+
+    def second():
+        with p.hold("@1"):
+            got.append("второй")
+
+    with p.hold("@1"):
+        t = threading.Thread(target=second)
+        t.start()
+        t.join(0.3)
+        assert got == []                                 # ждёт, пока первый не допишет
+    t.join(2)
+    assert got == ["второй"]
+
+
+def test_text_is_pasted_under_window_lock(monkeypatch):
+    tm = Screens(PROMPT)
+    p, _ = make_pult(monkeypatch, tm)
+    seen = []
+
+    def paste(wid, text):
+        with open(p.locks / "@1.lock", "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                seen.append("свободно")
+            except BlockingIOError:
+                seen.append("под замком")
+
+    tm.paste = paste
+    p.to_claude({"id": "@1"}, "привет")
+    assert seen == ["под замком"]
