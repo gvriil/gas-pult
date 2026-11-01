@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import html
 import json
@@ -98,8 +100,10 @@ def execute(cmd: str, cwd: str | None) -> tuple[int | str, float, str]:
 
 
 class Commands:
-    def __init__(self, host: str, store: Path, sudo_allow: list[str], foreign: list[str], platform: str = sys.platform):
+    def __init__(self, host: str, store: Path, sudo_allow: list[str], foreign: list[str], platform: str = sys.platform,
+                 on_done=None):
         self.host, self.store = host, store
+        self.on_done = on_done              # (команда, папка, код, секунды, вывод) — отметить во вкладке «Команды»
         self.sudo_ok = re.compile(r"^\s*sudo\s+(-n\s+)?(" + "|".join(f"(?:{p})" for p in sudo_allow) + ")"
                                   if sudo_allow else r"(?!)")
         base = ON_MAC_FOREIGN if platform == "darwin" else ON_LINUX_FOREIGN
@@ -162,6 +166,11 @@ class Commands:
                         reply_markup=kb([[("⚠️ Да, выполнить", f"runok:{cid}"), ("Отмена", "noop:")]]))
         send(f"⏳ [{html.escape(c['win'])}] выполняю…", parse_mode="HTML")
         code, secs, out = execute(c["cmd"], c["cwd"])
+        if self.on_done:
+            try:
+                self.on_done(c["cmd"], c["cwd"], code, secs, out)
+            except Exception as e:          # отметка — не повод потерять итог выполнения
+                print(f"gas-pult: не отметил команду во вкладке «Команды»: {e}", file=sys.stderr)
         tail = out[-TAIL:]
         mark = "✅" if code == 0 else "❌"
         send(f"{mark} код {code} · {secs:.0f} с" + (" · показан конец вывода" if len(out) > TAIL else "")
@@ -181,6 +190,14 @@ class Journal:
         self.store = store
         self.lock = threading.Lock()         # панель многопоточная: сбор и отметка не затирают друг друга
 
+    @contextlib.contextmanager
+    def locked(self):
+        """Поток панели и процесс бота пишут один файл — блокировка и в процессе, и между процессами (flock)."""
+        self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with self.lock, open(self.store.with_suffix(".lock"), "a") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            yield
+
     def load(self) -> dict:
         try:
             d = json.loads(self.store.read_text())
@@ -198,7 +215,7 @@ class Journal:
 
     def collect(self, windows: list[dict], kind) -> bool:
         """Добавить команды из свежих ответов окон; kind(cmd) → local/foreign/tty/sudo. Изменилось ли что-то."""
-        with self.lock:
+        with self.locked():
             return self._collect(windows, kind)
 
     def _collect(self, windows: list[dict], kind) -> bool:
@@ -228,8 +245,20 @@ class Journal:
     def get(self, cid: str) -> dict | None:
         return self.load()["items"].get(cid)
 
+    def mark_cmd(self, path: str, cmd: str, done: dict) -> bool:
+        """Отметить выполненной самую свежую такую команду этой папки (кнопка ▶️ в боте). Нашлась ли."""
+        with self.locked():
+            d = self.load()
+            same = sorted((c for c in d["items"].values() if c["path"] == path and c["cmd"] == cmd),
+                          key=lambda c: (c["done"] is None, c["ts"], c["n"]))
+            if not same:
+                return False
+            same[-1]["done"] = done
+            self.save(d)
+            return True
+
     def mark(self, cid: str, done: dict | None) -> dict:
-        with self.lock:
+        with self.locked():
             d = self.load()
             c = d["items"].get(cid)
             if not c:

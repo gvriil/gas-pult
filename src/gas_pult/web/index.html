@@ -1091,7 +1091,7 @@ function renderCommands() {
       const run = c.kind === "local" && owner && !c.done
         ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(cmdLog.host)}</button>` : "";
       const hint = c.kind !== "local" && !c.done ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
-      const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.cut ? " · показан конец вывода" : ""}
+      const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.by === "bot" ? " · кнопкой в боте" : ""}${c.done.cut ? " · показан конец вывода" : ""}
           ${c.done.out ? `<pre class="out">${esc(c.done.out)}</pre>` : " · вывода нет"}</div></div>` : "";
       return `<div class="cmd ${c.done ? "done" : ""}" data-cid="${c.id}">
         <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span>${cmdDone(c.done)}</div>

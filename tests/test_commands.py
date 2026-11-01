@@ -120,3 +120,39 @@ def test_journal_keeps_commands_of_closed_window(tmp_path, monkeypatch):
     j.collect([{"id": "@1", "name": "alpha", "path": "/srv/a"}], lambda c: "local")
     j.collect([], lambda c: "local")                          # окно закрыли
     assert [c["cmd"] for c in j.items()] == ["ls"]
+
+
+def test_bot_run_marks_command_in_panel_log(tmp_path, monkeypatch):
+    from gas_pult import commands
+    from gas_pult.commands import Commands, Journal
+    _transcript(tmp_path, monkeypatch, "/srv/a", ["```bash\nls\n```", "```bash\nls\n```"])
+    j = Journal(tmp_path / "log.json")
+    wins = [{"id": "@1", "name": "alpha", "path": "/srv/a"}]
+
+    def done(cmd, path, code, secs, out):
+        j.collect(wins, lambda c: "local")                    # панель этот ответ ещё не видела
+        j.mark_cmd(path, cmd, {"code": code, "by": "bot"})
+
+    c = Commands("h", tmp_path / "cmds.json", [], [], platform="linux", on_done=done)
+    monkeypatch.setattr(commands, "execute", lambda cmd, cwd: (2, 0.1, "boom"))
+    c.offer({"name": "alpha", "path": "/srv/a"}, "```bash\nls\n```", lambda *a, **k: None, lambda rows: rows)
+    cid = next(iter(c._load()))
+    c.run(cid, False, lambda *a, **k: None, lambda rows: rows)
+    marked = [x for x in j.items() if x["done"]]
+    assert len(marked) == 1 and marked[0]["done"] == {"code": 2, "by": "bot"}
+    assert marked[0]["ts"] == max(x["ts"] for x in j.items())      # отмечена самая свежая из одинаковых
+    assert not j.mark_cmd("/srv/other", "ls", {"code": 0})
+
+
+def test_mark_failure_does_not_lose_result(tmp_path, monkeypatch):
+    from gas_pult import commands
+    from gas_pult.commands import Commands
+
+    def bad(*a):
+        raise OSError("диск")
+    c = Commands("h", tmp_path / "cmds.json", [], [], platform="linux", on_done=bad)
+    monkeypatch.setattr(commands, "execute", lambda cmd, cwd: (0, 0.1, "ok"))
+    c.offer({"name": "a", "path": "/tmp"}, "```bash\nls\n```", lambda *a, **k: None, lambda rows: rows)
+    sent = []
+    c.run(next(iter(c._load())), False, lambda text, **k: sent.append(text), lambda rows: rows)
+    assert any("код 0" in t for t in sent)
