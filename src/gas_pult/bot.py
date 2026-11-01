@@ -313,11 +313,11 @@ class Pult:
         if w["cmd"] != "claude":
             self.tmux.kill(w["id"])
         elif (done := self.quit(w)) == "background":
-            return self.send(chat, f"«{w['name']}» не закрыл: у сессии есть фоновые задачи, они бы "
+            return self.send(chat, f"«{w['name']}» не завершена: у сессии есть фоновые задачи, они бы "
                                    "остановились. Реши в самом окне.")
         elif done == "busy":
             return self.send(chat, f"«{w['name']}»: Claude не вышел (возможно, занят). Посмотри 📺 Экран.")
-        self.send(chat, f"«{w['name']}» закрыто.")
+        self.send(chat, f"«{w['name']}» завершена.")
 
     # ---------- голос ----------
     def say(self, chat: int, text: str):
@@ -533,7 +533,8 @@ class Pult:
 
     def show_settings(self, chat: int):
         s, voices = self.state(), catalog.installed()
-        rows = [[("🔔 Все", "set:notify=all"), ("🔕 Активное", "set:notify=active"), ("🚫 Выкл", "set:notify=off")],
+        rows = [[("🔔 Все", "set:notify=all"), ("🔕 Только активная", "set:notify=active"),
+                 ("🚫 Выкл", "set:notify=off")],
                 [("🔊 Голосом: вкл/выкл", "set:voice_always")]]
         rows += [[(("✅ " if v == s["voice"] else "🗣 ") + catalog.label(v), f"set:voice={v}") for v in voices[i:i + 3]]
                  for i in range(0, len(voices), 3)]
@@ -658,7 +659,7 @@ class Pult:
             cmd = cmds[int(arg)][1]
             if cmd == "models":
                 return send(f"Модель для «{w['name']}»:", reply_markup=kb([
-                    [(m, f"cmd:/model {m}") for m in self.cfg.models], [("Меню выбора", "cmd:/model")]]))
+                    [(m, f"cmd:/model {m}") for m in self.cfg.models], [("Открыть меню /model", "cmd:/model")]]))
             if cmd in PROMPTS:
                 return self.to_claude(w, PROMPTS[cmd])
             return self.slash(chat, w, cmd) if cmd.startswith("/") else self.to_claude(w, cmd)
@@ -683,9 +684,9 @@ class Pult:
             self.to_claude(w, "да")
         elif kind == "w":
             send(f"«{w['name']}» · {w['path']}", reply_markup=kb([
-                [("🔀 Сделать активным", f"act:{w['id']}")],
+                [("🔀 Сделать активной", f"act:{w['id']}")],
                 [("📺 Экран", f"scr:{w['id']}"), ("💬 Последний ответ", f"last:{w['id']}")],
-                [("✏️ Переименовать", f"ren:{w['id']}"), ("⛔ Закрыть", f"ask:{w['id']}")]]))
+                [("✏️ Переименовать", f"ren:{w['id']}"), ("⛔ Завершить", f"ask:{w['id']}")]]))
         elif kind == "ren":
             self.waiting[chat] = f"ren:{w['id']}"
             send(f"Новое имя для «{w['name']}» (до 40 знаков, без «:» и «.»):", reply_markup={"force_reply": True})
@@ -697,7 +698,8 @@ class Pult:
                 return send("Ответов Claude в этой папке не нашёл.")
             send(text, reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))
         elif kind == "ask":
-            send(f"Закрыть «{w['name']}»?", reply_markup=kb([[("Да, закрыть", f"close:{w['id']}"), ("Нет", "noop:")]]))
+            send(f"Завершить «{w['name']}»? Claude выйдет штатно, переписка сохранится.",
+                 reply_markup=kb([[("Да, завершить", f"close:{w['id']}"), ("Нет", "noop:")]]))
         elif kind == "close":
             self.close(chat, w)
 
