@@ -25,7 +25,7 @@ def call(base, path, body=None, token=""):
 
 def test_accept_and_version_change(tmp_path):
     p = People(tmp_path / "people.json", [1])
-    p.add(2, "member", "Алексей")
+    p.add(2, "member", "Иван")
     assert not p.accepted(1) and not p.accepted(2) and not p.accepted(9)
     p.accept(1)
     p.accept(2)
@@ -38,7 +38,7 @@ def test_accept_and_version_change(tmp_path):
     assert "1" not in json.loads((tmp_path / "people.json").read_text())
     assert (tmp_path / "terms.json").stat().st_mode & 0o777 == 0o600
     assert [x["id"] for x in p.list()] == [1, 2] and p.role(1) == "owner"
-    p.add(2, "viewer", "Алексей")                                # смена роли согласие не сбрасывает
+    p.add(2, "viewer", "Иван")                                # смена роли согласие не сбрасывает
     assert p.accepted(2) and p.role(2) == "viewer"
     p.accept(9)                                                  # без роли (ожидает входа): не появляется в людях
     assert p.accepted(9) and p.role(9) is None and 9 not in [x["id"] for x in p.list()]
@@ -99,9 +99,9 @@ def test_bot_login_link_not_blocked_by_terms(pult):
 
 def test_bot_switch_off_with_confirmation(pult):
     p = pult
-    p.people.add(2, "member", "Алексей")
+    p.people.add(2, "member", "Иван")
     p.switch_off(1, "2")
-    assert "Отключить Алексей?" in p.sent[-1][1] and "off:yes:2" in json.dumps(p.sent[-1][2])
+    assert "Отключить Иван?" in p.sent[-1][1] and "off:yes:2" in json.dumps(p.sent[-1][2])
     assert p.people.role(2) == "member"                               # без подтверждения — ничего
     p.switch_off(1, "yes:2")
     assert p.people.role(2) is None and "отключён" in p.sent[-1][1]
