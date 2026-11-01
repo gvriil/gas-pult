@@ -24,10 +24,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import digest, transcripts, voice
+from gas_pult import digest, setup, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
-from gas_pult.people import TITLES, People
+from gas_pult.people import TITLES, People, allowed
 from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
@@ -110,6 +110,8 @@ class Pult:
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
+        # вход в Claude Code из пульта (setup.py); config_dir/env — когда у каждого человека будет своя папка Claude
+        self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -276,6 +278,8 @@ class Pult:
                      if w["cmd"] == "claude" and os.path.realpath(w["path"]) == real), None)
 
     def open_session(self, chat: int, name: str, path: str, first: str | None = None):
+        if not setup.installed(self.cfg.claude):
+            return self.show_setup(chat)
         if w := self.project_window(path):
             self.set_state(active=w["id"])
             self.send(chat, f"↪️ В {self.short(path)} уже работает «{w['name']}» — пишу туда (одно окно на проект).")
@@ -535,7 +539,7 @@ class Pult:
         s, voices = self.state(), catalog.installed()
         rows = [[("🔔 Все", "set:notify=all"), ("🔕 Только активная", "set:notify=active"),
                  ("🚫 Выкл", "set:notify=off")],
-                [("🔊 Голосом: вкл/выкл", "set:voice_always")]]
+                [("🔊 Голосом: вкл/выкл", "set:voice_always"), ("🩺 Проверка", "su:check")]]
         rows += [[(("✅ " if v == s["voice"] else "🗣 ") + catalog.label(v), f"set:voice={v}") for v in voices[i:i + 3]]
                  for i in range(0, len(voices), 3)]
         self.send(chat, f"⚙️ Уведомления: {NOTIFY.get(s['notify'], s['notify'])}\n"
@@ -626,6 +630,10 @@ class Pult:
             return send(f"→ [{w['name']}]: {h}")
         if kind == "dg":
             return self.on_digest(chat, arg)
+        if kind == "su":                                   # мастер: вход в Claude, проверка — только владельцу
+            if not allowed(self.people.role(q["from"]["id"]), "owner"):
+                return send("Это может только владелец.")
+            return self.on_setup(chat, arg)
         if kind == "mk":
             self.waiting[chat] = "name"
             return send("Имя новой папки (латиница, дефис), например: shop-bot", reply_markup={"force_reply": True})
@@ -710,6 +718,107 @@ class Pult:
         except TelegramError:
             pass
 
+    # ---------- мастер: Claude Code без оператора (setup.py) ----------
+    def setup_status(self) -> dict:
+        try:
+            return setup.status(self.cfg.claude)
+        except Exception as e:                             # проверка не должна ронять бота
+            print("setup:", e, flush=True)
+            return {"ready": True, "claude": {"installed": True}, "checks": [], "doc": setup.DOC_URL}
+
+    def panel_url(self, view: str = "") -> str:
+        """Адрес панели — из кнопки «📱 Панель» владельца (его ставит ``gas-pult webapp --url``); нет — пусто."""
+        try:
+            mb = self.api("getChatMenuButton", chat_id=self.cfg.owners[0])
+        except TelegramError:
+            return ""
+        url = (mb.get("web_app") or {}).get("url", "") if mb.get("type") == "web_app" else ""
+        return url + (("&" if "?" in url else "?") + f"view={view}" if url and view else "")
+
+    def setup_kb(self, st: dict) -> dict:
+        """Кнопки мастера. Интеграции и ключи — экраны панели (кнопка Mini App); панели нет — подсказка текстом."""
+        panel = self.panel_url("integrations")
+        rows = []
+        if st["claude"].get("installed"):
+            rows.append([{"text": "🔑 Войти в Claude", "callback_data": "su:login"}])
+        rows.append([{"text": "🔌 Подключить интеграции", "web_app": {"url": panel}} if panel else
+                     {"text": "🔌 Подключить интеграции", "callback_data": "su:int"}])
+        rows.append([{"text": "🗝 Ключ провайдера", "web_app": {"url": panel}} if panel else
+                     {"text": "🗝 Ключ провайдера", "callback_data": "su:keys"}])
+        rows.append([{"text": "🩺 Проверка", "callback_data": "su:check"},
+                     {"text": "📖 Инструкция", "url": st.get("doc") or setup.DOC_URL}])
+        return {"inline_keyboard": rows}
+
+    def show_setup(self, chat: int, st: dict | None = None):
+        st = st or self.setup_status()
+        if not st["claude"].get("installed"):
+            head = (f"🧩 Claude Code на сервере не установлен. Установите его ({setup.INSTALL_URL}) и нажмите "
+                    "«Проверка». Сессии на моделях других поставщиков тоже идут через Claude Code.")
+        elif st["ready"]:
+            head = "✅ Claude Code готов: установлен, вход выполнен."
+        else:
+            head = ("🧩 Claude Code установлен, но вход не выполнен. «Войти в Claude» — пульт откроет вход, пришлёт "
+                    "ссылку и попросит код со страницы. Не получается — «Инструкция».")
+        self.send(chat, head + "\n\n" + setup.text(st), reply_markup=self.setup_kb(st))
+
+    def on_setup(self, chat: int, arg: str):
+        send = self.to(chat)
+        if arg == "login":
+            return self.setup_login(chat)
+        if arg == "cancel":
+            self.waiting.pop(chat, None)
+            self.login.cancel()
+            return send("Вход отменён, окно входа закрыто.")
+        if arg == "check":
+            return self.show_setup(chat)
+        if arg in ("int", "keys"):
+            what = ("Интеграции (Notion, GitHub, почта…)" if arg == "int" else
+                    "Ключи поставщиков моделей (OpenRouter, GLM, DeepSeek)")
+            return send(f"{what} подключаются в панели: «Интеграции». Панель запускается командой "
+                        "gas-pult webapp --url https://<ваш адрес> (или --tunnel) — после этого у бота появится "
+                        "кнопка «📱 Панель». Подробно — docs/MINI_APP.md в репозитории.")
+        return None
+
+    def setup_login(self, chat: int):
+        send = self.to(chat)
+        send("⏳ Запускаю вход в Claude Code (claude auth login) в отдельном окне tmux — до 20 секунд…")
+        try:
+            st = self.login.start()
+        except (RuntimeError, OSError, ValueError) as e:
+            return send(f"Не вышло: {e}\nВойти вручную — {setup.DOC_URL}")
+        if st.get("done"):
+            return self.setup_result(chat, self.login.finish(st))
+        if not st["url"]:
+            return send("Claude Code не показал ссылку входа. Экран окна:\n\n" + "\n".join(st.get("lines") or ["—"])
+                        + f"\n\nПопробуйте ещё раз или войдите вручную — {setup.DOC_URL}",
+                        reply_markup=self.setup_kb(self.setup_status()))
+        self.waiting[chat] = "code"
+        send(f"1. Откройте ссылку и войдите в аккаунт Claude:\n{st['url']}\n\n2. Скопируйте код со страницы "
+             "и пришлите его сюда одним сообщением.",
+             reply_markup={"inline_keyboard": [[{"text": "🌐 Открыть страницу входа", "url": st["url"]}],
+                                               [{"text": "✖️ Отменить вход", "callback_data": "su:cancel"}]]})
+
+    def setup_code(self, chat: int, code: str):
+        send = self.to(chat)
+        try:
+            r = self.login.send_code(code)
+        except ValueError as e:
+            self.waiting[chat] = "code"
+            return send(f"{e}. Пришлите код ещё раз.")
+        except LookupError as e:
+            return send(f"{e}.", reply_markup=self.setup_kb(self.setup_status()))
+        return self.setup_result(chat, r)
+
+    def setup_result(self, chat: int, r: dict):
+        if r["ok"]:
+            return self.send(chat, "✅ Вход в Claude выполнен. Открывайте сессию: 🆕 Новая.", reply_markup=MENU)
+        self.waiting[chat] = "code"
+        why = f": {r['error']}" if r.get("error") else ""
+        self.send(chat, f"❌ Вход не подтвердился{why}.\n\nЭкран окна:\n" + "\n".join(r.get("lines") or ["—"])
+                  + f"\n\nПришлите код ещё раз или войдите вручную — {setup.DOC_URL}",
+                  reply_markup={"inline_keyboard": [[{"text": "🔑 Начать вход заново", "callback_data": "su:login"}],
+                                                    [{"text": "📖 Инструкция", "url": setup.DOC_URL}]]})
+
     # ---------- вход в панель «через Telegram» и люди ----------
     def login_request(self, m: dict, nonce: str):
         u, send = m["from"], self.to(m["chat"]["id"])
@@ -770,6 +879,8 @@ class Pult:
             return self.new_folder(chat, t.lower())
         if wait.startswith("ren:") and m.get("text") and not t.startswith(MENU_PREFIXES):
             return self.rename(chat, wait[4:], t)
+        if wait == "code" and m.get("text") and not t.startswith(MENU_PREFIXES) and not t.startswith("/"):
+            return self.setup_code(chat, t)
         if t.startswith("🆕"):
             rows = [[("📁 Новая папка…", "mk:")]]
             rows += [[(self.short(p), f"new:{i}")] for i, p in enumerate(self.projects())]
@@ -782,8 +893,13 @@ class Pult:
         if t == "/digest":
             return self.send_digest(chat)
         if t in ("/start", "/menu", "/help"):
-            return send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу.",
-                        reply_markup=MENU)
+            send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу.",
+                 reply_markup=MENU)
+            if t == "/start" and not (st := self.setup_status())["ready"]:
+                self.show_setup(chat, st)
+            return None
+        if t == "/setup":
+            return self.show_setup(chat)
         task = self.task.match(t) if m.get("text") else None
         if task:
             tid = task.group(1).upper()
@@ -826,6 +942,10 @@ class Pult:
         me = self.api("getMe")
         print(f"gas-pult: @{me['username']} · сессия tmux «{self.cfg.session}» · владельцев: {len(self.cfg.owners)}",
               flush=True)
+        st = self.setup_status()
+        if not st["ready"]:                                # не падаем: бот работает, /start покажет мастер
+            why = "не установлен" if not st["claude"]["installed"] else "— вход не выполнен"
+            print(f"gas-pult: Claude Code {why} · /start в боте — мастер входа", flush=True)
         threading.Thread(target=self.monitor, daemon=True).start()
         threading.Thread(target=self.digest_loop, daemon=True).start()
         offset = None
