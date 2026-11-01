@@ -2054,7 +2054,7 @@ async function peopleSheet() {
     label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: "pin",
     sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.role === "owner" ? "" : " — нажмите, чтобы изменить"),
     run: () => p.role !== "owner" && personSheet(p) })),
-    { label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить", run: () => {} }]);
+    { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" }]);
 }
 function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
@@ -2131,7 +2131,7 @@ async function start() {
   const wn = meta.whatsnew?.[0];
   if (wn && store("whatsnew") !== wn.id && !DEMO) {
     store("whatsnew", wn.id);
-    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ label: t, icon: "check", run: () => {} })), "Понятно");
+    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно");
   }
   store("seenAny", "1");
   if (!start.timer) start.timer = setInterval(refresh, 3000);
