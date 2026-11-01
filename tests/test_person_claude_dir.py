@@ -105,6 +105,7 @@ def panel(monkeypatch, tmp_path):
 
 def test_new_restart_revive_keep_who_opened(panel, monkeypatch, tmp_path):
     opened, respawned = [], []
+    monkeypatch.setattr(webapp.setup, "installed", lambda *a, **k: True)   # в CI нет claude
     monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd, mark="claude", by="":
                         opened.append((cmd, by)) or "@9")
     home = tmp_path / "people" / str(MEMBER) / "claude"
