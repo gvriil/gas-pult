@@ -309,10 +309,14 @@
   .cmd .meta b { color: var(--text-primary); font-weight: 600; }
   .cmd .meta .chip { margin-left: auto; }
   .cmd .why { font-size: 14px; margin: 0 2px 8px; overflow-wrap: anywhere; }
-  .cmd .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cmd .acts, .cmd .cmdacts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cmd .cmdacts { margin-top: 6px; }
+  .cmd .cmdacts .btn { width: auto; }
   .cmd .acts .btn { width: auto; flex: 1 1 auto; }
   .cmd .acts .btn.ghost { flex: 0 1 auto; }
   .cmd.done pre { opacity: .7; }
+  .cmd .cpout { width: auto; margin-top: 8px; }
+  .cmd .tri { display: flex; gap: 6px; align-items: flex-start; margin: 0 2px 6px; }
   .cmdbar { display: flex; align-items: center; gap: 8px; margin: 0 2px 4px; color: var(--text-secondary); font-size: 13px; }
   .cmdbar label { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-primary); }
   .cmdbar input { width: 18px; height: 18px; accent-color: var(--accent-primary); }
@@ -548,6 +552,23 @@ function applyTheme() {
   const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim();
   try { tg?.setHeaderColor?.(bg); tg?.setBackgroundColor?.(bg); tg?.setBottomBarColor?.(bg); } catch (e) {}
 }
+// Копировать: navigator.clipboard, а где его нет или он отказал (старый iOS, WebView Telegram) — выделение текста
+// в скрытом поле и execCommand("copy"); не вышло и так — шторка с выделенным текстом, скопировать рукой.
+async function copyText(text, what = "Скопировано") {
+  try { await navigator.clipboard.writeText(text); return toast(what); } catch (e) {}
+  const t = document.createElement("textarea");
+  t.value = text; t.readOnly = true; t.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
+  document.body.append(t); t.focus(); t.select(); t.setSelectionRange(0, text.length);
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  t.remove();
+  if (ok) return toast(what);
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Скопируйте вручную</h3><div class="field"><textarea rows="8" readonly></textarea></div>
+    <div class="row2"><button class="btn">Готово</button></div></div>`;
+  const ta = bg.querySelector("textarea"); ta.value = text;
+  bg.onclick = (e) => { if (e.target === bg || e.target.closest("button")) bg.remove(); };
+  document.body.append(bg); ta.focus(); ta.setSelectionRange(0, text.length);
+}
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
 function toast(text, ms = 2600) {
@@ -604,7 +625,14 @@ function sheet(title, items) {                     // [{label, sub, icon | dot, 
   });
   document.body.append(bg);
 }
-function confirmDanger(text, go) { tg?.showConfirm ? tg.showConfirm(text, (ok) => ok && go()) : confirm(text) && go(); }
+// В Telegram — его окно подтверждения; в браузере скрипт Telegram тоже загружен, но showConfirm там бросает
+// WebAppMethodUnsupported — поэтому смотрим, открыта ли панель из Telegram на самом деле (initData).
+function confirmDanger(text, go) {
+  if (tg?.initData && tg.showConfirm) {
+    try { return tg.showConfirm(text, (ok) => ok && go()); } catch (e) {}
+  }
+  if (confirm(text)) go();
+}
 
 // ---------- навигация ----------
 function show(v) {
@@ -1096,7 +1124,7 @@ $("content").addEventListener("click", async (e) => {
   if (b.dataset.sayfull) return say(true, b, +b.dataset.sayfull);
   if (b.dataset.copy) {
     const m = hist.find((x) => x.i === +b.dataset.copy);
-    try { await navigator.clipboard.writeText(m.text); toast("Скопировано"); } catch (err) { toast("Не удалось скопировать"); }
+    copyText(m.text);
   }
 });
 
@@ -1110,10 +1138,13 @@ async function renderCmds() {
       ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(d.host)}</button>`
       : `<div class="hint">${{ sudo: ic("lock", "s16") + "sudo вне разрешённого списка — выполните вручную в терминале",
           tty: ic("key", "s16") + "спросит пароль — выполните вручную в терминале" }[c.kind] || ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
+    <div class="cmdacts"><button class="btn sm ghost" data-cpcmd>${ic("copy")}Копировать</button></div>
     <div class="out-wrap"></div></div>`).join("");
   $("content").append(box);
 }
 $("content").addEventListener("click", (e) => {
+  if (e.target.closest("[data-cpcmd]")) return copyText(e.target.closest(".cmd").querySelector("pre").textContent, "Команда скопирована");
+  if (e.target.closest("[data-cpout]")) return copyText(e.target.closest(".out-wrap").fullOut || "", "Вывод скопирован");
   const b = e.target.closest("[data-run]"); if (!b) return;
   const cmd = b.closest(".cmd").querySelector("pre").textContent;
   const go = (confirmed) => busy(b, "Выполняю…", async () => {
@@ -1122,7 +1153,8 @@ $("content").addEventListener("click", (e) => {
       const r = await api("/api/run", { w: current, i: +b.dataset.run, sha: b.dataset.sha, confirmed });
       if (r.confirm) return ask();
       outBox.innerHTML = `<div class="result ${r.code === 0 ? "ok" : "bad"}"><div style="width:100%">${r.code === 0 ? "Готово" : "Ошибка"} · код ${esc(r.code)} · ${r.seconds} с${r.cut ? " · показан конец вывода" : ""}
-        ${r.out ? `<pre class="out">${esc(r.out)}</pre>` : " · вывода нет"}</div></div>`;
+        ${r.out ? `<pre class="out">${esc(r.out)}</pre><button class="btn sm ghost cpout" data-cpout>${ic("copy")}Копировать вывод${r.cut ? " целиком" : ""}</button>` : " · вывода нет"}</div></div>${triageNote(r.triage, r.triage_to)}`;
+      outBox.fullOut = r.full || r.out;
       haptic("notificationOccurred", r.code === 0 ? "success" : "error");
     } catch (err) { outBox.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
   });
@@ -1142,11 +1174,21 @@ async function loadCommands(quiet) {
   if (quiet && sig === cmdSig) return;                // ничего нового — не перерисовываем (раскрытый вывод не схлопнется)
   cmdSig = sig; renderCommands();
 }
+// упала — команда, код и хвост вывода ушли в сессию на разбор (одну ошибку — один раз)
+function triageNote(t, to) {
+  const m = { sent: ["chat", `Отправлено на разбор в «${esc(to)}» — Claude предложит исправление`],
+    dup: ["chat", `Эта ошибка уже отправлялась на разбор в «${esc(to)}»`],
+    closed: ["warn", "Сессии этой папки уже нет — на разбор не отправлено"],
+    busy: ["warn", `Claude в «${esc(to)}» ждёт ответа на вопрос — на разбор не отправлено, выполните позже`],
+    error: ["warn", "На разбор отправить не удалось"] }[t];
+  return m ? `<div class="hint tri">${ic(m[0], "s16")}<span>${m[1]}</span></div>` : "";
+}
 // время в журнале — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code); показываем местное
 const localTs = (t) => { const d = new Date(String(t).replace(" ", "T") + ":00Z"); return isNaN(d) ? t : d.toLocaleString("sv-SE").slice(0, 16); };
 function cmdDone(d) {
   if (!d) return "";
   if (d.by === "hand") return `<span class="chip ok">${ic("check", "s16")}выполнено вручную</span>`;
+  if (d.triage === "sent" || d.triage === "dup") return `<span class="chip bad">${ic("chat", "s16")}код ${esc(d.code)} · на разборе</span>`;
   return `<span class="chip ${d.code === 0 ? "ok" : "bad"}">${ic(d.code === 0 ? "check" : "warn", "s16")}код ${esc(d.code)}</span>`;
 }
 function renderCommands() {
@@ -1157,11 +1199,12 @@ function renderCommands() {
   $("commandsView").innerHTML = `<div class="cmdbar"><span>${all.length ? `не выполнено ${left} из ${all.length}` : ""}</span>
       <label><input type="checkbox" id="cmdsTodo" ${todo ? "checked" : ""}>Только невыполненные</label></div>`
     + (items.length ? items.map((c) => {
-      const run = c.kind === "local" && owner && !c.done
-        ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(cmdLog.host)}</button>` : "";
+      const again = c.done && c.done.by !== "hand" && c.done.code !== 0;          // упала — исправили и снова
+      const run = c.kind === "local" && owner && (!c.done || again)
+        ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}${again ? "Выполнить снова" : "Выполнить на " + esc(cmdLog.host)}</button>` : "";
       const hint = c.kind !== "local" && !c.done ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
       const out = c.done && c.done.by !== "hand" ? `<div class="result ${c.done.code === 0 ? "ok" : "bad"}"><div style="width:100%">${c.done.code === 0 ? "Готово" : "Ошибка"} · код ${esc(c.done.code)} · ${c.done.seconds} с · ${esc(localTs(c.done.at))}${c.done.by === "bot" ? " · кнопкой в боте" : ""}${c.done.cut ? " · показан конец вывода" : ""}
-          ${c.done.out ? `<pre class="out">${esc(c.done.out)}</pre>` : " · вывода нет"}</div></div>` : "";
+          ${c.done.out ? `<pre class="out">${esc(c.done.out)}</pre><button class="btn sm ghost cpout" data-cout="${c.id}">${ic("copy")}Копировать вывод${c.done.cut ? " целиком" : ""}</button>` : " · вывода нет"}</div></div>${triageNote(c.done.triage, c.done.triage_to)}` : "";
       return `<div class="cmd ${c.done ? "done" : ""}" data-cid="${c.id}">
         <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span>${cmdDone(c.done)}</div>
         ${c.about ? `<div class="why">${esc(c.about)}</div>` : ""}
@@ -1174,11 +1217,15 @@ function renderCommands() {
 $("commandsView").addEventListener("change", (e) => { if (e.target.id === "cmdsTodo") { store("cmdsTodo", e.target.checked ? "1" : "0"); renderCommands(); } });
 $("commandsView").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  const c = cmdLog?.items.find((x) => x.id === (b.dataset.crun || b.dataset.ccopy || b.dataset.cmark)); if (!c) return;
+  const c = cmdLog?.items.find((x) => x.id === (b.dataset.crun || b.dataset.ccopy || b.dataset.cmark || b.dataset.cout)); if (!c) return;
+  if (b.dataset.cout) {                               // весь вывод — с сервера (в списке только хвост)
+    if (!c.done.cut) return copyText(c.done.out, "Вывод скопирован");
+    try { return copyText((await api("/api/commands/output?id=" + c.id)).out, "Вывод скопирован"); }
+    catch (err) { return copyText(c.done.out, "Скопирован конец вывода — весь уже не хранится"); }
+  }
   const put = (item) => { Object.assign(c, item); cmdSig = ""; renderCommands(); };
   if (b.dataset.ccopy) {
-    try { await navigator.clipboard.writeText(c.cmd); toast("Скопировано"); } catch (err) { toast("Не удалось скопировать"); }
-    return;
+    return copyText(c.cmd, "Команда скопирована");
   }
   if (b.dataset.cmark) return busy(b, "…", async () => {
     try { put((await api("/api/commands/mark", { id: c.id, done: b.dataset.done === "1" })).item); } catch (err) { toast(err.message, 4000); }
@@ -2126,6 +2173,11 @@ function demoApi(path, body) {
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
   }
+  if (key === "/api/run") {                          // демо: «npm test» — длинный вывод, сборка падает и уходит на разбор
+    if (body.i === 1) return Promise.resolve({ code: 1, seconds: 14, cut: false, out: "> build\nsrc/rooms.ts(42,7): error TS2322: Type 'string' is not assignable to type 'number'.", triage: "sent", triage_to: "tgi-0904" });
+    const full = Array.from({ length: 400 }, (_, k) => `PASS  tests/case-${k + 1}.test.ts`).join("\n");
+    return Promise.resolve({ code: 0, seconds: 3, cut: true, out: full.slice(-600), full, triage: "", triage_to: "" });
+  }
   if (key.startsWith("/api/commands")) {            // демо: команды трёх сессий, одна уже выполнена
     demoApi.cl ||= [
       { id: "k1", win: "tgi-0904", ts: "2026-11-01 09:21", about: "Прогнать тесты комнат перед сборкой", cmd: "npm test", kind: "local", danger: false, done: null },
@@ -2134,8 +2186,14 @@ function demoApi(path, body) {
         done: { code: 0, seconds: 1, at: "2026-11-01 08:42", by: "panel", out: "" } },
       { id: "k4", win: "gas-pult", ts: "2026-11-01 08:31", about: "Проверить правила DNAT на гипервизоре", cmd: "ssh nl-hv 'iptables -t nat -S PREROUTING'", kind: "foreign", danger: false, done: null },
       { id: "k5", win: "digest-0716", ts: "2026-10-31 22:10", about: "", cmd: "git status --short", kind: "local", danger: false,
-        done: { code: 128, seconds: 0, at: "2026-10-31 22:11", by: "panel", out: "fatal: not a git repository" } }];
-    if (path.includes("/run")) { const c = demoApi.cl.find((x) => x.id === body.id); c.done = { code: 0, seconds: 2, at: new Date().toLocaleString("sv-SE").slice(0, 16), by: "panel", out: "PASS  58 из 58" }; return Promise.resolve({ item: c }); }
+        done: { code: 128, seconds: 0, at: "2026-10-31 22:11", by: "panel", out: "…\nfatal: not a git repository (or any of the parent directories): .git", cut: true, triage: "sent", triage_to: "digest-0716" } }];
+    if (path.includes("/output")) return Promise.resolve({ out: Array.from({ length: 300 }, (_, k) => `строка вывода ${k + 1}`).join("\n") + "\nfatal: not a git repository (or any of the parent directories): .git" });
+    if (path.includes("/run")) {                    // демо: опасная сборка падает и уходит на разбор, остальное — успех
+      const c = demoApi.cl.find((x) => x.id === body.id), bad = c.id === "k2", at = new Date().toISOString().slice(0, 16).replace("T", " ");
+      c.done = bad ? { code: 1, seconds: 14, at, by: "panel", out: "> build\nsrc/rooms.ts(42,7): error TS2322: Type 'string' is not assignable to type 'number'.", cut: false, triage: "sent", triage_to: c.win }
+        : { code: 0, seconds: 2, at, by: "panel", out: "PASS  58 из 58", cut: false };
+      return Promise.resolve({ item: c });
+    }
     if (path.includes("/mark")) { const c = demoApi.cl.find((x) => x.id === body.id); c.done = body.done ? { code: null, seconds: 0, at: "сейчас", by: "hand", out: "" } : null; return Promise.resolve({ item: c }); }
     return Promise.resolve({ host: "ubuntu", items: demoApi.cl });
   }

@@ -43,6 +43,8 @@ SECRET = re.compile(r"eyJ[\w-]{20,}\.[\w-]{10,}\.[\w-]{10,}|\b\d{8,10}:AA[\w-]{3
                     r"\bsk-[\w-]{20,}|(?i:(password|passwd|token|secret|api[_-]?key)\s*[=:]\s*)\S{6,}")
 TIMEOUT = 600
 TAIL = 3300
+FULL = 1_000_000                            # весь вывод для «Копировать» — до 1 МБ (с конца)
+FAIL_LINES = 60                             # столько последних строк вывода уходит в сессию на разбор
 
 
 def blocks(text: str) -> list[tuple[str, str]]:
@@ -80,6 +82,19 @@ def about(cmd: str, before: str) -> str:
         if line:
             return line[:160]
     return ""
+
+
+def triage_text(cmd: str, code, out: str) -> str:
+    """Сообщение в сессию, откуда пришла команда: команда упала — разобрать и предложить исправление."""
+    tail = "\n".join(out.splitlines()[-FAIL_LINES:])[-8000:] or "(вывода нет)"
+    return (f"Команда упала — разбери и предложи исправление:\n\n```bash\n{cmd}\n```\n\n"
+            f"Код выхода: {code}. Последние строки вывода:\n\n```\n{tail}\n```")
+
+
+def fail_key(path: str, cmd: str, code, out: str) -> str:
+    """Отпечаток ошибки: та же команда, тот же код, тот же хвост вывода — та же ошибка."""
+    tail = "\n".join(out.splitlines()[-FAIL_LINES:])
+    return hashlib.sha256(f"{path}|{cmd}|{code}|{tail}".encode()).hexdigest()[:16]
 
 
 def mask(out: str) -> str:
@@ -156,7 +171,7 @@ class Commands:
                      reply_markup=kb([[(f"▶️ Выполнить на {self.host}", f"run:{cid}")]]))
         self._save(d)
 
-    def run(self, cid: str, confirmed: bool, send, kb):
+    def run(self, cid: str, confirmed: bool, send, kb, send_file=None):
         c = self._load().get(cid)
         if not c:
             return send("Эта команда уже забыта — попроси Claude прислать её снова.")
@@ -166,15 +181,21 @@ class Commands:
                         reply_markup=kb([[("⚠️ Да, выполнить", f"runok:{cid}"), ("Отмена", "noop:")]]))
         send(f"⏳ [{html.escape(c['win'])}] выполняю…", parse_mode="HTML")
         code, secs, out = execute(c["cmd"], c["cwd"])
+        note = ""
         if self.on_done:
             try:
-                self.on_done(c["cmd"], c["cwd"], code, secs, out)
-            except Exception as e:          # отметка — не повод потерять итог выполнения
-                print(f"gas-pult: не отметил команду во вкладке «Команды»: {e}", file=sys.stderr)
+                note = self.on_done(c["cmd"], c["cwd"], code, secs, out) or ""
+            except Exception as e:          # отметка и разбор — не повод потерять итог выполнения
+                print(f"gas-pult: после выполнения команды: {e}", file=sys.stderr)
         tail = out[-TAIL:]
         mark = "✅" if code == 0 else "❌"
-        send(f"{mark} код {code} · {secs:.0f} с" + (" · показан конец вывода" if len(out) > TAIL else "")
-             + (f"\n<pre>{html.escape(tail)}</pre>" if tail else " · вывода нет"), parse_mode="HTML")
+        cut = len(out) > TAIL
+        send(f"{mark} код {code} · {secs:.0f} с" + (" · показан конец вывода, весь — файлом ниже" if cut and send_file
+                                                     else " · показан конец вывода" if cut else "")
+             + (f"\n<pre>{html.escape(tail)}</pre>" if tail else " · вывода нет")
+             + (f"\n{html.escape(note)}" if note else ""), parse_mode="HTML")
+        if cut and send_file:               # весь вывод — файлом: в сообщение не влезает, а скопировать нужно целиком
+            send_file("output.txt", out[-FULL:].encode())
 
 
 class Journal:
@@ -201,15 +222,16 @@ class Journal:
     def load(self) -> dict:
         try:
             d = json.loads(self.store.read_text())
-            return {"items": d.get("items", {}), "revs": d.get("revs", {})}
+            return {"items": d.get("items", {}), "revs": d.get("revs", {}), "triaged": d.get("triaged", {})}
         except (OSError, ValueError, AttributeError):
-            return {"items": {}, "revs": {}}
+            return {"items": {}, "revs": {}, "triaged": {}}
 
     def save(self, d: dict):
         self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         items = dict(sorted(d["items"].items(), key=lambda kv: (kv[1]["ts"], kv[1]["n"]))[-self.KEEP:])
         tmp = self.store.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"items": items, "revs": d["revs"]}, ensure_ascii=False))
+        triaged = dict(sorted(d.get("triaged", {}).items(), key=lambda kv: kv[1])[-500:])
+        tmp.write_text(json.dumps({"items": items, "revs": d["revs"], "triaged": triaged}, ensure_ascii=False))
         tmp.chmod(0o600)
         tmp.replace(self.store)
 
@@ -245,7 +267,44 @@ class Journal:
     def get(self, cid: str) -> dict | None:
         return self.load()["items"].get(cid)
 
-    def mark_cmd(self, path: str, cmd: str, done: dict) -> bool:
+    def triage_once(self, key: str) -> bool:
+        """Эту ошибку ещё не отправляли на разбор — запомнить и вернуть True; уже отправляли — False."""
+        with self.locked():
+            d = self.load()
+            if key in d["triaged"]:
+                return False
+            d["triaged"][key] = time.time()
+            self.save(d)
+            return True
+
+    def forget_triage(self, key: str):
+        """Отправить не вышло (окно закрыто, Claude ждёт ответа) — пусть следующий запуск попробует снова."""
+        with self.locked():
+            d = self.load()
+            if d["triaged"].pop(key, None) is not None:
+                self.save(d)
+
+    def save_output(self, cid: str, out: str):
+        """Весь вывод команды — отдельным файлом (в журнале — только хвост): для «Копировать вывод»."""
+        folder = self.store.parent / "outputs"
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        f = folder / f"{cid}.txt"
+        f.write_text(out[-FULL:])
+        f.chmod(0o600)
+        old = time.time() - 30 * 86400
+        for x in folder.glob("*.txt"):          # старше месяца — убрать
+            if x.stat().st_mtime < old:
+                x.unlink(missing_ok=True)
+
+    def output(self, cid: str) -> str | None:
+        if not re.fullmatch(r"[0-9A-Za-z_-]{1,40}", cid):           # только имя файла, без «../»
+            return None
+        try:
+            return (self.store.parent / "outputs" / f"{cid}.txt").read_text()
+        except OSError:
+            return None
+
+    def mark_cmd(self, path: str, cmd: str, done: dict, out: str | None = None) -> bool:
         """Отметить выполненной самую свежую такую команду этой папки (кнопка ▶️ в боте). Нашлась ли."""
         with self.locked():
             d = self.load()
@@ -255,7 +314,9 @@ class Journal:
                 return False
             same[-1]["done"] = done
             self.save(d)
-            return True
+        if out is not None:
+            self.save_output(same[-1]["id"], out)
+        return True
 
     def mark(self, cid: str, done: dict | None) -> dict:
         with self.locked():

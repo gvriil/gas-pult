@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gas_pult import digest, transcripts, voice
-from gas_pult.commands import TAIL, Commands, Journal
+from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People
 from gas_pult.telegram import Api, TelegramError, kb
@@ -78,6 +78,12 @@ NOTIFY = {"all": "все окна", "active": "только активное", "
 DEFAULTS = {"notify": "all", "voice_always": False}
 
 
+TRIAGE_NOTE = {"sent": "🔎 Отправил на разбор в [{to}] — Claude предложит исправление",
+               "dup": "🔎 Эта ошибка уже отправлялась на разбор в [{to}]",
+               "closed": "Сессии этой папки уже нет — на разбор не отправил",
+               "busy": "Claude в [{to}] ждёт ответа на вопрос — на разбор не отправил; выполните ещё раз позже"}
+
+
 class Pult:
     pause_until = 0.0          # Telegram ответил 429 — до этого времени не шлём (повторы только продлевают запрет)
     skipped = 0                # сколько сообщений не отправили за паузу — сказать одним сообщением после неё
@@ -87,7 +93,7 @@ class Pult:
         self.cfg = cfg
         self.api = Api(cfg.token)
         self.tmux = Tmux(cfg.session)
-        self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign, on_done=self.mark_run)
+        self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign, on_done=self.after_run)
         self.journal = Journal(cfg.data / "commands-log.json")         # вкладка «Команды» панели
         self.task = re.compile(rf"^(?:/task\s+)?({cfg.task_pattern})$", re.I)
         self.state_file = cfg.data / "state.json"
@@ -536,12 +542,34 @@ class Pult:
                         + ("" if voices else "\n(голоса не установлены: gas-pult voices install irina)"),
                   reply_markup=kb(rows))
 
-    def mark_run(self, cmd: str, path: str, code, secs: float, out: str):
-        """▶️ в боте — та же отметка «выполнено» с кодом во вкладке «Команды» панели."""
+    def after_run(self, cmd: str, path: str, code, secs: float, out: str) -> str:
+        """▶️ в боте: отметка «выполнено» во вкладке «Команды» панели; упала — на разбор в сессию. Строка для итога."""
         wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
         self.journal.collect(wins, self.cmds.kind)            # панель могла ещё не видеть этот ответ
+        tri, to = self.triage(path, "", cmd, code, out)
         self.journal.mark_cmd(path, cmd, {"code": code, "seconds": round(secs), "by": "bot", "out": out[-TAIL:],
-                                          "cut": len(out) > TAIL, "at": time.strftime("%Y-%m-%d %H:%M", time.gmtime())})
+                                          "cut": len(out) > TAIL, "at": time.strftime("%Y-%m-%d %H:%M", time.gmtime()),
+                                          "triage": tri, "triage_to": to}, out)
+        return TRIAGE_NOTE.get(tri, "").format(to=to)
+
+    def triage(self, path: str, wid: str, cmd: str, code, out: str, paste=None) -> tuple[str, str]:
+        """Упала (код ≠ 0) — отправить команду, код и хвост вывода в сессию, откуда она пришла; одну ошибку — один раз.
+        (состояние, имя окна): sent — отправлено, dup — уже отправляли, closed — окна нет, busy — Claude ждёт ответа."""
+        if code == 0:
+            return "", ""
+        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
+        w = next((x for x in wins if x["id"] == wid), None) or (wins[0] if wins else None)
+        key = fail_key(path, cmd, code, out)
+        if not w:
+            return "closed", ""
+        if not self.journal.triage_once(key):
+            return "dup", w["name"]
+        try:
+            (paste or self.to_claude)(w, triage_text(cmd, code, out))
+        except NotReady:
+            self.journal.forget_triage(key)                  # следующий запуск попробует снова
+            return "busy", w["name"]
+        return "sent", w["name"]
 
     def rename(self, chat: int, wid: str, name: str):
         if not self.tmux.window(wid):
@@ -628,7 +656,8 @@ class Pult:
                 return self.to_claude(w, PROMPTS[cmd])
             return self.slash(chat, w, cmd) if cmd.startswith("/") else self.to_claude(w, cmd)
         if kind in ("run", "runok"):        # ▶️ Выполнить (runok — после подтверждения опасной)
-            return self.cmds.run(arg, kind == "runok", send, kb)
+            return self.cmds.run(arg, kind == "runok", send, kb, send_file=lambda name, data: self.api(
+                "sendDocument", chat_id=chat, caption="Весь вывод команды", files={"document": (name, data)}))
         if kind == "key":                   # кнопки 1/2/3/↑/↓/⏎/Esc под экраном диалога
             wid, _, key = arg.partition("|")
             if key not in {k for _, k in KEYS}:
