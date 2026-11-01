@@ -452,7 +452,7 @@
   <div class="menu" id="menu" hidden></div>
   <div class="composer" id="composer">
     <div class="attach" id="attach" hidden></div>
-    <textarea id="input" rows="1" placeholder="Сообщение…"></textarea>
+    <textarea id="input" rows="1" enterkeyhint="send" placeholder="Сообщение…"></textarea>
     <div class="ctools" id="ctools">
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
       <button class="tool" id="menuBtn" aria-label="Меню действий"></button>
@@ -1652,6 +1652,13 @@ async function loadHint(s) {
 function takeHint() { if (!hint) return; $("input").value = hint; grow(); sync(); $("input").focus(); }
 $("hintBtn").onclick = takeHint;
 $("input").addEventListener("keydown", (e) => { if (e.key === "Tab" && hint && !$("input").value) { e.preventDefault(); takeHint(); } });
+// Enter — отправить, как в мессенджерах; ⌘/Ctrl/Shift/Alt + Enter — новая строка. Во время набора иероглифов/автозамены (isComposing) не трогаем.
+$("input").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { const t = $("input"); t.setRangeText("\n", t.selectionStart, t.selectionEnd, "end"); grow(); return; }
+  sendText();
+});
 async function toggleMic() {
   if (rec) return rec.stop();
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
