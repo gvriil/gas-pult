@@ -37,7 +37,8 @@ class Tmux:
         ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark"), line.split("\t"), strict=False))
               for line in out.splitlines()]
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
-            ps = subprocess.run(["ps", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "args="],
+            # -ww: без него ps режет строку до 80 знаков, и длинный путь к Claude (npm: node …/cli.js) не узнаётся
+            ps = subprocess.run(["ps", "-ww", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "args="],
                                 capture_output=True, text=True)
             claude = [p for p in (line.split() for line in ps.stdout.splitlines() if line.strip()) if is_claude(p)]
             if claude:
