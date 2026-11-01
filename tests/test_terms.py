@@ -150,10 +150,10 @@ def test_panel_owner_by_code_and_switch_off(server):
     assert panel.people.accepted(1)
     member = panel.auth.issue(2)
     panel.people.accept(2)
-    assert call(base, "/api/sessions", None, member)[0] == 200
+    assert call(base, "/api/send", {"w": "@1", "text": "x"}, member)[0] == 200     # без tmux: send подменён
     code, d, _ = call(base, "/api/people/remove", {"id": 2}, legacy)   # «Отключить»
     assert code == 200 and 2 not in [p["id"] for p in d["people"]]
-    assert call(base, "/api/sessions", None, member)[0] == 401          # доступ прекращён сразу
+    assert call(base, "/api/send", {"w": "@1", "text": "x"}, member)[0] == 401     # доступ прекращён сразу
 
 
 def _code(panel):
