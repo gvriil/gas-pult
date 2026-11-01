@@ -176,6 +176,7 @@ def test_api_fallback_owner_only(monkeypatch, tmp_path):
     monkeypatch.setenv("GAS_PULT_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path / "data"))
     panel = webapp.Panel(Config(token="1:T", owners=[1], region="NL"))
+    panel.people.accept(1)                     # условия использования приняты
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(panel))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}/api/fallback"
@@ -196,6 +197,7 @@ def test_api_fallback_owner_only(monkeypatch, tmp_path):
             call({"chain": ["nope"]})
         assert e.value.code == 400
         panel.people.add(2, "member")
+        panel.people.accept(2)
         with pytest.raises(urllib.error.HTTPError) as e:
             call(uid=2)
         assert e.value.code == 403
