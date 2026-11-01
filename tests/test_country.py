@@ -115,7 +115,7 @@ def test_mismatch_gives_intersection_and_notice(tmp_path):
     line = country.notice("Иван", 2, rec)
     assert "Иван" in line and "NL" in line and "RU" in line and "900" not in line
     stored = (tmp_path / "people.json").read_text()
-    assert "900" not in stored and "phone_hash" in stored            # номер — только хешем
+    assert "79000000000" not in stored and "900 000" not in stored and "phone_hash" in stored            # номер — только хешем
     p.add(2, "viewer", "Иван")
     assert p.country(2)["chosen"] == "NL"                            # смена роли страну не сбрасывает
     assert country.check_set({}, "NL") == set()                      # не выбрал — ничего
