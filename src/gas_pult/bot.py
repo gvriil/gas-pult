@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gas_pult import digest, transcripts, voice
-from gas_pult.commands import Commands
+from gas_pult.commands import TAIL, Commands, Journal
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People
 from gas_pult.telegram import Api, TelegramError, kb
@@ -85,7 +85,8 @@ class Pult:
         self.cfg = cfg
         self.api = Api(cfg.token)
         self.tmux = Tmux(cfg.session)
-        self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign)
+        self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign, on_done=self.mark_run)
+        self.journal = Journal(cfg.data / "commands-log.json")         # вкладка «Команды» панели
         self.task = re.compile(rf"^(?:/task\s+)?({cfg.task_pattern})$", re.I)
         self.state_file = cfg.data / "state.json"
         self.lock = threading.Lock()
@@ -506,6 +507,13 @@ class Pult:
                         f"🗣 Голос: {catalog.label(s['voice'])}"
                         + ("" if voices else "\n(голоса не установлены: gas-pult voices install irina)"),
                   reply_markup=kb(rows))
+
+    def mark_run(self, cmd: str, path: str, code, secs: float, out: str):
+        """▶️ в боте — та же отметка «выполнено» с кодом во вкладке «Команды» панели."""
+        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
+        self.journal.collect(wins, self.cmds.kind)            # панель могла ещё не видеть этот ответ
+        self.journal.mark_cmd(path, cmd, {"code": code, "seconds": round(secs), "by": "bot", "out": out[-TAIL:],
+                                          "cut": len(out) > TAIL, "at": time.strftime("%Y-%m-%d %H:%M", time.gmtime())})
 
     def rename(self, chat: int, wid: str, name: str):
         if not self.tmux.window(wid):
