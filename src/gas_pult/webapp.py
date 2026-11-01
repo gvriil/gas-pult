@@ -434,7 +434,7 @@ class Panel:
         self.pult.set_state(**upd)
 
     def voice_fallback(self, what: str, e: Exception):
-        """ElevenLabs отказал — работаем локально и говорим об этом: в журнал службы и панели (``fallback`` в /api/voice)."""
+        """ElevenLabs отказал — работаем локально и сообщаем: журнал службы и ``fallback`` в /api/providers."""
         note = f"ElevenLabs недоступен ({what}): {e} — переключился на локальный голос"
         print(note, file=sys.stderr, flush=True)
         self.last_fallback = (time.time(), note)
