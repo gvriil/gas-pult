@@ -37,6 +37,7 @@ MARK = ".gas-pult-module"                         # отметка простр�
 ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")      # id модуля и имя папки: латиница, цифры, дефис
 AT = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 CATCH_UP = 3 * 3600                               # пульт был выключен в назначенное время — догоняем не позже 3 ч
+EVERY = (5, 240)                                  # [[schedule]] every: каждые 5–240 минут
 SKIP = {"module.toml", "skills", "settings.json", "__pycache__", ".DS_Store"}
 DEFAULT_START = "Прочитай CLAUDE.md этой папки и коротко скажи, что тебе нужно от меня, чтобы начать работу."
 WEEKDAYS = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
@@ -121,14 +122,23 @@ def _integration(x, where: str) -> dict:
 def _schedule(x, where: str, settings: dict) -> dict:
     if not isinstance(x, dict):
         raise ModuleError(f"{where}: [[schedule]] — таблица с полями at, prompt")
-    at = _str(x, "at", where)
-    if not AT.match(at):
-        raise ModuleError(f"{where}: расписание at = \"{at}\" — нужно время ЧЧ:ММ, например \"08:00\"")
+    every = x.get("every", 0)
+    if not isinstance(every, int) or isinstance(every, bool) or (every and not EVERY[0] <= every <= EVERY[1]):
+        raise ModuleError(f"{where}: every — каждые N минут, целое число от {EVERY[0]} до {EVERY[1]}")
+    at = _str(x, "at", where, need=not every) or "00:00"
+    until = _str(x, "until", where, need=False) or "23:59"
+    for t in (at, until):
+        if not AT.match(t):
+            raise ModuleError(f"{where}: расписание at/until = \"{t}\" — нужно время ЧЧ:ММ, например \"08:00\"")
     days = x.get("days", [1, 2, 3, 4, 5, 6, 7])
     if not isinstance(days, list) or not days or not all(isinstance(d, int) and 1 <= d <= 7 for d in days):
         raise ModuleError(f"{where}: days — дни недели числами 1–7 (1 — понедельник), например [1, 2, 3, 4, 5]")
-    return {"at": at, "days": sorted(set(days)), "title": _str(x, "title", where, need=False) or at,
-            "prompt": fill(_str(x, "prompt", where), settings)}
+    when = at if not every else f"каждые {every} мин" + ("" if (at, until) == ("00:00", "23:59") else f", {at}–{until}")
+    out = {"at": at, "days": sorted(set(days)), "title": _str(x, "title", where, need=False) or when,
+           "prompt": fill(_str(x, "prompt", where), settings), "when": when}
+    if every:                                    # проверка по кругу (аварийные заявки): каждые N минут в окне at–until
+        out |= {"every": every, "until": until}
+    return out
 
 
 def _decision(x, where: str) -> dict:
@@ -361,6 +371,10 @@ class Schedule:
         for folder, mk in workspaces(roots):
             m = by_id.get(mk["id"])
             for item in (m or {}).get("schedule", []):
+                if item.get("every"):
+                    if hit := self._every(st, folder, mk, item, now):
+                        out.append((folder, m, hit))
+                    continue
                 k = f"{folder}|{item['at']}"
                 if st.get(k) == today or now.isoweekday() not in item["days"] or now.strftime("%H:%M") < item["at"]:
                     continue
@@ -373,3 +387,20 @@ class Schedule:
         if out or st != self.load():
             self.save(st)
         return out
+
+    @staticmethod
+    def _every(st: dict, folder: Path, mk: dict, item: dict, now: datetime) -> dict | None:
+        """Пункт «каждые N минут» в окне at–until: один раз на отрезок; пропущенные отрезки не догоняем — только
+        текущий. Пространство создано позже начала отрезка — ждём следующий."""
+        hm = now.strftime("%H:%M")
+        if now.isoweekday() not in item["days"] or not item["at"] <= hm <= item["until"]:
+            return None
+        start = now.replace(hour=int(item["at"][:2]), minute=int(item["at"][3:]), second=0, microsecond=0)
+        slot = int((now - start).total_seconds() // 60) // item["every"]
+        k, v = f"{folder}|{item['at']}/{item['every']}", f"{now:%Y-%m-%d}#{slot}"
+        if st.get(k) == v:
+            return None
+        st[k] = v
+        begin = start.timestamp() + slot * item["every"] * 60
+        created = mk.get("created", 0)
+        return None if isinstance(created, int | float) and created > begin else item
