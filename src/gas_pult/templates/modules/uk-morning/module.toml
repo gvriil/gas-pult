@@ -1,6 +1,6 @@
 # Модуль «Утренняя сводка директора УК» (пакет «УК-старт») — формат файла: docs/MODULES.md
 id = "uk-morning"
-version = "1.0"
+version = "1.1"
 title = "Утренняя сводка директора УК"
 industry = "Управляющие компании — «УК-старт»"
 about = "В 8:00 — обращения со сроком сегодня и просроченные, аварии за сутки и где не уложились в 30 минут, плановые работы — и вопрос «что делаем»."
@@ -20,12 +20,20 @@ uses = ["deadlines"]
 requests = "../uk-requests/data/requests.csv"
 emergency = "../uk-emergency/data/emergency.csv"
 works = "data/works.csv"
+orders = "../uk-inspections/ORDERS.md"
+debts = "../uk-debts/DEBTS.md"
+disclosure = "../uk-gis-disclosure/DISCLOSURE.md"
 region = "РФ"
 
 [[data_sources]]
 title = "Реестр обращений и журнал АДС"
 kind = "client_export"
 about = "файлы модулей «Сроки обращений» и «Аварийная диспетчерская» или выгрузки УК в data/"
+
+[[data_sources]]
+title = "Предписания, долги и раскрытие в ГИС ЖКХ (если созданы модули)"
+kind = "client_export"
+about = "итоги модулей «Проверки жилинспекции», «Долги и суды» и «Сверка раскрытия в ГИС ЖКХ» — файлы соседних папок"
 
 [[data_sources]]
 title = "Плановые работы и отключения: data/works.csv"

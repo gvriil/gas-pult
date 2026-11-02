@@ -20,13 +20,14 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 import shutil
 import subprocess
 import time
 import tomllib
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 
@@ -38,6 +39,8 @@ ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")      # id модуля и имя �
 AT = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 CATCH_UP = 3 * 3600                               # пульт был выключен в назначенное время — догоняем не позже 3 ч
 EVERY = (5, 240)                                  # [[schedule]] every: каждые 5–240 минут
+WORKDAY = (1, 10)                                 # [[schedule]] workday: N-й рабочий день месяца, 1–10
+CALENDAR = "deadlines/skills/workdays/calendar-ru.csv"   # производственный календарь РФ — из общего блока
 SKIP = {"module.toml", "skills", "settings.json", "__pycache__", ".DS_Store"}
 DEFAULT_START = "Прочитай CLAUDE.md этой папки и коротко скажи, что тебе нужно от меня, чтобы начать работу."
 WEEKDAYS = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
@@ -125,12 +128,18 @@ def _schedule(x, where: str, settings: dict) -> dict:
     every = x.get("every", 0)
     if not isinstance(every, int) or isinstance(every, bool) or (every and not EVERY[0] <= every <= EVERY[1]):
         raise ModuleError(f"{where}: every — каждые N минут, целое число от {EVERY[0]} до {EVERY[1]}")
+    workday = x.get("workday", 0)
+    if not isinstance(workday, int) or isinstance(workday, bool) or (
+            workday and not WORKDAY[0] <= workday <= WORKDAY[1]):
+        raise ModuleError(f"{where}: workday — N-й рабочий день месяца, целое число от {WORKDAY[0]} до {WORKDAY[1]}")
+    if workday and every:
+        raise ModuleError(f"{where}: в одном пункте расписания — либо every, либо workday")
     at = _str(x, "at", where, need=not every) or "00:00"
     until = _str(x, "until", where, need=False) or "23:59"
     for t in (at, until):
         if not AT.match(t):
             raise ModuleError(f"{where}: расписание at/until = \"{t}\" — нужно время ЧЧ:ММ, например \"08:00\"")
-    days = x.get("days", [1, 2, 3, 4, 5, 6, 7])
+    days = x.get("days", [1, 2, 3, 4, 5] if workday else [1, 2, 3, 4, 5, 6, 7])
     if not isinstance(days, list) or not days or not all(isinstance(d, int) and 1 <= d <= 7 for d in days):
         raise ModuleError(f"{where}: days — дни недели числами 1–7 (1 — понедельник), например [1, 2, 3, 4, 5]")
     when = at if not every else f"каждые {every} мин" + ("" if (at, until) == ("00:00", "23:59") else f", {at}–{until}")
@@ -138,7 +147,38 @@ def _schedule(x, where: str, settings: dict) -> dict:
            "prompt": fill(_str(x, "prompt", where), settings), "when": when}
     if every:                                    # проверка по кругу (аварийные заявки): каждые N минут в окне at–until
         out |= {"every": every, "until": until}
+    if workday:                                  # раз в месяц: N-й рабочий день по производственному календарю РФ
+        out |= {"workday": workday, "when": f"{at}, {workday}-й рабочий день месяца", "days": [1, 2, 3, 4, 5]}
+        out["title"] = _str(x, "title", where, need=False) or out["when"]
     return out
+
+
+def work_calendar() -> dict[date, bool]:
+    """Особые дни производственного календаря РФ (дата → рабочий ли) из общего блока deadlines; свой блок
+    (``<config>/modules/_common/``) перекрывает встроенный. Нет файла — пустой словарь (тогда рабочие — пн–пт)."""
+    out: dict[date, bool] = {}
+    for p in (builtin_dir() / COMMON / CALENDAR, user_dir() / COMMON / CALENDAR):
+        try:
+            with p.open(encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    out[date.fromisoformat(row["дата"].strip())] = row["вид"].strip() == "рабочий"
+        except (OSError, KeyError, ValueError):
+            continue
+    return out
+
+
+def nth_workday(year: int, month: int, n: int, cal: dict[date, bool]) -> date | None:
+    """N-й рабочий день месяца. Года нет в календаре — рабочие дни пн–пт (без праздников); столько рабочих дней
+    в месяце нет — None."""
+    known = any(d.year == year for d in cal)
+    d = date(year, month, 1)
+    while d.month == month:
+        if cal.get(d, d.isoweekday() < 6) if known else d.isoweekday() < 6:
+            n -= 1
+            if n == 0:
+                return d
+        d += timedelta(days=1)
+    return None
 
 
 def _decision(x, where: str) -> dict:
@@ -367,7 +407,7 @@ class Schedule:
         """Что отправить сейчас: (папка, модуль, пункт расписания). Сразу отмечает отправленным — не дважды.
         Пространство создано позже назначенного времени или пульт был выключен дольше CATCH_UP — сегодня пропускаем."""
         st, today, out = self.load(), now.strftime("%Y-%m-%d"), []
-        by_id = {m["id"]: m for m in catalog()}
+        by_id, cal = {m["id"]: m for m in catalog()}, None
         for folder, mk in workspaces(roots):
             m = by_id.get(mk["id"])
             for item in (m or {}).get("schedule", []):
@@ -375,8 +415,14 @@ class Schedule:
                     if hit := self._every(st, folder, mk, item, now):
                         out.append((folder, m, hit))
                     continue
-                k = f"{folder}|{item['at']}"
-                if st.get(k) == today or now.isoweekday() not in item["days"] or now.strftime("%H:%M") < item["at"]:
+                k = f"{folder}|{item['at']}" + (f"|{item['workday']}wd" if item.get("workday") else "")
+                if st.get(k) == today or now.strftime("%H:%M") < item["at"]:
+                    continue
+                if item.get("workday"):                  # раз в месяц: сегодня — N-й рабочий день?
+                    cal = work_calendar() if cal is None else cal
+                    if nth_workday(now.year, now.month, item["workday"], cal) != now.date():
+                        continue
+                elif now.isoweekday() not in item["days"]:
                     continue
                 st[k] = today
                 at = now.replace(hour=int(item["at"][:2]), minute=int(item["at"][3:]), second=0, microsecond=0)
