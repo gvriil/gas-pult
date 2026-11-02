@@ -14,7 +14,8 @@
    "roles": [
     "anon"
    ],
-   "title": "Посмотреть демо"
+   "title": "Посмотреть демо",
+   "title_en": "See the demo"
   },
   "go:integrations": {
    "id": "go:integrations",
@@ -29,7 +30,8 @@
    "roles": [
     "anon"
    ],
-   "title": "Войти через Telegram"
+   "title": "Войти через Telegram",
+   "title_en": "Sign in with Telegram"
   },
   "go:models": {
    "id": "go:models",
@@ -233,6 +235,45 @@
     "owner"
    ],
    "title": "Проверка Claude Code"
+  },
+  "go:simple.agents": {
+   "id": "go:simple.agents",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Мои агенты",
+   "title_en": "My agents"
+  },
+  "go:simple.chat": {
+   "id": "go:simple.chat",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Разговор с агентом",
+   "title_en": "Conversation with the agent"
+  },
+  "go:simple.new-agent": {
+   "id": "go:simple.new-agent",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Подключить агента",
+   "title_en": "Connect an agent"
+  },
+  "go:simple.settings": {
+   "id": "go:simple.settings",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Настройки",
+   "title_en": "Settings"
   },
   "go:switch": {
    "id": "go:switch",
@@ -598,20 +639,24 @@
    "faq": [
     {
      "a": "Нажмите «Войти через Telegram» и «Запустить» в боте — бот спросит владельца пульта, пустить ли вас. Когда он даст роль, нажмите «Войти через Telegram» ещё раз.",
+     "a_en": "Tap «Sign in with Telegram» and «Start» in the bot — the bot will ask the panel owner to let you in. When you get a role, tap «Sign in with Telegram» again.",
      "actions": [
       "go:login"
      ],
      "id": "noaccess",
      "q": "Нет доступа — что делать?",
+     "q_en": "No access — what do I do?",
      "roles": []
     },
     {
      "a": "Да: «Посмотреть демо» — та же панель на примерах, всё можно нажимать, ничего никуда не уходит.",
+     "a_en": "Yes: «See the demo» is the same panel with examples — tap anything, nothing is sent anywhere.",
      "actions": [
       "go:demo"
      ],
      "id": "demo",
      "q": "Можно посмотреть без входа?",
+     "q_en": "Can I look around without signing in?",
      "roles": []
     }
    ],
@@ -621,6 +666,7 @@
     "go:demo"
    ],
    "purpose": "Вход в панель без пароля — подтверждением в вашем Telegram.",
+   "purpose_en": "Sign in to the panel without a password — by confirming in your Telegram.",
    "roles": [
     "anon"
    ],
@@ -629,7 +675,13 @@
     "В Telegram нажмите «Запустить» (Start), затем «Войти».",
     "Вернитесь сюда — панель откроется сама."
    ],
+   "steps_en": [
+    "Tap «Sign in with Telegram».",
+    "In Telegram tap «Start», then «Sign in».",
+    "Come back here — the panel opens by itself."
+   ],
    "title": "Вход в пульт",
+   "title_en": "Sign in to the panel",
    "where": "panel"
   },
   "module": {
@@ -1174,6 +1226,7 @@
    ],
    "steps": [
     "Тема — как в системе, светлая или тёмная.",
+    "«Простой режим» — только разговор с агентом, «Язык» — русский или английский.",
     "«Расход и лимиты» — сколько потрачено сегодня.",
     "Владельцу: «Люди» и «Проверка»."
    ],
@@ -1640,6 +1693,238 @@
     "Нажмите голос — он станет голосом озвучки (выбирает владелец)."
    ],
    "title": "Голос озвучки",
+   "where": "panel"
+  },
+  "simple.agents": {
+   "chips": [
+    "s-which"
+   ],
+   "faq": [
+    {
+     "a": "Его имя — вверху экрана. Чтобы перейти к другому, нажмите имя или выберите агента здесь.",
+     "a_en": "Its name is at the top of the screen. To switch, tap the name or pick an agent here.",
+     "actions": [
+      "go:simple.agents"
+     ],
+     "id": "s-which",
+     "q": "Какой агент сейчас открыт?",
+     "q_en": "Which agent is open now?",
+     "roles": []
+    }
+   ],
+   "id": "simple.agents",
+   "next": [
+    "go:simple.chat",
+    "go:simple.new-agent"
+   ],
+   "purpose": "Список ваших агентов: выберите, с кем говорить. Владелец и участник могут подключить нового.",
+   "purpose_en": "Your agents: choose who to talk to. The owner and members can connect a new one.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Нажмите агента — откроется разговор с ним.",
+    "«Подключить агента» — выбрать готового агента из каталога."
+   ],
+   "steps_en": [
+    "Tap an agent to open the conversation with it.",
+    "«Connect an agent» picks a ready-made agent from the catalog."
+   ],
+   "title": "Мои агенты",
+   "title_en": "My agents",
+   "where": "panel"
+  },
+  "simple.chat": {
+   "chips": [
+    "s-ask",
+    "s-safe",
+    "s-lang"
+   ],
+   "faq": [
+    {
+     "a": "Прочитайте вопрос над кнопками. «Да» — разрешить один раз, «Нет» — отказаться и написать, как иначе. Не уверены — «Показать подробности».",
+     "a_en": "Read the question above the buttons. «Yes» allows once, «No» declines so you can write what to do instead. Not sure? Tap «Show details».",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "s-ask",
+     "q": "Агент спрашивает разрешение — что нажать?",
+     "q_en": "The agent asks for permission — what should I tap?",
+     "roles": []
+    },
+    {
+     "a": "Агент запомнит разрешение и дальше будет делать такие действия сам. Такие варианты спрятаны в «Другие варианты» — выбирайте, только если уверены.",
+     "a_en": "The agent remembers the permission and will do such actions on its own. These options are under «More options» — choose them only if you are sure.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "s-safe",
+     "q": "Что значит «больше не спрашивать»?",
+     "q_en": "What does «don't ask again» mean?",
+     "roles": []
+    },
+    {
+     "a": "Откройте «Настройки» и выберите язык. Чтобы агент тоже отвечал на нём, нажмите там «Попросить агента отвечать…».",
+     "a_en": "Open «Settings» and pick a language. To make the agent reply in it too, tap «Ask the agent to reply…» there.",
+     "actions": [
+      "go:simple.settings"
+     ],
+     "id": "s-lang",
+     "q": "Как сменить язык?",
+     "q_en": "How do I change the language?",
+     "roles": []
+    }
+   ],
+   "id": "simple.chat",
+   "next": [
+    "go:simple.agents",
+    "go:simple.settings"
+   ],
+   "purpose": "Простой режим: здесь вы пишете агенту задачу, а он отвечает и спрашивает, если нужно ваше решение.",
+   "purpose_en": "Simple mode: here you write a task to the agent, and it replies and asks when it needs your decision.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Напишите задачу в поле внизу и нажмите стрелку.",
+    "Строка над полем показывает, чем агент занят.",
+    "Агент спрашивает — нажмите подходящую кнопку, цифры вводить не нужно."
+   ],
+   "steps_en": [
+    "Write the task in the field below and tap the arrow.",
+    "The line above the field shows what the agent is doing.",
+    "When the agent asks, tap the right button — no need to type numbers."
+   ],
+   "title": "Разговор с агентом",
+   "title_en": "Conversation with the agent",
+   "where": "panel"
+  },
+  "simple.details": {
+   "chips": [
+    "s-unsure"
+   ],
+   "faq": [
+    {
+     "a": "Нажмите «Нет» или «Не разрешать»: агент остановится и спросит, что делать. Ничего не сломается.",
+     "a_en": "Tap «No» or «Don't allow»: the agent will stop and ask what to do. Nothing will break.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "s-unsure",
+     "q": "Не уверен, что разрешать",
+     "q_en": "I'm not sure what to allow",
+     "roles": []
+    }
+   ],
+   "id": "simple.details",
+   "next": [
+    "go:simple.chat"
+   ],
+   "purpose": "Что именно спрашивает агент и что значит каждый вариант ответа — простыми словами.",
+   "purpose_en": "What exactly the agent asks and what each answer means — in plain words.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Прочитайте пояснение.",
+    "«Понятно» — вернуться к вопросу и нажать нужный вариант."
+   ],
+   "steps_en": [
+    "Read the explanation.",
+    "«Got it» returns to the question so you can tap an answer."
+   ],
+   "title": "Подробности вопроса",
+   "title_en": "Question details",
+   "where": "panel"
+  },
+  "simple.new-agent": {
+   "chips": [
+    "s-cost"
+   ],
+   "faq": [
+    {
+     "a": "Агент работает на подписке или ключе владельца пульта. Сколько потрачено, видит владелец в полном режиме.",
+     "a_en": "The agent runs on the panel owner's subscription or key. The owner sees the spending in full mode.",
+     "actions": [
+      "go:simple.agents"
+     ],
+     "id": "s-cost",
+     "q": "Это платно?",
+     "q_en": "Does it cost money?",
+     "roles": []
+    }
+   ],
+   "id": "simple.new-agent",
+   "next": [
+    "go:simple.agents",
+    "go:simple.chat"
+   ],
+   "purpose": "Готовые агенты для разных отраслей: выберите отрасль, затем агента — пульт всё подготовит сам.",
+   "purpose_en": "Ready-made agents for different industries: choose an industry, then an agent — the panel prepares everything.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Выберите отрасль.",
+    "Выберите агента и нажмите «Подключить».",
+    "Через минуту агент напишет, что ему нужно для начала."
+   ],
+   "steps_en": [
+    "Choose an industry.",
+    "Choose an agent and tap «Connect».",
+    "In a minute the agent will write what it needs to start."
+   ],
+   "title": "Подключить агента",
+   "title_en": "Connect an agent",
+   "where": "panel"
+  },
+  "simple.settings": {
+   "chips": [
+    "s-full"
+   ],
+   "faq": [
+    {
+     "a": "В полном режиме видны все сессии, экран терминала, команды, интеграции и расход. Простой — только разговор с агентом.",
+     "a_en": "Full mode shows all sessions, the terminal screen, commands, integrations and spending. Simple mode is just the conversation with the agent.",
+     "actions": [
+      "go:simple.settings"
+     ],
+     "id": "s-full",
+     "q": "Чем полный режим отличается от простого?",
+     "q_en": "How is full mode different from simple mode?",
+     "roles": []
+    }
+   ],
+   "id": "simple.settings",
+   "next": [
+    "go:simple.chat"
+   ],
+   "purpose": "Язык, оформление и выход из простого режима.",
+   "purpose_en": "Language, appearance and leaving simple mode.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Язык — русский или английский; кнопка ниже попросит агента отвечать на нём.",
+    "Оформление — как в системе, светлое или тёмное.",
+    "«Выключить простой режим» — полный пульт."
+   ],
+   "steps_en": [
+    "Language — Russian or English; the button below asks the agent to reply in it.",
+    "Appearance — as in the system, light or dark.",
+    "«Turn off simple mode» opens the full panel."
+   ],
+   "title": "Настройки",
+   "title_en": "Settings",
    "where": "panel"
   },
   "terms": {

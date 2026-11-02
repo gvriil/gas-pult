@@ -20,6 +20,8 @@ DEEP = {
     "go:settings.cost": "settings.cost", "go:settings.limits": "settings.limits",
     "go:settings.people": "settings.people", "go:settings.setup": "settings.setup",
     "go:settings.legend": "settings.legend", "go:login": "login", "go:demo": "home.sessions",
+    "go:simple.chat": "simple.chat", "go:simple.agents": "simple.agents", "go:simple.new-agent": "simple.new-agent",
+    "go:simple.settings": "simple.settings",
 }
 
 
@@ -44,7 +46,8 @@ def run(base: str, shots: str = ""):
                 got = pg.evaluate("helpContext().screen")
                 assert got == want, f"{w}px {aid}: открылся {got}, ждали {want}"
                 top = pg.locator(".sheet-bg .hpill.insheet").last if pg.locator(".sheet-bg").count() else None
-                assert (top or pg.locator("#helpBtn")).is_visible(), f"{aid}: нет пилюли «Подсказать»"
+                pill = "#sHelp" if pg.evaluate("SIM.on") else "#helpBtn"      # простой режим — своя шапка
+                assert (top or pg.locator(pill)).is_visible(), f"{aid}: нет пилюли «Подсказать»"
             # в сессии — пилюля в шапке; шторка — 55 % высоты; поверх листа и возврат к нему
             pg.goto(f"{base}{sep}theme={theme}&open=@3")
             pg.wait_for_function("typeof start === 'function' && start.done")

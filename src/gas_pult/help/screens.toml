@@ -125,12 +125,39 @@ roles = ["owner", "member", "viewer"]
 [[action]]
 id = "go:login"
 title = "Войти через Telegram"
+title_en = "Sign in with Telegram"
 roles = ["anon"]
 
 [[action]]
 id = "go:demo"
 title = "Посмотреть демо"
+title_en = "See the demo"
 roles = ["anon"]
+
+# ---------- действия: простой режим (title_en — для английского интерфейса) ----------
+[[action]]
+id = "go:simple.chat"
+title = "Разговор с агентом"
+title_en = "Conversation with the agent"
+roles = ["owner", "member", "viewer"]
+
+[[action]]
+id = "go:simple.agents"
+title = "Мои агенты"
+title_en = "My agents"
+roles = ["owner", "member", "viewer"]
+
+[[action]]
+id = "go:simple.new-agent"
+title = "Подключить агента"
+title_en = "Connect an agent"
+roles = ["owner", "member"]
+
+[[action]]
+id = "go:simple.settings"
+title = "Настройки"
+title_en = "Settings"
+roles = ["owner", "member", "viewer"]
 
 # ---------- действия: страница предложения (гость) ----------
 [[action]]
@@ -261,9 +288,12 @@ roles = ["owner", "member"]
 id = "login"
 where = "panel"
 title = "Вход в пульт"
+title_en = "Sign in to the panel"
 roles = ["anon"]
 purpose = "Вход в панель без пароля — подтверждением в вашем Telegram."
+purpose_en = "Sign in to the panel without a password — by confirming in your Telegram."
 steps = ["Нажмите «Войти через Telegram».", "В Telegram нажмите «Запустить» (Start), затем «Войти».", "Вернитесь сюда — панель откроется сама."]
+steps_en = ["Tap «Sign in with Telegram».", "In Telegram tap «Start», then «Sign in».", "Come back here — the panel opens by itself."]
 next = ["go:login", "go:demo"]
 chips = ["noaccess", "demo"]
 
@@ -271,12 +301,16 @@ chips = ["noaccess", "demo"]
 id = "noaccess"
 q = "Нет доступа — что делать?"
 a = "Нажмите «Войти через Telegram» и «Запустить» в боте — бот спросит владельца пульта, пустить ли вас. Когда он даст роль, нажмите «Войти через Telegram» ещё раз."
+q_en = "No access — what do I do?"
+a_en = "Tap «Sign in with Telegram» and «Start» in the bot — the bot will ask the panel owner to let you in. When you get a role, tap «Sign in with Telegram» again."
 actions = ["go:login"]
 
 [[screen.faq]]
 id = "demo"
 q = "Можно посмотреть без входа?"
 a = "Да: «Посмотреть демо» — та же панель на примерах, всё можно нажимать, ничего никуда не уходит."
+q_en = "Can I look around without signing in?"
+a_en = "Yes: «See the demo» is the same panel with examples — tap anything, nothing is sent anywhere."
 actions = ["go:demo"]
 
 [[screen]]
@@ -615,7 +649,7 @@ where = "panel"
 title = "Настройки"
 roles = ["owner", "member", "viewer"]
 purpose = "Тема, страна, уведомления, расход и лимиты, люди, обозначения."
-steps = ["Тема — как в системе, светлая или тёмная.", "«Расход и лимиты» — сколько потрачено сегодня.", "Владельцу: «Люди» и «Проверка»."]
+steps = ["Тема — как в системе, светлая или тёмная.", "«Простой режим» — только разговор с агентом, «Язык» — русский или английский.", "«Расход и лимиты» — сколько потрачено сегодня.", "Владельцу: «Люди» и «Проверка»."]
 next = ["go:settings.cost", "go:settings.country", "go:settings.legend"]
 chips = ["cost", "people", "colors"]
 
@@ -705,6 +739,128 @@ roles = ["owner", "member", "viewer"]
 purpose = "Браузер не дал скопировать автоматически — текст выделен, скопируйте его сами."
 steps = ["Выделите текст и скопируйте.", "«Закрыть»."]
 next = ["go:sessions"]
+
+# ---------- панель: простой режим (тексты и на английском: *_en) ----------
+[[screen]]
+id = "simple.chat"
+where = "panel"
+title = "Разговор с агентом"
+title_en = "Conversation with the agent"
+roles = ["owner", "member", "viewer"]
+purpose = "Простой режим: здесь вы пишете агенту задачу, а он отвечает и спрашивает, если нужно ваше решение."
+purpose_en = "Simple mode: here you write a task to the agent, and it replies and asks when it needs your decision."
+steps = ["Напишите задачу в поле внизу и нажмите стрелку.", "Строка над полем показывает, чем агент занят.", "Агент спрашивает — нажмите подходящую кнопку, цифры вводить не нужно."]
+steps_en = ["Write the task in the field below and tap the arrow.", "The line above the field shows what the agent is doing.", "When the agent asks, tap the right button — no need to type numbers."]
+next = ["go:simple.agents", "go:simple.settings"]
+chips = ["s-ask", "s-safe", "s-lang"]
+
+[[screen.faq]]
+id = "s-ask"
+q = "Агент спрашивает разрешение — что нажать?"
+a = "Прочитайте вопрос над кнопками. «Да» — разрешить один раз, «Нет» — отказаться и написать, как иначе. Не уверены — «Показать подробности»."
+q_en = "The agent asks for permission — what should I tap?"
+a_en = "Read the question above the buttons. «Yes» allows once, «No» declines so you can write what to do instead. Not sure? Tap «Show details»."
+actions = ["go:simple.chat"]
+
+[[screen.faq]]
+id = "s-safe"
+q = "Что значит «больше не спрашивать»?"
+a = "Агент запомнит разрешение и дальше будет делать такие действия сам. Такие варианты спрятаны в «Другие варианты» — выбирайте, только если уверены."
+q_en = "What does «don't ask again» mean?"
+a_en = "The agent remembers the permission and will do such actions on its own. These options are under «More options» — choose them only if you are sure."
+actions = ["go:simple.chat"]
+
+[[screen.faq]]
+id = "s-lang"
+q = "Как сменить язык?"
+a = "Откройте «Настройки» и выберите язык. Чтобы агент тоже отвечал на нём, нажмите там «Попросить агента отвечать…»."
+q_en = "How do I change the language?"
+a_en = "Open «Settings» and pick a language. To make the agent reply in it too, tap «Ask the agent to reply…» there."
+actions = ["go:simple.settings"]
+
+[[screen]]
+id = "simple.agents"
+where = "panel"
+title = "Мои агенты"
+title_en = "My agents"
+roles = ["owner", "member", "viewer"]
+purpose = "Список ваших агентов: выберите, с кем говорить. Владелец и участник могут подключить нового."
+purpose_en = "Your agents: choose who to talk to. The owner and members can connect a new one."
+steps = ["Нажмите агента — откроется разговор с ним.", "«Подключить агента» — выбрать готового агента из каталога."]
+steps_en = ["Tap an agent to open the conversation with it.", "«Connect an agent» picks a ready-made agent from the catalog."]
+next = ["go:simple.chat", "go:simple.new-agent"]
+chips = ["s-which"]
+
+[[screen.faq]]
+id = "s-which"
+q = "Какой агент сейчас открыт?"
+a = "Его имя — вверху экрана. Чтобы перейти к другому, нажмите имя или выберите агента здесь."
+q_en = "Which agent is open now?"
+a_en = "Its name is at the top of the screen. To switch, tap the name or pick an agent here."
+actions = ["go:simple.agents"]
+
+[[screen]]
+id = "simple.new-agent"
+where = "panel"
+title = "Подключить агента"
+title_en = "Connect an agent"
+roles = ["owner", "member"]
+purpose = "Готовые агенты для разных отраслей: выберите отрасль, затем агента — пульт всё подготовит сам."
+purpose_en = "Ready-made agents for different industries: choose an industry, then an agent — the panel prepares everything."
+steps = ["Выберите отрасль.", "Выберите агента и нажмите «Подключить».", "Через минуту агент напишет, что ему нужно для начала."]
+steps_en = ["Choose an industry.", "Choose an agent and tap «Connect».", "In a minute the agent will write what it needs to start."]
+next = ["go:simple.agents", "go:simple.chat"]
+chips = ["s-cost"]
+
+[[screen.faq]]
+id = "s-cost"
+q = "Это платно?"
+a = "Агент работает на подписке или ключе владельца пульта. Сколько потрачено, видит владелец в полном режиме."
+q_en = "Does it cost money?"
+a_en = "The agent runs on the panel owner's subscription or key. The owner sees the spending in full mode."
+actions = ["go:simple.agents"]
+
+[[screen]]
+id = "simple.settings"
+where = "panel"
+title = "Настройки"
+title_en = "Settings"
+roles = ["owner", "member", "viewer"]
+purpose = "Язык, оформление и выход из простого режима."
+purpose_en = "Language, appearance and leaving simple mode."
+steps = ["Язык — русский или английский; кнопка ниже попросит агента отвечать на нём.", "Оформление — как в системе, светлое или тёмное.", "«Выключить простой режим» — полный пульт."]
+steps_en = ["Language — Russian or English; the button below asks the agent to reply in it.", "Appearance — as in the system, light or dark.", "«Turn off simple mode» opens the full panel."]
+next = ["go:simple.chat"]
+chips = ["s-full"]
+
+[[screen.faq]]
+id = "s-full"
+q = "Чем полный режим отличается от простого?"
+a = "В полном режиме видны все сессии, экран терминала, команды, интеграции и расход. Простой — только разговор с агентом."
+q_en = "How is full mode different from simple mode?"
+a_en = "Full mode shows all sessions, the terminal screen, commands, integrations and spending. Simple mode is just the conversation with the agent."
+actions = ["go:simple.settings"]
+
+[[screen]]
+id = "simple.details"
+where = "panel"
+title = "Подробности вопроса"
+title_en = "Question details"
+roles = ["owner", "member", "viewer"]
+purpose = "Что именно спрашивает агент и что значит каждый вариант ответа — простыми словами."
+purpose_en = "What exactly the agent asks and what each answer means — in plain words."
+steps = ["Прочитайте пояснение.", "«Понятно» — вернуться к вопросу и нажать нужный вариант."]
+steps_en = ["Read the explanation.", "«Got it» returns to the question so you can tap an answer."]
+next = ["go:simple.chat"]
+chips = ["s-unsure"]
+
+[[screen.faq]]
+id = "s-unsure"
+q = "Не уверен, что разрешать"
+a = "Нажмите «Нет» или «Не разрешать»: агент остановится и спросит, что делать. Ничего не сломается."
+q_en = "I'm not sure what to allow"
+a_en = "Tap «No» or «Don't allow»: the agent will stop and ask what to do. Nothing will break."
+actions = ["go:simple.chat"]
 
 # ---------- страница предложения (гость) ----------
 [[screen]]

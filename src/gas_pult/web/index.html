@@ -566,12 +566,62 @@
   .sheet.help .hrow input:focus { border-color: var(--border-focus); }
   .sheet.help .hrow .hsend { width: 44px; height: 44px; flex: none; border-radius: 50%; justify-content: center; border: 0; background: var(--accent-primary); color: var(--on-accent); }
   .sheet.help .cancel { width: 100%; justify-content: center; padding: 12px 16px; min-height: 48px; margin-top: 6px; }
+
+  /* ===== Простой режим (docs/SIMPLE-MODE.md): один разговор с агентом по центру, выбор — овальными чипами ===== */
+  body.simple-on #scroller, body.simple-on #dock, body.simple-on #homeBar, body.simple-on #toBottom, body.simple-on #mini,
+  body.simple-on #sideGrip, body.simple-on #updateBar, body.simple-on .ptr { display: none !important; }
+  #simple { position: fixed; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--bg-canvas); color: var(--text-primary); }
+  .s-col { width: 100%; max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  .s-top { flex: none; padding-top: env(safe-area-inset-top); border-bottom: 1px solid var(--border-subtle); background: var(--bg-canvas); }
+  .s-top .s-row { display: flex; align-items: center; gap: 8px; min-height: 58px; }
+  .s-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 6px 4px; text-align: left; border-radius: var(--radius-md); }
+  .s-who:active { background: var(--bg-subtle); }
+  .s-who > .i { color: var(--accent-primary); }
+  .s-who .n { min-width: 0; display: flex; flex-direction: column; }
+  .s-who b { font-size: calc(17px * var(--fz, 1)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-who small { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .s-agents { display: flex; gap: 8px; overflow-x: auto; padding: 0 0 10px; margin: 0; scrollbar-width: none; }
+  .s-agents::-webkit-scrollbar { display: none; }
+  .s-agents .scn-opt { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .s-demo { margin: 0 0 8px; font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); }
+  .s-scroll { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .s-scroll .s-col { padding-top: 16px; padding-bottom: 8px; }
+  .s-empty { color: var(--text-secondary); text-align: center; padding: 32px 8px; }
+  .s-empty .scn-opts { justify-content: center; }
+  .s-err { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-md); background: var(--status-approval-bg); }
+  .s-err > .i { color: var(--status-approval); margin-top: 2px; }
+  .s-ask { background: var(--status-approval-bg); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent); border-radius: var(--radius-lg);
+           padding: 14px; margin: 0 0 16px; animation: up .2s ease; }
+  .s-ask .q { font-weight: 600; margin: 0; display: flex; gap: 8px; align-items: flex-start; font-size: calc(16px * var(--fz, 1)); }
+  .s-ask .q .i { color: var(--status-approval); margin-top: 2px; }
+  .s-ask .scn-opt:disabled { opacity: .55; }
+  .s-ask .s-more { border-style: dashed; color: var(--text-secondary); }
+  .s-two { margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid color-mix(in srgb, var(--status-approval) 30%, transparent); }
+  .s-two .note { margin: 0 0 8px; }
+  .s-opt2 { margin: 0 0 10px; } .s-opt2 p { margin: 4px 4px 0; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+  .s-dock { flex: none; padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); background: var(--bg-canvas); }
+  .s-comp { display: flex; align-items: flex-end; gap: 6px; background: var(--bg-subtle); border-radius: 26px; padding: 4px 4px 4px 16px; border: 1px solid transparent; }
+  .s-comp:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); }
+  .s-comp textarea { flex: 1; min-width: 0; border: 0; background: transparent; resize: none; padding: 10px 0; max-height: 40vh; outline: none; font: inherit;
+                     font-size: calc(16px * var(--fz, 1)); color: var(--text-primary); }
+  .s-view { text-align: center; color: var(--text-secondary); padding: 8px; }
+  .sheet.s-sheet .s-body { padding: 0 16px 8px; }
+  .sheet.s-sheet .s-body p { margin: 0 0 10px; }
+  .sheet.s-sheet .s-lbl { margin: 14px 0 8px; font-weight: 600; }
+  .sheet.s-sheet .scn-opts { margin: 0 0 8px; }
+  .sheet.s-sheet .scn-opt { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 8px 14px; font-size: calc(15px * var(--fz, 1));
+                           border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-pill); color: var(--text-primary); }
+  .sheet.s-sheet .scn-opt.on { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--accent-soft); }
+  .sheet.s-sheet .scn-opt .i { width: 16px; height: 16px; }
+  .sheet.s-sheet .s-notes { margin: 0 0 10px; padding: 0 0 0 18px; } .sheet.s-sheet .s-notes li { margin: 0 0 6px; }
+  .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
+  .s-langsw .scn-opt { min-height: 34px; padding: 4px 12px; font-size: calc(13px * var(--fz, 1)); }
 </style>
 </head>
 <body>
 <button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
 <div id="scroller">
-<div class="demo" id="demoBar" hidden>Демо-режим: панель на примерах, ваши действия никуда не уходят · <a href="/" style="color:inherit">войти</a></div>
+<div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 <header class="top" id="top">
   <div class="toprow">
@@ -588,23 +638,24 @@
 <main>
   <section id="login" hidden>
     <div class="panel">
-      <h2 class="serif" style="margin:2px 0 6px;font-size:21px">Вход в пульт</h2>
-      <p class="note" style="margin:0 0 12px">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
+      <div class="scn-opts s-langsw" id="loginLang" role="group"></div>
+      <h2 class="serif" style="margin:2px 0 6px;font-size:21px" data-l="login.title">Вход в пульт</h2>
+      <p class="note" style="margin:0 0 12px" data-l="login.note">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
       <div id="loginStep1">
-        <button class="btn" id="tgLogin">Войти через Telegram</button>
+        <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
-        <button class="btn ghost" id="getCode">Войти по коду — для владельца</button>
-        <button class="btn ghost" id="tryDemo">Посмотреть демо — без входа</button>
-        <p class="note" style="margin:6px 0 0">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
+        <button class="btn ghost" id="getCode" data-l="login.code">Войти по коду — для владельца</button>
+        <button class="btn ghost" id="tryDemo" data-l="login.demo">Посмотреть демо — без входа</button>
+        <p class="note" style="margin:6px 0 0" data-l="login.demo.note">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
       </div>
       <div id="loginStep2" hidden>
         <div class="field">
-          <label for="code">Код из Telegram</label>
+          <label for="code" data-l="login.code.label">Код из Telegram</label>
           <input id="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••">
-          <div class="hint">Откройте чат с ботом — там сообщение «Вход в панель» с 6 цифрами.</div>
+          <div class="hint" data-l="login.code.hint">Откройте чат с ботом — там сообщение «Вход в панель» с 6 цифрами.</div>
         </div>
-        <button class="btn" id="enter">Войти</button>
-        <button class="btn ghost" id="resend">Прислать новый код</button>
+        <button class="btn" id="enter" data-l="login.enter">Войти</button>
+        <button class="btn ghost" id="resend" data-l="login.resend">Прислать новый код</button>
       </div>
       <div id="loginResult"></div>
     </div>
@@ -661,6 +712,31 @@
   <input type="file" id="fCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="fPhoto" accept="image/*,video/*" multiple hidden>
   <input type="file" id="fFile" multiple hidden>
+</div>
+
+<!-- Простой режим: один разговор с агентом. Тексты — из словарей i18n/ru.json и en.json (simpleStart). -->
+<div id="simple" hidden>
+  <header class="s-top"><div class="s-col">
+    <div class="s-row">
+      <button class="s-who" id="sWho" type="button"></button>
+      <button class="hpill" id="sHelp" type="button"></button>
+      <button class="icon" id="sSet" type="button"></button>
+    </div>
+    <p class="s-demo" id="sDemo" hidden></p>
+    <div class="s-agents" id="sAgents" role="group" hidden></div>
+  </div></header>
+  <div class="s-scroll" id="sScroll"><div class="s-col">
+    <div class="chat" id="sFeed"></div>
+    <div class="act off" id="sAct" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>
+    <div id="sAsk" aria-live="polite"></div>
+  </div></div>
+  <div class="s-dock"><div class="s-col">
+    <div class="s-comp" id="sComp">
+      <textarea id="sInput" rows="1" enterkeyhint="send"></textarea>
+      <button class="tool send" id="sSend" type="button"></button>
+    </div>
+    <div class="s-view" id="sView" hidden></div>
+  </div></div>
 </div>
 
 <script>
@@ -1096,7 +1172,7 @@ function reloadPanel() {
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход через Telegram</span>"); }
+function showLogin() { simpleHide(); show("login"); paintLoginLang(); }
 // Условия использования: при первом входе и после смены версии. До «Принимаю» панель не показывает остальное.
 async function showTerms() {
   if (view === "terms") return;
@@ -1151,21 +1227,21 @@ $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
 let tgTimer = null;
-$("tgLogin").onclick = (e) => busy(e.currentTarget, "Готовлю вход…", async () => {
+$("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Готовлю вход…"), async () => {
   try {
     const d = await api("/api/login/tg", {});
     tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");   // в браузере — новой вкладкой, не уходя со страницы
     $("tgWait").hidden = false;
-    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>В Telegram нажмите «Запустить» (Start), затем «Войти». Жду подтверждения…</span></div>
-      <p class="note" style="margin:6px 2px">Не открылся Telegram или нет кнопки? Внизу чата с ботом нажмите «Запустить» (Start) — даже если бот уже запущен.</p>
-      <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}Открыть Telegram ещё раз</a>`;
+    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>${esc(LL("login.wait", "В Telegram нажмите «Запустить» (Start), затем «Войти». Жду подтверждения…"))}</span></div>
+      <p class="note" style="margin:6px 2px">${esc(LL("login.wait.note", "Не открылся Telegram или нет кнопки? Внизу чата с ботом нажмите «Запустить» (Start) — даже если бот уже запущен."))}</p>
+      <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}${esc(LL("login.again", "Открыть Telegram ещё раз"))}</a>`;
     clearInterval(tgTimer); const t0 = Date.now();
     tgTimer = setInterval(async () => {
-      if (Date.now() - t0 > d.ttl * 1000) { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>Ссылка устарела — нажмите «Войти через Telegram» ещё раз.</span></div>`; return; }
+      if (Date.now() - t0 > d.ttl * 1000) { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(LL("login.expired", "Ссылка устарела — нажмите «Войти через Telegram» ещё раз."))}</span></div>`; return; }
       try {
         const r = await api("/api/login/tg?id=" + encodeURIComponent(d.id));
         if (r.state === "ok") { clearInterval(tgTimer); $("tgWait").hidden = true; haptic("notificationOccurred", "success"); await start(); }
-        else if (r.state !== "wait") { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${r.state === "no" ? "Вход отклонён в Telegram." : "Ссылка устарела — начните заново."}</span></div>`; }
+        else if (r.state !== "wait") { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(r.state === "no" ? LL("login.rejected", "Вход отклонён в Telegram.") : LL("login.restart", "Ссылка устарела — начните заново."))}</span></div>`; }
       } catch (err) { /* сеть моргнула — следующая попытка через 2 с */ }
     }, 2000);
   } catch (err) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
@@ -3125,6 +3201,8 @@ $("settingsBtn").onclick = () => {
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
+    { label: "Простой режим", icon: "chat", sub: "только разговор с агентом, без технических экранов", run: () => switchMode(true) },
+    { label: "Язык: " + (LANG === "en" ? "English" : "русский"), icon: "globe", sub: "простого режима и экрана входа — нажмите, чтобы сменить", run: () => setLang(LANG === "en" ? "ru" : "en") },
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
@@ -3209,6 +3287,7 @@ let helpNext = "", formHelp = "", helpModule = "";
 const hv = (id) => id;                                 // id экрана помощника (тест сверяет их с картой)
 function helpSheet(id) { helpNext = id; }
 function helpViewId() {
+  if (SIM.on) return hv("simple.chat");
   if (view === "login") return hv("login");
   if (view === "terms") return hv("terms");
   if (view === "country") return hv("country");
@@ -3220,8 +3299,8 @@ function helpViewId() {
 const helpVisible = (b) => b.offsetParent !== null && !b.closest("[hidden]");
 function helpContext() {                               // всё, что помощнику нужно знать об экране, — одной функцией
   const top = [...document.querySelectorAll(".sheet-bg:not(.help-bg)")].at(-1);
-  const box = top || $(view === "session" ? "session" : view) || document.body;
-  const title = (top ? top.querySelector("h3")?.textContent : $("title").textContent) || "";
+  const box = top || (SIM.on ? $("simple") : $(view === "session" ? "session" : view)) || document.body;
+  const title = (top ? top.querySelector("h3")?.textContent : SIM.on ? $("sWho").textContent : $("title").textContent) || "";
   const buttons = [...box.querySelectorAll("button")].filter(helpVisible).map((b) => clean(b.textContent).slice(0, 40)).filter(Boolean).slice(0, 12);
   return { screen: top?.dataset.help || helpViewId(), step: view === "session" ? tab : "", module: helpModule, title: clean(title).slice(0, 80), buttons };
 }
@@ -3257,30 +3336,34 @@ const HELP_GO = {                                      // действие ка�
   "go:settings.legend": () => legend(),
   "go:login": () => { showLogin(); $("tgLogin").focus(); },
   "go:demo": () => { location.href = "/?demo"; },
+  "go:simple.chat": () => simpleGo(),
+  "go:simple.agents": () => simpleGo().then(sAgents),
+  "go:simple.new-agent": () => simpleGo().then(sNewAgent),
+  "go:simple.settings": () => simpleGo().then(sSettings),
 };
 function go(id) {
   const f = HELP_GO[id];
-  if (!f) return toast("Этот переход недоступен");
+  if (!f) return toast(L("s.fail", "Этот переход недоступен"));
   document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());   // «Перейти» — новый путь: листы закрываем
   closeMenu(); f();
 }
 function helpAnswer(r) {
   const box = document.createElement("div"); box.className = "ha"; box.dataset.id = r.id;
   box.innerHTML = `<p>${esc(r.text)}</p>
-    ${r.actions.length ? `<div class="hgo">${r.actions.map((a) => `<button data-go="${esc(a.id)}">${ic("chevron", "s16")}Перейти: ${esc(a.title)}</button>`).join("")}</div>` : ""}
-    <div class="hfoot"><span class="hmark">Подсказка из карты</span>
-      <button class="hfb" data-fb="1" aria-label="Помогло">${ic("check")}</button><button class="hfb" data-fb="0" aria-label="Не помогло">${ic("x")}</button></div>`;
+    ${r.actions.length ? `<div class="hgo">${r.actions.map((a) => `<button data-go="${esc(a.id)}">${ic("chevron", "s16")}${esc(L("help.go", "Перейти: {t}").replace("{t}", a.title))}</button>`).join("")}</div>` : ""}
+    <div class="hfoot"><span class="hmark">${esc(L("help.mark", "Подсказка из карты"))}</span>
+      <button class="hfb" data-fb="1" aria-label="${esc(L("help.useful", "Помогло"))}">${ic("check")}</button><button class="hfb" data-fb="0" aria-label="${esc(L("help.useless", "Не помогло"))}">${ic("x")}</button></div>`;
   return box;
 }
 async function helpAsk(bg, body, label) {
   const msgs = bg.querySelector(".hmsgs"), ctx = bg.ctx;
   if (label) msgs.insertAdjacentHTML("beforeend", `<div class="hq">${esc(label)}</div>`);
-  const wait = document.createElement("div"); wait.className = "ha wait"; wait.textContent = "Думаю…"; msgs.append(wait);
+  const wait = document.createElement("div"); wait.className = "ha wait"; wait.textContent = L("help.thinking", "Думаю…"); msgs.append(wait);
   msgs.scrollTop = msgs.scrollHeight;
   try {
-    const r = await api("/api/help/ask", { ctx, ...body });
+    const r = await api("/api/help/ask", { ctx, ...body, ...(SIM.on || view === "login" ? { lang: LANG } : {}) });
     wait.replaceWith(helpAnswer(r));
-    bg.querySelector(".hwhere").textContent = "Экран: " + r.title;
+    bg.querySelector(".hwhere").textContent = L("help.where", "Экран: {t}").replace("{t}", r.title);
     bg.querySelector(".hchips").innerHTML = r.chips.filter((c) => c.id !== body.chip).map((c) => `<button data-chip="${esc(c.id)}">${esc(c.label)}</button>`).join("");
   } catch (e) { wait.className = "ha"; wait.innerHTML = `<p class="hnote">${esc(e.message)}</p>`; }
   msgs.scrollTop = msgs.scrollHeight;
@@ -3288,11 +3371,11 @@ async function helpAsk(bg, body, label) {
 function openHelp() {
   if (document.querySelector(".help-bg")) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
-  bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="Помощник"><h3>${ic("help", "s16")}Помощник</h3><div class="hwhere"></div>
+  bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="${esc(L("help.title", "Помощник"))}"><h3>${ic("help", "s16")}${esc(L("help.title", "Помощник"))}</h3><div class="hwhere"></div>
     <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>
-    <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Спросите, что непонятно…" aria-label="Вопрос помощнику">
-      <button class="hsend" type="submit" aria-label="Спросить">${ic("send")}</button></form>
-    <button class="cancel" data-close>Закрыть</button></div>`;
+    <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="${esc(L("help.ask", "Спросите, что непонятно…"))}" aria-label="${esc(L("help.ask.aria", "Вопрос помощнику"))}">
+      <button class="hsend" type="submit" aria-label="${esc(L("help.send", "Спросить"))}">${ic("send")}</button></form>
+    <button class="cancel" data-close>${esc(L("help.close", "Закрыть"))}</button></div>`;
   bg.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();   // лист под ним остаётся
@@ -3302,7 +3385,7 @@ function openHelp() {
     if (b.dataset.fb) {
       b.parentElement.querySelectorAll(".hfb").forEach((x) => x.classList.toggle("on", x === b));
       api("/api/help/feedback", { id, useful: b.dataset.fb === "1" }).catch(() => {});
-      return toast(b.dataset.fb === "1" ? "Спасибо!" : "Спасибо — поправим подсказку");
+      return toast(b.dataset.fb === "1" ? L("help.thanks", "Спасибо!") : L("help.thanks.bad", "Спасибо — поправим подсказку"));
     }
     if (b.dataset.go) { api("/api/help/feedback", { id, action: b.dataset.go }).catch(() => {}); haptic("selectionChanged"); return go(b.dataset.go); }
   });
@@ -3319,7 +3402,7 @@ new MutationObserver(() => {
   document.querySelectorAll(".sheet-bg:not(.help-bg) > .sheet:not(.hp)").forEach((sh) => {
     sh.classList.add("hp");
     const b = document.createElement("button"); b.className = "hpill insheet"; b.type = "button";
-    b.setAttribute("aria-label", "Подсказать: что делать в этом листе"); b.innerHTML = ic("help") + "<span>Подсказать</span>";
+    b.setAttribute("aria-label", L("help.sheet", "Подсказать: что делать в этом листе")); b.innerHTML = ic("help") + `<span>${esc(L("s.help", "Подсказать"))}</span>`;
     b.addEventListener("click", (e) => { e.stopPropagation(); openHelp(); });
     sh.prepend(b);
   });
@@ -3329,11 +3412,13 @@ async function demoHelp(b) {
   demoHelp.map ||= await fetch("help-map.json").then((r) => r.json());
   const m = demoHelp.map, role = view === "login" ? "anon" : params.get("role") || "owner";
   const own = (id) => m.screens[id] && m.screens[id].roles.includes(role);
-  const sid = own(b.ctx?.screen) ? b.ctx.screen : role === "anon" ? "login" : "home.sessions", s = m.screens[sid];
+  const sid = own(b.ctx?.screen) ? b.ctx.screen : role === "anon" ? "login" : "home.sessions", s0 = m.screens[sid];
+  const en = b.lang === "en" && !!s0.title_en, loc = (x) => (en && x ? { ...x, title: x.title_en || x.title, purpose: x.purpose_en, steps: x.steps_en, q: x.q_en, a: x.a_en } : x);
+  const s = { ...loc(s0), faq: s0.faq.map(loc) };              // английский — только у экранов простого режима и входа
   const faq = [...s.faq.filter((f) => !f.roles.length || f.roles.includes(role))];
-  m.faq.forEach((f) => { if (f.roles.includes(role) && !faq.some((x) => x.id === f.id)) faq.push(f); });
-  const acts = (ids) => [...new Set(ids)].filter((a) => m.actions[a]?.roles.includes(role)).slice(0, 3).map((a) => ({ id: a, title: m.actions[a].title }));
-  const chips = [{ id: "what", label: "Что здесь делать?" }, ...s.chips.map((c) => faq.find((f) => f.id === c)).filter(Boolean).map((f) => ({ id: f.id, label: f.q }))];
+  if (!s0.title_en) m.faq.forEach((f) => { if (f.roles.includes(role) && !faq.some((x) => x.id === f.id)) faq.push(f); });
+  const acts = (ids) => [...new Set(ids)].filter((a) => m.actions[a]?.roles.includes(role)).slice(0, 3).map((a) => ({ id: a, title: en ? m.actions[a].title_en || m.actions[a].title : m.actions[a].title }));
+  const chips = [{ id: "what", label: en ? "What can I do here?" : "Что здесь делать?" }, ...s.chips.map((c) => faq.find((f) => f.id === c)).filter(Boolean).map((f) => ({ id: f.id, label: f.q }))];
   const out = { id: "demo" + Date.now(), screen: sid, title: s.title, chips, mode: "offline" };
   const f = b.chip && faq.find((x) => x.id === b.chip);
   if (f) return { ...out, text: f.a, actions: acts(f.actions.length ? f.actions : s.next) };
@@ -3341,7 +3426,7 @@ async function demoHelp(b) {
     const w = (t) => new Set(String(t).toLowerCase().replace(/ё/g, "е").match(/[а-яa-z0-9]{3,}/g)?.map((x) => x.slice(0, 5)) || []);
     const q = w(b.q), best = faq.map((x) => [[...w(x.q + " " + x.a)].filter((y) => q.has(y)).length, x]).sort((a, c) => c[0] - a[0])[0];
     if (best && best[0]) return { ...out, text: best[1].a, actions: acts(best[1].actions.length ? best[1].actions : s.next) };
-    return { ...out, text: "Точного ответа в подсказках нет. На этом экране: " + s.purpose, actions: acts(s.next) };
+    return { ...out, text: (en ? "No exact answer in the tips. On this screen: " : "Точного ответа в подсказках нет. На этом экране: ") + s.purpose, actions: acts(s.next) };
   }
   return { ...out, text: s.purpose + " " + s.steps.map((x, i) => `${i + 1}) ${x}`).join(" "), actions: acts(s.next) };
 }
@@ -3355,6 +3440,8 @@ async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
+  if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
+  $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";  // после первого экрана на английском
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
   if (meta.role === "viewer" && !$("viewOnly")) $("composer").insertAdjacentHTML("afterend", '<div class="viewonly" id="viewOnly">Доступ только на просмотр</div>');
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
@@ -3408,6 +3495,351 @@ async function start() {
   goFromLink();
 }
 
+// ---------- простой режим (docs/SIMPLE-MODE.md): один разговор с агентом, без английских слов и техники ----------
+// Включается настройкой человека на сервере (/api/prefs; localStorage — только кэш языка). Строки — словари
+// i18n/ru.json и i18n/en.json; вопросы Claude Code приходят уже пересказанными (/api/ask, humanize.py): сырого экрана,
+// списка сессий, команд и ключей здесь нет. Выбор — овальными чипами (.scn-opt), цифры вводить не нужно.
+const LANGS = ["ru", "en"];
+let LANG = LANGS.includes(params.get("lang")) ? params.get("lang") : LANGS.includes(store("lang")) ? store("lang") : "ru";
+let DICT = {};
+let dictReady = loadDict(LANG);
+async function loadDict(lang) {
+  try { const r = await fetch("i18n/" + lang + ".json", { cache: "no-store" }); if (r.ok && lang === LANG) DICT = await r.json(); }
+  catch (e) { /* без словаря — русские строки полного режима; простой режим покажет ключи до следующей попытки */ }
+  document.documentElement.lang = LANG;
+}
+function T(k, v) { let s = DICT[k] ?? k; for (const x in v || {}) s = s.split("{" + x + "}").join(String(v[x])); return s; }
+const L = (k, ru) => ((SIM.on || (view === "login" && LANG === "en")) && DICT[k] ? T(k) : ru);   // общее: помощник, переходы
+const LL = (k, ru) => (LANG === "en" && DICT[k] ? T(k) : ru);                                   // первый экран
+const SIM = { on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
+// Инструмент Claude Code → обобщённое действие строки статуса (то же, что humanize.TOOLS — тест сверяет).
+const SIMPLE_TOOL = {"Read":"reads","Grep":"reads","Glob":"reads","LS":"reads","Edit":"edits","MultiEdit":"edits","Write":"writes","NotebookEdit":"edits","Bash":"acts","PowerShell":"acts","BashOutput":"acts","KillShell":"acts","Skill":"acts","WebSearch":"web","WebFetch":"web","Task":"helper","Agent":"helper","TodoWrite":"plans","TaskCreate":"plans","TaskUpdate":"plans","AskUserQuestion":"waiting","ExitPlanMode":"waiting"};
+const SIMPLE_PH = ["sent", "delivered", "started", "working", "thinking", "waiting", "done", "queued", "stuck", "idle"];
+// Демо (?demo&simple=1&ask=bash|edit|question|unknown): разбор тех же экранов сервером — python -m gas_pult.humanize.
+const SIMPLE_DEMO = {"bash":{"kind":"bash","known":true,"title_ru":"Агент хочет выполнить действие на компьютере","title_en":"The agent wants to run an action on the computer","detail_ru":"Это команда для компьютера, на котором работает агент: например, посчитать, собрать или удалить файлы. Если вы не ждали такого действия — нажмите «Нет».","detail_en":"This is a command for the computer the agent runs on: for example, to calculate, build or delete files. If you did not expect it, tap «No».","options":[{"key":"yes","label_ru":"Да","label_en":"Yes","send":{"n":"1"},"level":1,"note_ru":"Разрешить один раз — в следующий раз агент спросит снова.","note_en":"Allow once — the agent will ask again next time."},{"key":"yes-always","label_ru":"Да, и больше не спрашивать о таком","label_en":"Yes, and don't ask about this again","send":{"n":"2"},"level":2,"note_ru":"Агент запомнит разрешение для этой папки и дальше будет делать такие действия без вопросов. Выбирайте, только если уверены.","note_en":"The agent will remember the permission for this folder and will do such actions without asking. Choose only if you are sure."},{"key":"no-tell","label_ru":"Нет","label_en":"No","send":{"n":"3"},"level":1,"note_ru":"Агент не будет этого делать. Напишите ему, как поступить иначе.","note_en":"The agent will not do this. Write to it what to do instead."},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"233bf58ca6ca"},"edit":{"kind":"edit","known":true,"title_ru":"Агент хочет изменить документ","title_en":"The agent wants to change a document","detail_ru":"Агент подготовил правку в документе своего пространства и ждёт вашего согласия. Если не уверены — нажмите «Нет» и напишите, что сделать иначе.","detail_en":"The agent has prepared a change to a document in its workspace and waits for your approval. If unsure, tap «No» and write what to do instead.","options":[{"key":"yes","label_ru":"Да","label_en":"Yes","send":{"n":"1"},"level":1,"note_ru":"Разрешить один раз — в следующий раз агент спросит снова.","note_en":"Allow once — the agent will ask again next time."},{"key":"yes-all-edits","label_ru":"Да, и разрешить все правки до конца работы","label_en":"Yes, and allow all changes until the work is done","send":{"n":"2"},"level":2,"note_ru":"Агент будет менять и создавать документы без вопросов до конца этого разговора. Выбирайте, только если уверены.","note_en":"The agent will change and create documents without asking until the end of this conversation. Choose only if you are sure."},{"key":"no-tell","label_ru":"Нет","label_en":"No","send":{"n":"3"},"level":1,"note_ru":"Агент не будет этого делать. Напишите ему, как поступить иначе.","note_en":"The agent will not do this. Write to it what to do instead."},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"7e7d25b45f5d"},"question":{"kind":"question","known":true,"title_ru":"Какой отчёт прислать утром?","title_en":"Какой отчёт прислать утром?","detail_ru":"Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.","detail_en":"Pick an answer. If none fits, tap «Your own answer» and write it.","options":[{"key":"q1","label_ru":"Короткий — три цифры","label_en":"Короткий — три цифры","send":{"n":"1"},"level":1,"note_ru":"","note_en":"","raw":true},{"key":"q2","label_ru":"Подробный — по каждой мойке","label_en":"Подробный — по каждой мойке","send":{"n":"2"},"level":1,"note_ru":"","note_en":"","raw":true},{"key":"type","label_ru":"Свой вариант","label_en":"Your own answer","send":{"key":"Escape","compose":true},"level":1,"note_ru":"Напишите ответ своими словами в поле внизу.","note_en":"Write your answer in the field below."}],"sig":"17b353e5af0e"},"unknown":{"kind":"unknown","known":false,"title_ru":"Агент спрашивает разрешение","title_en":"The agent is asking for permission","detail_ru":"Агент ждёт вашего решения, но такой вопрос панель пока не умеет пересказать. «Разрешить» — согласиться с первым вариантом. «Не разрешать» — отказаться: агент остановится и спросит, что делать.","detail_en":"The agent is waiting for your decision, but the panel cannot retell this question yet. «Allow» agrees to the first option. «Don't allow» declines: the agent will stop and ask what to do.","options":[{"key":"allow","label_ru":"Разрешить","label_en":"Allow","send":{"n":"1"},"level":1,"note_ru":"","note_en":""},{"key":"deny","label_ru":"Не разрешать","label_en":"Don't allow","send":{"key":"Escape"},"level":1,"note_ru":"","note_en":""},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"4f9fadf709ef"}};
+const canNew = () => meta?.role !== "viewer";
+
+// Язык и режим — у каждого свои, на сервере. Язык, выбранный на первом экране до входа, сервер запоминает при входе.
+function simplePrefs(m) {
+  let p = m?.prefs || { simple: false, lang: "ru", saved: false };
+  if (DEMO) p = { simple: params.get("simple") === "1", lang: LANG, saved: true };
+  else if (!p.saved && p.lang !== LANG) { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }
+  if (p.lang !== LANG && LANGS.includes(p.lang)) { LANG = p.lang; dictReady = loadDict(LANG); }
+  store("lang", LANG);
+  return p;
+}
+async function setLang(l) {
+  if (!LANGS.includes(l) || l === LANG) return;
+  LANG = l; store("lang", l); dictReady = loadDict(l); await dictReady;
+  if (DEMO) { const u = new URL(location.href); u.searchParams.set("lang", l); history.replaceState(null, "", u); if (SIM.on) { demoApi.h = null; SIM.rev = ""; } }
+  else if (meta) api("/api/prefs", { lang: l }).catch(() => {});
+  paintLoginLang();
+  if (SIM.on) { sPaint(); sRender(); $("sAsk").dataset.sig = ""; sAsk(); sAct(); }
+}
+async function switchMode(on) {                       // простой ⇄ полный: настройка на сервере, панель — заново
+  if (DEMO) { const u = new URL(location.href); on ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("lang", LANG); location.replace(u); return; }
+  try { await api("/api/prefs", { simple: on }); } catch (e) { return toast(on ? "Не получилось включить простой режим: " + e.message : T("s.fail"), 4000); }
+  location.reload();
+}
+function paintLoginLang() {                           // первый экран: переключатель RU/EN и строки на выбранном языке
+  $("loginLang").innerHTML = LANGS.map((l) => `<button class="scn-opt${l === LANG ? " on" : ""}" type="button" data-lang="${l}" aria-pressed="${l === LANG}">${esc(DICT["set.lang." + l] || (l === "ru" ? "Русский" : "English"))}</button>`).join("");
+  $("loginLang").setAttribute("aria-label", LL("login.lang", "Язык"));
+  document.querySelectorAll("#login [data-l], #demoBar [data-l]").forEach((el) => { el.dataset.ru ??= el.textContent; el.textContent = LL(el.dataset.l, el.dataset.ru); });
+  if (view === "login" && !SIM.on) {
+    $("title").textContent = LL("login.brand", "Пульт"); setSub(`<span>${esc(LL("login.sub", "вход через Telegram"))}</span>`);
+    $("helpBtn").innerHTML = ic("help") + `<span>${esc(LL("s.help", "Подсказать"))}</span>`;
+  }
+}
+$("loginLang").onclick = (e) => { const b = e.target.closest("[data-lang]"); if (b) { haptic("selectionChanged"); setLang(b.dataset.lang); } };
+
+async function simpleStart() {
+  await dictReady;
+  SIM.on = true; document.body.classList.add("simple-on");
+  for (const id of ["login", "terms", "country"]) $(id).hidden = true;
+  $("simple").hidden = false; sPaint();
+  try { tg?.BackButton.hide(); } catch (e) {}
+  await sLoad(true);
+  if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
+  if (!sAct.timer) sAct.timer = setInterval(sAct, 1000);
+  start.done = true;
+  keepAwake();
+  goFromLink();
+}
+const simpleGo = () => (SIM.on ? Promise.resolve() : simpleStart());
+function simpleHide() {
+  if (!SIM.on) return;
+  SIM.on = false; $("simple").hidden = true; document.body.classList.remove("simple-on");
+  clearInterval(SIM.timer); SIM.timer = null;
+}
+function sPaint() {                                   // постоянные строки экрана — из словаря
+  $("sHelp").innerHTML = ic("help") + `<span>${esc(T("s.help"))}</span>`; $("sHelp").setAttribute("aria-label", T("s.help.aria"));
+  $("sSet").innerHTML = ic("settings"); $("sSet").setAttribute("aria-label", T("s.settings"));
+  $("sSend").innerHTML = ic("send"); $("sSend").setAttribute("aria-label", T("s.send"));
+  $("sInput").placeholder = T("s.placeholder"); $("sInput").setAttribute("aria-label", T("s.placeholder"));
+  $("sAgents").setAttribute("aria-label", T("s.agents"));
+  $("sDemo").hidden = !DEMO; $("sDemo").textContent = DEMO ? T("s.demo") : "";
+  const viewer = meta?.role === "viewer"; $("sComp").hidden = viewer; $("sView").hidden = !viewer; $("sView").textContent = T("s.viewonly");
+  sHead();
+}
+// Имя агента: название модуля, из которого создано пространство (по-русски), иначе «Агент 2» — без имён папок.
+function sName(s) {
+  const i = SIM.list.indexOf(s), base = LANG === "ru" && s.agent ? s.agent : T("s.agent.n", { n: i + 1 });
+  return LANG === "ru" && s.agent && SIM.list.filter((x) => x.agent === s.agent).length > 1 ? base + " " + (i + 1) : base;
+}
+const sDot = (x) => (x.status === "dialog" ? '<i class="sdot s-approval"></i>' : x.status === "busy" ? '<i class="sdot s-running"></i>' : "");
+const sChip = (on, attrs, label, extra = "") => `<button class="scn-opt${on ? " on" : ""}" type="button" ${attrs}${on ? ' aria-pressed="true"' : ""}>${extra}${esc(label)}</button>`;
+function sHead() {
+  const s = SIM.list.find((x) => x.id === SIM.w);
+  $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T("s.agents"))}</b><small>${esc(s ? T("s.status." + (s.status in ST ? s.status : "idle")) : "")}</small></span>${SIM.list.length > 1 || canNew() ? ic("chevron", "s16") : ""}`;
+  $("sWho").setAttribute("aria-label", T("s.agents"));
+  $("sAgents").hidden = SIM.list.length < 2;
+  $("sAgents").innerHTML = SIM.list.length < 2 ? "" : SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
+  $("sAgents").querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+async function sLoad(first) {
+  let d; try { d = await api("/api/sessions"); } catch (e) { return; }
+  sessions = d.sessions || [];
+  SIM.list = sessions.filter((x) => x.status !== "stopped");
+  if (!SIM.list.some((x) => x.id === SIM.w)) {
+    const want = (DEMO && (params.get("open") || "@2")) || store("s:last");
+    const pick = SIM.list.find((x) => x.id === want) || SIM.list.find((x) => x.active) || SIM.list.find((x) => x.status === "dialog") || SIM.list[0];
+    SIM.w = pick?.id || null; SIM.hist = []; SIM.rev = ""; SIM.ask = null; SIM.act = null; first = true;
+  }
+  sHead();
+  if (first) { sRender(true); await sHist(true); }
+}
+function sPick(w) {
+  if (w === SIM.w) return;
+  haptic("selectionChanged");
+  SIM.w = w; store("s:last", w); SIM.hist = []; SIM.rev = ""; SIM.more = false; SIM.ask = null; SIM.act = null; SIM.open2 = false; SIM.pending = [];
+  sHead(); sRender(); sAsk(); sAct(); sHist(true); setTimeout(sTick, 50);
+}
+const sAtEnd = () => { const b = $("sScroll"); return b.scrollHeight - b.clientHeight - b.scrollTop < 80; };
+const sBottom = () => requestAnimationFrame(() => { $("sScroll").scrollTop = $("sScroll").scrollHeight; });
+async function sHist(toBottom) {
+  const w = SIM.w; if (!w) return sRender();
+  try {
+    const d = await api(`/api/history?w=${encodeURIComponent(w)}${SIM.rev ? "&rev=" + encodeURIComponent(SIM.rev) : ""}`);
+    if (w !== SIM.w || d.same) return;
+    const end = sAtEnd();
+    SIM.hist = d.items || []; SIM.more = !!d.more; SIM.rev = d.rev || "";
+    const norm = (t) => t.replace(/\s+/g, " ").trim();
+    SIM.pending = SIM.pending.filter((p) => !SIM.hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));
+    sRender(toBottom || end);
+  } catch (e) { /* связь моргнула — следующий опрос */ }
+}
+async function sOlder(btn) {
+  const w = SIM.w, first = SIM.hist[0]?.i; if (first == null) return;
+  await busy(btn, T("s.loading"), async () => {
+    try { const d = await api(`/api/history?w=${encodeURIComponent(w)}&before=${first}`); if (w !== SIM.w) return; SIM.hist = [...(d.items || []), ...SIM.hist]; SIM.more = !!d.more; sRender(); }
+    catch (e) { toast(T("s.fail")); }
+  });
+}
+function sMsg(m) {
+  if (m.role === "user") return `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`;
+  if (m.human) return `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
+  return `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text || ""))}</div></div>`;
+}
+function sRender(toBottom) {
+  const box = $("sFeed");
+  if (!SIM.w) {
+    box.innerHTML = `<div class="s-empty"><p>${esc(T(canNew() ? "s.none" : "s.none.viewer"))}</p>${canNew() ? `<div class="scn-opts">${sChip(true, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}</div>`;
+    return sAct();
+  }
+  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div></div>`).join("");
+  box.innerHTML = (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
+    + (items || `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>`);
+  box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+  sAct();
+  if (toBottom && !params.has("noscroll")) sBottom();
+}
+// Строка статуса: фаза и инструмент → общие слова из словаря («Читает документ», «Выполняет действие»), без имён.
+function sKey(st) {
+  if (st.phase === "working") return "status." + (String(st.tool || "").startsWith("mcp__") ? "service" : SIMPLE_TOOL[st.tool] || "works");
+  return "status." + (SIMPLE_PH.includes(st.phase) ? st.phase : "idle");
+}
+function sDur(sec) { sec = Math.max(0, Math.floor(sec)); return sec < 60 ? T("status.sec", { n: sec }) : T("status.min", { m: Math.floor(sec / 60), s: sec % 60 }); }
+function sAct() {
+  const row = $("sAct"), st = SIM.on && SIM.w ? SIM.act : null, now = Date.now() / 1000 + SIM.skew;
+  const fresh = st && st.phase && st.phase !== "idle" && !(st.phase === "done" && now - (st.since || 0) > 600);
+  const cls = "act " + (fresh ? ACT_CLS[st.phase] || "" : "off");
+  if (row.className !== cls) row.className = cls;
+  const t = fresh ? T(sKey(st)) : "", tt = row.querySelector(".t");
+  if (tt.textContent !== t) tt.textContent = t;
+  const live = fresh && !["done", "waiting", "idle"].includes(st.phase) && st.since, v = live ? sDur(now - st.since) : "";
+  const tm = row.querySelector(".tm"); if (tm.textContent !== v) tm.textContent = v;
+}
+async function sTick() {
+  if (!SIM.on || document.hidden || SIM.busy) return;
+  SIM.busy = true;
+  try {
+    if (SIM.tick++ % 2 === 0) await sLoad();
+    const w = SIM.w; if (!w) return;
+    const d = await api("/api/activity?w=" + encodeURIComponent(w));
+    if (w !== SIM.w) return;
+    SIM.skew = d.now ? d.now - Date.now() / 1000 : 0; SIM.act = d; sAct();
+    if (d.rev && d.rev !== SIM.rev) await sHist();
+    if (SIM.list.find((x) => x.id === w)?.status === "dialog" || d.phase === "waiting") {
+      const a = await api("/api/ask?w=" + encodeURIComponent(w));
+      if (w === SIM.w) { SIM.ask = a.ask || null; sAsk(); }
+    } else if (SIM.ask) { SIM.ask = null; sAsk(); }
+  } catch (e) { /* нет связи — попробуем через 1,5 с */ }
+  finally { SIM.busy = false; }
+}
+// Вопрос агента: заголовок и чипы первого уровня; опасные пункты («больше не спрашивать») — вторым уровнем с пояснением.
+const sLab = (o) => o["label_" + LANG] || o.label_ru;
+function sAsk() {
+  const box = $("sAsk"), a = SIM.on && SIM.w ? SIM.ask : null;
+  if (!a) { if (box.innerHTML) box.innerHTML = ""; box.dataset.sig = ""; return; }
+  const key = a.sig + "|" + LANG + "|" + SIM.open2;
+  if (box.dataset.sig === key) return;              // тот же вопрос — не перерисовываем (кнопка под пальцем на месте)
+  box.dataset.sig = key;
+  const viewer = meta?.role === "viewer", all = a.options.map((o, i) => [o, i]);
+  const one = all.filter(([o]) => o.level !== 2), two = all.filter(([o]) => o.level === 2);
+  const chip = ([o, i]) => `<button class="scn-opt" type="button" data-sopt="${i}"${viewer && !o.send.show ? " disabled" : ""}>${esc(sLab(o))}</button>`;
+  box.innerHTML = `<div class="s-ask" role="group" aria-label="${esc(a["title_" + LANG] || a.title_ru)}"><p class="q">${ic("warn")}<span>${esc(a["title_" + LANG] || a.title_ru)}</span></p>
+    <div class="scn-opts">${one.map(chip).join("")}${two.length && !viewer ? `<button class="scn-opt s-more" type="button" data-smore="1" aria-expanded="${SIM.open2}">${esc(T(SIM.open2 ? "s.less" : "s.more"))}</button>` : ""}</div>
+    ${two.length && SIM.open2 ? `<div class="s-two"><p class="note">${esc(T("s.more.note"))}</p>${two.map(([o, i]) => `<div class="s-opt2">${chip([o, i])}<p>${esc(o["note_" + LANG] || "")}</p></div>`).join("")}</div>` : ""}
+    ${viewer ? `<p class="note">${esc(T("s.viewonly"))}</p>` : ""}</div>`;
+  if (SIM.open2) requestAnimationFrame(() => box.querySelector(".s-two")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  else sBottom();
+}
+async function sChoose(o, btn) {
+  if (!o) return;
+  if (o.send.show) return sDetails();
+  haptic("impactOccurred", "medium");
+  const w = SIM.w, box = $("sAsk");
+  box.querySelectorAll("button").forEach((x) => (x.disabled = true)); btn.textContent = T("s.sending");
+  try {
+    if (o.send.n) await api("/api/select", { w, text: "", n: o.send.n, go: true });
+    else if (o.send.text) await api("/api/select", { w, text: o.send.text });
+    else if (o.send.key) await api("/api/key", { w, key: o.send.key });
+    SIM.ask = null; SIM.open2 = false; sAsk();
+    if (o.send.compose) { $("sInput").focus(); toast(T("s.compose"), 3500); } else toast(T("s.sent"));
+    setTimeout(sTick, 600);
+  } catch (e) { toast(T("s.fail"), 3500); box.dataset.sig = ""; sAsk(); }
+}
+async function sSend() {
+  const t = $("sInput"), text = t.value.trim();
+  if (!text || !SIM.w) return;
+  if (SIM.ask) { toast(T("s.answer.first"), 3500); return $("sAsk").scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  const p = { text, id: msgId() }; SIM.pending.push(p); t.value = ""; sGrow(); sRender(true);
+  try {
+    await api("/api/send", { w: SIM.w, text, id: p.id });
+    SIM.act = { phase: "sent", since: Date.now() / 1000 + SIM.skew }; sAct(); setTimeout(sTick, 800);
+  } catch (e) { SIM.pending = SIM.pending.filter((x) => x !== p); t.value = text; sGrow(); sRender(); toast(T("s.fail.send"), 4000); }
+}
+function sGrow() { const t = $("sInput"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 160) + "px"; }
+$("sInput").addEventListener("input", sGrow);
+$("sInput").addEventListener("keydown", (e) => {     // на компьютере Enter — отправить, Shift+Enter — новая строка
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); sSend(); }
+});
+$("simple").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.sopt) return sChoose(SIM.ask?.options[+b.dataset.sopt], b);
+  if (b.dataset.smore) { SIM.open2 = !SIM.open2; haptic("selectionChanged"); return sAsk(); }
+  if (b.dataset.w) return sPick(b.dataset.w);
+  if (b.dataset.snew) return sNewAgent();
+  if (b.dataset.solder) return sOlder(b);
+  if (b.id === "sWho") return sAgents();
+  if (b.id === "sSet") return sSettings();
+  if (b.id === "sHelp") { haptic("selectionChanged"); return openHelp(); }
+  if (b.id === "sSend") return sSend();
+});
+// Листы простого режима: заголовок, тело, «Закрыть»; у каждого — свой экран в карте помощника (hv).
+function sSheet(help, title, html, onClick, closeLabel) {
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv(help);
+  bg.innerHTML = `<div class="sheet s-sheet" role="dialog" aria-label="${esc(title)}"><h3>${esc(title)}</h3><div class="s-body">${html}</div>
+    <button class="cancel" type="button" data-close>${esc(closeLabel || T("s.close"))}</button></div>`;
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();
+    if (b && !b.disabled && onClick) onClick(b, bg);
+  });
+  document.body.append(bg);
+  return bg;
+}
+function sDetails() {
+  const a = SIM.ask; if (!a) return;
+  const notes = a.options.filter((o) => o["note_" + LANG]).map((o) => `<li><b>${esc(sLab(o))}</b> — ${esc(o["note_" + LANG])}</li>`).join("");
+  sSheet(hv("simple.details"), T("s.details"), `<p><b>${esc(a["title_" + LANG] || a.title_ru)}</b></p><p>${esc(a["detail_" + LANG] || a.detail_ru)}</p>${notes ? `<ul class="s-notes">${notes}</ul>` : ""}`,
+    null, T("s.details.close"));
+}
+function sAgents() {
+  const rows = SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
+  sSheet(hv("simple.agents"), T("s.agents"), `<p class="note">${esc(T("s.agents.hint"))}</p>${rows ? `<div class="scn-opts">${rows}</div>` : ""}
+    ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}`,
+    (b, bg) => { if (b.dataset.w) { bg.remove(); sPick(b.dataset.w); } else if (b.dataset.snew) { bg.remove(); sNewAgent(); } });
+}
+async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш
+  if (!canNew()) return;
+  if (LANG !== "ru") {                               // каталог модулей пока только на русском
+    return sSheet(hv("simple.new-agent"), T("s.new"), `<p>${esc(T("s.new.ru_only"))}</p><div class="scn-opts">${sChip(false, 'data-lang="ru"', T("set.lang.ru"))}</div>`,
+      (b, bg) => { if (b.dataset.lang) { bg.remove(); setLang("ru").then(sNewAgent); } });
+  }
+  let d; try { d = await api("/api/modules"); } catch (e) { return toast(T("s.fail"), 3500); }
+  const mods = d.modules || [], inds = [...new Set(mods.map((m) => m.industry || ""))];
+  let ind = inds.length === 1 ? inds[0] : null, pick = null;
+  const bg = sSheet(hv("simple.new-agent"), T("s.new"), "", (b) => {
+    if (b.dataset.ind !== undefined) { ind = b.dataset.ind; pick = null; haptic("selectionChanged"); return paint(); }
+    if (b.dataset.mod) { pick = b.dataset.mod; haptic("selectionChanged"); return paint(); }
+    if (b.dataset.go) return create(b);
+  });
+  const body = bg.querySelector(".s-body");
+  function paint() {
+    if (!mods.length) { body.innerHTML = `<p>${esc(T("s.new.empty"))}</p>`; return; }
+    const m = mods.find((x) => x.id === pick);
+    body.innerHTML = `<p class="s-lbl">${esc(T("s.new.industry"))}</p><div class="scn-opts">${inds.map((x) => sChip(ind === x, `data-ind="${esc(x)}"`, x || T("s.new.common"))).join("")}</div>`
+      + (ind !== null ? `<p class="s-lbl">${esc(T("s.new.module"))}</p><div class="scn-opts">${mods.filter((x) => (x.industry || "") === ind).map((x) => sChip(pick === x.id, `data-mod="${esc(x.id)}"`, x.title)).join("")}</div>` : "")
+      + (m ? `<p class="note">${esc(m.about || "")}</p><div class="scn-opts">${sChip(true, 'data-go="1"', T("s.new.go"), ic("plus"))}</div>` : "");
+  }
+  async function create(b) {
+    await busy(b, T("s.new.wait"), async () => {
+      try {
+        const r = await api("/api/modules/create", { id: pick, name: "", lang: LANG });
+        bg.remove(); toast(T("s.new.done"), 3500);
+        await sLoad(); if (r.id) sPick(r.id);
+      } catch (e) { toast(T("s.fail"), 3500); }
+    });
+  }
+  paint();
+}
+function sSettings() {
+  const mode = params.get("theme") || store("theme") || "auto";
+  const html = `<p class="s-lbl">${esc(T("set.lang"))}</p><div class="scn-opts">${LANGS.map((l) => sChip(l === LANG, `data-lang="${l}"`, T("set.lang." + l))).join("")}</div>
+    ${SIM.w && canNew() ? `<div class="scn-opts">${sChip(false, 'data-reply="1"', T("set.answers"), ic("chat"))}</div><p class="note">${esc(T("set.answers.sub"))}</p>` : ""}
+    <p class="s-lbl">${esc(T("set.theme"))}</p><div class="scn-opts">${["auto", "light", "dark"].map((m) => sChip(m === mode, `data-theme="${m}"`, T("set.theme." + m))).join("")}</div>
+    <p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
+    <div class="scn-opts">${sChip(false, 'data-full="1"', T("set.simple.off"))}</div><p class="note">${esc(T("set.simple.off.sub"))}</p>
+    <div class="scn-opts">${sChip(false, 'data-reload="1"', T("set.reload"), ic("refresh"))}${meta?.via === "browser" ? sChip(false, 'data-logout="1"', T("set.logout"), ic("power")) : ""}</div>`;
+  sSheet(hv("simple.settings"), T("set.title"), html, async (b, bg) => {
+    if (b.dataset.lang) { haptic("selectionChanged"); await setLang(b.dataset.lang); bg.remove(); return sSettings(); }
+    if (b.dataset.theme) { store("theme", b.dataset.theme); applyTheme(); bg.remove(); return sSettings(); }
+    if (b.dataset.reply) { bg.remove(); return sReply(); }
+    if (b.dataset.full) { bg.remove(); return switchMode(false); }
+    if (b.dataset.reload) return reloadPanel();
+    if (b.dataset.logout) { try { await api("/api/logout", {}); } catch (e) {} location.reload(); }
+  });
+}
+async function sReply() {                             // только по нажатию: одна строка агенту — отвечать на выбранном языке
+  if (!SIM.w) return;
+  try { await api("/api/send", { w: SIM.w, text: T("set.answers.msg"), id: msgId() }); toast(T("s.reply.ok"), 3000); setTimeout(sTick, 800); }
+  catch (e) { toast(T("s.fail.send"), 4000); }
+}
+// Демо простого режима: переписка с агентом автомоек — на выбранном языке, без английских слов в русской.
+function simpleDemoText() {
+  return LANG === "en"
+    ? { ask: "Send me the morning numbers for all car washes", reply: "Good morning! Yesterday: revenue 128,400 — 7% above plan. 412 cars, average check 312.\n\n| Car wash | Revenue | Plan |\n|---|---|---|\n| Central | 54,200 | 103% |\n| North | 41,900 | 112% |\n| River | 32,300 | 98% |\n\nShall I prepare a short report for the team?",
+        ask2: "Yes, and check last week's reviews", answer: "This is a **demo reply**. In the real panel the agent's answer from your workspace will appear here." }
+    : { ask: "Пришли утренние цифры по всем мойкам", reply: "Доброе утро! Вчера выручка 128 400 ₽ — на 7 % выше плана. Машин 412, средний чек 312 ₽.\n\n| Мойка | Выручка | План |\n|---|---|---|\n| Центральная | 54 200 ₽ | 103 % |\n| Северная | 41 900 ₽ | 112 % |\n| Речная | 32 300 ₽ | 98 % |\n\nПодготовить короткий отчёт для команды?",
+        ask2: "Да, и проверь отзывы за прошлую неделю", answer: "Это **демо-ответ**. В настоящей панели здесь будет ответ агента из вашего пространства." };
+}
+function simpleDemoHist() {
+  const x = simpleDemoText();
+  return [{ i: 1, role: "user", text: x.ask, ts: "2026-11-03 07:58" }, { i: 2, role: "assistant", text: x.reply, ts: "2026-11-03 08:00" },
+          { i: 3, role: "user", text: x.ask2, ts: "2026-11-03 08:02" }];
+}
+
 paintIcons();
 applyTheme();
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", fitViewport); }
@@ -3419,13 +3851,14 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyThe
 wideMQ.addEventListener?.("change", () => { show(view); refresh(); });
 termWrap = store("termWrap") === "1";
 if (DEMO) $("demoBar").hidden = false;
+dictReady.then(paintLoginLang);
 if (DEMO && params.get("view") === "login") showLogin(); else start();
 
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8" },
-    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?" },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана" },
+    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon" },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
     { id: "@5", name: "shop-bot", path: "/home/u/projects/shop-bot", branch: "main", status: "stopped", context: null, model: "", active: false, channel: false, rev: "", preview: "", profile: "zai" },
     { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
@@ -3455,7 +3888,7 @@ function demoApi(path, body) {
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
-    "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz })),
+    "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: true }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false }, prices_checked: "2026-11-02",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
@@ -3530,7 +3963,9 @@ function demoApi(path, body) {
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
   if (key === "/api/help/ask") return demoHelp(body);
-  if (!demoApi.h) demoApi.h = [
+  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
+  if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
+  if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 213.139.11.111\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh nl-hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
@@ -3540,7 +3975,7 @@ function demoApi(path, body) {
     const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20, stuck = params.get("act") === "stuck";
     demoApi.run = { w: body.w, t: Date.now() + 700, stuck };
     setTimeout(() => demoApi.h.push({ i: n, role: "user", text: body.text, ts: now }), stuck ? 1e9 : 2200);
-    if (!stuck) setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now, text: "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и озвучкой." }), 10700);
+    if (!stuck) setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now, text: SIM.on ? simpleDemoText().answer : "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и озвучкой." }), 10700);
     return new Promise((ok) => setTimeout(() => ok({ ok: true }), 700));
   }
   if (key === "/api/activity") {                     // демо: фазы по времени после отправки; без отправки — по сессии
@@ -3555,13 +3990,14 @@ function demoApi(path, body) {
     }
     const t0 = demoApi.t0 ||= now;
     const A = { "@1": { phase: "working", text: "Выполняет команду: npm run test:rooms", tool: "Bash", since: t0 - 42, spinner: "Running…" },
-                "@2": { phase: "waiting", text: "Ждёт вашего ответа", action: "answer", since: t0 - 95 },
+                "@2": demoApi.answered ? { phase: "working", text: "Выполняет команду", tool: "Bash", since: demoApi.answered } : { phase: "waiting", text: "Ждёт вашего ответа", action: "answer", since: t0 - 95 },
                 "@3": { phase: "done", text: "Готово", since: t0 - 1500 }, "@4": { phase: "done", text: "Готово", since: t0 - 7200 } };
     return Promise.resolve({ ...base, phase: "idle", text: "", since: 0, ...(A[w] || {}) });
   }
   if (key === "/api/history") return Promise.resolve({ more: true, rev: String(demoApi.h.length), items: demoApi.h.slice(-30),
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === String(demoApi.h.length) ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
+    if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;
     if (body.go) return Promise.resolve({ lines: screen.splice(0, screen.length, "● Bash(npm run build)", "  ⎿  готово", "", "❯ ") && screen });
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
