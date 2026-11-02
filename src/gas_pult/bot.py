@@ -787,8 +787,8 @@ class Pult:
             out += [f"• {x['title']}{' — по желанию' if x['optional'] else ''}: {x['why']}" for x in m["integrations"]]
         if m["schedule"]:
             out += ["", "Расписание:"]
-            out += [f"• {x.get('when') or x['at']} {modules.days_text(x['days'])} — {x['title']}"
-                    for x in m["schedule"]]
+            out += [f"• {x.get('when') or x['at']}" + ("" if x.get("workday") else f" {modules.days_text(x['days'])}")
+                    + f" — {x['title']}" for x in m["schedule"]]       # раз в месяц — без дней недели
         if m["decisions"]:
             out += ["", "Решения кнопками:"]
             out += [f"• {x['question']} ({' / '.join(x['options'])})" for x in m["decisions"]]
