@@ -17,8 +17,10 @@ INDUSTRIES = {
     "Бухгалтеры и юристы на аутсорсе": {"acc-primary", "acc-deadlines", "law-drafts"},
     "Поставщики HoReCa": {"horeca-orders", "horeca-reorder", "horeca-harvest", "horeca-receivables"},
     "Управляющие компании — «УК-старт»": {"uk-requests", "uk-emergency", "uk-morning"},
+    "Автомойки и шиномонтаж (сеть)": {"carwash-tire-season", "carwash-return", "carwash-reviews", "carwash-fleet",
+                                      "carwash-morning"},
 }
-ONE_PER_INDUSTRY = ("wb-ozon-reviews", "acc-primary", "horeca-receivables", "uk-requests")
+ONE_PER_INDUSTRY = ("wb-ozon-reviews", "acc-primary", "horeca-receivables", "uk-requests", "carwash-fleet")
 RU_ONLY = {"uk-requests", "uk-emergency", "uk-morning"}
 WORKDAYS = modules.builtin_dir() / "_common" / "deadlines" / "skills" / "workdays"
 
@@ -42,7 +44,7 @@ def test_catalog_groups_industries():
     for m in cat:
         got.setdefault(m["industry"], set()).add(m["id"])
     for industry, ids in INDUSTRIES.items():
-        assert got[industry] == ids and 3 <= len(ids) <= 4
+        assert got[industry] == ids and 3 <= len(ids) <= 5
     order = list(dict.fromkeys(m["industry"] for m in cat))           # группы идут подряд, «Общие» — первыми
     assert order[0] == "Общие" and len(order) == len(set(order))
 
