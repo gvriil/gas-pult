@@ -15,8 +15,11 @@ SILERO_URL = "https://models.silero.ai/models/tts/ru/v5_ru.pt"
 SILERO = {"xenia": "Ксения", "baya": "Бая", "kseniya": "Ксения-2", "aidar": "Айдар", "eugene": "Евгений"}
 
 
-# Порядок карточек на экране «Голос» и в боте (/voice): сначала Silero, затем Piper.
-ORDER = ["xenia", "baya", "aidar", "eugene", "kseniya", "irina", "dmitri", "denis", "ruslan"]
+# Карточки на экране «Голос» и в боте (/voice) — только продвинутые голоса (Silero), с пометкой «демо»: лицензия
+# некоммерческая, видит лишь владелец при ``personal_voices``. Piper в выборе нет: это тихий запасной синтез — им
+# читается ответ, когда ни Silero, ни ElevenLabs недоступны, и им продолжает читать голос, выбранный раньше.
+ORDER = ["xenia", "baya", "aidar", "eugene", "kseniya"]
+FALLBACK = tuple(PIPER)                                   # запасной синтез, не выбирается
 # Подпись карточки одним словом — пол голоса.
 KIND = {"xenia": "женский", "baya": "женский", "aidar": "мужской", "eugene": "мужской", "kseniya": "женский",
         "irina": "женский", "dmitri": "мужской", "denis": "мужской", "ruslan": "мужской"}
@@ -79,9 +82,15 @@ def install(name: str, log=print):
         raise RuntimeError(f"Неизвестный голос «{name}». Есть: {', '.join([*PIPER, *SILERO])}")
 
 
+def selectable(personal: bool = False) -> list[str]:
+    """Голоса, которые можно выбрать (карточкой, /voice, настройками): установленные из ``ORDER``."""
+    have = set(installed(personal))
+    return [n for n in ORDER if n in have]
+
+
 def cards(personal: bool = False, owner: bool = False) -> list[dict]:
-    """Карточки локальных голосов в порядке ``ORDER``. Silero — только при ``personal`` (иначе их нет вовсе);
-    не установленные — только владельцу, с командой установки; остальным — только установленные."""
+    """Карточки локальных голосов в порядке ``ORDER`` (Piper — нет). Silero — только при ``personal`` (иначе их нет
+    вовсе), с пометкой ``demo``; не установленные — только владельцу, с командой установки."""
     have = set(installed(personal))
     out = []
     for n in ORDER:
@@ -89,6 +98,6 @@ def cards(personal: bool = False, owner: bool = False) -> list[dict]:
             continue
         ok = n in have
         if ok or owner:
-            out.append({"id": n, "name": label(n), "kind": KIND.get(n, ""), "ok": ok,
+            out.append({"id": n, "name": label(n), "kind": KIND.get(n, ""), "ok": ok, "demo": n in NONCOMMERCIAL,
                         "why": "" if ok else "не установлен", "install": "" if ok else f"gas-pult voices install {n}"})
     return out

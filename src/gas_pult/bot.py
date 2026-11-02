@@ -370,9 +370,11 @@ class Pult:
         clean = transcripts.clean(text)[:3500]      # ~3–4 минуты речи; код и таблицы пропущены
         if not clean:
             return
-        v = self.state()["voice"]
-        if v not in catalog.installed(self.cfg.personal_voices):      # бот — только владельцам
-            return self.send(chat, f"Голос «{catalog.label(v)}» не установлен: gas-pult voices install {v}")
+        v, have = self.state()["voice"], catalog.installed(self.cfg.personal_voices)   # бот — только владельцам
+        if v not in have:                                # выбранный недоступен — тихо читаем запасным (Piper)
+            if not have:
+                return self.send(chat, f"Голос «{catalog.label(v)}» не установлен: gas-pult voices install {v}")
+            v = have[0]
         base = self.cfg.data / f"out-{uuid.uuid4().hex}"
         try:
             if not self.state().get("audio_only"):
@@ -409,7 +411,9 @@ class Pult:
             if not self.state().get("el_voice") and (first := self.el_voice_id()):
                 upd["el_voice"] = first
             return self.set_state(**upd)
-        if vid not in catalog.installed(self.cfg.personal_voices):            # выбирает владелец
+        if vid in catalog.FALLBACK:                       # Piper — только запасной синтез, в выборе его нет
+            raise ValueError(f"«{catalog.label(vid)}» больше не выбирается — выберите голос из списка")
+        if vid not in catalog.selectable(self.cfg.personal_voices):           # выбирает владелец
             raise ValueError(f"этот голос не установлен: gas-pult voices install {vid}")
         self.set_state(tts_provider="local", voice=vid)
 
@@ -441,8 +445,9 @@ class Pult:
             rows.append([("ElevenLabs — нужен ключ", "vi:elevenlabs")])
         for c in catalog.cards(self.cfg.personal_voices, owner=True):
             if c["ok"]:
+                demo = " · демо" if c.get("demo") else ""
                 rows.append([(f"▶ {c['name']}", f"vp:{c['id']}"),
-                             (("✅ " if c["id"] == cur else "") + f"{c['name']} · {c['kind']}", f"vs:{c['id']}")])
+                             (("✅ " if c["id"] == cur else "") + f"{c['name']} · {c['kind']}{demo}", f"vs:{c['id']}")])
             else:
                 rows.append([(f"⬇ {c['name']} — не установлен", f"vi:{c['id']}")])
         return rows
@@ -451,9 +456,14 @@ class Pult:
         cur, s = self.current_voice(), self.state()
         if cur == "elevenlabs":
             line = f"🗣 Голос: ElevenLabs (озвучка в панели); голосовые бота — {catalog.label(s['voice'])}"
+        elif cur in catalog.FALLBACK or cur not in catalog.installed(self.cfg.personal_voices):
+            have = catalog.installed(self.cfg.personal_voices)
+            v = cur if cur in have else (have[0] if have else cur)
+            line = f"🗣 Голос: запасной голос сервера ({catalog.label(v)}) — выберите голос ниже"
         else:
             line = f"🗣 Голос: {catalog.label(cur)}"
-        return line + "\n▶ — послушать, имя — выбрать."
+        return line + "\n▶ — послушать, имя — выбрать." + (
+            "\n«Демо» — голоса с некоммерческой лицензией, только для показа." if self.cfg.personal_voices else "")
 
     def show_voice(self, chat: int, q: dict | None = None):
         """/voice. Из кнопки — обновляем то же сообщение (галочка переезжает), иначе — новое."""
@@ -966,7 +976,7 @@ class Pult:
             if key == "voice_always":
                 self.set_state(voice_always=not self.state()["voice_always"])
             elif ((key == "notify" and val in NOTIFY)
-                  or (key == "voice" and val in catalog.installed(self.cfg.personal_voices))):
+                  or (key == "voice" and val in catalog.selectable(self.cfg.personal_voices))):
                 self.set_state(**{key: val})
             return self.show_settings(chat)
         if kind in ("vp", "vs", "vi"):                     # голос: послушать / выбрать / как установить
