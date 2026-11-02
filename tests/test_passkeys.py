@@ -247,7 +247,7 @@ def test_disabled_without_package(tmp_path, monkeypatch):
 def serve(tmp_path, monkeypatch, section):
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("GAS_PULT_CONFIG_DIR", str(tmp_path / "cfg"))
-    panel = webapp.Panel(Config(token="1:T", owners=[1], passkeys=section))
+    panel = webapp.Panel(Config(token="1:T", owners=[1], passkeys=section, host="srv"))
     panel.people.add(2, "member")
     panel.people.add(3, "viewer")
     for uid in (1, 2, 3):
