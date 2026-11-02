@@ -210,10 +210,19 @@
   .chat .me .bubble { background: var(--bg-subtle); border-radius: 22px 22px 6px 22px; max-width: 85%; white-space: pre-wrap; }
   .chat .ai .bubble { background: transparent; padding: 2px 2px 0; }            /* ответ — текстом во всю ширину */
   .chat .msg { margin-bottom: 20px; }
-  .working { display: flex; align-items: center; gap: 10px; margin: 2px 2px 18px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
-  .working .spark { width: 22px; height: 22px; flex: none; animation: spin 2.4s linear infinite; }
-  .working b { font-weight: 500; background: var(--brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Живая строка статуса под последним сообщением (activity.py): одна строка постоянной высоты — на телефоне не прыгает,
+     текст меняется только при смене фазы, таймер — отдельно. Пусто — место остаётся (visibility), лента не дёргается. */
+  .act { display: flex; align-items: center; gap: 8px; height: calc(30px * var(--fz, 1)); margin: 0 2px 16px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); overflow: hidden; }
+  .act.off { visibility: hidden; }
+  .act .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--status-idle); transition: background .2s; }
+  .act.run .dot { background: var(--status-running); animation: pulse 1.4s infinite; }
+  .act.wait .dot { background: var(--status-approval); } .act.bad .dot { background: var(--status-danger); }
+  .act.done { color: var(--text-muted); } .act.done .dot { background: var(--status-success); }
+  .act .t { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act.run .t { color: var(--text-primary); }
+  .act .tm { flex: none; font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: calc(13px * var(--fz, 1)); }
+  .act .tm:empty { display: none; }
+  .act button { flex: none; margin-left: auto; border: 0; background: var(--bg-subtle); color: var(--accent-primary); border-radius: var(--radius-pill); padding: 4px 10px; font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .notice { display: flex; gap: 10px; align-items: center; background: var(--bg-subtle); border-radius: var(--radius-lg); padding: 10px 12px; margin: 0 0 14px; font-size: calc(14px * var(--fz, 1)); }
   .setup { cursor: default; padding: 14px; } .setup .meta { white-space: normal; }
@@ -1354,7 +1363,7 @@ function confirmClose(id) {
 // ---------- сессия ----------
 // Не «open»: функция верхнего уровня стала бы window.open и ломала внешние ссылки в браузере.
 async function openSession(id, startTab) {
-  current = id; termAll = false; store("last", id); hint = ""; show("session");
+  current = id; termAll = false; store("last", id); hint = ""; show("session"); liveAct = null; actTick = 0;
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
@@ -1454,17 +1463,76 @@ function userMsg(m) {                               // вставленный в
   const first = body.find((l) => l.trim())?.trim().slice(0, 60);
   return (head ? `<div class="bubble">${esc(head)}</div>` : "") + logBlock(m.i + ":u", "Терминал", body.join("\n"), first);
 }
-// Пока Claude работает — строка в конце переписки: сколько идёт и что делает (превью шага с сервера).
+// ---------- живая строка статуса (activity.py): что агент делает сейчас ----------
+// Отправлено → Доставлено в сессию → Взял в работу → «Читает файл X · 12 с» → Готово; «Ждёт вашего ответа» — с кнопкой.
+// Опрос /api/activity раз в 1,5 с, пока идёт ход (иначе — раз в 4,5 с); текст меняется только при смене фазы.
 const busySince = {};
-function paintWorking(s) {
-  if (s.status === "busy") busySince[s.id] ??= Date.now(); else delete busySince[s.id];
-  const row = document.getElementById("working");
-  if (!row) return;
-  row.hidden = s.status !== "busy" || tab !== "chat";
-  if (row.hidden) return;
-  const sec = Math.round((Date.now() - busySince[s.id]) / 1000);
-  row.querySelector("span").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}${s.preview ? " · " + s.preview : ""}`;
+const ACT_CLS = { sent: "run", delivered: "run", started: "run", working: "run", thinking: "run", queued: "wait", waiting: "wait", stuck: "bad", done: "done" };
+let liveAct = null, actLocal = null, actSkew = 0, actBusy = false, actTick = 0;
+function actElapsed(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  if (sec < 60) return sec + " с";
+  if (sec < 3600) return Math.floor(sec / 60) + " мин" + (sec % 60 ? " " + (sec % 60) + " с" : "");
+  return Math.floor(sec / 3600) + " ч " + Math.floor(sec % 3600 / 60) + " мин";
 }
+function actState() {                                // что показывать: своё «Отправлено», ответ сервера или запасной вариант
+  if (actLocal && actLocal.w === current) return actLocal;
+  if (liveAct && liveAct.w === current) return liveAct;
+  const s = cur();                                  // сервер без /api/activity — как раньше: «работает» и превью шага
+  if (s?.status === "busy") { busySince[s.id] ??= Date.now() / 1000; return { phase: "working", text: s.preview || "Работает", since: busySince[s.id] }; }
+  if (s) delete busySince[s.id];
+  return s?.status === "dialog" ? { phase: "waiting", text: "Ждёт вашего ответа", action: "answer" } : null;
+}
+function paintWorking() { paintAct(); }
+function paintAct() {
+  const row = $("act"); if (!row) return;
+  const st = actState(), now = Date.now() / 1000 + actSkew;
+  const fresh = st && st.phase !== "idle" && !(st.phase === "done" && now - (st.since || 0) > 12 * 3600);
+  const cls = "act " + (fresh ? ACT_CLS[st.phase] || "" : "off");
+  if (row.className !== cls) row.className = cls;
+  let text = "";
+  if (fresh) text = st.phase === "done" ? "Готово" + (st.since ? " · " + new Date(st.since * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "")
+    : st.action === "screen" ? "Не видно реакции" : st.text + (st.spinner ? ` (${st.spinner.split(" · ")[0]})` : "");   // кнопка рядом
+  const t = row.querySelector(".t");
+  if (t.textContent !== text) { t.textContent = text; row.title = text; }   // без мигания: только при смене фазы
+  const btn = fresh && st.action === "screen" ? "screen" : fresh && st.action === "answer" ? "answer" : "";
+  if ((row.dataset.btn || "") !== btn) {
+    row.dataset.btn = btn; row.querySelector("button")?.remove();
+    if (btn) row.insertAdjacentHTML("beforeend", btn === "screen" ? `<button data-actbtn="screen">${ic("term", "s16")}Показать экран</button>` : `<button data-actbtn="answer">${ic("chat", "s16")}Ответить</button>`);
+  }
+  paintActTimer();
+}
+function paintActTimer() {                           // раз в секунду меняется только таймер
+  const row = $("act"), st = actState(); if (!row) return;
+  const live = st && ACT_CLS[st.phase] && st.phase !== "done" && st.phase !== "waiting" && st.since;
+  const v = live ? actElapsed(Date.now() / 1000 + actSkew - st.since) : "";
+  const tm = row.querySelector(".tm"); if (tm.textContent !== v) tm.textContent = v;
+}
+async function pollAct(force) {
+  if (!current || view !== "session" || tab !== "chat" || document.hidden || actBusy || cur()?.status === "stopped") return;
+  const st = actState(), hot = !st || ["sent", "delivered", "started", "working", "thinking", "queued"].includes(st.phase) || pending.length;
+  if (!force && !hot && actTick++ % 3) return;                        // ничего не идёт — реже
+  actBusy = true;
+  const w = current;
+  try {
+    const d = await api("/api/activity?w=" + encodeURIComponent(w));
+    if (w !== current) return;
+    actSkew = d.now ? d.now - Date.now() / 1000 : 0;
+    liveAct = { ...d, w };
+    paintAct();
+    if (d.rev && histRev && d.rev !== histRev && tab === "chat") liveChat();   // журнал изменился — переписку сразу
+  } catch (e) { /* связь показывает индикатор; старый сервер без /api/activity — запасной вариант в actState */ }
+  finally { actBusy = false; }
+}
+setInterval(pollAct, 1500);
+setInterval(paintActTimer, 1000);
+$("content").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-actbtn]"); if (!b) return;
+  if (b.dataset.actbtn === "screen") return setTab("screen");
+  const q = $("ask").querySelector("button");                        // вопрос уже карточкой над полем ввода — к нему
+  if (q) { $("ask").scrollIntoView({ block: "nearest", behavior: "smooth" }); q.focus({ preventScroll: true }); haptic("selectionChanged"); }
+  else setTab("screen");
+});
 function renderChat(toBottom) {
   const box = $("content"); box.className = "chat";
   if (!hist.length && !pending.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
@@ -1490,8 +1558,8 @@ function renderChat(toBottom) {
     t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
   }));
   if (hist.at(-1)?.role === "assistant") renderCmds();
-  box.insertAdjacentHTML("beforeend", `<div class="working" id="working" hidden>${ic("spark", "spark")}<b>Claude работает</b><span></span></div>`);
-  if (cur()) paintWorking(cur());
+  box.insertAdjacentHTML("beforeend", '<div class="act off" id="act" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>');
+  paintAct();
   if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(SC.scrollHeight));
 }
 $("content").addEventListener("click", (e) => { const v = e.target.closest("[data-revive]"); if (v) revive(v.dataset.revive, v); });
@@ -1536,7 +1604,7 @@ async function renderCmds() {
           tty: ic("key", "s16") + "спросит пароль — выполните вручную в терминале" }[c.kind] || ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
     <div class="cmdacts"><button class="btn sm ghost" data-cpcmd>${ic("copy")}Копировать</button></div>
     <div class="out-wrap"></div></div>`).join("");
-  $("content").append(box);
+  const row = $("act"); row ? row.before(box) : $("content").append(box);     // строка статуса — всегда последней
 }
 $("content").addEventListener("click", (e) => {
   if (e.target.closest("[data-cpcmd]")) return copyText(e.target.closest(".cmd").querySelector("pre").textContent, "Команда скопирована");
@@ -1987,12 +2055,16 @@ async function deliver(p, restore) {
     if (pause) { p.state = "unsure"; renderChat(true); await new Promise((r) => setTimeout(r, pause)); }
     if (!pending.includes(p)) return;               // уже видно в переписке — дошло
     try {
+      actLocal = { phase: "sent", text: "Отправлено", since: Date.now() / 1000 + actSkew, w: p.w }; paintAct();
       await api("/api/send", { w: p.w, text: p.text, id: p.id });
+      actLocal = null; liveAct = { phase: "delivered", text: "Доставлено в сессию", since: Date.now() / 1000 + actSkew, w: p.w };
+      paintAct(); setTimeout(() => pollAct(true), 300);                // дальше — сервер: ход, инструменты, «Готово»
       p.state = "sent"; haptic("notificationOccurred", "success");
       if (cur()?.status !== "busy") lastStatus = "busy";
       setTimeout(() => { if (tab === "chat") hist = []; loadContent(); }, tab === "chat" ? 2000 : 1200);
       return renderChat(true);
     } catch (e) {
+      actLocal = null;
       if (!e.net) { p.state = "fail"; p.err = e.message; restore?.(); haptic("notificationOccurred", "error"); return renderChat(true); }
     }
   }
@@ -3038,11 +3110,28 @@ function demoApi(path, body) {
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 213.139.11.111\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh nl-hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
-  if (key === "/api/send") {
-    const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20;
-    demoApi.h.push({ i: n, role: "user", text: body.text, ts: now });
-    setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now, text: "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и озвучкой." }), 2500);
-    return Promise.resolve({ ok: true });
+  if (key === "/api/send") {                         // демо: вставка ~0,7 с, потом фазы строки статуса и ответ (&act=stuck — реакции нет)
+    const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20, stuck = params.get("act") === "stuck";
+    demoApi.run = { w: body.w, t: Date.now() + 700, stuck };
+    setTimeout(() => demoApi.h.push({ i: n, role: "user", text: body.text, ts: now }), stuck ? 1e9 : 2200);
+    if (!stuck) setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now, text: "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и озвучкой." }), 10700);
+    return new Promise((ok) => setTimeout(() => ok({ ok: true }), 700));
+  }
+  if (key === "/api/activity") {                     // демо: фазы по времени после отправки; без отправки — по сессии
+    const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: String(demoApi.h.length), spinner: "", action: "", tool: "" };
+    if (r && r.w === w) {
+      const t = (Date.now() - r.t) / 1000, at = r.t / 1000;
+      const P = r.stuck ? [[0, "delivered", "Доставлено в сессию"], [4, "stuck", "Не видно реакции — показать экран?", { action: "screen" }]]
+        : [[0, "delivered", "Доставлено в сессию"], [1.5, "started", "Взял в работу"], [3, "working", "Читает файл index.html", { tool: "Read", spinner: "Reading… · 1s" }],
+           [6, "working", "Выполняет команду: npm test", { tool: "Bash", spinner: "Running… · 2s" }], [10, "done", "Готово"]];
+      const [s0, phase, text, extra] = P.filter((x) => x[0] <= t).at(-1);
+      return Promise.resolve({ ...base, phase, text, since: at + s0, ...(extra || {}) });
+    }
+    const t0 = demoApi.t0 ||= now;
+    const A = { "@1": { phase: "working", text: "Выполняет команду: npm run test:rooms", tool: "Bash", since: t0 - 42, spinner: "Running…" },
+                "@2": { phase: "waiting", text: "Ждёт вашего ответа", action: "answer", since: t0 - 95 },
+                "@3": { phase: "done", text: "Готово", since: t0 - 1500 }, "@4": { phase: "done", text: "Готово", since: t0 - 7200 } };
+    return Promise.resolve({ ...base, phase: "idle", text: "", since: 0, ...(A[w] || {}) });
   }
   if (key === "/api/history") return Promise.resolve({ more: true, rev: String(demoApi.h.length), items: demoApi.h.slice(-30),
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === String(demoApi.h.length) ? { same: true } : {}) });

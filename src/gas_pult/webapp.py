@@ -132,6 +132,8 @@ class Panel:
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.model_cache: dict[tuple, tuple[str, str]] = {}  # (папка, папка Claude) → (ревизия, модель ответа)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
+        self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
+        self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
         self.login = self.pult.login                                 # вход в Claude Code (setup.py) — общий с ботом
         self._setup: tuple[float, dict] = (0, {})
@@ -429,6 +431,20 @@ class Panel:
             if mid:
                 ev.set()
         return False
+
+    def activity(self, wid: str) -> dict:
+        """Живая строка статуса окна (activity.py): опрос раз в 1,5 с из открытого чата — поэтому список окон
+        кэшируется на 3 с (в нём ``ps`` по каждому окну), экран читается не чаще раза в 2 с, журнал — с хвоста."""
+        now = time.time()
+        if wid not in self.wins[1] or now - self.wins[0] > 3:
+            self.wins = (now, {w["id"]: w for w in self.tmux.windows() if w["cmd"] == "claude"})
+        if not (w := self.wins[1].get(wid)):
+            raise LookupError("окна уже нет")
+        scr = self.screens.get(wid)
+        if not scr or now - scr[0] >= 2:
+            scr = self.screens[wid] = (now, self.pult.screen_state(wid))
+        home = self.pult.home_of(w)
+        return {**self.pult.activity(w, scr[1]), "rev": transcripts.revision(w["path"], home)}
 
     def slash(self, w: dict, cmd: str) -> list[str]:
         return self.pult.run_slash(w["id"], cmd)
@@ -1169,6 +1185,8 @@ def handler(panel: Panel):
                 return panel.voice_cards(self.who()[1] == "owner")
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
+            if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
+                return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w))}
