@@ -347,3 +347,18 @@ def test_chat_block_run_returns_full_output_when_cut(panel, monkeypatch):
     monkeypatch.setattr(panel.tmux, "windows", lambda: [])
     r = panel.run(W, 0, "aaa", False)
     assert r["cut"] and r["full"] == big and len(r["out"]) < len(big)
+
+
+def test_set_menu_skips_failing_person(capsys):
+    """Один участник не открывал бота («user not found») — остальным кнопка «📱 Панель» всё равно ставится."""
+    from gas_pult.telegram import TelegramError
+    done = []
+
+    def api(method, **kw):
+        if kw["chat_id"] == 2:
+            raise TelegramError("setChatMenuButton", "Bad Request: user not found")
+        done.append((method, kw["chat_id"], kw["menu_button"]["web_app"]["url"]))
+
+    webapp.set_menu(api, [1, 2, 3], "https://panel.example")
+    assert done == [("setChatMenuButton", 1, "https://panel.example"), ("setChatMenuButton", 3, "https://panel.example")]
+    assert "menu: 2: setChatMenuButton: Bad Request: user not found" in capsys.readouterr().out
