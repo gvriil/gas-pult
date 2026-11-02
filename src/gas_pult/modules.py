@@ -190,6 +190,35 @@ def _decision(x, where: str) -> dict:
     return {"question": _str(x, "question", where), "options": opts, "when": _str(x, "when", where, need=False)}
 
 
+DEMO_KINDS = ("summary", "reminder", "request")
+
+
+def _demo(raw, where: str) -> dict:
+    """[demo] — необязательная секция для страницы предложения и демо в Telegram (docs/OFFERS.md):
+    ``kind`` — как показывать модуль; ``[[demo.telegram]]`` — 3–4 сообщения сценария: text, buttons, replies."""
+    if not isinstance(raw, dict) or set(raw) - {"kind", "telegram"}:
+        raise ModuleError(f"{where}: [demo] — ключи kind и [[demo.telegram]]")
+    kind = raw.get("kind", "")
+    if kind and kind not in DEMO_KINDS:
+        raise ModuleError(f"{where}: demo.kind — одно из: {', '.join(DEMO_KINDS)}")
+    steps = raw.get("telegram", [])
+    if not isinstance(steps, list) or len(steps) > 6:
+        raise ModuleError(f"{where}: [[demo.telegram]] — до 6 сообщений")
+    out = []
+    for x in steps:
+        if not isinstance(x, dict) or set(x) - {"text", "buttons", "replies"}:
+            raise ModuleError(f"{where}: [[demo.telegram]] — поля text, buttons, replies")
+        text, buttons, replies = _str(x, "text", where), x.get("buttons", []), x.get("replies", [])
+        if (not isinstance(buttons, list) or not isinstance(replies, list) or len(buttons) != len(replies)
+                or len(buttons) > 4 or not all(isinstance(b, str) and 0 < len(b) <= 40 for b in buttons)
+                or not all(isinstance(a, str) and a.strip() for a in replies)):
+            raise ModuleError(f"{where}: demo.telegram — buttons (до 4, до 40 знаков) и replies — списки одной длины")
+        if len(text) > 1500:
+            raise ModuleError(f"{where}: demo.telegram text — не длиннее 1500 знаков")
+        out.append({"text": text, "buttons": buttons, "replies": replies})
+    return {"kind": kind, "telegram": out}
+
+
 def fill(text: str, settings: dict) -> str:
     """``{{ключ}}`` → значение из [settings]; незнакомые ``{{…}}`` остаются как есть."""
     for k, v in settings.items():
@@ -242,6 +271,7 @@ def parse(folder: Path) -> dict:
         "schedule": [_schedule(x, where, settings) for x in lists["schedule"]],
         "decisions": [_decision(x, where) for x in lists["decisions"]],
         "data_sources": [_source(x, where) for x in sources],
+        "demo": _demo(raw.get("demo", {}), where),
         "uses": [{"id": u, "title": known[u]["title"], "about": known[u]["about"]} for u in uses],
         "settings": settings, "skills": skills,
         "files": sorted(p.name + ("/" if p.is_dir() else "") for p in folder.iterdir() if p.name not in SKIP),

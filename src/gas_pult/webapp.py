@@ -17,6 +17,7 @@ MCP-серверы Claude Code (``mcp``), ключи API и поставщики
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -33,7 +34,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import country, fallback, models, modules, providers, setup, terms, transcripts, usage, voice, webauth
+from gas_pult import (
+    country,
+    fallback,
+    models,
+    modules,
+    offer_report,
+    offers,
+    providers,
+    setup,
+    terms,
+    transcripts,
+    usage,
+    voice,
+    webauth,
+)
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -122,6 +137,9 @@ class Panel:
         self._setup: tuple[float, dict] = (0, {})
         self.geo = country.GeoIP(cfg.data / "geoip")                 # страна по IP — локальная база db-ip lite
         self.ip_seen: dict[int, tuple[float, str]] = {}              # кого и когда сверяли по IP (только в памяти)
+        self.offer_demos = offers.Demos()                            # демо-сессии страниц предложений (в памяти)
+        self.offer_misses = offers.Misses()                          # перебор кодов предложений — по IP
+        self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")   # «Попробовать в Telegram» — токены для бота
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -320,6 +338,69 @@ class Panel:
         for chat in self.cfg.owners:
             self.pult.api("sendMessage", chat_id=chat, text=text)
         return rid
+
+    # ---------- предложения (offers.py): страница /offer/<код> без входа ----------
+    def offer_country_ok(self, cc: str) -> bool:
+        """Есть ли для страны хоть один поставщик моделей (с учётом страны сервера) — как при выборе страны."""
+        cs = country.check_set({"chosen": cc}, self.cfg.region)
+        return any(models.allowed(p["id"], cs) for p in models.PROFILES)
+
+    def offer_wizard(self, o: dict, s: dict, b: dict) -> dict:
+        """Шаги мастера «Подключить» до входа: условия, страна, модуль. В демо-сессии — только версия условий,
+        код страны и id модуля (без ПДн); к владельцу уходят вместе с запросом доступа."""
+        w, step = s["wizard"], str(b.get("step", ""))
+        if step == "terms":
+            if str(b.get("version", "")) != terms.VERSION:
+                raise ValueError("условия обновились — обновите страницу")
+            w["terms"] = terms.VERSION
+        elif step == "country":
+            cc = country.norm(b.get("code"))
+            if not cc:
+                raise ValueError("нет такой страны — нужен код из двух букв, например NL")
+            if not self.offer_country_ok(cc):
+                w.pop("country", None)
+                raise ValueError(country.DENY)
+            w["country"] = cc
+        elif step == "module":
+            mid = str(b.get("id", ""))
+            if mid not in o["modules"]:
+                raise ValueError("этого модуля нет в предложении")
+            w["module"] = mid
+        else:
+            raise ValueError("нет такого шага")
+        return {"wizard": w}
+
+    def offer_login(self, o: dict, s: dict, ip: str, ua: str) -> dict:
+        """Шаг «Войти через Telegram»: обычный вход (TgLogins) с пометкой предложения — владелец увидит, откуда
+        человек и что он выбрал. Сессий не создаёт и модель не тратит: всё — после решения владельца."""
+        w = s["wizard"]
+        if w.get("terms") != terms.VERSION:
+            raise ValueError("сначала примите условия использования")
+        if not w.get("country"):
+            raise ValueError("сначала выберите страну")
+        if w.get("module") not in o["modules"]:
+            raise ValueError("сначала выберите модуль")
+        m = next((x for x in modules.catalog() if x["id"] == w["module"]), {"title": w["module"]})
+        bot = self.offer_bot()
+        rid, nonce = self.logins.start(ip, ua, offer={
+            "business": o["business"], "hint": offers.hint(o["code"]), "module": w["module"],
+            "module_title": m["title"], "country": w["country"], "terms": w["terms"]})
+        return {"id": rid, "link": f"https://t.me/{bot}?start=login_{nonce}", "ttl": webauth.LOGIN_TTL}
+
+    def offer_bot(self) -> str:
+        """Имя бота для ссылок со страницы предложения; Telegram недоступен — понятная ошибка, без подробностей."""
+        try:
+            return self.bot_username()
+        except (TelegramError, OSError, KeyError):
+            raise ValueError("бот пульта сейчас недоступен — попробуйте через несколько минут") from None
+
+    def offer_telegram(self, o: dict, mid: str, back: str) -> dict:
+        """«Попробовать в Telegram»: короткоживущий токен (не код предложения) → ссылка на бота с ?start=demo_…"""
+        if mid not in o["modules"]:
+            raise ValueError("этого модуля нет в предложении")
+        bot = self.offer_bot()
+        tok = self.offer_tg.issue(o["code"], mid, back)
+        return {"link": f"https://t.me/{bot}?start=demo_{tok}", "ttl": offers.TG_TTL}
 
     # ---------- действия ----------
     def send(self, w: dict, text: str, mid: str = "") -> bool:
@@ -859,6 +940,16 @@ COUNTRY_FREE = TERMS_FREE | {"/api/country"}
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
+# Страница предложения (offers.py): без входа, не индексируется, не кэшируется, ссылка не уходит в Referer.
+NOINDEX = {"X-Robots-Tag": "noindex, nofollow, noarchive", "Referrer-Policy": "no-referrer",
+           "X-Frame-Options": "DENY"}
+OFFER_PATH = re.compile(r"^/(api/)?offer/([^/]{1,80})(?:/([a-z]{1,20}))?/?$")
+ROBOTS = "User-agent: *\nDisallow: /offer/\nDisallow: /api/\n"
+OFFER_404 = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+             '<meta name="robots" content="noindex, nofollow, noarchive"><title>Страница не найдена</title>'
+             '<body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,sans-serif;text-align:center">'
+             '<h1 style="font-size:22px">Страница не найдена</h1><p>Ссылка неверна, устарела или отозвана.</p></body>')
+
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
@@ -870,15 +961,23 @@ def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
     build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
+    offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
+    scripts = re.findall(rb"<script>(.*?)</script>", offer_page, re.S)
+    hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(x).digest()).decode() + "'" for x in scripts)
+    offer_csp = (f"default-src 'none'; script-src {hashes}; style-src 'unsafe-inline'; img-src 'self' data:; "
+                 "connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'")
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
 
-        def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = ""):
+        def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = "",
+                  headers: dict | None = None):
             self.send_response(code)
             if cookie:
                 self.send_header("Set-Cookie", cookie)
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
@@ -985,6 +1084,10 @@ def handler(panel: Panel):
                 return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
                 return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
+            if url.path == "/robots.txt":
+                return self.reply(200, ROBOTS.encode(), "text/plain; charset=utf-8")
+            if url.path.startswith(("/offer/", "/api/offer/")):     # предложение: без входа, только по коду
+                return self.offer("GET", url.path)
             if not url.path.startswith("/api/"):
                 return self.json({"error": "нет такой страницы"}, 404)
             q = dict(urllib.parse.parse_qsl(url.query))
@@ -1093,6 +1196,8 @@ def handler(panel: Panel):
                 return self.dispatch(self.login)
             if path == "/api/login/tg":
                 return self.dispatch(self.tg_start)
+            if path.startswith("/api/offer/"):
+                return self.offer("POST", path)
             if not path.startswith("/api/") or not self.permit(path, "POST"):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             self.dispatch(lambda: self.post(path))
@@ -1114,6 +1219,101 @@ def handler(panel: Panel):
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
             panel.seen_ip((panel.cfg.owners or [None])[0], self.client_ip(), force=True)   # вход кодом — владелец
             return ("cookie", webauth.set_cookie(token), {"ok": True})
+
+        # ---------- страница предложения: без входа, ничего из панели ----------
+        def offer_reply(self, code: int, data, page: bool = False, cookie: str = "", csp: str = ""):
+            h = dict(NOINDEX, **({"Content-Security-Policy": csp} if csp else {}))
+            if page:
+                return self.reply(code, data, "text/html; charset=utf-8", cookie, h)
+            return self.reply(code, json.dumps(data, ensure_ascii=False).encode(), cookie=cookie, headers=h)
+
+        def offer_cookie(self, sid: str, age: int = offers.DEMO_TTL) -> str:
+            host = self.headers.get("Host", "").split(":")[0]
+            secure = (self.client_address[0] in LOOPBACK and self.headers.get("X-Forwarded-Proto") == "https") or \
+                host not in ("127.0.0.1", "localhost", "::1", "")
+            flags = "; HttpOnly; SameSite=Lax" + ("; Secure" if secure else "")
+            return f"{offers.COOKIE}={sid}; Path=/; Max-Age={age}" + flags
+
+        def offer_sid(self) -> str:
+            for part in self.headers.get("Cookie", "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == offers.COOKIE:
+                    return v
+            return ""
+
+        def offer(self, method: str, path: str):
+            """``/offer/<код>`` — страница; ``/api/offer/<код>[/действие]`` — её данные. Неизвестный, отозванный и
+            просроченный код — один и тот же 404; перебор кодов с одного IP — 429 на любые коды."""
+            m, ip = OFFER_PATH.match(path), self.client_ip()
+            api = path.startswith("/api/")
+            if panel.offer_misses.blocked(ip):
+                body = {"error": "слишком много запросов — подождите 10 минут"}
+                return self.offer_reply(429, OFFER_404.encode() if not api else body, page=not api)
+            o = offers.load(m.group(2)) if m and bool(m.group(1)) == api else None
+            if not o or (not api and (method != "GET" or m.group(3))):
+                if not o:
+                    panel.offer_misses.miss(ip)
+                return self.offer_reply(404, OFFER_404.encode() if not api else {"error": "нет такой страницы"},
+                                        page=not api)
+            if not api:
+                return self.offer_reply(200, offer_page, page=True, csp=offer_csp)
+            sid, cookie = self.offer_sid(), ""
+            s = panel.offer_demos.get(sid, o["code"])
+            if not s:
+                sid = panel.offer_demos.new(o["code"])
+                s, cookie = panel.offer_demos.get(sid, o["code"]), self.offer_cookie(sid)
+            act = m.group(3) or ""
+            try:
+                out = self.offer_act(method, act, o, s, sid)
+            except KeyError:
+                return self.offer_reply(404, {"error": "нет такого метода"}, cookie=cookie)
+            except (ValueError, TelegramError, OSError) as e:
+                return self.offer_reply(400, {"error": str(e) or "ошибка"}, cookie=cookie)
+            if act == "forget":
+                cookie = self.offer_cookie("", 0)
+            return self.offer_reply(200, out, cookie=cookie)
+
+        def offer_act(self, method: str, act: str, o: dict, s: dict, sid: str):
+            if method == "GET" and act == "":
+                bot = bool(panel._bot) or bool(panel.cfg.token)
+                return {**offers.page(o), "bot": bot,
+                        "session": {"reports": list(s["reports"].values()), "wizard": s["wizard"],
+                                    "ttl": max(0, int(s["exp"] - time.time()))}}
+            if method != "POST":
+                raise KeyError
+            if act == "upload":
+                n = int(self.headers.get("Content-Length", 0) or 0)
+                if n > offer_report.MAX_BYTES:
+                    left = min(n, 4 * offer_report.MAX_BYTES)             # дочитать (не храня), чтобы ответ дошёл
+                    while left > 0 and (chunk := self.rfile.read(min(left, 1 << 16))):
+                        left -= len(chunk)
+                    self.close_connection = True
+                    raise ValueError(f"Файл больше {offer_report.MAX_BYTES >> 20} МБ — выгрузите период покороче.")
+                if not panel.offer_demos.upload_ok(s):
+                    raise ValueError("слишком много загрузок — подождите 10 минут")
+                data = self.rfile.read(n)
+                try:
+                    mapping = json.loads(self.headers.get("X-Offer-Map", "")[:2000] or "null")
+                except ValueError:
+                    mapping = None
+                rep = offer_report.build(data, self.headers.get("X-Offer-Kind", ""),
+                                         mapping if isinstance(mapping, dict) else None)
+                del data                                                  # байты файла дальше не нужны
+                return rep if rep.get("error") else panel.offer_demos.put_report(s, rep)
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            if not isinstance(b, dict):
+                raise ValueError("ожидался объект")
+            if act == "forget":                                           # «Удалить мои данные»
+                panel.offer_demos.drop(sid)
+                return {"ok": True}
+            if act == "wizard":
+                return panel.offer_wizard(o, s, b)
+            if act == "login":
+                return panel.offer_login(o, s, *self.client())
+            if act == "telegram":
+                base = panel.public_url or ""
+                return panel.offer_telegram(o, str(b.get("module", "")), f"{base}/offer/{o['code']}" if base else "")
+            raise KeyError
 
         def terms_info(self) -> dict:
             rec = panel.people.terms(self.terms_uid()) or {}
@@ -1285,6 +1485,12 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
         except (TelegramError, OSError, KeyError) as e:
             print("bot:", e, flush=True)
     threading.Thread(target=learn_bot, daemon=True).start()
+
+    def sweep():                                           # отчёты демо-страниц — удалить точно в срок
+        while True:
+            time.sleep(60)
+            panel.offer_demos.sweep()
+    threading.Thread(target=sweep, daemon=True).start()
     proc = None
     if use_tunnel:
         proc, url = tunnel(port)
