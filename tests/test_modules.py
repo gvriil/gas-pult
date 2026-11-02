@@ -50,7 +50,7 @@ def test_builtin_modules_parse():
     assert [u["id"] for u in ca["uses"]] == ["reminders"] and "reminder-batch" in ca["skills"]
     assert ca["decisions"][0]["options"] == ["Да", "Нет"] and ca["schedule"][0]["days"] == [1, 2, 3, 4, 5]
     assert not any(m["id"].startswith("_") for m in by.values())          # общие блоки — не модули
-    assert set(modules.blocks()) == {"reminders", "reviews", "receivables", "documents"}
+    assert set(modules.blocks()) == {"reminders", "reviews", "receivables", "documents", "deadlines"}
     for m in by.values():                                                  # в публичном виде нет путей на диске
         assert "path" not in modules.public(m)
 
@@ -84,7 +84,7 @@ def test_own_module_one_folder_with_common_block(tmp_path):
     (d / "skills" / "orders").mkdir(parents=True)
     (d / "skills" / "orders" / "SKILL.md").write_text("---\nname: orders\ndescription: x\n---\n")
     m = modules.get("shop")                                   # модуль одной папкой — без правки кода
-    assert m["skills"] == ["orders", "review-reply"]
+    assert m["skills"] == ["nps", "orders", "review-publish", "review-reply"]
     root = tmp_path / "projects"
     p = modules.create("shop", root)
     text = (p / "CLAUDE.md").read_text()
