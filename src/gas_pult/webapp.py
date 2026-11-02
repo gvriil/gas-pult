@@ -43,6 +43,7 @@ from gas_pult import (
     offer_report,
     offers,
     providers,
+    scenarios,
     setup,
     terms,
     transcripts,
@@ -1190,6 +1191,10 @@ def handler(panel: Panel):
                         "personal": home is not None}          # список — свой у человека, не общий с владельцем
             if path == "/api/modules":
                 return panel.modules_list()
+            if path == "/api/scenarios":                 # «Примерить на себя»: роли, день с агентом, польза
+                errors: list[str] = []
+                d = scenarios.api_data(errors)
+                return {**d, "errors": errors if self.who()[1] == "owner" else []}
             if path == "/api/mcp/connected":
                 c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
                 if not c:

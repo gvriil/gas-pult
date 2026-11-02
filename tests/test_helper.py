@@ -49,6 +49,10 @@ def test_map_covers_every_panel_screen():
     assert found == where("panel"), (found - where("panel"), where("panel") - found)
     # каждый лист панели помечен: sheet(…) — после helpSheet(…), свои листы — data-help
     assert INDEX.count('bg.className = "sheet-bg"') == INDEX.count('bg.dataset.help = hv(') + 1   # +1 — сам sheet()
+    # каждый экран-форма (show("mcpForm")) говорит помощнику, что он такое — иначе новый экран выпадет из карты
+    for line in INDEX.splitlines():
+        if 'show("mcpForm")' in line:
+            assert "formHelp = hv(" in line, line.strip()[:100]
     for m in re.finditer(r"\bsheet\((?:\"|`|s\.name|p\.name|wn\.title|d\?\.ready|exclude)", INDEX):
         assert "helpSheet(" in INDEX[max(0, m.start() - 400):m.start()], INDEX[m.start():m.start() + 60]
 

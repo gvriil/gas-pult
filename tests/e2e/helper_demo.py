@@ -12,7 +12,8 @@ import sys
 # действие карты → экран, который должен открыться (статический тест сверяет ключи с картой)
 DEEP = {
     "go:sessions": "home.sessions", "go:new-session": "sheet.new-session", "go:new-folder": "sheet.new-folder",
-    "go:modules": "modules", "go:commands": "home.commands", "go:integrations": "home.integrations",
+    "go:modules": "modules", "go:scenarios": "scenarios", "go:commands": "home.commands",
+    "go:integrations": "home.integrations",
     "go:models": "home.integrations", "go:voice": "home.integrations", "go:switch": "sheet.switcher",
     "go:session.chat": "session.chat", "go:session.screen": "session.screen", "go:session.menu": "session.menu",
     "go:session.model": "sheet.model", "go:settings": "settings", "go:settings.country": "country",
