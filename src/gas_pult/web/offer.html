@@ -87,7 +87,7 @@
   .note.bad { background: color-mix(in srgb, var(--status-danger) 12%, transparent); } .note.bad .i { color: var(--status-danger); }
   .note.ok { background: color-mix(in srgb, var(--status-success) 12%, transparent); } .note.ok .i { color: var(--status-success); }
   .field { margin: 12px 0 0; } .field label { display: block; font-weight: 600; font-size: calc(14px * var(--fz, 1)); margin: 0 0 4px; }
-  select, input[type=text] { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); min-height: 44px; }
+  select, input[type=text], input[type=number] { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); min-height: 44px; }
   select:focus, input:focus { outline: 2px solid var(--border-focus); outline-offset: 1px; }
   .drop { display: block; cursor: pointer; margin-top: 12px; border: 1.5px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 18px 12px; text-align: center; color: var(--text-secondary); }
   .drop .i { margin: 0 auto; width: 28px; height: 28px; color: var(--accent-primary); }
@@ -110,6 +110,11 @@
   a { color: var(--accent-primary); }
   footer { margin: 36px 0 0; color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); text-align: center; }
   .spin { animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+  .tl { display: grid; gap: 12px; margin-top: 12px; }
+  .tl-when { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; } .tl-when b { font-size: calc(17px * var(--fz, 1)); font-variant-numeric: tabular-nums; }
+  .gain { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 12px 0 0; }
+  .ins { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0 10px; } .ins .muted { margin-top: 2px; }
+  input.bad { border-color: var(--status-danger); }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   @media (min-width: 900px) { .wrap { padding-top: 40px; } h1 { font-size: calc(32px * var(--fz, 1)); } }
 </style>
@@ -198,6 +203,7 @@ function render() {
         ${demoCard(m)}
         <div class="row"><button class="btn ghost sm" data-tg="${esc(m.id)}">${ic("send")}Попробовать в Telegram</button></div><div data-tgout="${esc(m.id)}"></div></div>`).join("")}
     </section>
+    ${d.scenario ? scenarioBlock(d.scenario) : ""}
     <section id="upload"><h2>Загрузите выгрузку — отчёт за 2 минуты</h2>
       <p class="lead">CSV или XLSX из кассы, CRM или 1С: продажи, клиенты или должники. Сводку считает скрипт — без модели, за секунды.</p>
       ${note("info", "lock", `Файл обрабатывается в памяти и удаляется через ${d.upload.ttl_min} минут или по кнопке «Удалить мои данные»; на диск не пишется, данные не используются для обучения, модель не вызывается. В отчёте — только итоги и сокращённые имена («Иван П.»), без телефонов и ИНН.`)}
@@ -212,7 +218,7 @@ function render() {
       <div class="card" id="wiz"></div></section>
     <footer>Предложение GASTECH · страница не индексируется · ${esc(d.industry)}</footer>`;
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => $(b.dataset.go).scrollIntoView({ behavior: "smooth" })));
-  bindDemo(); bindUpload(); renderReports(); wizard();
+  bindDemo(); bindScenario(); bindUpload(); renderReports(); wizard();
 }
 
 function bindDemo() {
@@ -231,6 +237,59 @@ function bindDemo() {
       window.open(r.link, "_blank", "noopener");
     } catch (e) { out.innerHTML = `<div style="margin-top:10px">${note("bad", "warn", esc(e.message))}</div>`; }
   })));
+}
+
+// ---------- «Как это выглядит у вас»: день с агентом в роли отрасли, цифры — из предложения (scenarios.py) ----------
+/* benefit:start — тот же расчёт, что scenarios.benefit() в Python; копия в offer.html, тест сверяет */
+function benefitCalc(b, vals) {
+  const num = (x, d) => { if (typeof x === "boolean" || x == null) return d; const s = typeof x === "string" ? x.trim().replace(",", ".") : x;
+    if (s === "") return d; const v = Number(s); return Number.isFinite(v) ? v : d; };
+  const inp = {};
+  for (const x of b.inputs) inp[x.id] = Math.min(x.max, Math.max(x.min, num(vals?.[x.id], x.default)));
+  const rnd = (v, r) => Math.floor(v / r + 0.5) * r;
+  const fmt = (v) => { const t = Math.floor(v * 10 + 0.5), w = Math.floor(t / 10), f = t % 10; return String(w).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (f ? "," + f : ""); };
+  const lines = b.benefit.map((l) => {
+    let base = 1; for (const k of l.of) base *= inp[k];
+    const low = rnd(base * l.low, l.round), high = rnd(base * l.high, l.round);
+    return { title: l.title, unit: l.unit, low, high, text: (low === high ? "≈ " + fmt(low) : fmt(low) + "–" + fmt(high)) + " " + l.unit, about: l.about };
+  });
+  return { inputs: inp, lines };
+}
+/* benefit:end */
+function scenarioBlock(r) {
+  return `<section id="day"><h2>Как это выглядит у вас</h2><p class="lead">${esc(r.title)} — день с агентом. Нажимайте кнопки: покажем, что произошло бы, ничего не отправляя.</p>
+    <div class="card"><p style="margin:0">${esc(r.who)}</p></div>
+    <div class="tl">${r.moments.map((mo, i) => `<div class="card"><div class="tl-when"><b>${esc(mo.at)}</b>${mo.day ? `<span class="chip">${esc(mo.day)}</span>` : ""}${mo.module_title ? `<span class="chip">${ic("puzzle", "s16")}${esc(mo.module_title)}</span>` : ""}<span class="chip demo">демо</span></div>
+      <div class="msg">${esc(mo.text)}</div>${mo.buttons.length ? `<div class="q"><div class="opts">${mo.buttons.map((b, j) => `<button class="opt" data-sm="${i}" data-sj="${j}">${esc(b.label)}</button>`).join("")}</div><div class="next" hidden></div></div>` : ""}</div>`).join("")}</div>
+    <div class="card" style="margin-top:12px"><h3>Без агента</h3><p class="muted" style="margin:4px 0 0;font-size:inherit">${esc(r.without)}</p></div>
+    <div class="card"><h3>Ваша польза — оценка</h3><p class="muted" style="margin:4px 0 0">Подставили цифры из предложения — поправьте под себя, пересчитаем сразу.</p>
+      <div class="ins">${r.inputs.map((x) => `<div class="field"><label for="sIn_${esc(x.id)}">${esc(x.title)}${x.unit ? `, ${esc(x.unit)}` : ""}</label><input type="number" inputmode="decimal" id="sIn_${esc(x.id)}" data-sin="${esc(x.id)}" min="${x.min}" max="${x.max}" step="${x.step}" value="${x.default}"><div class="muted">${esc(x.about)}</div></div>`).join("")}</div>
+      <div class="gain" id="sGain"></div>
+      <div style="margin-top:12px">${note("info", "warn", esc(r.note))}</div>
+      <h3 style="margin-top:14px">Что нужно от вас</h3><ul class="pains">${r.needs.map((x) => `<li>${ic("check")}<span>${esc(x)}</span></li>`).join("")}</ul>
+      <h3 style="margin-top:14px">Первый шаг</h3><p style="margin:4px 0 0">${esc(r.first_step)}</p>
+      <div class="row"><button class="btn" data-go="connect">${ic("check")}Подключить</button></div></div></section>`;
+}
+const sVals = {};
+function scenarioGain() {
+  const res = benefitCalc(D.scenario, sVals);
+  $("sGain").innerHTML = res.lines.map((x) => `<div class="stat"><div class="l">${esc(x.title)}</div><div class="v">${esc(x.text)}</div><div class="n">${esc(x.about)}</div></div>`).join("");
+}
+function bindScenario() {
+  if (!D.scenario) return;
+  scenarioGain();
+  document.querySelectorAll("[data-sm]").forEach((b) => b.addEventListener("click", () => {
+    const mo = D.scenario.moments[+b.dataset.sm], o = mo.buttons[+b.dataset.sj], box = b.closest(".q");
+    box.querySelectorAll(".opt").forEach((x) => x.classList.toggle("on", x === b));
+    const nx = box.querySelector(".next"); nx.hidden = false;
+    nx.innerHTML = `${ic("next")}<span><b>Что произошло бы:</b> ${esc(o.result)} <span class="chip demo">демо — ничего не выполнено</span></span>`;
+  }));
+  document.querySelectorAll("[data-sin]").forEach((x) => x.addEventListener("input", () => {
+    const d = D.scenario.inputs.find((y) => y.id === x.dataset.sin), v = Number(String(x.value).replace(",", "."));
+    const ok = x.value.trim() !== "" && Number.isFinite(v) && v >= d.min && v <= d.max;
+    x.classList.toggle("bad", !ok); x.nextElementSibling.textContent = ok ? d.about : `Число от ${d.min} до ${d.max} — считаем по ближайшей границе.`;
+    sVals[d.id] = x.value; scenarioGain();
+  }));
 }
 
 // ---------- загрузка выгрузки ----------

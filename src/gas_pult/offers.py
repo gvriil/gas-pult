@@ -10,6 +10,7 @@
 - ``page`` — данные для страницы: только то, что ей нужно (без кода, путей, заметок);
 - ``demo`` — выдуманные, «похожие на его» данные: детерминированно из полей предложения (отрасль, точки, суммы);
 - ``scenario`` — сценарий демо в Telegram (3–4 сообщения с кнопками) — из ``[[demo.telegram]]`` модуля или по умолчанию;
+- в ``page`` — ещё «Как это выглядит у вас»: роль отрасли из ``scenarios.py`` с цифрами из ``[demo]`` предложения;
 - ``Misses`` — ограничение перебора кодов по IP; ``Demos`` — демо-сессии страницы в памяти (TTL 30 минут);
 - ``TgDemos`` — короткоживущие токены «Попробовать в Telegram» (файл без ПДн — его читает и бот).
 """
@@ -329,7 +330,7 @@ def demo_module(o: dict, m: dict) -> dict:
 
 def page(o: dict) -> dict:
     """Всё, что нужно странице предложения: без кода, путей, заметок и служебных полей."""
-    from gas_pult import country, offer_report, terms
+    from gas_pult import country, offer_report, scenarios, terms
 
     cat = {m["id"]: m for m in modules.catalog()}
     mods = []
@@ -341,7 +342,7 @@ def page(o: dict) -> dict:
                      "decisions": [{"question": x["question"], "options": x["options"]} for x in m["decisions"]],
                      "demo": demo_module(o, m)})
     return {"business": o["business"], "industry": INDUSTRIES[o["industry"]]["title"], "pains": o["pains"],
-            "expires": o["expires"], "modules": mods,
+            "expires": o["expires"], "modules": mods, "scenario": scenarios.for_offer(o),
             "terms": {"version": terms.VERSION, "title": terms.TITLE, "points": list(terms.POINTS), "url": terms.URL},
             "countries": [{"code": c, "name": country.name(c)} for c in country.COMMON],
             "upload": {"max_mb": offer_report.MAX_BYTES >> 20, "max_rows": offer_report.MAX_ROWS,

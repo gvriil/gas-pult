@@ -39,6 +39,7 @@ from gas_pult import (
     offers,
     people,
     providers,
+    scenarios,
     setup,
     terms,
     transcripts,
@@ -916,6 +917,55 @@ class Pult:
         rows = [[(m["title"], f"md:v:{m['id']}")] for m in own] + [[("‹ Все отрасли", "md:list:")]]
         self.send(chat, _clip("\n".join(lines)), reply_markup=kb(rows))
 
+    # ---------- «Примерить на себя» (scenarios.py): одно сообщение, «Дальше ›» правит его на месте ----------
+    def edit_or_send(self, chat: int, mid: int | None, text: str, markup: dict):
+        """Правим сообщение на месте (``editMessageText``); не вышло (старое, удалено) — присылаем новое.
+        «message is not modified» (нажали ту же кнопку) — не ошибка."""
+        if mid:
+            try:
+                return self.api("editMessageText", chat_id=chat, message_id=mid, text=_clip(text), reply_markup=markup)
+            except TelegramError as e:
+                if "not modified" in str(e):
+                    return None
+        return self.send(chat, _clip(text), reply_markup=markup)
+
+    def show_scenarios(self, chat: int, mid: int | None = None):
+        """/scenarios — роли кнопками, по отраслям (каждая роль — кнопка; отрасль — строка в тексте)."""
+        roles = scenarios.catalog()
+        if not roles:
+            return self.send(chat, "Сценариев нет.")
+        lines, rows, last = ["🎭 Примерить на себя: выберите роль — покажу день с агентом и пользу в цифрах "
+                             "(данные выдуманы, ничего не отправляется)."], [], None
+        for r in roles:
+            if r["industries"][0] != last:
+                last = r["industries"][0]
+                lines += ["", f"▪️ {last}"]
+            lines.append(f"• {r['title']} — {r['short']}")
+            rows.append([(r["title"][:60], f"sc:{r['id']}:0")])
+        return self.edit_or_send(chat, mid, "\n".join(lines), kb(rows))
+
+    def on_scenario(self, chat: int, mid: int | None, arg: str):
+        """sc:list — роли; sc:<роль>:<стр> — страница; sc:<роль>:<стр>:<кнопка> — нажали решение в моменте."""
+        rid, _, rest = arg.partition(":")
+        if rid == "list":
+            return self.show_scenarios(chat, mid)
+        try:
+            s = scenarios.public(scenarios.get(rid))
+        except LookupError:
+            return self.show_scenarios(chat, mid)              # роль убрали — показываем список заново
+        page, _, btn = rest.partition(":")
+        n = int(page) if page.isdigit() else 0
+        text, rows = scenarios.telegram_page(s, n, int(btn) if btn.isdigit() else None)
+        markup = kb([[(t, f"sc:{rid}:{c}") for t, c in row] for row in rows])
+        if n > len(s["moments"]):                 # итог: создать пространство, панель, все роли
+            markup["inline_keyboard"] += [[{"text": f"🧩 {m['title']}"[:60], "callback_data": f"md:v:{m['id']}"}]
+                                          for m in s["modules"]]
+            if url := self.panel_url(f"scenarios&role={rid}"):
+                markup["inline_keyboard"].append([{"text": "📱 Примерить в панели", "web_app": {"url": url}}])
+            text += "\n\n🧩 Создать пространство — кнопкой модуля ниже: по одному, начните с первого."
+        markup["inline_keyboard"].append([{"text": "‹ Все роли", "callback_data": "sc:list"}])
+        return self.edit_or_send(chat, mid, text, markup)
+
     def module_text(self, m: dict) -> str:
         out = [f"🧩 {m['title']} · {m['industry']}", "", m["description"] or m["about"]]
         if m["integrations"]:
@@ -1324,6 +1374,8 @@ class Pult:
             return self.on_digest(chat, arg)
         if kind == "md":                                   # модули-агенты: описание, создание пространства
             return self.on_module(chat, arg)
+        if kind == "sc":                                   # «Примерить на себя»: роль → день → польза (одно сообщение)
+            return self.on_scenario(chat, (q.get("message") or {}).get("message_id"), arg)
         if kind == "of":                                   # пространство для человека с предложения (владелец)
             return self.offer_space(chat, arg)
         if kind == "cost":                                 # пауза по расходу: продолжить или остановить (владелец)
@@ -1659,6 +1711,9 @@ class Pult:
             rows.append([("Дальше ›", f"dm:{tok}:{i}:n")])
             return self.send(chat, st["text"], reply_markup=kb(rows))
         markup = kb([[("✅ Подключить", f"dm:{tok}:f:c")], [("🔁 Посмотреть ещё раз", f"dm:{tok}:f:r")]])
+        if scenarios.for_offer(o):
+            markup["inline_keyboard"].insert(1, [{"text": "🗓 Как это выглядит у вас — день с агентом",
+                                                  "callback_data": f"dm:{tok}:s0:"}])
         if back.startswith("https://"):
             markup["inline_keyboard"].append([{"text": "Открыть предложение", "url": back}])
         return self.send(chat, f"Так агент работал бы для «{o['business']}» каждый день — в вашем Telegram, решения "
@@ -1680,6 +1735,9 @@ class Pult:
             if not self.demo_rate(u["id"]) or not self.offer_tg.start(tok):
                 return self.send(chat, "Демо можно запускать не чаще 5 раз в час — попробуйте позже.")
             return self.demo_step(chat, tok, o, mod, 0)
+        if step[:1] == "s" and step[1:].isdigit():          # сценарий роли отрасли — правим то же сообщение
+            return self.demo_scenario(chat, (q.get("message") or {}).get("message_id"), tok, o, int(step[1:]), btn,
+                                      rec.get("back", ""))
         if not step.isdigit():
             return None
         i, steps = int(step), offers.scenario(o, mod)
@@ -1688,6 +1746,20 @@ class Pult:
         if btn.isdigit() and int(btn) < len(steps[i]["buttons"]):
             self.send(chat, "↪️ " + steps[i]["buttons"][int(btn)][1])
         return self.demo_step(chat, tok, o, mod, i + 1, rec.get("back", ""))
+
+    def demo_scenario(self, chat: int, mid: int | None, tok: str, o: dict, page: int, btn: str, back: str):
+        """«Как это выглядит у вас» в демо предложения: роль его отрасли, цифры — из [demo] предложения. Те же
+        изолированные кнопки ``dm:`` — без роли, без меню и без сессий."""
+        s = scenarios.for_offer(o)
+        if not s:
+            return self.send(chat, DEMO_GONE)
+        text, rows = scenarios.telegram_page(s, page, int(btn) if btn.isdigit() else None)
+        markup = kb([[(t, f"dm:{tok}:s{c}" if ":" in c else f"dm:{tok}:s{c}:") for t, c in row] for row in rows])
+        if page > len(s["moments"]):
+            markup["inline_keyboard"].append([{"text": "✅ Подключить", "callback_data": f"dm:{tok}:f:c"}])
+            if back.startswith("https://"):
+                markup["inline_keyboard"].append([{"text": "Открыть предложение", "url": back}])
+        return self.edit_or_send(chat, mid, text, markup)
 
     def demo_connect(self, chat: int, u: dict, o: dict, mod: dict):
         """«Подключить» из демо: обычный запрос доступа владельцу с пометкой предложения (один раз)."""
@@ -1755,9 +1827,11 @@ class Pult:
             return self.send_digest(chat)
         if t == "/modules":
             return self.show_modules(chat)
+        if t == "/scenarios":
+            return self.show_scenarios(chat)
         if t in ("/start", "/menu", "/help"):
             send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice, "
-                 "готовые агенты — /modules.",
+                 "готовые агенты — /modules, примерить агента на свою роль — /scenarios.",
                  reply_markup=MENU)
             if t == "/start" and not (st := self.setup_status())["ready"]:
                 self.show_setup(chat, st)
