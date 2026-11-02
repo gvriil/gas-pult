@@ -90,7 +90,7 @@ def test_panel_uses_only_known_keys():
 
 
 def test_simple_screen_has_no_hardcoded_text():
-    html = INDEX[INDEX.index('<div id="simple" hidden>'):INDEX.index("<script>", INDEX.index('<div id="simple"'))]
+    html = INDEX[INDEX.index('<div id="simple" hidden>'):INDEX.index("<script", INDEX.index('<div id="simple"'))]
     body = re.sub(r"<!--.*?-->", "", html, flags=re.S)
     assert not re.sub(r"<[^>]+>", "", body).strip()           # все строки — из словаря при запуске
     js = INDEX[INDEX.index("// ---------- простой режим"):INDEX.index("function simpleDemoText")]

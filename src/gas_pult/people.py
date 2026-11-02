@@ -21,6 +21,10 @@
 ip_at, mismatch}``; у владельцев (и у тех, кого нет в people.json) — рядом, в ``<data>/countries.json`` (0600), тем же
 видом. Номер телефона и IP не хранятся — только хеш номера с солью и коды стран.
 
+Короткий тур по панели (``index.html``, docs/MINI_APP.md#тур): у человека из people.json — поле ``tour: {business,
+dev, at}`` (``"done"`` — проходил, ``"dismissed"`` — «Не сейчас», ``null`` — ещё нет); у владельцев — в
+``<data>/tours.json`` (0600) тем же видом. Это его настройка: менять может и наблюдатель.
+
 Почта (``emailcode.py``): у человека из people.json — поле ``email: {address, at, second_factor, notify}``; у владельцев
 — рядом, в ``<data>/emails.json`` (0600), тем же видом. Адрес подтверждён кодом; по нему можно войти, пока у человека
 есть роль.
@@ -47,6 +51,8 @@ RANK = {"viewer": 1, "member": 2, "owner": 3}
 TITLES = {"owner": "владелец", "member": "участник", "viewer": "наблюдатель"}
 LANGS = ("ru", "en")
 PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
+TOURS = ("business", "dev")                 # тур для бизнеса и для разработчика
+TOUR_STATES = ("done", "dismissed")
 
 
 class People:
@@ -56,6 +62,7 @@ class People:
         self.country_store = store.with_name("countries.json")   # их же страна (признаки — country.py)
         self.prefs_store = store.with_name("prefs.json")          # их же настройки панели (простой режим, язык)
         self.email_store = store.with_name("emails.json")         # их же почта (emailcode.py)
+        self.tour_store = store.with_name("tours.json")          # их же отметки тура
 
     def _load(self) -> dict:
         try:
@@ -98,7 +105,7 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            for k in ("terms", "country", "email", "prefs"):  # смена роли их не сбрасывает
+            for k in ("terms", "country", "email", "tour", "prefs"):   # смена роли их не сбрасывает
                 if old.get(k):
                     rec[k] = old[k]
             d[str(int(uid))] = rec
@@ -110,7 +117,7 @@ class People:
             d = self._load()
             if d.pop(str(int(uid)), None) is not None:
                 self._save(d)
-            for f in (self.terms_store, self.country_store, self.email_store, self.prefs_store):
+            for f in (self.terms_store, self.country_store, self.email_store, self.tour_store, self.prefs_store):
                 t = self._load_side(f)
                 if t.pop(str(int(uid)), None) is not None:
                     write_private(f, json.dumps(t))
@@ -207,6 +214,35 @@ class People:
                 write_private(self.prefs_store, json.dumps(side))
         return {**rec, "saved": True}
 
+    def tour(self, uid) -> dict:
+        """Отметки тура человека: ``{business, dev, at}``; чего нет — None."""
+        empty = {"business": None, "dev": None, "at": None}
+        try:
+            uid = int(uid)
+        except (TypeError, ValueError):
+            return empty
+        p = None if uid in self.owners else self._load().get(str(uid))
+        rec = (p or {}).get("tour") if p else self._load_side(self.tour_store).get(str(uid))
+        rec = rec if isinstance(rec, dict) else {}
+        out = {k: rec.get(k) if rec.get(k) in TOUR_STATES else None for k in TOURS}
+        return {**out, "at": rec.get("at") if isinstance(rec.get("at"), int) else None}
+
+    def set_tour(self, uid: int, kind: str, state: str) -> dict:
+        """Запомнить отметку тура ``kind`` (business | dev): done или dismissed."""
+        if kind not in TOURS or state not in TOUR_STATES:
+            raise ValueError("тур: business или dev; отметка: done или dismissed")
+        uid = int(uid)
+        with self.lock:
+            rec = {**self.tour(uid), kind: state, "at": int(time.time())}
+            d = self._load()
+            if uid not in self.owners and str(uid) in d:
+                d[str(uid)]["tour"] = rec
+                self._save(d)
+            else:
+                side = self._load_side(self.tour_store)
+                side[str(uid)] = rec
+                write_private(self.tour_store, json.dumps(side))
+        return rec
     def email(self, uid) -> dict:
         """Почта человека: {address, at, second_factor, notify} или пустая запись."""
         try:
