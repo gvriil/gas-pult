@@ -29,7 +29,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import country, digest, fallback, models, people, providers, setup, terms, transcripts, voice
+from gas_pult import country, digest, fallback, models, people, providers, setup, terms, transcripts, usage, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People, allowed
@@ -131,6 +131,8 @@ class Pult:
                                           countries=self.window_countries)
         # вход в Claude Code из пульта (setup.py); config_dir/env — когда у каждого человека будет своя папка Claude
         self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
+        self.meter = usage.Meter()                         # расход сессий по журналам (usage.py)
+        self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -271,9 +273,14 @@ class Pult:
         uid = getattr(self.actor, "uid", None)             # из бота — человек; из панели и монитора — проверено там
         if uid is not None and not models.allowed(w.get("profile") or "claude", self.countries(uid)):
             raise Denied(country.DENY)
+        if self.cost_paused(w["id"]):                       # пауза по расходу — пока владелец не решит
+            raise NotReady("сессия на паузе по расходу — продолжить может владелец (кнопка в боте или в панели)")
         with self.hold(w["id"]):
             self.ready_for_text(w["id"])
             self.tmux.paste(w["id"], text)
+
+    def cost_paused(self, wid: str) -> bool:
+        return getattr(self, "cfg", None) is not None and wid in (self.state().get("cost_paused") or {})
 
     def run_slash(self, wid: str, cmd: str) -> list[str]:
         """Слэш-команда как с клавиатуры — одна для бота и панели; через 2,5 с — экран (меню или ответ)."""
@@ -588,9 +595,82 @@ class Pult:
                     elif not quiet:
                         self.show_dialog(w, scr, shown)
                 self.offer_hints()
+                self.cost_watch(st)
             except Exception as e:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
+
+    # ---------- расход: лимиты на сессию и на день (usage.py) ----------
+    def pool_of(self, w: dict) -> str:
+        """Чей расход: «owner» — учётка владельца (и окна, открытые на ней участником); иначе ID участника со своей
+        папкой Claude Code. Чужие учётки в пул владельца не попадают."""
+        return "owner" if self.home_of(w) is None else str(w.get("by"))
+
+    def opened_by(self, w: dict) -> int | None:
+        """Кто открыл окно на учётке владельца, если это не владелец (пометка на карточке)."""
+        by = str(w.get("by") or "")
+        return int(by) if by.isdigit() and int(by) not in self.cfg.owners and self.home_of(w) is None else None
+
+    def cost_sessions(self, ws: list[dict] | None = None, today: str | None = None) -> list[dict]:
+        """Окна Claude пула владельца с расходом текущей сессии — для проверки лимитов."""
+        out = []
+        for w in ws if ws is not None else self.tmux.windows():
+            if w["cmd"] != "claude" or self.pool_of(w) != "owner":
+                continue
+            s = self.meter.session(w["path"], None, today)
+            if s:
+                pub = usage.public(s["total"])
+                out.append({"w": w["id"], "name": w["name"], "sid": s["id"], "usd": pub["usd"]})
+        return out
+
+    def cost_watch(self, st: dict, force: bool = False):
+        """Раз в 10 с: лимиты заданы — сверить расход; превышение — Esc в занятое окно, пауза, один вопрос владельцу.
+        Лимитов нет и пауз нет — ничего не читаем (поведение пульта прежнее)."""
+        lim = usage.limits(st)
+        if not force and (time.time() - self.cost_at < 10 or (not any(lim.values()) and not st.get("cost_paused"))):
+            return
+        self.cost_at = time.time()
+        today = datetime.now().date().isoformat()
+        sessions = self.cost_sessions(today=today)
+        day = self.meter.day(None, today) if lim["day"] else usage.empty()
+        upd, new = usage.watch(st, sessions, day["usd"], today)
+        if upd != {k: st.get(k) or {} for k in upd}:
+            self.set_state(**upd)
+        for p in new:
+            self.cost_pause(p)
+
+    def cost_pause(self, p: dict):
+        """Новая пауза: занятое окно — Esc (прервать ход; на вопрос Claude не отвечаем), владельцу — вопрос."""
+        scr = "\n".join(self.tmux.screen(p["w"], 15))
+        if BUSY.search(scr) and not QUESTION.search(scr):
+            self.tmux.keys(p["w"], "Escape")
+            paused = dict(self.state().get("cost_paused") or {})
+            if p["w"] in paused:
+                paused[p["w"]]["interrupted"] = True
+                self.set_state(cost_paused=paused)
+        self.broadcast(usage.question(p), reply_markup=kb([[("▶️ Продолжить, +лимит", f"cost:go:{p['w']}"),
+                                                            ("⏹ Остановить", f"cost:stop:{p['w']}")]]))
+
+    def cost_decide(self, wid: str, act: str) -> str:
+        """Решение владельца (кнопка в боте или в панели) → state.json. «Продолжить» — окна, где ход прервали Esc,
+        просим продолжить. Ответ — строка для человека."""
+        st = self.state()
+        before = dict(st.get("cost_paused") or {})
+        upd, p = usage.decide(st, wid, act, datetime.now().date().isoformat())
+        self.set_state(**upd)
+        name = p.get("name") or wid
+        if act == "stop":
+            return f"⏹ «{name}» остаётся на паузе по расходу. Снять — «Продолжить» или новый лимит в настройках панели."
+        resumed = 0
+        for x, rec in before.items():
+            if x in upd["cost_paused"] or not rec.get("interrupted") or not (w := self.tmux.window(x)):
+                continue
+            try:
+                self.to_claude(w, "Продолжай с того места, где остановился.")
+                resumed += 1
+            except (NotReady, Denied) as e:
+                print("cost:", e, flush=True)
+        return f"▶️ «{name}»: пауза снята, лимит увеличен." + (" Claude продолжает." if resumed else "")
 
     # ---------- утренняя сводка «ждёт владельца» ----------
     def digest_items(self) -> list[dict]:
@@ -955,6 +1035,12 @@ class Pult:
             return send(f"→ [{w['name']}]: {h}")
         if kind == "dg":
             return self.on_digest(chat, arg)
+        if kind == "cost":                                 # пауза по расходу: продолжить или остановить (владелец)
+            act, _, wid = arg.partition(":")
+            try:
+                return send(self.cost_decide(wid, act))
+            except LookupError as e:
+                return send(f"Уже решено: {e}.")
         if kind == "su":                                   # мастер: вход в Claude, проверка — только владельцу
             if not allowed(self.people.role(q["from"]["id"]), "owner"):
                 return send("Это может только владелец.")

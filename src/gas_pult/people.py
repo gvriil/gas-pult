@@ -187,6 +187,10 @@ def claude_dir(data: Path, uid, owners) -> Path | None:
 
 
 def home_of(w: dict, data: Path | None = None) -> Path | None:
-    """Папка Claude Code окна — по отметке ``@gas_pult_by`` (кто открыл); без отметки — владельца (None)."""
+    """Папка Claude Code окна — по отметке ``@gas_pult_by`` (кто открыл); без отметки — владельца (None).
+
+    Окна владельца тоже помечаются его ID (для запасных — по его странам), но своей папки у него нет: отметка без
+    папки — учётка владельца (None). Участнику папку создаёт ``claude_dir`` до запуска окна."""
     by = str(w.get("by") or "")
-    return (data or data_dir()) / "people" / by / "claude" if by.isdigit() else None
+    d = (data or data_dir()) / "people" / by / "claude"
+    return d if by.isdigit() and d.is_dir() else None
