@@ -168,6 +168,7 @@ def server(monkeypatch):
     monkeypatch.setattr(panel, "window", lambda wid: {"id": wid, "name": "x", "path": "/tmp/x", "profile": "claude"}
                         if wid == "@1" else None)
     monkeypatch.setattr(panel.tmux, "screen", lambda wid, n=40: screen["lines"])
+    monkeypatch.setattr(panel.tmux, "window", lambda wid: None)       # окна нет — без настоящего tmux (macOS в CI)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(panel))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield panel, f"http://127.0.0.1:{srv.server_address[1]}", screen
