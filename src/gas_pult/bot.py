@@ -85,6 +85,13 @@ DEMO_GONE = "Демо закончилось — откройте ссылку �
 DEMO_RATE = (5, 3600)          # сценарий демо — не чаще 5 раз в час на человека (счётчик только в памяти)
 
 
+def _clip(text: str, limit: int = 4000) -> str:
+    """Одно сообщение Telegram (лимит 4096): лишние строки срезаем целиком, в конце — «…»."""
+    if len(text) <= limit:
+        return text
+    return text[:text.rfind("\n", 0, limit - 2)] + "\n…"
+
+
 class NotReady(RuntimeError):
     """Окно не готово принять текст — сообщение не вставляем вслепую, а говорим человеку почему."""
 
@@ -780,13 +787,34 @@ class Pult:
         threading.Thread(target=run, daemon=True).start()
 
     def show_modules(self, chat: int):
+        """Каталог в два шага (одно сообщение Telegram — до 4096 знаков): «Общие» модули сразу, отрасли — кнопками,
+        по нажатию (md:g:<n>) — модули отрасли."""
         ms = modules.catalog()
         if not ms:
             return self.send(chat, "Модулей нет.")
-        lines = ["🧩 Модули — готовые агенты под задачу. Выберите, чтобы посмотреть и создать пространство:"]
-        for g in dict.fromkeys(m["industry"] for m in ms):          # группы — по отрасли, в порядке каталога
-            lines += ["", f"▪️ {g}"] + [f"• {m['title']} — {m['about']}" for m in ms if m["industry"] == g]
-        self.send(chat, "\n".join(lines), reply_markup=kb([[(m["title"], f"md:v:{m['id']}")] for m in ms]))
+        groups = list(dict.fromkeys(m["industry"] for m in ms))     # в порядке каталога, «Общие» — первыми
+        common = [m for m in ms if m["industry"] == "Общие"]
+        lines = ["🧩 Модули — готовые агенты под задачу. Выберите модуль или отрасль:"]
+        if common:
+            lines += ["", "▪️ Общие"] + [f"• {m['title']} — {m['about']}" for m in common]
+        inds = [(i, g) for i, g in enumerate(groups) if g != "Общие"]
+        if inds:
+            lines += ["", "Отрасли:"] + [f"▪️ {g} — {sum(m['industry'] == g for m in ms)}" for _, g in inds]
+        rows = [[(m["title"], f"md:v:{m['id']}")] for m in common] + [[(f"▪️ {g}", f"md:g:{i}")] for i, g in inds]
+        self.send(chat, _clip("\n".join(lines)), reply_markup=kb(rows))
+
+    def show_industry(self, chat: int, n: str):
+        """md:g:<n> — модули одной отрасли (n — номер группы в порядке каталога)."""
+        ms = modules.catalog()
+        groups = list(dict.fromkeys(m["industry"] for m in ms))
+        if not n.isdigit() or int(n) >= len(groups):
+            return self.show_modules(chat)                      # каталог поменялся — показываем заново
+        g = groups[int(n)]
+        own = [m for m in ms if m["industry"] == g]
+        lines = [f"🧩 {g} — модулей: {len(own)}. Выберите, чтобы посмотреть и создать пространство:", ""]
+        lines += [f"• {m['title']} — {m['about']}" for m in own]
+        rows = [[(m["title"], f"md:v:{m['id']}")] for m in own] + [[("‹ Все отрасли", "md:list:")]]
+        self.send(chat, _clip("\n".join(lines)), reply_markup=kb(rows))
 
     def module_text(self, m: dict) -> str:
         out = [f"🧩 {m['title']} · {m['industry']}", "", m["description"] or m["about"]]
@@ -795,18 +823,21 @@ class Pult:
             out += [f"• {x['title']}{' — по желанию' if x['optional'] else ''}: {x['why']}" for x in m["integrations"]]
         if m["schedule"]:
             out += ["", "Расписание:"]
-            out += [f"• {x.get('when') or x['at']} {modules.days_text(x['days'])} — {x['title']}"
-                    for x in m["schedule"]]
+            out += [f"• {x.get('when') or x['at']}" + ("" if x.get("workday") else f" {modules.days_text(x['days'])}")
+                    + f" — {x['title']}" for x in m["schedule"]]       # раз в месяц — без дней недели
         if m["decisions"]:
             out += ["", "Решения кнопками:"]
             out += [f"• {x['question']} ({' / '.join(x['options'])})" for x in m["decisions"]]
         return "\n".join(out)
 
     def on_module(self, chat: int, arg: str):
-        """md:v:<id> — описание; md:new:<id> — создать с именем по умолчанию; md:name:<id> — спросить имя; md:list."""
+        """md:v:<id> — описание; md:new:<id> — создать с именем по умолчанию; md:name:<id> — спросить имя; md:list —
+        каталог; md:g:<n> — модули отрасли."""
         act, _, mid = arg.partition(":")
         if act == "list":
             return self.show_modules(chat)
+        if act == "g":
+            return self.show_industry(chat, mid)
         try:
             m = modules.get(mid)
         except LookupError as e:
