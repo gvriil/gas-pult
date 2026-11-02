@@ -1,4 +1,4 @@
-"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|last|version]``."""
+"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|offer|last|version]``."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import getpass
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -219,6 +220,47 @@ def cmd_geoip(a):
         print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
 
 
+def cmd_offer(a):
+    """Предложения GASTECH (offers.py, docs/OFFERS.md): new — новый неугадываемый код и файл 0600 в
+    ``<config>/offers/``; list — какие есть; revoke — отозвать (страница сразу отвечает 404)."""
+    from gas_pult import offers
+
+    try:
+        if a.action == "new":
+            if a.file:
+                text = Path(a.file).read_text(encoding="utf-8")
+            elif a.name:
+                text = offers.example_text()
+            else:
+                raise SystemExit("Укажите файл-шаблон или --name \"Имя бизнеса\" (тогда — пример с этим именем).\n"
+                                 "Пример: gas-pult offer example > my.toml")
+            if a.expires and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", a.expires):
+                raise SystemExit("--expires — дата ГГГГ-ММ-ДД")
+            code, path = offers.create(text, a.name or "", a.expires or "")
+            base = (a.url or "").rstrip("/")
+            print(f"✓ Предложение: {path} (0600)")
+            print(f"  Ссылка: {base}/offer/{code}" if base else
+                  f"  Путь: /offer/{code} — перед ним адрес панели (--url https://…)")
+            print("  Отозвать: gas-pult offer revoke " + code)
+        elif a.action == "list":
+            items = offers.listing()
+            if not items:
+                return print(f"Предложений нет ({offers.offers_dir()}).")
+            for x in items:
+                till = f" · до {x['expires']}" if x["expires"] else ""
+                print(f"{x['code']}  {x['business']} · {x['state']}{till} · {', '.join(x['modules'])}")
+        elif a.action == "revoke":
+            if not a.file:
+                raise SystemExit("Укажите код: gas-pult offer revoke <код>")
+            print(f"✓ Отозвано: {offers.revoke(a.file)} — страница отвечает «не найдена».")
+        elif a.action == "example":
+            print(offers.example_text(), end="")
+    except offers.OfferError as e:
+        raise SystemExit(f"Предложение: {e}") from None
+    except OSError as e:
+        raise SystemExit(f"Предложение: {e}") from None
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -249,6 +291,13 @@ def main(argv: list[str] | None = None):
     s.add_argument("action", choices=["status", "update"], nargs="?", default="status")
     s.add_argument("ips", nargs="*", help="проверить адреса (только для status)")
     s.set_defaults(fn=cmd_geoip)
+    s = sub.add_parser("offer", help="предложения бизнесу: new <файл> | new --name … | list | revoke <код> | example")
+    s.add_argument("action", choices=["new", "list", "revoke", "example"])
+    s.add_argument("file", nargs="?", help="new — файл-шаблон предложения; revoke — код")
+    s.add_argument("--name", help="имя бизнеса (new без файла — пример с этим именем)")
+    s.add_argument("--expires", help="последний день работы ссылки, ГГГГ-ММ-ДД")
+    s.add_argument("--url", help="адрес панели снаружи — чтобы напечатать готовую ссылку")
+    s.set_defaults(fn=cmd_offer)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>Предложение GASTECH</title>
+<link rel="icon" href="data:,">
+<style>
+  /* Предложение GASTECH (offers.py, docs/OFFERS.md). Токены — те же, что в начале index.html; никакого бренда клиента. */
+  :root, :root[data-theme="light"] {
+    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F0F4F9;
+    --border-subtle: #E1E5EA; --border-focus: #0B57D0;
+    --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
+    --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
+    --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6;
+    --status-success: #146C2E; --status-danger: #B3261E;
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
+    --shadow-sm: 0 1px 2px rgba(31,31,31,.06);
+  }
+  :root[data-theme="dark"] {
+    --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C;
+    --border-subtle: #3C4043; --border-focus: #A8C7FA;
+    --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
+    --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
+    --status-running: #81C995; --status-approval: #FDD663; --status-approval-bg: #3A2E00;
+    --status-success: #6DD58C; --status-danger: #F2B8B5;
+    --shadow-sm: none;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); font-variant-numeric: tabular-nums;
+         font: calc(15px * var(--fz, 1))/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  button, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:not(:disabled):active { transform: scale(.97); }
+  [hidden] { display: none !important; }
+  .i { width: 20px; height: 20px; flex: none; display: block; } .i.s16 { width: 16px; height: 16px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px 40px; }
+  .kicker { display: inline-flex; align-items: center; gap: 6px; font-size: calc(12px * var(--fz, 1)); font-weight: 600; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--accent-primary); background: var(--accent-soft); padding: 4px 10px; border-radius: var(--radius-pill); }
+  h1 { font-size: calc(26px * var(--fz, 1)); line-height: 1.2; font-weight: 600; margin: 12px 0 6px; overflow-wrap: anywhere; }
+  h2 { font-size: calc(19px * var(--fz, 1)); font-weight: 600; margin: 0 0 4px; }
+  h3 { font-size: calc(16px * var(--fz, 1)); font-weight: 600; margin: 0; }
+  .lead { color: var(--text-secondary); margin: 0 0 12px; }
+  .muted { color: var(--text-muted); font-size: calc(13px * var(--fz, 1)); }
+  section { margin: 28px 0 0; }
+  .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); }
+  .card + .card { margin-top: 12px; }
+  .pains { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+  .pains li { display: flex; gap: 10px; align-items: flex-start; background: var(--bg-subtle); border-radius: var(--radius-md); padding: 10px 12px; }
+  .pains .i { color: var(--status-approval); margin-top: 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: calc(12px * var(--fz, 1)); font-weight: 500; padding: 2px 8px; border-radius: var(--radius-pill);
+          background: var(--bg-subtle); color: var(--text-secondary); white-space: nowrap; }
+  .chip.demo { color: var(--status-approval); background: var(--status-approval-bg); }
+  .mod-head { display: flex; gap: 12px; align-items: flex-start; }
+  .mod-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-primary); flex: none; }
+  .demo { margin-top: 14px; border-radius: var(--radius-md); background: var(--bg-subtle); padding: 12px; }
+  .demo-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; font-weight: 600; font-size: calc(14px * var(--fz, 1)); }
+  .kpi { width: 100%; border-collapse: collapse; font-size: calc(14px * var(--fz, 1)); }
+  .kpi th, .kpi td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+  .kpi th { color: var(--text-muted); font-weight: 500; font-size: calc(12px * var(--fz, 1)); }
+  .kpi td.num, .kpi th.num { text-align: right; white-space: nowrap; }
+  .kpi tr:last-child td { border-bottom: 0; }
+  .bad { color: var(--status-danger); } .good { color: var(--status-success); }
+  .msg { background: var(--bg-surface); border-radius: 14px 14px 14px 4px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: calc(14px * var(--fz, 1)); border: 1px solid var(--border-subtle); }
+  .q { margin-top: 12px; }
+  .q p { margin: 0 0 8px; font-weight: 500; }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opt { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-pill); padding: 8px 14px; font-size: calc(14px * var(--fz, 1)); }
+  .opt.on { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--accent-soft); }
+  .next { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; font-size: calc(14px * var(--fz, 1)); color: var(--text-secondary); }
+  .next .i { color: var(--accent-primary); margin-top: 1px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-pill); padding: 13px 18px;
+         background: var(--accent-primary); color: var(--on-accent); font-weight: 600; text-decoration: none; min-height: 48px; }
+  .btn.ghost { background: transparent; color: var(--accent-primary); border: 1px solid var(--border-subtle); }
+  .btn.quiet { background: var(--bg-subtle); color: var(--text-primary); }
+  .btn.danger { background: transparent; color: var(--status-danger); border: 1px solid color-mix(in srgb, var(--status-danger) 35%, var(--border-subtle)); }
+  .btn.sm { min-height: 40px; padding: 8px 14px; width: auto; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; } .row > .btn { flex: 1 1 200px; }
+  .note { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--radius-md); padding: 10px 12px; font-size: calc(14px * var(--fz, 1)); }
+  .note.info { background: var(--accent-soft); } .note.info .i { color: var(--accent-primary); }
+  .note.warn { background: var(--status-approval-bg); } .note.warn .i { color: var(--status-approval); }
+  .note.bad { background: color-mix(in srgb, var(--status-danger) 12%, transparent); } .note.bad .i { color: var(--status-danger); }
+  .note.ok { background: color-mix(in srgb, var(--status-success) 12%, transparent); } .note.ok .i { color: var(--status-success); }
+  .field { margin: 12px 0 0; } .field label { display: block; font-weight: 600; font-size: calc(14px * var(--fz, 1)); margin: 0 0 4px; }
+  select, input[type=text] { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); min-height: 44px; }
+  select:focus, input:focus { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+  .drop { display: block; cursor: pointer; margin-top: 12px; border: 1.5px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 18px 12px; text-align: center; color: var(--text-secondary); }
+  .drop .i { margin: 0 auto; width: 28px; height: 28px; color: var(--accent-primary); }
+  .demo-top > span:first-child, .q p { display: flex; gap: 6px; align-items: center; }
+  .drop.over { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+  .stat { background: var(--bg-subtle); border-radius: var(--radius-md); padding: 10px 12px; min-width: 0; }
+  .stat .l { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); } .stat .v { font-size: calc(18px * var(--fz, 1)); font-weight: 600; overflow-wrap: anywhere; }
+  .stat .n { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); }
+  .tbl { margin: 14px 0 0; overflow-x: auto; } .tbl h3 { margin-bottom: 4px; font-size: calc(14px * var(--fz, 1)); }
+  .map { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  details summary { cursor: pointer; padding: 8px 0; color: var(--accent-primary); font-weight: 500; }
+  .steps { display: flex; gap: 6px; margin: 0 0 14px; } .steps i { flex: 1; height: 4px; border-radius: 4px; background: var(--border-subtle); }
+  .steps i.on { background: var(--accent-primary); }
+  .terms ol { padding-left: 20px; margin: 8px 0 12px; } .terms li { margin: 0 0 6px; }
+  .cc { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin: 10px 0; }
+  .cc button, .pick { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 9px 10px; background: var(--bg-surface); text-align: left; display: flex; justify-content: space-between; gap: 6px; }
+  .cc button.on, .pick.on { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .pick { width: 100%; margin: 0 0 8px; flex-direction: column; } .pick span { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  a { color: var(--accent-primary); }
+  footer { margin: 36px 0 0; color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); text-align: center; }
+  .spin { animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  @media (min-width: 900px) { .wrap { padding-top: 40px; } h1 { font-size: calc(32px * var(--fz, 1)); } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="muted">Загружаю предложение…</p></div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const code = (location.pathname.match(/^\/offer\/([A-Za-z0-9_-]+)/) || [])[1] || "";
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const P = {
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.3"/>',
+  lock: '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',
+  wait: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>', chat: '<path d="M4.5 5.5h15v10.5H10l-4.5 3.5v-3.5h-1z"/>',
+  file: '<path d="M7 3.5h7l4.5 4.5v12.5H7z"/><path d="M14 3.5V8h4.5"/>', ext: '<path d="M14 4h6v6M20 4l-9 9M18.5 14v5.5h-14v-14H10"/>',
+  puzzle: '<path d="M12 3.2l7.8 4.4v8.8L12 20.8l-7.8-4.4V7.6z"/><path d="M4.4 7.7L12 12l7.6-4.3M12 12v8.6"/>',
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  chart: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-5M12 16V8M16 16v-3"/>', send: '<path d="M4 12l16-7-6 15-2.5-6.5z"/>',
+  trash: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13"/>', refresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4.5v4.5h-4.5"/>',
+  next: '<path d="M9 6l6 6-6 6"/>', book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/>',
+  inbox: '<path d="M4 13.5l2.5-8h11l2.5 8v6H4z"/><path d="M4 13.5h5l1 2h4l1-2h5"/>',
+};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
+const note = (kind, icon, html) => `<div class="note ${kind}">${ic(icon)}<div>${html}</div></div>`;
+
+function applyTheme() {
+  const mode = params.get("theme") || "auto";
+  const dark = mode === "dark" || (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+}
+applyTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
+
+async function api(path, body, extra = {}) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", ...extra }, body: body instanceof Blob ? body : JSON.stringify(body) };
+  if (body instanceof Blob) opt.headers = { "Content-Type": "application/octet-stream", ...extra };
+  const r = await fetch(`/api/offer/${code}${path}`, { credentials: "same-origin", ...opt });
+  let d = {}; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(d.error || `ошибка ${r.status}`);
+  return d;
+}
+async function busy(btn, label, fn) {
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = ic("refresh", "spin") + esc(label);
+  try { return await fn(); } finally { btn.disabled = false; btn.innerHTML = old; }
+}
+
+let D = null, lastFile = null;
+const KIND_ICON = { summary: "chart", reminder: "bell", request: "inbox" };
+
+function demoCard(m) {
+  const d = m.demo; let body = "";
+  if (d.summary) {
+    const s = d.summary;
+    body = `<div class="demo-top"><span>${esc(s.title)}</span><span class="chip demo">демо</span></div>
+      <table class="kpi"><thead><tr><th>${esc(s.point_word[0].toUpperCase() + s.point_word.slice(1))}</th><th class="num">Выручка</th><th class="num">План</th><th class="num">Откл.</th><th class="num">Ср. чек</th></tr></thead>
+      <tbody>${s.rows.map((r) => `<tr><td>${esc(r.point)}</td><td class="num">${esc(r.fact)}</td><td class="num">${esc(r.plan)}</td><td class="num ${r.bad ? "bad" : ""}">${esc(r.dev)}</td><td class="num">${esc(r.avg)}</td></tr>`).join("")}</tbody></table>
+      <p class="muted" style="margin:8px 0 0">${esc(s.top)}</p>`;
+  } else if (d.reminder) {
+    const r = d.reminder;
+    body = `<div class="demo-top"><span>Напоминание клиенту · ${esc(r.to)}</span><span class="chip demo">демо</span></div>
+      <div class="msg">${esc(r.text)}</div>${d.question ? "" : `<p style="margin:10px 0 0;font-weight:600">${esc(r.ask)}</p>`}`;
+  } else if (d.request) {
+    const r = d.request;
+    body = `<div class="demo-top"><span>${esc(r.title)} · ${esc(r.via)}</span><span class="chip demo">демо</span></div>
+      <div class="msg">${esc(r.text)}\n${r.via === "карты" ? "Автор" : "Клиент"}: ${esc(r.who)}</div>`;
+  }
+  if (d.question) body += `<div class="q"><p>${ic("chat", "s16")} ${esc(d.question.text)}</p><div class="opts">${d.question.options.map((o, j) => `<button class="opt" data-m="${esc(m.id)}" data-j="${j}">${esc(o.label)}</button>`).join("")}</div><div class="next" hidden></div></div>`;
+  return `<div class="demo" data-demo="${esc(m.id)}">${body}</div>`;
+}
+
+function render() {
+  const d = D;
+  document.title = `Предложение GASTECH — ${d.business}`;
+  $("app").innerHTML = `
+    <span class="kicker">Предложение GASTECH</span>
+    <h1>Предложение GASTECH для ${esc(d.business)}</h1>
+    <p class="lead">${esc(d.industry)} · агенты, которые каждый день делают рутину и спрашивают вас кнопками${d.expires ? ` · предложение действует до ${esc(d.expires.split("-").reverse().join("."))}` : ""}</p>
+    ${note("warn", "warn", "Цифры и имена на этой странице выдуманы для демонстрации. Логотипов и данных вашей компании здесь нет.")}
+    <div class="row"><button class="btn" data-go="connect">${ic("check")}Подключить</button><button class="btn ghost" data-go="upload">${ic("file")}Загрузить выгрузку</button></div>
+    <section><h2>Что болит</h2><ul class="pains">${d.pains.map((p) => `<li>${ic("warn")}<span>${esc(p)}</span></li>`).join("")}</ul></section>
+    <section><h2>Что предлагаем</h2><p class="lead">${d.modules.length} ${d.modules.length === 1 ? "модуль" : "модуля"} — готовые агенты. Нажимайте кнопки в примерах: покажем, что произошло бы, ничего не отправляя.</p>
+      ${d.modules.map((m) => `<div class="card"><div class="mod-head"><div class="mod-icon">${ic(KIND_ICON[m.demo.kind] || "puzzle")}</div><div><h3>${esc(m.title)}</h3><div class="muted">${esc(m.about)}</div></div></div>
+        ${demoCard(m)}
+        <div class="row"><button class="btn ghost sm" data-tg="${esc(m.id)}">${ic("send")}Попробовать в Telegram</button></div><div data-tgout="${esc(m.id)}"></div></div>`).join("")}
+    </section>
+    <section id="upload"><h2>Загрузите выгрузку — отчёт за 2 минуты</h2>
+      <p class="lead">CSV или XLSX из кассы, CRM или 1С: продажи, клиенты или должники. Сводку считает скрипт — без модели, за секунды.</p>
+      ${note("info", "lock", `Файл обрабатывается в памяти и удаляется через ${d.upload.ttl_min} минут или по кнопке «Удалить мои данные»; на диск не пишется, данные не используются для обучения, модель не вызывается. В отчёте — только итоги и сокращённые имена («Иван П.»), без телефонов и ИНН.`)}
+      <div class="card" style="margin-top:12px">
+        <div class="field"><label for="kind">Что в файле</label><select id="kind"><option value="">Определить по заголовкам</option>${Object.entries(d.upload.kinds).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("")}</select></div>
+        <label class="drop" id="drop">${ic("file")}<div style="margin-top:6px"><b>Выберите файл</b> или перетащите сюда</div><div class="muted">CSV или XLSX, до ${d.upload.max_mb} МБ</div>
+          <input type="file" id="file" accept=".csv,.xlsx,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
+        <div id="repOut"></div>
+      </div>
+    </section>
+    <section id="connect"><h2>Подключить</h2><p class="lead">Четыре шага: условия, страна, модуль, вход через Telegram. До решения владельца пульта сессии не создаются и модель не тратится.</p>
+      <div class="card" id="wiz"></div></section>
+    <footer>Предложение GASTECH · страница не индексируется · ${esc(d.industry)}</footer>`;
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => $(b.dataset.go).scrollIntoView({ behavior: "smooth" })));
+  bindDemo(); bindUpload(); renderReports(); wizard();
+}
+
+function bindDemo() {
+  document.querySelectorAll(".opt").forEach((b) => b.addEventListener("click", () => {
+    const m = D.modules.find((x) => x.id === b.dataset.m), o = m.demo.question.options[+b.dataset.j];
+    const box = b.closest(".q");
+    box.querySelectorAll(".opt").forEach((x) => x.classList.toggle("on", x === b));
+    const nx = box.querySelector(".next"); nx.hidden = false;
+    nx.innerHTML = `${ic("next")}<span><b>Что произошло бы:</b> ${esc(o.next)} <span class="chip demo">демо — ничего не выполнено</span></span>`;
+  }));
+  document.querySelectorAll("[data-tg]").forEach((b) => b.addEventListener("click", () => busy(b, "Готовлю…", async () => {
+    const out = document.querySelector(`[data-tgout="${CSS.escape(b.dataset.tg)}"]`);
+    try {
+      const r = await api("/telegram", { module: b.dataset.tg });
+      out.innerHTML = `<div style="margin-top:10px">${note("ok", "send", `Откроется бот: нажмите «Запустить» (Start) — придут 3–4 сообщения с кнопками. Ссылка действует час. <a href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">Открыть Telegram</a>`)}</div>`;
+      window.open(r.link, "_blank", "noopener");
+    } catch (e) { out.innerHTML = `<div style="margin-top:10px">${note("bad", "warn", esc(e.message))}</div>`; }
+  })));
+}
+
+// ---------- загрузка выгрузки ----------
+function bindUpload() {
+  const drop = $("drop"), inp = $("file");
+  inp.addEventListener("change", () => { if (inp.files[0]) send(inp.files[0]); inp.value = ""; });
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) send(e.dataTransfer.files[0]); });
+}
+async function send(file, mapping, kind) {
+  lastFile = file;
+  if (file.size > D.upload.max_mb * 1048576) { $("repOut").innerHTML = note("bad", "warn", `Файл больше ${D.upload.max_mb} МБ — выгрузите период покороче.`); return; }
+  $("repOut").innerHTML = `<div style="margin-top:12px">${note("info", "wait", "Считаю сводку…")}</div>`;
+  const extra = { "X-Offer-Kind": $("kind").value || kind || "" };
+  if (mapping) extra["X-Offer-Map"] = JSON.stringify(mapping);
+  try {
+    const r = await api("/upload", file, extra);
+    if (r.error) { $("repOut").innerHTML = `<div style="margin-top:12px">${note("warn", "warn", esc(r.error))}</div>${mapUI(r)}`; bindMap(r); return; }
+    D.session.reports = [r, ...D.session.reports.filter((x) => x.kind !== r.kind)];
+    renderReports(r.kind);
+  } catch (e) { $("repOut").innerHTML = `<div style="margin-top:12px">${note("bad", "warn", esc(e.message))}</div>`; }
+}
+function mapUI(r) {
+  const cols = r.columns.map((c, i) => `<option value="${i}">${esc(c)}</option>`).join("");
+  return `<details ${r.error ? "open" : ""}><summary>Тип и столбцы — выбрать вручную</summary>
+    <div class="map">${r.roles.map((x) => `<div class="field"><label>${esc(x.title)}</label><select data-role="${esc(x.id)}"><option value="">— нет —</option>${cols}</select></div>`).join("")}</div>
+    ${r.private?.length ? `<p class="muted">Не используются и в отчёт не попадают: ${esc(r.private.join(", "))}.</p>` : ""}
+    <div class="row"><button class="btn quiet sm" id="remap">${ic("refresh")}Пересчитать</button></div></details>`;
+}
+function bindMap(r) {
+  document.querySelectorAll("[data-role]").forEach((s) => { const v = r.mapping[s.dataset.role]; if (v !== undefined) s.value = String(v); });
+  $("remap")?.addEventListener("click", () => {
+    if (!lastFile) { $("repOut").insertAdjacentHTML("afterbegin", note("warn", "warn", "Выберите файл ещё раз — страница его не хранит.")); return; }
+    const m = {}; document.querySelectorAll("[data-role]").forEach((s) => { if (s.value !== "") m[s.dataset.role] = +s.value; });
+    send(lastFile, m, r.kind);
+  });
+}
+function renderReports(kind) {
+  const reps = D.session.reports;
+  if (!reps.length) return;
+  const r = reps.find((x) => x.kind === kind) || reps[0];
+  const left = Math.max(0, Math.round((r.exp * 1000 - Date.now()) / 60000));
+  $("repOut").innerHTML = `<div style="margin-top:14px">
+    <div class="demo-top"><span>${ic("chart", "s16")} ${esc(r.kind_title)} · ${r.rows} строк${r.took_ms != null ? ` · посчитано за ${(r.took_ms / 1000).toFixed(1)} с` : ""}</span><span class="chip">удалится через ${left} мин</span></div>
+    <div class="cards">${r.cards.map((c) => `<div class="stat"><div class="l">${esc(c.label)}</div><div class="v">${esc(c.value)}</div>${c.note ? `<div class="n">${esc(c.note)}</div>` : ""}</div>`).join("")}</div>
+    ${r.tables.map((t) => `<div class="tbl"><h3>${esc(t.title)}</h3><table class="kpi"><thead><tr>${t.head.map((h, i) => `<th class="${i ? "num" : ""}">${esc(h)}</th>`).join("")}</tr></thead><tbody>${t.rows.map((row) => `<tr>${row.map((v, i) => `<td class="${i ? "num" : ""}">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`).join("")}
+    ${r.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join("")}
+    ${reps.length > 1 ? `<div class="opts" style="margin:8px 0">${reps.map((x) => `<button class="opt ${x.kind === r.kind ? "on" : ""}" data-rep="${esc(x.kind)}">${esc(x.kind_title)}</button>`).join("")}</div>` : ""}
+    ${mapUI(r)}
+    <div class="row"><button class="btn danger sm" id="forget">${ic("trash")}Удалить мои данные</button></div></div>`;
+  bindMap(r);
+  document.querySelectorAll("[data-rep]").forEach((b) => b.addEventListener("click", () => renderReports(b.dataset.rep)));
+  $("forget").addEventListener("click", (e) => busy(e.currentTarget, "Удаляю…", async () => {
+    try { await api("/forget", {}); D.session = { reports: [], wizard: {} }; lastFile = null; $("repOut").innerHTML = `<div style="margin-top:12px">${note("ok", "check", "Удалено: отчёты и выбор в мастере стёрты с сервера.")}</div>`; wizard(); }
+    catch (err) { $("repOut").insertAdjacentHTML("afterbegin", note("bad", "warn", esc(err.message))); }
+  }));
+}
+
+// ---------- мастер «Подключить» ----------
+const DENY = "Этот сервис недоступен в вашей стране по условиям поставщика";
+let wizStep = 0, tgTimer = null;
+function wizard(step) {
+  const w = D.session.wizard || {};
+  if (step == null) step = !w.terms ? 0 : !w.country ? 1 : !w.module ? 2 : 3;
+  wizStep = step;
+  const bar = `<div class="steps">${[0, 1, 2, 3].map((i) => `<i class="${i <= step ? "on" : ""}"></i>`).join("")}</div>`;
+  const back = step ? `<button class="btn ghost sm" id="wBack">‹ Назад</button>` : "";
+  let body = "";
+  if (step === 0) {
+    const t = D.terms;
+    body = `<div class="terms"><h3>1. ${esc(t.title)}</h3><p class="muted">Версия от ${esc(t.version.split("-").reverse().join("."))}</p>
+      <ol>${t.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>
+      <p><a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${"Полный текст условий"}</a></p>
+      <button class="btn" id="wTerms">${ic("check")}Принимаю</button></div>`;
+  } else if (step === 1) {
+    body = `<h3>2. Из какой страны вы работаете?</h3><p class="muted">Модели доступны по спискам стран их поставщиков.</p>
+      <div class="cc">${D.countries.map((c) => `<button data-cc="${esc(c.code)}" class="${c.code === w.country ? "on" : ""}">${esc(c.name)}<span class="muted">${esc(c.code)}</span></button>`).join("")}</div>
+      <div class="field"><label for="ccCode">Другая страна — код из двух букв</label><div class="row" style="margin:0"><input type="text" id="ccCode" maxlength="2" autocomplete="off" placeholder="например, CH" style="flex:1 1 120px"><button class="btn sm" id="ccGo">Выбрать</button></div></div>
+      <p class="muted">Номер телефона подтвердите позже в боте («Поделиться номером»): храним только код страны и хеш номера.</p>`;
+  } else if (step === 2) {
+    body = `<h3>3. С какого модуля начать?</h3><p class="muted">Пространство из модуля владелец создаст после одобрения; выгрузку загрузите туда из панели.</p>
+      ${D.modules.map((m) => `<button class="pick ${m.id === w.module ? "on" : ""}" data-mod="${esc(m.id)}"><b>${esc(m.title)}</b><span>${esc(m.about)}</span></button>`).join("")}`;
+  } else {
+    const m = D.modules.find((x) => x.id === w.module);
+    body = `<h3>4. Вход через Telegram</h3>
+      <p class="muted">Условия приняты · страна ${esc(w.country)} · модуль «${esc(m ? m.title : w.module)}». Бот попросит нажать «Запустить» (Start) и отправит запрос владельцу пульта с пометкой этого предложения. Сессии не создаются и модель не тратится, пока владелец не даст доступ.</p>
+      <button class="btn" id="wLogin">${ic("send")}Войти через Telegram</button><div id="wLoginOut"></div>`;
+  }
+  $("wiz").innerHTML = bar + body + `<div id="wOut"></div>` + (back ? `<div class="row">${back}</div>` : "");
+  const out = (k, i, t) => { $("wOut").innerHTML = `<div style="margin-top:10px">${note(k, i, esc(t))}</div>`; };
+  const save = async (btn, payload) => busy(btn, "Сохраняю…", async () => {
+    try { const r = await api("/wizard", payload); D.session.wizard = r.wizard; wizard(); }
+    catch (e) { out(e.message === DENY ? "bad" : "warn", "warn", e.message); }
+  });
+  $("wBack")?.addEventListener("click", () => wizard(step - 1));
+  $("wTerms")?.addEventListener("click", (e) => save(e.currentTarget, { step: "terms", version: D.terms.version }));
+  document.querySelectorAll("[data-cc]").forEach((b) => b.addEventListener("click", () => save(b, { step: "country", code: b.dataset.cc })));
+  $("ccGo")?.addEventListener("click", (e) => save(e.currentTarget, { step: "country", code: $("ccCode").value.trim() }));
+  document.querySelectorAll("[data-mod]").forEach((b) => b.addEventListener("click", () => save(b, { step: "module", id: b.dataset.mod })));
+  $("wLogin")?.addEventListener("click", (e) => busy(e.currentTarget, "Готовлю вход…", async () => {
+    try {
+      const d = await api("/login", {});
+      window.open(d.link, "_blank", "noopener");
+      $("wLoginOut").innerHTML = `<div style="margin-top:10px">${note("info", "wait", `В Telegram нажмите «Запустить» (Start). Владелец пульта получит запрос; когда он ответит, бот напишет вам, а эта страница откроет панель сама. <a href="${esc(d.link)}" target="_blank" rel="noopener noreferrer">Открыть Telegram ещё раз</a>`)}</div>`;
+      clearInterval(tgTimer); const t0 = Date.now();
+      tgTimer = setInterval(async () => {
+        if (Date.now() - t0 > d.ttl * 1000) { clearInterval(tgTimer); $("wLoginOut").innerHTML = `<div style="margin-top:10px">${note("warn", "wait", "Запрос у владельца. Когда бот напишет, что доступ дан, нажмите «Войти через Telegram» ещё раз.")}</div>`; return; }
+        try {
+          const r = await (await fetch("/api/login/tg?id=" + encodeURIComponent(d.id), { credentials: "same-origin" })).json();
+          if (r.state === "ok") { clearInterval(tgTimer); location.href = "/"; }
+          else if (r.state === "no") { clearInterval(tgTimer); $("wLoginOut").innerHTML = `<div style="margin-top:10px">${note("bad", "warn", "Вход отклонён в Telegram.")}</div>`; }
+        } catch (err) { /* сеть моргнула — повторим через 3 с */ }
+      }, 3000);
+    } catch (err) { $("wLoginOut").innerHTML = `<div style="margin-top:10px">${note("bad", "warn", esc(err.message))}</div>`; }
+  }));
+}
+
+(async () => {
+  try { D = await api(""); render(); if (location.hash === "#connect") $("connect").scrollIntoView(); }
+  catch (e) { $("app").innerHTML = `<h1>Страница не найдена</h1><p class="lead">${esc(e.message)}</p>`; }
+})();
+</script>
+</body>
+</html>

@@ -134,15 +134,16 @@ class TgLogins:
     def _save(self, d: dict):
         write_private(self.store, json.dumps(d))
 
-    def start(self, ip: str = "", ua: str = "") -> tuple[str, str]:
-        """(rid — браузеру для опроса, nonce — в ссылку на бота)."""
+    def start(self, ip: str = "", ua: str = "", offer: dict | None = None) -> tuple[str, str]:
+        """(rid — браузеру для опроса, nonce — в ссылку на бота). ``offer`` — вход с предложения (offers.py): имя
+        бизнеса, начало кода, выбранный модуль, страна, версия условий — без ПДн; бот покажет это владельцу."""
         rid, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(12)
         with self.lock:
             d = self._load()
             if len(d) >= 20:
                 raise ValueError("слишком много входов сразу — подождите пару минут")
             d[nonce] = {"rid": _h(rid), "exp": time.time() + LOGIN_TTL, "ip": ip[:45], "ua": ua[:120],
-                        "uid": None, "state": "wait"}
+                        "uid": None, "state": "wait", **({"offer": offer} if offer else {})}
             self._save(d)
         return rid, nonce
 

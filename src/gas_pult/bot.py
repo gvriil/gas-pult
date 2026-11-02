@@ -35,6 +35,7 @@ from gas_pult import (
     fallback,
     models,
     modules,
+    offers,
     people,
     providers,
     setup,
@@ -73,10 +74,15 @@ def dialog_hash(scr: str) -> str:
 
 
 def public(u: dict) -> bool:
-    """Что принимаем и от незнакомых: начало входа в панель и кнопки подтверждения входа."""
+    """Что принимаем и от незнакомых: начало входа в панель и кнопки подтверждения входа; демо предложения
+    (``/start demo_<токен>`` и его кнопки ``dm:``) — изолированно, без роли и без доступа к пульту."""
     if m := u.get("message"):
-        return (m.get("text") or "").startswith("/start login_")
-    return (u.get("callback_query") or {}).get("data", "").startswith("lg:")
+        return (m.get("text") or "").startswith(("/start login_", "/start demo_"))
+    return (u.get("callback_query") or {}).get("data", "").startswith(("lg:", "dm:"))
+
+
+DEMO_GONE = "Демо закончилось — откройте ссылку на странице предложения снова."
+DEMO_RATE = (5, 3600)          # сценарий демо — не чаще 5 раз в час на человека (счётчик только в памяти)
 
 
 class NotReady(RuntimeError):
@@ -138,6 +144,8 @@ class Pult:
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
         self.schedule = modules.Schedule(cfg.data / "modules.json")   # расписание пространств из модулей
+        self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")     # демо предложений: токены от панели
+        self.demo_seen: dict[int, list[float]] = {}                    # кто запускал демо — только в памяти, час
         # поставщик модели не отвечает — окно само уходит на запасной (fallback.py), владельцам — одна строка
         # запасные — по странам человека, чьё окно (@gas_pult_by), иначе первого владельца
         self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
@@ -1151,6 +1159,8 @@ class Pult:
             if not self.logins.decide(nonce, uid, verdict == "ok"):
                 return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
             return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
+        if kind == "dm":                                   # демо предложения — изолированно, кому угодно
+            return self.on_demo(q, arg)
         if q["from"]["id"] not in self.cfg.owners and kind not in ("tm", "cc"):
             return                                         # участникам кнопки бота — только условия и страна
         if kind == "pp":                                   # владелец решает, пускать ли человека
@@ -1174,6 +1184,8 @@ class Pult:
             return self.on_digest(chat, arg)
         if kind == "md":                                   # модули-агенты: описание, создание пространства
             return self.on_module(chat, arg)
+        if kind == "of":                                   # пространство для человека с предложения (владелец)
+            return self.offer_space(chat, arg)
         if kind == "cost":                                 # пауза по расходу: продолжить или остановить (владелец)
             act, _, wid = arg.partition(":")
             try:
@@ -1386,14 +1398,28 @@ class Pult:
             return send(f"Войти в панель пульта ({TITLES[role]})?\n\nБраузер: {info['ua'] or '—'}\n"
                         f"Адрес: {info['ip'] or '—'}\n\nЕсли входите не вы — нажмите «Это не я».",
                         reply_markup=kb([[("✅ Войти", f"lg:ok:{nonce}"), ("✖️ Это не я", f"lg:no:{nonce}")]]))
-        name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or str(u["id"])
-        self.requests[u["id"]] = {"name": name, "username": u.get("username", "")}
         send("У вас пока нет доступа к пульту. Я спросил владельца — когда он ответит, нажмите «Войти через Telegram» "
              "в браузере ещё раз.")
-        self.broadcast(f"🔐 {name} (@{u.get('username') or '—'}, ID {u['id']}) просит доступ к панели пульта.",
-                       reply_markup=kb([[("👤 Участник", f"pp:member:{u['id']}"),
-                                         ("👁 Наблюдатель", f"pp:viewer:{u['id']}")],
-                                        [("✖️ Отказать", f"pp:no:{u['id']}")]]))
+        self.ask_owner(u, info.get("offer"))
+
+    def ask_owner(self, u: dict, offer: dict | None = None):
+        """Запрос доступа владельцам: кто и, если человек пришёл со страницы предложения, — с какого и что выбрал."""
+        name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or str(u["id"])
+        self.requests[u["id"]] = {"name": name, "username": u.get("username", ""),
+                                  **({"offer": offer} if offer else {})}
+        text = f"🔐 {name} (@{u.get('username') or '—'}, ID {u['id']}) просит доступ к панели пульта."
+        if offer:
+            text += f"\n\n🧾 С предложения GASTECH для «{offer.get('business', '?')}» (код {offer.get('hint', '…')})."
+            if offer.get("module_title"):
+                text += f"\nВыбрал(а) модуль: «{offer['module_title']}»."
+            if offer.get("country"):
+                text += f"\nСтрана: {country.name(offer['country'])} ({offer['country']})."
+            if offer.get("terms"):
+                text += f"\nУсловия приняты на странице (версия {offer['terms']})."
+            text += "\nСессии и модель — только после вашего решения."
+        self.broadcast(text, reply_markup=kb([[("👤 Участник", f"pp:member:{u['id']}"),
+                                               ("👁 Наблюдатель", f"pp:viewer:{u['id']}")],
+                                              [("✖️ Отказать", f"pp:no:{u['id']}")]]))
 
     def grant(self, chat: int, arg: str):
         role, _, uid = arg.partition(":")
@@ -1409,6 +1435,130 @@ class Pult:
                         "в панели или ⚙️ Настройки → 👥 Люди здесь.")
         self.notify(uid, f"Владелец дал доступ к пульту ({TITLES[role]}). Нажмите «Войти через Telegram» в браузере "
                          "ещё раз — или кнопку «📱 Панель» внизу этого чата.")
+        if off := req.get("offer"):
+            self.offer_granted(chat, uid, role, who, off)
+
+    # ---------- предложения (offers.py): после одобрения и демо в Telegram ----------
+    def offer_granted(self, chat: int, uid: int, role: str, who: str, off: dict):
+        """Человек пришёл с предложения: условия и страна из мастера — его записью; номер — как обычно, в боте;
+        пространство из выбранного модуля — одной кнопкой владельцу (без сессии и без модели)."""
+        if off.get("terms") == terms.VERSION:
+            self.people.accept(uid, terms.VERSION)
+        if country.norm(off.get("country")):
+            self.people.set_country(uid, chosen=country.norm(off["country"]))
+            try:
+                self.ask_phone(uid)
+            except TelegramError as e:
+                print("notify:", e, flush=True)
+        mid = off.get("module", "")
+        if role != "member" or not modules.ID.match(mid or ""):
+            return
+        try:
+            m = modules.get(mid)
+        except LookupError:
+            return
+        folder = modules.free_name(self.module_root(), m["id"])
+        self.send(chat, f"🧩 {who} выбрал(а) на странице предложения модуль «{m['title']}». Создать пространство "
+                        f"«{folder}»? Сессия не откроется и модель не потратится — человек откроет её сам в панели и "
+                        "загрузит туда выгрузку.",
+                  reply_markup=kb([[(f"✅ Создать «{folder}»", f"of:{uid}:{m['id']}")], [("Не сейчас", "noop:")]]))
+
+    def offer_space(self, chat: int, arg: str):
+        """of:<uid>:<модуль> — владелец создаёт пространство для человека с предложения (папка, без сессии)."""
+        uid, _, mid = arg.partition(":")
+        if not uid.isdigit() or not self.people.role(int(uid)):
+            return self.send(chat, "У этого человека нет доступа — пространство не создаю.")
+        try:
+            path = modules.create(mid, self.module_root(), modules.free_name(self.module_root(), mid), by=int(uid))
+        except (ValueError, LookupError, OSError) as e:
+            return self.send(chat, f"Не создал: {e}")
+        self.send(chat, f"📁 Пространство {self.short(str(path))} создано. Сессию человек откроет сам: панель → "
+                        f"«Новая сессия» → папка «{path.name}»; выгрузку — туда же, кнопкой 📎.")
+        self.notify(int(uid), f"📁 Для вас создано пространство «{path.name}». Откройте панель → «Новая сессия» → "
+                              f"«{path.name}» и загрузите туда выгрузку (📎).")
+
+    def demo_rate(self, uid: int) -> bool:
+        now = time.time()
+        self.demo_seen = {k: [t for t in v if now - t < DEMO_RATE[1]] for k, v in self.demo_seen.items()
+                          if any(now - t < DEMO_RATE[1] for t in v)}
+        hits = self.demo_seen.setdefault(uid, [])
+        if len(hits) >= DEMO_RATE[0]:
+            return False
+        hits.append(now)
+        return True
+
+    def demo_of(self, tok: str) -> tuple[dict, dict, dict] | None:
+        """(запись токена, предложение, модуль) — или None: токен истёк, предложение отозвано, модуля нет."""
+        rec = self.offer_tg.get(tok)
+        o = offers.load(rec["code"]) if rec else None
+        if not o:
+            return None
+        try:
+            return rec, o, modules.get(rec["module"])
+        except LookupError:
+            return None
+
+    def offer_demo(self, m: dict, tok: str):
+        """/start demo_<токен>: сценарий модуля на выдуманных данных. Ни роли, ни меню, ни сессий — только сообщения."""
+        chat, uid = m["chat"]["id"], m["from"]["id"]
+        if not self.demo_rate(uid):
+            return self.send(chat, "Демо можно запускать не чаще 5 раз в час — попробуйте позже.")
+        if not self.offer_tg.start(tok) or not (got := self.demo_of(tok)):
+            return self.send(chat, DEMO_GONE)
+        _, o, mod = got
+        self.send(chat, f"🧪 Демо GASTECH для «{o['business']}» — модуль «{mod['title']}».\n\nДанные выдуманы для "
+                        "демонстрации: ничего не отправляется, модель не вызывается. Нажимайте кнопки — покажу, что "
+                        "произошло бы.")
+        self.demo_step(chat, tok, o, mod, 0)
+
+    def demo_step(self, chat: int, tok: str, o: dict, mod: dict, i: int, back: str = ""):
+        steps = offers.scenario(o, mod)
+        if i < len(steps):
+            st = steps[i]
+            rows = [[(b, f"dm:{tok}:{i}:{j}")] for j, (b, _) in enumerate(st["buttons"])]
+            rows.append([("Дальше ›", f"dm:{tok}:{i}:n")])
+            return self.send(chat, st["text"], reply_markup=kb(rows))
+        markup = kb([[("✅ Подключить", f"dm:{tok}:f:c")], [("🔁 Посмотреть ещё раз", f"dm:{tok}:f:r")]])
+        if back.startswith("https://"):
+            markup["inline_keyboard"].append([{"text": "Открыть предложение", "url": back}])
+        return self.send(chat, f"Так агент работал бы для «{o['business']}» каждый день — в вашем Telegram, решения "
+                               "кнопками, без отправки без вашего «Да».\n\nПодключить? Владелец пульта получит запрос "
+                               "и свяжется с вами.", reply_markup=markup)
+
+    def on_demo(self, q: dict, arg: str):
+        """dm:<токен>:<шаг>:<кнопка> — кнопки демо. Токен проверяется на каждое нажатие; устарел — «закончилось»."""
+        chat, u = (q.get("message") or {}).get("chat", {}).get("id") or q["from"]["id"], q["from"]
+        tok, _, rest = arg.partition(":")
+        step, _, btn = rest.partition(":")
+        got = self.demo_of(tok)
+        if not got:
+            return self.send(chat, DEMO_GONE)
+        rec, o, mod = got
+        if step == "f" and btn == "c":
+            return self.demo_connect(chat, u, o, mod)
+        if step == "f" and btn == "r":
+            if not self.demo_rate(u["id"]) or not self.offer_tg.start(tok):
+                return self.send(chat, "Демо можно запускать не чаще 5 раз в час — попробуйте позже.")
+            return self.demo_step(chat, tok, o, mod, 0)
+        if not step.isdigit():
+            return None
+        i, steps = int(step), offers.scenario(o, mod)
+        if i >= len(steps):
+            return self.send(chat, DEMO_GONE)
+        if btn.isdigit() and int(btn) < len(steps[i]["buttons"]):
+            self.send(chat, "↪️ " + steps[i]["buttons"][int(btn)][1])
+        return self.demo_step(chat, tok, o, mod, i + 1, rec.get("back", ""))
+
+    def demo_connect(self, chat: int, u: dict, o: dict, mod: dict):
+        """«Подключить» из демо: обычный запрос доступа владельцу с пометкой предложения (один раз)."""
+        if self.people.role(u["id"]):
+            return self.send(chat, "У вас уже есть доступ к пульту — откройте панель кнопкой «📱 Панель».")
+        if u["id"] in self.requests:
+            return self.send(chat, "Запрос уже у владельца — когда он ответит, я напишу сюда.")
+        self.ask_owner(u, {"business": o["business"], "hint": offers.hint(o["code"]), "module": mod["id"],
+                           "module_title": mod["title"]})
+        self.send(chat, "Запрос отправлен владельцу пульта. Когда он ответит, я напишу сюда — дальше условия, страна "
+                        "и номер прямо в этом чате.")
 
     def notify(self, uid: int, text: str):
         try:
@@ -1429,6 +1579,8 @@ class Pult:
         chat = m["chat"]["id"]
         send = self.to(chat)
         t = (m.get("text") or m.get("caption") or "").strip()
+        if t.startswith("/start demo_"):                   # демо предложения: до любых проверок доступа
+            return self.offer_demo(m, t.removeprefix("/start demo_").strip())
         if t.startswith("/start login_"):
             return self.login_request(m, t.removeprefix("/start login_").strip())
         uid = (m.get("from") or {}).get("id")
@@ -1521,6 +1673,13 @@ class Pult:
             if chat:
                 self.send(chat, f"Ошибка: {self.api.redact(e)}")
 
+    def admitted(self, u: dict) -> bool:
+        """Что бот вообще обрабатывает: владельцы — всё; незнакомые — вход в панель и демо предложения (``public``);
+        люди с ролью — ещё и страну."""
+        src = u.get("message") or u.get("callback_query") or {}
+        uid = src.get("from", {}).get("id")
+        return uid in self.cfg.owners or public(u) or bool(self.people.role(uid) and self.country_update(u))
+
     def run(self):
         me = self.api("getMe")
         print(f"gas-pult: @{me['username']} · сессия tmux «{self.cfg.session}» · владельцев: {len(self.cfg.owners)}",
@@ -1537,10 +1696,7 @@ class Pult:
             try:
                 for u in self.api("getUpdates", timeout=60, **({"offset": offset} if offset else {})):
                     offset = u["update_id"] + 1
-                    src = u.get("message") or u.get("callback_query") or {}
-                    uid = src.get("from", {}).get("id")
-                    if uid not in self.cfg.owners and not public(u) and not (
-                            self.people.role(uid) and self.country_update(u)):   # чужих — молча; людям — страна
+                    if not self.admitted(u):               # чужих — молча; людям — страна
                         continue
                     threading.Thread(target=self.handle, args=(u,), daemon=True).start()
             except Exception as e:
