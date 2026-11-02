@@ -566,6 +566,36 @@
   .sheet.help .hrow input:focus { border-color: var(--border-focus); }
   .sheet.help .hrow .hsend { width: 44px; height: 44px; flex: none; border-radius: 50%; justify-content: center; border: 0; background: var(--accent-primary); color: var(--on-accent); }
   .sheet.help .cancel { width: 100%; justify-content: center; padding: 12px 16px; min-height: 48px; margin-top: 6px; }
+  .sheet.help .htour { margin: 8px 16px 0; padding: 8px 12px; border-radius: var(--radius-pill); border: 1px dashed var(--border-subtle);
+                       background: transparent; color: var(--accent-primary); font-weight: 600; font-size: calc(13px * var(--fz, 1)); align-self: flex-start; }
+
+  /* ===== Короткий тур (driver.js 1.8.0 с cdnjs — грузится только при старте тура): попап — токенами панели ===== */
+  .tour-offer { position: fixed; z-index: 28; right: 12px; top: calc(var(--top-h, 56px) + 8px + env(safe-area-inset-top)); width: min(340px, calc(100vw - 24px));
+                background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+                box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 12px 12px 14px; animation: up .2s ease; }
+  .tour-offer .row { align-items: flex-start; } .tour-offer .row > .i { color: var(--accent-primary); margin-top: 2px; }
+  .tour-offer b { font-size: calc(15px * var(--fz, 1)); }
+  .tour-offer .meta { white-space: normal; margin-top: 2px; }
+  .tour-offer .icon { width: 32px; height: 32px; margin: -4px -4px 0 0; color: var(--text-secondary); }
+  .tour-offer .seg { margin: 10px 0 0; } .tour-offer .seg button { font-size: calc(13px * var(--fz, 1)); }
+  .tour-offer .acts { display: flex; gap: 8px; margin-top: 10px; } .tour-offer .acts .btn { flex: 1; width: auto; }
+  .driver-popover.gp-tour { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+                            box-shadow: 0 8px 28px rgba(0,0,0,.28); padding: 14px 16px; min-width: 0; width: min(320px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; }
+  .gp-tour .driver-popover-arrow { display: none; }
+  .gp-tour .driver-popover-title { font-size: calc(16px * var(--fz, 1)); font-weight: 600; line-height: 1.35; padding-right: 28px; }
+  .gp-tour .driver-popover-description { font-size: calc(14px * var(--fz, 1)); line-height: 1.5; color: var(--text-secondary); margin-top: 4px; }
+  .gp-tour .driver-popover-close-btn { width: 40px; height: 40px; top: 2px; right: 2px; font-size: 22px; color: var(--text-muted); }
+  .gp-tour .driver-popover-close-btn:hover, .gp-tour .driver-popover-close-btn:focus-visible { color: var(--text-primary); }
+  .gp-tour .driver-popover-footer { margin-top: 12px; gap: 8px; flex-wrap: wrap; }
+  .gp-tour .driver-popover-progress-text { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); }
+  .gp-tour .driver-popover-navigation-btns { gap: 6px; } .gp-tour .driver-popover-navigation-btns button + button { margin-left: 0; }
+  .gp-tour .driver-popover-footer-btn { min-height: 36px; padding: 8px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-subtle);
+                                        color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); line-height: 1.2; text-shadow: none; }
+  .gp-tour .driver-popover-footer-btn:hover, .gp-tour .driver-popover-footer-btn:focus { background: var(--bg-subtle); }
+  .gp-tour .driver-popover-footer-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+  .gp-tour .driver-popover-next-btn { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--on-accent); font-weight: 600; }
+  .gp-tour .driver-popover-next-btn:hover, .gp-tour .driver-popover-next-btn:focus { background: var(--accent-primary); }
 </style>
 </head>
 <body>
@@ -578,11 +608,11 @@
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
     <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="switchBtn" hidden aria-label="Другая сессия"></button>
-    <button class="icon" id="screenBtn" hidden aria-label="Экран терминала"></button>
-    <button class="hpill" id="helpBtn" aria-label="Подсказать: что делать на этом экране"></button>
-    <button class="icon" id="settingsBtn" aria-label="Настройки"></button>
+    <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
+    <button class="hpill" id="helpBtn" data-tour="help" aria-label="Подсказать: что делать на этом экране"></button>
+    <button class="icon" id="settingsBtn" data-tour="settings" aria-label="Настройки"></button>
   </div>
-  <div class="tabsbar" id="tabsBar" hidden><div class="seg" id="tabs"><button data-tab="chat" class="on"></button><button data-tab="screen"></button></div></div>
+  <div class="tabsbar" id="tabsBar" data-tour="tabs" hidden><div class="seg" id="tabs"><button data-tab="chat" class="on"></button><button data-tab="screen"></button></div></div>
 </header>
 
 <main>
@@ -615,9 +645,9 @@
 
   <section id="home" hidden>
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
-    <div class="rail" id="rail" role="group" aria-label="Сессии"></div>
+    <div class="rail" id="rail" data-tour="rail" role="group" aria-label="Сессии"></div>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
+    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
     <div id="commandsView" hidden></div>
@@ -638,20 +668,20 @@
 
 <button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
 <div class="grip" id="sideGrip" role="separator" aria-orientation="vertical" aria-label="Ширина списка сессий" aria-valuemin="200" aria-valuemax="480" tabindex="0" title="Потяните, чтобы изменить ширину; двойной щелчок — по умолчанию"></div>
-<div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
+<div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" data-tour="new" style="margin:0"></button></div>
 
 <div class="dock" id="dock" hidden>
   <div id="costPause" hidden></div>
   <div id="ask"></div>
   <div class="keys" id="keys" hidden></div>
   <div class="menu" id="menu" hidden></div>
-  <div class="composer" id="composer">
+  <div class="composer" id="composer" data-tour="composer">
     <div class="attach" id="attach" hidden></div>
     <textarea id="input" rows="1" enterkeyhint="send" placeholder="Сообщение…"></textarea>
     <div class="ctools" id="ctools">
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
-      <button class="tool" id="menuBtn" aria-label="Меню действий"></button>
-      <button class="target" id="target" type="button" aria-label="Сменить сессию"></button>
+      <button class="tool" id="menuBtn" data-tour="menu" aria-label="Меню действий"></button>
+      <button class="target" id="target" data-tour="target" type="button" aria-label="Сменить сессию"></button>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
       <button class="tool" id="mic" aria-label="Записать голосовое"></button>
@@ -663,6 +693,45 @@
   <input type="file" id="fFile" multiple hidden>
 </div>
 
+<!-- Короткий тур: шаги {target, screen, title, text}; target — data-tour="…" на экране (нет на экране — шаг пропускается),
+     screen — куда перейти перед шагом (home | session | integrations | any). Тексты — только здесь (docs/MINI_APP.md#тур). -->
+<script type="application/json" id="tourData">
+{
+  "business": {
+    "title": "для бизнеса",
+    "steps": [
+      {"target": "sessions", "screen": "home", "title": "Ваши агенты", "text": "Сколько агентов работает и ждёт вас; ниже — карточка на каждого. Зелёная точка — работает, жёлтая — ждёт вашего ответа, серая — свободен. Нажмите карточку — откроется переписка."},
+      {"target": "rail", "screen": "home", "title": "Агенты в колонку", "text": "Список свёрнут в колонку значков: цвет точки — что с агентом. Развернуть — кнопкой над ней."},
+      {"target": "new", "screen": "home", "title": "Новый агент", "text": "«Новая сессия» → «Из модуля» — готовый агент под задачу: правила и навыки уже настроены, нужно только имя папки."},
+      {"target": "try", "screen": "home", "title": "Примерить на себя", "text": "День с агентом в вашей роли и польза в цифрах — до того, как что-то создавать и платить."},
+      {"target": "cost", "screen": "home", "title": "Расход", "text": "Сколько стоила работа агентов сегодня. Нажмите — подробности по агентам и лимиты, чтобы не выйти за бюджет."},
+      {"target": "help", "screen": "any", "title": "? Подсказать", "text": "Есть на каждом экране: что здесь делать и куда перейти. Там же — «Показать тур по этому экрану»."},
+      {"target": "settings", "screen": "any", "title": "Настройки", "text": "Тема, страна, расход. Тур можно пройти снова: «Настройки» → «Пройти тур»."}
+    ]
+  },
+  "dev": {
+    "title": "для разработчика",
+    "steps": [
+      {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, интеграции", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
+      {"target": "sessions", "screen": "home", "title": "Сессии", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
+      {"target": "rail", "screen": "home", "title": "Свёрнутый список", "text": "Сессии — колонкой значков, точка — статус. Развернуть — кнопкой над ней; ширину списка можно потянуть."},
+      {"target": "new", "screen": "home", "title": "Новая сессия", "text": "В папке проекта; «Новая папка» — пустой проект с git init; «Из модуля» — агент с готовыми правилами и навыками."},
+      {"target": "cost", "screen": "home", "title": "Расход и лимиты", "text": "Токены и деньги за день. Лимит на сессию и на день — «Настройки» → «Расход и лимиты»: дошли — сессия встанет на паузу."},
+      {"target": "commands", "screen": "home", "title": "Команды", "text": "Команды из ответов всех сессий. «Выполнить» запускает на сервере пульта; опасные — с подтверждением."},
+      {"target": "tabs", "screen": "session", "title": "Переписка и экран", "text": "«Переписка» — чат с Claude; «Экран» — терминал tmux как есть, с клавишами 1/2/3, Esc, Ctrl+C."},
+      {"target": "screen", "screen": "session", "title": "Экран терминала", "text": "Терминал tmux как есть: варианты ответа и клавиши 1/2/3, Esc, Ctrl+C."},
+      {"target": "status", "screen": "session", "title": "Строка статуса", "text": "Что агент делает сейчас и сколько. Нет реакции — «Проверить статус», дальше «Сообщить по готовности» и «Остановить»."},
+      {"target": "composer", "screen": "session", "title": "Сообщение", "text": "Уходит в окно этой сессии. Голос, фото и файлы — кнопками рядом."},
+      {"target": "menu", "screen": "session", "title": "Меню сессии", "text": "Слэш-команды, модель и усилия, озвучка, активная сессия для бота, другие сессии."},
+      {"target": "target", "screen": "session", "title": "Куда уйдёт", "text": "Имя сессии у поля ввода — чтобы не написать не туда. Нажмите, чтобы сменить сессию."},
+      {"target": "integrations", "screen": "integrations", "title": "Интеграции", "text": "MCP-серверы и коннекторы: GitHub, Notion, Google и свои. У каждого человека — свои, в его папке Claude Code."},
+      {"target": "models", "screen": "integrations", "title": "Модели и ключи", "text": "Сессии не только на Claude: OpenRouter, GLM, DeepSeek. Ключи поставщиков и запасные — здесь."},
+      {"target": "help", "screen": "any", "title": "? Подсказать", "text": "На каждом экране: что делать и куда перейти. Там же — «Показать тур по этому экрану»."},
+      {"target": "settings", "screen": "any", "title": "Настройки", "text": "Тема, страна, расход и лимиты, люди. Тур — снова: «Настройки» → «Пройти тур»."}
+    ]
+  }
+}
+</script>
 <script>
 const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
@@ -1259,7 +1328,7 @@ function costSummary() {
   const c = costInfo;
   if (!c?.today) return "";
   const lim = c.limits?.day, over = lim && c.today.usd != null && c.today.usd >= lim * 0.8;
-  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum title="Расход за сегодня по вашей учётке">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}</button>`;
+  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="Расход за сегодня по вашей учётке">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}</button>`;
 }
 async function costDecide(id, act, btn) {
   await busy(btn, act === "go" ? "Продолжаю…" : "…", async () => {
@@ -1331,10 +1400,10 @@ async function refresh() {
       if (homeView === "sessions") {
         const rank = (x) => x.cost_paused ? ORDER.dialog : ORDER[x.status];     // пауза по расходу — рядом с «ждут ответа»
         const sorted = [...sessions].sort((a, b) => rank(a) - rank(b) || (b.active - a.active));
-        $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary">
+        $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
-            + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + scnEntry();
+            + sorted.map(card).join("") : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + scnEntry();
       }
       if (homeView === "commands") loadCommands(true);
     }
@@ -1688,7 +1757,7 @@ function renderChat(toBottom) {
     t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
   }));
   if (hist.at(-1)?.role === "assistant") renderCmds();
-  box.insertAdjacentHTML("beforeend", '<div class="act off" id="act" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
+  box.insertAdjacentHTML("beforeend", '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   paintAct();
   if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(SC.scrollHeight));
 }
@@ -2377,7 +2446,7 @@ const mono = (t, id) => `<span class="mono">${GLYPH[id] ? ic(GLYPH[id]) : esc(cl
 async function loadMcp(fresh) {
   const owner = meta?.role === "owner";                // участнику — только его сервисы; модели, ключи и голос — владельцу
   if (view === "home") setSub(owner ? "<span>голос, ключи API и сервисы</span>" : "<span>ваши сервисы</span>");
-  $("integrationsView").innerHTML = '<div id="mcpBox"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div>' + (owner ? '<div id="modelsBox"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
+  $("integrationsView").innerHTML = '<div id="mcpBox" data-tour="integrations"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div>' + (owner ? '<div id="modelsBox" data-tour="models"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
   if (!owner) {
     try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
     catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
@@ -3005,7 +3074,7 @@ async function scnModule(id) {                       // «Создать про�
   moduleView(m); formBack = back;
 }
 function scnEntry() {                                // ненавязчивый вход под списком сессий
-  return `<button class="scn-entry" data-scn-home>${ic("eye")}<span class="ctext"><b>Примерить на себя</b> — день с агентом в вашей роли и польза в цифрах</span>${ic("chevron")}</button>`;
+  return `<button class="scn-entry" data-scn-home data-tour="try">${ic("eye")}<span class="ctext"><b>Примерить на себя</b> — день с агентом в вашей роли и польза в цифрах</span>${ic("chevron")}</button>`;
 }
 
 // ---------- уведомления ----------
@@ -3126,6 +3195,7 @@ $("settingsBtn").onclick = () => {
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
+    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOURS[k].title, icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, интеграции, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
@@ -3289,7 +3359,7 @@ function openHelp() {
   if (document.querySelector(".help-bg")) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
   bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="Помощник"><h3>${ic("help", "s16")}Помощник</h3><div class="hwhere"></div>
-    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>
+    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}Показать тур по этому экрану</button>`}
     <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Спросите, что непонятно…" aria-label="Вопрос помощнику">
       <button class="hsend" type="submit" aria-label="Спросить">${ic("send")}</button></form>
     <button class="cancel" data-close>Закрыть</button></div>`;
@@ -3297,6 +3367,7 @@ function openHelp() {
     const b = e.target.closest("button");
     if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();   // лист под ним остаётся
     if (!b) return;
+    if (b.hasAttribute("data-tour-here")) { bg.remove(); return startTour(tourKind(), true); }
     const id = b.closest(".ha")?.dataset.id;
     if (b.dataset.chip) return helpAsk(bg, { chip: b.dataset.chip }, b.textContent);
     if (b.dataset.fb) {
@@ -3350,6 +3421,132 @@ function goFromLink() {                                // #go=<id> из бота
   if (id && /^go:[a-z0-9.\-]+$/.test(id)) setTimeout(() => go(id), 300);
 }
 
+// ---------- короткий тур (docs/MINI_APP.md#тур) ----------
+// Шаги {target, title, text} — по data-tour="…" (данные — #tourData); шага, чьего элемента нет на экране (скрыт
+// ролью, шириной или ещё не открыт), нет. Предложение «Пройти короткий тур?» — один раз; дальше — «Настройки» →
+// «Пройти тур» и «? Подсказать» → «Показать тур по этому экрану». Отметки done/dismissed — на сервере (/api/tour),
+// у каждого свои; localStorage — только кэш. driver.js грузится с cdnjs только при старте тура (точная версия + SRI).
+const DRIVER = {
+  js: "https://cdnjs.cloudflare.com/ajax/libs/driver.js/1.8.0/driver.js.iife.min.js",
+  jsSri: "sha512-RhwyYBNqTj+hAVmH3cyZhZ+1ExPTW3lYtpiCQrC//Oiugjd/oTHIQRVP1IhEvqcccyP4+rcSuf/1nudX3pOXxQ==",
+  css: "https://cdnjs.cloudflare.com/ajax/libs/driver.js/1.8.0/driver.min.css",
+  cssSri: "sha512-dBiCVIs5ayOv4qwu3u8yf+CvdLI2kFdXijpYiU5nM6mO61QRXzExoENn5nJiF3n8uBW/yEO+FoLLuYbkj8/frg==",
+};
+const TOURS = JSON.parse($("tourData").textContent), TOUR_KINDS = ["dev", "business"];
+let tourOn = false;
+const tourKind = () => TOURS[store("tourKind")] ? store("tourKind") : meta?.role === "viewer" ? "business" : "dev";
+const tourKey = () => "tour:" + (meta?.uid ?? "");
+const tourEl = (t) => [...document.querySelectorAll(`[data-tour="${t}"]`)].find((el) => el.getClientRects().length && !el.closest("[hidden]"));
+function tourCache(v) {
+  if (v) return store(tourKey(), JSON.stringify(v));
+  try { return JSON.parse(store(tourKey()) || "null"); } catch (e) { return null; }
+}
+function saveTour(kind, state) {                       // сразу в кэш, потом на сервер; сервер недоступен — останется кэш
+  tourCache({ ...(tourCache() || {}), [kind]: state });
+  api("/api/tour", { tour: kind, state }).catch(() => {});
+}
+function loadDriver() {                                // driver.js 1.8.0 — только когда тур запускают
+  if (window.driver?.js?.driver) return Promise.resolve(window.driver.js.driver);
+  return (loadDriver.p ||= new Promise((ok, no) => {
+    const css = Object.assign(document.createElement("link"), { rel: "stylesheet", href: DRIVER.css, integrity: DRIVER.cssSri, crossOrigin: "anonymous" });
+    const js = Object.assign(document.createElement("script"), { src: DRIVER.js, integrity: DRIVER.jsSri, crossOrigin: "anonymous" });
+    const fail = () => { clearTimeout(t); css.remove(); js.remove(); loadDriver.p = null; no(new Error("нет связи")); };
+    const t = setTimeout(fail, 12000);
+    js.onload = () => { clearTimeout(t); window.driver?.js?.driver ? ok(window.driver.js.driver) : fail(); };
+    js.onerror = fail;
+    document.head.append(css, js);
+  }));
+}
+async function tourWait(targets, ms = 1500) {         // экран дорисовывается после перехода — ждём шаги, не дольше ms
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms && !targets.every((t) => tourEl(t))) await new Promise((r) => setTimeout(r, 100));
+}
+async function tourGo(screen) {                        // перейти на экран шагов; false — экран недоступен
+  if (screen === "home") { if (view !== "home" || homeView !== "sessions") goHome("sessions"); await refresh(); return true; }
+  if (screen === "session") return sessions.length ? goSession("chat") : false;
+  if (screen === "integrations") { if (meta?.role === "viewer") return false; if (view !== "home" || homeView !== "integrations") goHome("integrations"); return true; }
+  return true;
+}
+function tourRun(drv, steps, label, more) {           // один экран тура; "next" — дальше, "close" — закрыли (Esc, ×)
+  return new Promise((done) => {
+    let how = "close";
+    const d = drv({
+      showProgress: true, progressText: `${label} · {{current}} из {{total}}`, nextBtnText: "Далее", prevBtnText: "Назад",
+      doneBtnText: more ? "Дальше" : "Готово", popoverClass: "gp-tour", overlayColor: "#000", overlayOpacity: 0.5,
+      stagePadding: 6, stageRadius: 12, smoothScroll: false, allowKeyboardControl: true,
+      steps: steps.map((s) => ({ element: () => tourEl(s.target), popover: { title: esc(s.title), description: esc(s.text) } })),
+      onPopoverRender: (p) => p.closeButton.setAttribute("aria-label", "Закрыть тур"),
+      onDoneClick: () => { how = "next"; d.destroy(); },
+      onDestroyed: () => done(how),
+    });
+    d.drive();
+  });
+}
+async function startTour(kind = tourKind(), here = false) {
+  if (tourOn || !TOURS[kind]) return;
+  const from = document.activeElement;
+  hideTourOffer();
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove()); closeMenu();
+  let drv;
+  try { drv = await loadDriver(); } catch (e) { return toast("Тур недоступен — нет связи", 3500); }
+  saveTour(kind, "done");
+  const all = TOURS[kind].steps, segs = [];
+  if (here) segs.push({ screen: "here", steps: all.filter((s) => tourEl(s.target)) });   // только то, что на экране сейчас
+  else all.forEach((s) => (segs.at(-1)?.screen === s.screen ? segs.at(-1).steps.push(s) : segs.push({ screen: s.screen, steps: [s] })));
+  const reach = (g) => g.screen !== "session" || sessions.length;
+  const NAMES = { home: "Главная", session: "Сессия", integrations: "Интеграции", any: "Везде", here: "Этот экран" };
+  tourOn = true;
+  let shown = 0, how = "close";
+  try {
+    for (let i = 0; i < segs.length; i++) {
+      const g = segs[i];
+      if (!here && !(await tourGo(g.screen))) continue;
+      await tourWait(g.steps.map((s) => s.target));
+      const steps = g.steps.filter((s) => tourEl(s.target));
+      if (!steps.length) continue;
+      shown += steps.length;
+      how = await tourRun(drv, steps, NAMES[g.screen] + " · " + TOURS[kind].title, segs.slice(i + 1).some(reach));
+      if (how !== "next") break;
+    }
+  } finally { tourOn = false; }
+  if (!shown) toast("На этом экране тура нет — «Настройки» → «Пройти тур»", 3500);
+  else if (how === "next") toast("Тур пройден. Повторить — «Настройки» → «Пройти тур»", 3500);
+  const back = from?.isConnected && from !== document.body ? from : $("helpBtn");   // фокус — туда, откуда начали
+  if (!document.querySelector(".sheet-bg")) back.focus?.();
+}
+function hideTourOffer() { document.getElementById("tourOffer")?.remove(); }
+function showTourOffer() {
+  if (document.getElementById("tourOffer")) return;
+  let kind = tourKind();
+  const box = document.createElement("div"); box.className = "tour-offer"; box.id = "tourOffer";
+  box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Предложение пройти тур");
+  box.innerHTML = `<div class="row">${ic("spark")}<div class="ctext"><b>Пройти короткий тур?</b>
+      <div class="meta">Минута — главное о панели. Потом — «Настройки» → «Пройти тур» или «? Подсказать».</div></div>
+      <button class="icon" data-tno aria-label="Не сейчас">${ic("x", "s16")}</button></div>
+    <div class="seg" role="group" aria-label="Для кого тур">${TOUR_KINDS.map((k) => `<button data-tkind="${k}" class="${k === kind ? "on" : ""}" aria-pressed="${k === kind}">${k === "dev" ? "Разработчику" : "Бизнесу"}</button>`).join("")}</div>
+    <div class="acts"><button class="btn quiet sm" data-tno>Не сейчас</button><button class="btn sm" data-tgo>Пройти</button></div>`;
+  const no = () => { hideTourOffer(); saveTour(kind, "dismissed"); };
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.tkind) { kind = b.dataset.tkind; box.querySelectorAll("[data-tkind]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); }); return; }
+    if (b.hasAttribute("data-tno")) return no();
+    if (b.hasAttribute("data-tgo")) { store("tourKind", kind); startTour(kind); }
+  });
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); no(); } });
+  document.body.append(box);
+}
+async function tourOffer() {                           // один раз: сервер говорит, что тур не пройден и не отклонён
+  if (tourOffer.asked || (DEMO && !params.get("tour")) || !meta) return;
+  tourOffer.asked = true;
+  const has = (r) => !!(r && (r.business || r.dev)), local = tourCache();
+  let remote;
+  try { remote = await api("/api/tour"); } catch (e) { remote = undefined; }
+  if (remote === undefined) { if (!has(local)) showTourOffer(); return; }   // сервер не ответил — решаем по кэшу
+  if (has(remote)) return void tourCache(remote);                            // отметка на сервере — в кэш
+  if (has(local)) return TOUR_KINDS.forEach((k) => local[k] && api("/api/tour", { tour: k, state: local[k] }).catch(() => {}));   // только в кэше — на сервер
+  showTourOffer();
+}
+
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
@@ -3367,8 +3564,9 @@ async function start() {
     if (store("seenAny")) { helpSheet("whatsnew"); sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно"); }
   }
   store("seenAny", "1");
-  if (!start.timer) start.timer = setInterval(refresh, 3000);
+  if (!start.timer) start.timer = setInterval(() => tourOn || refresh(), 3000);   // во время тура экран не перерисовываем
   start.done = true;
+  setTimeout(tourOffer, 1200);
   keepAwake();
   let resume = null;
   try { resume = JSON.parse(sessionStorage.getItem("resume") || "null"); sessionStorage.removeItem("resume"); } catch (e) {}
@@ -3594,6 +3792,11 @@ function demoApi(path, body) {
   }
   if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
   if (key === "/api/models" && body?.base_url !== undefined) { demoApi.gw = body.base_url; return demoApi("/api/meta").then((m) => ({ profiles: m.profiles })); }
+  if (key === "/api/tour") {                        // ?demo&tour=1 — предложение тура; отметки — в памяти
+    demoApi.tour ||= { business: null, dev: null, at: null };
+    if (body) Object.assign(demoApi.tour, { [body.tour]: body.state, at: Date.now() / 1000 | 0 });
+    return Promise.resolve({ ...demoApi.tour });
+  }
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }

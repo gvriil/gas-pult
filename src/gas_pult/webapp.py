@@ -995,6 +995,8 @@ TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout", "/a
 HELP_OPEN = ("/api/help/ask", "/api/help/feedback")
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
+# Отметки короткого тура (пройден / «Не сейчас») — настройка самого человека: менять может и наблюдатель.
+TOUR = "/api/tour"
 # До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
 COUNTRY_FREE = TERMS_FREE | {"/api/country"}
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
@@ -1100,7 +1102,7 @@ def handler(panel: Panel):
             if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
-            free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, *HELP_OPEN)   # и наблюдателю
+            free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, TOUR, *HELP_OPEN)   # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
@@ -1177,6 +1179,8 @@ def handler(panel: Panel):
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
+            if path == TOUR:                             # тур: пройден / «Не сейчас» — у каждого свой
+                return panel.people.tour(self.terms_uid())
             if path == "/api/country":
                 return panel.country_info(self.terms_uid())
             if path == "/api/people":
@@ -1420,6 +1424,8 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/country":
                 return panel.set_country(self.terms_uid(), str(b.get("code", "")))
+            if path == TOUR:
+                return panel.people.set_tour(self.terms_uid(), str(b.get("tour", "")), str(b.get("state", "")))
             if path == "/api/help/ask":                    # роль — с сервера, не от клиента
                 return panel.help_ask(self.who()[1], self.terms_uid(), b if isinstance(b, dict) else {})
             if path == "/api/help/feedback":
