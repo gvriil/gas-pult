@@ -78,7 +78,7 @@
   .icon { width: 40px; height: 40px; border: 0; border-radius: var(--radius-md); background: transparent; display: grid; place-items: center; flex: none; color: var(--text-primary); }
   .icon:active { background: var(--bg-subtle); }
 
-  main { padding: 4px 12px 24px; }
+  main { padding: 4px 12px 72px; }                     /* снизу — место для кнопки помощника «?» */
   .seg { display: flex; gap: 2px; padding: 3px; background: var(--bg-subtle); border-radius: var(--radius-md); margin: 0 0 10px; }
   .seg button { flex: 1; border: 0; padding: 7px 4px; border-radius: 9px; background: transparent; font-size: calc(14px * var(--fz, 1)); color: var(--text-secondary);
                 display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -146,7 +146,7 @@
   .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
   .homebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
              background: linear-gradient(to top, var(--bg-canvas) 70%, transparent); }
-  #home { padding-bottom: 76px; }
+  #home { padding-bottom: 128px; }
 
   /* ===== Кнопки и формы ===== */
   .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-pill); padding: 13px 18px;
@@ -491,6 +491,47 @@
   .rail .rnew { background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-secondary); margin-top: 4px; }
   .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; }
   .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; width: auto; box-shadow: var(--shadow-lg); }
+
+  /* ===== Дежурный помощник «?» (helper.py, docs/HELPER.md): кнопка на каждом экране, лист-чат поверх любого листа.
+     Кнопка — справа над полем ввода и кнопкой «к последнему» (--help-b считает placeHelp); открыт лист — вверху справа. */
+  .helpfab { position: fixed; right: 14px; bottom: var(--help-b, calc(16px + env(safe-area-inset-bottom))); z-index: 36; width: 40px; height: 40px; padding: 0;
+             border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border-subtle); background: var(--bg-surface);
+             color: var(--accent-primary); box-shadow: 0 4px 16px rgba(0,0,0,.14); transition: bottom .2s ease; }
+  .helpfab .i { width: 22px; height: 22px; }
+  body.sheet-open .helpfab { top: calc(12px + env(safe-area-inset-top)); bottom: auto; }
+  .help-bg { z-index: 35; }
+  .sheet.help { display: flex; flex-direction: column; max-height: 88%; }
+  .sheet.help button { width: auto; min-height: 0; padding: 0; gap: 6px; font-size: inherit; display: inline-flex; align-items: center; }   /* не пункты шторки */
+  .sheet.help button .i { color: inherit; }
+  .sheet.help h3 { display: flex; align-items: center; gap: 6px; }
+  .sheet.help .hwhere { margin: -2px 16px 8px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .sheet.help .hmsgs { flex: 1 1 auto; min-height: 90px; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .sheet.help .hq { align-self: flex-end; max-width: 85%; background: var(--accent-soft); border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: calc(14px * var(--fz, 1)); overflow-wrap: anywhere; }
+  .sheet.help .ha { background: var(--bg-subtle); border-radius: 14px 14px 14px 4px; padding: 10px 12px; font-size: calc(15px * var(--fz, 1)); overflow-wrap: anywhere; }
+  .sheet.help .ha.wait { color: var(--text-secondary); }
+  .sheet.help .ha p { margin: 0; }
+  .sheet.help .hnote { margin: 8px 0 0; color: var(--status-approval); font-size: calc(13px * var(--fz, 1)); }
+  .sheet.help .hgo { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .sheet.help .hgo button { width: 100%; justify-content: flex-start; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg-surface); border: 1px solid var(--border-subtle);
+                            color: var(--accent-primary); font-weight: 600; font-size: calc(14px * var(--fz, 1)); text-align: left; }
+  .sheet.help .hfoot { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .sheet.help .hmark { font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-surface); }
+  .sheet.help .hmark.ai { color: var(--accent-primary); background: var(--accent-soft); }
+  .sheet.help .hfb { width: 32px; height: 32px; border-radius: 50%; justify-content: center; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+  .sheet.help .hfb .i { width: 16px; height: 16px; } .sheet.help .hfb.on { color: var(--accent-primary); border-color: var(--accent-primary); background: var(--accent-soft); }
+  .sheet.help .hai { margin-left: auto; background: none; border: 0; color: var(--accent-primary); font-size: calc(13px * var(--fz, 1)); padding: 4px 0; }
+  .sheet.help .hchips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 16px 2px; scrollbar-width: none; flex: none; }
+  .sheet.help .hchips::-webkit-scrollbar { display: none; }
+  .sheet.help .hchips button { flex: none; padding: 7px 12px; border-radius: var(--radius-pill); background: var(--bg-subtle); border: 1px solid var(--border-subtle);
+                               color: var(--text-primary); font-size: calc(13px * var(--fz, 1)); white-space: nowrap; }
+  .sheet.help .hrow { display: flex; gap: 8px; padding: 8px 16px 2px; flex: none; }
+  .sheet.help .hrow input { flex: 1; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); padding: 10px 14px; background: var(--bg-canvas);
+                            color: var(--text-primary); outline: none; font: inherit; font-size: calc(16px * var(--fz, 1)); }
+  .sheet.help .hrow input:focus { border-color: var(--border-focus); }
+  .sheet.help .hrow .hsend { width: 44px; height: 44px; flex: none; border-radius: 50%; justify-content: center; border: 0; background: var(--accent-primary); color: var(--on-accent); }
+  .sheet.help .cancel { width: 100%; justify-content: center; padding: 12px 16px; min-height: 48px; margin-top: 6px; }
+  .hstat { margin: 0 16px 12px; } .hstat li { margin: 0 0 6px; } .hstat small { color: var(--text-secondary); }
+  .hsw { display: flex; align-items: center; gap: 10px; margin: 4px 16px 12px; font-weight: 600; } .hsw input { width: 20px; height: 20px; accent-color: var(--accent-primary); }
 </style>
 </head>
 <body>
@@ -561,6 +602,7 @@
 <div class="voice mini" id="mini" hidden></div>
 
 <button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
+<button class="helpfab" id="helpFab" aria-label="Помощник: что здесь делать" title="Помощник: что здесь делать"></button>
 <div class="grip" id="sideGrip" role="separator" aria-orientation="vertical" aria-label="Ширина списка сессий" aria-valuemin="200" aria-valuemax="480" tabindex="0" title="Потяните, чтобы изменить ширину; двойной щелчок — по умолчанию"></div>
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
 
@@ -668,7 +710,7 @@ function paintIcons() {
   $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
   $("netIcon").innerHTML = ic("warn"); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
-  $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down");
+  $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpFab").innerHTML = ic("help");
   $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
@@ -696,7 +738,7 @@ async function copyText(text, what = "Скопировано") {
   let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
   t.remove();
   if (ok) return toast(what);
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.copy");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Скопируйте вручную</h3><div class="field"><textarea rows="8" readonly></textarea></div>
     <div class="row2"><button class="btn">Готово</button></div></div>`;
   const ta = bg.querySelector("textarea"); ta.value = text;
@@ -824,6 +866,7 @@ let sheetFrom = null;
 document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".sheet-bg")) sheetFrom = null; }, true);
 function sheet(title, items, closeLabel = "Закрыть") {                     // [{label, sub, icon | dot | vis, run, hold, danger, on, info} | {head}]; hold — долгое нажатие
   const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const help = helpNext; helpNext = ""; if (help) bg.dataset.help = help;    // экран помощника: helpSheet("…") перед sheet()
   const parent = sheetFrom && Date.now() - sheetFrom.t < 15000 ? sheetFrom : null; sheetFrom = null;
   bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.head ? `<h3 class="sub">${esc(it.head)}</h3>` :
     `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""} ${it.info ? "info" : ""}">${it.vis ? `<span class="vis">${it.vis}</span>` : it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
@@ -844,7 +887,7 @@ function sheet(title, items, closeLabel = "Закрыть") {                   
     if (b?.dataset.i && items[+b.dataset.i].info) return;     // строка-пояснение: шторка остаётся
     if (e.target === bg || b) bg.remove();
     if (b?.dataset.back) return parent.open();
-    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; sheet(title, items, closeLabel); } }; items[+b.dataset.i].run(); }
+    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; helpNext = help; sheet(title, items, closeLabel); } }; items[+b.dataset.i].run(); }
   });
   document.body.append(bg);
 }
@@ -877,7 +920,7 @@ function show(v) {
   $("title").classList.toggle("brand-text", v === "home" || gate);   // «Пульт» — фирменным градиентом
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
-  setBars(true); scrollToY(0);
+  setBars(true); scrollToY(0); placeHelp();
 }
 // «‹ Назад» слева в шапке — на любом вложенном экране: сессия (телефон), форма подключения, вкладки главной
 // «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
@@ -916,7 +959,7 @@ function hideDock(on) {
   if (d.classList.contains("hide") === on) return;
   d.classList.toggle("hide", on);
   const h = on ? 0 : d.offsetHeight;                   // кнопка «к последнему» и мини-плеер — следом за панелью
-  $("toBottom").style.bottom = (h + 12) + "px"; document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
+  $("toBottom").style.bottom = (h + 12) + "px"; document.documentElement.style.setProperty("--mini-b", (h + 12) + "px"); placeHelp();
 }
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
@@ -1124,7 +1167,7 @@ function setHome(v) {
     $("title").classList.toggle("brand-text", !sub);
     $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
   }
-  syncBack();
+  syncBack(); placeHelp();
   if (v === "integrations") loadMcp(); else if (v === "commands") loadCommands(); else refresh();
 }
 $("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
@@ -1200,18 +1243,20 @@ function costSheet() {
   const c = costInfo, own = meta?.role === "owner";
   if (!c) return toast("Расход появится после первого ответа Claude");
   const lim = c.limits || {};
+  helpSheet("settings.cost");
   sheet("Расход", [
     { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.unknown ? " · часть ответов — модели без цены" : "") },
     ...(own ? [{ info: true, icon: "pause", label: `Лимит на сессию: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
                { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
                { label: "Изменить лимиты", icon: "edit", run: limitsForm }] : []),
+    ...(own && c.helper ? [{ info: true, icon: "help", label: `Помощник: ${c.helper.usd == null ? "цена неизвестна" : usd(c.helper.usd)} · ${tok(c.helper.total)} токенов`, sub: "умные ответы помощника «?» по ключу API — отдельно от сессий и их лимитов", run: () => {} }] : []),
     { info: true, icon: "help", label: "Как считаем", sub: `По журналам Claude Code и прайсу API Anthropic (сверено ${c.prices_checked}). С подпиской Pro/Max это оценка, а не счёт. Модели не из прайса (GLM, DeepSeek) — только токены. ${own ? "Сессии участников на их собственных учётках сюда не входят." : "Здесь — только ваша учётка Claude."}` },
   ]);
 }
 async function limitsForm() {
   let cur = { limits: costInfo?.limits || {} };
   try { cur = await api("/api/cost/limits"); } catch (e) { /* покажем то, что знаем */ }
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.limits");
   const v = (x) => x == null ? "" : String(x);
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Лимиты расхода</h3>
     <div class="field" style="margin:4px 16px 10px"><label for="limS">На одну сессию, $</label><input id="limS" inputmode="decimal" autocomplete="off" placeholder="выключен" value="${esc(v(cur.limits.session))}"></div>
@@ -1294,6 +1339,7 @@ $("sessionsView").addEventListener("click", (e) => {
 });
 $("newBtn").onclick = () => newSession();
 function newSession(profile) {
+  helpSheet("sheet.new-session");
   sheet("Новая сессия — в какой папке?", [
     { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => newFolder(profile) },
     ...(profile ? [] : [{ label: "Из модуля", sub: "готовый агент под задачу: новая папка с правилами и навыками", icon: "puzzle", run: () => modulesView() }]),
@@ -1303,7 +1349,7 @@ function newSession(profile) {
 }
 // «Новая папка» — своё поле ввода (prompt() в Telegram на iPhone ненадёжен); имя — как у 📁 в боте.
 function newFolder(profile) {
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.new-folder");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Новая папка</h3>
     <div class="field" style="margin:4px 16px 0"><input id="nfName" maxlength="41" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="например, shop-bot"></div>
     <p class="note" id="nfErr" style="margin:6px 16px 0">Латиница в нижнем регистре, цифры, дефис. Папка — в первом корне проектов, сразу с git.</p>
@@ -1333,6 +1379,7 @@ function newFolder(profile) {
 function pickProfile(go, exclude) {
   const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key) && !p.not_ready);
   if (!exclude && ready.length < 2 && profileOf("claude")?.allowed !== false) return go("claude");
+  helpSheet("sheet.pick-model");
   sheet(exclude ? "Перезапустить с поставщиком" : "В какой модели работать?", [
     ...ready.map((p) => p.allowed === false ? { label: p.title, icon: "lock", sub: p.denied || DENY, run: () => toast(p.denied || DENY, 4500) }
       : { label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) }),
@@ -1348,6 +1395,7 @@ async function startSession(i, profile) {
 }
 function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
+  helpSheet("sheet.session");
   sheet(s.name, [
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
     { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) },
@@ -1927,14 +1975,14 @@ function demoTone(sec = 6) {                        // демо: 6 с тихог
   return new Blob([b], { type: "audio/wav" });
 }
 function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight, shown = $("dock").classList.contains("hide") ? 0 : h;
-  $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (shown + 12) + "px"; placeMini(); }); }
+  $("session").style.paddingBottom = (h + 68) + "px"; $("toBottom").style.bottom = (shown + 12) + "px"; placeMini(); placeHelp(); }); }
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
 const ACTIONS = {
   say: (b) => say(false, b),
   sayfull: (b) => say(true, b),
-  commands: () => sheet("Команды Claude", meta.commands.map((label, i) => ({
+  commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
     label: clean(label), icon: "bolt", run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
   }))),
   models: () => {
@@ -1944,6 +1992,7 @@ const ACTIONS = {
           .map(([name, sub, alias]) => ({ label: name, icon: "chip", sub, run: () => act("/api/model", { name: alias }, "Модель: " + name) }))
       : meta.models.map((m) => ({ label: m, icon: "chip", sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m],
           run: async () => { await act("/api/model", { name: m }, "Модель: " + m); effortSheet(); } }));
+    helpSheet("sheet.model");
     sheet(`Модель · ${p?.title || "Claude"}`, [
       ...items,
       { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) },
@@ -1966,6 +2015,7 @@ function switchProfile(s) {
       try { const d = await api("/api/restart", { w: s.id, profile: pid, keep }); await refresh(); openSession(d.id); toast(`Готово: ${title}${keep ? " — разговор продолжается" : ""}`); }
       catch (err) { toast("Не вышло: " + err.message, 5000); }
     };
+    helpSheet("sheet.switch-provider");
     sheet(`Перезапустить «${s.name}» с ${title}`, [
       { label: "Продолжить этот разговор", icon: "chat", sub: `${title} получит всю переписку — контекст сохранится`, run: () => go(true) },
       { label: "Начать заново", icon: "refresh", sub: "чистый контекст: быстрее и дешевле; старый разговор останется в истории", run: () => go(false) },
@@ -1974,6 +2024,7 @@ function switchProfile(s) {
 }
 // После смены модели — сразу уровень усилий (как глубоко думать): одно касание вместо второго меню.
 function effortSheet() {
+  helpSheet("sheet.effort");
   sheet("Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
     ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
     .map(([v, label, sub]) => ({ label, sub, icon: "bolt", run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
@@ -1986,6 +2037,7 @@ async function closeSession(id = current) {
 }
 // Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
 function openSwitcher() {
+  helpSheet("sheet.switcher");
   sheet("Сессии", [...[...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((s) => ({
     label: s.name, sub: `${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
@@ -1997,7 +2049,7 @@ function openSwitcher() {
 const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
 // Переименовать: своё поле ввода (prompt() в Telegram на iPhone ненадёжен). Имя — как в tmux: без «:» и «.».
 function renameSession(s) {
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.rename");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Переименовать сессию</h3>
     <div class="field" style="margin:4px 16px 0"><input id="renName" maxlength="40" autocomplete="off" value="${esc(s.name)}"></div>
     <p class="note" id="renErr" style="margin:6px 16px 0">До 40 знаков, без «:» и «.»</p>
@@ -2074,7 +2126,7 @@ $("content").addEventListener("click", (e) => {
   const b = e.target.closest("[data-resend]"), p = b && pending.find((x) => x.id === b.dataset.resend);
   if (p) deliver(p);                                // тот же id — даже если первое дошло, второй раз не вставится
 });
-$("plus").onclick = () => sheet("Прикрепить", [
+$("plus").onclick = () => helpSheet("sheet.attach") || sheet("Прикрепить", [
   { label: "Сфотографировать", icon: "camera", run: () => $("fCam").click() },
   { label: "Фото или видео из галереи", icon: "image", run: () => $("fPhoto").click() },
   { label: "Файл с устройства", icon: "file", sub: "документ, таблица, архив — до 50 МБ", run: () => $("fFile").click() },
@@ -2309,7 +2361,7 @@ $("integrationsView").addEventListener("click", (e) => {
 async function reloadProfiles() { try { meta.profiles = (await api("/api/meta")).profiles; } catch (e) { /* покажем старое */ } }
 let orLink = null, orTimer = null;
 function profileForm(p, connected) {
-  show("mcpForm"); $("title").textContent = p.title; setSub("<span>модели поставщика</span>");
+  show("mcpForm"); formHelp = hv("form.provider"); helpModule = ""; $("title").textContent = p.title; setSub("<span>модели поставщика</span>");
   clearInterval(orTimer);
   $("mcpForm").innerHTML = `<div class="panel">
     <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
@@ -2403,7 +2455,7 @@ function oauthWire(p) {
 }
 // Каталог моделей OpenRouter: поиск по названию и id; модели Anthropic — первыми (с ними Claude Code надёжен).
 function openCatalog(input) {
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.catalog");
   bg.innerHTML = `<div class="sheet picker" role="dialog"><h3>Модели OpenRouter</h3>
     <div class="search"><input id="catQ" type="search" autocapitalize="off" spellcheck="false" placeholder="поиск: claude, glm, deepseek, gemini…"></div>
     <div id="catList"><div class="empty">Загружаю каталог…</div></div><button class="cancel" data-close>Отмена</button></div>`;
@@ -2476,12 +2528,13 @@ async function voiceGridClick(e) {
 }
 function elVoiceSheet() {                           // голос внутри ElevenLabs — шторкой, без выпадающего списка
   if (!prov?.el_voices?.length) return;
+  helpSheet("sheet.el-voice");
   sheet("Голос ElevenLabs", prov.el_voices.map((v) => ({ label: v.name, icon: "vol", on: v.id === prov.el_voice, run: async () => {
     try { await api("/api/providers", { el_voice: v.id }); prov.el_voice = v.id; vcards = await api("/api/voice/cards"); paintVoiceGrids(); toast("Голос: " + v.name); }
     catch (err) { toast(err.message, 4500); } } })));
 }
 async function openVoiceSheet() {                   // долгое нажатие на «Кратко»/«Целиком»: те же карточки шторкой
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.voice");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Голос озвучки</h3><div data-vgrid>${voiceGrid()}</div><p class="note vnote"></p><button class="cancel" data-close>Закрыть</button></div>`;
   const close = () => { bg.remove(); if (vPlaying) stopPreview(); };
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) return close(); voiceGridClick(e); });
@@ -2567,7 +2620,7 @@ $("integrationsView").addEventListener("click", (e) => {
 });
 let connTimer = null;
 function connectorView(c) {
-  show("mcpForm"); $("title").textContent = c.title; setSub("<span>подключение сервиса</span>");
+  show("mcpForm"); formHelp = hv("form.connector"); $("title").textContent = c.title; setSub("<span>подключение сервиса</span>");
   const on = isOn(c);
   $("mcpForm").innerHTML = `<div class="panel">
     <div class="hero">${mono(c.title, c.id)}<h2 class="serif">${esc(c.title)}</h2><p>${esc(c.about)}</p></div>
@@ -2609,7 +2662,7 @@ $("mcpForm").addEventListener("click", async (e) => {
   const lg = e.target.closest("[data-login]"); if (lg) return startLogin(lg.dataset.login, lg);
 });
 function moreView() {
-  show("mcpForm"); $("title").textContent = "Другой сервис"; setSub("<span>каталог и ручное подключение</span>");
+  show("mcpForm"); formHelp = hv("form.more"); $("title").textContent = "Другой сервис"; setSub("<span>каталог и ручное подключение</span>");
   $("mcpForm").innerHTML = `<div class="panel">
     <p style="margin-top:0">Сотни сервисов подключаются так же — через каталог claude.ai: найдите свой и нажмите «Подключить».</p>
     <button class="btn" id="openCatalog">${ic("ext")}Открыть каталог claude.ai</button>
@@ -2629,7 +2682,7 @@ async function startLogin(name, btn) {
   });
 }
 function mcpForm(p) {
-  show("mcpForm"); $("title").textContent = p.title; setSub("<span>подключение</span>");
+  show("mcpForm"); formHelp = hv("form.preset"); $("title").textContent = p.title; setSub("<span>подключение</span>");
   const fields = p.fields.map((f) => `<div class="field"><label for="f_${f.key}">${esc(f.label)}${f.optional ? ' <span class="opt">— необязательно</span>' : ""}</label>
       <div class="inp">${f.multiline ? `<textarea id="f_${f.key}" rows="3" placeholder="${esc(f.placeholder || "")}"></textarea>`
         : `<input id="f_${f.key}" type="${f.secret ? "password" : "text"}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(f.placeholder || "")}">`}
@@ -2672,7 +2725,7 @@ function mcpForm(p) {
 let formBack = null, modData = null;               // formBack — куда «‹ Назад» с экрана формы (модуль → подключение)
 const goSessions = () => { show("home"); setHome("sessions"); };
 async function modulesView() {
-  show("mcpForm"); formBack = goSessions; $("title").textContent = "Из модуля"; setSub("<span>готовые агенты под задачу</span>");
+  show("mcpForm"); formBack = goSessions; formHelp = hv("modules"); helpModule = ""; $("title").textContent = "Из модуля"; setSub("<span>готовые агенты под задачу</span>");
   $("mcpForm").innerHTML = '<div class="empty">Загружаю модули…</div>';
   try { modData = await api("/api/modules"); } catch (e) { $("mcpForm").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   const groups = [...new Set(modData.modules.map((m) => m.industry))];
@@ -2703,7 +2756,7 @@ function moduleIntegr(m) {
 function daysText(d) { return d.length === 7 ? "каждый день" : d.join() === "1,2,3,4,5" ? "по будням" : d.map((x) => "пн вт ср чт пт сб вс".split(" ")[x - 1]).join(", "); }
 function moduleView(m) {
   if (!m) return;
-  show("mcpForm"); formBack = modulesView; $("title").textContent = m.title; setSub(`<span>модуль · ${esc(m.industry)}</span>`);
+  show("mcpForm"); formBack = modulesView; formHelp = hv("module"); helpModule = m.id; $("title").textContent = m.title; setSub(`<span>модуль · ${esc(m.industry)}</span>`);
   const can = meta?.role !== "viewer";
   $("mcpForm").innerHTML = `<div class="mod">
     <div class="hero"><span class="mono">${ic("puzzle")}</span><h2 class="serif">${esc(m.title)}</h2><p>${esc(m.about)}</p></div>
@@ -2788,6 +2841,7 @@ function countryLine(c, geoip) {
 }
 async function peopleSheet() {
   let d; try { d = await api("/api/people"); } catch (e) { return toast(e.message, 4000); }
+  helpSheet("settings.people");
   sheet("Люди", [...(d.geoip === false ? [{ info: true, icon: "warn", label: "Страна по IP: нет данных", sub: "база стран по IP не загружена — на сервере: gas-pult geoip update" }] : []),
     ...d.people.map((p) => ({
     label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: p.country?.mismatch ? "warn" : "pin",
@@ -2798,6 +2852,7 @@ async function peopleSheet() {
 }
 function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
+  helpSheet("settings.person");
   sheet(p.name || "ID " + p.id, [
     { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
     { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
@@ -2809,6 +2864,7 @@ function personSheet(p) {
 // «Обозначения»: что значат точки, цвета и значки панели — одним экраном (в настройках и в шторке сессий).
 function legend() {
   const chip = (cls, t) => `<span class="chip ${cls}" style="font-size:11px;padding:1px 6px">${t}</span>`;
+  helpSheet("settings.legend");
   sheet("Обозначения", [
     { head: "Точка статуса сессии" },
     { info: true, dot: "s-running", label: "Зелёная, мигает — работает", sub: "Claude выполняет задачу; можно писать — сообщение встанет в очередь" },
@@ -2847,6 +2903,7 @@ function legend() {
 }
 $("settingsBtn").onclick = () => {
   const mode = store("theme") || "auto";
+  helpSheet("settings");
   sheet("Настройки", [
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
@@ -2855,6 +2912,8 @@ $("settingsBtn").onclick = () => {
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Помощник", icon: "help", sub: "умные ответы «?»: ключ API, лимиты, модель для России", run: helperSettings },
+                                  { label: "Помощник: где путаются", icon: "chat", sub: "частые вопросы по экранам и доля «не помогло» — без имён", run: helperStats }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
@@ -2894,6 +2953,7 @@ function renderSetup() {
 }
 function setupSheet() {
   const d = setupData;
+  helpSheet("settings.setup");
   sheet(d?.ready ? "Claude Code готов" : "Claude не готов", [
     ...(d?.checks || []).map((c) => ({ info: true, icon: c.ok ? "check" : "warn", label: c.name, sub: c.hint })),
     ...(d && !d.ready && d.claude?.installed ? [{ label: "Войти в Claude", icon: "key", run: () => { show("home"); setHome("sessions"); setupAct("login"); } }] : []),
@@ -2931,6 +2991,218 @@ async function setupAct(act, btn) {
 $("setupView").addEventListener("click", (e) => { const b = e.target.closest("[data-su]"); if (b) setupAct(b.dataset.su, b); });
 $("setupView").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "suCode") { e.preventDefault(); setupAct("code", e.target.nextElementSibling); } });
 
+// ---------- дежурный помощник «?» (helper.py, docs/HELPER.md) ----------
+// Экран для помощника: вид (helpViewId), открытый лист (data-help у .sheet-bg, ставит helpSheet("…") перед sheet() или
+// hv("…") у своих листов), форма (formHelp), выбранный модуль. Ответ — с кнопками «Перейти: …»: только id из карты,
+// их открывает go(id). Демо (?demo) отвечает из help-map.json — той же карты, без сервера; &help=ai — «умный» ответ.
+let helpNext = "", formHelp = "", helpModule = "";
+const hv = (id) => id;                                 // id экрана помощника (тест сверяет их с картой)
+function helpSheet(id) { helpNext = id; }
+function helpViewId() {
+  if (view === "login") return hv("login");
+  if (view === "terms") return hv("terms");
+  if (view === "country") return hv("country");
+  if (view === "mcpForm") return formHelp || hv("modules");
+  if (view === "session") return !$("menu").hidden ? hv("session.menu") : tab === "screen" ? hv("session.screen") : hv("session.chat");
+  if (homeView === "sessions" && setupData && !setupData.ready) return hv("setup");
+  return { commands: hv("home.commands"), integrations: hv("home.integrations") }[homeView] || hv("home.sessions");
+}
+const helpVisible = (b) => b.offsetParent !== null && !b.closest("[hidden]");
+function helpContext() {                               // всё, что помощнику нужно знать об экране, — одной функцией
+  const top = [...document.querySelectorAll(".sheet-bg:not(.help-bg)")].at(-1);
+  const box = top || $(view === "session" ? "session" : view) || document.body;
+  const title = (top ? top.querySelector("h3")?.textContent : $("title").textContent) || "";
+  const buttons = [...box.querySelectorAll("button")].filter(helpVisible).map((b) => clean(b.textContent).slice(0, 40)).filter(Boolean).slice(0, 12);
+  return { screen: top?.dataset.help || helpViewId(), step: view === "session" ? tab : "", module: helpModule, title: clean(title).slice(0, 80), buttons };
+}
+// Кнопка «?» — справа над нижней панелью (и местом кнопки «к последнему»), над «Новой сессией» на главной; открыт лист — вверху справа.
+function placeHelp() {
+  const d = $("dock"), hb = $("homeBar"), mini = $("mini");
+  let b = "calc(16px + env(safe-area-inset-bottom))";
+  if (!d.hidden) b = ((d.classList.contains("hide") ? 0 : d.offsetHeight) + 64) + "px";
+  else if (!hb.hidden && !split()) b = (hb.offsetHeight + 12) + "px";
+  if (!mini.hidden && mini.offsetHeight) b = `max(${b}, ${innerHeight - mini.getBoundingClientRect().top + 8}px)`;
+  document.documentElement.style.setProperty("--help-b", b);
+}
+new MutationObserver(() => {                          // лист открыт — кнопка вверху; лист помощника открыт — кнопки нет
+  document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-bg:not(.help-bg)"));
+  $("helpFab").hidden = !!document.querySelector(".help-bg");
+}).observe(document.body, { childList: true });
+const goHome = (v) => { show("home"); setHome(v); };
+function goSession(t) {
+  const id = (current && sessions.some((x) => x.id === current) && current) || sessions.find((x) => x.id === store("last"))?.id
+    || sessions.find((x) => x.active)?.id || sessions[0]?.id;
+  if (!id) { toast("Сессий пока нет — откройте новую", 3500); return Promise.resolve(false); }
+  if (view === "session" && current === id) { if (tab !== t) setTab(t); return Promise.resolve(true); }
+  return openSession(id, t).then(() => true);
+}
+const HELP_GO = {                                      // действие карты → экран панели (все id — из screens.toml)
+  "go:sessions": () => goHome("sessions"),
+  "go:new-session": () => { goHome("sessions"); newSession(); },
+  "go:new-folder": () => newFolder(),
+  "go:modules": () => modulesView(),
+  "go:commands": () => goHome("commands"),
+  "go:integrations": () => goHome("integrations"),
+  "go:models": () => { goHome("integrations"); setTimeout(() => $("modelsBox")?.scrollIntoView({ behavior: "smooth" }), 400); },
+  "go:voice": () => { goHome("integrations"); setTimeout(() => $("voiceBox")?.scrollIntoView({ behavior: "smooth" }), 600); },
+  "go:switch": () => (sessions.length ? openSwitcher() : goHome("sessions")),
+  "go:session.chat": () => goSession("chat"),
+  "go:session.screen": () => goSession("screen"),
+  "go:session.menu": () => goSession("chat").then((ok) => { if (ok && $("menu").hidden) $("menuBtn").click(); }),
+  "go:session.model": () => goSession("chat").then((ok) => ok && ACTIONS.models()),
+  "go:settings": () => $("settingsBtn").onclick(),
+  "go:settings.country": () => showCountry(true),
+  "go:settings.cost": () => costSheet(),
+  "go:settings.limits": () => limitsForm(),
+  "go:settings.people": () => peopleSheet(),
+  "go:settings.setup": () => (setupData ? setupSheet() : loadSetup(true).then(setupSheet)),
+  "go:settings.legend": () => legend(),
+  "go:settings.helper": () => helperSettings(),
+  "go:settings.helper-stats": () => helperStats(),
+  "go:login": () => { showLogin(); $("tgLogin").focus(); },
+  "go:demo": () => { location.href = "/?demo"; },
+};
+function go(id) {
+  const f = HELP_GO[id];
+  if (!f) return toast("Этот переход недоступен");
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());   // «Перейти» — новый путь: листы закрываем
+  closeMenu(); f();
+}
+function helpAnswer(r, q) {
+  const box = document.createElement("div"); box.className = "ha"; box.dataset.id = r.id;
+  box.innerHTML = `<p>${esc(r.text)}</p>${r.note ? `<p class="hnote">${esc(r.note)}</p>` : ""}
+    ${r.actions.length ? `<div class="hgo">${r.actions.map((a) => `<button data-go="${esc(a.id)}">${ic("chevron", "s16")}Перейти: ${esc(a.title)}</button>`).join("")}</div>` : ""}
+    <div class="hfoot"><span class="hmark ${r.mode === "ai" ? "ai" : ""}">${r.mode === "ai" ? "Умный ответ" : "Офлайн-подсказка"}</span>
+      <button class="hfb" data-fb="1" aria-label="Помогло">${ic("check")}</button><button class="hfb" data-fb="0" aria-label="Не помогло">${ic("x")}</button>
+      ${q && r.mode !== "ai" && !r.note ? `<button class="hai" data-ai="${esc(q)}">Умный ответ</button>` : ""}</div>`;
+  return box;
+}
+async function helpAsk(bg, body, label) {
+  const msgs = bg.querySelector(".hmsgs"), ctx = bg.ctx;
+  if (label) msgs.insertAdjacentHTML("beforeend", `<div class="hq">${esc(label)}</div>`);
+  const wait = document.createElement("div"); wait.className = "ha wait"; wait.textContent = "Думаю…"; msgs.append(wait);
+  msgs.scrollTop = msgs.scrollHeight;
+  try {
+    const r = await api("/api/help/ask", { ctx, ...body });
+    wait.replaceWith(helpAnswer(r, body.q || ""));
+    bg.querySelector(".hwhere").textContent = "Экран: " + r.title;
+    bg.querySelector(".hchips").innerHTML = r.chips.filter((c) => c.id !== body.chip).map((c) => `<button data-chip="${esc(c.id)}">${esc(c.label)}</button>`).join("");
+  } catch (e) { wait.className = "ha"; wait.innerHTML = `<p class="hnote">${esc(e.message)}</p>`; }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function openHelp() {
+  if (document.querySelector(".help-bg")) return;
+  const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
+  bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="Помощник"><h3>${ic("help", "s16")}Помощник</h3><div class="hwhere"></div>
+    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>
+    <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Спросите, что непонятно…" aria-label="Вопрос помощнику">
+      <button class="hsend" type="submit" aria-label="Спросить">${ic("send")}</button></form>
+    <button class="cancel" data-close>Закрыть</button></div>`;
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();   // лист под ним остаётся
+    if (!b) return;
+    const id = b.closest(".ha")?.dataset.id;
+    if (b.dataset.chip) return helpAsk(bg, { chip: b.dataset.chip }, b.textContent);
+    if (b.dataset.ai) { b.remove(); return helpAsk(bg, { q: b.dataset.ai, ai: true }, "Умный ответ: " + b.dataset.ai); }
+    if (b.dataset.fb) {
+      b.parentElement.querySelectorAll(".hfb").forEach((x) => x.classList.toggle("on", x === b));
+      api("/api/help/feedback", { id, useful: b.dataset.fb === "1" }).catch(() => {});
+      return toast(b.dataset.fb === "1" ? "Спасибо!" : "Спасибо — поправим подсказку");
+    }
+    if (b.dataset.go) { api("/api/help/feedback", { id, action: b.dataset.go }).catch(() => {}); haptic("selectionChanged"); return go(b.dataset.go); }
+  });
+  bg.querySelector("form").addEventListener("submit", (e) => {
+    e.preventDefault(); const inp = e.target.q, q = inp.value.trim(); if (!q) return inp.focus();
+    inp.value = ""; helpAsk(bg, { q }, q);
+  });
+  document.body.append(bg);
+  helpAsk(bg, { chip: "what" });
+}
+$("helpFab").onclick = () => { haptic("selectionChanged"); openHelp(); };
+for (const id of ["dock", "homeBar"]) new ResizeObserver(placeHelp).observe($(id));
+// Владельцу: умные ответы (ключ Anthropic API — не подписка Claude), лимиты, модель для России.
+async function helperSettings() {
+  let d; try { d = await api("/api/help/settings"); } catch (e) { return toast(e.message, 4000); }
+  const s = d.settings, bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.helper");
+  const num = (id, label, v, hint) => `<div class="field" style="margin:0 16px 10px"><label for="${id}">${label}</label><input id="${id}" inputmode="numeric" autocomplete="off" value="${esc(v)}"><div class="hint">${hint}</div></div>`;
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Помощник «?»</h3>
+    <p class="note" style="margin:0 16px 10px">Без модели помощник отвечает подсказками из карты экранов — бесплатно и сразу. Умные ответы — только через ключ API, не подписку Claude: их получают участники и гости предложения.</p>
+    <label class="hsw"><input type="checkbox" id="hsOn" ${s.enabled ? "checked" : ""}>Умные ответы (модель ${esc(d.model)})</label>
+    <div class="field" style="margin:0 16px 10px"><label for="hsKey">Ключ Anthropic API${d.key ? ` <span class="opt">— сейчас ${esc(d.key.tail)}</span>` : ""}</label>
+      <input id="hsKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${d.key ? "заменить ключ" : "sk-ant-… — Подключить ключ для умных ответов помощника"}">
+      <div class="hint">Хранится только на сервере (права 600). Ключ организации — по коммерческим условиям Anthropic.</div></div>
+    ${num("hsMax", "Ответ — до, токенов", s.max_tokens, "50–1500; ответ всё равно не длиннее 700 знаков")}
+    ${num("hsPer", "На человека в сутки, токенов", s.per_person, "владелец и участники; 0 — без умных ответов")}
+    ${num("hsGuest", "На гостя предложения в сутки, токенов", s.per_guest, "по cookie демо и IP")}
+    ${num("hsDay", "Всего в сутки, токенов", s.per_day, "кончились — помощник отвечает подсказками")}
+    <div class="field" style="margin:0 16px 10px"><label for="hsRu">Модель для России</label><select id="hsRu">${d.ru.map((x) => `<option value="${esc(x.id)}" ${x.id === s.ru_profile ? "selected" : ""}>${esc(x.title)}${x.ready ? "" : " — нет шлюза или ключа"}</option>`).join("")}</select>
+      <div class="hint">Для людей из России Claude недоступен: умный ответ — через ваш шлюз (Интеграции → Модели); нет шлюза — подсказки из карты.</div></div>
+    <p class="note" style="margin:0 16px 8px">Сегодня: ${d.today.usd == null ? "цена неизвестна" : usd(d.today.usd)} · ${tok(d.today.total)} токенов</p>
+    <p class="note" id="hsErr" style="margin:0 16px"></p>
+    ${d.key ? '<div class="row2"><button class="btn ghost" id="hsDel">Удалить ключ</button><button class="btn ghost" id="hsStats">Где путаются</button></div>' : '<div class="row2"><button class="btn ghost" id="hsStats">Где путаются</button></div>'}
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="hsOk">Сохранить</button></div></div>`;
+  document.body.append(bg);
+  const save = async (extra) => {
+    try {
+      await api("/api/help/settings", { enabled: $("hsOn").checked, max_tokens: $("hsMax").value, per_person: $("hsPer").value, per_guest: $("hsGuest").value,
+        per_day: $("hsDay").value, ru_profile: $("hsRu").value, ...($("hsKey").value.trim() ? { key: $("hsKey").value.trim() } : {}), ...extra });
+      bg.remove(); toast("Помощник: сохранено"); haptic("notificationOccurred", "success");
+    } catch (e) { $("hsErr").textContent = e.message; $("hsErr").style.color = "var(--status-danger)"; }
+  };
+  $("hsOk").onclick = () => save({});
+  $("hsDel")?.addEventListener("click", () => confirmDanger("Удалить ключ Anthropic API? Помощник перейдёт на подсказки из карты.", () => save({ remove_key: true })));
+  $("hsStats").onclick = () => { bg.remove(); helperStats(); };
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
+// «Где путаются»: экраны и вопросы, с которыми открывают помощника, и доля «не помогло» — журнал без имён, ID и адресов.
+async function helperStats() {
+  let d; try { d = await api("/api/help/stats"); } catch (e) { return toast(e.message, 4000); }
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.helper-stats");
+  const pct = (a, b) => b ? Math.round(100 * a / b) + " %" : "—";
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Помощник: где путаются</h3>
+    <p class="note" style="margin:0 16px 10px">Вопросов: ${d.total} · умных ответов: ${d.ai} · «не помогло»: ${d.down_share == null ? "оценок нет" : Math.round(d.down_share * 100) + " %"} · журнал хранится ${d.keep_days} дней, без имён, ID и адресов.</p>
+    <h3 class="sub">Экраны</h3><ol class="hstat">${d.screens.map((x) => `<li>${esc(x.title)} — ${x.n}<small> · не помогло ${pct(x.down, x.rated)}</small></li>`).join("") || "<li>пока пусто</li>"}</ol>
+    <h3 class="sub">Вопросы своими словами</h3><ol class="hstat">${d.questions.map((x) => `<li>${esc(x.q)}<small> · ${esc(x.screen)} · ${x.n}</small></li>`).join("") || "<li>пока пусто</li>"}</ol>
+    <h3 class="sub">Подсказки-чипы</h3><ol class="hstat">${d.chips.map((x) => `<li>${esc(x.chip)}<small> · ${esc(x.screen)} · ${x.n}</small></li>`).join("") || "<li>пока пусто</li>"}</ol>
+    <div class="row2"><button class="btn ghost" id="hsCsv">${ic("down", "s16")}Выгрузить CSV</button><button class="btn" data-close>Закрыть</button></div></div>`;
+  document.body.append(bg);
+  $("hsCsv").onclick = async () => {
+    try {
+      const blob = await api("/api/help/stats.csv"), a = document.createElement("a");
+      a.href = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([String(blob)], { type: "text/csv" })); a.download = "helper-questions.csv";
+      document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    } catch (e) { toast(e.message, 4000); }
+  };
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
+// Демо: ответы помощника из той же карты (help-map.json), офлайн; &help=ai — «умный» ответ для скриншота.
+async function demoHelp(b) {
+  demoHelp.map ||= await fetch("help-map.json").then((r) => r.json());
+  const m = demoHelp.map, role = view === "login" ? "anon" : params.get("role") || "owner";
+  const own = (id) => m.screens[id] && m.screens[id].roles.includes(role);
+  const sid = own(b.ctx?.screen) ? b.ctx.screen : role === "anon" ? "login" : "home.sessions", s = m.screens[sid];
+  const faq = [...s.faq.filter((f) => !f.roles.length || f.roles.includes(role))];
+  m.faq.forEach((f) => { if (f.roles.includes(role) && !faq.some((x) => x.id === f.id)) faq.push(f); });
+  const acts = (ids) => [...new Set(ids)].filter((a) => m.actions[a]?.roles.includes(role)).slice(0, 3).map((a) => ({ id: a, title: m.actions[a].title }));
+  const chips = [{ id: "what", label: "Что здесь делать?" }, ...s.chips.map((c) => faq.find((f) => f.id === c)).filter(Boolean).map((f) => ({ id: f.id, label: f.q }))];
+  const out = { id: "demo" + Date.now(), screen: sid, title: s.title, chips, mode: "offline", note: "" };
+  if (b.q && params.get("help") === "ai") return { ...out, mode: "ai", text: `Демо умного ответа. ${s.purpose} Начните с первого шага: ${(s.steps[0] || "откройте нужный экран").replace(/\.$/, "")}.`, actions: acts(s.next) };
+  const f = b.chip && faq.find((x) => x.id === b.chip);
+  if (f) return { ...out, text: f.a, actions: acts(f.actions.length ? f.actions : s.next) };
+  if (b.q) {                                        // простое ранжирование слов, как на сервере
+    const w = (t) => new Set(String(t).toLowerCase().replace(/ё/g, "е").match(/[а-яa-z0-9]{3,}/g)?.map((x) => x.slice(0, 5)) || []);
+    const q = w(b.q), best = faq.map((x) => [[...w(x.q + " " + x.a)].filter((y) => q.has(y)).length, x]).sort((a, c) => c[0] - a[0])[0];
+    if (best && best[0]) return { ...out, text: best[1].a, actions: acts(best[1].actions.length ? best[1].actions : s.next) };
+    return { ...out, text: "Точного ответа в подсказках нет. На этом экране: " + s.purpose, actions: acts(s.next) };
+  }
+  return { ...out, text: s.purpose + " " + s.steps.map((x, i) => `${i + 1}) ${x}`).join(" "), actions: acts(s.next) };
+}
+function goFromLink() {                                // #go=<id> из бота («📱 Открыть в панели») — сразу на нужный экран
+  const id = new URLSearchParams(location.hash.slice(1)).get("go") || params.get("go");
+  if (id && /^go:[a-z0-9.\-]+$/.test(id)) setTimeout(() => go(id), 300);
+}
+
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
@@ -2945,7 +3217,7 @@ async function start() {
   const wn = meta.whatsnew?.[0];
   if (wn && store("whatsnew") !== wn.id && !DEMO) {
     store("whatsnew", wn.id);
-    if (store("seenAny")) sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно");
+    if (store("seenAny")) { helpSheet("whatsnew"); sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно"); }
   }
   store("seenAny", "1");
   if (!start.timer) start.timer = setInterval(refresh, 3000);
@@ -2982,6 +3254,7 @@ async function start() {
   if (DEMO && params.has("modules")) { await modulesView(); if (params.get("modules")) moduleView(modData.modules.find((m) => m.id === params.get("modules"))); }
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
+  goFromLink();
 }
 
 paintIcons();
@@ -3104,6 +3377,15 @@ function demoApi(path, body) {
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
+  if (key === "/api/help/ask") return demoHelp(body);
+  if (key === "/api/help/settings") return Promise.resolve({ settings: { enabled: !!params.get("help"), max_tokens: 400, per_person: 20000, per_guest: 5000, per_day: 300000, ru_profile: "gigachat", ...(body || {}) },
+    key: params.get("help") ? { set: true, tail: "…Q7xa" } : null, model: "claude-haiku-5-5", ru: [{ id: "gigachat", title: "GigaChat (через шлюз)", ready: false }, { id: "yandexgpt", title: "YandexGPT (через шлюз)", ready: false }],
+    today: { tokens: { in: 41200, out: 6100, cw: 0, cr: 0 }, total: 47300, usd: 0.0072, unknown: false } });
+  if (key === "/api/help/stats") return Promise.resolve({ total: 42, rated: 17, down_share: 0.24, ai: 9, keep_days: 90,
+    screens: [{ screen: "modules", title: "Из модуля", n: 14, down: 3, rated: 6 }, { screen: "home.integrations", title: "Интеграции", n: 9, down: 1, rated: 4 }, { screen: "offer.connect.country", title: "Подключить: страна", n: 6, down: 2, rated: 3 }],
+    questions: [{ screen: "modules", q: "какой модуль для автомойки", n: 4 }, { screen: "home.integrations", q: "как подключить [имя] к почте", n: 2 }],
+    chips: [{ screen: "modules", chip: "agent", n: 7 }, { screen: "settings.cost", chip: "cost", n: 5 }], clicks: [["go:modules", 6]] });
+  if (key === "/api/help/stats.csv") return Promise.resolve(new Blob(["\ufeffвремя,экран,шаг,роль,чип,вопрос,ответ,действия,полезно,нажато\n2026-11-02 10:14,modules,,owner,agent,,offline,go:modules,да,go:modules\n"], { type: "text/csv" }));
   if (!demoApi.h) demoApi.h = [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },

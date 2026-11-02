@@ -1,0 +1,1051 @@
+# Карта экранов дежурного помощника (helper.py, docs/HELPER.md).
+#
+# Формат — TOML: ядро пульта — только стандартная библиотека Python, парсер TOML (tomllib) в ней есть, YAML — нет.
+#
+# [[action]] — именованный переход («Перейти: …»). Модель не придумывает ссылки: она может вернуть только id отсюда,
+#   сервер сверяет каждый id с картой и ролью. Поля: id, title, roles; bot = true — есть обработчик в боте
+#   (bot.HELP_GO), иначе бот даёт кнопку «📱 Открыть в панели» с #go=<id>; demo = true — обработчик в демо бота для
+#   гостя предложения (bot.HELP_GO_DEMO).
+# [[faq]] — общие частые вопросы (на любом экране роли): id, q, a, actions, roles.
+# [[screen]] — экран, лист или шаг мастера: id, where (panel | offer | bot), title, roles, purpose, steps, next
+#   (куда дальше — id действий), chips (id вопросов-подсказок; «Что здесь делать?» есть всегда), [[screen.faq]].
+# Роли: owner — владелец, member — участник, viewer — наблюдатель, guest — гость страницы предложения,
+#   anon — ещё не вошёл (экран входа). Гостю — только экраны offer.* и bot.demo и действия go:offer.*.
+#
+# Тексты — коротко, по-русски, без путей, ключей, адресов серверов и команд терминала: их видит каждый.
+
+version = 1
+
+# ---------- действия: панель ----------
+[[action]]
+id = "go:sessions"
+title = "Сессии"
+roles = ["owner", "member", "viewer"]
+bot = true
+
+[[action]]
+id = "go:new-session"
+title = "Новая сессия"
+roles = ["owner", "member"]
+bot = true
+
+[[action]]
+id = "go:new-folder"
+title = "Новая папка"
+roles = ["owner", "member"]
+bot = true
+
+[[action]]
+id = "go:modules"
+title = "Из модуля — каталог агентов"
+roles = ["owner", "member", "viewer"]
+bot = true
+
+[[action]]
+id = "go:commands"
+title = "Команды из всех сессий"
+roles = ["owner", "member", "viewer"]
+
+[[action]]
+id = "go:integrations"
+title = "Интеграции"
+roles = ["owner", "member"]
+
+[[action]]
+id = "go:models"
+title = "Модели и ключи"
+roles = ["owner"]
+
+[[action]]
+id = "go:voice"
+title = "Голос озвучки"
+roles = ["owner"]
+bot = true
+
+[[action]]
+id = "go:switch"
+title = "Другая сессия"
+roles = ["owner", "member", "viewer"]
+bot = true
+
+[[action]]
+id = "go:session.chat"
+title = "Переписка сессии"
+roles = ["owner", "member", "viewer"]
+
+[[action]]
+id = "go:session.screen"
+title = "Экран сессии"
+roles = ["owner", "member", "viewer"]
+bot = true
+
+[[action]]
+id = "go:session.menu"
+title = "Меню действий сессии"
+roles = ["owner", "member"]
+
+[[action]]
+id = "go:session.model"
+title = "Модель сессии"
+roles = ["owner", "member"]
+bot = true
+
+[[action]]
+id = "go:settings"
+title = "Настройки"
+roles = ["owner", "member", "viewer"]
+bot = true
+
+[[action]]
+id = "go:settings.country"
+title = "Страна"
+roles = ["owner", "member", "viewer"]
+
+[[action]]
+id = "go:settings.cost"
+title = "Расход и лимиты"
+roles = ["owner", "member"]
+
+[[action]]
+id = "go:settings.limits"
+title = "Изменить лимиты"
+roles = ["owner"]
+
+[[action]]
+id = "go:settings.people"
+title = "Люди"
+roles = ["owner"]
+bot = true
+
+[[action]]
+id = "go:settings.setup"
+title = "Проверка Claude Code"
+roles = ["owner"]
+bot = true
+
+[[action]]
+id = "go:settings.legend"
+title = "Обозначения"
+roles = ["owner", "member", "viewer"]
+
+[[action]]
+id = "go:settings.helper"
+title = "Настройки помощника"
+roles = ["owner"]
+
+[[action]]
+id = "go:settings.helper-stats"
+title = "Помощник: где путаются"
+roles = ["owner"]
+
+[[action]]
+id = "go:login"
+title = "Войти через Telegram"
+roles = ["anon"]
+
+[[action]]
+id = "go:demo"
+title = "Посмотреть демо"
+roles = ["anon"]
+
+# ---------- действия: страница предложения (гость) ----------
+[[action]]
+id = "go:offer.top"
+title = "К началу предложения"
+roles = ["guest"]
+
+[[action]]
+id = "go:offer.modules"
+title = "Модули и демо"
+roles = ["guest"]
+demo = true
+
+[[action]]
+id = "go:offer.telegram"
+title = "Попробовать в Telegram"
+roles = ["guest"]
+
+[[action]]
+id = "go:offer.upload"
+title = "Загрузить выгрузку"
+roles = ["guest"]
+
+[[action]]
+id = "go:offer.connect"
+title = "Подключить"
+roles = ["guest"]
+demo = true
+
+[[action]]
+id = "go:offer.connect.terms"
+title = "Подключить: условия"
+roles = ["guest"]
+
+[[action]]
+id = "go:offer.connect.country"
+title = "Подключить: страна"
+roles = ["guest"]
+
+[[action]]
+id = "go:offer.connect.module"
+title = "Подключить: модуль"
+roles = ["guest"]
+
+[[action]]
+id = "go:offer.connect.login"
+title = "Подключить: вход через Telegram"
+roles = ["guest"]
+
+# ---------- общие частые вопросы ----------
+[[faq]]
+id = "agent"
+q = "Как подключить агента?"
+a = "Агент — это сессия Claude в папке проекта. Готовый агент под задачу: «Новая сессия» → «Из модуля» → выберите модуль → «Создать и открыть сессию». Своя задача: «Новая сессия» → папка → пишите агенту в поле внизу."
+actions = ["go:modules", "go:new-session"]
+roles = ["owner", "member"]
+
+[[faq]]
+id = "agent"
+q = "Как подключить агента?"
+a = "У наблюдателя доступ только на просмотр: агента подключает владелец или участник. Каталог готовых агентов можно посмотреть в «Из модуля»."
+actions = ["go:modules"]
+roles = ["viewer"]
+
+[[faq]]
+id = "cost"
+q = "Сколько стоит?"
+a = "Расход считается по журналам Claude Code и ценам API: сумма за сегодня — на главной и в «Настройки» → «Расход и лимиты». С подпиской Pro/Max это оценка, а не счёт. Владелец задаёт лимит на сессию и на день — при превышении сессия встаёт на паузу."
+actions = ["go:settings.cost"]
+roles = ["owner", "member"]
+
+[[faq]]
+id = "cost"
+q = "Сколько стоит?"
+a = "Расход видит хозяин учётки — владелец или участник со своей учёткой Claude. У наблюдателя расход не показывается."
+actions = ["go:settings"]
+roles = ["viewer"]
+
+[[faq]]
+id = "colors"
+q = "Что значат цвета?"
+a = "Зелёная мигающая точка — Claude работает; жёлтая — ждёт вашего ответа; серая — свободна; красная — остановлена. Все значки — в «Обозначениях»."
+actions = ["go:settings.legend"]
+roles = ["owner", "member", "viewer"]
+
+[[faq]]
+id = "integr"
+q = "Как подключить Notion, Gmail или другой сервис?"
+a = "«Интеграции» → выберите сервис → следуйте шагам: откроется claude.ai, там «Подключить». Отметка в панели появится сама. У каждого человека свои интеграции."
+actions = ["go:integrations"]
+roles = ["owner", "member"]
+
+[[faq]]
+id = "people"
+q = "Как добавить человека?"
+a = "Пусть человек откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить: участник или наблюдатель. Изменить роль или отключить — «Настройки» → «Люди»."
+actions = ["go:settings.people"]
+roles = ["owner"]
+
+[[faq]]
+id = "model"
+q = "Как сменить модель?"
+a = "В сессии: меню действий → «Модель» — основная или быстрая; «Сменить поставщика» — Claude, OpenRouter, GLM, DeepSeek. Ключи других поставщиков владелец задаёт в «Интеграции» → «Модели»."
+actions = ["go:session.model", "go:models"]
+roles = ["owner"]
+
+[[faq]]
+id = "model"
+q = "Как сменить модель?"
+a = "В сессии: меню действий → «Модель». Поставщиков и ключи настраивает владелец."
+actions = ["go:session.model"]
+roles = ["member"]
+
+[[faq]]
+id = "country"
+q = "Почему сервис недоступен в моей стране?"
+a = "Модели доступны только в странах из списков их поставщиков. Пульт смотрит на вашу страну, код номера и страну по IP — доступно то, что разрешено для всех. Проверить или поменять страну — «Настройки» → «Страна»."
+actions = ["go:settings.country"]
+roles = ["owner", "member", "viewer"]
+
+[[faq]]
+id = "answer"
+q = "Claude ждёт ответа — что нажать?"
+a = "Жёлтая точка — Claude задал вопрос или просит разрешения. Откройте сессию: варианты ответа — кнопками над полем ввода, всё как есть — на «Экране»."
+actions = ["go:session.screen", "go:sessions"]
+roles = ["owner", "member"]
+
+[[faq]]
+id = "helper"
+q = "Почему ответ помеченный «офлайн»?"
+a = "Офлайн-подсказка — ответ из карты экранов, без модели и бесплатно. Умные ответы включает владелец в настройках помощника — с ключом API и лимитами."
+actions = ["go:settings.helper"]
+roles = ["owner"]
+
+[[faq]]
+id = "helper"
+q = "Почему ответ помеченный «офлайн»?"
+a = "Офлайн-подсказка — ответ из карты экранов, без модели и бесплатно. Умные ответы включает владелец пульта."
+actions = ["go:settings"]
+roles = ["member", "viewer"]
+
+# ---------- панель: вход, условия, страна ----------
+[[screen]]
+id = "login"
+where = "panel"
+title = "Вход в пульт"
+roles = ["anon"]
+purpose = "Вход в панель без пароля — подтверждением в вашем Telegram."
+steps = ["Нажмите «Войти через Telegram».", "В Telegram нажмите «Запустить» (Start), затем «Войти».", "Вернитесь сюда — панель откроется сама."]
+next = ["go:login", "go:demo"]
+chips = ["noaccess", "demo"]
+
+[[screen.faq]]
+id = "noaccess"
+q = "Нет доступа — что делать?"
+a = "Нажмите «Войти через Telegram» и «Запустить» в боте — бот спросит владельца пульта, пустить ли вас. Когда он даст роль, нажмите «Войти через Telegram» ещё раз."
+actions = ["go:login"]
+
+[[screen.faq]]
+id = "demo"
+q = "Можно посмотреть без входа?"
+a = "Да: «Посмотреть демо» — та же панель на примерах, всё можно нажимать, ничего никуда не уходит."
+actions = ["go:demo"]
+
+[[screen]]
+id = "terms"
+where = "panel"
+title = "Условия использования"
+roles = ["owner", "member", "viewer"]
+purpose = "Перед работой — условия использования пульта: у каждого свой аккаунт или ключ поставщика, подпиской не делимся, работаем из поддерживаемых стран."
+steps = ["Прочитайте пункты.", "Нажмите «Принимаю» — дальше выбор страны."]
+next = ["go:settings.country"]
+chips = ["why"]
+
+[[screen.faq]]
+id = "why"
+q = "Зачем принимать условия?"
+a = "Модели предоставляют поставщики по своим условиям. Пульт — инструмент: без согласия с условиями он ничего, кроме них, не показывает. Дата согласия хранится на сервере."
+actions = ["go:settings.country"]
+
+[[screen]]
+id = "country"
+where = "panel"
+title = "Ваша страна"
+roles = ["owner", "member", "viewer"]
+purpose = "Выбор страны, из которой вы работаете: модели доступны по спискам стран их поставщиков."
+steps = ["Нажмите свою страну или введите код из двух букв.", "Подтвердите номер в боте — «Поделиться номером» (храним только код страны и хеш номера)."]
+next = ["go:sessions"]
+chips = ["country", "mismatch"]
+
+[[screen.faq]]
+id = "mismatch"
+q = "«Признаки страны не совпадают» — что это?"
+a = "Выбор, код номера и страна по IP указывают на разные страны. Тогда доступны только сервисы, разрешённые для всех этих стран."
+actions = ["go:settings.country"]
+
+# ---------- панель: главная ----------
+[[screen]]
+id = "home.sessions"
+where = "panel"
+title = "Главная: сессии"
+roles = ["owner", "member", "viewer"]
+purpose = "Все сессии Claude и их статус; сводка: сколько ждут ответа, работают, свободны, и расход за сегодня."
+steps = ["Нажмите карточку — откроется переписка.", "«⋯» на карточке — действия: активная, переименовать, завершить.", "«Новая сессия» внизу — новая сессия в папке или из модуля."]
+next = ["go:new-session", "go:modules", "go:commands"]
+chips = ["agent", "cost", "colors"]
+
+[[screen]]
+id = "home.commands"
+where = "panel"
+title = "Команды из всех сессий"
+roles = ["owner", "member", "viewer"]
+purpose = "Команды терминала, которые Claude предлагал в ответах всех сессий, и их итог."
+steps = ["«Выполнить» — команда выполнится на сервере пульта (только владелец).", "Опасные команды — с подтверждением.", "Команды для другой машины — скопируйте и выполните там."]
+next = ["go:sessions", "go:settings.legend"]
+chips = ["fail", "colors"]
+
+[[screen.faq]]
+id = "fail"
+q = "Команда упала — что дальше?"
+a = "Ошибку пульт сам отправляет на разбор в ту сессию, где команда родилась: Claude предложит исправление. Вывод — под командой."
+actions = ["go:sessions"]
+
+[[screen]]
+id = "home.integrations"
+where = "panel"
+title = "Интеграции"
+roles = ["owner", "member"]
+purpose = "Сервисы для Claude (Notion, Gmail, GitHub…), а у владельца — ещё модели других поставщиков, запасные и голос."
+steps = ["Выберите сервис — откроется мастер подключения.", "«Другой сервис» — каталог claude.ai и ручное подключение.", "Владельцу: «Модели» — ключи OpenRouter, GLM, DeepSeek и шлюзы для России."]
+next = ["go:models", "go:voice", "go:sessions"]
+chips = ["integr", "model"]
+
+[[screen]]
+id = "setup"
+where = "panel"
+title = "Claude не готов"
+roles = ["owner"]
+purpose = "Мастер: Claude Code на сервере не установлен или вход не выполнен — бот и панель работают, а сессии не откроются."
+steps = ["«Войти в Claude» — откройте страницу входа, войдите и вставьте код сюда.", "«Проверка» — проверить ещё раз.", "Нет подписки — «Ключ провайдера»: другой поставщик моделей."]
+next = ["go:settings.setup", "go:models"]
+chips = ["agent"]
+
+# ---------- панель: сессия ----------
+[[screen]]
+id = "session.chat"
+where = "panel"
+title = "Сессия: переписка"
+roles = ["owner", "member", "viewer"]
+purpose = "Переписка с Claude в этой сессии и поле ввода; под последним сообщением — что агент делает сейчас."
+steps = ["Пишите или диктуйте в поле внизу — «куда уйдёт» видно у поля.", "Вопрос Claude — кнопками над полем.", "Меню действий (квадратики) — озвучить, команды, модель, активная."]
+next = ["go:session.screen", "go:session.menu", "go:switch"]
+chips = ["answer", "model", "cost"]
+
+[[screen]]
+id = "session.screen"
+where = "panel"
+title = "Сессия: экран"
+roles = ["owner", "member", "viewer"]
+purpose = "Терминал сессии как есть — когда переписки мало: меню Claude Code, вход, ошибки."
+steps = ["Варианты ответа — кнопками 1/2/3, ↑/↓, ⏎, Esc.", "Ctrl+C — прервать зависшую команду."]
+next = ["go:session.chat", "go:switch"]
+chips = ["answer"]
+
+[[screen]]
+id = "session.menu"
+where = "panel"
+title = "Меню действий сессии"
+roles = ["owner", "member"]
+purpose = "Действия с открытой сессией: озвучить ответ, команды Claude, модель, сделать активной, обновить, завершить."
+steps = ["«Кратко» / «Целиком» — озвучить ответ.", "«Команды» — /compact, /clear, /status кнопками.", "«Активная» — ответы в чате бота будут от этой сессии."]
+next = ["go:session.model", "go:session.chat"]
+chips = ["model"]
+
+[[screen]]
+id = "sheet.attach"
+where = "panel"
+title = "Прикрепить"
+roles = ["owner", "member"]
+purpose = "Фото, видео или файл для Claude: панель загрузит его на сервер и передаст путь в сообщении."
+steps = ["Выберите источник.", "Файл появится над полем ввода — допишите текст и отправьте."]
+next = ["go:session.chat"]
+
+[[screen]]
+id = "sheet.switcher"
+where = "panel"
+title = "Шторка сессий"
+roles = ["owner", "member", "viewer"]
+purpose = "Быстрый переход в другую сессию; долгое нажатие — действия с сессией."
+steps = ["Нажмите сессию — перейдёте в неё.", "Ниже — «Новая сессия», «Команды из всех сессий», «Обозначения»."]
+next = ["go:new-session", "go:sessions", "go:settings.legend"]
+chips = ["colors"]
+
+[[screen]]
+id = "sheet.session"
+where = "panel"
+title = "Действия с сессией"
+roles = ["owner", "member", "viewer"]
+purpose = "Открыть, сделать активной (для ответов в боте), переименовать или завершить сессию."
+steps = ["«Завершить» — Claude выйдет штатно, переписка сохранится (только владелец)."]
+next = ["go:sessions"]
+
+[[screen]]
+id = "sheet.rename"
+where = "panel"
+title = "Переименовать сессию"
+roles = ["owner", "member"]
+purpose = "Новое имя сессии — как её видно в списке и в боте."
+steps = ["До 40 знаков, без «:» и «.».", "«Сохранить»."]
+next = ["go:sessions"]
+
+[[screen]]
+id = "sheet.commands"
+where = "panel"
+title = "Команды Claude"
+roles = ["owner", "member"]
+purpose = "Служебные команды Claude Code кнопками: модель, MCP, контекст, сжать, очистить, статус."
+steps = ["«Сжать» (/compact) — когда контекст занят больше чем на 70 %.", "«Очистить» (/clear) — начать разговор заново."]
+next = ["go:session.screen"]
+
+[[screen]]
+id = "sheet.model"
+where = "panel"
+title = "Модель сессии"
+roles = ["owner", "member"]
+purpose = "В какой модели работает сессия: основная, быстрая или меню /model."
+steps = ["Выберите модель — затем уровень усилий.", "Владельцу: «Сменить поставщика» — перезапуск с другим поставщиком."]
+next = ["go:models", "go:session.chat"]
+chips = ["model", "cost"]
+
+[[screen]]
+id = "sheet.effort"
+where = "panel"
+title = "Уровень усилий"
+roles = ["owner", "member"]
+purpose = "Как глубоко Claude думает: выше — дольше и дороже, ниже — быстрее и дешевле."
+steps = ["«Авто» — Claude решает сам.", "Для рутины — «Низкий», для архитектуры — «Очень высокий»."]
+next = ["go:session.chat"]
+chips = ["cost"]
+
+[[screen]]
+id = "sheet.switch-provider"
+where = "panel"
+title = "Сменить поставщика"
+roles = ["owner"]
+purpose = "Перезапуск сессии с другим поставщиком моделей."
+steps = ["«Продолжить этот разговор» — контекст сохранится.", "«Начать заново» — чистый контекст: быстрее и дешевле."]
+next = ["go:models"]
+
+# ---------- панель: новая сессия и модули ----------
+[[screen]]
+id = "sheet.new-session"
+where = "panel"
+title = "Новая сессия"
+roles = ["owner", "member"]
+purpose = "В какой папке открыть новую сессию Claude: существующая, новая пустая или готовый агент из модуля."
+steps = ["Папка из списка — сессия в существующем проекте.", "«Новая папка» — пустой проект с git.", "«Из модуля» — готовый агент под задачу."]
+next = ["go:modules", "go:new-folder"]
+chips = ["agent", "cost"]
+
+[[screen]]
+id = "sheet.new-folder"
+where = "panel"
+title = "Новая папка"
+roles = ["owner", "member"]
+purpose = "Пустой проект и сессия в нём."
+steps = ["Имя — латиница в нижнем регистре, цифры, дефис.", "«Создать и открыть» — затем выбор модели, если поставщиков несколько."]
+next = ["go:new-session"]
+
+[[screen]]
+id = "sheet.pick-model"
+where = "panel"
+title = "В какой модели работать"
+roles = ["owner", "member"]
+purpose = "Поставщик моделей для новой сессии. Недоступные для вашей страны — с замком."
+steps = ["Выберите поставщика — сессия запустится.", "«нет ключа — добавить» — ключ задаёт владелец."]
+next = ["go:models"]
+chips = ["country", "cost"]
+
+[[screen]]
+id = "modules"
+where = "panel"
+title = "Из модуля"
+roles = ["owner", "member", "viewer"]
+purpose = "Каталог готовых агентов по отраслям: модуль — агент с ролью и правилами, навыки, пример данных, расписание и решения кнопками."
+steps = ["Выберите отрасль и модуль.", "На экране модуля — что нужно подключить и что будет в папке.", "«Создать и открыть сессию» — новая папка, ваши не трогаются."]
+next = ["go:new-session", "go:integrations"]
+chips = ["agent", "which", "cost"]
+
+[[screen.faq]]
+id = "which"
+q = "Какой модуль выбрать?"
+a = "Начните с того, что болит каждый день: утренние цифры, напоминания клиентам, заявки или отзывы. Модули одной отрасли собраны группой; у каждого — расписание и вопросы кнопками."
+actions = ["go:modules"]
+
+[[screen]]
+id = "module"
+where = "panel"
+title = "Модуль"
+roles = ["owner", "member", "viewer"]
+purpose = "Что делает модуль, какие интеграции нужны, откуда данные, расписание, решения кнопками и что будет в папке."
+steps = ["Подключите отмеченные «нужно» интеграции — «Подключить».", "Проверьте имя папки.", "«Создать и открыть сессию» — агент получит первое задание."]
+next = ["go:integrations", "go:modules"]
+chips = ["agent", "data", "cost"]
+
+[[screen.faq]]
+id = "data"
+q = "Откуда агент берёт данные?"
+a = "Только из официальных API (ключ вашего сервиса) и ваших выгрузок — без парсинга сайтов и личных кабинетов. Публичное — письма, ответы, рассылки — только после вашего «Да»."
+actions = ["go:integrations"]
+
+# ---------- панель: интеграции и формы ----------
+[[screen]]
+id = "form.connector"
+where = "panel"
+title = "Подключение сервиса"
+roles = ["owner", "member"]
+purpose = "Мастер подключения сервиса через claude.ai."
+steps = ["«Открыть claude.ai» → найдите сервис → «Подключить».", "Войдите в сервис как обычно.", "Вернитесь сюда — отметка появится сама."]
+next = ["go:integrations"]
+chips = ["integr"]
+
+[[screen]]
+id = "form.preset"
+where = "panel"
+title = "Подключение с ключом"
+roles = ["owner", "member"]
+purpose = "Подключение сервиса по ключу или адресу — для продвинутых."
+steps = ["«Открыть страницу, где взять ключ».", "Вставьте ключ — он хранится только на сервере.", "«Подключить»."]
+next = ["go:integrations"]
+
+[[screen]]
+id = "form.more"
+where = "panel"
+title = "Другой сервис"
+roles = ["owner", "member"]
+purpose = "Каталог claude.ai и ручное подключение своих серверов."
+steps = ["«Открыть каталог claude.ai» — найдите сервис и нажмите «Подключить».", "«Для продвинутых» — свой сервер по адресу или с ключом."]
+next = ["go:integrations"]
+
+[[screen]]
+id = "form.provider"
+where = "panel"
+title = "Поставщик моделей"
+roles = ["owner"]
+purpose = "Ключ и модели поставщика: OpenRouter, GLM, DeepSeek или шлюз для России."
+steps = ["«Где взять ключ» → вставьте ключ → «Сохранить ключ».", "Модели — основная и быстрая.", "«Новая сессия с …» — сразу попробовать."]
+next = ["go:new-session", "go:integrations"]
+chips = ["cost", "country"]
+
+[[screen]]
+id = "sheet.catalog"
+where = "panel"
+title = "Каталог моделей OpenRouter"
+roles = ["owner"]
+purpose = "Поиск модели по названию; модели Anthropic — первыми (с ними Claude Code надёжен)."
+steps = ["Найдите модель и нажмите её.", "«Сохранить модели» на экране поставщика."]
+next = ["go:models"]
+
+[[screen]]
+id = "sheet.voice"
+where = "panel"
+title = "Голос озвучки"
+roles = ["owner", "member", "viewer"]
+purpose = "Каким голосом читаются ответы; кнопка справа — послушать."
+steps = ["Нажмите голос — он станет голосом озвучки (выбирает владелец)."]
+next = ["go:voice"]
+
+[[screen]]
+id = "sheet.el-voice"
+where = "panel"
+title = "Голос ElevenLabs"
+roles = ["owner"]
+purpose = "Голос внутри аккаунта ElevenLabs."
+steps = ["Нажмите голос — он сразу станет голосом озвучки."]
+next = ["go:voice"]
+
+# ---------- панель: настройки ----------
+[[screen]]
+id = "settings"
+where = "panel"
+title = "Настройки"
+roles = ["owner", "member", "viewer"]
+purpose = "Тема, страна, уведомления, расход и лимиты, люди, обозначения."
+steps = ["Тема — как в системе, светлая или тёмная.", "«Расход и лимиты» — сколько потрачено сегодня.", "Владельцу: «Люди», «Проверка», «Помощник»."]
+next = ["go:settings.cost", "go:settings.country", "go:settings.legend"]
+chips = ["cost", "people", "helper"]
+
+[[screen]]
+id = "settings.cost"
+where = "panel"
+title = "Расход и лимиты"
+roles = ["owner", "member"]
+purpose = "Токены и деньги за сегодня по вашей учётке; у владельца — лимиты на сессию и на день и строка «Помощник»."
+steps = ["Расход — по журналам Claude Code и прайсу API.", "Владельцу: «Изменить лимиты» — превышение ставит сессию на паузу."]
+next = ["go:settings.limits"]
+chips = ["cost", "pause"]
+
+[[screen.faq]]
+id = "pause"
+q = "Сессия на паузе по расходу — что делать?"
+a = "Сессия превысила лимит: Claude остановлен, сообщения не уходят. Владелец решает: «Продолжить» (+лимит) или «Остановить» — в боте или в панели."
+actions = ["go:sessions", "go:settings.limits"]
+
+[[screen]]
+id = "settings.limits"
+where = "panel"
+title = "Лимиты расхода"
+roles = ["owner"]
+purpose = "Лимит на одну сессию и на день по вашей учётке, в долларах."
+steps = ["Пусто или 0 — без лимита.", "«Сохранить» — сразу сверяем с расходом."]
+next = ["go:settings.cost"]
+
+[[screen]]
+id = "settings.people"
+where = "panel"
+title = "Люди"
+roles = ["owner"]
+purpose = "Кто входит в пульт и с какими правами; согласие с условиями и страна каждого."
+steps = ["Нажмите человека — сменить роль или отключить.", "Добавить — пусть сам нажмёт «Войти через Telegram»."]
+next = ["go:settings"]
+chips = ["people", "roles"]
+
+[[screen.faq]]
+id = "roles"
+q = "Чем участник отличается от наблюдателя?"
+a = "Участник пишет в сессии, отвечает на вопросы и открывает новые — без «Выполнить» и ключей. Наблюдатель только смотрит."
+actions = ["go:settings.people"]
+
+[[screen]]
+id = "settings.person"
+where = "panel"
+title = "Человек"
+roles = ["owner"]
+purpose = "Роль человека: участник или наблюдатель; «Отключить» — доступ прекращается сразу."
+steps = ["Выберите роль.", "«Отключить» — с подтверждением."]
+next = ["go:settings.people"]
+
+[[screen]]
+id = "settings.legend"
+where = "panel"
+title = "Обозначения"
+roles = ["owner", "member", "viewer"]
+purpose = "Что значат точки, цвета и значки панели."
+steps = ["Точка статуса: зелёная — работает, жёлтая — ждёт ответа, серая — свободна, красная — остановлена."]
+next = ["go:sessions"]
+chips = ["colors"]
+
+[[screen]]
+id = "settings.setup"
+where = "panel"
+title = "Проверка"
+roles = ["owner"]
+purpose = "Готов ли Claude Code: установлен, вход выполнен, ключи поставщиков."
+steps = ["«Проверить ещё раз».", "Вход не выполнен — «Войти в Claude»."]
+next = ["go:sessions"]
+
+[[screen]]
+id = "settings.helper"
+where = "panel"
+title = "Помощник"
+roles = ["owner"]
+purpose = "Умные ответы помощника: включить, ключ Anthropic API, модель для России, лимиты токенов. Без модели помощник отвечает подсказками из карты экранов."
+steps = ["Вставьте ключ Anthropic API (не подписку Claude).", "Включите умные ответы и задайте лимиты.", "Для России — модель через ваш шлюз (GigaChat или YandexGPT)."]
+next = ["go:settings.helper-stats", "go:models"]
+chips = ["helper", "money"]
+
+[[screen.faq]]
+id = "money"
+q = "Почему не подписка Claude?"
+a = "Подписку Claude одного человека нельзя отдавать другим. Помощник отвечает и участникам, и гостям — поэтому только ключ API организации, с лимитами. Расход — строкой «Помощник» в «Расходе»."
+actions = ["go:settings.cost"]
+
+[[screen]]
+id = "settings.helper-stats"
+where = "panel"
+title = "Помощник: где путаются"
+roles = ["owner"]
+purpose = "На каких экранах и с какими вопросами люди открывают помощника и где ответ не помог — без имён, ID и адресов."
+steps = ["Топ экранов и вопросов — что поправить в интерфейсе.", "Доля 👎 — где ответ не помог.", "«Выгрузить CSV» — для разбора."]
+next = ["go:settings.helper"]
+
+[[screen]]
+id = "whatsnew"
+where = "panel"
+title = "Что нового"
+roles = ["owner", "member", "viewer"]
+purpose = "Что изменилось в панели с прошлого раза."
+steps = ["«Понятно» — закрыть; список больше не покажется."]
+next = ["go:sessions"]
+
+[[screen]]
+id = "sheet.copy"
+where = "panel"
+title = "Скопируйте вручную"
+roles = ["owner", "member", "viewer"]
+purpose = "Браузер не дал скопировать автоматически — текст выделен, скопируйте его сами."
+steps = ["Выделите текст и скопируйте.", "«Закрыть»."]
+next = ["go:sessions"]
+
+# ---------- страница предложения (гость) ----------
+[[screen]]
+id = "offer.top"
+where = "offer"
+title = "Предложение"
+roles = ["guest"]
+purpose = "Предложение GASTECH: что болит у вашего бизнеса и какие агенты это закрывают. Цифры и имена на странице выдуманы."
+steps = ["Посмотрите модули и нажимайте кнопки в примерах.", "«Загрузить выгрузку» — отчёт по вашему файлу за 2 минуты.", "«Подключить» — четыре шага."]
+next = ["go:offer.modules", "go:offer.connect", "go:offer.upload"]
+chips = ["g-agent", "g-cost", "g-data"]
+
+[[screen.faq]]
+id = "g-agent"
+q = "Как подключить агента?"
+a = "«Подключить» — четыре шага: условия, страна, модуль, вход через Telegram. Владелец пульта получит запрос и создаст пространство с агентом. До его решения ничего не запускается."
+actions = ["go:offer.connect"]
+
+[[screen.faq]]
+id = "g-cost"
+q = "Сколько стоит?"
+a = "На этой странице ничего не списывается: демо и отчёт по выгрузке считает скрипт, модель не вызывается. Стоимость работы агентов называет GASTECH при подключении."
+actions = ["go:offer.connect"]
+
+[[screen.faq]]
+id = "g-data"
+q = "Что будет с моими данными?"
+a = "Файл выгрузки разбирается в памяти и удаляется через 30 минут или по кнопке «Удалить мои данные»; на диск не пишется, модели не передаётся. В отчёте — только итоги и сокращённые имена."
+actions = ["go:offer.upload"]
+
+[[screen.faq]]
+id = "g-what-module"
+q = "Что такое модуль?"
+a = "Модуль — готовый агент под одну задачу: он каждый день делает рутину и спрашивает вас кнопками. Публичное — сообщения клиентам, ответы — только после вашего «Да»."
+actions = ["go:offer.modules"]
+
+[[screen]]
+id = "offer.modules"
+where = "offer"
+title = "Модули и демо"
+roles = ["guest"]
+purpose = "Модули предложения с живым демо на выдуманных данных: нажмите кнопку в вопросе агента — покажем, что произошло бы, ничего не выполняя."
+steps = ["Нажимайте варианты в вопросе агента.", "«Попробовать в Telegram» — тот же сценарий в боте.", "Понравилось — «Подключить»."]
+next = ["go:offer.telegram", "go:offer.connect"]
+chips = ["g-what-module", "g-agent", "g-cost"]
+
+[[screen.faq]]
+id = "g-what-module"
+q = "Что такое модуль?"
+a = "Модуль — готовый агент под одну задачу: он каждый день делает рутину и спрашивает вас кнопками. Публичное — сообщения клиентам, ответы — только после вашего «Да»."
+actions = ["go:offer.connect"]
+
+[[screen.faq]]
+id = "g-agent"
+q = "Как подключить агента?"
+a = "«Подключить» — четыре шага: условия, страна, модуль, вход через Telegram. Владелец пульта получит запрос и создаст пространство с агентом."
+actions = ["go:offer.connect"]
+
+[[screen.faq]]
+id = "g-cost"
+q = "Сколько стоит?"
+a = "Демо бесплатное и ничего не отправляет. Стоимость работы агентов называет GASTECH при подключении."
+actions = ["go:offer.connect"]
+
+[[screen]]
+id = "offer.upload"
+where = "offer"
+title = "Загрузить выгрузку"
+roles = ["guest"]
+purpose = "Сводка по вашей выгрузке (продажи, клиенты, должники) за секунды — скриптом, без модели."
+steps = ["Выберите тип файла или оставьте «Определить по заголовкам».", "Выберите CSV или XLSX.", "Не те столбцы — «Тип и столбцы — выбрать вручную»."]
+next = ["go:offer.connect", "go:offer.modules"]
+chips = ["g-data", "g-format"]
+
+[[screen.faq]]
+id = "g-data"
+q = "Что будет с моими данными?"
+a = "Файл разбирается в памяти и удаляется через 30 минут или по кнопке «Удалить мои данные»; на диск не пишется, модели не передаётся, для обучения не используется."
+actions = ["go:offer.upload"]
+
+[[screen.faq]]
+id = "g-format"
+q = "Какой файл подойдёт?"
+a = "CSV или XLSX из кассы, CRM или 1С: продажи, клиенты или должники. Первая строка — заголовки столбцов. Файл слишком большой — выгрузите период покороче."
+actions = ["go:offer.upload"]
+
+[[screen]]
+id = "offer.connect.terms"
+where = "offer"
+title = "Подключить: условия"
+roles = ["guest"]
+purpose = "Шаг 1 из 4: условия использования пульта."
+steps = ["Прочитайте пункты.", "«Принимаю» — дальше страна."]
+next = ["go:offer.connect.country"]
+chips = ["g-steps", "g-cost"]
+
+[[screen.faq]]
+id = "g-steps"
+q = "Что будет после «Подключить»?"
+a = "Условия → страна → модуль → вход через Telegram. Владелец пульта получит запрос; когда он даст доступ, бот напишет вам, а пространство с агентом появится в панели."
+actions = ["go:offer.connect"]
+
+[[screen.faq]]
+id = "g-cost"
+q = "Сколько стоит?"
+a = "Подключение ничего не списывает: сессии не создаются и модель не тратится до решения владельца. Стоимость называет GASTECH."
+actions = ["go:offer.connect"]
+
+[[screen]]
+id = "offer.connect.country"
+where = "offer"
+title = "Подключить: страна"
+roles = ["guest"]
+purpose = "Шаг 2 из 4: из какой страны вы работаете — модели доступны по спискам стран их поставщиков."
+steps = ["Нажмите страну или введите код из двух букв.", "Номер телефона подтвердите позже в боте."]
+next = ["go:offer.connect.module", "go:offer.connect.terms"]
+chips = ["g-country", "g-steps"]
+
+[[screen.faq]]
+id = "g-country"
+q = "Почему недоступно в моей стране?"
+a = "Модели доступны только в странах из списков их поставщиков. Если для вашей страны поставщика нет, подключение недоступно."
+actions = ["go:offer.connect.country"]
+
+[[screen.faq]]
+id = "g-steps"
+q = "Что будет после «Подключить»?"
+a = "Дальше — модуль и вход через Telegram. Владелец пульта получит запрос и даст доступ."
+actions = ["go:offer.connect.module"]
+
+[[screen]]
+id = "offer.connect.module"
+where = "offer"
+title = "Подключить: модуль"
+roles = ["guest"]
+purpose = "Шаг 3 из 4: с какого модуля начать."
+steps = ["Нажмите модуль — пространство с ним владелец создаст после одобрения."]
+next = ["go:offer.connect.login", "go:offer.modules"]
+chips = ["g-which", "g-steps"]
+
+[[screen.faq]]
+id = "g-which"
+q = "Какой модуль выбрать?"
+a = "Тот, что закрывает самую частую рутину. Остальные можно подключить потом. Посмотрите демо каждого выше на странице."
+actions = ["go:offer.modules"]
+
+[[screen.faq]]
+id = "g-steps"
+q = "Что будет после «Подключить»?"
+a = "Дальше — вход через Telegram. Владелец пульта получит запрос и даст доступ."
+actions = ["go:offer.connect.login"]
+
+[[screen]]
+id = "offer.connect.login"
+where = "offer"
+title = "Подключить: вход через Telegram"
+roles = ["guest"]
+purpose = "Шаг 4 из 4: вход через Telegram — запрос уходит владельцу пульта."
+steps = ["«Войти через Telegram» — откроется бот.", "Нажмите «Запустить» (Start).", "Когда владелец даст доступ, бот напишет вам, а страница откроет панель сама."]
+next = ["go:offer.connect.module"]
+chips = ["g-wait", "g-cost"]
+
+[[screen.faq]]
+id = "g-wait"
+q = "Нажал(а), ничего не происходит"
+a = "Запрос у владельца пульта. Когда он ответит, бот напишет вам; тогда нажмите «Войти через Telegram» ещё раз. Telegram не открылся — нажмите «Открыть Telegram ещё раз»."
+actions = ["go:offer.connect.login"]
+
+[[screen.faq]]
+id = "g-cost"
+q = "Сколько стоит?"
+a = "Вход ничего не списывает: сессии не создаются и модель не тратится до решения владельца. Стоимость называет GASTECH."
+actions = ["go:offer.connect.login"]
+
+# ---------- бот (владелец) ----------
+[[screen]]
+id = "bot.menu"
+where = "bot"
+title = "Бот: меню"
+roles = ["owner"]
+purpose = "Пульт сессий Claude в Telegram: текст, голос и файлы уходят в активную сессию; кнопки внизу — меню."
+steps = ["🆕 Новая — сессия в папке или из модуля.", "🔀 Переключить — какая сессия активная.", "📱 Панель — то же на большом экране."]
+next = ["go:new-session", "go:switch", "go:modules"]
+chips = ["agent", "cost", "people"]
+
+[[screen]]
+id = "bot.new"
+where = "bot"
+title = "Бот: новая сессия"
+roles = ["owner"]
+purpose = "В какой папке открыть сессию: существующая, новая или из модуля; номер задачи (GAS-123) — сессия по задаче."
+steps = ["Нажмите папку — сессия откроется и станет активной.", "«Из модуля» — готовый агент."]
+next = ["go:modules", "go:new-folder"]
+chips = ["agent"]
+
+[[screen]]
+id = "bot.new-folder"
+where = "bot"
+title = "Бот: новая папка"
+roles = ["owner"]
+purpose = "Имя новой папки — следующим сообщением."
+steps = ["Латиница, цифры, дефис, например shop-bot."]
+next = ["go:new-session"]
+
+[[screen]]
+id = "bot.switch"
+where = "bot"
+title = "Бот: переключить"
+roles = ["owner"]
+purpose = "Какая сессия активная: в неё уходят ваши сообщения, от неё — ответы."
+steps = ["Нажмите сессию."]
+next = ["go:sessions"]
+chips = ["colors"]
+
+[[screen]]
+id = "bot.windows"
+where = "bot"
+title = "Бот: окна"
+roles = ["owner"]
+purpose = "Все сессии: экран, последний ответ, переименовать, завершить."
+steps = ["Нажмите сессию — действия с ней."]
+next = ["go:switch"]
+
+[[screen]]
+id = "bot.summary"
+where = "bot"
+title = "Бот: сводка"
+roles = ["owner"]
+purpose = "Что происходит во всех сессиях: кто работает, кто ждёт ответа, расход."
+steps = ["Жёлтые — ждут ответа: откройте и ответьте."]
+next = ["go:sessions"]
+chips = ["answer", "cost"]
+
+[[screen]]
+id = "bot.commands"
+where = "bot"
+title = "Бот: команды Claude"
+roles = ["owner"]
+purpose = "Служебные команды Claude Code для активной сессии кнопками."
+steps = ["Нажмите команду — она уйдёт в активную сессию."]
+next = ["go:session.model"]
+chips = ["model"]
+
+[[screen]]
+id = "bot.settings"
+where = "bot"
+title = "Бот: настройки"
+roles = ["owner"]
+purpose = "Уведомления, голос, люди."
+steps = ["Уведомления — все окна, только активное или выкл."]
+next = ["go:settings.people", "go:voice"]
+chips = ["people", "helper"]
+
+[[screen]]
+id = "bot.modules"
+where = "bot"
+title = "Бот: модули"
+roles = ["owner"]
+purpose = "Каталог готовых агентов: общие модули и отрасли."
+steps = ["Нажмите отрасль, затем модуль.", "«Создать» — имя папки следующим сообщением."]
+next = ["go:modules", "go:new-session"]
+chips = ["agent"]
+
+[[screen]]
+id = "bot.setup"
+where = "bot"
+title = "Бот: Claude не готов"
+roles = ["owner"]
+purpose = "Вход в Claude Code на сервере: ссылка входа и код."
+steps = ["«Войти в Claude» — откройте ссылку и войдите.", "Пришлите код со страницы следующим сообщением."]
+next = ["go:settings.setup"]
+
+[[screen]]
+id = "bot.voice"
+where = "bot"
+title = "Бот: голос"
+roles = ["owner"]
+purpose = "Каким голосом бот читает ответы; послушать и выбрать."
+steps = ["▶ — послушать, ✅ — выбрать."]
+next = ["go:voice"]
+
+# ---------- бот: демо предложения (гость) ----------
+[[screen]]
+id = "bot.demo"
+where = "bot"
+title = "Демо в Telegram"
+roles = ["guest"]
+purpose = "Демо GASTECH: так агент работал бы в вашем Telegram. Данные выдуманы, ничего не отправляется, модель не вызывается."
+steps = ["Нажимайте кнопки — бот покажет, что произошло бы.", "«Дальше ›» — следующее сообщение сценария.", "В конце — «Подключить»."]
+next = ["go:offer.connect", "go:offer.modules"]
+chips = ["g-agent", "g-cost"]
+
+[[screen.faq]]
+id = "g-agent"
+q = "Как подключить агента?"
+a = "В конце демо — «Подключить»: владелец пульта получит запрос и свяжется с вами. Дальше — условия, страна и номер прямо в этом чате."
+actions = ["go:offer.connect"]
+
+[[screen.faq]]
+id = "g-cost"
+q = "Сколько стоит?"
+a = "Демо бесплатное и ничего не отправляет. Стоимость работы агентов называет GASTECH при подключении."
+actions = ["go:offer.connect"]

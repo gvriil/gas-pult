@@ -1,0 +1,2043 @@
+{
+ "actions": {
+  "go:commands": {
+   "bot": false,
+   "demo": false,
+   "id": "go:commands",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Команды из всех сессий"
+  },
+  "go:demo": {
+   "bot": false,
+   "demo": false,
+   "id": "go:demo",
+   "roles": [
+    "anon"
+   ],
+   "title": "Посмотреть демо"
+  },
+  "go:integrations": {
+   "bot": false,
+   "demo": false,
+   "id": "go:integrations",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Интеграции"
+  },
+  "go:login": {
+   "bot": false,
+   "demo": false,
+   "id": "go:login",
+   "roles": [
+    "anon"
+   ],
+   "title": "Войти через Telegram"
+  },
+  "go:models": {
+   "bot": false,
+   "demo": false,
+   "id": "go:models",
+   "roles": [
+    "owner"
+   ],
+   "title": "Модели и ключи"
+  },
+  "go:modules": {
+   "bot": true,
+   "demo": false,
+   "id": "go:modules",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Из модуля — каталог агентов"
+  },
+  "go:new-folder": {
+   "bot": true,
+   "demo": false,
+   "id": "go:new-folder",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Новая папка"
+  },
+  "go:new-session": {
+   "bot": true,
+   "demo": false,
+   "id": "go:new-session",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Новая сессия"
+  },
+  "go:offer.connect": {
+   "bot": false,
+   "demo": true,
+   "id": "go:offer.connect",
+   "roles": [
+    "guest"
+   ],
+   "title": "Подключить"
+  },
+  "go:offer.connect.country": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.connect.country",
+   "roles": [
+    "guest"
+   ],
+   "title": "Подключить: страна"
+  },
+  "go:offer.connect.login": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.connect.login",
+   "roles": [
+    "guest"
+   ],
+   "title": "Подключить: вход через Telegram"
+  },
+  "go:offer.connect.module": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.connect.module",
+   "roles": [
+    "guest"
+   ],
+   "title": "Подключить: модуль"
+  },
+  "go:offer.connect.terms": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.connect.terms",
+   "roles": [
+    "guest"
+   ],
+   "title": "Подключить: условия"
+  },
+  "go:offer.modules": {
+   "bot": false,
+   "demo": true,
+   "id": "go:offer.modules",
+   "roles": [
+    "guest"
+   ],
+   "title": "Модули и демо"
+  },
+  "go:offer.telegram": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.telegram",
+   "roles": [
+    "guest"
+   ],
+   "title": "Попробовать в Telegram"
+  },
+  "go:offer.top": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.top",
+   "roles": [
+    "guest"
+   ],
+   "title": "К началу предложения"
+  },
+  "go:offer.upload": {
+   "bot": false,
+   "demo": false,
+   "id": "go:offer.upload",
+   "roles": [
+    "guest"
+   ],
+   "title": "Загрузить выгрузку"
+  },
+  "go:session.chat": {
+   "bot": false,
+   "demo": false,
+   "id": "go:session.chat",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Переписка сессии"
+  },
+  "go:session.menu": {
+   "bot": false,
+   "demo": false,
+   "id": "go:session.menu",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Меню действий сессии"
+  },
+  "go:session.model": {
+   "bot": true,
+   "demo": false,
+   "id": "go:session.model",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Модель сессии"
+  },
+  "go:session.screen": {
+   "bot": true,
+   "demo": false,
+   "id": "go:session.screen",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Экран сессии"
+  },
+  "go:sessions": {
+   "bot": true,
+   "demo": false,
+   "id": "go:sessions",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Сессии"
+  },
+  "go:settings": {
+   "bot": true,
+   "demo": false,
+   "id": "go:settings",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Настройки"
+  },
+  "go:settings.cost": {
+   "bot": false,
+   "demo": false,
+   "id": "go:settings.cost",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "title": "Расход и лимиты"
+  },
+  "go:settings.country": {
+   "bot": false,
+   "demo": false,
+   "id": "go:settings.country",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Страна"
+  },
+  "go:settings.helper": {
+   "bot": false,
+   "demo": false,
+   "id": "go:settings.helper",
+   "roles": [
+    "owner"
+   ],
+   "title": "Настройки помощника"
+  },
+  "go:settings.helper-stats": {
+   "bot": false,
+   "demo": false,
+   "id": "go:settings.helper-stats",
+   "roles": [
+    "owner"
+   ],
+   "title": "Помощник: где путаются"
+  },
+  "go:settings.legend": {
+   "bot": false,
+   "demo": false,
+   "id": "go:settings.legend",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Обозначения"
+  },
+  "go:settings.limits": {
+   "bot": false,
+   "demo": false,
+   "id": "go:settings.limits",
+   "roles": [
+    "owner"
+   ],
+   "title": "Изменить лимиты"
+  },
+  "go:settings.people": {
+   "bot": true,
+   "demo": false,
+   "id": "go:settings.people",
+   "roles": [
+    "owner"
+   ],
+   "title": "Люди"
+  },
+  "go:settings.setup": {
+   "bot": true,
+   "demo": false,
+   "id": "go:settings.setup",
+   "roles": [
+    "owner"
+   ],
+   "title": "Проверка Claude Code"
+  },
+  "go:switch": {
+   "bot": true,
+   "demo": false,
+   "id": "go:switch",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "title": "Другая сессия"
+  },
+  "go:voice": {
+   "bot": true,
+   "demo": false,
+   "id": "go:voice",
+   "roles": [
+    "owner"
+   ],
+   "title": "Голос озвучки"
+  }
+ },
+ "faq": [
+  {
+   "a": "Агент — это сессия Claude в папке проекта. Готовый агент под задачу: «Новая сессия» → «Из модуля» → выберите модуль → «Создать и открыть сессию». Своя задача: «Новая сессия» → папка → пишите агенту в поле внизу.",
+   "actions": [
+    "go:modules",
+    "go:new-session"
+   ],
+   "id": "agent",
+   "q": "Как подключить агента?",
+   "roles": [
+    "owner",
+    "member"
+   ]
+  },
+  {
+   "a": "У наблюдателя доступ только на просмотр: агента подключает владелец или участник. Каталог готовых агентов можно посмотреть в «Из модуля».",
+   "actions": [
+    "go:modules"
+   ],
+   "id": "agent",
+   "q": "Как подключить агента?",
+   "roles": [
+    "viewer"
+   ]
+  },
+  {
+   "a": "Расход считается по журналам Claude Code и ценам API: сумма за сегодня — на главной и в «Настройки» → «Расход и лимиты». С подпиской Pro/Max это оценка, а не счёт. Владелец задаёт лимит на сессию и на день — при превышении сессия встаёт на паузу.",
+   "actions": [
+    "go:settings.cost"
+   ],
+   "id": "cost",
+   "q": "Сколько стоит?",
+   "roles": [
+    "owner",
+    "member"
+   ]
+  },
+  {
+   "a": "Расход видит хозяин учётки — владелец или участник со своей учёткой Claude. У наблюдателя расход не показывается.",
+   "actions": [
+    "go:settings"
+   ],
+   "id": "cost",
+   "q": "Сколько стоит?",
+   "roles": [
+    "viewer"
+   ]
+  },
+  {
+   "a": "Зелёная мигающая точка — Claude работает; жёлтая — ждёт вашего ответа; серая — свободна; красная — остановлена. Все значки — в «Обозначениях».",
+   "actions": [
+    "go:settings.legend"
+   ],
+   "id": "colors",
+   "q": "Что значат цвета?",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ]
+  },
+  {
+   "a": "«Интеграции» → выберите сервис → следуйте шагам: откроется claude.ai, там «Подключить». Отметка в панели появится сама. У каждого человека свои интеграции.",
+   "actions": [
+    "go:integrations"
+   ],
+   "id": "integr",
+   "q": "Как подключить Notion, Gmail или другой сервис?",
+   "roles": [
+    "owner",
+    "member"
+   ]
+  },
+  {
+   "a": "Пусть человек откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить: участник или наблюдатель. Изменить роль или отключить — «Настройки» → «Люди».",
+   "actions": [
+    "go:settings.people"
+   ],
+   "id": "people",
+   "q": "Как добавить человека?",
+   "roles": [
+    "owner"
+   ]
+  },
+  {
+   "a": "В сессии: меню действий → «Модель» — основная или быстрая; «Сменить поставщика» — Claude, OpenRouter, GLM, DeepSeek. Ключи других поставщиков владелец задаёт в «Интеграции» → «Модели».",
+   "actions": [
+    "go:session.model",
+    "go:models"
+   ],
+   "id": "model",
+   "q": "Как сменить модель?",
+   "roles": [
+    "owner"
+   ]
+  },
+  {
+   "a": "В сессии: меню действий → «Модель». Поставщиков и ключи настраивает владелец.",
+   "actions": [
+    "go:session.model"
+   ],
+   "id": "model",
+   "q": "Как сменить модель?",
+   "roles": [
+    "member"
+   ]
+  },
+  {
+   "a": "Модели доступны только в странах из списков их поставщиков. Пульт смотрит на вашу страну, код номера и страну по IP — доступно то, что разрешено для всех. Проверить или поменять страну — «Настройки» → «Страна».",
+   "actions": [
+    "go:settings.country"
+   ],
+   "id": "country",
+   "q": "Почему сервис недоступен в моей стране?",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ]
+  },
+  {
+   "a": "Жёлтая точка — Claude задал вопрос или просит разрешения. Откройте сессию: варианты ответа — кнопками над полем ввода, всё как есть — на «Экране».",
+   "actions": [
+    "go:session.screen",
+    "go:sessions"
+   ],
+   "id": "answer",
+   "q": "Claude ждёт ответа — что нажать?",
+   "roles": [
+    "owner",
+    "member"
+   ]
+  },
+  {
+   "a": "Офлайн-подсказка — ответ из карты экранов, без модели и бесплатно. Умные ответы включает владелец в настройках помощника — с ключом API и лимитами.",
+   "actions": [
+    "go:settings.helper"
+   ],
+   "id": "helper",
+   "q": "Почему ответ помеченный «офлайн»?",
+   "roles": [
+    "owner"
+   ]
+  },
+  {
+   "a": "Офлайн-подсказка — ответ из карты экранов, без модели и бесплатно. Умные ответы включает владелец пульта.",
+   "actions": [
+    "go:settings"
+   ],
+   "id": "helper",
+   "q": "Почему ответ помеченный «офлайн»?",
+   "roles": [
+    "member",
+    "viewer"
+   ]
+  }
+ ],
+ "screens": {
+  "bot.commands": {
+   "chips": [
+    "model"
+   ],
+   "faq": [],
+   "id": "bot.commands",
+   "next": [
+    "go:session.model"
+   ],
+   "purpose": "Служебные команды Claude Code для активной сессии кнопками.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите команду — она уйдёт в активную сессию."
+   ],
+   "title": "Бот: команды Claude",
+   "where": "bot"
+  },
+  "bot.demo": {
+   "chips": [
+    "g-agent",
+    "g-cost"
+   ],
+   "faq": [
+    {
+     "a": "В конце демо — «Подключить»: владелец пульта получит запрос и свяжется с вами. Дальше — условия, страна и номер прямо в этом чате.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-agent",
+     "q": "Как подключить агента?",
+     "roles": []
+    },
+    {
+     "a": "Демо бесплатное и ничего не отправляет. Стоимость работы агентов называет GASTECH при подключении.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-cost",
+     "q": "Сколько стоит?",
+     "roles": []
+    }
+   ],
+   "id": "bot.demo",
+   "next": [
+    "go:offer.connect",
+    "go:offer.modules"
+   ],
+   "purpose": "Демо GASTECH: так агент работал бы в вашем Telegram. Данные выдуманы, ничего не отправляется, модель не вызывается.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Нажимайте кнопки — бот покажет, что произошло бы.",
+    "«Дальше ›» — следующее сообщение сценария.",
+    "В конце — «Подключить»."
+   ],
+   "title": "Демо в Telegram",
+   "where": "bot"
+  },
+  "bot.menu": {
+   "chips": [
+    "agent",
+    "cost",
+    "people"
+   ],
+   "faq": [],
+   "id": "bot.menu",
+   "next": [
+    "go:new-session",
+    "go:switch",
+    "go:modules"
+   ],
+   "purpose": "Пульт сессий Claude в Telegram: текст, голос и файлы уходят в активную сессию; кнопки внизу — меню.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "🆕 Новая — сессия в папке или из модуля.",
+    "🔀 Переключить — какая сессия активная.",
+    "📱 Панель — то же на большом экране."
+   ],
+   "title": "Бот: меню",
+   "where": "bot"
+  },
+  "bot.modules": {
+   "chips": [
+    "agent"
+   ],
+   "faq": [],
+   "id": "bot.modules",
+   "next": [
+    "go:modules",
+    "go:new-session"
+   ],
+   "purpose": "Каталог готовых агентов: общие модули и отрасли.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите отрасль, затем модуль.",
+    "«Создать» — имя папки следующим сообщением."
+   ],
+   "title": "Бот: модули",
+   "where": "bot"
+  },
+  "bot.new": {
+   "chips": [
+    "agent"
+   ],
+   "faq": [],
+   "id": "bot.new",
+   "next": [
+    "go:modules",
+    "go:new-folder"
+   ],
+   "purpose": "В какой папке открыть сессию: существующая, новая или из модуля; номер задачи (GAS-123) — сессия по задаче.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите папку — сессия откроется и станет активной.",
+    "«Из модуля» — готовый агент."
+   ],
+   "title": "Бот: новая сессия",
+   "where": "bot"
+  },
+  "bot.new-folder": {
+   "chips": [],
+   "faq": [],
+   "id": "bot.new-folder",
+   "next": [
+    "go:new-session"
+   ],
+   "purpose": "Имя новой папки — следующим сообщением.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Латиница, цифры, дефис, например shop-bot."
+   ],
+   "title": "Бот: новая папка",
+   "where": "bot"
+  },
+  "bot.settings": {
+   "chips": [
+    "people",
+    "helper"
+   ],
+   "faq": [],
+   "id": "bot.settings",
+   "next": [
+    "go:settings.people",
+    "go:voice"
+   ],
+   "purpose": "Уведомления, голос, люди.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Уведомления — все окна, только активное или выкл."
+   ],
+   "title": "Бот: настройки",
+   "where": "bot"
+  },
+  "bot.setup": {
+   "chips": [],
+   "faq": [],
+   "id": "bot.setup",
+   "next": [
+    "go:settings.setup"
+   ],
+   "purpose": "Вход в Claude Code на сервере: ссылка входа и код.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "«Войти в Claude» — откройте ссылку и войдите.",
+    "Пришлите код со страницы следующим сообщением."
+   ],
+   "title": "Бот: Claude не готов",
+   "where": "bot"
+  },
+  "bot.summary": {
+   "chips": [
+    "answer",
+    "cost"
+   ],
+   "faq": [],
+   "id": "bot.summary",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Что происходит во всех сессиях: кто работает, кто ждёт ответа, расход.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Жёлтые — ждут ответа: откройте и ответьте."
+   ],
+   "title": "Бот: сводка",
+   "where": "bot"
+  },
+  "bot.switch": {
+   "chips": [
+    "colors"
+   ],
+   "faq": [],
+   "id": "bot.switch",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Какая сессия активная: в неё уходят ваши сообщения, от неё — ответы.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите сессию."
+   ],
+   "title": "Бот: переключить",
+   "where": "bot"
+  },
+  "bot.voice": {
+   "chips": [],
+   "faq": [],
+   "id": "bot.voice",
+   "next": [
+    "go:voice"
+   ],
+   "purpose": "Каким голосом бот читает ответы; послушать и выбрать.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "▶ — послушать, ✅ — выбрать."
+   ],
+   "title": "Бот: голос",
+   "where": "bot"
+  },
+  "bot.windows": {
+   "chips": [],
+   "faq": [],
+   "id": "bot.windows",
+   "next": [
+    "go:switch"
+   ],
+   "purpose": "Все сессии: экран, последний ответ, переименовать, завершить.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите сессию — действия с ней."
+   ],
+   "title": "Бот: окна",
+   "where": "bot"
+  },
+  "country": {
+   "chips": [
+    "country",
+    "mismatch"
+   ],
+   "faq": [
+    {
+     "a": "Выбор, код номера и страна по IP указывают на разные страны. Тогда доступны только сервисы, разрешённые для всех этих стран.",
+     "actions": [
+      "go:settings.country"
+     ],
+     "id": "mismatch",
+     "q": "«Признаки страны не совпадают» — что это?",
+     "roles": []
+    }
+   ],
+   "id": "country",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Выбор страны, из которой вы работаете: модели доступны по спискам стран их поставщиков.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Нажмите свою страну или введите код из двух букв.",
+    "Подтвердите номер в боте — «Поделиться номером» (храним только код страны и хеш номера)."
+   ],
+   "title": "Ваша страна",
+   "where": "panel"
+  },
+  "form.connector": {
+   "chips": [
+    "integr"
+   ],
+   "faq": [],
+   "id": "form.connector",
+   "next": [
+    "go:integrations"
+   ],
+   "purpose": "Мастер подключения сервиса через claude.ai.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "«Открыть claude.ai» → найдите сервис → «Подключить».",
+    "Войдите в сервис как обычно.",
+    "Вернитесь сюда — отметка появится сама."
+   ],
+   "title": "Подключение сервиса",
+   "where": "panel"
+  },
+  "form.more": {
+   "chips": [],
+   "faq": [],
+   "id": "form.more",
+   "next": [
+    "go:integrations"
+   ],
+   "purpose": "Каталог claude.ai и ручное подключение своих серверов.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "«Открыть каталог claude.ai» — найдите сервис и нажмите «Подключить».",
+    "«Для продвинутых» — свой сервер по адресу или с ключом."
+   ],
+   "title": "Другой сервис",
+   "where": "panel"
+  },
+  "form.preset": {
+   "chips": [],
+   "faq": [],
+   "id": "form.preset",
+   "next": [
+    "go:integrations"
+   ],
+   "purpose": "Подключение сервиса по ключу или адресу — для продвинутых.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "«Открыть страницу, где взять ключ».",
+    "Вставьте ключ — он хранится только на сервере.",
+    "«Подключить»."
+   ],
+   "title": "Подключение с ключом",
+   "where": "panel"
+  },
+  "form.provider": {
+   "chips": [
+    "cost",
+    "country"
+   ],
+   "faq": [],
+   "id": "form.provider",
+   "next": [
+    "go:new-session",
+    "go:integrations"
+   ],
+   "purpose": "Ключ и модели поставщика: OpenRouter, GLM, DeepSeek или шлюз для России.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "«Где взять ключ» → вставьте ключ → «Сохранить ключ».",
+    "Модели — основная и быстрая.",
+    "«Новая сессия с …» — сразу попробовать."
+   ],
+   "title": "Поставщик моделей",
+   "where": "panel"
+  },
+  "home.commands": {
+   "chips": [
+    "fail",
+    "colors"
+   ],
+   "faq": [
+    {
+     "a": "Ошибку пульт сам отправляет на разбор в ту сессию, где команда родилась: Claude предложит исправление. Вывод — под командой.",
+     "actions": [
+      "go:sessions"
+     ],
+     "id": "fail",
+     "q": "Команда упала — что дальше?",
+     "roles": []
+    }
+   ],
+   "id": "home.commands",
+   "next": [
+    "go:sessions",
+    "go:settings.legend"
+   ],
+   "purpose": "Команды терминала, которые Claude предлагал в ответах всех сессий, и их итог.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "«Выполнить» — команда выполнится на сервере пульта (только владелец).",
+    "Опасные команды — с подтверждением.",
+    "Команды для другой машины — скопируйте и выполните там."
+   ],
+   "title": "Команды из всех сессий",
+   "where": "panel"
+  },
+  "home.integrations": {
+   "chips": [
+    "integr",
+    "model"
+   ],
+   "faq": [],
+   "id": "home.integrations",
+   "next": [
+    "go:models",
+    "go:voice",
+    "go:sessions"
+   ],
+   "purpose": "Сервисы для Claude (Notion, Gmail, GitHub…), а у владельца — ещё модели других поставщиков, запасные и голос.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Выберите сервис — откроется мастер подключения.",
+    "«Другой сервис» — каталог claude.ai и ручное подключение.",
+    "Владельцу: «Модели» — ключи OpenRouter, GLM, DeepSeek и шлюзы для России."
+   ],
+   "title": "Интеграции",
+   "where": "panel"
+  },
+  "home.sessions": {
+   "chips": [
+    "agent",
+    "cost",
+    "colors"
+   ],
+   "faq": [],
+   "id": "home.sessions",
+   "next": [
+    "go:new-session",
+    "go:modules",
+    "go:commands"
+   ],
+   "purpose": "Все сессии Claude и их статус; сводка: сколько ждут ответа, работают, свободны, и расход за сегодня.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Нажмите карточку — откроется переписка.",
+    "«⋯» на карточке — действия: активная, переименовать, завершить.",
+    "«Новая сессия» внизу — новая сессия в папке или из модуля."
+   ],
+   "title": "Главная: сессии",
+   "where": "panel"
+  },
+  "login": {
+   "chips": [
+    "noaccess",
+    "demo"
+   ],
+   "faq": [
+    {
+     "a": "Нажмите «Войти через Telegram» и «Запустить» в боте — бот спросит владельца пульта, пустить ли вас. Когда он даст роль, нажмите «Войти через Telegram» ещё раз.",
+     "actions": [
+      "go:login"
+     ],
+     "id": "noaccess",
+     "q": "Нет доступа — что делать?",
+     "roles": []
+    },
+    {
+     "a": "Да: «Посмотреть демо» — та же панель на примерах, всё можно нажимать, ничего никуда не уходит.",
+     "actions": [
+      "go:demo"
+     ],
+     "id": "demo",
+     "q": "Можно посмотреть без входа?",
+     "roles": []
+    }
+   ],
+   "id": "login",
+   "next": [
+    "go:login",
+    "go:demo"
+   ],
+   "purpose": "Вход в панель без пароля — подтверждением в вашем Telegram.",
+   "roles": [
+    "anon"
+   ],
+   "steps": [
+    "Нажмите «Войти через Telegram».",
+    "В Telegram нажмите «Запустить» (Start), затем «Войти».",
+    "Вернитесь сюда — панель откроется сама."
+   ],
+   "title": "Вход в пульт",
+   "where": "panel"
+  },
+  "module": {
+   "chips": [
+    "agent",
+    "data",
+    "cost"
+   ],
+   "faq": [
+    {
+     "a": "Только из официальных API (ключ вашего сервиса) и ваших выгрузок — без парсинга сайтов и личных кабинетов. Публичное — письма, ответы, рассылки — только после вашего «Да».",
+     "actions": [
+      "go:integrations"
+     ],
+     "id": "data",
+     "q": "Откуда агент берёт данные?",
+     "roles": []
+    }
+   ],
+   "id": "module",
+   "next": [
+    "go:integrations",
+    "go:modules"
+   ],
+   "purpose": "Что делает модуль, какие интеграции нужны, откуда данные, расписание, решения кнопками и что будет в папке.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Подключите отмеченные «нужно» интеграции — «Подключить».",
+    "Проверьте имя папки.",
+    "«Создать и открыть сессию» — агент получит первое задание."
+   ],
+   "title": "Модуль",
+   "where": "panel"
+  },
+  "modules": {
+   "chips": [
+    "agent",
+    "which",
+    "cost"
+   ],
+   "faq": [
+    {
+     "a": "Начните с того, что болит каждый день: утренние цифры, напоминания клиентам, заявки или отзывы. Модули одной отрасли собраны группой; у каждого — расписание и вопросы кнопками.",
+     "actions": [
+      "go:modules"
+     ],
+     "id": "which",
+     "q": "Какой модуль выбрать?",
+     "roles": []
+    }
+   ],
+   "id": "modules",
+   "next": [
+    "go:new-session",
+    "go:integrations"
+   ],
+   "purpose": "Каталог готовых агентов по отраслям: модуль — агент с ролью и правилами, навыки, пример данных, расписание и решения кнопками.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Выберите отрасль и модуль.",
+    "На экране модуля — что нужно подключить и что будет в папке.",
+    "«Создать и открыть сессию» — новая папка, ваши не трогаются."
+   ],
+   "title": "Из модуля",
+   "where": "panel"
+  },
+  "offer.connect.country": {
+   "chips": [
+    "g-country",
+    "g-steps"
+   ],
+   "faq": [
+    {
+     "a": "Модели доступны только в странах из списков их поставщиков. Если для вашей страны поставщика нет, подключение недоступно.",
+     "actions": [
+      "go:offer.connect.country"
+     ],
+     "id": "g-country",
+     "q": "Почему недоступно в моей стране?",
+     "roles": []
+    },
+    {
+     "a": "Дальше — модуль и вход через Telegram. Владелец пульта получит запрос и даст доступ.",
+     "actions": [
+      "go:offer.connect.module"
+     ],
+     "id": "g-steps",
+     "q": "Что будет после «Подключить»?",
+     "roles": []
+    }
+   ],
+   "id": "offer.connect.country",
+   "next": [
+    "go:offer.connect.module",
+    "go:offer.connect.terms"
+   ],
+   "purpose": "Шаг 2 из 4: из какой страны вы работаете — модели доступны по спискам стран их поставщиков.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Нажмите страну или введите код из двух букв.",
+    "Номер телефона подтвердите позже в боте."
+   ],
+   "title": "Подключить: страна",
+   "where": "offer"
+  },
+  "offer.connect.login": {
+   "chips": [
+    "g-wait",
+    "g-cost"
+   ],
+   "faq": [
+    {
+     "a": "Запрос у владельца пульта. Когда он ответит, бот напишет вам; тогда нажмите «Войти через Telegram» ещё раз. Telegram не открылся — нажмите «Открыть Telegram ещё раз».",
+     "actions": [
+      "go:offer.connect.login"
+     ],
+     "id": "g-wait",
+     "q": "Нажал(а), ничего не происходит",
+     "roles": []
+    },
+    {
+     "a": "Вход ничего не списывает: сессии не создаются и модель не тратится до решения владельца. Стоимость называет GASTECH.",
+     "actions": [
+      "go:offer.connect.login"
+     ],
+     "id": "g-cost",
+     "q": "Сколько стоит?",
+     "roles": []
+    }
+   ],
+   "id": "offer.connect.login",
+   "next": [
+    "go:offer.connect.module"
+   ],
+   "purpose": "Шаг 4 из 4: вход через Telegram — запрос уходит владельцу пульта.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "«Войти через Telegram» — откроется бот.",
+    "Нажмите «Запустить» (Start).",
+    "Когда владелец даст доступ, бот напишет вам, а страница откроет панель сама."
+   ],
+   "title": "Подключить: вход через Telegram",
+   "where": "offer"
+  },
+  "offer.connect.module": {
+   "chips": [
+    "g-which",
+    "g-steps"
+   ],
+   "faq": [
+    {
+     "a": "Тот, что закрывает самую частую рутину. Остальные можно подключить потом. Посмотрите демо каждого выше на странице.",
+     "actions": [
+      "go:offer.modules"
+     ],
+     "id": "g-which",
+     "q": "Какой модуль выбрать?",
+     "roles": []
+    },
+    {
+     "a": "Дальше — вход через Telegram. Владелец пульта получит запрос и даст доступ.",
+     "actions": [
+      "go:offer.connect.login"
+     ],
+     "id": "g-steps",
+     "q": "Что будет после «Подключить»?",
+     "roles": []
+    }
+   ],
+   "id": "offer.connect.module",
+   "next": [
+    "go:offer.connect.login",
+    "go:offer.modules"
+   ],
+   "purpose": "Шаг 3 из 4: с какого модуля начать.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Нажмите модуль — пространство с ним владелец создаст после одобрения."
+   ],
+   "title": "Подключить: модуль",
+   "where": "offer"
+  },
+  "offer.connect.terms": {
+   "chips": [
+    "g-steps",
+    "g-cost"
+   ],
+   "faq": [
+    {
+     "a": "Условия → страна → модуль → вход через Telegram. Владелец пульта получит запрос; когда он даст доступ, бот напишет вам, а пространство с агентом появится в панели.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-steps",
+     "q": "Что будет после «Подключить»?",
+     "roles": []
+    },
+    {
+     "a": "Подключение ничего не списывает: сессии не создаются и модель не тратится до решения владельца. Стоимость называет GASTECH.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-cost",
+     "q": "Сколько стоит?",
+     "roles": []
+    }
+   ],
+   "id": "offer.connect.terms",
+   "next": [
+    "go:offer.connect.country"
+   ],
+   "purpose": "Шаг 1 из 4: условия использования пульта.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Прочитайте пункты.",
+    "«Принимаю» — дальше страна."
+   ],
+   "title": "Подключить: условия",
+   "where": "offer"
+  },
+  "offer.modules": {
+   "chips": [
+    "g-what-module",
+    "g-agent",
+    "g-cost"
+   ],
+   "faq": [
+    {
+     "a": "Модуль — готовый агент под одну задачу: он каждый день делает рутину и спрашивает вас кнопками. Публичное — сообщения клиентам, ответы — только после вашего «Да».",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-what-module",
+     "q": "Что такое модуль?",
+     "roles": []
+    },
+    {
+     "a": "«Подключить» — четыре шага: условия, страна, модуль, вход через Telegram. Владелец пульта получит запрос и создаст пространство с агентом.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-agent",
+     "q": "Как подключить агента?",
+     "roles": []
+    },
+    {
+     "a": "Демо бесплатное и ничего не отправляет. Стоимость работы агентов называет GASTECH при подключении.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-cost",
+     "q": "Сколько стоит?",
+     "roles": []
+    }
+   ],
+   "id": "offer.modules",
+   "next": [
+    "go:offer.telegram",
+    "go:offer.connect"
+   ],
+   "purpose": "Модули предложения с живым демо на выдуманных данных: нажмите кнопку в вопросе агента — покажем, что произошло бы, ничего не выполняя.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Нажимайте варианты в вопросе агента.",
+    "«Попробовать в Telegram» — тот же сценарий в боте.",
+    "Понравилось — «Подключить»."
+   ],
+   "title": "Модули и демо",
+   "where": "offer"
+  },
+  "offer.top": {
+   "chips": [
+    "g-agent",
+    "g-cost",
+    "g-data"
+   ],
+   "faq": [
+    {
+     "a": "«Подключить» — четыре шага: условия, страна, модуль, вход через Telegram. Владелец пульта получит запрос и создаст пространство с агентом. До его решения ничего не запускается.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-agent",
+     "q": "Как подключить агента?",
+     "roles": []
+    },
+    {
+     "a": "На этой странице ничего не списывается: демо и отчёт по выгрузке считает скрипт, модель не вызывается. Стоимость работы агентов называет GASTECH при подключении.",
+     "actions": [
+      "go:offer.connect"
+     ],
+     "id": "g-cost",
+     "q": "Сколько стоит?",
+     "roles": []
+    },
+    {
+     "a": "Файл выгрузки разбирается в памяти и удаляется через 30 минут или по кнопке «Удалить мои данные»; на диск не пишется, модели не передаётся. В отчёте — только итоги и сокращённые имена.",
+     "actions": [
+      "go:offer.upload"
+     ],
+     "id": "g-data",
+     "q": "Что будет с моими данными?",
+     "roles": []
+    },
+    {
+     "a": "Модуль — готовый агент под одну задачу: он каждый день делает рутину и спрашивает вас кнопками. Публичное — сообщения клиентам, ответы — только после вашего «Да».",
+     "actions": [
+      "go:offer.modules"
+     ],
+     "id": "g-what-module",
+     "q": "Что такое модуль?",
+     "roles": []
+    }
+   ],
+   "id": "offer.top",
+   "next": [
+    "go:offer.modules",
+    "go:offer.connect",
+    "go:offer.upload"
+   ],
+   "purpose": "Предложение GASTECH: что болит у вашего бизнеса и какие агенты это закрывают. Цифры и имена на странице выдуманы.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Посмотрите модули и нажимайте кнопки в примерах.",
+    "«Загрузить выгрузку» — отчёт по вашему файлу за 2 минуты.",
+    "«Подключить» — четыре шага."
+   ],
+   "title": "Предложение",
+   "where": "offer"
+  },
+  "offer.upload": {
+   "chips": [
+    "g-data",
+    "g-format"
+   ],
+   "faq": [
+    {
+     "a": "Файл разбирается в памяти и удаляется через 30 минут или по кнопке «Удалить мои данные»; на диск не пишется, модели не передаётся, для обучения не используется.",
+     "actions": [
+      "go:offer.upload"
+     ],
+     "id": "g-data",
+     "q": "Что будет с моими данными?",
+     "roles": []
+    },
+    {
+     "a": "CSV или XLSX из кассы, CRM или 1С: продажи, клиенты или должники. Первая строка — заголовки столбцов. Файл слишком большой — выгрузите период покороче.",
+     "actions": [
+      "go:offer.upload"
+     ],
+     "id": "g-format",
+     "q": "Какой файл подойдёт?",
+     "roles": []
+    }
+   ],
+   "id": "offer.upload",
+   "next": [
+    "go:offer.connect",
+    "go:offer.modules"
+   ],
+   "purpose": "Сводка по вашей выгрузке (продажи, клиенты, должники) за секунды — скриптом, без модели.",
+   "roles": [
+    "guest"
+   ],
+   "steps": [
+    "Выберите тип файла или оставьте «Определить по заголовкам».",
+    "Выберите CSV или XLSX.",
+    "Не те столбцы — «Тип и столбцы — выбрать вручную»."
+   ],
+   "title": "Загрузить выгрузку",
+   "where": "offer"
+  },
+  "session.chat": {
+   "chips": [
+    "answer",
+    "model",
+    "cost"
+   ],
+   "faq": [],
+   "id": "session.chat",
+   "next": [
+    "go:session.screen",
+    "go:session.menu",
+    "go:switch"
+   ],
+   "purpose": "Переписка с Claude в этой сессии и поле ввода; под последним сообщением — что агент делает сейчас.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Пишите или диктуйте в поле внизу — «куда уйдёт» видно у поля.",
+    "Вопрос Claude — кнопками над полем.",
+    "Меню действий (квадратики) — озвучить, команды, модель, активная."
+   ],
+   "title": "Сессия: переписка",
+   "where": "panel"
+  },
+  "session.menu": {
+   "chips": [
+    "model"
+   ],
+   "faq": [],
+   "id": "session.menu",
+   "next": [
+    "go:session.model",
+    "go:session.chat"
+   ],
+   "purpose": "Действия с открытой сессией: озвучить ответ, команды Claude, модель, сделать активной, обновить, завершить.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "«Кратко» / «Целиком» — озвучить ответ.",
+    "«Команды» — /compact, /clear, /status кнопками.",
+    "«Активная» — ответы в чате бота будут от этой сессии."
+   ],
+   "title": "Меню действий сессии",
+   "where": "panel"
+  },
+  "session.screen": {
+   "chips": [
+    "answer"
+   ],
+   "faq": [],
+   "id": "session.screen",
+   "next": [
+    "go:session.chat",
+    "go:switch"
+   ],
+   "purpose": "Терминал сессии как есть — когда переписки мало: меню Claude Code, вход, ошибки.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Варианты ответа — кнопками 1/2/3, ↑/↓, ⏎, Esc.",
+    "Ctrl+C — прервать зависшую команду."
+   ],
+   "title": "Сессия: экран",
+   "where": "panel"
+  },
+  "settings": {
+   "chips": [
+    "cost",
+    "people",
+    "helper"
+   ],
+   "faq": [],
+   "id": "settings",
+   "next": [
+    "go:settings.cost",
+    "go:settings.country",
+    "go:settings.legend"
+   ],
+   "purpose": "Тема, страна, уведомления, расход и лимиты, люди, обозначения.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Тема — как в системе, светлая или тёмная.",
+    "«Расход и лимиты» — сколько потрачено сегодня.",
+    "Владельцу: «Люди», «Проверка», «Помощник»."
+   ],
+   "title": "Настройки",
+   "where": "panel"
+  },
+  "settings.cost": {
+   "chips": [
+    "cost",
+    "pause"
+   ],
+   "faq": [
+    {
+     "a": "Сессия превысила лимит: Claude остановлен, сообщения не уходят. Владелец решает: «Продолжить» (+лимит) или «Остановить» — в боте или в панели.",
+     "actions": [
+      "go:sessions",
+      "go:settings.limits"
+     ],
+     "id": "pause",
+     "q": "Сессия на паузе по расходу — что делать?",
+     "roles": []
+    }
+   ],
+   "id": "settings.cost",
+   "next": [
+    "go:settings.limits"
+   ],
+   "purpose": "Токены и деньги за сегодня по вашей учётке; у владельца — лимиты на сессию и на день и строка «Помощник».",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Расход — по журналам Claude Code и прайсу API.",
+    "Владельцу: «Изменить лимиты» — превышение ставит сессию на паузу."
+   ],
+   "title": "Расход и лимиты",
+   "where": "panel"
+  },
+  "settings.helper": {
+   "chips": [
+    "helper",
+    "money"
+   ],
+   "faq": [
+    {
+     "a": "Подписку Claude одного человека нельзя отдавать другим. Помощник отвечает и участникам, и гостям — поэтому только ключ API организации, с лимитами. Расход — строкой «Помощник» в «Расходе».",
+     "actions": [
+      "go:settings.cost"
+     ],
+     "id": "money",
+     "q": "Почему не подписка Claude?",
+     "roles": []
+    }
+   ],
+   "id": "settings.helper",
+   "next": [
+    "go:settings.helper-stats",
+    "go:models"
+   ],
+   "purpose": "Умные ответы помощника: включить, ключ Anthropic API, модель для России, лимиты токенов. Без модели помощник отвечает подсказками из карты экранов.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Вставьте ключ Anthropic API (не подписку Claude).",
+    "Включите умные ответы и задайте лимиты.",
+    "Для России — модель через ваш шлюз (GigaChat или YandexGPT)."
+   ],
+   "title": "Помощник",
+   "where": "panel"
+  },
+  "settings.helper-stats": {
+   "chips": [],
+   "faq": [],
+   "id": "settings.helper-stats",
+   "next": [
+    "go:settings.helper"
+   ],
+   "purpose": "На каких экранах и с какими вопросами люди открывают помощника и где ответ не помог — без имён, ID и адресов.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Топ экранов и вопросов — что поправить в интерфейсе.",
+    "Доля 👎 — где ответ не помог.",
+    "«Выгрузить CSV» — для разбора."
+   ],
+   "title": "Помощник: где путаются",
+   "where": "panel"
+  },
+  "settings.legend": {
+   "chips": [
+    "colors"
+   ],
+   "faq": [],
+   "id": "settings.legend",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Что значат точки, цвета и значки панели.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Точка статуса: зелёная — работает, жёлтая — ждёт ответа, серая — свободна, красная — остановлена."
+   ],
+   "title": "Обозначения",
+   "where": "panel"
+  },
+  "settings.limits": {
+   "chips": [],
+   "faq": [],
+   "id": "settings.limits",
+   "next": [
+    "go:settings.cost"
+   ],
+   "purpose": "Лимит на одну сессию и на день по вашей учётке, в долларах.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Пусто или 0 — без лимита.",
+    "«Сохранить» — сразу сверяем с расходом."
+   ],
+   "title": "Лимиты расхода",
+   "where": "panel"
+  },
+  "settings.people": {
+   "chips": [
+    "people",
+    "roles"
+   ],
+   "faq": [
+    {
+     "a": "Участник пишет в сессии, отвечает на вопросы и открывает новые — без «Выполнить» и ключей. Наблюдатель только смотрит.",
+     "actions": [
+      "go:settings.people"
+     ],
+     "id": "roles",
+     "q": "Чем участник отличается от наблюдателя?",
+     "roles": []
+    }
+   ],
+   "id": "settings.people",
+   "next": [
+    "go:settings"
+   ],
+   "purpose": "Кто входит в пульт и с какими правами; согласие с условиями и страна каждого.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите человека — сменить роль или отключить.",
+    "Добавить — пусть сам нажмёт «Войти через Telegram»."
+   ],
+   "title": "Люди",
+   "where": "panel"
+  },
+  "settings.person": {
+   "chips": [],
+   "faq": [],
+   "id": "settings.person",
+   "next": [
+    "go:settings.people"
+   ],
+   "purpose": "Роль человека: участник или наблюдатель; «Отключить» — доступ прекращается сразу.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Выберите роль.",
+    "«Отключить» — с подтверждением."
+   ],
+   "title": "Человек",
+   "where": "panel"
+  },
+  "settings.setup": {
+   "chips": [],
+   "faq": [],
+   "id": "settings.setup",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Готов ли Claude Code: установлен, вход выполнен, ключи поставщиков.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "«Проверить ещё раз».",
+    "Вход не выполнен — «Войти в Claude»."
+   ],
+   "title": "Проверка",
+   "where": "panel"
+  },
+  "setup": {
+   "chips": [
+    "agent"
+   ],
+   "faq": [],
+   "id": "setup",
+   "next": [
+    "go:settings.setup",
+    "go:models"
+   ],
+   "purpose": "Мастер: Claude Code на сервере не установлен или вход не выполнен — бот и панель работают, а сессии не откроются.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "«Войти в Claude» — откройте страницу входа, войдите и вставьте код сюда.",
+    "«Проверка» — проверить ещё раз.",
+    "Нет подписки — «Ключ провайдера»: другой поставщик моделей."
+   ],
+   "title": "Claude не готов",
+   "where": "panel"
+  },
+  "sheet.attach": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.attach",
+   "next": [
+    "go:session.chat"
+   ],
+   "purpose": "Фото, видео или файл для Claude: панель загрузит его на сервер и передаст путь в сообщении.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Выберите источник.",
+    "Файл появится над полем ввода — допишите текст и отправьте."
+   ],
+   "title": "Прикрепить",
+   "where": "panel"
+  },
+  "sheet.catalog": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.catalog",
+   "next": [
+    "go:models"
+   ],
+   "purpose": "Поиск модели по названию; модели Anthropic — первыми (с ними Claude Code надёжен).",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Найдите модель и нажмите её.",
+    "«Сохранить модели» на экране поставщика."
+   ],
+   "title": "Каталог моделей OpenRouter",
+   "where": "panel"
+  },
+  "sheet.commands": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.commands",
+   "next": [
+    "go:session.screen"
+   ],
+   "purpose": "Служебные команды Claude Code кнопками: модель, MCP, контекст, сжать, очистить, статус.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "«Сжать» (/compact) — когда контекст занят больше чем на 70 %.",
+    "«Очистить» (/clear) — начать разговор заново."
+   ],
+   "title": "Команды Claude",
+   "where": "panel"
+  },
+  "sheet.copy": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.copy",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Браузер не дал скопировать автоматически — текст выделен, скопируйте его сами.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Выделите текст и скопируйте.",
+    "«Закрыть»."
+   ],
+   "title": "Скопируйте вручную",
+   "where": "panel"
+  },
+  "sheet.effort": {
+   "chips": [
+    "cost"
+   ],
+   "faq": [],
+   "id": "sheet.effort",
+   "next": [
+    "go:session.chat"
+   ],
+   "purpose": "Как глубоко Claude думает: выше — дольше и дороже, ниже — быстрее и дешевле.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "«Авто» — Claude решает сам.",
+    "Для рутины — «Низкий», для архитектуры — «Очень высокий»."
+   ],
+   "title": "Уровень усилий",
+   "where": "panel"
+  },
+  "sheet.el-voice": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.el-voice",
+   "next": [
+    "go:voice"
+   ],
+   "purpose": "Голос внутри аккаунта ElevenLabs.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите голос — он сразу станет голосом озвучки."
+   ],
+   "title": "Голос ElevenLabs",
+   "where": "panel"
+  },
+  "sheet.model": {
+   "chips": [
+    "model",
+    "cost"
+   ],
+   "faq": [],
+   "id": "sheet.model",
+   "next": [
+    "go:models",
+    "go:session.chat"
+   ],
+   "purpose": "В какой модели работает сессия: основная, быстрая или меню /model.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Выберите модель — затем уровень усилий.",
+    "Владельцу: «Сменить поставщика» — перезапуск с другим поставщиком."
+   ],
+   "title": "Модель сессии",
+   "where": "panel"
+  },
+  "sheet.new-folder": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.new-folder",
+   "next": [
+    "go:new-session"
+   ],
+   "purpose": "Пустой проект и сессия в нём.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Имя — латиница в нижнем регистре, цифры, дефис.",
+    "«Создать и открыть» — затем выбор модели, если поставщиков несколько."
+   ],
+   "title": "Новая папка",
+   "where": "panel"
+  },
+  "sheet.new-session": {
+   "chips": [
+    "agent",
+    "cost"
+   ],
+   "faq": [],
+   "id": "sheet.new-session",
+   "next": [
+    "go:modules",
+    "go:new-folder"
+   ],
+   "purpose": "В какой папке открыть новую сессию Claude: существующая, новая пустая или готовый агент из модуля.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Папка из списка — сессия в существующем проекте.",
+    "«Новая папка» — пустой проект с git.",
+    "«Из модуля» — готовый агент под задачу."
+   ],
+   "title": "Новая сессия",
+   "where": "panel"
+  },
+  "sheet.pick-model": {
+   "chips": [
+    "country",
+    "cost"
+   ],
+   "faq": [],
+   "id": "sheet.pick-model",
+   "next": [
+    "go:models"
+   ],
+   "purpose": "Поставщик моделей для новой сессии. Недоступные для вашей страны — с замком.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "Выберите поставщика — сессия запустится.",
+    "«нет ключа — добавить» — ключ задаёт владелец."
+   ],
+   "title": "В какой модели работать",
+   "where": "panel"
+  },
+  "sheet.rename": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.rename",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Новое имя сессии — как её видно в списке и в боте.",
+   "roles": [
+    "owner",
+    "member"
+   ],
+   "steps": [
+    "До 40 знаков, без «:» и «.».",
+    "«Сохранить»."
+   ],
+   "title": "Переименовать сессию",
+   "where": "panel"
+  },
+  "sheet.session": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.session",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Открыть, сделать активной (для ответов в боте), переименовать или завершить сессию.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "«Завершить» — Claude выйдет штатно, переписка сохранится (только владелец)."
+   ],
+   "title": "Действия с сессией",
+   "where": "panel"
+  },
+  "sheet.switch-provider": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.switch-provider",
+   "next": [
+    "go:models"
+   ],
+   "purpose": "Перезапуск сессии с другим поставщиком моделей.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "«Продолжить этот разговор» — контекст сохранится.",
+    "«Начать заново» — чистый контекст: быстрее и дешевле."
+   ],
+   "title": "Сменить поставщика",
+   "where": "panel"
+  },
+  "sheet.switcher": {
+   "chips": [
+    "colors"
+   ],
+   "faq": [],
+   "id": "sheet.switcher",
+   "next": [
+    "go:new-session",
+    "go:sessions",
+    "go:settings.legend"
+   ],
+   "purpose": "Быстрый переход в другую сессию; долгое нажатие — действия с сессией.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Нажмите сессию — перейдёте в неё.",
+    "Ниже — «Новая сессия», «Команды из всех сессий», «Обозначения»."
+   ],
+   "title": "Шторка сессий",
+   "where": "panel"
+  },
+  "sheet.voice": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.voice",
+   "next": [
+    "go:voice"
+   ],
+   "purpose": "Каким голосом читаются ответы; кнопка справа — послушать.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Нажмите голос — он станет голосом озвучки (выбирает владелец)."
+   ],
+   "title": "Голос озвучки",
+   "where": "panel"
+  },
+  "terms": {
+   "chips": [
+    "why"
+   ],
+   "faq": [
+    {
+     "a": "Модели предоставляют поставщики по своим условиям. Пульт — инструмент: без согласия с условиями он ничего, кроме них, не показывает. Дата согласия хранится на сервере.",
+     "actions": [
+      "go:settings.country"
+     ],
+     "id": "why",
+     "q": "Зачем принимать условия?",
+     "roles": []
+    }
+   ],
+   "id": "terms",
+   "next": [
+    "go:settings.country"
+   ],
+   "purpose": "Перед работой — условия использования пульта: у каждого свой аккаунт или ключ поставщика, подпиской не делимся, работаем из поддерживаемых стран.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Прочитайте пункты.",
+    "Нажмите «Принимаю» — дальше выбор страны."
+   ],
+   "title": "Условия использования",
+   "where": "panel"
+  },
+  "whatsnew": {
+   "chips": [],
+   "faq": [],
+   "id": "whatsnew",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Что изменилось в панели с прошлого раза.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "«Понятно» — закрыть; список больше не покажется."
+   ],
+   "title": "Что нового",
+   "where": "panel"
+  }
+ },
+ "version": 1
+}

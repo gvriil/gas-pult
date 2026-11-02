@@ -34,6 +34,7 @@ from gas_pult import (
     country,
     digest,
     fallback,
+    helper,
     models,
     modules,
     offers,
@@ -104,9 +105,23 @@ class Denied(RuntimeError):
 PHONE_KB = {"keyboard": [[{"text": "📱 Поделиться номером", "request_contact": True}], [{"text": "Позже"}]],
             "resize_keyboard": True, "one_time_keyboard": True}
 MENU = {"keyboard": [[{"text": "🆕 Новая"}, {"text": "🔀 Переключить"}, {"text": "📊 Сводка"}],
-                     [{"text": "⚡ Команды"}, {"text": "📋 Окна"}, {"text": "⚙️ Настройки"}]],
+                     [{"text": "⚡ Команды"}, {"text": "📋 Окна"}, {"text": "⚙️ Настройки"}],
+                     [{"text": "❓ Помощь"}]],
         "resize_keyboard": True, "is_persistent": True}
-MENU_PREFIXES = ("🆕", "🔀", "📊", "⚡", "📋", "⚙️")
+MENU_PREFIXES = ("🆕", "🔀", "📊", "⚡", "📋", "⚙️", "❓")
+# Дежурный помощник (helper.py): какой экран бота видел человек последним — по кнопке меню, команде или ожиданию.
+HELP_SCREENS = {"🆕": "bot.new", "🔀": "bot.switch", "📊": "bot.summary", "⚡": "bot.commands", "📋": "bot.windows",
+                "⚙️": "bot.settings", "/modules": "bot.modules", "/setup": "bot.setup", "/voice": "bot.voice",
+                "/start": "bot.menu", "/menu": "bot.menu"}
+HELP_WAITING = {"name": "bot.new-folder", "md:": "bot.modules", "code": "bot.setup"}   # мастер ждёт ввода
+# «Перейти: …» из ответа помощника — в существующие меню бота (действие карты → метод Pult); остальное — кнопкой
+# «📱 Открыть в панели» с #go=<id>.
+HELP_GO = {"go:sessions": "show_windows", "go:new-session": "show_new", "go:new-folder": "ask_folder",
+           "go:modules": "show_modules", "go:voice": "show_voice", "go:switch": "show_switch",
+           "go:session.screen": "go_screen", "go:session.model": "go_model", "go:settings": "show_settings",
+           "go:settings.people": "show_people", "go:settings.setup": "show_setup"}
+# Гость демо предложения: только кнопки демо (dm:<токен>:f:<…>) — «посмотреть ещё раз» и последний шаг с «Подключить».
+HELP_GO_DEMO = {"go:offer.modules": "r", "go:offer.connect": "s"}
 KEYS = [("1", "1"), ("2", "2"), ("3", "3"), ("↑", "Up"), ("↓", "Down"), ("⏎", "Enter"), ("Esc", "Escape")]
 COMMANDS = [("🧠 Модель", "models"), ("🔌 MCP", "/mcp"), ("📏 Контекст", "/context"),
             ("🗜 Сжать", "/compact"), ("🧹 Очистить", "/clear"), ("ℹ️ Статус", "/status"),
@@ -166,6 +181,9 @@ class Pult:
         self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
         self.following: dict[tuple, tuple] = {}            # (чат, окно) → (метка, id служебного сообщения статуса)
         self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
+        # дежурный помощник «❓ Помощь»: модель — только по ключу API, подписка Claude не используется (helper.py)
+        self.helper = helper.Helper(cfg.data, cfg.region, self.state, self.set_state)
+        self.help_at: dict[int, str] = {}                  # чат → последний экран бота (только в памяти)
 
     # ---------- Telegram ----------
     def send(self, chat: int, text: str, **kw) -> dict:
@@ -1010,6 +1028,106 @@ class Pult:
                 self.broadcast(f"🗓 {name}: {item['at']} — не вышло: {e}")
 
     # ---------- экраны пульта ----------
+    def show_new(self, chat: int):
+        rows = [[("📁 Новая папка…", "mk:")], [("🧩 Из модуля…", "md:list:")]]
+        rows += [[(self.short(p), f"new:{i}")] for i, p in enumerate(self.projects())]
+        self.send(chat, "В какой папке открыть новую сессию? (или пришли номер задачи, например GAS-123)",
+                  reply_markup=kb(rows))
+
+    def ask_folder(self, chat: int):
+        self.waiting[chat] = "name"
+        self.help_at[chat] = "bot.new-folder"
+        self.send(chat, "Имя новой папки (латиница, дефис), например: shop-bot", reply_markup={"force_reply": True})
+
+    def go_screen(self, chat: int):
+        if w := self.need_active(chat):
+            self.send_screen(chat, w, "экран:")
+
+    def go_model(self, chat: int):
+        if w := self.need_active(chat):
+            self.send(chat, f"Модель для «{w['name']}»:", reply_markup=kb([
+                [(m, f"cmd:/model {m}") for m in self.cfg.models], [("Открыть меню /model", "cmd:/model")]]))
+
+    # ---------- дежурный помощник (helper.py) ----------
+    def help_where(self, chat: int) -> str:
+        wait = self.waiting.get(chat, "")
+        for k, sid in HELP_WAITING.items():
+            if wait == k or (k.endswith(":") and wait.startswith(k)):
+                return sid
+        return self.help_at.get(chat, "bot.menu")
+
+    def show_help(self, chat: int, uid, q: str = "", chip: str = ""):
+        """«❓ Помощь» / /help: подсказка по последнему экрану бота — коротко и с кнопками «Перейти». Только
+        владельцу (как всё меню бота); модель — только по ключу API (helper.py)."""
+        try:
+            r = self.helper.ask("owner", {"screen": self.help_where(chat)}, q, chip, countries=self.countries(uid),
+                                who=[self.helper.who_key("u", uid)], where="bot")
+        except ValueError as e:
+            return self.send(chat, f"❓ {e}")
+        rows: list[list[dict]] = []
+        url = ""
+        for a in r["actions"]:
+            if a["id"] in HELP_GO:
+                rows.append([{"text": f"➡️ Перейти: {a['title']}", "callback_data": f"hp:g:{a['id']}:{r['id']}"}])
+            elif url or (url := self.panel_url().split("#")[0]):
+                rows.append([{"text": f"📱 Открыть в панели: {a['title']}", "web_app": {"url": f"{url}#go={a['id']}"}}])
+        chips = [c for c in r["chips"] if not (q == "" and chip == c["id"])][:4]
+        rows += [[{"text": c["label"], "callback_data": f"hp:c:{c['id']}"}] for c in chips]
+        rows.append([{"text": "✍️ Спросить своими словами", "callback_data": "hp:q:"}])
+        rows.append([{"text": "👍", "callback_data": f"hp:f:{r['id']}:1"},
+                     {"text": "👎", "callback_data": f"hp:f:{r['id']}:0"}])
+        mark = "✨ Умный ответ" if r["mode"] == "ai" else "📖 Подсказка из карты"
+        self.send(chat, f"❓ {r['title']}\n\n{r['text']}" + (f"\n\n{r['note']}" if r["note"] else "") + f"\n\n{mark}",
+                  reply_markup={"inline_keyboard": rows})
+
+    def on_help(self, chat: int, uid, arg: str):
+        """hp:c:<чип> — подсказка; hp:g:<действие>:<ответ> — перейти; hp:q — спросить словами; hp:f:<ответ>:1|0."""
+        kind, _, rest = arg.partition(":")
+        if kind == "c":
+            return self.show_help(chat, uid, chip=rest)
+        if kind == "q":
+            self.waiting[chat] = "help"
+            return self.send(chat, "Напишите вопрос одним сообщением — отвечу по пульту и подскажу, куда нажать.",
+                             reply_markup={"force_reply": True})
+        if kind == "f":
+            rid, _, v = rest.partition(":")
+            try:
+                self.helper.feedback(rid, v == "1")
+            except ValueError:
+                return None
+            return self.send(chat, "Спасибо — учтём." if v == "1" else "Спасибо — поправим подсказку.")
+        if kind == "g":
+            aid, _, rid = rest.rpartition(":")
+            fn = HELP_GO.get(aid)
+            if not fn:
+                return None
+            try:
+                self.helper.feedback(rid, action=aid, role="owner")
+            except ValueError:
+                pass
+            return getattr(self, fn)(chat)
+        return None
+
+    def demo_help(self, chat: int, tok: str, rec: dict, o: dict, mod: dict, chip: str, step: str):
+        """dm:<токен>:<шаг>:h<чип> — помощь гостю демо: только экран демо и «Подключить», без меню пульта и без модели
+        (страна гостя в боте неизвестна — Telegram не передаёт IP)."""
+        try:
+            r = self.helper.ask("guest", {"screen": "bot.demo"}, chip=chip, where="bot",
+                                who=[self.helper.who_key("t", tok)],
+                                extra={"modules": [{"id": mod["id"], "title": mod["title"], "about": mod["about"]}],
+                                       "secrets": [o["code"], tok]})
+        except ValueError as e:
+            return self.send(chat, f"❓ {e}")
+        rows = []
+        for a in r["actions"]:
+            if a["id"] in HELP_GO_DEMO:
+                rows.append([(f"➡️ {a['title']}", f"dm:{tok}:f:{HELP_GO_DEMO[a['id']]}")])
+        rows += [[(c["label"], f"dm:{tok}:{step}:h{c['id']}")] for c in r["chips"] if c["id"] != chip][:3]
+        markup = kb(rows)
+        if rec.get("back", "").startswith("https://"):
+            markup["inline_keyboard"].append([{"text": "Открыть предложение", "url": rec["back"]}])
+        self.send(chat, f"❓ {r['text']}", reply_markup=markup)
+
     def show_windows(self, chat: int):
         ws = self.tmux.windows()
         if not ws:
@@ -1323,6 +1441,7 @@ class Pult:
         if kind == "dg":
             return self.on_digest(chat, arg)
         if kind == "md":                                   # модули-агенты: описание, создание пространства
+            self.help_at[chat] = "bot.modules"
             return self.on_module(chat, arg)
         if kind == "of":                                   # пространство для человека с предложения (владелец)
             return self.offer_space(chat, arg)
@@ -1337,8 +1456,9 @@ class Pult:
                 return send("Это может только владелец.")
             return self.on_setup(chat, arg)
         if kind == "mk":
-            self.waiting[chat] = "name"
-            return send("Имя новой папки (латиница, дефис), например: shop-bot", reply_markup={"force_reply": True})
+            return self.ask_folder(chat)
+        if kind == "hp":                                   # помощник: чипы, «Перейти», вопрос словами, 👍/👎
+            return self.on_help(chat, q["from"]["id"], arg)
         if kind in ("new", "tnew"):         # tnew: «<idx>|GAS-123» — сессия по задаче
             idx, _, task = arg.partition("|")
             dirs = self.projects()
@@ -1656,9 +1776,10 @@ class Pult:
         if i < len(steps):
             st = steps[i]
             rows = [[(b, f"dm:{tok}:{i}:{j}")] for j, (b, _) in enumerate(st["buttons"])]
-            rows.append([("Дальше ›", f"dm:{tok}:{i}:n")])
+            rows.append([("Дальше ›", f"dm:{tok}:{i}:n"), ("❓ Помощь", f"dm:{tok}:{i}:h")])
             return self.send(chat, st["text"], reply_markup=kb(rows))
-        markup = kb([[("✅ Подключить", f"dm:{tok}:f:c")], [("🔁 Посмотреть ещё раз", f"dm:{tok}:f:r")]])
+        markup = kb([[("✅ Подключить", f"dm:{tok}:f:c")], [("🔁 Посмотреть ещё раз", f"dm:{tok}:f:r")],
+                     [("❓ Помощь", f"dm:{tok}:f:h")]])
         if back.startswith("https://"):
             markup["inline_keyboard"].append([{"text": "Открыть предложение", "url": back}])
         return self.send(chat, f"Так агент работал бы для «{o['business']}» каждый день — в вашем Telegram, решения "
@@ -1676,6 +1797,10 @@ class Pult:
         rec, o, mod = got
         if step == "f" and btn == "c":
             return self.demo_connect(chat, u, o, mod)
+        if step == "f" and btn == "s":                     # из помощника: последний шаг с «Подключить»
+            return self.demo_step(chat, tok, o, mod, len(offers.scenario(o, mod)), rec.get("back", ""))
+        if btn.startswith("h") and (step == "f" or step.isdigit()):   # «❓ Помощь» в демо: h<чип>
+            return self.demo_help(chat, tok, rec, o, mod, btn[1:], step)
         if step == "f" and btn == "r":
             if not self.demo_rate(u["id"]) or not self.offer_tg.start(tok):
                 return self.send(chat, "Демо можно запускать не чаще 5 раз в час — попробуйте позже.")
@@ -1734,6 +1859,15 @@ class Pult:
             self.waiting.pop(chat, None)
             return self.on_country(chat, uid, t)
         wait = self.waiting.pop(chat, None) or ""
+        if wait == "help" and m.get("text") and not t.startswith((*MENU_PREFIXES, "/")):
+            return self.show_help(chat, uid, q=t)
+        if t == "/help" or t.startswith("❓"):
+            if wait and wait != "help":
+                self.waiting[chat] = wait                  # вопрос помощнику не сбивает начатый мастер
+            return self.show_help(chat, uid)
+        for k, sid in HELP_SCREENS.items():                # что человек видел последним — контекст помощника
+            if t.split(" ")[0] == k if k.startswith("/") else t.startswith(k):
+                self.help_at[chat] = sid
         if wait == "name" and m.get("text") and not t.startswith(MENU_PREFIXES):
             return self.new_folder(chat, t.lower())
         if wait.startswith("ren:") and m.get("text") and not t.startswith(MENU_PREFIXES):
@@ -1743,10 +1877,7 @@ class Pult:
         if wait == "code" and m.get("text") and not t.startswith(MENU_PREFIXES) and not t.startswith("/"):
             return self.setup_code(chat, t)
         if t.startswith("🆕"):
-            rows = [[("📁 Новая папка…", "mk:")], [("🧩 Из модуля…", "md:list:")]]
-            rows += [[(self.short(p), f"new:{i}")] for i, p in enumerate(self.projects())]
-            return send("В какой папке открыть новую сессию? (или пришли номер задачи, например GAS-123)",
-                        reply_markup=kb(rows))
+            return self.show_new(chat)
         for prefix, fn in (("🔀", self.show_switch), ("📊", self.show_summary), ("⚡", self.show_commands),
                            ("📋", self.show_windows), ("⚙️", self.show_settings)):
             if t.startswith(prefix):
@@ -1755,7 +1886,7 @@ class Pult:
             return self.send_digest(chat)
         if t == "/modules":
             return self.show_modules(chat)
-        if t in ("/start", "/menu", "/help"):
+        if t in ("/start", "/menu"):
             send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice, "
                  "готовые агенты — /modules.",
                  reply_markup=MENU)
