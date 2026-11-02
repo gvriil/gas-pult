@@ -28,6 +28,10 @@ dev, at}`` (``"done"`` — проходил, ``"dismissed"`` — «Не сейч
 Почта (``emailcode.py``): у человека из people.json — поле ``email: {address, at, second_factor, notify}``; у владельцев
 — рядом, в ``<data>/emails.json`` (0600), тем же видом. Адрес подтверждён кодом; по нему можно войти, пока у человека
 есть роль.
+
+Настройки человека (``prefs``): простой режим панели и язык интерфейса — ``{simple: bool, lang: "ru"|"en"}``; у
+человека из people.json — поле ``prefs`` в его записи, у владельцев — ``<data>/prefs.json`` (0600). Нет записи —
+полный режим и русский, как раньше.
 """
 
 from __future__ import annotations
@@ -45,6 +49,8 @@ ROLES = ("member", "viewer")
 FIELDS = ("chosen", "phone_cc", "phone_hash", "phone_at", "ip_cc", "ip_at")
 RANK = {"viewer": 1, "member": 2, "owner": 3}
 TITLES = {"owner": "владелец", "member": "участник", "viewer": "наблюдатель"}
+LANGS = ("ru", "en")
+PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
 TOURS = ("business", "dev")                 # тур для бизнеса и для разработчика
 TOUR_STATES = ("done", "dismissed")
 
@@ -54,6 +60,7 @@ class People:
         self.store, self.owners, self.lock = store, list(owners), threading.Lock()
         self.terms_store = store.with_name("terms.json")      # согласие владельцев и тех, кого нет в people.json
         self.country_store = store.with_name("countries.json")   # их же страна (признаки — country.py)
+        self.prefs_store = store.with_name("prefs.json")          # их же настройки панели (простой режим, язык)
         self.email_store = store.with_name("emails.json")         # их же почта (emailcode.py)
         self.tour_store = store.with_name("tours.json")          # их же отметки тура
 
@@ -98,7 +105,7 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            for k in ("terms", "country", "email", "tour"):        # смена роли их не сбрасывает
+            for k in ("terms", "country", "email", "tour", "prefs"):   # смена роли их не сбрасывает
                 if old.get(k):
                     rec[k] = old[k]
             d[str(int(uid))] = rec
@@ -110,7 +117,7 @@ class People:
             d = self._load()
             if d.pop(str(int(uid)), None) is not None:
                 self._save(d)
-            for f in (self.terms_store, self.country_store, self.email_store, self.tour_store):
+            for f in (self.terms_store, self.country_store, self.email_store, self.tour_store, self.prefs_store):
                 t = self._load_side(f)
                 if t.pop(str(int(uid)), None) is not None:
                     write_private(f, json.dumps(t))
@@ -170,6 +177,42 @@ class People:
                 side[str(uid)] = rec
                 write_private(self.country_store, json.dumps(side))
         return rec, tell
+
+    def prefs(self, uid) -> dict:
+        """Настройки панели человека: {simple, lang, saved}; ``saved`` — есть ли запись (иначе панель может
+        дописать выбор языка с первого экрана)."""
+        try:
+            uid = int(uid)
+        except (TypeError, ValueError):
+            return {**PREFS, "saved": False}
+        p = None if uid in self.owners else self._load().get(str(uid))
+        rec = (p or {}).get("prefs") if p else self._load_side(self.prefs_store).get(str(uid))
+        rec = rec if isinstance(rec, dict) else {}
+        return {"simple": rec.get("simple") is True, "lang": rec.get("lang") if rec.get("lang") in LANGS else "ru",
+                "saved": bool(rec)}
+
+    def set_prefs(self, uid: int, simple=None, lang=None) -> dict:
+        """Поменять настройки: ``None`` — оставить как было. Язык — только ru или en."""
+        if lang is not None and lang not in LANGS:
+            raise ValueError("язык — ru или en")
+        uid = int(uid)
+        with self.lock:
+            d = self._load()
+            mine = uid not in self.owners and str(uid) in d
+            side = {} if mine else self._load_side(self.prefs_store)
+            old = dict((d[str(uid)].get("prefs") if mine else side.get(str(uid))) or {})
+            rec = {**PREFS, **{k: v for k, v in old.items() if k in PREFS}}
+            if simple is not None:
+                rec["simple"] = bool(simple)
+            if lang is not None:
+                rec["lang"] = lang
+            if mine:
+                d[str(uid)]["prefs"] = rec
+                self._save(d)
+            else:
+                side[str(uid)] = rec
+                write_private(self.prefs_store, json.dumps(side))
+        return {**rec, "saved": True}
 
     def tour(self, uid) -> dict:
         """Отметки тура человека: ``{business, dev, at}``; чего нет — None."""

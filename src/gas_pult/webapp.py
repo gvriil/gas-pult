@@ -39,6 +39,7 @@ from gas_pult import (
     emailcode,
     fallback,
     helper,
+    humanize,
     models,
     modules,
     offer_report,
@@ -198,8 +199,14 @@ class Panel:
                         "rev": rev,                                       # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev, home),
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
-                        "cost": self.cost_of(w, pool, st)})               # расход — только хозяину учётки
+                        "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
+                        "agent": self.agent_of(w["path"])})               # простой режим: имя агента модуля
         return out
+
+    def agent_of(self, path: str) -> str:
+        """Название модуля, из которого создано пространство (простой режим зовёт агента так), иначе ""."""
+        mk = modules.mark_of(Path(path))
+        return str((mk or {}).get("title") or "")[:60]
 
     # ---------- расход (usage.py) ----------
     def cost_of(self, w: dict, pool: str | None, st: dict) -> dict | None:
@@ -434,7 +441,8 @@ class Panel:
     def help_ask(self, role: str, uid, b: dict) -> dict:
         """Вопрос вошедшего: роль — с сервера; от клиента — только экран, шаг, модуль и сам вопрос."""
         return self.helper.ask(role, b.get("ctx"), str(b.get("q", "")), str(b.get("chip", "")),
-                               who=[self.helper.who_key("u", uid)], extra={"module_ids": self.module_ids()})
+                               who=[self.helper.who_key("u", uid)], extra={"module_ids": self.module_ids()},
+                               lang=str(b.get("lang", "ru")))
 
     def help_guest(self, o: dict, sid: str, ip: str, b: dict) -> dict:
         """Вопрос гостя предложения: только экраны страницы и мастера и публичное о модулях ЕГО предложения;
@@ -623,13 +631,15 @@ class Panel:
         items = [{**modules.public(m), "folder": modules.free_name(root, m["id"])} for m in modules.catalog(errors)]
         return {"modules": items, "root": self.pult.short(str(root)), "errors": errors}
 
-    def module_create(self, mid: str, name: str, profile: str = "", person: int | None = None, uid=None) -> dict:
+    def module_create(self, mid: str, name: str, profile: str = "", person: int | None = None, uid=None,
+                      lang: str = "") -> dict:
         """Пространство из модуля: папка в первом корне проектов → сессия в ней (как «Новая сессия») → первое
-        задание модуля, когда Claude будет готов. Проверки — до создания папки, чтобы не оставлять пустых."""
+        задание модуля, когда Claude будет готов. Проверки — до создания папки, чтобы не оставлять пустых.
+        ``lang`` (ru, en) — из простого режима: язык ответов агента в настройках Claude Code пространства."""
         if uid is not None:
             self.check(profile, uid)
         self.need_claude()
-        path = modules.create(mid, self.pult.module_root(), name, by=person)
+        path = modules.create(mid, self.pult.module_root(), name, by=person, lang=lang)
         out = self.new(self.pult.projects().index(str(path)), profile, person, uid)
         self.pult.send_later(out["id"], modules.get(mid)["start"])
         return {**out, "path": self.pult.short(str(path)), "folder": path.name}
@@ -1004,7 +1014,8 @@ MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 
 # До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
-TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout", "/api/help/ask", "/api/help/feedback"}
+TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout", "/api/help/ask", "/api/help/feedback",
+              "/api/prefs"}
 # Помощник «? Подсказать» — любому вошедшему (и наблюдателю), а на экране входа — и до входа.
 HELP_OPEN = ("/api/help/ask", "/api/help/feedback")
 # Почта для входа и оповещений (emailcode.py) — своя у каждого вошедшего, в том числе у наблюдателя.
@@ -1046,6 +1057,8 @@ def handler(panel: Panel):
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
+    i18n = {f"/i18n/{x}.json": resources.files("gas_pult").joinpath(f"web/i18n/{x}.json").read_bytes()
+            for x in ("ru", "en")}                       # словари простого режима и первого экрана — и до входа
     scripts = re.findall(rb"<script>(.*?)</script>", offer_page, re.S)
     hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(x).digest()).decode() + "'" for x in scripts)
     offer_csp = (f"default-src 'none'; script-src {hashes}; style-src 'unsafe-inline'; img-src 'self' data:; "
@@ -1123,8 +1136,8 @@ def handler(panel: Panel):
             if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
-            free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, TOUR, *HELP_OPEN,   # и наблюдателю
-                    *EMAIL_OWN, *PASSKEY_OWN)
+            free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, *HELP_OPEN,
+                    *EMAIL_OWN, *PASSKEY_OWN)                                   # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
@@ -1171,6 +1184,8 @@ def handler(panel: Panel):
                 return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
             if url.path == "/help-map.json":            # демо панели (?demo) отвечает подсказками из карты сам
                 return self.reply(200, help_map)
+            if url.path in i18n:
+                return self.reply(200, i18n[url.path])
             if url.path == "/robots.txt":
                 return self.reply(200, ROBOTS.encode(), "text/plain; charset=utf-8")
             if url.path.startswith(("/offer/", "/api/offer/")):     # предложение: без входа, только по коду
@@ -1198,11 +1213,13 @@ def handler(panel: Panel):
                 tu = self.terms_uid()
                 cinfo = panel.country_info(tu)
                 return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
-                        "whatsnew": whatsnew[:1],
+                        "whatsnew": whatsnew[:1], "prefs": panel.people.prefs(tu),
                         "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
+            if path == "/api/prefs":
+                return panel.people.prefs(self.terms_uid())
             if path == TOUR:                             # тур: пройден / «Не сейчас» — у каждого свой
                 return panel.people.tour(self.terms_uid())
             if path == "/api/country":
@@ -1263,6 +1280,8 @@ def handler(panel: Panel):
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
                 return {"lines": lines[-40:], "auth": find_auth(lines)}
+            if path == "/api/ask":                        # простой режим: вопрос Claude простыми словами и чипы
+                return {"ask": humanize.parse(panel.tmux.screen(w["id"], 60))}
             if path == "/api/hint":
                 return {"hint": panel.tmux.hint(w["id"])}
             if path == "/api/cmds":
@@ -1277,6 +1296,9 @@ def handler(panel: Panel):
                 if before is None and q.get("rev") and q["rev"] == rev:
                     return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
                 items, more = transcripts.history(w["path"], 30, before, home=home)
+                for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
+                    if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
+                        it["human"] = h
                 return {"items": items, "more": more, "rev": rev}
             raise KeyError
 
@@ -1484,6 +1506,10 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/prefs":                       # простой режим и язык — у каждого свои
+                lang = b.get("lang")
+                return panel.people.set_prefs(self.terms_uid(), None if b.get("simple") is None else
+                                              b.get("simple") is True, None if lang is None else str(lang))
             if path == "/api/terms/accept":
                 if str(b.get("version", "")) != terms.VERSION:
                     raise ValueError("условия обновились — прочитайте новую версию")
@@ -1563,7 +1589,7 @@ def handler(panel: Panel):
                                         self.terms_uid())
             if path == "/api/modules/create":
                 return panel.module_create(str(b.get("id", "")), str(b.get("name", "")), str(b.get("profile", "")),
-                                           self.person(), self.terms_uid())
+                                           self.person(), self.terms_uid(), str(b.get("lang", "")))
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}

@@ -325,9 +325,15 @@ def check_name(name: str) -> str:
     return name
 
 
-def create(mid: str, root: Path, name: str = "", by: int | None = None) -> Path:
+# Язык ответов агента пространства (простой режим панели): официальная настройка Claude Code ``language`` в
+# ``.claude/settings.json`` («Preferred language for Claude responses»), а не просьба в CLAUDE.md.
+LANGUAGE = {"ru": "russian", "en": "english"}
+
+
+def create(mid: str, root: Path, name: str = "", by: int | None = None, lang: str = "") -> Path:
     """Новое пространство из модуля: папка ``root/name`` с CLAUDE.md, .claude/skills, примером данных и отметкой.
-    Папка уже есть — отказ (ничего не трогаем). git init — чтобы любое изменение агента можно было откатить."""
+    Папка уже есть — отказ (ничего не трогаем). git init — чтобы любое изменение агента можно было откатить.
+    ``lang`` (ru, en) — язык ответов агента: ``language`` в настройках Claude Code пространства."""
     m = get(mid)
     src = Path(m["path"])
     name = check_name(name or free_name(root, mid))
@@ -358,6 +364,16 @@ def create(mid: str, root: Path, name: str = "", by: int | None = None) -> Path:
         if (src / "settings.json").is_file():
             (dst / ".claude").mkdir(exist_ok=True)
             shutil.copy2(src / "settings.json", dst / ".claude" / "settings.json")
+        if lang in LANGUAGE:
+            sf = dst / ".claude" / "settings.json"
+            sf.parent.mkdir(exist_ok=True)
+            try:
+                st = json.loads(sf.read_text(encoding="utf-8")) if sf.is_file() else {}
+            except ValueError:
+                st = {}
+            st = st if isinstance(st, dict) else {}
+            st["language"] = LANGUAGE[lang]
+            sf.write_text(json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         mark = {"id": m["id"], "version": m["version"], "title": m["title"], "created": int(time.time())}
         if by is not None:
             mark["by"] = by

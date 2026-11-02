@@ -54,6 +54,7 @@ src/gas_pult/
 ├── offers.py       предложения бизнесу: /offer/<код>, демо-данные, сценарий Telegram, защита (docs/OFFERS.md)
 ├── offer_report.py «Загрузите выгрузку — отчёт за 2 минуты»: CSV/XLSX → сводка без модели, в памяти
 ├── helper.py       дежурный помощник «? Подсказать»: карта экранов, ответы без модели, журнал без ПДн
+├── humanize.py     простой режим: экран Claude Code → вопрос по-русски/по-английски и чипы, ошибки, белый список
 ├── help/
 │   └── screens.toml карта экранов помощника: реальные экраны, переходы go:…, чипы (тест сверяет с index.html)
 ├── setup.py        мастер без Claude: status() (установлен, вход, ключи), вход claude auth login в окне tmux
@@ -71,6 +72,7 @@ src/gas_pult/
 │   ├── index.html  весь интерфейс панели одной страницей, без сборки; ?demo — демо-данные
 │   ├── offer.html  страница предложения /offer/<код>, тоже один файл без сборки
 │   ├── whatsnew.json  «Что нового» — показывается один раз после обновления
+│   ├── i18n/       ru.json, en.json — строки простого режима, первого экрана и пересказа вопросов (GET /i18n/…)
 │   └── help-map.json  карта помощника для демо (собирается из help/screens.toml: python -m gas_pult.helper)
 └── voice/
     ├── __init__.py synth() / transcribe() — запускают рабочий процесс
@@ -115,7 +117,8 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 (`cmds`, `run`, `command`, `commands*`), голос (`stt`, `tts`, `voice/*`, `providers`, `keys*`), модели (`model`,
 `models`, `effort`, `openrouter/*`, `fallback`), расход (`cost/limits`, `cost/decide`), люди и вход (`people*`,
 `login/*`, `logout`, `terms*`, `country`), MCP (`mcp*`), мастер (`setup/*`), модули (`modules`, `modules/create`),
-«Примерочная» (`scenarios`), предложения (`/offer/<код>`, `/api/offer/<код>/…`).
+«Примерочная» (`scenarios`), простой режим (`prefs`, `ask`; словари `/i18n/ru.json`, `/i18n/en.json` — и до входа),
+предложения (`/offer/<код>`, `/api/offer/<код>/…`).
 
 | Модуль | Что делает |
 |---|---|
