@@ -29,7 +29,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import country, digest, fallback, models, people, providers, setup, terms, transcripts, voice
+from gas_pult import country, digest, fallback, models, modules, people, providers, setup, terms, transcripts, voice
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
 from gas_pult.config import Config
 from gas_pult.people import TITLES, People, allowed
@@ -124,6 +124,7 @@ class Pult:
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
+        self.schedule = modules.Schedule(cfg.data / "modules.json")   # расписание пространств из модулей
         # поставщик модели не отвечает — окно само уходит на запасной (fallback.py), владельцам — одна строка
         # запасные — по странам человека, чьё окно (@gas_pult_by), иначе первого владельца
         self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
@@ -653,6 +654,126 @@ class Pult:
             return send(f"Окна с Claude в {x['project']} нет — откройте сессию (🆕 Новая) и повторите.")
         self.digest.snooze(k, digest.GONE)
 
+    # ---------- модули-агенты (modules.py) ----------
+    def module_root(self) -> Path:
+        """Куда создавать пространства из модулей — первый корень проектов (как 📁 Новая папка)."""
+        return self.cfg.roots()[0] if self.cfg.project_roots else Path(self.home) / "projects"
+
+    def send_later(self, wid: str, text: str, wait: int = 180):
+        """Первое задание в свежее окно — в фоне, когда Claude готов. Свежая папка начинается с вопроса «доверяете
+        этой папке?»: ждём, пока человек ответит (до ``wait`` секунд), потом вставляем; не вышло — пишем владельцам."""
+        def run():
+            end, why = time.time() + wait, ""
+            time.sleep(3)
+            while time.time() < end:
+                w = self.tmux.window(wid)
+                if not w:
+                    return
+                try:
+                    return self.to_claude(w, text)
+                except NotReady as e:
+                    why = str(e)
+                    time.sleep(5)
+            self.broadcast(f"Задание модуля не отправлено в окно {wid}: {why or 'окно не готово'}. "
+                           "Откройте сессию и напишите «начинай».")
+        threading.Thread(target=run, daemon=True).start()
+
+    def show_modules(self, chat: int):
+        ms = modules.catalog()
+        if not ms:
+            return self.send(chat, "Модулей нет.")
+        lines = ["🧩 Модули — готовые агенты под задачу. Выберите, чтобы посмотреть и создать пространство:"]
+        lines += [f"• {m['title']} ({m['industry']}) — {m['about']}" for m in ms]
+        self.send(chat, "\n".join(lines), reply_markup=kb([[(m["title"], f"md:v:{m['id']}")] for m in ms]))
+
+    def module_text(self, m: dict) -> str:
+        out = [f"🧩 {m['title']} · {m['industry']}", "", m["description"] or m["about"]]
+        if m["integrations"]:
+            out += ["", "Интеграции (панель → Интеграции):"]
+            out += [f"• {x['title']}{' — по желанию' if x['optional'] else ''}: {x['why']}" for x in m["integrations"]]
+        if m["schedule"]:
+            out += ["", "Расписание:"]
+            out += [f"• {x['at']} {modules.days_text(x['days'])} — {x['title']}" for x in m["schedule"]]
+        if m["decisions"]:
+            out += ["", "Решения кнопками:"]
+            out += [f"• {x['question']} ({' / '.join(x['options'])})" for x in m["decisions"]]
+        return "\n".join(out)
+
+    def on_module(self, chat: int, arg: str):
+        """md:v:<id> — описание; md:new:<id> — создать с именем по умолчанию; md:name:<id> — спросить имя; md:list."""
+        act, _, mid = arg.partition(":")
+        if act == "list":
+            return self.show_modules(chat)
+        try:
+            m = modules.get(mid)
+        except LookupError as e:
+            return self.send(chat, f"Не нашёл модуль: {e}")
+        folder = modules.free_name(self.module_root(), m["id"])
+        if act == "v":
+            return self.send(chat, self.module_text(m), reply_markup=kb([
+                [(f"✅ Создать «{folder}»", f"md:new:{m['id']}")], [("✏️ Другое имя папки", f"md:name:{m['id']}")],
+                [("‹ Все модули", "md:list:")]]))
+        if act == "name":
+            self.waiting[chat] = f"md:{m['id']}"
+            return self.send(chat, f"Имя папки для «{m['title']}» (латиница, цифры, дефис), например {folder}:",
+                             reply_markup={"force_reply": True})
+        if act == "new":
+            return self.module_create(chat, m["id"], folder)
+        return None
+
+    def module_create(self, chat: int, mid: str, name: str):
+        if not setup.installed(self.cfg.claude):
+            return self.show_setup(chat)
+        uid = getattr(self.actor, "uid", None)
+        if uid is not None and not models.allowed("claude", self.countries(uid)):
+            return self.send(chat, country.DENY)
+        try:
+            path = modules.create(mid, self.module_root(), name, by=None if chat in self.cfg.owners else chat)
+        except (ValueError, LookupError, OSError) as e:
+            return self.send(chat, f"Не создал: {e}")
+        m = modules.get(mid)
+        self.send(chat, f"📁 Пространство «{m['title']}» — {path}. Открываю сессию…")
+        self.open_session(chat, f"{path.name}-{time.strftime('%H%M')}", str(path))
+        if w := self.project_window(str(path)):
+            self.send_later(w["id"], m["start"])
+        return None
+
+    def modules_loop(self):
+        while True:
+            try:
+                self.module_tick(datetime.now())
+            except Exception as e:
+                print("modules:", self.api.redact(e), flush=True)
+            time.sleep(60)
+
+    def module_tick(self, now: datetime):
+        """Расписание пространств: в назначенное время — промпт модуля в окно этой папки. Окна нет — открываем
+        (папкой Claude того, кто создал пространство) и шлём промпт первым сообщением; владельцам — одна строка."""
+        for folder, m, item in self.schedule.due(self.cfg.roots(), now):
+            name = f"«{m['title']}» ({folder.name})"
+            try:
+                if w := self.project_window(str(folder)):
+                    self.to_claude(w, item["prompt"])
+                    continue
+                if not setup.installed(self.cfg.claude):
+                    self.broadcast(f"🗓 {name}: {item['at']} — Claude Code не установлен, задание не отправлено.")
+                    continue
+                by = modules.mark_of(folder).get("by")
+                if not models.allowed("claude", self.countries(by if by is not None else self.cfg.owners[0])):
+                    self.broadcast(f"🗓 {name}: {item['at']} — {country.DENY}")
+                    continue
+                home = self.claude_dir(by) if by is not None else None
+                wid = self.tmux.new_window(f"{folder.name}-{now.strftime('%H%M')}", str(folder),
+                                           models.with_home(self.cfg.claude, home), by=str(by) if home else "")
+                if not home:
+                    self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(self.cfg.owners[0]))
+                self.send_later(wid, item["prompt"])
+                self.broadcast(f"🗓 {name}: открыл сессию по расписанию ({item['title']}).")
+            except (NotReady, Denied) as e:
+                self.broadcast(f"🗓 {name}: {item['at']} — задание не отправлено: {e}")
+            except (RuntimeError, OSError) as e:
+                self.broadcast(f"🗓 {name}: {item['at']} — не вышло: {e}")
+
     # ---------- экраны пульта ----------
     def show_windows(self, chat: int):
         ws = self.tmux.windows()
@@ -955,6 +1076,8 @@ class Pult:
             return send(f"→ [{w['name']}]: {h}")
         if kind == "dg":
             return self.on_digest(chat, arg)
+        if kind == "md":                                   # модули-агенты: описание, создание пространства
+            return self.on_module(chat, arg)
         if kind == "su":                                   # мастер: вход в Claude, проверка — только владельцу
             if not allowed(self.people.role(q["from"]["id"]), "owner"):
                 return send("Это может только владелец.")
@@ -1221,10 +1344,12 @@ class Pult:
             return self.new_folder(chat, t.lower())
         if wait.startswith("ren:") and m.get("text") and not t.startswith(MENU_PREFIXES):
             return self.rename(chat, wait[4:], t)
+        if wait.startswith("md:") and m.get("text") and not t.startswith(MENU_PREFIXES):
+            return self.module_create(chat, wait[3:], t.lower())
         if wait == "code" and m.get("text") and not t.startswith(MENU_PREFIXES) and not t.startswith("/"):
             return self.setup_code(chat, t)
         if t.startswith("🆕"):
-            rows = [[("📁 Новая папка…", "mk:")]]
+            rows = [[("📁 Новая папка…", "mk:")], [("🧩 Из модуля…", "md:list:")]]
             rows += [[(self.short(p), f"new:{i}")] for i, p in enumerate(self.projects())]
             return send("В какой папке открыть новую сессию? (или пришли номер задачи, например GAS-123)",
                         reply_markup=kb(rows))
@@ -1234,8 +1359,11 @@ class Pult:
                 return fn(chat)
         if t == "/digest":
             return self.send_digest(chat)
+        if t == "/modules":
+            return self.show_modules(chat)
         if t in ("/start", "/menu", "/help"):
-            send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice.",
+            send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice, "
+                 "готовые агенты — /modules.",
                  reply_markup=MENU)
             if t == "/start" and not (st := self.setup_status())["ready"]:
                 self.show_setup(chat, st)
@@ -1301,6 +1429,7 @@ class Pult:
             print(f"gas-pult: Claude Code {why} · /start в боте — мастер входа", flush=True)
         threading.Thread(target=self.monitor, daemon=True).start()
         threading.Thread(target=self.digest_loop, daemon=True).start()
+        threading.Thread(target=self.modules_loop, daemon=True).start()
         offset = None
         while True:
             try:

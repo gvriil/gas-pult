@@ -396,6 +396,14 @@
   .hero .mono .i { width: 28px; height: 28px; }
   .hero h2 { margin: 0 0 2px; font-size: calc(21px * var(--fz, 1)); } .hero p { margin: 0; color: var(--text-secondary); }
   .conn { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* ===== Модули-агенты: каталог и экран модуля ===== */
+  .mods .card .meta { white-space: normal; } .mods .card .chip { margin-top: 6px; }
+  .mrow { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+  .mrow:first-of-type { border-top: 0; } .mrow > .i { color: var(--text-secondary); margin-top: 2px; }
+  .mrow .ctext b { display: block; font-weight: 600; } .mrow .ctext small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .mrow .btn.sm { width: auto; margin-top: 8px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .mod .panel { margin: 0 0 10px; } .mod .section { margin-top: 14px; }
 
   /* ===== Листы, тосты, баннеры ===== */
   .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(17,17,16,.42); display: flex; align-items: flex-end; animation: fade .15s ease; }
@@ -632,6 +640,7 @@ const P = {
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17.5h2"/>',
+  puzzle: '<path d="M12 3.2l7.8 4.4v8.8L12 20.8l-7.8-4.4V7.6z"/><path d="M4.4 7.7L12 12l7.6-4.3M12 12v8.6"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
@@ -829,7 +838,7 @@ function confirmDanger(text, go) {
 
 // ---------- навигация ----------
 function show(v) {
-  view = v;
+  view = v; if (v !== "mcpForm") formBack = null;
   for (const id of ["login", "terms", "country", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
   const gate = v === "login" || v === "terms" || v === "country";  // вход, условия, страна — без списка, меню и настроек
   const two = split() && !["terms", "country"].includes(v);       // условия и страна — одной колонкой, без списка сессий
@@ -859,7 +868,7 @@ function syncBack() {
 }
 function back() {
   if (view === "home" && homeView !== "sessions") { setHome("sessions"); return scrollToY(0); }
-  if (view === "mcpForm") { clearInterval(connTimer); show("home"); return setHome("integrations"); }
+  if (view === "mcpForm") { clearInterval(connTimer); const f = formBack; formBack = null; if (f) return f(); show("home"); return setHome("integrations"); }
   current = null; closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
 }
 // Шапка и поле ввода прячутся, как в Safari и Telegram на iOS:
@@ -1189,9 +1198,11 @@ $("sessionsView").addEventListener("click", (e) => {
 });
 $("newBtn").onclick = () => newSession();
 function newSession(profile) {
-  sheet("Новая сессия — в какой папке?", meta.projects.map((label, i) => ({
-    label, icon: "file", run: () => profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)),
-  })));
+  sheet("Новая сессия — в какой папке?", [
+    ...(profile ? [] : [{ label: "Из модуля", sub: "готовый агент под задачу: новая папка с правилами и навыками", icon: "puzzle", run: () => modulesView() }]),
+    ...meta.projects.map((label, i) => ({
+      label, icon: "file", run: () => profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)),
+    }))]);
 }
 // Выбор модели — только если есть ключ хоть одного поставщика кроме Claude; иначе сразу Claude (ноль лишних шагов).
 // Недоступный для страны человека — в списке с пометкой; нажатие — отказ тем же текстом, что у сервера.
@@ -2458,6 +2469,83 @@ function mcpForm(p) {
   });
 }
 
+// ---------- модули-агенты: «Новая сессия» → «Из модуля» ----------
+// Каталог модулей (/api/modules) → экран модуля: интеграции с состоянием и «Подключить» (тот же мастер, что в
+// «Интеграциях»), источники данных, расписание, решения кнопками → имя папки → «Создать» → открывается сессия.
+let formBack = null, modData = null;               // formBack — куда «‹ Назад» с экрана формы (модуль → подключение)
+const goSessions = () => { show("home"); setHome("sessions"); };
+async function modulesView() {
+  show("mcpForm"); formBack = goSessions; $("title").textContent = "Из модуля"; setSub("<span>готовые агенты под задачу</span>");
+  $("mcpForm").innerHTML = '<div class="empty">Загружаю модули…</div>';
+  try { modData = await api("/api/modules"); } catch (e) { $("mcpForm").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
+  const groups = [...new Set(modData.modules.map((m) => m.industry))];
+  $("mcpForm").innerHTML = `<div class="mods">
+    <p class="note">Модуль — готовое пространство: агент с ролью и правилами, навыки, пример данных, расписание и решения кнопками. Создаётся новой папкой в «${esc(modData.root)}» — ваши папки не трогаются.</p>
+    ${groups.map((g) => `<div class="section">${esc(g)}</div>` + modData.modules.filter((m) => m.industry === g).map((m) =>
+      `<button class="card" data-mod="${esc(m.id)}"><div class="row"><span class="mono">${ic("puzzle")}</span><div class="ctext"><div class="name">${esc(m.title)}</div>
+        <div class="meta">${esc(m.about)}</div>${m.schedule.length ? `<span class="chip">${ic("wait", "s16")}${esc(m.schedule.map((x) => x.at).join(", "))}</span>` : ""}</div>${ic("chevron")}</div></button>`).join("")).join("")}
+    ${modData.errors?.length && meta?.role === "owner" ? `<div class="result bad">${ic("warn")}<span>Не загружены: ${esc(modData.errors.join("; "))}</span></div>` : ""}</div>`;
+}
+$("mcpForm").addEventListener("click", (e) => {
+  const c = e.target.closest("[data-mod]"); if (c) return moduleView(modData.modules.find((m) => m.id === c.dataset.mod));
+  const k = e.target.closest("[data-mconn]"); if (k) return moduleConnect(k.dataset.mconn);
+  if (e.target.closest("#modCreate")) return moduleCreate(e.target.closest("#modCreate"));
+});
+const integrOn = (x) => !mcpData ? null : x.kind === "connector" ? isOn(x) : x.kind === "preset" ? mcpData.servers.some((s) => s.ok && s.name === x.id) : null;
+function moduleIntegr(m) {
+  if (!m.integrations.length) return '<p class="note">Не нужны — всё работает в папке пространства.</p>';
+  return m.integrations.map((x) => {
+    const on = integrOn(x), wait = mcpData === null && x.kind !== "manual" && meta?.role !== "viewer";
+    const state = x.kind === "manual" ? '<span class="chip">вручную</span>' : wait ? '<span class="chip">проверяю…</span>'
+      : on ? `<span class="chip ok">${ic("check", "s16")}подключено</span>` : `<span class="chip ${x.optional ? "" : "bad"}">не подключено</span>`;
+    const btn = x.kind !== "manual" && on === false && meta?.role !== "viewer" ? `<button class="btn ghost sm" data-mconn="${esc(x.id)}">Подключить</button>` : "";
+    return `<div class="mrow">${mono(x.title, x.id)}<div class="ctext"><b>${esc(x.title)}</b>
+      <small>${esc(x.why)}</small>${x.how ? `<small>${esc(x.how)}</small>` : ""}<div class="opts">${state}${x.optional ? '<span class="chip">по желанию</span>' : '<span class="chip accent">нужно</span>'}</div>${btn}</div></div>`;
+  }).join("");
+}
+function daysText(d) { return d.length === 7 ? "каждый день" : d.join() === "1,2,3,4,5" ? "по будням" : d.map((x) => "пн вт ср чт пт сб вс".split(" ")[x - 1]).join(", "); }
+function moduleView(m) {
+  if (!m) return;
+  show("mcpForm"); formBack = modulesView; $("title").textContent = m.title; setSub(`<span>модуль · ${esc(m.industry)}</span>`);
+  const can = meta?.role !== "viewer";
+  $("mcpForm").innerHTML = `<div class="mod">
+    <div class="hero"><span class="mono">${ic("puzzle")}</span><h2 class="serif">${esc(m.title)}</h2><p>${esc(m.about)}</p></div>
+    ${m.description ? `<div class="panel"><p style="margin:0">${esc(m.description)}</p></div>` : ""}
+    <div class="section">Интеграции</div><div class="panel" id="modIntegr">${moduleIntegr(m)}</div>
+    ${m.data_sources?.length ? `<div class="section">Откуда данные</div><div class="panel">${m.data_sources.map((x) => `<div class="mrow">${ic("file")}<div class="ctext"><b>${esc(x.title)}</b><small>${esc(x.kind_title)}${x.about ? " · " + esc(x.about) : ""}</small></div></div>`).join("")}
+      <p class="note" style="margin:8px 0 0">Только официальные API и выгрузки клиента.</p></div>` : ""}
+    <div class="section">Расписание</div><div class="panel">${m.schedule.length ? m.schedule.map((x) => `<div class="mrow">${ic("wait")}<div class="ctext"><b>${esc(x.at)} · ${esc(daysText(x.days))}</b><small>${esc(x.title)}</small></div></div>`).join("")
+      + '<p class="note" style="margin:8px 0 0">В это время пульт отправит задание в сессию пространства; окна нет — откроет его и сообщит в боте.</p>' : '<p class="note" style="margin:0">Без расписания — работает, когда вы пишете.</p>'}</div>
+    ${m.decisions.length ? `<div class="section">Решения кнопками</div><div class="panel">${m.decisions.map((x) => `<div class="mrow">${ic("help")}<div class="ctext"><b>${esc(x.question)}</b>${x.when ? `<small>${esc(x.when)}</small>` : ""}
+      <div class="opts">${x.options.map((o) => `<span class="chip accent">${esc(o)}</span>`).join("")}</div></div></div>`).join("")}
+      <p class="note" style="margin:8px 0 0">Агент спрашивает вариантами — кнопки приходят в Telegram и появляются в панели.</p></div>` : ""}
+    <div class="section">Что будет в папке</div><div class="panel"><div class="conn">${[...m.files, ...(m.skills.length ? [".claude/skills/"] : [])].map((f) => `<span class="chip">${esc(f)}</span>`).join("")}</div>
+      ${m.skills.length ? `<p class="note" style="margin:8px 0 0">Навыки: ${esc(m.skills.join(", "))}${m.uses?.length ? " · общие блоки: " + esc(m.uses.map((u) => u.title).join(", ")) : ""}</p>` : ""}</div>
+    ${can ? `<div class="section">Создать пространство</div><div class="panel">
+      <div class="field"><label for="modName">Имя папки</label><input id="modName" value="${esc(m.folder)}" autocapitalize="off" spellcheck="false" autocomplete="off">
+        <div class="hint">Латиница, цифры, дефис. Папка появится в «${esc(modData?.root || "projects")}»; существующие не перезаписываются.</div></div>
+      <button class="btn" id="modCreate" data-id="${esc(m.id)}">${ic("plus")}Создать и открыть сессию</button></div>` : '<p class="viewonly">У вас доступ только на просмотр.</p>'}</div>`;
+  if (can && mcpData === null && m.integrations.some((x) => x.kind !== "manual")) api("/api/mcp").then((d) => { mcpData = d; if (view === "mcpForm" && $("modIntegr")) $("modIntegr").innerHTML = moduleIntegr(m); })
+    .catch(() => { mcpData = { servers: [], connectors: [], presets: [] }; if ($("modIntegr")) $("modIntegr").innerHTML = moduleIntegr(m); });
+}
+function moduleConnect(id) {
+  const m = modData.modules.find((x) => x.integrations.some((i) => i.id === id) && $("modCreate")?.dataset.id === x.id) || modData.modules.find((x) => x.integrations.some((i) => i.id === id));
+  const c = mcpData?.connectors.find((x) => x.id === id), p = mcpData?.presets.find((x) => x.id === id);
+  if (!c && !p) return toast("Этот сервис подключается в «Интеграциях»", 4000);
+  c ? connectorView(c) : mcpForm(p); formBack = () => moduleView(m);
+}
+function moduleCreate(btn) {
+  const m = modData.modules.find((x) => x.id === btn.dataset.id), name = $("modName").value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(name)) return toast("Имя папки: латиница в нижнем регистре, цифры, дефис (2–41 знак)", 4500);
+  pickProfile((profile) => busy(btn, "Создаю пространство…", async () => {
+    try {
+      const d = await api("/api/modules/create", { id: m.id, name, profile }); haptic("notificationOccurred", "success");
+      toast(`Пространство «${d.folder}» создано — агент получит первое задание, когда Claude будет готов`, 4500);
+      modData = null; await refresh(); openSession(d.id);
+    } catch (err) { toast("Не вышло: " + err.message, 5000); haptic("notificationOccurred", "error"); }
+  }));
+}
+
 // ---------- уведомления ----------
 // В Telegram уведомления присылает бот. В браузере — системные, когда вкладка скрыта: «готово» и «ждёт ответа».
 const canNotify = () => !tg?.initData && "Notification" in window;
@@ -2668,7 +2756,7 @@ async function start() {
   if (resume?.id && !DEMO) { await refresh(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
   // Чат прежде всего: на телефоне панель сразу открывает последнюю сессию (открытую здесь, иначе активную в чате бота).
   if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof") && !params.has("cmds")
-      && !params.has("view") && !(setupData && !setupData.ready)) {
+      && !params.has("view") && !params.has("modules") && !(setupData && !setupData.ready)) {
     if (!sessions.length) await refresh();
     const live = sessions.filter((x) => x.status !== "stopped");
     const pick = sessions.find((x) => x.id === store("last")) || live.find((x) => x.active)
@@ -2691,6 +2779,7 @@ async function start() {
   }
   if (DEMO && params.get("prof")) { profileForm(profileOf(params.get("prof")), params.has("connected")); if (params.get("cat")) openCatalog($("profMain")); }
   if (DEMO && params.get("pick")) pickProfile(() => {});
+  if (DEMO && params.has("modules")) { await modulesView(); if (params.get("modules")) moduleView(modData.modules.find((m) => m.id === params.get("modules"))); }
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
 }
@@ -2760,6 +2849,9 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  // модули — те же три, что в templates/modules (без промптов и путей); создание — открывает свободную сессию
+  R["/api/modules"] = { root: "projects", errors: [], modules: [{"id":"night-shift","version":"1.0","title":"Ночная смена","industry":"Общие","about":"Ночью агент идёт по плану: код → проверка → ревью безопасности. Будит только по трём причинам.","description":"Вечером вы пишете задачи в PLAN.md, ночью агент выполняет их по одной: пишет код, прогоняет тесты и линтер, проверяет изменения на уязвимости и утечки, коммитит в рабочую ветку. Будит человека только когда без него нельзя: нужно необратимое или внешнее действие, работа заблокирована, найден риск для безопасности или данных — вопросом с кнопками «Да» / «Нет» в Telegram и в панели. Не больше 20 итераций за смену. Утром — отчёт в REPORT.md: что сделано, что нет и почему, что ждёт решения.","integrations":[{"id":"github","title":"GitHub","why":"Задачи из issues и пулл-реквест утром. Без GitHub работа остаётся в локальной ветке — тоже можно.","optional":true,"kind":"preset"},{"id":"linear","title":"Linear","why":"Взять задачи смены из трекера и отметить сделанное.","optional":true,"kind":"connector","match":"Linear"}],"schedule":[{"at":"07:30","days":[1,2,3,4,5,6,7],"title":"Утренний отчёт"}],"decisions":[{"question":"Нужно необратимое или внешнее действие — разрешаете?","options":["Да","Нет"],"when":"push, деплой, миграция живой базы, удаление данных, письмо или платёж, установка в систему"},{"question":"Работа заблокирована — пропустить задачу и идти дальше?","options":["Да","Нет"],"when":"нет доступа или ключа, противоречие в плане, проверка падает не по задаче после трёх попыток"},{"question":"Найден риск безопасности или данных — исправлять сейчас?","options":["Да","Нет"],"when":"уязвимость, секрет в коде или истории, утечка персональных данных"}],"data_sources":[],"uses":[],"skills":["night-report","night-review"],"files":["CLAUDE.md","PLAN.md"],"folder":"night-shift"},{"id":"client-alerts","version":"1.0","title":"Оповещения клиентов","industry":"Общие","about":"Напоминания и рассылки по шаблонам: агент готовит пачку, человек одобряет кнопкой. Без одобрения — ни одного письма.","description":"Шаблоны напоминаний (запись, оплата, продление) и рассылок — в templates/, клиенты — в data/clients.csv. Агент отбирает получателей по согласию, заполняет шаблоны и показывает пачку: «Отправить пачку из N?» — «Да» / «Нет». Отправляет только после «Да» и только ту пачку, которую показал. Пока канал отправки (почта, Telegram) не подключён — только черновики в outbox/. Пачка — не больше 50 сообщений, тихие часы — с 21:00 до 09:00.","integrations":[{"id":"gmail","title":"Gmail","why":"Канал отправки писем. Без него — только черновики в outbox/, отправляете сами.","optional":true,"kind":"connector","match":"Gmail"},{"id":"telegram-sender","title":"Telegram-бот для рассылок","why":"Канал отправки в Telegram — отдельный бот компании (MCP-сервер). Без него — черновики в outbox/.","optional":true,"kind":"manual","how":"Панель → Интеграции → «Другой сервис» → «Свой сервер (адрес)»: MCP-сервер вашего бота рассылок."}],"schedule":[{"at":"10:00","days":[1,2,3,4,5],"title":"Пачка напоминаний на сегодня"}],"decisions":[{"question":"Отправить пачку из N? (шаблон, число получателей, первые три имени)","options":["Да","Нет"],"when":"каждый раз перед отправкой; «Нет» — пачка остаётся черновиком"}],"data_sources":[{"title":"Клиенты и согласия: data/clients.csv","kind":"client_export","kind_title":"выгрузка клиента","about":"выгрузка из CRM или учётной системы клиента"}],"uses":[{"id":"reminders","title":"Подтверждения и напоминания","about":"Напоминания о записи, оплате, сроках и подтверждения от клиента — пачкой, только после одобрения человека"}],"skills":["alert-batch","alert-send","reminder-batch"],"files":["CLAUDE.md","data/","outbox/","templates/"],"folder":"client-alerts"},{"id":"morning-numbers","version":"1.0","title":"Утренние цифры против плана","industry":"Общие","about":"В 8:00 — план, факт и отклонения за вчера и с начала месяца, топ-3 отклонения и вопрос «что делаем».","description":"Источник — CSV, Google Таблицы или выгрузка из 1С (CSV/XLSX в папке data/). Каждое утро в 8:00 агент берёт свежие данные, считает план, факт и отклонение по каждому показателю за вчера и с начала месяца, выбирает три самых заметных отклонения (порог — 5 %) и спрашивает «Что делаем?» с 2–4 вариантами кнопками. Полная сводка — в SUMMARY.md, история — в history/.","integrations":[{"id":"gdrive","title":"Google Таблицы (через Google Диск)","why":"Если план и факт ведёте в Google Таблицах — агент читает их сам. Не нужен, если данные лежат в data/.","optional":true,"kind":"connector","match":"Drive"},{"id":"onec","title":"Выгрузка из 1С","why":"Отчёт 1С (продажи, план продаж) сохраняется в CSV или XLSX в папку data/ этого пространства.","optional":true,"kind":"manual","how":"В 1С — регламентная выгрузка отчёта в файл в общую папку или на почту; файл кладётся в data/ к 7:50."}],"schedule":[{"at":"08:00","days":[1,2,3,4,5,6,7],"title":"Сводка план/факт"}],"decisions":[{"question":"Что делаем? (сводка план/факт и топ-3 отклонения в тексте вопроса)","options":["Разобрать главное отклонение","Подробно по показателю","Всё в порядке","Позже"],"when":"каждое утро после сводки; варианты агент подбирает под цифры дня"}],"data_sources":[{"title":"План и факт: CSV или выгрузка из 1С в data/","kind":"client_export","kind_title":"выгрузка клиента","about":""},{"title":"Google Таблицы","kind":"official_api","kind_title":"официальный API","about":"через коннектор Google Диска claude.ai"}],"uses":[],"skills":["data-sources","plan-fact"],"files":["CLAUDE.md","SOURCE.md","data/"],"folder":"morning-numbers"}] };
+  R["/api/modules/create"] = { id: "@3", path: "night-shift", folder: (body && body.name) || "night-shift" };
   if (path.startsWith("/api/voice/choose")) demoApi.vcur = body.id;       // демо: голоса — Ксения выбрана, Ксения-2 не установлена
   { const own = (params.get("role") || "owner") === "owner", K = { xenia: ["Ксения", "женский"], baya: ["Бая", "женский"], aidar: ["Айдар", "мужской"], eugene: ["Евгений", "мужской"],
       kseniya: ["Ксения-2", "женский"] };            // Piper в выборе нет — только запасной синтез

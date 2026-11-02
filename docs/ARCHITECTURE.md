@@ -11,6 +11,7 @@ src/gas_pult/
 ├── transcripts.py  jsonl Claude Code: Turns (сборка хода до end_turn), Tail, last_answer, clean
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
 ├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, «да» из HANDOFF.md
+├── modules.py      модули-агенты: каталог templates/modules (module.toml), пространство из модуля, расписание
 ├── setup.py        мастер без Claude: status() (установлен, вход, ключи), вход claude auth login в окне tmux
 ├── country.py      страна человека: выбор, код номера (хеш с солью), GeoIP по локальной базе db-ip lite
 └── voice/
@@ -41,6 +42,7 @@ src/gas_pult/
 | Файл | Что |
 |---|---|
 | `state.json` | активное окно, уведомления, голос, «всегда голосом», `audio_only` |
+| `modules.json` | расписание пространств из модулей: что и в какой день уже отправлено (docs/MODULES.md) |
 | `cmds.json` | последние 200 команд для ▶️ (0600) |
 | `commands-log.json` | вкладка «Команды» панели: последние 400 команд всех сессий, отметка «выполнено» и код, отпечатки ошибок, уже отправленных на разбор (0600) |
 | `people.json` | участники и наблюдатели: роль, имя, согласие с условиями `terms: {version, at}` (0600) |
@@ -64,6 +66,8 @@ src/gas_pult/
   голоса в `catalog`. Тяжёлые импорты — внутри функции.
 - **Распознавание** — `stt()` в `voice/__main__.py`. Модель задаётся ключом `whisper_model`.
 
+- **Модуль-агент** — без кода: папка `templates/modules/<id>/` в пакете или `~/.config/gas-pult/modules/<id>/`
+  (`module.toml`, `CLAUDE.md`, `skills/`, пример данных); общие блоки — `_common/<id>/`. Формат — `docs/MODULES.md`.
 - **Канал связи** (MAX, VK, почта…) — класс с методами `Channel` из `channels.py` и разбором событий в `Incoming`.
   Бот пока вызывает `telegram.Api` напрямую; обзор каналов и шаги перевода бота на интерфейс — `docs/CHANNELS.md`.
 

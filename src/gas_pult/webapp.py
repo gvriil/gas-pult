@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import country, fallback, models, providers, setup, terms, transcripts, voice, webauth
+from gas_pult import country, fallback, models, modules, providers, setup, terms, transcripts, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -425,6 +425,24 @@ class Panel:
             self.mark_by(wid, uid)
         self.pult.set_state(active=wid)
         return {"id": wid}
+
+    # ---------- модули-агенты (modules.py) ----------
+    def modules_list(self) -> dict:
+        """Каталог модулей для «Новое пространство → Из модуля»: имя папки по умолчанию — свободное."""
+        root, errors = self.pult.module_root(), []
+        items = [{**modules.public(m), "folder": modules.free_name(root, m["id"])} for m in modules.catalog(errors)]
+        return {"modules": items, "root": self.pult.short(str(root)), "errors": errors}
+
+    def module_create(self, mid: str, name: str, profile: str = "", person: int | None = None, uid=None) -> dict:
+        """Пространство из модуля: папка в первом корне проектов → сессия в ней (как «Новая сессия») → первое
+        задание модуля, когда Claude будет готов. Проверки — до создания папки, чтобы не оставлять пустых."""
+        if uid is not None:
+            self.check(profile, uid)
+        self.need_claude()
+        path = modules.create(mid, self.pult.module_root(), name, by=person)
+        out = self.new(self.pult.projects().index(str(path)), profile, person, uid)
+        self.pult.send_later(out["id"], modules.get(mid)["start"])
+        return {**out, "path": self.pult.short(str(path)), "folder": path.name}
 
     def revive(self, wid: str, uid=None) -> dict:
         """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора."""
@@ -944,6 +962,8 @@ def handler(panel: Panel):
                         "presets": [p for p in PRESETS if not home or p["id"] not in OWNER_PRESETS],
                         "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL,
                         "personal": home is not None}          # список — свой у человека, не общий с владельцем
+            if path == "/api/modules":
+                return panel.modules_list()
             if path == "/api/mcp/connected":
                 c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
                 if not c:
@@ -1097,6 +1117,9 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
+            if path == "/api/modules/create":
+                return panel.module_create(str(b.get("id", "")), str(b.get("name", "")), str(b.get("profile", "")),
+                                           self.person(), self.terms_uid())
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}
