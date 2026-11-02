@@ -86,7 +86,7 @@ def test_inspections_and_disclosure_rules():
     for s in ("248-ФЗ", "ст. 19.5", "ст. 7.23.3", "Просить продление", "подписывает"):
         assert s in text, s
     gis = (BASE / "uk-gis-disclosure" / "CLAUDE.md").read_text(encoding="utf-8")
-    for s in ("ст. 161", "209-ФЗ", "Поручить", "не входит в личный кабинет"):
+    for s in ("ст. 161", "209-ФЗ", "Поручить", "входит в личный кабинет ГИС ЖКХ"):
         assert s in gis, s
     morning = modules.get("uk-morning")
     assert morning["settings"]["disclosure"].startswith("../uk-gis-disclosure/")
@@ -174,6 +174,10 @@ def test_penalty_moratorium_and_cap():
     assert pc.accrue(Decimal(1000), due, date(2026, 4, 10), Decimal(21), mor) == full - Decimal("7.00")
     cap = [(date(2026, 1, 1), date(2026, 12, 31), "ставка_не_выше", Decimal("9.5"))]
     assert pc.accrue(Decimal(1000), due, date(2026, 4, 10), Decimal(21), cap) == Decimal("19.00")  # 60 × 9,5/300
+    old = [(date(2026, 2, 10), date(2026, 2, 19), "мораторий", Decimal(0), date(2026, 1, 1))]   # только старый долг
+    assert pc.accrue(Decimal(1000), due, date(2026, 4, 10), Decimal(21), old) == full
+    assert pc.accrue(Decimal(1000), date(2025, 12, 10), date(2026, 3, 10), Decimal(21), old) < pc.accrue(
+        Decimal(1000), date(2025, 12, 10), date(2026, 3, 10), Decimal(21), [])
     with pytest.raises(ValueError, match="неизвестное правило"):
         pc.rules_from([{"с": "2026-01-01", "по": "2026-01-02", "правило": "скидка", "значение": "1"}])
     with pytest.raises(LookupError, match="нет ставки"):
@@ -188,7 +192,9 @@ def test_penalty_payment_goes_to_oldest_debt():
     assert got["2026-01"] == [(date(2026, 4, 1), Decimal(100))]
     assert got["2026-02"] == [(date(2026, 4, 1), Decimal(50))]
     assert got["2026-03"] == [(date(2026, 4, 2), Decimal(100))]
-    assert pc.default_due("2026-12") == date(2027, 1, 10)
+    assert pc.default_due("2026-01") == date(2026, 2, 10)                    # до 177-ФЗ — до 10-го
+    assert pc.default_due("2026-02") == date(2026, 3, 15)                    # 177-ФЗ: с февраля 2026 — до 15-го
+    assert pc.default_due("2026-12") == date(2027, 1, 15) and pc.default_due("2026-12", 20) == date(2027, 1, 20)
 
 
 def test_penalty_example_data_and_rules():
@@ -196,8 +202,9 @@ def test_penalty_example_data_and_rules():
     rates = pc.rates_from(pc.read(data("uk-debts", "key_rate.csv")))
     rules = pc.rules_from(pc.read(data("uk-debts", "penalty_rules.csv")))
     assert rates[0][0] <= date(2022, 2, 28) and rates[-1][0] <= date(2026, 11, 2)
-    assert any(k == "мораторий" and a == date(2020, 4, 6) for a, _, k, _ in rules)
-    assert any(k == "ставка_не_выше" and v == Decimal("9.5") for _, _, k, v in rules)
+    assert any(k == "мораторий" and a == date(2020, 4, 6) for a, _, k, *_ in rules)
+    assert any(k == "ставка_не_выше" and v == Decimal("9.5") and b == date(2026, 12, 31) for _, b, k, v, *_ in rules)
+    assert any(k == "мораторий" and x and x[0] == date(2022, 4, 1) for _, _, k, _, *x in rules)   # ПП № 497
     rows = pc.account([c for c in pc.read(data("uk-debts", "charges.csv")) if c["лс"] == "ЛС-000-01"],
                       [p for p in pc.read(data("uk-debts", "payments.csv")) if p["лс"] == "ЛС-000-01"],
                       date(2026, 11, 2), rates, rules)
@@ -240,7 +247,8 @@ def test_order_stages(tmp_path):
     row = {"предписание": "П-0/2026", "пункт": "1", "дом": "Дом 1", "исполнитель": "И", "статус": "открыт"}
     rows = [row | {"срок": "2026-12-15"}, row | {"пункт": "2", "срок": "2026-11-10"},
             row | {"пункт": "3", "срок": "2026-11-02"}, row | {"пункт": "4", "срок": "2026-10-30"},
-            row | {"пункт": "5", "срок": "2026-11-12"}, row | {"пункт": "6", "срок": "2026-11-10", "статус": "выполнен"}]
+            row | {"пункт": "5", "срок": "2026-11-12"},
+            row | {"пункт": "6", "срок": "2026-11-10", "статус": "выполнен"}]
     (tmp_path / "П-0-2026" / "2").mkdir(parents=True)
     (tmp_path / "П-0-2026" / "2" / "акт.pdf").write_bytes(b"%PDF")
     (tmp_path / "П-0-2026" / "2" / "README.md").write_text("не считается")

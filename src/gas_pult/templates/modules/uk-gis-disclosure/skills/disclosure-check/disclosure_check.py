@@ -3,10 +3,11 @@
 Чек-лист — data/disclosure_checklist.csv: код, что, уровень (дом | организация), периодичность (ежемесячно |
 ежеквартально | ежегодно | при_изменении), смещение_мес и срок_день (срок периодического: срок_день-е число через
 смещение_мес месяцев после конца периода; срок_день больше дней в месяце — последний день), дней (при_изменении:
-срок — через столько календарных дней после изменения), основание.
+срок — через столько календарных дней после изменения), основание, сверено (дата сверки или «нет — сверить»).
 Выгрузка — data/gis_export.csv, которую делает человек из ГИС ЖКХ (или ведёт вручную): код, дом, период (ГГГГ-ММ,
 ГГГГ-КN, ГГГГ или дата изменения ГГГГ-ММ-ДД для при_изменении), размещено (дата или пусто).
-Дома — data/houses.csv (дом, управляем_с — с какой даты дом в управлении: раньше сроки не считаем). Только стандартная библиотека; в ГИС ЖКХ не ходит, ничего не отправляет.
+Дома — data/houses.csv (дом, управляем_с — с какой даты дом в управлении: раньше сроки не считаем).
+Только стандартная библиотека; в ГИС ЖКХ не ходит, ничего не отправляет.
 
     python3 disclosure_check.py --checklist data/disclosure_checklist.csv --export data/gis_export.csv \\
         --houses data/houses.csv --on 2026-11-02 [--months 3] [--soon 10]
@@ -21,7 +22,7 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-FIELDS = ["состояние", "код", "что", "дом", "период", "срок", "размещено", "основание"]
+FIELDS = ["состояние", "код", "что", "дом", "период", "срок", "размещено", "основание", "сверено"]
 
 
 def read(path: Path) -> list[dict]:
@@ -84,7 +85,7 @@ def check(checklist: list[dict], export: list[dict], houses: list[dict], on: dat
                 since = start.get(house)
                 cases = [(n, d) for n, d in cases if not since or d >= since]
             for per, due in cases:
-                when = posted.get((item["код"], house, per), None)
+                when = posted.get((item["код"], house, per))
                 if when:
                     if date.fromisoformat(when) > due and date.fromisoformat(when) >= window:
                         state = "размещено с опозданием"
@@ -97,7 +98,8 @@ def check(checklist: list[dict], export: list[dict], houses: list[dict], on: dat
                 else:
                     continue
                 out.append({"состояние": state, "код": item["код"], "что": item["что"], "дом": house, "период": per,
-                            "срок": due.isoformat(), "размещено": when or "", "основание": item.get("основание", "")})
+                            "срок": due.isoformat(), "размещено": when or "", "основание": item.get("основание", ""),
+                            "сверено": item.get("сверено", "")})
     rank = {"не размещено": 0, "размещено с опозданием": 1, "срок скоро": 2}
     return sorted(out, key=lambda r: (rank[r["состояние"]], r["срок"], r["код"], r["дом"]))
 

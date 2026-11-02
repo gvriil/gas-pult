@@ -4,7 +4,9 @@
 в срок суммы за каждый день просрочки, по день фактической оплаты включительно. Ставка — ставка рефинансирования
 (с 01.01.2016 равна ключевой) ЦБ РФ, действующая на день фактической оплаты; не оплачено — на дату расчёта.
 Ограничения из data/penalty_rules.csv: «мораторий» — дни, за которые пени не начисляются; «ставка_не_выше» — в эти
-дни ставка не выше значения (ПП РФ № 474). Ставки ЦБ — data/key_rate.csv, человек дописывает новые.
+дни ставка не выше значения (ПП РФ № 474 и продления, сейчас — ПП РФ от 18.03.2025 № 329: минимум из ставки на
+27.02.2022 и на день оплаты); «долг_до» — правило только для долга со сроком оплаты раньше этой даты (мораторий
+ПП РФ № 497 — только на долг, возникший до 01.04.2022). Ставки ЦБ — data/key_rate.csv, человек дописывает новые.
 Оплата без периода гасит самый старый долг (ст. 319.1 ГК РФ). Только стандартная библиотека; ничего не отправляет.
 
     python3 penalty.py --charges data/charges.csv --payments data/payments.csv --rates data/key_rate.csv \\
@@ -40,14 +42,17 @@ def rates_from(rows: list[dict]) -> list[tuple[date, Decimal]]:
     return sorted((date.fromisoformat(r["с"]), money(r["ставка"])) for r in rows)
 
 
-def rules_from(rows: list[dict]) -> list[tuple[date, date, str, Decimal]]:
-    """data/penalty_rules.csv: с,по,правило,значение — по включительно; правило: мораторий | ставка_не_выше."""
+def rules_from(rows: list[dict]) -> list[tuple]:
+    """data/penalty_rules.csv: с,по,правило,значение,долг_до — по включительно; правило: мораторий | ставка_не_выше;
+    долг_до (необязательно) — правило только для долга со сроком оплаты раньше этой даты."""
     out = []
     for r in rows:
         kind = r["правило"]
         if kind not in {"мораторий", "ставка_не_выше"}:
             raise ValueError(f"неизвестное правило «{kind}» — только «мораторий» или «ставка_не_выше»")
-        out.append((date.fromisoformat(r["с"]), date.fromisoformat(r["по"]), kind, money(r.get("значение", ""))))
+        before = date.fromisoformat(r["долг_до"]) if r.get("долг_до") else None
+        start, stop = date.fromisoformat(r["с"]), date.fromisoformat(r["по"])
+        out.append((start, stop, kind, money(r.get("значение", "")), before))
     return out
 
 
@@ -68,20 +73,24 @@ def accrue(amount: Decimal, due: date, end: date, rate: Decimal, rules) -> Decim
     total, day = Decimal(0), due + timedelta(days=31)
     while day <= end:
         r = rate
-        for start, stop, kind, value in rules:
-            if start <= day <= stop:
+        for start, stop, kind, value, *before in rules:
+            if start <= day <= stop and not (before and before[0] and due >= before[0]):
                 r = Decimal(0) if kind == "мораторий" else min(r, value)
         total += amount * r / 100 * share((day - due).days)
         day += timedelta(days=1)
     return total.quantize(KOP, ROUND_HALF_UP)
 
 
-def default_due(period: str, pay_day: int = 10) -> date:
-    """Срок оплаты за месяц «ГГГГ-ММ» — pay_day-е число следующего месяца (ч. 1 ст. 155 ЖК РФ: до 10-го, если
-    договором не установлен иной срок)."""
+PAY_15 = "2026-02"      # ФЗ от 24.06.2025 № 177-ФЗ (с 01.03.2026): до 15-го — с платы за февраль 2026 (по обзорам)
+
+
+def default_due(period: str, pay_day: int = 0) -> date:
+    """Срок оплаты за месяц «ГГГГ-ММ» — число следующего месяца по ч. 1 ст. 155 ЖК РФ: до 10-го (до 177-ФЗ, договор
+    мог установить иной срок), с платы за февраль 2026 — до 15-го (единый срок). pay_day — своё число, если задано."""
+    day = pay_day or (15 if period >= PAY_15 else 10)
     y, m = map(int, period.split("-"))
     y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return date(y, m, pay_day)
+    return date(y, m, day)
 
 
 def allocate(charges: list[dict], payments: list[dict]) -> dict[str, list[tuple[date, Decimal]]]:
@@ -102,7 +111,7 @@ def allocate(charges: list[dict], payments: list[dict]) -> dict[str, list[tuple[
     return out
 
 
-def account(charges: list[dict], payments: list[dict], on: date, rates, rules, pay_day: int = 10) -> list[dict]:
+def account(charges: list[dict], payments: list[dict], on: date, rates, rules, pay_day: int = 0) -> list[dict]:
     """Расчёт по одному лицевому счёту: строка на период — начислено, оплачено, остаток, дней просрочки, пени."""
     paid = allocate(charges, payments)
     rows = []
@@ -117,7 +126,7 @@ def account(charges: list[dict], payments: list[dict], on: date, rates, rules, p
             peni += accrue(balance, due, on, rate_on(on, rates), rules)
         rows.append({"период": c["период"], "срок_оплаты": due.isoformat(), "начислено": str(money(c["начислено"])),
                      "оплачено": str(money(c["начислено"]) - balance), "остаток": str(balance),
-                     "дней_просрочки": max((on - due).days, 0) if balance > 0 else 0, "пени": str(peni)})
+                     "дней_просрочки": max((on - due).days, 0) if balance > 0 else 0, "пени": str(peni.quantize(KOP))})
     return rows
 
 
@@ -129,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rules", type=Path)
     ap.add_argument("--on", type=date.fromisoformat, default=date.today())
     ap.add_argument("--ls", help="только этот лицевой счёт")
-    ap.add_argument("--pay-day", type=int, default=10)
+    ap.add_argument("--pay-day", type=int, default=0, help="своё число срока оплаты (по умолчанию — по ЖК РФ)")
     ap.add_argument("--out", type=Path)
     a = ap.parse_args(argv)
     try:

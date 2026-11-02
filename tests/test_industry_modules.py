@@ -16,7 +16,8 @@ INDUSTRIES = {
     "Селлеры WB и Ozon": {"wb-ozon-reviews", "wb-ozon-stock", "wb-ozon-prices"},
     "Бухгалтеры и юристы на аутсорсе": {"acc-primary", "acc-deadlines", "law-drafts"},
     "Поставщики HoReCa": {"horeca-orders", "horeca-reorder", "horeca-harvest", "horeca-receivables"},
-    "Управляющие компании — «УК-старт»": {"uk-requests", "uk-emergency", "uk-morning"},
+    "Управляющие компании — «УК-старт»": {"uk-requests", "uk-emergency", "uk-morning", "uk-debts", "uk-inspections",
+                                          "uk-gis-disclosure"},
     "Автомойки и шиномонтаж (сеть)": {"carwash-tire-season", "carwash-return", "carwash-reviews", "carwash-fleet",
                                       "carwash-morning"},
     "Фитнес-клубы (семейные)": {"fitness-renewals", "fitness-lapsed", "fitness-leads", "fitness-tax-installments",
@@ -24,7 +25,7 @@ INDUSTRIES = {
 }
 ONE_PER_INDUSTRY = ("wb-ozon-reviews", "acc-primary", "horeca-receivables", "uk-requests", "carwash-fleet",
                     "fitness-tax-installments")
-RU_ONLY = {"uk-requests", "uk-emergency", "uk-morning"}
+RU_ONLY = {"uk-requests", "uk-emergency", "uk-morning", "uk-debts", "uk-inspections", "uk-gis-disclosure"}
 WORKDAYS = modules.builtin_dir() / "_common" / "deadlines" / "skills" / "workdays"
 
 
