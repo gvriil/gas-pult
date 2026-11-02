@@ -1,0 +1,72 @@
+# Модуль «Отзывы WB и Ozon» — формат файла: docs/MODULES.md
+id = "wb-ozon-reviews"
+version = "1.0"
+title = "Отзывы и вопросы WB и Ozon"
+industry = "Селлеры WB и Ozon"
+about = "Черновики ответов на отзывы и вопросы покупателей; негатив — сразу вам; публикуется только после «Да»."
+description = """
+Дважды в день агент берёт новые отзывы и вопросы покупателей — через официальный API Wildberries и Ozon Seller API
+(ключ продавца) или из выгрузки в data/reviews.csv — и готовит ответы по фактам о товаре из data/facts.md.
+Негатив (1–3 звезды, «брак», «подделка», «верните деньги») — сразу отдельным вопросом. Остальное — пачкой:
+«Опубликовать N ответов?». Без «Да» — только черновики в outbox/. Отзывы от имени покупателей агент не пишет.
+"""
+start = """Прочитай CLAUDE.md, data/facts.md и data/reviews.csv (пример выдуманный). Подготовь черновики ответов \
+на неотвеченные отзывы в outbox/ (навык review-reply) и задай вопрос о публикации — ничего не публикуй."""
+uses = ["reviews"]
+
+[settings]
+reviews = "data/reviews.csv"
+facts = "data/facts.md"
+signature = "Команда магазина"
+batch_max = 30
+
+[[integrations]]
+id = "wb-api"
+title = "Wildberries API — «Вопросы и отзывы»"
+why = "Читать новые отзывы и вопросы и публиковать одобренные ответы. Без него — выгрузка в data/reviews.csv, публикуете в кабинете сами."
+how = "Кабинет продавца WB → доступ к API → токен с категорией «Вопросы и отзывы» (только она). MCP-сервер для WB API — панель → Интеграции → «Свой сервер (адрес)»; токен хранит сервер, не модуль."
+optional = true
+
+[[integrations]]
+id = "ozon-seller-api"
+title = "Ozon Seller API — отзывы"
+why = "То же для Ozon. Методы отзывов (ReviewAPI) доступны продавцам с подпиской Premium Plus — проверьте в кабинете."
+how = "Кабинет продавца Ozon → настройки → Seller API: Client-Id и API-ключ с правами на отзывы; MCP-сервер — «Свой сервер (адрес)»."
+optional = true
+
+[[data_sources]]
+title = "Отзывы и вопросы Wildberries"
+kind = "official_api"
+about = "API «Вопросы и отзывы», dev.wildberries.ru/openapi/user-communication — ключ продавца"
+
+[[data_sources]]
+title = "Отзывы Ozon"
+kind = "official_api"
+about = "Ozon Seller API, ReviewAPI (docs.ozon.ru/api/seller) — Client-Id и API-ключ продавца"
+
+[[data_sources]]
+title = "Отзывы и факты о товарах: data/reviews.csv, data/facts.md"
+kind = "client_export"
+about = "выгрузка отзывов из кабинета продавца и описание товаров от продавца"
+
+[[schedule]]
+at = "10:00"
+title = "Новые отзывы — утро"
+prompt = """Возьми новые отзывы и вопросы покупателей (навык marketplace-reviews), подготовь черновики (review-reply). \
+Негатив — сразу отдельным вопросом; остальное — «Опубликовать N ответов?». Без ответа «Опубликовать» ничего не публикуй."""
+
+[[schedule]]
+at = "17:00"
+title = "Новые отзывы — вечер"
+prompt = """Новые отзывы и вопросы с утра: черновики и вопросы, как утром (навыки marketplace-reviews, review-reply). \
+Без ответа «Опубликовать» ничего не публикуй."""
+
+[[decisions]]
+question = "Опубликовать N ответов? (позитив, вопросы, первый ответ)"
+options = ["Опубликовать все", "По одному", "Нет"]
+when = "дважды в день после черновиков"
+
+[[decisions]]
+question = "Негативный отзыв ★1–3 — опубликовать ответ?"
+options = ["Опубликовать", "Изменить", "Не отвечать"]
+when = "сразу, как пришёл негатив"
