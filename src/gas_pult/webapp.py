@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import country, fallback, models, modules, providers, setup, terms, transcripts, voice, webauth
+from gas_pult import country, fallback, models, modules, providers, setup, terms, transcripts, usage, voice, webauth
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
@@ -138,8 +138,10 @@ class Panel:
         w = self.tmux.window(wid)
         return w if w and w["cmd"] == "claude" else None
 
-    def sessions(self) -> list[dict]:
-        act, out = self.pult.state().get("active"), []
+    def sessions(self, pool: str | None = "owner") -> list[dict]:
+        """``pool`` — чей расход показывать на карточках (``cost``): «owner» или ID участника; None — ничей."""
+        st = self.pult.state()
+        act, out, paused = st.get("active"), [], st.get("cost_paused") or {}
         for w in self.tmux.windows():
             def branch(path=w["path"]) -> str:
                 return subprocess.run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
@@ -148,7 +150,7 @@ class Panel:
                 out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                             "status": "stopped", "context": None, "model": "", "active": w["id"] == act,
                             "channel": False, "profile": w["mark"] if w["mark"] in models.BY_ID else "claude",
-                            "rev": "", "preview": ""})
+                            "rev": "", "preview": "", "cost_paused": False, "cost": None})
                 continue
             if w["cmd"] != "claude":
                 continue
@@ -164,20 +166,70 @@ class Panel:
                         "model": mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home),
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": rev,                                       # изменился журнал → «новый ответ»
-                        "preview": self.preview(w["path"], rev, home)})
+                        "preview": self.preview(w["path"], rev, home),
+                        "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
+                        "cost": self.cost_of(w, pool, st)})               # расход — только хозяину учётки
         return out
+
+    # ---------- расход (usage.py) ----------
+    def cost_of(self, w: dict, pool: str | None, st: dict) -> dict | None:
+        """Расход текущей сессии окна — если окно в пуле того, кто смотрит (чужие учётки не показываем)."""
+        if pool is None or self.pult.pool_of(w) != pool:
+            return None
+        s = self.pult.meter.session(w["path"], self.pult.home_of(w))
+        if not s:
+            return None
+        lim = usage.limits(st)["session"] if pool == "owner" else None
+        by = self.pult.opened_by(w)
+        name = next((p.get("name") or (f"@{p['username']}" if p.get("username") else "")
+                     for p in self.people.list() if p["id"] == by), "") if by else ""
+        return {**usage.public(s["total"]), "today": usage.public(s["today"]), "session": s["id"][:8],
+                "limit": None if lim is None else round(lim + (st.get("cost_extra") or {}).get(s["id"], 0.0), 2),
+                "paused": (st.get("cost_paused") or {}).get(w["id"]) if pool == "owner" else None,
+                **({"by": {"id": by, "name": name}} if by else {})}
+
+    def pool_home(self, pool: str):
+        """Папка Claude Code пула: владелец — None (~/.claude); участник — его папка (не создаём, если её нет)."""
+        if pool == "owner":
+            return None
+        d = self.cfg.data / "people" / pool / "claude"
+        return d if d.is_dir() else False
+
+    def cost_summary(self, pool: str | None) -> dict | None:
+        """Итог пула за сегодня (по местному дню сервера) и, владельцу, лимиты и паузы."""
+        if pool is None:
+            return None
+        home = self.pool_home(pool)
+        day = usage.empty() if home is False else self.pult.meter.day(home)
+        out = {"pool": "owner" if pool == "owner" else "own", "today": usage.public(day),
+               "prices_checked": usage.PRICES_CHECKED, "prices_url": usage.PRICES_URL}
+        if pool == "owner":
+            st = self.pult.state()
+            out |= {"limits": usage.limits(st), "paused": len(st.get("cost_paused") or {})}
+        return out
+
+    def cost_limits(self) -> dict:
+        st = self.pult.state()
+        return {"limits": usage.limits(st), "paused": st.get("cost_paused") or {},
+                "prices_checked": usage.PRICES_CHECKED, "prices_url": usage.PRICES_URL}
+
+    def set_cost_limits(self, b: dict) -> dict:
+        """Лимиты из «Настроек»; сразу сверяем — снятые/поднятые лимиты снимают паузы, новые — ставят."""
+        self.pult.set_state(cost_limits=usage.check_limits(b))
+        self.pult.cost_watch(self.pult.state(), force=True)
+        return self.cost_limits()
 
     def model_of(self, path: str, rev: str, home=None) -> str:
         """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала."""
         key = (path, str(home or ""))
-        if self.model_cache.get(key, ("",))[0] != rev:
+        if self.model_cache.get(key, (None,))[0] != rev:      # (None,) — у нового окна журнала ещё нет (rev "")
             self.model_cache[key] = (rev, transcripts.model_title(transcripts.last_model(path, home=home)))
         return self.model_cache[key][1]
 
     def preview(self, path: str, rev: str, home=None) -> str:
         """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""
         key = f"{home}|{path}" if home else path
-        if self.previews.get(key, ("",))[0] != rev:
+        if self.previews.get(key, (None,))[0] != rev:
             self.previews[key] = (rev, transcripts.preview(path, home=home))
         return self.previews[key][1]
 
@@ -793,6 +845,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback",
+              "/api/cost/limits", "/api/cost/decide",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
@@ -853,6 +906,11 @@ def handler(panel: Panel):
             """Telegram ID вошедшего, если это не владелец: его окна и интеграции — в его папке Claude Code."""
             _, role, uid = self.who()
             return None if role == "owner" or uid is None else uid
+
+        def pool(self) -> str | None:
+            """Чей расход видит вошедший: владелец — «owner», участник — свой ID, наблюдатель — ничей."""
+            _, role, uid = self.who()
+            return "owner" if role == "owner" else str(uid) if role == "member" and uid is not None else None
 
         def home(self):
             """Папка Claude Code вошедшего (``people.claude_dir``); владелец — None (``~/.claude``)."""
@@ -937,7 +995,9 @@ def handler(panel: Panel):
 
         def get(self, path: str, q: dict):
             if path == "/api/sessions":
-                return {"sessions": panel.sessions(), "host": panel.cfg.host, "build": build,
+                pool = self.pool()
+                return {"sessions": panel.sessions(pool), "host": panel.cfg.host, "build": build,
+                        "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/meta":
@@ -976,6 +1036,8 @@ def handler(panel: Panel):
                 return {"models": panel.openrouter.models()}
             if path == "/api/fallback":
                 return panel.fallback_info(self.terms_uid())
+            if path == "/api/cost/limits":
+                return panel.cost_limits()
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
@@ -1125,6 +1187,11 @@ def handler(panel: Panel):
                 return {"url": panel.openrouter.start(base)}
             if path == "/api/fallback":
                 return panel.set_fallback(b.get("chain"), self.terms_uid())
+            if path == "/api/cost/limits":
+                return panel.set_cost_limits(b)
+            if path == "/api/cost/decide":                  # пауза по расходу: «go» — продолжить, «stop» — оставить
+                return {"result": panel.pult.cost_decide(str(b.get("w", "")), str(b.get("act", ""))),
+                        **panel.cost_limits()}
             if path == "/api/models":
                 panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}

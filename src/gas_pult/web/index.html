@@ -109,6 +109,15 @@
   .sdot.hollow { background: transparent; border: 1.5px solid var(--status-idle); }
   .card.s-stopped { opacity: .85; }
   .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
+  /* Расход (usage.py): сумма и токены сессии на карточке, итог дня в сводке, плашка «на паузе по расходу» */
+  .chip.cost { color: var(--text-secondary); } .chip.cost .i { width: 14px; height: 14px; }
+  button.chip { border: 0; font: inherit; font-size: calc(13px * var(--fz, 1)); cursor: pointer; }
+  .chip.cost.warn { color: var(--status-approval); background: var(--status-approval-bg); }
+  .costbar { display: flex; gap: 8px; align-items: flex-start; margin: 10px 6px 0 18px; padding: 10px 12px; border-radius: var(--radius-md);
+             background: var(--status-approval-bg); color: var(--text-primary); font-size: calc(13px * var(--fz, 1)); line-height: 1.45; cursor: default; }
+  .costbar > .i { color: var(--status-approval); margin-top: 1px; } .costbar .t { flex: 1; min-width: 0; }
+  .costbar .acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; } .costbar .acts .btn { width: auto; flex: 1 1 150px; }
+  #costPause .costbar { margin: 8px 12px 0; }
 
   /* ===== Список сессий ===== */
   .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 2px 12px; }
@@ -547,6 +556,7 @@
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" style="margin:0"></button></div>
 
 <div class="dock" id="dock" hidden>
+  <div id="costPause" hidden></div>
   <div id="ask"></div>
   <div class="keys" id="keys" hidden></div>
   <div class="menu" id="menu" hidden></div>
@@ -641,6 +651,8 @@ const P = {
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17.5h2"/>',
   puzzle: '<path d="M12 3.2l7.8 4.4v8.8L12 20.8l-7.8-4.4V7.6z"/><path d="M4.4 7.7L12 12l7.6-4.3M12 12v8.6"/>',
+  coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.8-1.4-1.3-2.6-1.3-1.5 0-2.6.8-2.6 2s1.1 1.6 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.1-.5-2.6-1.3M12 6.5V8M12 16v1.5"/>',
+  pause: '<path d="M9 6.5v11M15 6.5v11"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
@@ -1130,11 +1142,82 @@ function card(s) {
       <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
+    ${costBar(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
     ${s.status === "stopped" && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-revive="${esc(s.id)}">${ic("refresh", "s16")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
 }
+// ---------- расход (usage.py): токены и деньги по журналам Claude Code, лимиты, пауза ----------
+// Сервер показывает расход только хозяину учётки: владельцу — его пул, участнику — его папку Claude.
+let costInfo = null;                                  // итог дня, лимиты (владельцу) — d.cost из /api/sessions
+const usd = (x) => x == null ? "цена неизвестна" : "$" + (x >= 100 ? Math.round(x) : x.toFixed(2));
+const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n || 0);
+const tokLine = (c) => `ввод ${tok(c.tokens.in)} · вывод ${tok(c.tokens.out)} · кэш: запись ${tok(c.tokens.cw)}, чтение ${tok(c.tokens.cr)}`;
+function costChip(s) {
+  const c = s.cost;
+  if (!c || !c.total) return "";
+  const near = c.limit && c.usd != null && c.usd >= c.limit * 0.8;
+  const title = `Расход сессии по ценам API: ${tokLine(c)}${c.unknown ? " · часть ответов — модели без цены" : ""}${s.cost.by ? " · открыл(а) " + (c.by.name || c.by.id) : ""}`;
+  return `<span class="chip cost${near ? " warn" : ""}" title="${esc(title)}">${ic("coin")}${c.usd == null ? "цена ?" : usd(c.usd)} · ${tok(c.total)}${c.limit ? " из $" + c.limit : ""}${c.by ? " · " + esc(c.by.name || "участник") : ""}</span>`;
+}
+function costBar(s) {
+  if (!s.cost_paused) return "";
+  const p = s.cost?.paused, own = meta?.role === "owner" && p;
+  const what = p ? `${p.kind === "day" ? "за сегодня по учётке" : "в этой сессии"} потрачено <b>${usd(p.spent)}</b> (лимит $${Number(p.limit).toFixed(2)})` : "";
+  const ask = own ? (p.state === "stopped" ? " Вы решили остановить." : " Продолжить?") : " Решает владелец — новые сообщения в неё не отправляются.";
+  return `<div class="costbar" data-costbar>${ic("pause", "s16")}<div class="t"><b>На паузе по расходу</b>${what ? ": " + what : ""}.${ask}
+    ${own ? `<div class="acts"><button class="btn sm" data-cost-go="${esc(s.id)}">${ic("play", "s16")}Продолжить, +лимит</button>${p.state !== "stopped" ? `<button class="btn quiet sm" data-cost-stop="${esc(s.id)}">Остановить</button>` : ""}</div>` : ""}</div></div>`;
+}
+function costSummary() {
+  const c = costInfo;
+  if (!c?.today) return "";
+  const lim = c.limits?.day, over = lim && c.today.usd != null && c.today.usd >= lim * 0.8;
+  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum title="Расход за сегодня по вашей учётке">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}</button>`;
+}
+async function costDecide(id, act, btn) {
+  await busy(btn, act === "go" ? "Продолжаю…" : "…", async () => {
+    try { const r = await api("/api/cost/decide", { w: id, act }); toast(r.result, 4000); haptic("notificationOccurred", "success"); await refresh(); }
+    catch (e) { toast(e.message); }
+  });
+}
+function costClick(e) {                               // кнопки плашки — на карточке и в сессии
+  const g = e.target.closest("[data-cost-go]"), st = e.target.closest("[data-cost-stop]");
+  if (g) { costDecide(g.dataset.costGo, "go", g); return true; }
+  if (st) { costDecide(st.dataset.costStop, "stop", st); return true; }
+  return !!e.target.closest("[data-costbar]");
+}
+function costSheet() {
+  const c = costInfo, own = meta?.role === "owner";
+  if (!c) return toast("Расход появится после первого ответа Claude");
+  const lim = c.limits || {};
+  sheet("Расход", [
+    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.unknown ? " · часть ответов — модели без цены" : "") },
+    ...(own ? [{ info: true, icon: "pause", label: `Лимит на сессию: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
+               { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
+               { label: "Изменить лимиты", icon: "edit", run: limitsForm }] : []),
+    { info: true, icon: "help", label: "Как считаем", sub: `По журналам Claude Code и прайсу API Anthropic (сверено ${c.prices_checked}). С подпиской Pro/Max это оценка, а не счёт. Модели не из прайса (GLM, DeepSeek) — только токены. ${own ? "Сессии участников на их собственных учётках сюда не входят." : "Здесь — только ваша учётка Claude."}` },
+  ]);
+}
+async function limitsForm() {
+  let cur = { limits: costInfo?.limits || {} };
+  try { cur = await api("/api/cost/limits"); } catch (e) { /* покажем то, что знаем */ }
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const v = (x) => x == null ? "" : String(x);
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Лимиты расхода</h3>
+    <div class="field" style="margin:4px 16px 10px"><label for="limS">На одну сессию, $</label><input id="limS" inputmode="decimal" autocomplete="off" placeholder="выключен" value="${esc(v(cur.limits.session))}"></div>
+    <div class="field" style="margin:0 16px 0"><label for="limD">На день по вашей учётке, $</label><input id="limD" inputmode="decimal" autocomplete="off" placeholder="выключен" value="${esc(v(cur.limits.day))}"></div>
+    <p class="note" id="limErr" style="margin:8px 16px 0">Пусто или 0 — без лимита. Превышение: Claude останавливается, сообщения в сессию не уходят, пока вы не решите — в боте или здесь.</p>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="limOk">Сохранить</button></div></div>`;
+  document.body.append(bg);
+  $("limOk").onclick = async () => {
+    try { const r = await api("/api/cost/limits", { session: $("limS").value.trim(), day: $("limD").value.trim() });
+          if (costInfo) costInfo.limits = r.limits; bg.remove(); toast("Лимиты сохранены"); haptic("notificationOccurred", "success"); refresh(); }
+    catch (e) { $("limErr").textContent = e.message; $("limErr").style.color = "var(--status-danger)"; }
+  };
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
+$("costPause").addEventListener("click", costClick);
 // переключение на запасного поставщика (бот сделал сам) — одна строка, один раз
 const fbSeen = new Set();
 function fallbackNotices(list) {
@@ -1148,7 +1231,7 @@ function fallbackNotices(list) {
 async function refresh() {
   try {
     const d = await api("/api/sessions");
-    sessions = d.sessions;
+    sessions = d.sessions; costInfo = d.cost || null;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
@@ -1159,10 +1242,11 @@ async function refresh() {
     if (!$("home").hidden) {
       const n = (k) => sessions.filter((s) => s.status === k).length;
       if (homeView === "sessions") {
-        const sorted = [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.active - a.active));
+        const rank = (x) => x.cost_paused ? ORDER.dialog : ORDER[x.status];     // пауза по расходу — рядом с «ждут ответа»
+        const sorted = [...sessions].sort((a, b) => rank(a) - rank(b) || (b.active - a.active));
         $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
-            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}</div>`
+            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
             + sorted.map(card).join("") : '<div class="empty">Сессий с Claude пока нет — нажмите «Новая сессия».</div>');
       }
       if (homeView === "commands") loadCommands(true);
@@ -1185,12 +1269,15 @@ function paintSession(s) {
     const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
     $("title").innerHTML = `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`;
   }
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}</span>`);
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""}</span>`);
+  const cb = costBar(s); $("costPause").hidden = !cb; $("costPause").innerHTML = cb;     // пауза по расходу — над полем ввода
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${st.label}</span>`;
   $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
   paintWorking(s);
 }
 $("sessionsView").addEventListener("click", (e) => {
+  if (costClick(e)) return;
+  if (e.target.closest("[data-cost-sum]")) return costSheet();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
@@ -2623,6 +2710,8 @@ function legend() {
     { info: true, vis: chip("new", "новый"), label: "Новый ответ", sub: "ответ, который вы ещё не открывали" },
     { info: true, vis: chip("s-approval", "ждут"), label: "Ждут ответа", sub: "сколько сессий ждут вас — на главной" },
     { info: true, vis: '<span class="ctx warn"><span class="bar"><i style="width:80%"></i></span></span>', label: "Контекст: N%", sub: "сколько памяти разговора занято; жёлтая — больше 70%, пора «Сжать» (/compact)" },
+    { info: true, vis: chip("cost", "$0.42"), label: "Расход сессии", sub: "деньги по ценам API и токены из журнала Claude Code; «из $N» — лимит; жёлтая — больше 80% лимита. Видит только хозяин учётки" },
+    { info: true, vis: chip("s-approval", "пауза"), label: "На паузе по расходу", sub: "сессия превысила лимит: Claude остановлен, сообщения не уходят, пока владелец не решит" },
     { info: true, vis: '<span class="live"><i></i></span>', label: "Зелёная точка «обновлено»", sub: "панель на связи; жёлтая — связь прервалась, данные могут быть старыми" },
     { head: "Вкладка «Команды»" },
     { info: true, vis: chip("s-running", "идёт"), label: "Выполняется", sub: "команду запустили через пульт — ждём итог" },
@@ -2656,6 +2745,7 @@ $("settingsBtn").onclick = () => {
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
+    ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
@@ -2806,6 +2896,17 @@ function demoApi(path, body) {
     { id: "@5", name: "shop-bot", path: "/home/u/projects/shop-bot", branch: "main", status: "stopped", context: null, model: "", active: false, channel: false, rev: "", preview: "", profile: "zai" },
     { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
   ];
+  // расход (usage.py): владелец видит свой пул, участник — свою учётку, наблюдатель — ничего; ?cost=pause — сессия на паузе
+  const role = params.get("role") || "owner", own = role === "owner";
+  demoApi.lim ||= { session: 10, day: 25 };
+  if (demoApi.pz === undefined) demoApi.pz = params.get("cost") === "pause" ? "ask" : "";
+  if (path === "/api/cost/limits" && body) demoApi.lim = { session: +String(body.session).replace(",", ".") || null, day: +String(body.day).replace(",", ".") || null };
+  if (path === "/api/cost/decide") demoApi.pz = body.act === "stop" ? "stopped" : "";
+  const cst = (usdv, inp, out, cw, cr, extra = {}) => ({ tokens: { in: inp, out, cw, cr }, total: inp + out + cw + cr, usd: usdv, unknown: usdv == null, limit: demoApi.lim.session, ...extra });
+  const pz = demoApi.pz && { kind: "session", spent: 10.42, limit: 10, state: demoApi.pz, name: "gas-pult", sid: "c3d4" };
+  const COST = own ? { "@1": cst(4.31, 1200, 84000, 310000, 5200000), "@2": cst(0.87, 300, 21000, 90000, 1100000, { by: { id: 2, name: "Иван" } }),
+                       "@3": cst(pz ? 10.42 : 3.18, 900, 61000, 240000, 4100000, { paused: pz || null }),
+                       "@4": cst(null, 2100, 48000, 0, 2250000) } : role === "member" ? { "@2": cst(0.87, 300, 21000, 90000, 1100000, { limit: null }) } : {};
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
@@ -2819,7 +2920,12 @@ function demoApi(path, body) {
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
-    "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name })) },
+    "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz })),
+      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: true }
+        : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false }, prices_checked: "2026-11-02",
+        ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
+    "/api/cost/limits": { limits: demoApi.lim, paused: {}, prices_checked: "2026-11-02" },
+    "/api/cost/decide": { result: demoApi.pz === "stopped" ? "⏹ «gas-pult» остаётся на паузе по расходу." : "▶️ «gas-pult»: пауза снята, лимит увеличен. Claude продолжает.", limits: demoApi.lim },
     "/api/people": { geoip: true, attribution: "IP Geolocation by DB-IP", attribution_url: "https://db-ip.com", people: [
       { id: 1, role: "owner", name: "", username: "", terms: { version: "2026-11-02", at: 1793491200 }, country: { chosen: "NL", phone: true, phone_cc: "NL", ip_cc: "NL", mismatch: false } },
       { id: 2, role: "member", name: "Иван", username: "ivan", terms: { version: "2026-11-02", at: 1793491200 }, country: { chosen: "NL", phone: true, phone_cc: "RU", ip_cc: "RU", mismatch: true } },
