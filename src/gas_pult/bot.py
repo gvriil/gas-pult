@@ -124,6 +124,17 @@ TRIAGE_NOTE = {"sent": "🔎 Отправил на разбор в [{to}] — Cl
                "busy": "Claude в [{to}] ждёт ответа на вопрос — на разбор не отправил; выполните ещё раз позже"}
 
 
+def escalate_rows(wid: str, level: int) -> list:
+    """Кнопки под строкой статуса бота: 12 с без изменений — проверить, 20 с — сообщить по готовности, 60 с —
+    остановить (Esc, с подтверждением)."""
+    rows = [[("🔄 Проверить статус", f"scr:{wid}")]] if level >= 1 else []
+    if level >= 2:
+        rows.append([("🔔 Сообщить по готовности", f"nd:{wid}")])
+    if level >= 3:
+        rows.append([("⏹ Остановить", f"stop:{wid}")])
+    return rows
+
+
 class Pult:
     pause_until = 0.0          # Telegram ответил 429 — до этого времени не шлём (повторы только продлевают запрет)
     skipped = 0                # сколько сообщений не отправили за паузу — сказать одним сообщением после неё
@@ -324,7 +335,9 @@ class Pult:
         return True                                         # вставка прошла — «Доставлено в сессию»
 
     # ---------- строка статуса: что агент делает сейчас (activity.py) ----------
-    FOLLOW_EVERY = 3.0          # с между правками служебного сообщения (лимиты Telegram на правки)
+    FOLLOW_EVERY = 3.5          # с между правками служебного сообщения (лимиты Telegram на правки)
+    ESCALATE = (12, 20, 60)     # с без хода и смены фазы: «Проверить статус» → «Сообщить по готовности» → «Остановить»
+    NOTIFY_TTL = 3600           # «Сообщить по готовности» ждёт конца хода не дольше часа
     FOLLOW_MAX = 3600           # с: дольше часа не следим — строка остаётся последней известной
 
     def screen_state(self, wid: str) -> dict:
@@ -372,7 +385,8 @@ class Pult:
                 self.api("deleteMessage", chat_id=chat, message_id=old[1])
             except TelegramError:
                 pass
-        shown, took = activity.line({"phase": "sent"}), False
+        shown, took, level = activity.line({"phase": "sent"}), False, 0
+        prog, prog_at = "", t0                           # последняя смена фазы или шага — для эскалации
         try:
             while self.following.get(key, (None,))[0] is token and clock() - t0 < self.FOLLOW_MAX:
                 sleep(self.FOLLOW_EVERY)
@@ -384,6 +398,8 @@ class Pult:
                     print("status:", e, flush=True)
                     continue
                 now = clock()
+                if (key2 := f"{st['phase']}|{st.get('text', '')}") != prog:
+                    prog, prog_at = key2, now
                 took = took or st["phase"] not in ("sent", "delivered", "queued", "stuck")
                 end = took and st["phase"] in ("done", "idle")
                 if end:
@@ -391,11 +407,16 @@ class Pult:
                 else:
                     since = st.get("since") or now               # таймер — шагом 5 с: меньше правок
                     text = activity.line({**st, "since": now - (now - since) // 5 * 5}, now, started=took)
-                if text != shown and self.pause_until <= now:
-                    kw = {"reply_markup": kb([[("📺 Экран", f"scr:{w['id']}")]])} if st["phase"] == "stuck" else {}
+                lv = 0 if end or st["phase"] in ("done", "idle", "waiting") else \
+                    sum(now - prog_at >= x for x in self.ESCALATE)
+                if (text != shown or lv != level) and self.pause_until <= now:
+                    rows = escalate_rows(w["id"], lv)
+                    if st["phase"] == "stuck" and not rows:
+                        rows = [[("📺 Экран", f"scr:{w['id']}")]]
+                    kw = {"reply_markup": kb(rows)} if rows else {}
                     try:
                         self.api("editMessageText", chat_id=chat, message_id=mid, text=text, **kw)
-                        shown = text
+                        shown, level = text, lv
                     except TelegramError as e:
                         if e.retry_after:
                             self.pause_until = time.time() + e.retry_after
@@ -407,6 +428,46 @@ class Pult:
             with self.lock:
                 if self.following.get(key, (None,))[0] is token:
                     self.following.pop(key, None)
+
+    # ---------- «Сообщить по готовности» (строка статуса панели и бота) ----------
+    def ask_notify_done(self, wid: str, chat) -> str:
+        """Запомнить в state.json (его видят и панель, и бот): кому написать, когда ход в окне закончится. Одно
+        сообщение на человека, без повторов; следит монитор бота (``notify_done_check``)."""
+        if chat is None:
+            raise ValueError("не знаю, кому писать")
+        with self.lock:
+            nd = dict(self.state().get("notify_done") or {})
+            rec = nd.get(wid) or {}
+            to = sorted({int(x) for x in rec.get("to", [])} | {int(chat)})
+            nd[wid] = {"to": to, "at": int(time.time())}
+        self.set_state(notify_done=nd)
+        return "Хорошо — пришлю одно сообщение в бот, когда ход закончится."
+
+    def notify_done_check(self, ws: list[dict], screens: dict[str, str], st: dict, now: float | None = None):
+        """Ход закончился (Claude был занят и освободился) или ждёт ответа — одно сообщение тем, кто просил, и запись
+        удаляется. Окна нет или прошёл час — запись забывается молча."""
+        nd = st.get("notify_done") or {}
+        if not nd:
+            return
+        seen = self.__dict__.setdefault("nd_busy", set())     # окна, где после просьбы видели «занят» (в памяти)
+        now, by_id, left, said = now or time.time(), {w["id"]: w for w in ws}, {}, []
+        for wid, rec in nd.items():
+            w, scr = by_id.get(wid), screens.get(wid, "")
+            if not w or now - rec.get("at", 0) > self.NOTIFY_TTL:
+                continue
+            dialog, busy = bool(DIALOG.search(scr)), bool(BUSY.search(scr))
+            if busy:
+                seen.add(wid)
+            if (busy or wid not in seen) and not dialog:
+                left[wid] = rec
+                continue
+            seen.discard(wid)
+            text = f"🔔 «{w['name']}»: " + ("ждёт вашего ответа" if dialog else "ход закончен — ответ в панели и здесь")
+            said += [(c, text) for c in rec.get("to", [])]
+        if left != nd:
+            self.set_state(notify_done=left)
+        for chat, text in said:
+            self.notify(chat, text)
 
     def cost_paused(self, wid: str) -> bool:
         return getattr(self, "cfg", None) is not None and wid in (self.state().get("cost_paused") or {})
@@ -712,10 +773,11 @@ class Pult:
                                            "Последний:")
                         for text in texts[-1:] if len(texts) > self.BURST else texts:
                             self.deliver(w, text)
+                screens: dict[str, str] = {}
                 for w in ws:
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
                     lines = self.tmux.screen(w["id"])
-                    scr = "\n".join(lines)
+                    scr = screens[w["id"]] = "\n".join(lines)
                     if w["id"] in self.fallback.pending:        # сессия стоит на ошибке, человек не набирает
                         idle = not BUSY.search(scr) and not DIALOG.search(scr)
                         self.fallback.step(w, idle and not fallback.typing(lines, self.tmux.hint(w["id"])))
@@ -723,6 +785,7 @@ class Pult:
                         shown.pop(w["id"], None)
                     elif not quiet:
                         self.show_dialog(w, scr, shown)
+                self.notify_done_check(ws, screens, st)
                 self.offer_hints()
                 self.cost_watch(st)
             except Exception as e:
@@ -1386,9 +1449,14 @@ class Pult:
             if not self.tmux.window(wid):
                 return send("Этого окна уже нет.")
             return self.tmux.keys(wid, key)
+        if kind == "nd":                                   # «Сообщить по готовности» из строки статуса
+            return send(self.ask_notify_done(arg, chat))
         w = self.tmux.window(arg)
         if not w:
             return send("Этого окна уже нет.")
+        if kind == "stop":                                 # «Остановить» — Esc в окно, только после «Да»
+            return send(f"Остановить текущий ход в «{w['name']}»? Claude получит Esc — как кнопка Esc под экраном.",
+                        reply_markup=kb([[("Да, остановить", f"key:{w['id']}|Escape"), ("Нет", "noop:")]]))
         if kind == "act":
             self.set_state(active=w["id"])
             send(f"✅ Пишу в «{w['name']}» ({self.short(w['path'])})."

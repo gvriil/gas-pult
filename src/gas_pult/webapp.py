@@ -37,6 +37,7 @@ from pathlib import Path
 from gas_pult import (
     country,
     fallback,
+    helper,
     models,
     modules,
     offer_report,
@@ -142,6 +143,10 @@ class Panel:
         self.offer_demos = offers.Demos()                            # демо-сессии страниц предложений (в памяти)
         self.offer_misses = offers.Misses()                          # перебор кодов предложений — по IP
         self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")   # «Попробовать в Telegram» — токены для бота
+        # дежурный помощник «? Подсказать» (helper.py): карта экранов, ответы без модели
+        self.helper = helper.Helper(cfg.data)
+        self.help_anon = helper.Rate(30, 600)                        # помощник на экране входа — по IP
+        self._mod_ids: tuple[float, frozenset] = (0.0, frozenset())
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -403,6 +408,27 @@ class Panel:
         bot = self.offer_bot()
         tok = self.offer_tg.issue(o["code"], mid, back)
         return {"link": f"https://t.me/{bot}?start=demo_{tok}", "ttl": offers.TG_TTL}
+
+    # ---------- помощник «?» (helper.py) ----------
+    def module_ids(self) -> frozenset:
+        """id модулей каталога — чтобы принимать от клиента только известные (кэш минуту)."""
+        if time.time() - self._mod_ids[0] > 60:
+            self._mod_ids = (time.time(), frozenset(m["id"] for m in modules.catalog()))
+        return self._mod_ids[1]
+
+    def help_ask(self, role: str, uid, b: dict) -> dict:
+        """Вопрос вошедшего: роль — с сервера; от клиента — только экран, шаг, модуль и сам вопрос."""
+        return self.helper.ask(role, b.get("ctx"), str(b.get("q", "")), str(b.get("chip", "")),
+                               who=[self.helper.who_key("u", uid)], extra={"module_ids": self.module_ids()})
+
+    def help_guest(self, o: dict, sid: str, ip: str, b: dict) -> dict:
+        """Вопрос гостя предложения: только экраны страницы и мастера и публичное о модулях ЕГО предложения;
+        частота — по cookie демо и по IP (хешами)."""
+        cat = {m["id"]: m for m in modules.catalog()}
+        mods = [{"id": x, "title": cat[x]["title"], "about": cat[x]["about"]} for x in o["modules"] if x in cat]
+        return self.helper.ask("guest", b.get("ctx"), str(b.get("q", "")), str(b.get("chip", "")),
+                               who=[self.helper.who_key("g", sid), self.helper.who_key("ip", ip)],
+                               extra={"modules": mods})
 
     # ---------- действия ----------
     def send(self, w: dict, text: str, mid: str = "") -> bool:
@@ -963,7 +989,11 @@ MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 
 # До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
-TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout"}
+TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout", "/api/help/ask", "/api/help/feedback"}
+# Помощник «? Подсказать» — любому вошедшему (и наблюдателю), а на экране входа — и до входа.
+HELP_OPEN = ("/api/help/ask", "/api/help/feedback")
+# «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
+NOTIFY_DONE = "/api/notify-done"
 # До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
 COUNTRY_FREE = TERMS_FREE | {"/api/country"}
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
@@ -991,6 +1021,7 @@ def handler(panel: Panel):
     build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
+    help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
     scripts = re.findall(rb"<script>(.*?)</script>", offer_page, re.S)
     hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(x).digest()).decode() + "'" for x in scripts)
     offer_csp = (f"default-src 'none'; script-src {hashes}; style-src 'unsafe-inline'; img-src 'self' data:; "
@@ -1068,7 +1099,7 @@ def handler(panel: Panel):
             if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
-            free = ("/api/logout", "/api/terms/accept", "/api/country")      # и наблюдателю
+            free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, *HELP_OPEN)   # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
@@ -1113,6 +1144,8 @@ def handler(panel: Panel):
                 return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
                 return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
+            if url.path == "/help-map.json":            # демо панели (?demo) отвечает подсказками из карты сам
+                return self.reply(200, help_map)
             if url.path == "/robots.txt":
                 return self.reply(200, ROBOTS.encode(), "text/plain; charset=utf-8")
             if url.path.startswith(("/offer/", "/api/offer/")):     # предложение: без входа, только по коду
@@ -1229,9 +1262,20 @@ def handler(panel: Panel):
                 return self.dispatch(self.tg_start)
             if path.startswith("/api/offer/"):
                 return self.offer("POST", path)
+            if path in HELP_OPEN and not self.who()[1]:   # экран входа: подсказки только по нему
+                return self.dispatch(lambda: self.help_anon(path))
             if not path.startswith("/api/") or not self.permit(path, "POST"):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             self.dispatch(lambda: self.post(path))
+
+        def help_anon(self, path: str):
+            if not panel.help_anon.ok(self.client_ip()):
+                raise ValueError("слишком много вопросов — подождите несколько минут")
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            if path.endswith("/feedback"):
+                return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")), "anon")
+            return panel.helper.ask("anon", b.get("ctx"), str(b.get("q", "")), str(b.get("chip", "")),
+                                    who=[panel.helper.who_key("ip", self.client_ip())])
 
         def tg_start(self):
             rid, nonce = panel.logins.start(*self.client())
@@ -1341,6 +1385,10 @@ def handler(panel: Panel):
                 return panel.offer_wizard(o, s, b)
             if act == "login":
                 return panel.offer_login(o, s, *self.client())
+            if act == "help":                                             # помощник гостя: только его страница
+                return panel.help_guest(o, sid, self.client_ip(), b)
+            if act == "helpfb":
+                return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")), "guest")
             if act == "telegram":
                 base = panel.public_url or ""
                 return panel.offer_telegram(o, str(b.get("module", "")), f"{base}/offer/{o['code']}" if base else "")
@@ -1367,6 +1415,11 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/country":
                 return panel.set_country(self.terms_uid(), str(b.get("code", "")))
+            if path == "/api/help/ask":                    # роль — с сервера, не от клиента
+                return panel.help_ask(self.who()[1], self.terms_uid(), b if isinstance(b, dict) else {})
+            if path == "/api/help/feedback":
+                return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")),
+                                             self.who()[1])
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
             if path == "/api/commands/mark":
@@ -1435,6 +1488,8 @@ def handler(panel: Panel):
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
             w = self.win(b.get("w"))
+            if path == NOTIFY_DONE:                       # одно сообщение в бот, когда ход закончится (бот следит)
+                return {"result": panel.pult.ask_notify_done(w["id"], self.terms_uid())}
             if path in ("/api/send", "/api/command", "/api/select", "/api/key", "/api/model"):
                 panel.check(w.get("profile") or "claude", self.terms_uid())   # сессия этого поставщика — для страны?
             if path == "/api/send":
