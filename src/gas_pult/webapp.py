@@ -577,6 +577,19 @@ class Panel:
         self.pult.send_later(out["id"], modules.get(mid)["start"])
         return {**out, "path": self.pult.short(str(path)), "folder": path.name}
 
+    def new_folder(self, name: str, profile: str = "", person: int | None = None, uid=None) -> dict:
+        """«Новая папка» в панели — как 📁 в боте: папка в первом корне проектов, ``git init``, сессия в ней.
+        Проверки страны/поставщика и Claude — до создания папки, чтобы не оставлять пустых."""
+        if uid is not None:
+            self.check(profile, uid)
+        self.need_claude()
+        try:
+            path = self.pult.make_folder(name.strip().lower())
+        except FileExistsError as e:
+            raise ValueError(f"{e} — выберите её в списке папок") from None
+        out = self.new(self.pult.projects().index(str(path)), profile, person, uid)
+        return {**out, "path": self.pult.short(str(path)), "folder": path.name}
+
     def revive(self, wid: str, uid=None) -> dict:
         """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора."""
         w = self.tmux.window(wid)
@@ -1380,6 +1393,9 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
+            if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
+                return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
+                                        self.terms_uid())
             if path == "/api/modules/create":
                 return panel.module_create(str(b.get("id", "")), str(b.get("name", "")), str(b.get("profile", "")),
                                            self.person(), self.terms_uid())

@@ -1005,15 +1005,24 @@ class Pult:
         except (ValueError, RuntimeError) as e:
             self.send(chat, f"Не переименовал: {e}. Нажмите ✏️ ещё раз.")
 
-    def new_folder(self, chat: int, name: str):
-        root = self.cfg.roots()[0] if self.cfg.project_roots else Path(self.home) / "projects"
-        path = root / name
+    def make_folder(self, name: str) -> Path:
+        """Новая папка проекта в первом корне (как у модулей) + ``git init``. Общая для бота и панели."""
+        path = self.module_root() / name
         if not NAME_OK.match(name):
-            return self.send(chat, "Имя: латиница в нижнем регистре, цифры, дефис (2–41 знак). Нажми 📁 ещё раз.")
+            raise ValueError("имя: латиница в нижнем регистре, цифры, дефис (2–41 знак)")
         if path.exists():
-            return self.send(chat, f"Папка {name} уже есть — выбери её в 🆕 Новая.")
+            raise FileExistsError(f"папка {name} уже есть")
         path.mkdir(parents=True)
         subprocess.run(["git", "init", "-q", "-b", "main", str(path)], capture_output=True)
+        return path
+
+    def new_folder(self, chat: int, name: str):
+        try:
+            path = self.make_folder(name)
+        except FileExistsError:
+            return self.send(chat, f"Папка {name} уже есть — выбери её в 🆕 Новая.")
+        except ValueError:
+            return self.send(chat, "Имя: латиница в нижнем регистре, цифры, дефис (2–41 знак). Нажми 📁 ещё раз.")
         self.send(chat, f"📁 Создал {path} (git init).")
         self.open_session(chat, f"{name}-{time.strftime('%H%M')}", str(path))
 
