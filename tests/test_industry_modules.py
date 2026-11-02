@@ -211,13 +211,42 @@ def pult(tmp_path, monkeypatch):
     return p
 
 
+def buttons(kw) -> list[tuple[str, str]]:
+    return [(b["text"], b["callback_data"]) for row in kw["reply_markup"]["inline_keyboard"] for b in row]
+
+
 def test_bot_modules_grouped_by_industry(pult):
+    """/modules: «Общие» модули сразу, отрасли — кнопками; по нажатию — модули отрасли (два шага, до 4096 знаков)."""
     pult.show_modules(1)
-    text = pult.sent[-1][0]
+    text, kw = pult.sent[-1]
     assert len(text) < 4096
-    for industry in ("Общие", *INDUSTRIES):
-        assert f"▪️ {industry}" in text
-    assert text.index("▪️ Общие") < text.index("▪️ Поставщики HoReCa") < text.index("Заказ из мессенджера")
+    assert "▪️ Общие" in text and "Ночная смена" in text and "Заказ из мессенджера" not in text
+    groups = {t[3:]: d for t, d in buttons(kw) if d.startswith("md:g:")}
+    assert set(groups) == set(INDUSTRIES)
+    for industry, ids in INDUSTRIES.items():
+        assert f"▪️ {industry} — {len(ids)}" in pult.sent[0][0]
+        pult.on_module(1, groups[industry][3:])
+        text, kw = pult.sent[-1]
+        assert len(text) < 4096 and text.startswith(f"🧩 {industry}")
+        assert {d[5:] for _, d in buttons(kw) if d.startswith("md:v:")} == ids
+        assert ("‹ Все отрасли", "md:list:") in buttons(kw)
+    pult.on_module(1, "g:99")                                               # каталог поменялся — снова список
+    assert "Отрасли:" in pult.sent[-1][0]
+
+
+def test_bot_catalog_fits_telegram_with_twice_the_modules(pult, monkeypatch):
+    real = modules.catalog()
+    double = real + [m | {"id": m["id"] + "-x", "title": m["title"] + " (копия)"} for m in real]
+    monkeypatch.setattr(modules, "catalog", lambda errors=None: sorted(
+        double, key=lambda m: (m["industry"] != "Общие", m["industry"], m["title"])))
+    pult.show_modules(1)
+    texts = [pult.sent[-1][0]]
+    for _, d in buttons(pult.sent[-1][1]):
+        if d.startswith("md:g:"):
+            pult.on_module(1, d[3:])
+            texts.append(pult.sent[-1][0])
+    assert len(texts) == len(INDUSTRIES) + 1 and all(len(t) < 4096 for t in texts)
+    assert bot._clip("а\n" * 3000).endswith("\n…") and len(bot._clip("а\n" * 3000)) <= 4000
 
 
 def test_bot_every_busy_window_is_quiet(pult, tmp_path):
