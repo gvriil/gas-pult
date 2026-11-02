@@ -295,7 +295,7 @@ purpose_en = "Sign in to the panel without a password — by confirming in your 
 steps = ["Нажмите «Войти через Telegram».", "В Telegram нажмите «Запустить» (Start), затем «Войти».", "Вернитесь сюда — панель откроется сама."]
 steps_en = ["Tap «Sign in with Telegram».", "In Telegram tap «Start», then «Sign in».", "Come back here — the panel opens by itself."]
 next = ["go:login", "go:demo"]
-chips = ["noaccess", "demo"]
+chips = ["noaccess", "demo", "email", "passkey"]
 
 [[screen.faq]]
 id = "noaccess"
@@ -312,6 +312,22 @@ a = "Да: «Посмотреть демо» — та же панель на п�
 q_en = "Can I look around without signing in?"
 a_en = "Yes: «See the demo» is the same panel with examples — tap anything, nothing is sent anywhere."
 actions = ["go:demo"]
+
+[[screen.faq]]
+id = "passkey"
+q = "Можно войти по Face ID?"
+a = "Да, если владелец включил ключи входа на пульте: войдите один раз через Telegram, добавьте ключ в «Настройках» → «Ключи входа» (в браузере, не в Telegram), потом — «Войти с Face ID / ключом»."
+q_en = "Can I sign in with Face ID?"
+a_en = "Yes, if the owner has enabled sign-in keys on the panel: sign in once with Telegram, add a key in «Settings» → «Sign-in keys» (in a browser, not in Telegram), then use «Sign in with Face ID / a key»."
+actions = ["go:login"]
+
+[[screen.faq]]
+id = "email"
+q = "Можно войти по почте?"
+a = "Да, если владелец настроил почту на пульте и вы привязали свой адрес в «Настройках» после первого входа через Telegram: «Войти по почте» → адрес → 6 цифр из письма. Код действует 10 минут."
+q_en = "Can I sign in with email?"
+a_en = "Yes, if the owner has set up email on the panel and you linked your address in «Settings» after the first Telegram sign-in: «Sign in with email» → address → 6 digits from the letter. The code is valid for 10 minutes."
+actions = ["go:login"]
 
 [[screen]]
 id = "terms"
@@ -677,6 +693,24 @@ roles = ["owner"]
 purpose = "Лимит на одну сессию и на день по вашей учётке, в долларах."
 steps = ["Пусто или 0 — без лимита.", "«Сохранить» — сразу сверяем с расходом."]
 next = ["go:settings.cost"]
+
+[[screen]]
+id = "settings.keys"
+where = "panel"
+title = "Ключи входа"
+roles = ["owner", "member", "viewer"]
+purpose = "Вход в панель без Telegram: Face ID, отпечаток или PIN устройства (passkey)."
+steps = ["Откройте панель в браузере (в Telegram ключи не работают).", "«Добавить ключ этого устройства» — подтвердите Face ID или отпечатком.", "На экране входа — «Войти с Face ID / ключом». Ненужный ключ — нажмите, чтобы удалить."]
+next = ["go:settings"]
+
+[[screen]]
+id = "settings.email"
+where = "panel"
+title = "Почта для входа и оповещений"
+roles = ["owner", "member", "viewer"]
+purpose = "Привязать свою почту: вход в пульт кодом из письма, второй фактор после Telegram и письма-оповещения."
+steps = ["Впишите адрес и нажмите «Прислать код».", "Введите 6 цифр из письма — адрес привязан.", "Включите «Код с почты после входа» или «Оповещения на почту», если нужно."]
+next = ["go:settings"]
 
 [[screen]]
 id = "settings.people"

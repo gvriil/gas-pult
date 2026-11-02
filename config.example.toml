@@ -58,3 +58,21 @@ region = "NL"
 # их для себя лично; участникам, наблюдателям и озвучке для них они не показываются. Для клиентов и любой коммерческой
 # установки — false (по умолчанию): голоса скрыты, даже если установлены. docs/COMPLIANCE.md.
 personal_voices = false
+
+# Вход в панель по коду на почту, второй фактор и письма-оповещения (docs/AUTH.md). Нет секции — функция выключена.
+# Секция — в самом конце файла (всё, что ниже [email], TOML отнесёт к ней).
+# Пароль приложения — не сюда: `gas-pult email password` (secrets.json, 0600). Проверка: `gas-pult email test <адрес>`.
+# [email]
+# provider = "yandex"          # Яндекс для РФ (smtp.yandex.ru:465); "gmail" — для остальных (smtp.gmail.com:465)
+# user = "pult@example.com"    # логин SMTP — обычно сам адрес ящика
+# from = "pult@example.com"    # отправитель, если отличается от user
+# name = "gas-pult"            # имя отправителя
+# host = "smtp.example.com"    # другой поставщик: свой сервер (SSL) вместо provider
+# port = 465
+
+# Вход по ключу — Face ID, отпечаток, PIN (docs/AUTH.md). Нужен пакет: pip install "gas-pult[passkeys]".
+# Нет секции или пакета — функция выключена. Секция — в конце файла, после [email].
+# [passkeys]
+# rp_id = "pult.example.com"                  # домен панели, без схемы и порта
+# origin = "https://pult.example.com:8443"    # адрес панели в браузере целиком (с портом, если не 443)
+# rp_name = "gas-pult"

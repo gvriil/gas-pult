@@ -1,4 +1,4 @@
-"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|offer|last|version]``."""
+"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|offer|email|last|version]``."""
 
 from __future__ import annotations
 
@@ -261,6 +261,40 @@ def cmd_offer(a):
         raise SystemExit(f"Предложение: {e}") from None
 
 
+def cmd_email(a):
+    """Почта для входа по коду (emailcode.py, docs/AUTH.md): status — включена ли; password — пароль приложения SMTP
+    в secrets.json (0600, ввод скрыт); test <адрес> — пробное письмо, чтобы проверить настройки до кнопки в панели."""
+    from gas_pult import emailcode, providers
+
+    if a.action == "password":
+        pw = getpass.getpass("Пароль приложения SMTP (ввод скрыт; пусто — удалить): ").strip()
+        providers.save_key(emailcode.PASSWORD_KEY, pw or None)
+        return print(f"✓ {'Сохранён' if pw else 'Удалён'}: {providers.secrets_file()} (0600). "
+                     "Перезапустите панель: systemctl --user restart gas-pult-webapp")
+    try:
+        section = config.load().email
+    except config.ConfigError as e:
+        raise SystemExit(str(e)) from None
+    smtp = emailcode.smtp_settings(section)
+    if not smtp:
+        miss = [k for k in ("host", "user") if not (section.get(k) or (k == "host" and section.get("provider")))]
+        if not (section.get("password") or providers.load_keys().get(emailcode.PASSWORD_KEY)):
+            miss.append("пароль (gas-pult email password)")
+        return print("Почта выключена: в config.toml нет секции [email] или в ней не хватает: "
+                     f"{', '.join(miss) or '—'}. Пример — config.example.toml, подробно — docs/AUTH.md.")
+    print(f"Почта включена: {smtp.host}:{smtp.port} (SSL), вход {smtp.user}, отправитель {smtp.sender}.")
+    if a.action == "test":
+        to = emailcode.normalize(a.to)
+        if not to:
+            raise SystemExit("Укажите адрес: gas-pult email test name@example.com")
+        try:
+            emailcode.send(smtp, emailcode.message(smtp, to, "Проверка почты gas-pult",
+                                                   "Это пробное письмо: почта пульта настроена верно.\n"))
+        except (OSError, emailcode.smtplib.SMTPException) as e:
+            raise SystemExit(f"Не отправилось: {type(e).__name__}: {e}") from None
+        print(f"✓ Письмо отправлено на {to}.")
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -298,6 +332,10 @@ def main(argv: list[str] | None = None):
     s.add_argument("--expires", help="последний день работы ссылки, ГГГГ-ММ-ДД")
     s.add_argument("--url", help="адрес панели снаружи — чтобы напечатать готовую ссылку")
     s.set_defaults(fn=cmd_offer)
+    s = sub.add_parser("email", help="почта для входа по коду: status | password | test <адрес>")
+    s.add_argument("action", choices=["status", "password", "test"], nargs="?", default="status")
+    s.add_argument("to", nargs="?", help="test — куда отправить пробное письмо")
+    s.set_defaults(fn=cmd_email)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

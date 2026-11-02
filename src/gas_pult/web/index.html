@@ -644,6 +644,8 @@
       <div id="loginStep1">
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
+        <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
+        <button class="btn ghost" id="emailLogin" hidden data-l="login.email">Войти по почте</button>
         <button class="btn ghost" id="getCode" data-l="login.code">Войти по коду — для владельца</button>
         <button class="btn ghost" id="tryDemo" data-l="login.demo">Посмотреть демо — без входа</button>
         <p class="note" style="margin:6px 0 0" data-l="login.demo.note">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
@@ -656,6 +658,32 @@
         </div>
         <button class="btn" id="enter" data-l="login.enter">Войти</button>
         <button class="btn ghost" id="resend" data-l="login.resend">Прислать новый код</button>
+      </div>
+      <div id="loginEmail" hidden>
+        <div class="field">
+          <label for="emAddr">Почта, привязанная к пульту</label>
+          <input id="emAddr" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254" placeholder="name@example.com">
+          <div class="hint">Почту привязывают в «Настройках» после первого входа через Telegram.</div>
+        </div>
+        <button class="btn" id="emSend">Получить код</button>
+        <div id="emCodeBox" hidden>
+          <div class="field">
+            <label for="emCode">Код из письма</label>
+            <input id="emCode" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••">
+          </div>
+          <button class="btn" id="emEnter">Войти</button>
+          <button class="btn ghost" id="emResend">Прислать новый код</button>
+        </div>
+        <button class="btn ghost" data-login-back>Другие способы входа</button>
+      </div>
+      <div id="login2fa" hidden>
+        <div class="field">
+          <label for="tfCode">Код из письма</label>
+          <input id="tfCode" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••">
+          <div class="hint" id="tfHint">Для вашего входа включён второй фактор: код пришёл на почту.</div>
+        </div>
+        <button class="btn" id="tfEnter">Войти</button>
+        <button class="btn ghost" data-login-back>Начать вход заново</button>
       </div>
       <div id="loginResult"></div>
     </div>
@@ -1172,7 +1200,17 @@ function reloadPanel() {
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() { simpleHide(); show("login"); paintLoginLang(); }
+function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); }
+// Способы входа, которые включены на этом пульте (почта — если владелец настроил SMTP).
+async function loginMethods() {
+  try { const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk()); }
+  catch (e) { $("emailLogin").hidden = $("pkLogin").hidden = true; }
+}
+function loginPane(id) {                          // один шаг входа на экране: способы, код владельцу, почта, второй фактор
+  for (const x of ["loginStep1", "loginStep2", "loginEmail", "login2fa"]) $(x).hidden = x !== id;
+  $("loginResult").innerHTML = "";
+}
+const loginMsg = (ok, text) => { $("loginResult").innerHTML = `<div class="result ${ok ? "ok" : "bad"}">${ic(ok ? "check" : "warn")}<span>${esc(text)}</span></div>`; };
 // Условия использования: при первом входе и после смены версии. До «Принимаю» панель не показывает остальное.
 async function showTerms() {
   if (view === "terms") return;
@@ -1241,6 +1279,7 @@ $("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Го�
       try {
         const r = await api("/api/login/tg?id=" + encodeURIComponent(d.id));
         if (r.state === "ok") { clearInterval(tgTimer); $("tgWait").hidden = true; haptic("notificationOccurred", "success"); await start(); }
+        else if (r.state === "2fa") { clearInterval(tgTimer); $("tgWait").hidden = true; askSecond(r); }
         else if (r.state !== "wait") { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(r.state === "no" ? LL("login.rejected", "Вход отклонён в Telegram.") : LL("login.restart", "Ссылка устарела — начните заново."))}</span></div>`; }
       } catch (err) { /* сеть моргнула — следующая попытка через 2 с */ }
     }, 2000);
@@ -1256,6 +1295,86 @@ async function requestCode(btn) {
     } catch (e) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
   });
 }
+// Ключ входа (passkey, WebAuthn): JSON-опции сервера → navigator.credentials и обратно. Вручную, без
+// parseCreationOptionsFromJSON/toJSON — их нет в старых Safari и Chrome. В Telegram Mini App ключи не работают
+// (на iPhone WebAuthn во встроенном окне недоступен) — там кнопку прячем и просим открыть панель в браузере.
+const b64uToBuf = (v) => Uint8Array.from(atob(v.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(v.length / 4) * 4, "=")), (c) => c.charCodeAt(0)).buffer;
+function bufToB64u(buf) {
+  if (!buf) return "";
+  let bin = ""; for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+const passkeyHere = () => typeof window.PublicKeyCredential === "function" && !!navigator.credentials;
+const passkeyOk = () => passkeyHere() && !tg?.initData;
+const pkList = (xs) => (xs || []).map((c) => ({ ...c, id: b64uToBuf(c.id) }));
+const pkCreation = (j) => ({ ...j, challenge: b64uToBuf(j.challenge), user: { ...j.user, id: b64uToBuf(j.user.id) }, excludeCredentials: pkList(j.excludeCredentials) });
+const pkRequest = (j) => ({ ...j, challenge: b64uToBuf(j.challenge), allowCredentials: pkList(j.allowCredentials) });
+function pkJson(cred) {                           // ответ устройства → JSON, который понимает сервер (py_webauthn)
+  if (!cred) return {};
+  const r = cred.response, out = { id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+    clientExtensionResults: cred.getClientExtensionResults?.() ?? {}, authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
+    response: { clientDataJSON: bufToB64u(r.clientDataJSON) } };
+  if (r.attestationObject) { out.response.attestationObject = bufToB64u(r.attestationObject); out.response.transports = typeof r.getTransports === "function" ? r.getTransports() : []; }
+  if (r.authenticatorData) { out.response.authenticatorData = bufToB64u(r.authenticatorData); out.response.signature = bufToB64u(r.signature); out.response.userHandle = r.userHandle ? bufToB64u(r.userHandle) : null; }
+  return out;
+}
+const pkCall = (kind, publicKey) => DEMO ? Promise.resolve(null) : navigator.credentials[kind]({ publicKey });   // демо: без устройства
+function pkError(e) {
+  if (e?.name === "NotAllowedError" || e?.name === "AbortError") return "Отменено или время вышло — попробуйте ещё раз.";
+  if (e?.name === "InvalidStateError") return "Этот ключ уже сохранён на этом устройстве.";
+  if (e?.name === "SecurityError") return "Адрес панели не совпадает с настройкой ключей на сервере (rp_id).";
+  if (e?.name === "NotSupportedError") return "Это устройство не умеет ключи входа — войдите через Telegram.";
+  return e?.message || "Не получилось";
+}
+$("pkLogin").onclick = (e) => busy(e.currentTarget, "Жду ключ…", async () => {
+  try {
+    const r = await api("/api/login/passkey/options", {});
+    const cred = await pkCall("get", pkRequest(r.options));
+    const d = await api("/api/login/passkey/verify", { id: r.id, credential: pkJson(cred) });
+    if (d.state === "2fa") return askSecond(d);
+    haptic("notificationOccurred", "success"); await start();
+  } catch (err) { loginMsg(false, pkError(err)); }
+});
+// Вход по коду на почту: адрес → код из письма. Ответ одинаковый, привязан адрес или нет.
+let emTimer = null;
+$("emailLogin").onclick = () => { loginPane("loginEmail"); $("emCodeBox").hidden = true; $("emAddr").focus(); };
+document.querySelectorAll("[data-login-back]").forEach((b) => (b.onclick = () => loginPane("loginStep1")));
+function emCountdown(sec) {                       // «Прислать новый код» — не раньше чем через минуту
+  clearInterval(emTimer); const b = $("emResend"), until = Date.now() + sec * 1000;
+  const tick = () => { const left = Math.ceil((until - Date.now()) / 1000); b.disabled = left > 0; b.textContent = left > 0 ? `Прислать новый код — через ${left} с` : "Прислать новый код"; if (left <= 0) clearInterval(emTimer); };
+  tick(); emTimer = setInterval(tick, 1000);
+}
+async function emailSend(btn) {
+  const email = $("emAddr").value.trim();
+  if (!email) return $("emAddr").focus();
+  await busy(btn, "Отправляю…", async () => {
+    try {
+      const d = await api("/api/login/email/start", { email });
+      $("emCodeBox").hidden = false; $("emCode").value = ""; $("emCode").focus();
+      loginMsg(true, d.message); emCountdown(d.resend_in || 60);
+    } catch (e) { loginMsg(false, e.message); }
+  });
+}
+$("emSend").onclick = (e) => emailSend(e.currentTarget);
+$("emResend").onclick = (e) => emailSend(e.currentTarget);
+$("emAddr").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("emSend").click(); } };
+$("emCode").addEventListener("input", () => { $("emCode").value = $("emCode").value.replace(/\D/g, "").slice(0, 6); if ($("emCode").value.length === 6) $("emEnter").click(); });
+$("emEnter").onclick = (e) => busy(e.currentTarget, "Проверяю…", async () => {
+  try { await api("/api/login/email/verify", { email: $("emAddr").value.trim(), code: $("emCode").value }); clearInterval(emTimer); loginPane("loginStep1"); await start(); }
+  catch (err) { loginMsg(false, err.message); }
+});
+// Второй фактор: вход через Telegram подтверждён, но человек включил «код с почты после входа».
+let tfId = "";
+function askSecond(r) {
+  tfId = r.id; loginPane("login2fa"); $("tfCode").value = "";
+  $("tfHint").textContent = `Для вашего входа включён второй фактор: код отправлен на ${r.to}. Он действует 10 минут.`;
+  $("tfCode").focus();
+}
+$("tfCode").addEventListener("input", () => { $("tfCode").value = $("tfCode").value.replace(/\D/g, "").slice(0, 6); if ($("tfCode").value.length === 6) $("tfEnter").click(); });
+$("tfEnter").onclick = (e) => busy(e.currentTarget, "Проверяю…", async () => {
+  try { await api("/api/login/2fa", { id: tfId, code: $("tfCode").value }); loginPane("loginStep1"); await start(); }
+  catch (err) { loginMsg(false, err.message); }
+});
 $("code").addEventListener("input", () => { $("code").value = $("code").value.replace(/\D/g, "").slice(0, 6); if ($("code").value.length === 6) $("enter").click(); });
 $("enter").onclick = (e) => busy(e.target, "Проверяю…", async () => {
   try { await api("/api/login/verify", { id: loginId, code: $("code").value }); $("loginResult").innerHTML = ""; await start(); }
@@ -3148,6 +3267,77 @@ function personSheet(p) {
   ]);
 }
 
+// ---------- ключи входа (passkeys.py) ----------
+function deviceName() {                           // название ключа по устройству — человек видит его в списке
+  const ua = navigator.userAgent;
+  return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "Устройство";
+}
+async function keysSheet() {
+  let d; try { d = await api("/api/passkeys"); } catch (e) { return toast(e.message, 4000); }
+  const day = (t) => t ? new Date(t * 1000).toLocaleDateString("ru-RU") : "";
+  const add = async () => {
+    try {
+      const r = await api("/api/passkeys/options", {});
+      const cred = await pkCall("create", pkCreation(r.options));
+      await api("/api/passkeys/add", { id: r.id, credential: pkJson(cred), name: deviceName() });
+      haptic("notificationOccurred", "success"); toast("Ключ добавлен"); keysSheet();
+    } catch (e) { toast(pkError(e), 5000); }
+  };
+  const drop = (k) => confirmDanger(`Удалить ключ «${k.name}»? Войти с ним больше не получится.`, () => api("/api/passkeys/remove", { id: k.id }).then(() => { toast("Ключ удалён"); keysSheet(); }).catch((e) => toast(e.message, 4000)));
+  helpSheet("settings.keys");
+  sheet("Ключи входа", [
+    ...(!d.enabled ? [{ info: true, icon: "warn", label: "Не настроено на этом пульте", sub: "владелец включает ключи в config.toml ([passkeys]) — инструкция в docs/AUTH.md" }]
+      : !passkeyHere() ? [{ info: true, icon: "warn", label: "Этот браузер не умеет ключи входа", sub: "откройте панель в Safari, Chrome или Edge" }]
+      : tg?.initData ? [{ info: true, icon: "ext", label: "Откройте панель в браузере", sub: "в Telegram ключи входа не работают — добавьте ключ из Safari или Chrome по адресу панели" }]
+      : [{ label: "Добавить ключ этого устройства", icon: "plus", sub: "Face ID, отпечаток или PIN — закрытый ключ остаётся в устройстве", run: add }]),
+    ...d.keys.map((k) => ({ label: k.name, icon: "key", sub: `добавлен ${day(k.created)}` + (k.last_used ? ` · вход ${day(k.last_used)}` : " · ещё не входили") + " — нажмите, чтобы удалить", run: () => drop(k) })),
+    ...(d.keys.length ? [] : [{ info: true, icon: "lock", label: "Ключей пока нет", sub: "с ключом можно войти в панель без Telegram" }]),
+  ]);
+}
+
+// ---------- почта для входа и оповещений (emailcode.py) ----------
+// Адрес подтверждается кодом из письма; по нему можно войти, включить второй фактор и письма-оповещения.
+async function emailSheet() {
+  let d; try { d = await api("/api/email"); } catch (e) { return toast(e.message, 4000); }
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.email");
+  let step = d.address ? "view" : "addr", addr = "", timer = null;
+  const err = (t) => { const n = bg.querySelector("#emsErr"); if (n) { n.textContent = t; n.style.color = "var(--status-danger)"; } };
+  const tog = (k, icon, label, sub) => `<button data-em="${k}" class="${d[k] ? "on" : ""}" aria-pressed="${!!d[k]}">${ic(icon)}<span>${esc(label)}<small>${esc(sub)}</small></span>${d[k] ? ic("check") : ""}</button>`;
+  const paint = () => {
+    const body = !d.enabled ? `<p class="note" style="margin:4px 16px 8px">Почта на этом пульте не настроена. Владелец включает её в config.toml (секция [email]) — инструкция в docs/AUTH.md.</p>`
+      : step === "view" ? `<p class="note" style="margin:4px 16px 4px">Привязана: <b>${esc(d.address)}</b>${d.at ? " · " + ccDate(d.at) : ""}. По ней можно войти в пульт кодом из письма.</p>
+          ${tog("second_factor", "lock", "Код с почты после входа через Telegram", "второй фактор: без кода из письма вход не завершится")}
+          ${tog("notify", "bell", "Оповещения на почту", "письмо, когда сессия встала на паузу по расходу")}
+          <button data-em="change">${ic("edit")}<span>Сменить адрес</span></button>
+          <button data-em="remove" class="danger">${ic("power")}<span>Отвязать почту<small>вход по почте и письма перестанут работать</small></span></button>`
+      : `<div class="field" style="margin:4px 16px 10px"><label for="emsAddr">Адрес почты</label><input id="emsAddr" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254" placeholder="name@example.com" value="${esc(addr)}"></div>
+         ${step === "code" ? `<div class="field" style="margin:0 16px 0"><label for="emsCode">Код из письма</label><input id="emsCode" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></div>` : ""}
+         <p class="note" id="emsErr" style="margin:8px 16px 0">${step === "code" ? "Код отправлен на " + esc(addr) + ". Он действует 10 минут." : "Пришлём код, чтобы убедиться, что адрес ваш."}</p>
+         <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="emsGo">${step === "code" ? "Подтвердить" : "Прислать код"}</button></div>`;
+    bg.innerHTML = `<div class="sheet" role="dialog"><h3>Почта для входа и оповещений</h3>${body}${d.enabled && step === "view" || !d.enabled ? '<button class="cancel" data-close>Закрыть</button>' : ""}</div>`;
+    const go = bg.querySelector("#emsGo");
+    if (go) go.onclick = () => busy(go, "Минуту…", async () => {
+      try {
+        if (step === "addr") { addr = bg.querySelector("#emsAddr").value.trim(); await api("/api/email/bind", { email: addr }); step = "code"; paint(); bg.querySelector("#emsCode").focus(); }
+        else { d = await api("/api/email/confirm", { email: bg.querySelector("#emsAddr").value.trim(), code: bg.querySelector("#emsCode").value }); step = "view"; paint(); toast("Почта привязана"); haptic("notificationOccurred", "success"); }
+      } catch (e) { err(e.message); }
+    });
+    const inp = bg.querySelector("#emsCode") || bg.querySelector("#emsAddr");
+    if (inp) inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); go.click(); } };
+  };
+  bg.addEventListener("click", async (e) => {
+    if (e.target === bg || e.target.closest("[data-close]")) { clearInterval(timer); return bg.remove(); }
+    const b = e.target.closest("[data-em]"); if (!b) return;
+    const k = b.dataset.em;
+    try {
+      if (k === "change") { step = "addr"; addr = ""; return paint(); }
+      if (k === "remove") return confirmDanger("Отвязать почту? Вход по почте и письма перестанут работать.", async () => { try { d = await api("/api/email/remove", {}); step = "addr"; paint(); toast("Почта отвязана"); } catch (x) { toast(x.message, 4000); } });
+      d = await api("/api/email/options", { [k]: !d[k] }); paint();
+    } catch (x) { toast(x.message, 4000); }
+  });
+  paint(); document.body.append(bg);
+}
+
 // ---------- настройки ----------
 // «Обозначения»: что значат точки, цвета и значки панели — одним экраном (в настройках и в шторке сессий).
 function legend() {
@@ -3196,6 +3386,8 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
+    { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: emailSheet },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
@@ -4040,6 +4232,25 @@ function demoApi(path, body) {
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
+  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true });
+  if (key === "/api/login/passkey/options" || key === "/api/passkeys/options") return Promise.resolve({ id: "demo", options: { challenge: "AAAA", rpId: "localhost", user: { id: "AAAA", name: "demo", displayName: "demo" } } });
+  if (key.startsWith("/api/passkeys")) {             // демо: ключ «добавляется» без устройства
+    demoApi.pk ||= [{ id: "k1", name: "iPhone", created: Date.now() / 1000 - 86400 * 3 | 0, last_used: Date.now() / 1000 - 3600 | 0 }];
+    if (key === "/api/passkeys/add") demoApi.pk.push({ id: "k" + Date.now(), name: body.name, created: Date.now() / 1000 | 0, last_used: null });
+    if (key === "/api/passkeys/remove") demoApi.pk = demoApi.pk.filter((k) => k.id !== body.id);
+    return Promise.resolve({ enabled: true, keys: demoApi.pk });
+  }
+  if (key === "/api/login/email/start") return /.+@.+\..+/.test(body?.email || "") ? Promise.resolve({ sent: true, message: "Если адрес привязан к пульту, мы отправили на него код. Он действует 10 минут.", resend_in: 60, ttl: 600 }) : Promise.reject(new Error("Укажите адрес почты целиком, например name@example.com"));
+  if (key.startsWith("/api/login/")) return Promise.resolve({ state: "ok" });
+  if (key.startsWith("/api/email")) {               // демо: почта привязывается любым кодом из 6 цифр
+    demoApi.em ||= { enabled: true, address: "", at: null, second_factor: false, notify: false, resend_in: 60, ttl: 600 };
+    const e = demoApi.em;
+    if (key === "/api/email/bind" && !/.+@.+\..+/.test(body?.email || "")) return Promise.reject(new Error("Укажите адрес почты целиком, например name@example.com"));
+    if (key === "/api/email/confirm") { if (!/^\d{6}$/.test(body?.code || "")) return Promise.reject(new Error("Введите 6 цифр из письма.")); Object.assign(e, { address: body.email.toLowerCase(), at: Date.now() / 1000 | 0 }); }
+    if (key === "/api/email/remove") Object.assign(e, { address: "", at: null, second_factor: false, notify: false });
+    if (key === "/api/email/options") Object.assign(e, body);
+    return Promise.resolve(key === "/api/email/bind" ? { sent: true, to: body.email, resend_in: 60, ttl: 600 } : { ...e });
+  }
   return Promise.resolve(R[key] || { ok: true });
 }
 </script>

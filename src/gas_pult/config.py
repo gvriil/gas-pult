@@ -40,6 +40,13 @@ def data_dir() -> Path:
     return Path(os.environ.get("GAS_PULT_DATA_DIR") or Path.home() / ".local" / "share" / "gas-pult")
 
 
+# Секции-таблицы config.toml и их допустимые ключи (лишний ключ — ошибка, как и на верхнем уровне).
+SECTIONS = {
+    "email": {"provider", "host", "port", "user", "from", "name", "password", "timeout"},
+    "passkeys": {"rp_id", "origin", "rp_name"},
+}
+
+
 # sudo без пароля, которое пульт готов выполнить по кнопке (остальное sudo — только вручную)
 SUDO_ALLOW = [
     r"apt(-get)?\s+(install|update|upgrade)\b",
@@ -71,6 +78,8 @@ class Config:
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
+    email: dict = field(default_factory=dict)               # [email]: SMTP входа по коду (emailcode.py); {} — выкл.
+    passkeys: dict = field(default_factory=dict)            # [passkeys]: rp_id и origin (passkeys.py); {} — выкл.
 
     @property
     def data(self) -> Path:
@@ -116,6 +125,12 @@ def load() -> Config:
         raise ConfigError(f"В {path} region — код страны из двух букв, например \"NL\"")
     if not isinstance(raw.get("personal_voices", False), bool):
         raise ConfigError(f"В {path} personal_voices — true или false")
+    for sec, keys in SECTIONS.items():
+        val = raw.get(sec, {})
+        if not isinstance(val, dict):
+            raise ConfigError(f"В {path} {sec} — секция [{sec}]")
+        if bad := set(val) - keys:
+            raise ConfigError(f"Неизвестные ключи в [{sec}] {path}: {', '.join(sorted(bad))}")
     return Config(token=read_token(), **raw)
 
 
@@ -139,7 +154,10 @@ def save(owners: list[int], token: str | None = None, **extra) -> Path:
         raw = tomllib.loads(path.read_text())
     raw.update(extra, owners=owners)
     body = "# gas-pult — настройки. Все ключи: config.example.toml в репозитории.\n"
-    body += "".join(f"{k} = {_toml(v)}\n" for k, v in raw.items())
+    body += "".join(f"{k} = {_toml(v)}\n" for k, v in raw.items() if not isinstance(v, dict))
+    for k, v in raw.items():                     # секции ([email]) — после простых ключей, иначе TOML их поглотит
+        if isinstance(v, dict):
+            body += f"\n[{k}]\n" + "".join(f"{kk} = {_toml(vv)}\n" for kk, vv in v.items())
     path.write_text(body)
     if token:
         tp = d / "token"

@@ -29,7 +29,7 @@ from importlib import resources
 # переключателе). Тест «нет латиницы на экране» берёт белый список отсюда — одно место.
 LATIN_OK = ("Claude", "Telegram", "Google", "Ozon", "WB", "Wildberries", "GigaChat", "YandexGPT", "ElevenLabs",
             "GASTECH", "iPhone", "Android", "OpenRouter", "DeepSeek", "GLM", "Notion", "Gmail", "Excel", "PDF",
-            "HoReCa", "English")
+            "HoReCa", "Face ID", "English")
 # В английском — ни одной кириллической буквы, кроме самоназвания языка в переключателе.
 CYRILLIC_OK = ("Русский",)
 

@@ -111,7 +111,7 @@ Claude what to change», «No, and tell Claude what to do differently (esc)», �
 
 `humanize.LATIN_OK` — имена собственные, которые в русском простом режиме можно писать латиницей: Claude, Telegram,
 Google, Ozon, WB, Wildberries, GigaChat, YandexGPT, ElevenLabs, GASTECH, iPhone, Android, OpenRouter, DeepSeek, GLM,
-Notion, Gmail, Excel, PDF, HoReCa и самоназвание «English» в переключателе языка. `humanize.CYRILLIC_OK` — «Русский»
+Notion, Gmail, Excel, PDF, HoReCa, Face ID и самоназвание «English» в переключателе языка. `humanize.CYRILLIC_OK` — «Русский»
 (в английском интерфейсе). Оба списка — в одном месте; их берут тесты словарей и Playwright-проверка.
 
 ## Проверка

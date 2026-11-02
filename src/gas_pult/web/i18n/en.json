@@ -176,6 +176,8 @@
  "login.note": "No password needed: confirm the sign-in in your Telegram. No access yet? The bot will ask the owner.",
  "login.tg": "Sign in with Telegram",
  "login.code": "Sign in with a code — for the owner",
+ "login.passkey": "Sign in with Face ID / a key",
+ "login.email": "Sign in with email",
  "login.demo": "See the demo — no sign-in",
  "login.demo.note": "The demo is the same panel with examples: tap and write anything, nothing is sent anywhere.",
  "login.code.label": "Code from Telegram",

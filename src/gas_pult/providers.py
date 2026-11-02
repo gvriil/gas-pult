@@ -41,8 +41,11 @@ def save_key(provider: str, key: str | None):
     write_private(secrets_file(), json.dumps(d))
 
 
+INTERNAL = {"email_hmac", "smtp"}            # служебные секреты почты (emailcode.py) — не ключи поставщиков
+
+
 def key_info() -> dict:
-    return {p: {"set": True, "tail": "…" + k[-4:]} for p, k in load_keys().items() if k}
+    return {p: {"set": True, "tail": "…" + k[-4:]} for p, k in load_keys().items() if k and p not in INTERNAL}
 
 
 class ProviderError(Exception):
