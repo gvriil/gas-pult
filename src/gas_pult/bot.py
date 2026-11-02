@@ -30,6 +30,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gas_pult import (
+    activity,
     country,
     digest,
     fallback,
@@ -161,6 +162,9 @@ class Pult:
         # вход в Claude Code из пульта (setup.py); config_dir/env — когда у каждого человека будет своя папка Claude
         self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
         self.meter = usage.Meter()                         # расход сессий по журналам (usage.py)
+        self.sends = activity.Sends()                      # что и когда отправили в окно — фазы до хода (activity.py)
+        self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
+        self.following: dict[tuple, tuple] = {}            # (чат, окно) → (метка, id служебного сообщения статуса)
         self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
 
     # ---------- Telegram ----------
@@ -298,15 +302,111 @@ class Pult:
             fcntl.flock(f, fcntl.LOCK_EX)
             yield
 
-    def to_claude(self, w: dict, text: str):
+    def to_claude(self, w: dict, text: str) -> bool:
         uid = getattr(self.actor, "uid", None)             # из бота — человек; из панели и монитора — проверено там
         if uid is not None and not models.allowed(w.get("profile") or "claude", self.countries(uid)):
             raise Denied(country.DENY)
         if self.cost_paused(w["id"]):                       # пауза по расходу — пока владелец не решит
             raise NotReady("сессия на паузе по расходу — продолжить может владелец (кнопка в боте или в панели)")
-        with self.hold(w["id"]):
-            self.ready_for_text(w["id"])
-            self.tmux.paste(w["id"], text)
+        sends = getattr(self, "sends", None)               # строка статуса: «Отправлено» → «Доставлено» (activity.py)
+        if sends:
+            sends.sent(w["id"], text)
+        try:
+            with self.hold(w["id"]):
+                self.ready_for_text(w["id"])
+                self.tmux.paste(w["id"], text)
+        except Exception:
+            if sends:
+                sends.failed(w["id"])
+            raise
+        if sends:
+            sends.delivered(w["id"])
+        return True                                         # вставка прошла — «Доставлено в сессию»
+
+    # ---------- строка статуса: что агент делает сейчас (activity.py) ----------
+    FOLLOW_EVERY = 3.0          # с между правками служебного сообщения (лимиты Telegram на правки)
+    FOLLOW_MAX = 3600           # с: дольше часа не следим — строка остаётся последней известной
+
+    def screen_state(self, wid: str) -> dict:
+        """Экран окна для строки статуса: занят ли Claude, вопрос/меню, текст спиннера."""
+        lines = self.tmux.screen(wid)
+        scr = "\n".join(lines)
+        busy = bool(BUSY.search(scr))
+        return {"busy": busy, "dialog": bool(DIALOG.search(scr)), "spinner": activity.spinner(lines) if busy else ""}
+
+    def activity(self, w: dict, screen: dict | None = None) -> dict:
+        """Статус окна: журнал (последний ход), запись об отправке и экран (``screen``; нет — читаем сами)."""
+        j = self.acts.status(w["path"], self.home_of(w))
+        scr = screen if screen is not None else self.screen_state(w["id"])
+        return activity.combine(j, self.sends.get(w["id"]), scr, sends=self.sends, wid=w["id"])
+
+    def to_claude_live(self, chat: int, w: dict, text: str):
+        """Сообщение человека в окно и одно служебное сообщение «⏳ Отправлено», которое бот правит по фазам."""
+        mid = None
+        try:
+            mid = self.send(chat, activity.line({"phase": "sent"})).get("message_id")
+        except TelegramError as e:
+            print("status:", e, flush=True)
+        try:
+            self.to_claude(w, text)
+        except Exception:
+            if mid:                                    # не дошло — служебное сообщение убрать, причину скажет handle
+                try:
+                    self.api("deleteMessage", chat_id=chat, message_id=mid)
+                except TelegramError:
+                    pass
+            raise
+        if mid:
+            threading.Thread(target=self.follow, args=(chat, mid, w), daemon=True).start()
+
+    def follow(self, chat: int, mid: int, w: dict, clock=time.time, sleep=time.sleep):
+        """Правит одно сообщение по фазам — не чаще раза в ``FOLLOW_EVERY`` с и только когда текст изменился.
+        Новое сообщение в то же окно — прежнее служебное убираем. Правка не удалась (сообщение удалено) — тихо стоп.
+        «Ждёт вашего ответа» — вопрос присылает монитор (``show_dialog``), здесь — только строка."""
+        key, token, t0 = (chat, w["id"]), object(), clock()
+        with self.lock:
+            old = self.following.get(key)
+            self.following[key] = (token, mid)
+        if old and old[1] != mid:
+            try:
+                self.api("deleteMessage", chat_id=chat, message_id=old[1])
+            except TelegramError:
+                pass
+        shown, took = activity.line({"phase": "sent"}), False
+        try:
+            while self.following.get(key, (None,))[0] is token and clock() - t0 < self.FOLLOW_MAX:
+                sleep(self.FOLLOW_EVERY)
+                if self.following.get(key, (None,))[0] is not token:
+                    return
+                try:
+                    st = self.activity(w)
+                except Exception as e:                   # журнал или экран не прочитались — попробуем в следующий раз
+                    print("status:", e, flush=True)
+                    continue
+                now = clock()
+                took = took or st["phase"] not in ("sent", "delivered", "queued", "stuck")
+                end = took and st["phase"] in ("done", "idle")
+                if end:
+                    text = f"✅ Готово · {activity.elapsed(now - t0)}"
+                else:
+                    since = st.get("since") or now               # таймер — шагом 5 с: меньше правок
+                    text = activity.line({**st, "since": now - (now - since) // 5 * 5}, now, started=took)
+                if text != shown and self.pause_until <= now:
+                    kw = {"reply_markup": kb([[("📺 Экран", f"scr:{w['id']}")]])} if st["phase"] == "stuck" else {}
+                    try:
+                        self.api("editMessageText", chat_id=chat, message_id=mid, text=text, **kw)
+                        shown = text
+                    except TelegramError as e:
+                        if e.retry_after:
+                            self.pause_until = time.time() + e.retry_after
+                        elif "not modified" not in e.description:
+                            return                       # удалили или править нельзя — тихо прекращаем
+                if end:
+                    return
+        finally:
+            with self.lock:
+                if self.following.get(key, (None,))[0] is token:
+                    self.following.pop(key, None)
 
     def cost_paused(self, wid: str) -> bool:
         return getattr(self, "cfg", None) is not None and wid in (self.state().get("cost_paused") or {})
@@ -1683,14 +1783,14 @@ class Pult:
             if not text:
                 return send("Не разобрал голосовое — попробуй ещё раз.")
             send(f"🎙 → [{w['name']}]: {text}")
-            return self.to_claude(w, text)
+            return self.to_claude_live(chat, w, text)
         f = (m.get("photo") or [None])[-1] or m.get("document") or m.get("video")
         if f:
             path = self.api.download(f["file_id"], self.cfg.data / "inbox", f.get("file_name") or "photo.jpg")
             t = f"{t or 'Посмотри файл.'}\n\nФайл из Telegram: {path}"
         if not t:
             return send("Пришли текст, голосовое или файл.")
-        self.to_claude(w, t)
+        self.to_claude_live(chat, w, t)
         self.react(m, "👀")
 
     def handle(self, u: dict):

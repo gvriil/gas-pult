@@ -9,6 +9,7 @@ src/gas_pult/
 ├── channels.py     интерфейс канала связи Channel (Incoming, Button, Caps) и TelegramChannel поверх telegram.Api
 ├── tmux.py         окна, экран, bracketed paste, новые окна с Claude
 ├── transcripts.py  jsonl Claude Code: Turns (сборка хода до end_turn), Tail, last_answer, clean
+├── activity.py     строка статуса: хвост jsonl + экран → «Читает файл X · 12 с»; фазы Отправлено/Доставлено/Взял
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
 ├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, «да» из HANDOFF.md
 ├── modules.py      модули-агенты: каталог templates/modules (module.toml), пространство из модуля, расписание
@@ -92,6 +93,7 @@ src/gas_pult/
 | `webapp.py` | HTTP-сервер панели на стандартной библиотеке: проверка `initData` / сессии браузера, API сессий, переписки, экрана, ввода, голоса, команд, MCP |
 | `web/index.html` | Весь интерфейс одной страницей (Telegram WebApp JS, marked + DOMPurify); `?demo` — демо-данные для показа и скриншотов |
 | `web/whatsnew.json` | «Что нового» — показывается один раз после обновления |
+| `activity.py` | Живая строка статуса: последний незакрытый `tool_use` в хвосте журнала → человеческие слова (секреты в командах скрыты, у ссылок — только домен), спиннер Claude с экрана, фазы до хода (`Sends`: отправлено, доставлено, 20 с без реакции). `GET /api/activity?w=` — опрос из открытого чата раз в 1,5 с (окна кэшируются на 3 с, экран — не чаще раза в 2 с, разбор — по размеру и времени файла); бот правит одно служебное сообщение (`Pult.follow`) |
 | `webauth.py` | Вход из браузера: код в Telegram, cookie-сессия, хранятся только хеши |
 | `setup.py` | Мастер первого запуска: `status()` (`claude --version`, `claude auth status --json`, ключи), `Login` — `claude auth login` в окне `<сессия>-setup` с меткой `login`, ссылка с экрана, код в окно; `/api/setup/*` |
 | `mcp.py` | MCP-серверы Claude Code через `claude mcp`: список, шаблоны `PRESETS`, добавление, удаление |
