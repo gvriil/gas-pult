@@ -43,6 +43,7 @@ from gas_pult import (
     modules,
     offer_report,
     offers,
+    passkeys,
     providers,
     scenarios,
     setup,
@@ -57,7 +58,7 @@ from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
-from gas_pult.people import People, allowed
+from gas_pult.people import TITLES, People, allowed
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -131,6 +132,7 @@ class Panel:
         self.people = People(cfg.data / "people.json", cfg.owners)
         self.logins = webauth.TgLogins(cfg.data / "tg_logins.json")
         self.email = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # вход по почте
+        self.keys = passkeys.Passkeys(cfg.passkeys, self.people, cfg.data / "passkeys.json")    # Face ID / ключ
         self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
@@ -343,7 +345,13 @@ class Panel:
 
     def login_methods(self) -> dict:
         """Способы входа для экрана входа (без входа): только «включено ли», без настроек."""
-        return {"telegram": True, "owner_code": True, "email": self.email.enabled}
+        return {"telegram": True, "owner_code": True, "email": self.email.enabled, "passkey": self.keys.enabled}
+
+    def key_label(self, uid) -> str:
+        """Подпись ключа в менеджере паролей устройства: имя человека, без Telegram ID."""
+        p = next((x for x in self.people.list() if x["id"] == uid), {})
+        who = p.get("name") or (f"@{p['username']}" if p.get("username") else "") or TITLES.get(p.get("role"), "")
+        return f"Пульт {self.cfg.host} · {who}"
 
     def login_start(self, ip: str, ua: str) -> str:
         rid, code = self.auth.start()
@@ -1003,6 +1011,9 @@ HELP_OPEN = ("/api/help/ask", "/api/help/feedback")
 EMAIL_OWN = ("/api/email", "/api/email/bind", "/api/email/confirm", "/api/email/remove", "/api/email/options")
 # Вход по почте и второй фактор — до входа (свои лимиты по адресу и IP).
 EMAIL_LOGIN = ("/api/login/email/start", "/api/login/email/verify", "/api/login/2fa")
+# Ключи входа (passkeys.py): свои у каждого вошедшего; вход по ключу — до входа (лимит по IP).
+PASSKEY_OWN = ("/api/passkeys", "/api/passkeys/options", "/api/passkeys/add", "/api/passkeys/remove")
+PASSKEY_LOGIN = ("/api/login/passkey/options", "/api/login/passkey/verify")
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
 # Отметки короткого тура (пройден / «Не сейчас») — настройка самого человека: менять может и наблюдатель.
@@ -1113,7 +1124,7 @@ def handler(panel: Panel):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, TOUR, *HELP_OPEN,   # и наблюдателю
-                    *EMAIL_OWN)
+                    *EMAIL_OWN, *PASSKEY_OWN)
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
@@ -1198,6 +1209,8 @@ def handler(panel: Panel):
                 return panel.country_info(self.terms_uid())
             if path == "/api/email":
                 return panel.email.info(self.terms_uid())
+            if path == "/api/passkeys":
+                return panel.keys.info(self.terms_uid())
             if path == "/api/people":
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/setup/status":
@@ -1284,6 +1297,10 @@ def handler(panel: Panel):
                 return self.dispatch(self.login)
             if path == "/api/login/tg":
                 return self.dispatch(self.tg_start)
+            if path in PASSKEY_LOGIN:
+                if not panel.keys.enabled:
+                    return self.json({"error": "вход по ключу выключен на этом пульте", "code": "off"}, 503)
+                return self.dispatch(lambda: self.passkey_login(path))
             if path in EMAIL_LOGIN:
                 if not panel.email.enabled:
                     return self.json({"error": "вход по почте выключен на этом пульте", "code": "off"}, 503)
@@ -1318,6 +1335,20 @@ def handler(panel: Panel):
                 panel.seen_ip(uid, self.client_ip(), force=True)            # вход — сверяем страну по IP
                 return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
             return {"state": state}
+
+        def passkey_login(self, path: str):
+            """Вход по ключу: опции (одноразовый вызов) → ответ устройства → сессия (или второй фактор с почты)."""
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 65536)) or b"{}")
+            if not isinstance(b, dict):
+                raise ValueError("ожидался объект")
+            ip, ua = self.client()
+            if path == "/api/login/passkey/options":
+                return panel.keys.login_options(ip)
+            uid = panel.keys.login_verify(str(b.get("id", "")), b.get("credential"), ip)
+            if panel.email.wants_second(uid):
+                return panel.email.second_start(uid, ip)
+            panel.seen_ip(uid, ip, force=True)
+            return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def email_login(self, path: str):
             """Вход по коду на почту и второй фактор. Тело — не больше 4 КБ: адрес и код."""
@@ -1462,6 +1493,14 @@ def handler(panel: Panel):
                 return panel.set_country(self.terms_uid(), str(b.get("code", "")))
             if path == TOUR:
                 return panel.people.set_tour(self.terms_uid(), str(b.get("tour", "")), str(b.get("state", "")))
+            if path == "/api/passkeys/options":
+                uid = self.terms_uid()
+                return panel.keys.register_options(uid, panel.key_label(uid), self.client_ip())
+            if path == "/api/passkeys/add":
+                return {"keys": panel.keys.register_verify(self.terms_uid(), str(b.get("id", "")), b.get("credential"),
+                                                           str(b.get("name", "")), self.client_ip())}
+            if path == "/api/passkeys/remove":
+                return {"keys": panel.keys.remove(self.terms_uid(), str(b.get("id", "")))}
             if path == "/api/email/bind":
                 return panel.email.bind_start(self.terms_uid(), b.get("email"), self.client_ip())
             if path == "/api/email/confirm":

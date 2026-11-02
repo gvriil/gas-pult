@@ -623,6 +623,7 @@
       <div id="loginStep1">
         <button class="btn" id="tgLogin">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
+        <button class="btn ghost" id="pkLogin" hidden>Войти с Face ID / ключом</button>
         <button class="btn ghost" id="emailLogin" hidden>Войти по почте</button>
         <button class="btn ghost" id="getCode">Войти по коду — для владельца</button>
         <button class="btn ghost" id="tryDemo">Посмотреть демо — без входа</button>
@@ -1195,7 +1196,8 @@ function setSub(html) { $("subtitle").innerHTML = html; }
 function showLogin() { show("login"); $("title").textContent = "Пульт"; setSub("<span>вход через Telegram</span>"); loginMethods(); }
 // Способы входа, которые включены на этом пульте (почта — если владелец настроил SMTP).
 async function loginMethods() {
-  try { const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; } catch (e) { $("emailLogin").hidden = true; }
+  try { const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk()); }
+  catch (e) { $("emailLogin").hidden = $("pkLogin").hidden = true; }
 }
 function loginPane(id) {                          // один шаг входа на экране: способы, код владельцу, почта, второй фактор
   for (const x of ["loginStep1", "loginStep2", "loginEmail", "login2fa"]) $(x).hidden = x !== id;
@@ -1286,6 +1288,46 @@ async function requestCode(btn) {
     } catch (e) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
   });
 }
+// Ключ входа (passkey, WebAuthn): JSON-опции сервера → navigator.credentials и обратно. Вручную, без
+// parseCreationOptionsFromJSON/toJSON — их нет в старых Safari и Chrome. В Telegram Mini App ключи не работают
+// (на iPhone WebAuthn во встроенном окне недоступен) — там кнопку прячем и просим открыть панель в браузере.
+const b64uToBuf = (v) => Uint8Array.from(atob(v.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(v.length / 4) * 4, "=")), (c) => c.charCodeAt(0)).buffer;
+function bufToB64u(buf) {
+  if (!buf) return "";
+  let bin = ""; for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+const passkeyHere = () => typeof window.PublicKeyCredential === "function" && !!navigator.credentials;
+const passkeyOk = () => passkeyHere() && !tg?.initData;
+const pkList = (xs) => (xs || []).map((c) => ({ ...c, id: b64uToBuf(c.id) }));
+const pkCreation = (j) => ({ ...j, challenge: b64uToBuf(j.challenge), user: { ...j.user, id: b64uToBuf(j.user.id) }, excludeCredentials: pkList(j.excludeCredentials) });
+const pkRequest = (j) => ({ ...j, challenge: b64uToBuf(j.challenge), allowCredentials: pkList(j.allowCredentials) });
+function pkJson(cred) {                           // ответ устройства → JSON, который понимает сервер (py_webauthn)
+  if (!cred) return {};
+  const r = cred.response, out = { id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+    clientExtensionResults: cred.getClientExtensionResults?.() ?? {}, authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
+    response: { clientDataJSON: bufToB64u(r.clientDataJSON) } };
+  if (r.attestationObject) { out.response.attestationObject = bufToB64u(r.attestationObject); out.response.transports = typeof r.getTransports === "function" ? r.getTransports() : []; }
+  if (r.authenticatorData) { out.response.authenticatorData = bufToB64u(r.authenticatorData); out.response.signature = bufToB64u(r.signature); out.response.userHandle = r.userHandle ? bufToB64u(r.userHandle) : null; }
+  return out;
+}
+const pkCall = (kind, publicKey) => DEMO ? Promise.resolve(null) : navigator.credentials[kind]({ publicKey });   // демо: без устройства
+function pkError(e) {
+  if (e?.name === "NotAllowedError" || e?.name === "AbortError") return "Отменено или время вышло — попробуйте ещё раз.";
+  if (e?.name === "InvalidStateError") return "Этот ключ уже сохранён на этом устройстве.";
+  if (e?.name === "SecurityError") return "Адрес панели не совпадает с настройкой ключей на сервере (rp_id).";
+  if (e?.name === "NotSupportedError") return "Это устройство не умеет ключи входа — войдите через Telegram.";
+  return e?.message || "Не получилось";
+}
+$("pkLogin").onclick = (e) => busy(e.currentTarget, "Жду ключ…", async () => {
+  try {
+    const r = await api("/api/login/passkey/options", {});
+    const cred = await pkCall("get", pkRequest(r.options));
+    const d = await api("/api/login/passkey/verify", { id: r.id, credential: pkJson(cred) });
+    if (d.state === "2fa") return askSecond(d);
+    haptic("notificationOccurred", "success"); await start();
+  } catch (err) { loginMsg(false, pkError(err)); }
+});
 // Вход по коду на почту: адрес → код из письма. Ответ одинаковый, привязан адрес или нет.
 let emTimer = null;
 $("emailLogin").onclick = () => { loginPane("loginEmail"); $("emCodeBox").hidden = true; $("emAddr").focus(); };
@@ -3218,6 +3260,34 @@ function personSheet(p) {
   ]);
 }
 
+// ---------- ключи входа (passkeys.py) ----------
+function deviceName() {                           // название ключа по устройству — человек видит его в списке
+  const ua = navigator.userAgent;
+  return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "Устройство";
+}
+async function keysSheet() {
+  let d; try { d = await api("/api/passkeys"); } catch (e) { return toast(e.message, 4000); }
+  const day = (t) => t ? new Date(t * 1000).toLocaleDateString("ru-RU") : "";
+  const add = async () => {
+    try {
+      const r = await api("/api/passkeys/options", {});
+      const cred = await pkCall("create", pkCreation(r.options));
+      await api("/api/passkeys/add", { id: r.id, credential: pkJson(cred), name: deviceName() });
+      haptic("notificationOccurred", "success"); toast("Ключ добавлен"); keysSheet();
+    } catch (e) { toast(pkError(e), 5000); }
+  };
+  const drop = (k) => confirmDanger(`Удалить ключ «${k.name}»? Войти с ним больше не получится.`, () => api("/api/passkeys/remove", { id: k.id }).then(() => { toast("Ключ удалён"); keysSheet(); }).catch((e) => toast(e.message, 4000)));
+  helpSheet("settings.keys");
+  sheet("Ключи входа", [
+    ...(!d.enabled ? [{ info: true, icon: "warn", label: "Не настроено на этом пульте", sub: "владелец включает ключи в config.toml ([passkeys]) — инструкция в docs/AUTH.md" }]
+      : !passkeyHere() ? [{ info: true, icon: "warn", label: "Этот браузер не умеет ключи входа", sub: "откройте панель в Safari, Chrome или Edge" }]
+      : tg?.initData ? [{ info: true, icon: "ext", label: "Откройте панель в браузере", sub: "в Telegram ключи входа не работают — добавьте ключ из Safari или Chrome по адресу панели" }]
+      : [{ label: "Добавить ключ этого устройства", icon: "plus", sub: "Face ID, отпечаток или PIN — закрытый ключ остаётся в устройстве", run: add }]),
+    ...d.keys.map((k) => ({ label: k.name, icon: "key", sub: `добавлен ${day(k.created)}` + (k.last_used ? ` · вход ${day(k.last_used)}` : " · ещё не входили") + " — нажмите, чтобы удалить", run: () => drop(k) })),
+    ...(d.keys.length ? [] : [{ info: true, icon: "lock", label: "Ключей пока нет", sub: "с ключом можно войти в панель без Telegram" }]),
+  ]);
+}
+
 // ---------- почта для входа и оповещений (emailcode.py) ----------
 // Адрес подтверждается кодом из письма; по нему можно войти, включить второй фактор и письма-оповещения.
 async function emailSheet() {
@@ -3309,6 +3379,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: emailSheet },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
@@ -3928,7 +3999,14 @@ function demoApi(path, body) {
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
-  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true });
+  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true });
+  if (key === "/api/login/passkey/options" || key === "/api/passkeys/options") return Promise.resolve({ id: "demo", options: { challenge: "AAAA", rpId: "localhost", user: { id: "AAAA", name: "demo", displayName: "demo" } } });
+  if (key.startsWith("/api/passkeys")) {             // демо: ключ «добавляется» без устройства
+    demoApi.pk ||= [{ id: "k1", name: "iPhone", created: Date.now() / 1000 - 86400 * 3 | 0, last_used: Date.now() / 1000 - 3600 | 0 }];
+    if (key === "/api/passkeys/add") demoApi.pk.push({ id: "k" + Date.now(), name: body.name, created: Date.now() / 1000 | 0, last_used: null });
+    if (key === "/api/passkeys/remove") demoApi.pk = demoApi.pk.filter((k) => k.id !== body.id);
+    return Promise.resolve({ enabled: true, keys: demoApi.pk });
+  }
   if (key === "/api/login/email/start") return /.+@.+\..+/.test(body?.email || "") ? Promise.resolve({ sent: true, message: "Если адрес привязан к пульту, мы отправили на него код. Он действует 10 минут.", resend_in: 60, ttl: 600 }) : Promise.reject(new Error("Укажите адрес почты целиком, например name@example.com"));
   if (key.startsWith("/api/login/")) return Promise.resolve({ state: "ok" });
   if (key.startsWith("/api/email")) {               // демо: почта привязывается любым кодом из 6 цифр
