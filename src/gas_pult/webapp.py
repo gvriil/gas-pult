@@ -36,6 +36,7 @@ from pathlib import Path
 
 from gas_pult import (
     country,
+    emailcode,
     fallback,
     helper,
     models,
@@ -129,6 +130,7 @@ class Panel:
         self.openrouter = OpenRouter()
         self.people = People(cfg.data / "people.json", cfg.owners)
         self.logins = webauth.TgLogins(cfg.data / "tg_logins.json")
+        self.email = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # вход по почте
         self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
@@ -338,6 +340,10 @@ class Panel:
         voices = catalog.installed(personal) if voices is None else voices
         v = self.pult.state().get("voice")
         return v if v in voices else (voices[0] if voices else None)
+
+    def login_methods(self) -> dict:
+        """Способы входа для экрана входа (без входа): только «включено ли», без настроек."""
+        return {"telegram": True, "owner_code": True, "email": self.email.enabled}
 
     def login_start(self, ip: str, ua: str) -> str:
         rid, code = self.auth.start()
@@ -993,6 +999,10 @@ OWNER_PRESETS = {"stdio"}               # своя программа на се�
 TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout", "/api/help/ask", "/api/help/feedback"}
 # Помощник «? Подсказать» — любому вошедшему (и наблюдателю), а на экране входа — и до входа.
 HELP_OPEN = ("/api/help/ask", "/api/help/feedback")
+# Почта для входа и оповещений (emailcode.py) — своя у каждого вошедшего, в том числе у наблюдателя.
+EMAIL_OWN = ("/api/email", "/api/email/bind", "/api/email/confirm", "/api/email/remove", "/api/email/options")
+# Вход по почте и второй фактор — до входа (свои лимиты по адресу и IP).
+EMAIL_LOGIN = ("/api/login/email/start", "/api/login/email/verify", "/api/login/2fa")
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
 # До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
@@ -1100,7 +1110,8 @@ def handler(panel: Panel):
             if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
-            free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, *HELP_OPEN)   # и наблюдателю
+            free = ("/api/logout", "/api/terms/accept", "/api/country", NOTIFY_DONE, *HELP_OPEN,   # и наблюдателю
+                    *EMAIL_OWN)
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if allowed(role, need):
@@ -1156,6 +1167,8 @@ def handler(panel: Panel):
             q = dict(urllib.parse.parse_qsl(url.query))
             if url.path == "/api/login/tg":              # браузер ждёт подтверждения из Telegram (по своему rid)
                 return self.dispatch(lambda: self.tg_poll(q))
+            if url.path == "/api/login/methods":         # экран входа: какие способы включены на этом пульте
+                return self.json(panel.login_methods())
             if not self.permit(url.path, "GET"):
                 return None
             self.dispatch(lambda: self.get(url.path, q))
@@ -1179,6 +1192,8 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/country":
                 return panel.country_info(self.terms_uid())
+            if path == "/api/email":
+                return panel.email.info(self.terms_uid())
             if path == "/api/people":
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/setup/status":
@@ -1265,6 +1280,10 @@ def handler(panel: Panel):
                 return self.dispatch(self.login)
             if path == "/api/login/tg":
                 return self.dispatch(self.tg_start)
+            if path in EMAIL_LOGIN:
+                if not panel.email.enabled:
+                    return self.json({"error": "вход по почте выключен на этом пульте", "code": "off"}, 503)
+                return self.dispatch(lambda: self.email_login(path))
             if path.startswith("/api/offer/"):
                 return self.offer("POST", path)
             if path in HELP_OPEN and not self.who()[1]:   # экран входа: подсказки только по нему
@@ -1290,9 +1309,26 @@ def handler(panel: Panel):
         def tg_poll(self, q: dict):
             state, uid = panel.logins.poll(q.get("id", ""))
             if state == "ok":
+                if panel.email.wants_second(uid):                           # второй фактор: код ещё и на почту
+                    return panel.email.second_start(uid, self.client_ip())
                 panel.seen_ip(uid, self.client_ip(), force=True)            # вход — сверяем страну по IP
                 return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
             return {"state": state}
+
+        def email_login(self, path: str):
+            """Вход по коду на почту и второй фактор. Тело — не больше 4 КБ: адрес и код."""
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            if not isinstance(b, dict):
+                raise ValueError("ожидался объект")
+            ip, ua = self.client()
+            if path == "/api/login/email/start":
+                return panel.email.login_start(b.get("email"), ip)
+            if path == "/api/login/email/verify":
+                uid = panel.email.login_verify(b.get("email"), b.get("code"), ip)
+            else:
+                uid = panel.email.second_verify(str(b.get("id", "")), b.get("code"), ip)
+            panel.seen_ip(uid, ip, force=True)
+            return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def login(self):
             b = json.loads(self.body() or b"{}")
@@ -1420,6 +1456,14 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/country":
                 return panel.set_country(self.terms_uid(), str(b.get("code", "")))
+            if path == "/api/email/bind":
+                return panel.email.bind_start(self.terms_uid(), b.get("email"), self.client_ip())
+            if path == "/api/email/confirm":
+                return panel.email.bind_confirm(self.terms_uid(), b.get("email"), b.get("code"))
+            if path == "/api/email/remove":
+                return panel.email.unbind(self.terms_uid())
+            if path == "/api/email/options":
+                return panel.email.options(self.terms_uid(), b.get("second_factor"), b.get("notify"))
             if path == "/api/help/ask":                    # роль — с сервера, не от клиента
                 return panel.help_ask(self.who()[1], self.terms_uid(), b if isinstance(b, dict) else {})
             if path == "/api/help/feedback":
@@ -1535,6 +1579,8 @@ def handler(panel: Panel):
                 return self.json({"error": "нет такого метода"}, 404)
             except LookupError as e:
                 return self.json({"error": str(e)}, 404)
+            except emailcode.LimitError as e:
+                return self.json({"error": str(e), "retry": e.retry}, 429)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
             if isinstance(out, tuple) and out[0] == "cookie":
