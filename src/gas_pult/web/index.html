@@ -1283,12 +1283,12 @@ function newSession(profile) {
 // Выбор модели — только если есть ключ хоть одного поставщика кроме Claude; иначе сразу Claude (ноль лишних шагов).
 // Недоступный для страны человека — в списке с пометкой; нажатие — отказ тем же текстом, что у сервера.
 function pickProfile(go, exclude) {
-  const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key));
+  const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key) && !p.not_ready);
   if (!exclude && ready.length < 2 && profileOf("claude")?.allowed !== false) return go("claude");
   sheet(exclude ? "Перезапустить с поставщиком" : "В какой модели работать?", [
     ...ready.map((p) => p.allowed === false ? { label: p.title, icon: "lock", sub: p.denied || DENY, run: () => toast(p.denied || DENY, 4500) }
       : { label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) }),
-    ...(meta.profiles || []).filter((p) => p.needs_key && !p.key).map((p) => ({ label: p.title, icon: "key", sub: "нет ключа — добавить", run: () => profileForm(p) })),
+    ...(meta.profiles || []).filter((p) => p.needs_key && (!p.key || p.not_ready) && p.allowed !== false).map((p) => ({ label: p.title, icon: "key", sub: p.key ? "нет адреса шлюза — настроить" : "нет ключа — добавить", run: () => profileForm(p) })),
   ]);
 }
 async function startSession(i, profile) {
@@ -2148,7 +2148,7 @@ function renderModels() {
   $("modelsBox").innerHTML = `<div class="section">Модели</div>
     <p class="note">Кроме Claude сессия может работать на моделях других поставщиков — по их ключу. Поставщик выбирается при «Новой сессии».</p>
     ${list.map((p) => `<button class="card" data-prof="${p.id}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div>
-      <div class="meta">${esc(p.allowed === false ? p.denied || DENY : p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key ? "ok" : ""}">${p.key ? "ключ " + esc(p.key.tail) : "нет ключа"}</span></div></button>`).join("")}`;
+      <div class="meta">${esc(p.allowed === false ? p.denied || DENY : p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key && !p.not_ready ? "ok" : ""}">${p.key ? (p.not_ready ? "нет адреса шлюза" : "ключ " + esc(p.key.tail)) : "нет ключа"}</span></div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
 
@@ -2204,15 +2204,22 @@ function profileForm(p, connected) {
     <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
     ${connected ? `<div class="result ok">${ic("check")}<span>${esc(p.title)} подключён — ключ сохранён на сервере.</span></div>
       <button class="btn" id="profStart0">${ic("newsess")}Новая сессия с ${esc(p.title)}</button>` : ""}
-    <div class="result wait">${ic("warn")}<span>Код и переписка сессий с ${esc(p.title)} уходят ${esc(p.title)}; оплата — по их тарифу.
+    <div class="result wait">${ic("warn")}<span>${p.gateway ? `Код и переписка сессий уходят на ваш шлюз и дальше — ${esc(p.short)}; оплата — по тарифу поставщика. Только для России: шлюз и сервер пульта — в России.`
+      : `Код и переписка сессий с ${esc(p.title)} уходят ${esc(p.title)}; оплата — по их тарифу.`}
       В таких сессиях не работают коннекторы claude.ai (Notion, Gmail…) — только MCP-серверы, подключённые на сервере.</span></div>
-    <div class="section">${p.oauth ? "Аккаунт" : "Ключ API"}</div>
+    ${p.gateway ? `<div class="section">Шлюз</div>
+      <p class="note">У ${esc(p.short)} нет API, совместимого с Anthropic, а Claude Code говорит только на нём. Нужен ваш шлюз-переводчик (gpt2giga, LiteLLM) со своим ключом поставщика — как его поднять, в инструкции.</p>
+      <button class="btn ghost" id="profGuide">${ic("ext")}Инструкция: шлюз и что работает</button>
+      <div class="field"><label for="profUrl">Адрес шлюза</label><input id="profUrl" type="url" autocapitalize="off" spellcheck="false" value="${esc(p.base_url || "")}" placeholder="https://шлюз.пример:8090">
+        <div class="hint">${p.base_url ? "Задан — действует для новых сессий." : `Пока не задан — сессии с ${esc(p.short)} не запускаются.`} Шлюз — ваш и в России; ключ шлюза — ниже.</div></div>
+      <button class="btn quiet" id="profUrlSave">Сохранить адрес</button>` : ""}
+    <div class="section">${p.oauth ? "Аккаунт" : p.gateway ? "Ключ шлюза" : "Ключ API"}</div>
     ${p.oauth ? `${p.key ? `<div class="panel" id="orAcct" style="box-shadow:none"><span class="note">Проверяю аккаунт…</span></div>` : ""}
       <button class="btn${p.key ? " quiet" : ""}" id="orLogin">${ic("ext")}${p.key ? "Войти заново" : "Войти через " + esc(p.title)}</button>
       <div class="hint" style="margin:0 2px 8px">Откроется ${esc(p.title)}: войдите (Google, GitHub или почта) и нажмите «Authorize». Ключ сам вернётся на сервер — копировать ничего не нужно.</div>
       <div id="orWait" hidden></div>
       <details class="manual"><summary class="note" style="display:inline">Или вставить ключ вручную</summary>` : ""}
-    ${p.key_url ? `<button class="btn ghost" id="profKeyPage">${ic("ext")}Где взять ключ</button>` : ""}
+    ${p.key_url && !p.gateway ? `<button class="btn ghost" id="profKeyPage">${ic("ext")}Где взять ключ</button>` : ""}
     <div class="field"><label for="profKey">${p.key ? "Заменить ключ (сейчас " + esc(p.key.tail) + ")" : "Ключ"}</label>
       <div class="inp"><input id="profKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="вставьте ключ">
       <button class="icon" type="button" data-eye="profKey" aria-label="Показать">${ic("eye")}</button></div>
@@ -2233,6 +2240,9 @@ function profileForm(p, connected) {
     <p class="note">Изменения моделей и ключа действуют для новых сессий и после «Сменить поставщика».</p></div>`;
   $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
   $("profKeyPage")?.addEventListener("click", () => { openUrl(p.key_url); });
+  $("profGuide")?.addEventListener("click", () => { openUrl(p.guide); });
+  $("profUrlSave")?.addEventListener("click", () => api("/api/models", { profile: p.id, main: p.main, fast: p.fast, base_url: $("profUrl").value.trim() })
+    .then((d) => { meta.profiles = d.profiles; toast($("profUrl").value.trim() ? "Адрес шлюза сохранён" : "Адрес шлюза убран"); profileForm(profileOf(p.id)); }).catch((err) => toast(err.message, 4500)));
   $("profSave").onclick = (e) => busy(e.currentTarget, "Проверяю ключ…", async () => {
     try {
       const d = await api("/api/keys", { provider: p.id, key: $("profKey").value });
@@ -2830,7 +2840,8 @@ function demoApi(path, body) {
                    profiles: [{ id: "claude", title: "Claude", short: "Claude", about: "Anthropic — как сейчас: подписка или ключ сервера", needs_key: false, main: "", fast: "" },
                      { id: "openrouter", title: "OpenRouter", short: "OpenRouter", about: "Один ключ — сотни моделей, оплата по факту", needs_key: true, oauth: true, key: params.get("orkey") ? { set: true, tail: "…b7e2" } : null, key_url: "https://openrouter.ai/settings/keys", main: "", fast: "", default_main: "", default_fast: "", hint: "id модели из каталога openrouter.ai/models" },
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
-                     { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" }] },
+                     { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
+                     { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
     "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: true }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false }, prices_checked: "2026-11-02",
@@ -2946,6 +2957,7 @@ function demoApi(path, body) {
     return Promise.resolve({ host: "ubuntu", items: demoApi.cl });
   }
   if (key === "/api/hint") return Promise.resolve({ hint: decodeURIComponent(path).includes("@3") ? "Запусти тесты и закоммить" : "" });
+  if (key === "/api/models" && body?.base_url !== undefined) { demoApi.gw = body.base_url; return demoApi("/api/meta").then((m) => ({ profiles: m.profiles })); }
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }

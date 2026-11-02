@@ -72,7 +72,8 @@ def _el(path: str, key: str, body: bytes | None = None, ctype: str | None = None
 
 # Проверка ключа поставщика моделей бесплатным служебным запросом (без генерации): адрес → чем проверяем.
 CHECK = {"openrouter": "https://openrouter.ai/api/v1/key", "deepseek": "https://api.deepseek.com/user/balance"}
-NAMES = {"openrouter": "OpenRouter", "zai": "Z.ai", "deepseek": "DeepSeek", "elevenlabs": "ElevenLabs"}
+NAMES = {"openrouter": "OpenRouter", "zai": "Z.ai", "deepseek": "DeepSeek", "elevenlabs": "ElevenLabs",
+         "gigachat": "шлюза GigaChat", "yandexgpt": "шлюза YandexGPT"}      # у этих ключ — от шлюза клиента
 
 
 def check_model_key(provider: str, key: str) -> bool:

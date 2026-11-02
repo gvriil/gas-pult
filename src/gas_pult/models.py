@@ -15,6 +15,12 @@ Claude Code говорит с любым Anthropic-совместимым API: �
 официальный список, и ``blocked`` — запреты и санкционные страны. ``allowed(profile, countries)`` — разрешён, только
 если разрешён для **каждой** страны набора (страны человека по трём признакам и страна сервера, ``country.py``);
 пустой набор — не разрешено ничего (страна неизвестна). Подробно — ``docs/COMPLIANCE.md``.
+
+Российские модели (GigaChat, YandexGPT) — профили со шлюзом (``gateway``): официального Anthropic-совместимого API
+у Сбера и Яндекса нет (сверено 02.11.2026), поэтому адрес — не наш, а **шлюза клиента** (gpt2giga, LiteLLM), который
+он разворачивает у себя в России со своим ключом поставщика. Адрес шлюза хранится в ``state.json``
+(``model_profiles[id].base_url``), ключ шлюза — в ``secrets.json``. Без адреса профиль не запускается. Страны —
+только RU. Подробно — ``docs/RU-MODELS.md``.
 """
 
 from __future__ import annotations
@@ -53,6 +59,11 @@ TERRITORIES = {
 }
 ANTHROPIC = ANTHROPIC_LISTED | {t for k, v in TERRITORIES.items() if k in ANTHROPIC_LISTED for t in v.split()}
 DENY = "Этот сервис недоступен в вашей стране по условиям поставщика"
+# Российские поставщики: GigaChat API — только российским юрлицам, ИП и физлицам (оферты developers.sber.ru), Yandex AI
+# Studio — по договору Yandex Cloud; списков других стран у них нет — значит, только Россия (сверено 02.11.2026).
+RU_ONLY = frozenset({"RU"})
+GUIDE = "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md"
+URL = re.compile(r"^https?://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[\w.~%/-]*)?$")
 
 PROFILES = [
     {"id": "claude", "title": "Claude", "short": "Claude",
@@ -85,6 +96,22 @@ PROFILES = [
      "hint": "в документации DeepSeek основная по умолчанию — deepseek-flash[1m] (быстрее и дешевле)",
      "env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "786432"},
      "blocked": UNSUPPORTED},
+    # Через шлюз клиента: адрес и ключ шлюза, модели — имена, которые знает шлюз. Claude Code — без лишнего трафика
+    # (телеметрия, обновления, отчёты об ошибках): из такой сессии запросы идут только в шлюз.
+    {"id": "gigachat", "title": "GigaChat (через шлюз)", "short": "GigaChat", "key": "gigachat", "gateway": True,
+     "main": "GigaChat-2-Max", "fast": "GigaChat-2-Lite", "key_url": GUIDE, "guide": GUIDE,
+     "about": "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России",
+     "hint": "имя модели — как его знает ваш шлюз. Инструменты (правка файлов, команды) зависят от модели — "
+             "проверьте на своей задаче",
+     "env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+     "regions": RU_ONLY},
+    {"id": "yandexgpt", "title": "YandexGPT (через шлюз)", "short": "YandexGPT", "key": "yandexgpt", "gateway": True,
+     "main": "yandexgpt", "fast": "yandexgpt-lite", "key_url": GUIDE, "guide": GUIDE,
+     "about": "Yandex AI Studio, для России. Только через ваш шлюз, совместимый с Anthropic (LiteLLM), в России",
+     "hint": "имя модели — как его знает ваш шлюз (model_name в его настройках). Инструменты зависят от модели — "
+             "проверьте на своей задаче",
+     "env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+     "regions": RU_ONLY},
 ]
 BY_ID = {p["id"]: p for p in PROFILES}
 SETTINGS = re.compile(r"/profiles/([a-z0-9-]+)\.json$")
@@ -108,6 +135,24 @@ def allowed(profile: str, countries="") -> bool:
     if not p or not cs:
         return False
     return all(c not in p.get("blocked", ()) and (not p.get("regions") or c in p["regions"]) for c in cs)
+
+
+def base_url_of(p: dict, state: dict | None) -> str:
+    """Адрес API профиля: свой у поставщика или адрес шлюза клиента из панели (``gateway``); не задан — «»."""
+    if p.get("gateway"):
+        return str(((state or {}).get("model_profiles") or {}).get(p["id"], {}).get("base_url") or "")
+    return p.get("base_url", "")
+
+
+def no_gateway(p: dict) -> str:
+    return (f"не задан адрес шлюза {p['short']} — «Интеграции» → «Модели» → {p['title']}. "
+            f"Шлюз разворачиваете вы, в России: {p.get('guide', GUIDE)}")
+
+
+def has_gateway(profile: str, state: dict | None) -> bool:
+    """Есть ли куда слать запросы: у профиля со шлюзом — задан ли адрес; у остальных — всегда."""
+    p = BY_ID.get(profile or "claude")
+    return bool(p) and (not p.get("gateway") or bool(base_url_of(p, state)))
 
 
 def has_key(profile: str, keys: dict | None = None) -> bool:
@@ -135,7 +180,7 @@ def models_of(p: dict, state: dict) -> tuple[str, str]:
 
 def env_of(p: dict, key: str, state: dict) -> dict:
     main, fast = models_of(p, state)
-    env = {"ANTHROPIC_BASE_URL": p["base_url"], "ANTHROPIC_AUTH_TOKEN": key, "ANTHROPIC_API_KEY": ""}
+    env = {"ANTHROPIC_BASE_URL": base_url_of(p, state), "ANTHROPIC_AUTH_TOKEN": key, "ANTHROPIC_API_KEY": ""}
     if main:
         env.update(ANTHROPIC_MODEL=main, ANTHROPIC_DEFAULT_OPUS_MODEL=main, ANTHROPIC_DEFAULT_SONNET_MODEL=main)
     if fast:
@@ -156,6 +201,8 @@ def command(base: str, profile: str, state: dict, home: Path | None = None) -> s
     p = BY_ID.get(profile)
     if not p:
         raise ValueError("нет такого профиля")
+    if not base_url_of(p, state):
+        raise ValueError(no_gateway(p))
     key = providers.load_keys().get(p["key"])
     if not key:
         raise ValueError(f"нет ключа {p['title']} — добавьте его в «Интеграции» → «Модели»")
@@ -183,20 +230,41 @@ def public(state: dict, countries=None) -> list[dict]:
                    | {"needs_key": bool(p.get("key")), "key": keys.get(p.get("key", "")),
                       "key_url": p.get("key_url", ""), "hint": p.get("hint", ""), "oauth": bool(p.get("oauth")),
                       "main": main, "fast": fast, "default_main": p.get("main", ""),
-                      "default_fast": p.get("fast", "")})
+                      "default_fast": p.get("fast", ""),
+                      # шлюз клиента (GigaChat, YandexGPT): адрес не секрет, ключ — как у всех, только хвост
+                      "gateway": bool(p.get("gateway")), "base_url": base_url_of(p, state) if p.get("gateway") else "",
+                      "guide": p.get("guide", ""), "regions": sorted(p.get("regions", ())) if p.get("gateway") else [],
+                      "not_ready": "" if has_gateway(p["id"], state) else no_gateway(p)})
         if countries is not None:
             ok = allowed(p["id"], countries)
             out[-1] |= {"allowed": ok, "denied": "" if ok else DENY}
     return out
 
 
-def set_models(state: dict, profile: str, main: str, fast: str) -> dict:
-    """Новые основная/быстрая модели профиля → обновлённое ``model_profiles`` для state.json."""
+def set_models(state: dict, profile: str, main: str, fast: str, base_url: str | None = None) -> dict:
+    """Новые основная/быстрая модели профиля → обновлённое ``model_profiles`` для state.json. ``base_url`` — адрес
+    шлюза (только у профилей со шлюзом): ``None`` — не менять, «» — убрать."""
     if profile not in BY_ID or profile == "claude":
         raise ValueError("нет такого профиля")
     for m in (main, fast):
         if m and not MODEL.match(m):
             raise ValueError(f"странное имя модели: {m[:40]}")
     allp = dict(state.get("model_profiles") or {})
-    allp[profile] = {"main": main.strip(), "fast": fast.strip()}
+    old = allp.get(profile) or {}
+    rec = {"main": main.strip(), "fast": fast.strip()}
+    if BY_ID[profile].get("gateway"):
+        url = old.get("base_url", "") if base_url is None else check_url(base_url)
+        if url:
+            rec["base_url"] = url
+    elif base_url:
+        raise ValueError("адрес задаётся только у поставщиков через шлюз")
+    allp[profile] = rec
     return allp
+
+
+def check_url(url: str) -> str:
+    """Адрес шлюза: http(s), без логина и пароля в адресе (ключ — отдельно), без пробелов и параметров; «» — убрать."""
+    url = (url or "").strip().rstrip("/")
+    if url and (len(url) > 200 or not URL.match(url)):
+        raise ValueError("адрес шлюза — вида https://шлюз.пример:8090, без логина, пароля и параметров")
+    return url
