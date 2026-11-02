@@ -107,7 +107,7 @@ Material 3 в духе Gemini: белый и графитовый фон, син
   `voice/*`, `providers`, `keys*`), модели (`model`, `models`, `openrouter/*`, `fallback`), расход (`cost/*`), люди и
   вход (`people*`, `login/*`, `terms*`, `country`), `mcp*`, `setup/*`, `modules*`, `scenarios`, предложения
   (`/offer/<код>`, `/api/offer/<код>/…`). Полный разбор — `docs/ARCHITECTURE.md`.
-- Тесты — `pytest` (500 на 03.11.2026), стиль — `ruff`. CI на GitHub: Linux и macOS, Python 3.11–3.14.
+- Тесты — `pytest` (520 на 03.11.2026), стиль — `ruff`. CI на GitHub: Linux и macOS, Python 3.11–3.14.
 
 Известное ограничение: сессии в **одной папке** показывают общую переписку и превью — панель читает последний
 журнал папки, а не журнал конкретного окна.
@@ -129,8 +129,10 @@ Material 3 в духе Gemini: белый и графитовый фон, син
 - **Предложения бизнесу** — страница `/offer/<код>` без входа: демо, отчёт по выгрузке, демо в Telegram, мастер
   «Подключить» (`offers.py`, `offer_report.py`, `docs/OFFERS.md`).
 - **Каналы** — интерфейс `Channel` (`channels.py`, `docs/CHANNELS.md`); бот пока работает с Telegram напрямую.
-- **В работе, не на `main`:** дежурный помощник «? Подсказать» (PR #74) — не ссылайтесь на него как на готовое.
-  Очередь и решения за владельцем — `HANDOFF.md`.
+- **Дежурный помощник «? Подсказать»** (итерация 1) — шторка с подсказкой экрана и переходами из карты экранов
+  `help/screens.toml`, без модели (`helper.py`, `docs/HELPER.md`). Новый экран панели — сразу в карту (тест).
+- **В работе, не на `main`:** итерация 2 помощника (умные ответы моделью, `/help` в боте) и остальные роли
+  «Примерочной». Очередь и решения за владельцем — `HANDOFF.md`.
 
 ## С чего читать для архитектурного ревью
 
@@ -142,7 +144,7 @@ Material 3 в духе Gemini: белый и графитовый фон, син
 6. `src/gas_pult/tmux.py`, `transcripts.py`, `activity.py` — как пульт видит окна и журналы Claude Code.
 7. `src/gas_pult/people.py`, `country.py`, `models.py`, `fallback.py`, `usage.py` — доступ, страны, поставщики, расход.
 8. `src/gas_pult/modules.py`, `scenarios.py`, `offers.py`, `offer_report.py` и `docs/MODULES.md`, `docs/SCENARIOS.md`,
-   `docs/OFFERS.md` — бизнес-слой.
+   `docs/OFFERS.md` — бизнес-слой; `helper.py`, `help/screens.toml`, `docs/HELPER.md` — помощник.
 9. `docs/COMPLIANCE.md`, `docs/RU-MODELS.md`, `SECURITY.md` — условия поставщиков, страны, данные.
 
 ## Как писать задание для Claude Code
