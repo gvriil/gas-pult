@@ -2,7 +2,7 @@
 
 ```
 src/gas_pult/
-├── cli.py          команды: run, init, doctor, voices, service, webapp, geoip, last
+├── cli.py          команды: run, init, doctor, voices, service, webapp, geoip, offer, last
 ├── config.py       config.toml + токен; каталоги (GAS_PULT_CONFIG_DIR / GAS_PULT_DATA_DIR)
 ├── bot.py          Pult: опрос Telegram, обработчики, монитор окон
 ├── telegram.py     клиент Bot API на urllib (multipart, скачивание, маскирование токена)
@@ -12,6 +12,8 @@ src/gas_pult/
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение
 ├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, «да» из HANDOFF.md
 ├── modules.py      модули-агенты: каталог templates/modules (module.toml), пространство из модуля, расписание
+├── offers.py       предложения бизнесу: /offer/<код>, демо-данные, сценарий Telegram, защита (docs/OFFERS.md)
+├── offer_report.py «Загрузите выгрузку — отчёт за 2 минуты»: CSV/XLSX → сводка без модели, в памяти
 ├── setup.py        мастер без Claude: status() (установлен, вход, ключи), вход claude auth login в окне tmux
 ├── country.py      страна человека: выбор, код номера (хеш с солью), GeoIP по локальной базе db-ip lite
 ├── usage.py        расход: токены и USD по журналам (прайс API Anthropic), пулы по учёткам, лимиты и пауза
