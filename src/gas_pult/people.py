@@ -24,6 +24,10 @@ ip_at, mismatch}``; у владельцев (и у тех, кого нет в pe
 Короткий тур по панели (``index.html``, docs/MINI_APP.md#тур): у человека из people.json — поле ``tour: {business,
 dev, at}`` (``"done"`` — проходил, ``"dismissed"`` — «Не сейчас», ``null`` — ещё нет); у владельцев — в
 ``<data>/tours.json`` (0600) тем же видом. Это его настройка: менять может и наблюдатель.
+
+Почта (``emailcode.py``): у человека из people.json — поле ``email: {address, at, second_factor, notify}``; у владельцев
+— рядом, в ``<data>/emails.json`` (0600), тем же видом. Адрес подтверждён кодом; по нему можно войти, пока у человека
+есть роль.
 """
 
 from __future__ import annotations
@@ -50,6 +54,7 @@ class People:
         self.store, self.owners, self.lock = store, list(owners), threading.Lock()
         self.terms_store = store.with_name("terms.json")      # согласие владельцев и тех, кого нет в people.json
         self.country_store = store.with_name("countries.json")   # их же страна (признаки — country.py)
+        self.email_store = store.with_name("emails.json")         # их же почта (emailcode.py)
         self.tour_store = store.with_name("tours.json")          # их же отметки тура
 
     def _load(self) -> dict:
@@ -93,7 +98,7 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            for k in ("terms", "country", "tour"):                 # смена роли не сбрасывает согласие, страну, тур
+            for k in ("terms", "country", "email", "tour"):        # смена роли их не сбрасывает
                 if old.get(k):
                     rec[k] = old[k]
             d[str(int(uid))] = rec
@@ -105,7 +110,7 @@ class People:
             d = self._load()
             if d.pop(str(int(uid)), None) is not None:
                 self._save(d)
-            for f in (self.terms_store, self.country_store, self.tour_store):
+            for f in (self.terms_store, self.country_store, self.email_store, self.tour_store):
                 t = self._load_side(f)
                 if t.pop(str(int(uid)), None) is not None:
                     write_private(f, json.dumps(t))
@@ -195,11 +200,63 @@ class People:
                 side[str(uid)] = rec
                 write_private(self.tour_store, json.dumps(side))
         return rec
+    def email(self, uid) -> dict:
+        """Почта человека: {address, at, second_factor, notify} или пустая запись."""
+        try:
+            uid = int(uid)
+        except (TypeError, ValueError):
+            return {}
+        p = None if uid in self.owners else self._load().get(str(uid))
+        rec = (p or {}).get("email") if p else self._load_side(self.email_store).get(str(uid))
+        return dict(rec) if isinstance(rec, dict) else {}
+
+    def set_email(self, uid: int, **fields):
+        """Обновить почту человека; ``address=None`` — отвязать (вместе с настройками). Только тем, у кого есть роль."""
+        uid = int(uid)
+        if not self.role(uid):
+            raise ValueError("у этого человека нет доступа к пульту")
+        with self.lock:
+            d = self._load()
+            mine = uid not in self.owners and str(uid) in d
+            side = {} if mine else self._load_side(self.email_store)
+            old = dict((d[str(uid)].get("email") if mine else side.get(str(uid))) or {})
+            if "address" in fields and fields["address"] is None:
+                rec = None
+            else:
+                if fields.get("address") and fields["address"] != old.get("address"):
+                    old = {}                                        # новый адрес — настройки с нуля
+                rec = {**old, **{k: v for k, v in fields.items() if k in ("address", "at", "second_factor", "notify")}}
+            if mine:
+                if rec is None:
+                    d[str(uid)].pop("email", None)
+                else:
+                    d[str(uid)]["email"] = rec
+                self._save(d)
+            else:
+                if rec is None:
+                    side.pop(str(uid), None)
+                else:
+                    side[str(uid)] = rec
+                write_private(self.email_store, json.dumps(side))
+
+    def by_email(self, addr: str) -> int | None:
+        """Кому из людей с ролью принадлежит адрес (в нижнем регистре) — или None."""
+        if not addr:
+            return None
+        side = self._load_side(self.email_store)
+        for o in self.owners:
+            if (side.get(str(o)) or {}).get("address") == addr:
+                return o
+        for k, v in self._load().items():
+            if v.get("role") in ROLES and (v.get("email") or {}).get("address") == addr:
+                return int(k)
+        return None
 
     def list(self) -> list[dict]:
-        t, c = self._load_terms(), self._load_side(self.country_store)
+        t, c, m = self._load_terms(), self._load_side(self.country_store), self._load_side(self.email_store)
         out = [{"id": o, "role": "owner", "name": "", "username": "", **({"terms": t[str(o)]} if str(o) in t else {}),
-                **({"country": c[str(o)]} if str(o) in c else {})} for o in self.owners]
+                **({"country": c[str(o)]} if str(o) in c else {}),
+                **({"email": m[str(o)]} if str(o) in m else {})} for o in self.owners]
         out += [{"id": int(k), **v} for k, v in self._load().items()]
         return out
 

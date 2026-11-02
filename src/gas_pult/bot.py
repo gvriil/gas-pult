@@ -33,6 +33,7 @@ from gas_pult import (
     activity,
     country,
     digest,
+    emailcode,
     fallback,
     models,
     modules,
@@ -158,6 +159,7 @@ class Pult:
         self.home = os.path.expanduser("~")
         self.people = People(cfg.data / "people.json", cfg.owners)
         self.logins = TgLogins(cfg.data / "tg_logins.json")
+        self.mail = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # письма-оповещения
         self.requests: dict[int, dict] = {}                # кто просит доступ: Telegram ID → имя, @username
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
@@ -842,6 +844,9 @@ class Pult:
                 self.set_state(cost_paused=paused)
         self.broadcast(usage.question(p), reply_markup=kb([[("▶️ Продолжить, +лимит", f"cost:go:{p['w']}"),
                                                             ("⏹ Остановить", f"cost:stop:{p['w']}")]]))
+        for uid in self.cfg.owners:                         # и письмом — тем владельцам, кто включил оповещения
+            emailcode.notify_email(self.mail, uid, "Сессия на паузе по расходу",
+                                   usage.question(p).removeprefix("💰 ") + "\nРешить — в боте или в панели.")
 
     def cost_decide(self, wid: str, act: str) -> str:
         """Решение владельца (кнопка в боте или в панели) → state.json. «Продолжить» — окна, где ход прервали Esc,
