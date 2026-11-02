@@ -1,6 +1,7 @@
 """Модули-агенты: формат module.toml, общие блоки, создание пространства, расписание, панель и /modules в боте."""
 
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -282,3 +283,52 @@ def test_bot_schedule_sends_prompt_or_opens_window(pult, tmp_path, monkeypatch):
     p.module_tick(datetime(2026, 11, 3, 8, 0))
     assert opened == [("morning-numbers-0800", str(folder))] and p.later[-1][0] == "@8"
     assert "открыл сессию по расписанию" in p.sent[-1][0]
+
+
+# ---------- «Новая папка»: в боте (🆕 → 📁) и в панели («Новая сессия» → «Новая папка») ----------
+INDEX = (Path(__file__).parent.parent / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
+
+
+def test_panel_new_session_sheet_has_new_folder():
+    sheet = INDEX[INDEX.index("function newSession("):]
+    sheet = sheet[:sheet.index("\n}\n")]
+    assert 'label: "Новая папка"' in sheet and "newFolder(" in sheet
+    assert 'label: "Из модуля"' in sheet                                   # и модули на месте
+    assert re.search(r'api\("/api/folder"', INDEX)
+
+
+def test_panel_new_folder_api(server, tmp_path):
+    panel, base = server
+    owner, member, viewer = (panel.auth.issue(u) for u in (1, 2, 3))
+    assert call(base, "/api/folder", {"name": "shop-bot"}, viewer)[0] == 403        # наблюдателю — нет
+    code, d = call(base, "/api/folder", {"name": "Shop-Bot"}, owner)
+    assert code == 200 and d == {"id": "@9", "path": "shop-bot", "folder": "shop-bot"}
+    assert (tmp_path / "projects" / "shop-bot").is_dir()
+    assert panel.opened[-1][1] == str(tmp_path / "projects" / "shop-bot")
+    code, d = call(base, "/api/folder", {"name": "shop-bot"}, member)
+    assert code == 400 and "уже есть" in d["error"]
+    code, d = call(base, "/api/folder", {"name": "../evil"}, member)
+    assert code == 400 and "латиница" in d["error"] and not (tmp_path / "evil").exists()
+    code, d = call(base, "/api/folder", {"name": "member-proj"}, member)
+    assert code == 200 and panel.opened[-1][2]["by"] == "2"                      # окно участника — его папкой Claude
+
+
+def test_panel_new_folder_checks_before_mkdir(panel, monkeypatch, tmp_path):
+    monkeypatch.setattr(webapp.setup, "installed", lambda claude="claude": None)
+    with pytest.raises(ValueError, match="не установлен"):
+        panel.new_folder("empty", uid=1)
+    assert not (tmp_path / "projects" / "empty").exists()                       # пустых папок не оставляем
+
+
+def test_bot_new_menu_has_new_folder(pult, tmp_path):
+    p = pult
+    p.projects = lambda: []
+    p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "🆕 Новая"})
+    rows = p.sent[-1][1]["reply_markup"]["inline_keyboard"]
+    assert rows[0][0]["text"].startswith("📁 Новая папка") and "mk:" in buttons(p.sent[-1][1])
+    cb(p, "mk:")
+    p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "shop-bot"})
+    assert (tmp_path / "projects" / "shop-bot").is_dir() and p.opened[-1][1] == str(tmp_path / "projects" / "shop-bot")
+    cb(p, "mk:")
+    p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "shop-bot"})
+    assert "уже есть" in p.sent[-1][0]
