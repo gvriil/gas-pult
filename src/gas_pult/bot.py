@@ -776,7 +776,8 @@ class Pult:
         if not ms:
             return self.send(chat, "Модулей нет.")
         lines = ["🧩 Модули — готовые агенты под задачу. Выберите, чтобы посмотреть и создать пространство:"]
-        lines += [f"• {m['title']} ({m['industry']}) — {m['about']}" for m in ms]
+        for g in dict.fromkeys(m["industry"] for m in ms):          # группы — по отрасли, в порядке каталога
+            lines += ["", f"▪️ {g}"] + [f"• {m['title']} — {m['about']}" for m in ms if m["industry"] == g]
         self.send(chat, "\n".join(lines), reply_markup=kb([[(m["title"], f"md:v:{m['id']}")] for m in ms]))
 
     def module_text(self, m: dict) -> str:
@@ -786,7 +787,8 @@ class Pult:
             out += [f"• {x['title']}{' — по желанию' if x['optional'] else ''}: {x['why']}" for x in m["integrations"]]
         if m["schedule"]:
             out += ["", "Расписание:"]
-            out += [f"• {x['at']} {modules.days_text(x['days'])} — {x['title']}" for x in m["schedule"]]
+            out += [f"• {x.get('when') or x['at']} {modules.days_text(x['days'])} — {x['title']}"
+                    for x in m["schedule"]]
         if m["decisions"]:
             out += ["", "Решения кнопками:"]
             out += [f"• {x['question']} ({' / '.join(x['options'])})" for x in m["decisions"]]
@@ -863,7 +865,8 @@ class Pult:
                 self.send_later(wid, item["prompt"])
                 self.broadcast(f"🗓 {name}: открыл сессию по расписанию ({item['title']}).")
             except (NotReady, Denied) as e:
-                self.broadcast(f"🗓 {name}: {item['at']} — задание не отправлено: {e}")
+                if not item.get("every"):                # «каждые N минут» — следующий круг скоро: не дёргаем
+                    self.broadcast(f"🗓 {name}: {item['at']} — задание не отправлено: {e}")
             except (RuntimeError, OSError) as e:
                 self.broadcast(f"🗓 {name}: {item['at']} — не вышло: {e}")
 
