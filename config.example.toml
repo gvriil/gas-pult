@@ -69,3 +69,10 @@ personal_voices = false
 # name = "gas-pult"            # имя отправителя
 # host = "smtp.example.com"    # другой поставщик: свой сервер (SSL) вместо provider
 # port = 465
+
+# Вход по ключу — Face ID, отпечаток, PIN (docs/AUTH.md). Нужен пакет: pip install "gas-pult[passkeys]".
+# Нет секции или пакета — функция выключена. Секция — в конце файла, после [email].
+# [passkeys]
+# rp_id = "pult.example.com"                  # домен панели, без схемы и порта
+# origin = "https://pult.example.com:8443"    # адрес панели в браузере целиком (с портом, если не 443)
+# rp_name = "gas-pult"

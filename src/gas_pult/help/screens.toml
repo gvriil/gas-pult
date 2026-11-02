@@ -265,7 +265,7 @@ roles = ["anon"]
 purpose = "Вход в панель без пароля — подтверждением в вашем Telegram."
 steps = ["Нажмите «Войти через Telegram».", "В Telegram нажмите «Запустить» (Start), затем «Войти».", "Вернитесь сюда — панель откроется сама."]
 next = ["go:login", "go:demo"]
-chips = ["noaccess", "demo", "email"]
+chips = ["noaccess", "demo", "email", "passkey"]
 
 [[screen.faq]]
 id = "noaccess"
@@ -278,6 +278,12 @@ id = "demo"
 q = "Можно посмотреть без входа?"
 a = "Да: «Посмотреть демо» — та же панель на примерах, всё можно нажимать, ничего никуда не уходит."
 actions = ["go:demo"]
+
+[[screen.faq]]
+id = "passkey"
+q = "Можно войти по Face ID?"
+a = "Да, если владелец включил ключи входа на пульте: войдите один раз через Telegram, добавьте ключ в «Настройках» → «Ключи входа» (в браузере, не в Telegram), потом — «Войти с Face ID / ключом»."
+actions = ["go:login"]
 
 [[screen.faq]]
 id = "email"
@@ -649,6 +655,15 @@ roles = ["owner"]
 purpose = "Лимит на одну сессию и на день по вашей учётке, в долларах."
 steps = ["Пусто или 0 — без лимита.", "«Сохранить» — сразу сверяем с расходом."]
 next = ["go:settings.cost"]
+
+[[screen]]
+id = "settings.keys"
+where = "panel"
+title = "Ключи входа"
+roles = ["owner", "member", "viewer"]
+purpose = "Вход в панель без Telegram: Face ID, отпечаток или PIN устройства (passkey)."
+steps = ["Откройте панель в браузере (в Telegram ключи не работают).", "«Добавить ключ этого устройства» — подтвердите Face ID или отпечатком.", "На экране входа — «Войти с Face ID / ключом». Ненужный ключ — нажмите, чтобы удалить."]
+next = ["go:settings"]
 
 [[screen]]
 id = "settings.email"

@@ -43,6 +43,7 @@ def data_dir() -> Path:
 # Секции-таблицы config.toml и их допустимые ключи (лишний ключ — ошибка, как и на верхнем уровне).
 SECTIONS = {
     "email": {"provider", "host", "port", "user", "from", "name", "password", "timeout"},
+    "passkeys": {"rp_id", "origin", "rp_name"},
 }
 
 
@@ -78,6 +79,7 @@ class Config:
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
     email: dict = field(default_factory=dict)               # [email]: SMTP входа по коду (emailcode.py); {} — выкл.
+    passkeys: dict = field(default_factory=dict)            # [passkeys]: rp_id и origin (passkeys.py); {} — выкл.
 
     @property
     def data(self) -> Path:
