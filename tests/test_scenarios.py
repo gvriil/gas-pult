@@ -36,7 +36,7 @@ def page(name: str) -> str:
 def test_builtin_scenarios_load():
     errors = []
     cat = scenarios.catalog(errors)
-    assert errors == [] and ROLES <= {s["id"] for s in cat}
+    assert errors == [] and {s["id"] for s in cat} >= ROLES
     for s in cat:
         assert 3 <= len(s["moments"]) <= 5 and s["who"] and s["without"] and s["needs"] and s["first_step"]
 
@@ -202,7 +202,8 @@ def test_js_matches_python():
     data = [{"r": scenarios.public(scenarios.get(rid)), "v": v} for rid, v in CASES]
     script = js_block(page("index.html")) + "\nconst D = " + json.dumps(data, ensure_ascii=False) + ";\n" + \
         "console.log(JSON.stringify(D.map((x) => benefitCalc(x.r, x.v))));"
-    out = json.loads(subprocess.run([node, "-e", script], capture_output=True, text=True, check=True, timeout=30).stdout)
+    run = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True, timeout=30)
+    out = json.loads(run.stdout)
     for (rid, v), js in zip(CASES, out, strict=True):
         py = scenarios.benefit(rid, v)
         assert js["inputs"] == pytest.approx(py["inputs"])
@@ -281,7 +282,7 @@ def test_api_scenarios_rights(server):
     assert call(base, "/api/scenarios")[0] == 401                                  # без входа — нет
     for tok in (owner, member, viewer):                                            # смотреть может и наблюдатель
         code, d = call(base, "/api/scenarios", tok)
-        assert code == 200 and ROLES <= {s["id"] for s in d["scenarios"]} and d["errors"] == []
+        assert code == 200 and {s["id"] for s in d["scenarios"]} >= ROLES and d["errors"] == []
     assert call(base, "/api/scenarios", viewer, {})[0] in (403, 404)               # POST — нет такого действия
 
 
