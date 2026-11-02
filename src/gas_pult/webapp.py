@@ -636,8 +636,9 @@ class Panel:
         key = providers.load_keys().get("openrouter")
         return {"key": False} if not key else {"key": True, **self.openrouter.info(key)}
 
-    def set_models(self, profile: str, main: str, fast: str):
-        self.pult.set_state(model_profiles=models.set_models(self.pult.state(), profile, main, fast))
+    def set_models(self, profile: str, main: str, fast: str, base_url: str | None = None):
+        """``base_url`` — адрес шлюза клиента (GigaChat, YandexGPT); ``None`` — не менять."""
+        self.pult.set_state(model_profiles=models.set_models(self.pult.state(), profile, main, fast, base_url))
 
     def set_providers(self, b: dict):
         el = "elevenlabs" in providers.key_info()
@@ -1193,7 +1194,9 @@ def handler(panel: Panel):
                 return {"result": panel.pult.cost_decide(str(b.get("w", "")), str(b.get("act", ""))),
                         **panel.cost_limits()}
             if path == "/api/models":
-                panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")))
+                url = b.get("base_url")
+                panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")),
+                                 None if url is None else str(url))
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
