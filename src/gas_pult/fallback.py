@@ -142,12 +142,15 @@ def where(countries) -> str:
     return ", ".join(cs) if cs else "—"
 
 
-def reason(profile: str, countries, keys: dict) -> str:
-    """Почему профиль не годится в запасные: «» — годится. ``countries`` — страна или набор стран."""
+def reason(profile: str, countries, keys: dict, state: dict | None = None) -> str:
+    """Почему профиль не годится в запасные: «» — годится. ``countries`` — страна или набор стран; ``state`` — для
+    адреса шлюза (GigaChat, YandexGPT): без адреса не годится."""
     if not models.allowed(profile, countries):
         return f"не для страны {where(countries)}"
     if not models.has_key(profile, keys):
         return "нет ключа"
+    if state is not None and not models.has_gateway(profile, state):
+        return "нет адреса шлюза"
     return ""
 
 
@@ -177,7 +180,7 @@ def public(state: dict, region: str, keys: dict | None = None, countries=None) -
     cs = region if countries is None else countries
     return {"chain": list(chain_of(state)), "region": (region or "").upper(),
             "countries": sorted(models.countries_of(cs)),
-            "options": [{"id": p["id"], "title": p["title"], "why": reason(p["id"], cs, keys),
+            "options": [{"id": p["id"], "title": p["title"], "why": reason(p["id"], cs, keys, state),
                          "denied": not models.allowed(p["id"], cs)} for p in models.PROFILES],
             "log": list(state.get("fallback_log") or [])[-10:], "voice": VOICE}
 
@@ -255,10 +258,10 @@ class Switcher:
         st, keys = self.state(), self.keys()
         chain = chain_of(st)
         head = f"Поставщик {name(failed)} не отвечает ({why(kind, code)})"
-        nxt = next_ok(chain, failed, lambda p: not reason(p, region, keys), mem["tried"])
+        nxt = next_ok(chain, failed, lambda p: not reason(p, region, keys, st), mem["tried"])
         if not nxt:
             skipped = [f"{name(p)} — {r}" for p in chain.after(failed) if p not in mem["tried"]
-                       and (r := reason(p, region, keys))]
+                       and (r := reason(p, region, keys, st))]
             line = f"{head} — запасных нет" + (f" ({'; '.join(skipped)})" if skipped else "") + \
                    f", сессия «{w['name']}» ждёт"
             return self.tell(w, line, failed, "", kind, code)

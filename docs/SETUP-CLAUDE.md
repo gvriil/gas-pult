@@ -78,7 +78,7 @@ systemctl --user daemon-reload && systemctl --user restart gas-pult
 Ключ из [console.anthropic.com](https://console.anthropic.com/settings/keys) — тем же способом, что токен в
 варианте 2, только переменная `ANTHROPIC_API_KEY`. Или войти в Console прямо в окне: `claude auth login --console`.
 
-## 4. Сторонний поставщик моделей (OpenRouter, GLM, DeepSeek)
+## 4. Сторонний поставщик моделей (OpenRouter, GLM, DeepSeek, GigaChat, YandexGPT)
 
 Сессия может работать не на Anthropic, а у поставщика с Anthropic-совместимым API (`src/gas_pult/models.py`).
 Claude Code при этом всё равно нужен (вариант 0), а вход в аккаунт Claude — нет:
@@ -88,6 +88,10 @@ Claude Code при этом всё равно нужен (вариант 0), а 
 
 Ключ хранится в `~/.config/gas-pult/secrets.json` (0600), сессия запускается с `claude --settings …/profiles/<id>.json`.
 Коннекторы claude.ai в таких сессиях не работают.
+
+GigaChat и YandexGPT — только для России и только **через ваш шлюз**, совместимый с Anthropic (gpt2giga, LiteLLM):
+в панели задаётся адрес шлюза и ключ шлюза. Как поднять шлюз и что на этих моделях работает —
+[`docs/RU-MODELS.md`](RU-MODELS.md).
 
 **Регион.** Поставщик допускается только для стран из его списка поддерживаемых. Сервер пульта и его выход в интернет — в поддерживаемой стране. Российские каналы (MAX, VK) — только с поставщиком, разрешённым для России, не Claude: Россия не входит в список стран Anthropic. У каждого человека — свой аккаунт или ключ; одна подписка Claude не делится и не перепродаётся. Подробно — `docs/COMPLIANCE.md`.
 
