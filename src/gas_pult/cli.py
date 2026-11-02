@@ -108,8 +108,9 @@ def cmd_doctor(_):
 def cmd_voices(a):
     if a.action == "list" or not a.names:
         have = set(catalog.installed(personal=True))
-        for group, names in (("Piper (быстрые, gas-pult[voice])", catalog.PIPER),
-                             ("Silero v5 (естественнее, gas-pult[silero]) — CC BY-NC-SA: только некоммерческое "
+        for group, names in (("Piper (gas-pult[voice]) — запасной синтез: в выборе не показывается, читает, когда "
+                              "других голосов нет", catalog.PIPER),
+                             ("Silero v5 (естественнее, gas-pult[silero]) — демо, CC BY-NC-SA: только некоммерческое "
                               "использование, видит лишь владелец при personal_voices = true", catalog.SILERO)):
             print(group)
             for n, lbl in names.items():

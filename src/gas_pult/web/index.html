@@ -232,6 +232,7 @@
   .vcard .vpick b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vcard .vpick small { display: block; color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); line-height: 1.3; }
   .vcard.off .vpick b { color: var(--text-muted); font-weight: 500; }
+  .vfb { margin-top: 8px; }
   .vcard .vpick .i, .sheet .vcard .vpick .i { color: var(--accent-primary); }
   .vcard .vplay { width: 40px; height: 40px; min-height: 0; flex: none; padding: 0; border: 0; border-radius: 50%; background: var(--bg-subtle); color: var(--text-primary);
                   display: grid; place-items: center; }
@@ -349,6 +350,15 @@
   .recbar button { border: 0; border-radius: var(--radius-pill); height: 36px; padding: 0 12px; font-size: calc(13px * var(--fz, 1)); font-weight: 600; flex: none; display: grid; place-items: center; }
   .recbar .ok { background: var(--accent-primary); color: var(--on-accent); width: 36px; padding: 0; } .recbar .no { background: var(--bg-subtle); width: 36px; padding: 0; }
   .recbar .txt { background: var(--bg-subtle); color: var(--text-primary); display: inline-flex; align-items: center; gap: 5px; padding: 0 11px 0 9px; }
+  /* Распознавание и ошибка — в той же строке, пока сервер не ответит или пока не нажмут */
+  .recbar.stt { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .recbar.stt .t { color: var(--text-secondary); }
+  .recbar .spin { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--accent-primary); border-right-color: transparent; animation: spin .8s linear infinite; }
+  .recbar .msg { flex: 1; min-width: 0; font-size: calc(14px * var(--fz, 1)); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recbar.err { height: auto; min-height: 44px; border-color: var(--status-danger); }
+  .recbar.err > .i { color: var(--status-danger); flex: none; }
+  .recbar.err .msg { white-space: normal; line-height: 1.3; padding: 4px 0; }
+  .recbar canvas { cursor: pointer; }
 
   /* ===== Команды из ответа ===== */
   .cmd { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px; margin: 8px 0; background: var(--bg-surface); }
@@ -585,7 +595,7 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
-  play: '<path d="M8 5.5v13l10.5-6.5z"/>', pause: '<path d="M9 5.5v13M15 5.5v13"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>', stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>', pause: '<path d="M9 5.5v13M15 5.5v13"/>',
   chev: '<path d="M7 10l5 5 5-5"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   bulb: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.4 10.9c.6.4.9 1 .9 1.7V16h5v-.4c0-.7.3-1.3.9-1.7A6 6 0 0 0 12 3z"/>',
@@ -755,15 +765,15 @@ function toast(text, ms = 2600) {
 }
 
 // ---------- сеть ----------
-async function api(path, body, raw, extra) {
+async function api(path, body, raw, extra, signal) {
   if (DEMO && params.has("offline") && start.done) throw Object.assign(new Error("нет сети"), { net: true });
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
   const headers = { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
   let r;
-  try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined }); }
-  catch (e) { throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
+  try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined, signal }); }
+  catch (e) { if (signal?.aborted) throw e; throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
@@ -861,7 +871,7 @@ function back() {
 const BARS_HIDE = 30, BARS_SHOW = 10, EDGE_TOP = 8, EDGE_END = 24;
 function barsLocked() {
   return document.documentElement.classList.contains("kb") || document.activeElement === $("input") || !!$("input").value.trim()
-    || files.length > 0 || !!rec || !$("menu").hidden || !$("keys").hidden || $("ask").childElementCount > 0;
+    || files.length > 0 || !!rec || !!micBar || !$("menu").hidden || !$("keys").hidden || $("ask").childElementCount > 0;
 }
 function setBars(show) {
   if (!show && barsLocked()) show = true;
@@ -1908,22 +1918,56 @@ $("input").addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { const t = $("input"); t.setRangeText("\n", t.selectionStart, t.selectionEnd, "end"); grow(); return; }
   sendText();
 });
+// ---------- микрофон: запись → «Распознаю…» → текст в поле ----------
+// Поток микрофона держим, пока панель открыта: разрешение не спрашивается перед каждой записью. Между записями
+// дорожки выключены (track.enabled = false); через 2 минуты простоя или когда панель скрыта — поток освобождается
+// полностью. Между перезапусками Mini App разрешение помнит сам Telegram/система — на это панель не влияет.
+const MIC_IDLE = 120000, STT_TIMEOUT = DEMO && params.get("stt") === "slow" ? 5000 : 90000;   // ?demo&stt=slow — таймаут за 5 с
+let micStream = null, micIdle = 0, micBar = null;      // micBar — строка записи/распознавания вместо поля ввода
+function micRelease() {
+  clearTimeout(micIdle); micIdle = 0;
+  if (micStream && !rec) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+}
+async function micGet() {
+  clearTimeout(micIdle);
+  if (micStream?.getAudioTracks().some((t) => t.readyState === "live")) { micStream.getTracks().forEach((t) => (t.enabled = true)); return micStream; }
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  return micStream;
+}
+function micPark() {                                // запись закончилась — дорожки выключены, поток ждёт следующей
+  if (!micStream) return;
+  if (document.hidden) return micRelease();
+  micStream.getTracks().forEach((t) => (t.enabled = false));
+  clearTimeout(micIdle); micIdle = setTimeout(micRelease, MIC_IDLE);
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden && !rec) micRelease(); });
+function micBarOpen() {                             // поле и кнопки прячем: пока идёт запись или распознавание, ввода нет
+  if (!micBar) { micBar = document.createElement("div"); for (const id of ["input", "ctools"]) $(id).hidden = true; $("input").after(micBar); }
+  return micBar;
+}
+function micBarClose() {
+  if (!micBar) return;
+  micBar.remove(); micBar = null;
+  for (const id of ["input", "ctools"]) $(id).hidden = false; sync(); padDock();
+}
 async function toggleMic() {
-  if (rec) return rec.stop();
+  if (rec) return rec.stop();                       // нажатие во время записи — как «Стоп»: текст в поле
+  if (micBar) return;                               // идёт распознавание — ждём ответа
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
     return toast("Этот Telegram не даёт панели микрофон — диктуйте кнопкой микрофона на клавиатуре", 5000);
   let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  try { stream = await micGet(); }
   catch (e) { return toast("Нет доступа к микрофону: " + e.message, 5000); }
   const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
   const chunks = []; let cancelled = false, sendNow = false, raf = 0;
   rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
   setBars(true);                                     // идёт запись — панель с записью не прячем
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  const bar = document.createElement("div"); bar.className = "recbar";
-  bar.innerHTML = `<span class="dotrec"></span><canvas></canvas><span class="t">0:00</span><button class="no" aria-label="Отменить запись">${ic("x", "s16")}</button><button class="txt" aria-label="Вставить текст в поле, чтобы проверить">${ic("pen", "s16")}В текст</button><button class="ok" aria-label="Распознать и отправить сразу">${ic("send", "s16")}</button>`;
-  for (const id of ["input", "ctools"]) $(id).hidden = true;
-  $("input").after(bar);
+  const bar = micBarOpen(); bar.className = "recbar";
+  bar.innerHTML = `<span class="dotrec"></span><canvas title="Остановить и вставить текст"></canvas><span class="t">0:00</span>
+    <button class="no" aria-label="Отменить запись" title="Отменить">${ic("x", "s16")}</button>
+    <button class="txt" aria-label="Стоп: распознать и вставить текст в поле" title="Остановить запись, текст — в поле">${ic("stop", "s16")}Стоп</button>
+    <button class="ok" aria-label="Стоп и отправить сразу" title="Остановить и отправить сразу">${ic("send", "s16")}</button>`;
   const cv = bar.querySelector("canvas"), g = cv.getContext("2d"), t0 = Date.now();
   const ac = new (window.AudioContext || window.webkitAudioContext)(), an = ac.createAnalyser();
   an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an);
@@ -1934,27 +1978,59 @@ async function toggleMic() {
     let peak = 0; for (const v of lv) peak = Math.max(peak, Math.abs(v - 128));
     levels.push(Math.min(1, peak / 64)); const w = cv.width = cv.clientWidth * 2, h = cv.height = 56, n = Math.floor(w / 8);
     g.fillStyle = color; levels.slice(-n).forEach((v, i) => { const bh = Math.max(4, v * h); g.fillRect(i * 8, (h - bh) / 2, 5, bh); });
-    const sec = Math.floor((Date.now() - t0) / 1000); bar.querySelector(".t").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+    bar.querySelector(".t").textContent = mmss((Date.now() - t0) / 1000);
     raf = requestAnimationFrame(draw);
   })();
-  const finish = () => { cancelAnimationFrame(raf); ac.close(); stream.getTracks().forEach((t) => t.stop()); bar.remove();
-    for (const id of ["input", "ctools"]) $(id).hidden = false; rec = null; sync(); padDock(); };
   bar.querySelector(".no").onclick = () => { cancelled = true; rec.stop(); };
-  bar.querySelector(".txt").onclick = () => rec.stop();
+  bar.querySelector(".txt").onclick = cv.onclick = () => rec.stop();
   bar.querySelector(".ok").onclick = () => { sendNow = true; rec.stop(); };
-  rec.onstop = async () => {
-    finish();
-    if (cancelled) return toast("Запись отменена");
+  rec.onstop = () => {
+    cancelAnimationFrame(raf); ac.close(); rec = null; micPark();
+    if (cancelled) { micBarClose(); return toast("Запись отменена"); }
     const blob = new Blob(chunks, { type: (type || "audio/webm").split(";")[0] });
-    toast("Распознаю…", 8000);
-    try {
-      const d = await api("/api/stt", blob, blob.type); if (d.fallback) toast("ElevenLabs не ответил — распознал локально", 3500);
-      $("input").value = ($("input").value + " " + d.text).trim(); grow();
-      if (sendNow) return sendText();
-      $("input").focus(); toast("Проверьте текст и отправьте", 3500);
-    } catch (e) { toast("Не распознал: " + e.message, 4500); }
+    if (!blob.size) return sttFail("Запись пустая — проверьте микрофон и попробуйте ещё раз", null);
+    sttRun(blob, sendNow);
   };
   rec.start(); haptic("impactOccurred", "medium"); padDock();
+}
+// Распознавание: строка остаётся на месте с «Распознаю…» и секундами, пока сервер не ответит (до 90 с).
+async function sttRun(blob, sendNow) {
+  const bar = micBarOpen(), ctl = new AbortController(), t0 = Date.now();
+  bar.className = "recbar stt";
+  bar.innerHTML = `<span class="spin"></span><span class="msg" role="status">Распознаю…</span><span class="t">0:00</span>
+    <button class="no" aria-label="Отменить распознавание" title="Отменить">${ic("x", "s16")}</button>`;
+  const tick = setInterval(() => {
+    const ms = Date.now() - t0; bar.querySelector(".t").textContent = mmss(ms / 1000);
+    if (ms > 15000) bar.querySelector(".msg").textContent = "Распознаю… ещё немного";
+  }, 500);
+  const timer = setTimeout(() => ctl.abort("timeout"), STT_TIMEOUT);
+  let gone = false;
+  bar.querySelector(".no").onclick = () => { gone = true; ctl.abort("cancel"); };
+  try {
+    const stop = new Promise((_, no) => ctl.signal.addEventListener("abort", () => no(new Error("прервано"))));
+    const d = await Promise.race([api("/api/stt", blob, blob.type, null, ctl.signal), stop]);
+    const text = (d.text || "").trim();
+    if (!text) throw Object.assign(new Error("Ничего не расслышал — попробуйте ещё раз"), { empty: true });
+    micBarClose();
+    if (d.fallback) toast("ElevenLabs не ответил — распознал локально", 3500);
+    $("input").value = ($("input").value + " " + text).trim(); grow();
+    if (sendNow) return sendText();
+    $("input").focus(); toast("Проверьте текст и отправьте", 3500);
+  } catch (e) {
+    if (gone) { micBarClose(); return toast("Распознавание отменено"); }
+    if (ctl.signal.aborted) return sttFail("Сервер не распознал за " + STT_TIMEOUT / 1000 + " секунд — попробуйте ещё раз или наберите текстом", blob, sendNow);
+    if (e.empty || /расслышал/.test(e.message)) return sttFail("Ничего не расслышал — попробуйте ещё раз", null);
+    sttFail("Не распознал: " + e.message, blob, sendNow);
+  } finally { clearInterval(tick); clearTimeout(timer); }
+}
+// Ошибка — в той же строке, пока не нажмут: «Повторить» (та же запись) или «Записать снова»; ✕ — вернуть поле.
+function sttFail(text, blob, sendNow) {
+  const bar = micBarOpen(); bar.className = "recbar err"; haptic("notificationOccurred", "error");
+  bar.innerHTML = `${ic("warn", "s16")}<span class="msg" role="alert">${esc(text)}</span>
+    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>
+    <button class="no" aria-label="Закрыть" title="Закрыть">${ic("x", "s16")}</button>`;
+  bar.querySelector(".no").onclick = micBarClose;
+  bar.querySelector(".again").onclick = () => { if (blob) return sttRun(blob, sendNow); micBarClose(); toggleMic(); };
 }
 function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; sync(); padDock(); }
 $("send").onclick = sendText; $("mic").onclick = toggleMic; $("input").oninput = grow;
@@ -2148,13 +2224,15 @@ let vcards = null, vPlaying = null, vWait = null;   // /api/voice/cards: { cards
 const vAudio = new Audio();                         // «Послушать» — свой плеер: озвучку ответа не трогает
 function voiceGrid() {
   if (!vcards) return '<div class="empty">Загружаю голоса…</div>';
-  if (!vcards.cards.length) return '<div class="empty">Голоса не установлены: gas-pult voices install irina</div>';
+  // Голос без карточки (Piper — выбран раньше или запасной) продолжает читать: пишем об этом строкой под карточками.
+  const fb = vcards.fallback ? `<div class="hint vfb">Сейчас ответы читает запасной голос сервера — ${esc(vcards.fallback)}.${vcards.can_choose && vcards.cards.some((c) => c.ok) ? " Выберите голос выше." : ""}</div>` : "";
+  if (!vcards.cards.length) return fb || '<div class="empty">Голоса не установлены: gas-pult voices install irina</div>';
   return `<div class="vgrid">${vcards.cards.map((c) => {
-    const on = c.ok && c.id === vcards.current, sub = c.ok ? c.kind : c.why + (c.install ? " · нажмите — команда" : "");
+    const on = c.ok && c.id === vcards.current, sub = (c.ok ? c.kind : c.why + (c.install ? " · нажмите — команда" : "")) + (c.demo ? " · демо" : "");
     return `<div class="vcard ${on ? "on" : ""} ${c.ok ? "" : "off"}">
       <button class="vpick" data-vpick="${esc(c.id)}" aria-pressed="${on}"><span><b>${esc(c.name)}</b><small>${esc(sub)}</small></span>${on ? ic("check") : ""}</button>
       ${c.ok ? `<button class="vplay ${vWait === c.id ? "wait" : ""}" data-vplay="${esc(c.id)}" aria-label="Послушать: ${esc(c.name)}">${ic(vPlaying === c.id && vWait !== c.id ? "pause" : "play", "s16")}</button>` : ""}
-    </div>`; }).join("")}</div>`;
+    </div>`; }).join("")}</div>${fb}`;
 }
 function paintVoiceGrids() { document.querySelectorAll("[data-vgrid]").forEach((el) => { el.innerHTML = voiceGrid(); }); }
 function stopPreview() { vAudio.pause(); vPlaying = vWait = null; paintVoiceGrids(); }
@@ -2214,7 +2292,7 @@ function renderVoice() {
       <div class="field"><label>Озвучка ответов</label>
         <div data-vgrid>${voiceGrid()}</div>
         ${vcards?.current === "elevenlabs" && prov.el_voices.length > 1 ? `<button class="btn ghost" id="elOther">${ic("vol", "s16")}Другой голос ElevenLabs</button>` : ""}
-        <div class="hint">Нажмите на голос — он сразу станет голосом озвучки; круглая кнопка справа — послушать. На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs. Быстрый путь — долгое нажатие на «Кратко» или «Целиком» у ответа.</div></div>
+        <div class="hint">Нажмите на голос — он сразу станет голосом озвучки; круглая кнопка справа — послушать. На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs.${vcards?.cards.some((c) => c.demo) ? " «Демо» — голоса с некоммерческой лицензией, только для показа." : ""} Быстрый путь — долгое нажатие на «Кратко» или «Целиком» у ответа.</div></div>
       <div class="field" style="margin:0"><label>Распознавание голосовых</label>${seg("stt", prov.stt, [["local", "На сервере · whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
         <div class="hint">ElevenLabs точнее на терминах и именах; запись голоса уходит в ElevenLabs.</div></div>
     </div>
@@ -2608,6 +2686,7 @@ async function start() {
     if (params.get("mic")) {                        // для скриншота: вместо микрофона — синтетический звук
       navigator.mediaDevices.getUserMedia = async () => { const c = new AudioContext(), o = c.createOscillator(), d = c.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream; };
       toggleMic();
+      if (params.get("mic") === "stop") setTimeout(() => rec?.stop(), 1500);   // ?mic=stop — сразу «Распознаю…» (и &stt=…)
     }
   }
   if (DEMO && params.get("prof")) { profileForm(profileOf(params.get("prof")), params.has("connected")); if (params.get("cat")) openCatalog($("profMain")); }
@@ -2681,12 +2760,12 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
-  if (path.startsWith("/api/voice/choose")) demoApi.vcur = body.id;       // демо: голоса — Ксения выбрана, Денис и Руслан не установлены
+  if (path.startsWith("/api/voice/choose")) demoApi.vcur = body.id;       // демо: голоса — Ксения выбрана, Ксения-2 не установлена
   { const own = (params.get("role") || "owner") === "owner", K = { xenia: ["Ксения", "женский"], baya: ["Бая", "женский"], aidar: ["Айдар", "мужской"], eugene: ["Евгений", "мужской"],
-      kseniya: ["Ксения-2", "женский"], irina: ["Ирина", "женский"], dmitri: ["Дмитрий", "мужской"], denis: ["Денис", "мужской"], ruslan: ["Руслан", "мужской"] };
-    const loc = Object.entries(K).filter(([id]) => own || ["irina", "dmitri"].includes(id)).map(([id, [name, kind]]) => { const ok = !["denis", "ruslan"].includes(id);
-      return { id, name, kind, ok, why: ok ? "" : "не установлен", install: ok ? "" : "gas-pult voices install " + id }; });
-    R["/api/voice/cards"] = R["/api/voice/choose"] = { can_choose: own, current: own ? (demoApi.vcur || "xenia") : "irina",
+      kseniya: ["Ксения-2", "женский"] };            // Piper в выборе нет — только запасной синтез
+    const loc = own ? Object.entries(K).map(([id, [name, kind]]) => { const ok = id !== "kseniya";
+      return { id, name, kind, ok, demo: true, why: ok ? "" : "не установлен", install: ok ? "" : "gas-pult voices install " + id }; }) : [];
+    R["/api/voice/cards"] = R["/api/voice/choose"] = { can_choose: own, current: own ? (demoApi.vcur || "xenia") : "irina", fallback: own ? "" : "Ирина",
       cards: [{ id: "elevenlabs", name: "Ксения (клон)", kind: "облачный", ok: true, why: "", install: "" }, ...loc] }; }
   demoApi.fb ||= ["openrouter", "claude"];
   if (path === "/api/fallback" && body) demoApi.fb = body.chain;
@@ -2764,7 +2843,11 @@ function demoApi(path, body) {
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
-  if (key === "/api/stt") return Promise.resolve({ text: "Покажи, что изменилось за сегодня" });
+  if (key === "/api/stt") {                          // как на сервере: распознавание занимает секунды; ?stt=empty|slow|fail — ошибки
+    const m = params.get("stt"), text = m === "empty" ? "" : "Покажи, что изменилось за сегодня";
+    if (m === "slow") return new Promise(() => {});  // ответа нет — сработает таймаут 90 с
+    return new Promise((ok, no) => setTimeout(() => m === "fail" ? no(new Error("распознавание не удалось")) : ok({ text }), 2500));
+  }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
   return Promise.resolve(R[key] || { ok: true });

@@ -51,6 +51,8 @@ PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зави
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
+STT_TIMEOUT = 85                                          # с; панель ждёт ответа 90 с
+STT_EMPTY = "Ничего не расслышал — попробуйте ещё раз"   # распознавание вернуло пустой текст
 
 
 def verify(init_data: str, token: str, now: float | None = None) -> dict | None:
@@ -512,7 +514,9 @@ class Panel:
                         "kind": "облачный", "ok": key, "why": "" if key else "нужен ключ ElevenLabs", "install": ""})
         out += catalog.cards(personal, owner)
         cur = "elevenlabs" if key and st.get("tts_provider") == "elevenlabs" else self.voice(personal=personal)
-        return {"cards": out, "current": cur, "can_choose": owner}
+        # Голос без карточки (Piper: выбран раньше или запасной) — читает дальше; панель пишет, что это запасной.
+        fb = catalog.label(cur) if cur and cur in catalog.FALLBACK else ""
+        return {"cards": out, "current": cur, "can_choose": owner, "fallback": fb}
 
     def choose_voice(self, vid: str):
         self.pult.choose_voice(vid)                          # общее с ботом (/voice)
@@ -576,7 +580,7 @@ class Panel:
         if b.get("el_voice"):
             upd["el_voice"] = str(b["el_voice"])
         if b.get("voice"):
-            if b["voice"] not in catalog.installed(self.cfg.personal_voices):   # настройки голоса — владельцу
+            if b["voice"] not in catalog.selectable(self.cfg.personal_voices):  # настройки голоса — владельцу
                 raise ValueError("этот голос не установлен: gas-pult voices install <имя>")
             upd["voice"] = str(b["voice"])
         self.pult.set_state(**upd)
@@ -602,19 +606,31 @@ class Panel:
         return note if time.time() - t < 3600 else ""
 
     def stt(self, data: bytes, ctype: str) -> str:
+        """Голос из панели → текст. Пустая запись или пустой результат — понятная ошибка (400), не пустая строка."""
+        if not data:
+            raise ValueError(STT_EMPTY)
         ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
         if self.voice_settings()["stt"] == "elevenlabs":
             try:
-                return providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}")
+                text = (providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}") or "").strip()
+                if not text:
+                    raise ValueError(STT_EMPTY)
+                return text
             except (providers.ProviderError, KeyError) as e:     # запасной путь — локальный whisper, молча не падаем
                 self.voice_fallback("распознавание", e)
         path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{ext}"
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_bytes(data)
         try:
-            return voice.transcribe(path, self.cfg.whisper_model)
+            text = (voice.transcribe(path, self.cfg.whisper_model, timeout=STT_TIMEOUT) or "").strip()
+        except subprocess.TimeoutExpired:            # панель ждёт 90 с — сервер сдаётся чуть раньше и говорит почему
+            raise RuntimeError(f"распознавание не уложилось в {STT_TIMEOUT} с — длинная запись или сервер занят") \
+                from None
         finally:
             path.unlink(missing_ok=True)                 # голос не храним
+        if not text:
+            raise ValueError(STT_EMPTY)
+        return text
 
     def message(self, w: dict, i: int | None) -> str:
         home = self.pult.home_of(w)

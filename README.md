@@ -126,8 +126,8 @@ gas-pult service install         # фоновая служба (systemd --user /
 
 | Движок | Где работает | Что даёт | Ставится |
 |---|---|---|---|
-| [Piper](https://github.com/OHF-Voice/piper1-gpl) | на вашем сервере | Ирина, Дмитрий, Денис, Руслан | `gas-pult[voice]` |
-| [Silero v5](https://github.com/snakers4/silero-models) | на вашем сервере | Ксения, Бая, Ксения-2, Айдар, Евгений — естественнее | `gas-pult[silero]` (+torch ≈ 1 ГБ) |
+| [Piper](https://github.com/OHF-Voice/piper1-gpl) | на вашем сервере | запасной синтез (Ирина, Дмитрий, Денис, Руслан): в выборе не показывается | `gas-pult[voice]` |
+| [Silero v5](https://github.com/snakers4/silero-models) | на вашем сервере | Ксения, Бая, Ксения-2, Айдар, Евгений — естественнее; «демо»: лицензия некоммерческая, только владельцу при `personal_voices` | `gas-pult[silero]` (+torch ≈ 1 ГБ) |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | на вашем сервере | распознавание голосовых | `gas-pult[voice]` |
 | [ElevenLabs](https://elevenlabs.io) | облако, ваш ключ | голоса аккаунта, распознавание Scribe | ключ в панели → «Интеграции» |
 

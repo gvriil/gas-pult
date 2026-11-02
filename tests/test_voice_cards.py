@@ -47,25 +47,33 @@ def ids(d):
 
 def test_cards_owner_with_flag(voices):
     d = make_panel(True).voice_cards(owner=True)
-    assert ids(d) == ["elevenlabs", "xenia", "baya", "aidar", "eugene", "kseniya", "irina", "dmitri", "denis", "ruslan"]
+    assert ids(d) == ["elevenlabs", "xenia", "baya", "aidar", "eugene", "kseniya"]      # Piper в выборе нет
     by = {c["id"]: c for c in d["cards"]}
     assert by["elevenlabs"]["ok"] is False and by["elevenlabs"]["why"] == "нужен ключ ElevenLabs"
     assert by["xenia"]["name"] == "Ксения" and by["xenia"]["kind"] == "женский" and by["aidar"]["kind"] == "мужской"
-    assert by["denis"]["ok"] is False and by["denis"]["install"] == "gas-pult voices install denis"
-    assert d["current"] == "xenia" and d["can_choose"] is True
+    assert all(by[n]["demo"] is True for n in catalog.SILERO)                           # некоммерческие — «демо»
+    assert d["current"] == "xenia" and d["can_choose"] is True and d["fallback"] == ""
+
+
+def test_cards_silero_not_installed_owner_sees_install(voices, tmp_path):
+    (tmp_path / "silero.pt").unlink()
+    d = make_panel(True).voice_cards(owner=True)
+    by = {c["id"]: c for c in d["cards"]}
+    assert by["xenia"]["ok"] is False and by["xenia"]["install"] == "gas-pult voices install xenia"
+    assert d["current"] == "irina" and d["fallback"] == "Ирина"   # Ксении нет — читает запасной Piper
 
 
 def test_cards_owner_without_flag_has_no_silero(voices):
     d = make_panel(False).voice_cards(owner=True)
-    assert ids(d) == ["elevenlabs", "irina", "dmitri", "denis", "ruslan"]
-    assert d["current"] == "irina"                        # Ксения выбрана, но недоступна — читает первый доступный
+    assert ids(d) == ["elevenlabs"]                       # ни Silero (нет personal_voices), ни Piper
+    assert d["current"] == "irina" and d["fallback"] == "Ирина"   # Ксения недоступна — читает запасной Piper
 
 
 def test_cards_member_only_installed_listen_only(voices):
     p = make_panel(True)
     d = p.voice_cards(owner=False)
-    assert ids(d) == ["irina", "dmitri"]                   # ни Silero, ни «не установлен», ни ElevenLabs без ключа
-    assert d["can_choose"] is False and d["current"] == "irina"
+    assert ids(d) == []                                    # ни Silero, ни Piper, ни ElevenLabs без ключа
+    assert d["can_choose"] is False and d["current"] == "irina" and d["fallback"] == "Ирина"
     providers.save_key("elevenlabs", "k" * 24)
     assert ids(p.voice_cards(owner=False))[0] == "elevenlabs"
 
@@ -99,8 +107,10 @@ def test_choose_sets_provider_and_voice(voices):
     p = make_panel(True)
     with pytest.raises(ValueError, match="ключ ElevenLabs"):
         p.choose_voice("elevenlabs")
+    with pytest.raises(ValueError, match="больше не выбирается"):
+        p.choose_voice("irina")                            # Piper — только запасной
     with pytest.raises(ValueError, match="не установлен"):
-        p.choose_voice("denis")
+        p.choose_voice("nobody")
     providers.save_key("elevenlabs", "k" * 24)
     p.choose_voice("elevenlabs")
     st = p.pult.state()
@@ -140,7 +150,7 @@ def test_api_cards_preview_choose(server):
     panel, base = server
     owner, member = panel.auth.issue(1), panel.auth.issue(2)
     assert call(base, "/api/voice/cards", None, owner)[1]["current"] == "xenia"
-    assert ids(call(base, "/api/voice/cards", None, member)[1]) == ["irina", "dmitri"]
+    assert ids(call(base, "/api/voice/cards", None, member)[1]) == []
     assert call(base, "/api/voice/preview?id=xenia", None, owner) == (200, b"xenia.mp3")
     assert call(base, "/api/voice/preview?id=xenia", None, member)[0] == 400       # Silero участнику — отказ
     assert call(base, "/api/voice/preview?id=irina", None, member) == (200, b"irina.mp3")
@@ -170,15 +180,15 @@ def test_bot_voice_grid_and_choose(pult):
     text, kw = p.sent[-1]
     rows = buttons(kw["reply_markup"])
     assert "Ксения" in text and rows[0] == [("ElevenLabs — нужен ключ", "vi:elevenlabs")]
-    assert rows[1] == [("▶ Ксения", "vp:xenia"), ("✅ Ксения · женский", "vs:xenia")]
-    assert [r[0][1] for r in rows[1:]] == [("vi:" if v in ("denis", "ruslan") else "vp:") + v for v in catalog.ORDER]
-    assert ("⬇ Денис — не установлен", "vi:denis") in [r[0] for r in rows]
+    assert rows[1] == [("▶ Ксения", "vp:xenia"), ("✅ Ксения · женский · демо", "vs:xenia")]
+    assert [r[0][1] for r in rows[1:]] == ["vp:" + v for v in catalog.ORDER]      # только Silero, без Piper
+    assert not any("Ирина" in t for r in rows for t, _ in r)
     q = {"id": "q", "from": {"id": 1}, "message": {"chat": {"id": 1}, "message_id": 5}, "data": "vs:aidar"}
     p.on_callback(q)
     assert p.state()["voice"] == "aidar" and p.state()["tts_provider"] == "local"
     method, kw = p.calls[-1]
     assert method == "editMessageText" and kw["message_id"] == 5
-    assert ("✅ Айдар · мужской", "vs:aidar") in [r[1] for r in buttons(kw["reply_markup"]) if len(r) == 2]
+    assert ("✅ Айдар · мужской · демо", "vs:aidar") in [r[1] for r in buttons(kw["reply_markup"]) if len(r) == 2]
 
 
 def test_bot_voice_preview_sends_cached_voice(pult, voices):
@@ -189,3 +199,62 @@ def test_bot_voice_preview_sends_cached_voice(pult, voices):
     sends = [kw for m, kw in p.calls if m == "sendVoice"]
     assert len(sends) == 2 and sends[0]["files"]["voice"][1] == b"xenia.ogg"
     assert voices == [("xenia", catalog.PREVIEW, ".ogg")]    # синтез — один раз, дальше из кеша
+
+
+def test_previously_chosen_piper_keeps_reading(voices):
+    """Голос Piper, выбранный раньше, в выборе не виден, но озвучка им продолжается — в панели и в боте."""
+    p = make_panel(True)
+    p.pult.set_state(voice="irina")
+    p.message = lambda w, i: "Готово, всё проверил."
+    assert p.tts({}, True, personal=True) == b"irina.mp3"
+    d = p.voice_cards(owner=True)
+    assert d["current"] == "irina" and d["fallback"] == "Ирина" and "irina" not in ids(d)
+    b = bot.Pult(Config(token="1:T", owners=[1], personal_voices=True))
+    b.set_state(voice="irina")
+    b.api = lambda method, **kw: {}
+    b.say(1, "Готово.")
+    assert voices[-1][0] == "irina"
+    assert "запасной голос сервера (Ирина)" in b.voice_text()
+
+
+def test_no_personal_no_elevenlabs_still_speaks(voices):
+    """Без personal_voices и без ключа ElevenLabs карточек нет, но озвучка идёт запасным Piper (и в боте)."""
+    p = make_panel(False)                                  # выбрана Ксения, но Silero недоступна
+    p.message = lambda w, i: "Ответ."
+    assert p.tts({}, False) == b"irina.mp3"
+    b = bot.Pult(Config(token="1:T", owners=[1], personal_voices=False))
+    b.set_state(voice="xenia")
+    sent = []
+    b.send = lambda chat, text, **kw: sent.append(text)
+    b.api = lambda method, **kw: {}
+    b.say(1, "Ответ.")
+    assert voices[-1][0] == "irina" and not sent           # не «голос не установлен», а тихий запасной
+
+
+def test_stt_empty_and_timeout_are_clear_errors(voices, monkeypatch):
+    import subprocess
+    p = make_panel(False)
+    monkeypatch.setattr(voice, "transcribe", lambda path, model, timeout=300: "  ")
+    with pytest.raises(ValueError, match="Ничего не расслышал"):
+        p.stt(b"audio", "audio/webm")
+    with pytest.raises(ValueError, match="Ничего не расслышал"):
+        p.stt(b"", "audio/webm")                           # пустая запись — до whisper не доходит
+
+    def slow(path, model, timeout=300):
+        raise subprocess.TimeoutExpired("whisper", timeout)
+    monkeypatch.setattr(voice, "transcribe", slow)
+    with pytest.raises(RuntimeError, match="не уложилось"):
+        p.stt(b"audio", "audio/webm")
+    monkeypatch.setattr(voice, "transcribe", lambda path, model, timeout=300: " Привет ")
+    assert p.stt(b"audio", "audio/webm") == "Привет"
+    assert not list((p.cfg.data / "inbox").glob("web-*"))  # голос не храним
+
+
+def test_api_stt_empty_returns_400_with_message(server, monkeypatch):
+    panel, base = server
+    monkeypatch.setattr(voice, "transcribe", lambda path, model, timeout=300: "")
+    req = urllib.request.Request(base + "/api/stt", b"audio", {"Content-Type": "audio/webm",
+                                                              "Cookie": f"{webauth.COOKIE}={panel.auth.issue(1)}"})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req)
+    assert e.value.code == 400 and json.load(e.value)["error"] == "Ничего не расслышал — попробуйте ещё раз"
