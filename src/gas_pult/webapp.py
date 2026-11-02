@@ -1502,9 +1502,14 @@ def tunnel(port: int) -> tuple[subprocess.Popen, str]:
 
 
 def set_menu(api: Api, owners: list[int], url: str):
+    """Кнопка «📱 Панель» каждому. Ошибка у одного (например, «user not found» — человек не открывал бота)
+    не мешает остальным: печатаем и идём дальше."""
     for chat in owners:
-        api("setChatMenuButton", chat_id=chat,
-            menu_button={"type": "web_app", "text": "📱 Панель", "web_app": {"url": url}})
+        try:
+            api("setChatMenuButton", chat_id=chat,
+                menu_button={"type": "web_app", "text": "📱 Панель", "web_app": {"url": url}})
+        except TelegramError as e:
+            print(f"menu: {chat}: {e}", flush=True)
 
 
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
