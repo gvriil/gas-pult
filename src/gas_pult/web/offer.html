@@ -112,10 +112,39 @@
   .spin { animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   @media (min-width: 900px) { .wrap { padding-top: 40px; } h1 { font-size: calc(32px * var(--fz, 1)); } }
+  /* Дежурный помощник «? Подсказать» (docs/HELPER.md): пилюля вверху справа, шторка на 55 % высоты; гостю — только эта
+     страница и мастер «Подключить» */
+  .hpill { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 12px; z-index: 30; display: inline-flex; align-items: center; gap: 4px; height: 34px;
+           padding: 0 12px 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--accent-primary);
+           font-size: calc(13px * var(--fz, 1)); font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.10); }
+  .hpill .i { width: 18px; height: 18px; }
+  .hbg { position: fixed; inset: 0; z-index: 40; background: rgba(17,17,16,.42); display: flex; align-items: flex-end; justify-content: center; }
+  .hsheet { width: 100%; max-width: 640px; height: 55%; min-height: 320px; display: flex; flex-direction: column; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,.2); }
+  .hsheet h3 { display: flex; align-items: center; gap: 6px; margin: 4px 16px 2px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; }
+  .hsheet .hwhere { margin: 0 16px 8px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .hsheet .hmsgs { flex: 1 1 auto; min-height: 90px; overflow-y: auto; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .hsheet .hq { align-self: flex-end; max-width: 85%; background: var(--accent-soft); border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: calc(14px * var(--fz, 1)); overflow-wrap: anywhere; }
+  .hsheet .ha { background: var(--bg-subtle); border-radius: 14px 14px 14px 4px; padding: 10px 12px; overflow-wrap: anywhere; } .hsheet .ha p { margin: 0; }
+  .hsheet .hnote { margin: 8px 0 0 !important; color: var(--status-approval); font-size: calc(13px * var(--fz, 1)); }
+  .hsheet .hgo { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .hsheet .hgo button { display: flex; align-items: center; gap: 6px; text-align: left; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg-surface);
+                        border: 1px solid var(--border-subtle); color: var(--accent-primary); font-weight: 600; font-size: calc(14px * var(--fz, 1)); }
+  .hsheet .hfoot { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .hsheet .hmark { font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-surface); }
+  .hsheet .hfb { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; padding: 0; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+  .hsheet .hfb .i { width: 16px; height: 16px; } .hsheet .hfb.on { color: var(--accent-primary); border-color: var(--accent-primary); background: var(--accent-soft); }
+  .hsheet .hchips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 16px 2px; scrollbar-width: none; flex: none; }
+  .hsheet .hchips button { flex: none; padding: 7px 12px; border-radius: var(--radius-pill); background: var(--bg-subtle); border: 1px solid var(--border-subtle); font-size: calc(13px * var(--fz, 1)); white-space: nowrap; }
+  .hsheet .hrow { display: flex; gap: 8px; padding: 8px 16px 2px; flex: none; }
+  .hsheet .hrow input { flex: 1; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); padding: 10px 14px; background: var(--bg-canvas); font-size: calc(16px * var(--fz, 1)); }
+  .hsheet .hsend { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; border: 0; background: var(--accent-primary); color: var(--on-accent); padding: 0; }
+  .hsheet .hclose { margin: 8px 16px 0; padding: 12px; border: 0; border-top: 1px solid var(--border-subtle); background: none; color: var(--text-secondary); }
 </style>
 </head>
 <body>
 <div class="wrap" id="app"><p class="muted">Загружаю предложение…</p></div>
+<button class="hpill" id="helpBtn" hidden aria-label="Подсказать: что делать на этой странице"></button>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -134,6 +163,7 @@ const P = {
   next: '<path d="M9 6l6 6-6 6"/>', book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/>',
   inbox: '<path d="M4 13.5l2.5-8h11l2.5 8v6H4z"/><path d="M4 13.5h5l1 2h4l1-2h5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6M12 17.2v.1"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 const note = (kind, icon, html) => `<div class="note ${kind}">${ic(icon)}<div>${html}</div></div>`;
@@ -193,7 +223,7 @@ function render() {
     ${note("warn", "warn", "Цифры и имена на этой странице выдуманы для демонстрации. Логотипов и данных вашей компании здесь нет.")}
     <div class="row"><button class="btn" data-go="connect">${ic("check")}Подключить</button><button class="btn ghost" data-go="upload">${ic("file")}Загрузить выгрузку</button></div>
     <section><h2>Что болит</h2><ul class="pains">${d.pains.map((p) => `<li>${ic("warn")}<span>${esc(p)}</span></li>`).join("")}</ul></section>
-    <section><h2>Что предлагаем</h2><p class="lead">${d.modules.length} ${d.modules.length === 1 ? "модуль" : "модуля"} — готовые агенты. Нажимайте кнопки в примерах: покажем, что произошло бы, ничего не отправляя.</p>
+    <section id="mods"><h2>Что предлагаем</h2><p class="lead">${d.modules.length} ${d.modules.length === 1 ? "модуль" : "модуля"} — готовые агенты. Нажимайте кнопки в примерах: покажем, что произошло бы, ничего не отправляя.</p>
       ${d.modules.map((m) => `<div class="card"><div class="mod-head"><div class="mod-icon">${ic(KIND_ICON[m.demo.kind] || "puzzle")}</div><div><h3>${esc(m.title)}</h3><div class="muted">${esc(m.about)}</div></div></div>
         ${demoCard(m)}
         <div class="row"><button class="btn ghost sm" data-tg="${esc(m.id)}">${ic("send")}Попробовать в Telegram</button></div><div data-tgout="${esc(m.id)}"></div></div>`).join("")}
@@ -349,8 +379,81 @@ function wizard(step) {
   }));
 }
 
+// ---------- дежурный помощник «?» (docs/HELPER.md) ----------
+// Гостю — только экраны этой страницы и шаги мастера; сервер сам знает, чьё это предложение (по коду страницы), и
+// отвечает подсказками из карты экранов — без модели.
+const OFFER_SCREENS = ["offer.connect.terms", "offer.connect.country", "offer.connect.module", "offer.connect.login"];
+function offerScreen() {
+  const seen = (id) => { const el = $(id); if (!el) return false; const r = el.getBoundingClientRect(); return r.top < innerHeight * 0.55 && r.bottom > 80; };
+  if (seen("connect")) return OFFER_SCREENS[wizStep] || "offer.connect.terms";
+  if (seen("upload")) return "offer.upload";
+  if (seen("mods")) return "offer.modules";
+  return "offer.top";
+}
+function helpContext() { return { screen: offerScreen(), step: String(wizStep), module: (D?.session?.wizard || {}).module || "" }; }
+function wizGo(n) {
+  const w = D.session.wizard || {}, max = !w.terms ? 0 : !w.country ? 1 : !w.module ? 2 : 3;
+  wizard(Math.min(n, max)); $("connect").scrollIntoView({ behavior: "smooth" });
+}
+const OFFER_GO = {                                     // действие карты → место на странице
+  "go:offer.top": () => window.scrollTo({ top: 0, behavior: "smooth" }),
+  "go:offer.modules": () => $("mods").scrollIntoView({ behavior: "smooth" }),
+  "go:offer.telegram": () => { const b = document.querySelector("[data-tg]"); if (b) { b.scrollIntoView({ behavior: "smooth", block: "center" }); b.focus({ preventScroll: true }); } },
+  "go:offer.upload": () => $("upload").scrollIntoView({ behavior: "smooth" }),
+  "go:offer.connect": () => wizGo(9),
+  "go:offer.connect.terms": () => wizGo(0),
+  "go:offer.connect.country": () => wizGo(1),
+  "go:offer.connect.module": () => wizGo(2),
+  "go:offer.connect.login": () => wizGo(3),
+};
+function go(id) { const f = OFFER_GO[id]; document.querySelector(".hbg")?.remove(); $("helpBtn").hidden = false; if (f) f(); }
+function helpAnswer(r) {
+  const box = document.createElement("div"); box.className = "ha"; box.dataset.id = r.id;
+  box.innerHTML = `<p>${esc(r.text)}</p>
+    ${r.actions.length ? `<div class="hgo">${r.actions.map((a) => `<button data-hgo="${esc(a.id)}">${ic("next", "s16")}Перейти: ${esc(a.title)}</button>`).join("")}</div>` : ""}
+    <div class="hfoot"><span class="hmark">Подсказка</span>
+      <button class="hfb" data-fb="1" aria-label="Помогло">${ic("check")}</button><button class="hfb" data-fb="0" aria-label="Не помогло">${ic("x")}</button></div>`;
+  return box;
+}
+async function helpAsk(bg, body, label) {
+  const msgs = bg.querySelector(".hmsgs");
+  if (label) msgs.insertAdjacentHTML("beforeend", `<div class="hq">${esc(label)}</div>`);
+  const wait = document.createElement("div"); wait.className = "ha"; wait.textContent = "Думаю…"; msgs.append(wait);
+  try {
+    const r = await api("/help", { ctx: bg.ctx, ...body });
+    wait.replaceWith(helpAnswer(r));
+    bg.querySelector(".hwhere").textContent = "Где вы: " + r.title;
+    bg.querySelector(".hchips").innerHTML = r.chips.filter((c) => c.id !== body.chip).map((c) => `<button data-chip="${esc(c.id)}">${esc(c.label)}</button>`).join("");
+  } catch (e) { wait.innerHTML = `<p class="hnote">${esc(e.message)}</p>`; }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function openHelp() {
+  if (document.querySelector(".hbg")) return;
+  const bg = document.createElement("div"); bg.className = "hbg"; bg.ctx = helpContext();
+  bg.innerHTML = `<div class="hsheet" role="dialog" aria-label="Помощник"><h3>${ic("help", "s16")}Помощник</h3><div class="hwhere"></div>
+    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>
+    <form class="hrow"><input name="q" maxlength="500" autocomplete="off" placeholder="Спросите, что непонятно…" aria-label="Вопрос помощнику">
+      <button class="hsend" type="submit" aria-label="Спросить">${ic("send")}</button></form><button class="hclose" data-close>Закрыть</button></div>`;
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (e.target === bg || b?.hasAttribute("data-close")) { bg.remove(); $("helpBtn").hidden = false; return; }
+    if (!b) return;
+    const id = b.closest(".ha")?.dataset.id;
+    if (b.dataset.chip) return helpAsk(bg, { chip: b.dataset.chip }, b.textContent);
+    if (b.dataset.fb) { b.parentElement.querySelectorAll(".hfb").forEach((x) => x.classList.toggle("on", x === b)); api("/helpfb", { id, useful: b.dataset.fb === "1" }).catch(() => {}); return; }
+    if (b.dataset.hgo) { api("/helpfb", { id, action: b.dataset.hgo }).catch(() => {}); go(b.dataset.hgo); }
+  });
+  bg.querySelector("form").addEventListener("submit", (e) => {
+    e.preventDefault(); const inp = e.target.q, q = inp.value.trim(); if (!q) return; inp.value = ""; helpAsk(bg, { q }, q);
+  });
+  document.body.append(bg); $("helpBtn").hidden = true;
+  helpAsk(bg, { chip: "what" });
+}
+$("helpBtn").innerHTML = ic("help") + "Подсказать";
+$("helpBtn").addEventListener("click", openHelp);
+
 (async () => {
-  try { D = await api(""); render(); if (location.hash === "#connect") $("connect").scrollIntoView(); }
+  try { D = await api(""); render(); $("helpBtn").hidden = false; if (location.hash === "#connect") $("connect").scrollIntoView(); }
   catch (e) { $("app").innerHTML = `<h1>Страница не найдена</h1><p class="lead">${esc(e.message)}</p>`; }
 })();
 </script>
