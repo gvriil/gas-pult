@@ -31,6 +31,7 @@ from pathlib import Path
 
 from gas_pult import (
     activity,
+    ago,
     country,
     digest,
     emailcode,
@@ -177,6 +178,7 @@ class Pult:
         self.meter = usage.Meter()                         # расход сессий по журналам (usage.py)
         self.sends = activity.Sends()                      # что и когда отправили в окно — фазы до хода (activity.py)
         self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
+        self.changes = ago.Screens()                       # когда менялся экран окна — «изменена N назад» (ago.py)
         self.following: dict[tuple, tuple] = {}            # (чат, окно) → (метка, id служебного сообщения статуса)
         self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
 
@@ -485,9 +487,14 @@ class Pult:
         return self.tmux.screen(wid, 40)
 
     def slash(self, chat: int, w: dict, cmd: str):
-        """Меню (/model, /mcp) монитор пришлёт сам, остальное — экраном."""
+        """Меню (/model, /mcp) монитор пришлёт сам, остальное — экраном; к /status — когда сессия менялась."""
         if not DIALOG.search("\n".join(self.run_slash(w["id"], cmd)[-25:])):
-            self.send_screen(chat, w, cmd)
+            when = ago.line(self.stamps(w)) if cmd == "/status" else ""
+            self.send_screen(chat, w, cmd + (f"\n🕓 {when}" if when else ""))
+
+    def stamps(self, w: dict) -> dict:
+        """Когда сессия менялась (ago.py): последний ход в журнале или смена экрана, ответ агента, ваше сообщение."""
+        return ago.stamps(self.acts.status(w["path"], self.home_of(w)), self.changes.at(w["id"]))
 
     def screen_msg(self, w: dict, title: str) -> tuple[str, dict]:
         return (f"[{w['name']}] {title}\n\n" + "\n".join(self.tmux.screen(w["id"])),
@@ -780,6 +787,7 @@ class Pult:
                     quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
                     lines = self.tmux.screen(w["id"])
                     scr = screens[w["id"]] = "\n".join(lines)
+                    self.changes.look(w["id"], lines)
                     if w["id"] in self.fallback.pending:        # сессия стоит на ошибке, человек не набирает
                         idle = not BUSY.search(scr) and not DIALOG.search(scr)
                         self.fallback.step(w, idle and not fallback.typing(lines, self.tmux.hint(w["id"])))
@@ -1082,9 +1090,23 @@ class Pult:
         ws = self.tmux.windows()
         if not ws:
             return self.send(chat, "Окон нет. Нажми 🆕 Новая.")
-        rows = [[(f"{w['idx']}: {w['name']} · {self.short(w['path'])}" + (" 🤖" if w["cmd"] == "claude" else ""),
-                  f"w:{w['id']}")] for w in ws]
-        self.send(chat, "Окна tmux (🤖 — работает Claude):", reply_markup=kb(rows))
+        now, info = time.time(), {}
+        for w in ws:                                       # ждущие ответа — сверху, дальше — по последнему изменению
+            if w["cmd"] == "claude":
+                lines = self.tmux.screen(w["id"])
+                self.changes.look(w["id"], lines)
+                info[w["id"]] = (bool(DIALOG.search("\n".join(lines))), self.stamps(w)["changed"] or 0.0)
+        ws = sorted(ws, key=lambda w: (not info.get(w["id"], (0, 0))[0], -info.get(w["id"], (0, 0))[1]))
+
+        def label(w: dict) -> str:
+            wait, ch = info.get(w["id"], (False, 0.0))
+            when = (" · " + ago.ago(ch, now) + (" · " + ago.tr("ru", "ago.stale") if ago.stale(ch, now) else "")
+                    if ch else "")
+            return (f"{w['idx']}: {'⏸ ' if wait else ''}{w['name']} · {self.short(w['path'])}{when}"
+                    + (" 🤖" if w["cmd"] == "claude" else ""))
+        rows = [[(label(w), f"w:{w['id']}")] for w in ws]
+        self.send(chat, "Окна tmux (🤖 — работает Claude, ⏸ — ждёт ответа; сверху — ждущие и недавние):",
+                  reply_markup=kb(rows))
 
     def show_switch(self, chat: int):
         ws = [w for w in self.tmux.windows() if w["cmd"] == "claude"]
@@ -1103,9 +1125,11 @@ class Pult:
                 continue
             scr = "\n".join(self.tmux.screen(w["id"], 40))
             status = "⏸ ждёт выбора" if DIALOG.search(scr) else "⚙️ работает" if BUSY.search(scr) else "✅ свободен"
+            ch = self.stamps(w)["changed"]                 # экран отмечает монитор — по своим 25 строкам
             ctx = re.search(r"left [\d.]+k? \((\d+)%\)", scr)
             lines.append(f"{w['idx']}. {'▶️ ' if w['id'] == act else ''}{w['name']} · {self.short(w['path'])} — "
-                         f"{status}" + (f" · контекст свободен {ctx.group(1)}%" if ctx else "")
+                         f"{status}" + (f" · {ago.tr('ru', 'ago.changed', ago=ago.ago(ch))}" if ch else "")
+                         + (f" · контекст свободен {ctx.group(1)}%" if ctx else "")
                          + (" · 📡" if w["channel"] else ""))
         self.send(chat, "📊 Сводка\n" + "\n".join(lines or ["окон нет"]))
 

@@ -35,6 +35,7 @@ from importlib import resources
 from pathlib import Path
 
 from gas_pult import (
+    ago,
     country,
     emailcode,
     fallback,
@@ -187,14 +188,18 @@ class Panel:
                 out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                             "status": "stopped", "context": None, "model": "", "active": w["id"] == act,
                             "channel": False, "profile": w["mark"] if w["mark"] in models.BY_ID else "claude",
-                            "rev": "", "preview": "", "cost_paused": False, "cost": None})
+                            "rev": "", "preview": "", "cost_paused": False, "cost": None,
+                            **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w)))})
                 continue
             if w["cmd"] != "claude":
                 continue
             if not w.get("mark"):                    # окна до метки: помечаем, чтобы и они потом стали «остановлена»
                 self.tmux.run("set-option", "-w", "-t", w["id"], "@gas_pult", w.get("profile") or "claude")
-            scr = "\n".join(self.tmux.screen(w["id"], 40))
+            lines = self.tmux.screen(w["id"], 40)
+            scr = "\n".join(lines)
             home = self.pult.home_of(w)                       # папка Claude того, кто открыл окно
+            # когда менялась (ago.py): последний ход в журнале или смена экрана; ответ агента, ваше сообщение
+            when = ago.stamps(self.pult.acts.status(w["path"], home), self.pult.changes.look(w["id"], lines))
             ctx, mdl, rev = CONTEXT.search(scr), MODEL_LINE.search(scr), transcripts.revision(w["path"], home)
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
@@ -207,7 +212,8 @@ class Panel:
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
-                        "sections": self.sections_of(w["path"])})         # разделы чата бизнес-ролей; [] — во всех
+                        "sections": self.sections_of(w["path"]),          # разделы чата бизнес-ролей; [] — во всех
+                        **when})                                          # когда менялась (ago.py)
         return out
 
     def sections_of(self, path: str) -> list[str]:
@@ -1308,6 +1314,7 @@ def handler(panel: Panel):
             if path == "/api/sessions":
                 pool = self.pool()
                 return {"sessions": panel.sessions(pool), "host": panel.cfg.host, "build": build,
+                        "now": time.time(),                                   # часы сервера: «N назад» без сдвига
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
