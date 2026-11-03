@@ -41,7 +41,8 @@ def save_key(provider: str, key: str | None):
     write_private(secrets_file(), json.dumps(d))
 
 
-INTERNAL = {"email_hmac", "smtp"}            # служебные секреты почты (emailcode.py) — не ключи поставщиков
+INTERNAL = {"email_hmac", "smtp",           # служебные секреты почты (emailcode.py) — не ключи поставщиков
+            "oidc_google", "oidc_yandex"}  # секреты входа через Google и Яндекс ID (oidc.py)
 
 
 def key_info() -> dict:

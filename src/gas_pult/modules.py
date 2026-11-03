@@ -33,6 +33,7 @@ from pathlib import Path
 
 from gas_pult.config import config_dir
 from gas_pult.mcp import CONNECTORS, PRESETS
+from gas_pult.personas import SECTIONS
 
 MARK = ".gas-pult-module"                         # отметка пространства: из какого модуля, версия, кто создал
 ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")      # id модуля и имя папки: латиница, цифры, дефис
@@ -257,6 +258,9 @@ def parse(folder: Path) -> dict:
         if u not in known:
             raise ModuleError(f"{where}: в uses нет такого общего блока «{u}» — есть: "
                               + (", ".join(sorted(known)) or "никаких"))
+    sections = raw.get("sections", [])                  # разделы чата бизнес-ролей (personas.SECTIONS); нет — во всех
+    if not isinstance(sections, list) or any(x not in SECTIONS for x in sections):
+        raise ModuleError(f"{where}: sections — список из {', '.join(SECTIONS)}")
     sources = raw.get("data_sources", [])
     if not isinstance(sources, list):
         raise ModuleError(f"{where}: data_sources — список таблиц [[data_sources]]")
@@ -265,6 +269,7 @@ def parse(folder: Path) -> dict:
     return {
         "id": mid, "version": str(raw.get("version", "1")), "title": _str(raw, "title", where),
         "industry": _str(raw, "industry", where), "about": _str(raw, "about", where),
+        "sections": [x for x in SECTIONS if x in sections],
         "description": fill(_str(raw, "description", where, need=False), settings),
         "start": fill(_str(raw, "start", where, need=False) or DEFAULT_START, settings),
         "integrations": [_integration(x, where) for x in lists["integrations"]],
