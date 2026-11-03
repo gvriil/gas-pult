@@ -42,6 +42,7 @@ from gas_pult import (
     people,
     providers,
     setup,
+    tenants,
     terms,
     transcripts,
     usage,
@@ -74,6 +75,20 @@ NOISE = re.compile(r"🤖|ctx used|⏵⏵|esc to interrupt|^\s*[✻✶✳✢·*]
 
 def dialog_hash(scr: str) -> str:
     return hashlib.md5("\n".join(x for x in scr.splitlines() if not NOISE.search(x)).encode()).hexdigest()
+
+
+TESTER_HELLO = ("🧪 Вы — тестировщик демо-пространства пульта.\n\n"
+                "1. Нажмите кнопку «📱 Панель» внизу чата — откроется ваше пространство.\n"
+                "2. «Новая сессия» — агент запустится только в нём: ни чужих окон, ни файлов сервера.\n"
+                "3. Пишите агенту задания так, как написали бы сотруднику.\n\n"
+                "Если что-то непонятно или агент застрял — напишите владельцу пульта.")
+
+
+def tester_start(u: dict, ppl) -> bool:
+    """/start и /menu от тестировщика демо-пространства — бот отвечает инструкцией (остальное ему не работает)."""
+    m = u.get("message") or {}
+    uid = (m.get("from") or {}).get("id")
+    return (m.get("text") or "").strip() in ("/start", "/menu") and bool(ppl.tenant(uid))
 
 
 def public(u: dict) -> bool:
@@ -828,6 +843,8 @@ class Pult:
     def pool_of(self, w: dict) -> str:
         """Чей расход: «owner» — учётка владельца (и окна, открытые на ней участником); иначе ID участника со своей
         папкой Claude Code. Чужие учётки в пул владельца не попадают."""
+        if w.get("space"):                                  # окно демо-пространства (панель, spaces.py)
+            return f"space:{w['space']}"
         return "owner" if self.home_of(w) is None else str(w.get("by"))
 
     def opened_by(self, w: dict) -> int | None:
@@ -1439,6 +1456,10 @@ class Pult:
             return                                         # участникам кнопки бота — только условия и страна
         if kind == "pp":                                   # владелец решает, пускать ли человека
             return self.grant(chat, arg)
+        if kind == "pt":                                   # … тестировщиком в демо-пространстве: какое
+            return self.pick_space(chat, arg)
+        if kind == "ps":
+            return self.grant_space(chat, arg)
         if kind == "tm":                                   # «Принимаю» под условиями использования
             return self.on_terms(chat, q["from"]["id"], arg)
         if kind == "cc":                                   # выбор страны
@@ -1696,9 +1717,44 @@ class Pult:
             if offer.get("terms"):
                 text += f"\nУсловия приняты на странице (версия {offer['terms']})."
             text += "\nСессии и модель — только после вашего решения."
-        self.broadcast(text, reply_markup=kb([[("👤 Участник", f"pp:member:{u['id']}"),
-                                               ("👁 Наблюдатель", f"pp:viewer:{u['id']}")],
-                                              [("✖️ Отказать", f"pp:no:{u['id']}")]]))
+        rows = [[("👤 Участник", f"pp:member:{u['id']}"), ("👁 Наблюдатель", f"pp:viewer:{u['id']}")]]
+        if self.spaces():                                  # демо-пространства включены — можно пустить только туда
+            rows.append([("🧪 Тестировщик в пространстве…", f"pt:{u['id']}")])
+        self.broadcast(text, reply_markup=kb([*rows, [("✖️ Отказать", f"pp:no:{u['id']}")]]))
+
+    # ---------- тестировщики демо-пространств (задача 31, docs/TENANTS.md) ----------
+    def spaces(self) -> list[dict]:
+        """Пространства для выбора: функция включена и описание читается. Выключено — [] (кнопки нет)."""
+        if not tenants.enabled():
+            return []
+        return [t for s in tenants.slugs() if (t := tenants.load(s))]
+
+    def pick_space(self, chat: int, uid: str):
+        """pt:<uid> — выбрать пространство для тестировщика."""
+        sp = self.spaces()
+        if not sp:
+            return self.send(chat, "Демо-пространств нет — создайте его: docs/TENANTS.md, шаг 3.")
+        who = (self.requests.get(int(uid)) or {}).get("name") or uid
+        rows = [[(f"🧪 {t.get('title') or t['slug']}", f"ps:{uid}:{t['slug']}")] for t in sp]
+        self.send(chat, f"В каком пространстве {who} будет тестировщиком? Он увидит только его сессии — ни ваших окон, "
+                        "ни папок сервера.", reply_markup=kb([*rows, [("✖️ Отказать", f"pp:no:{uid}")]]))
+
+    def grant_space(self, chat: int, arg: str):
+        """ps:<uid>:<slug> — участник, привязанный к пространству (people.json, поле tenant)."""
+        uid, _, slug = arg.partition(":")
+        if not uid.isdigit() or slug not in [t["slug"] for t in self.spaces()]:
+            return self.send(chat, "Пространства уже нет — выберите заново.")
+        req = self.requests.pop(int(uid), {})
+        who = req.get("name") or uid
+        self.people.add(int(uid), "member", req.get("name", ""), req.get("username", ""), tenant=slug)
+        self.menu_for(int(uid))
+        self.send(chat, f"Готово: {who} — тестировщик в пространстве «{slug}». Убрать — «Настройки» → «Люди».")
+        self.notify(int(uid), TESTER_HELLO)
+
+    def tester_start(self, chat: int, uid: int):
+        """/start тестировщика: коротко, что можно, и кнопка «📱 Панель» (команды пульта ему не работают)."""
+        self.menu_for(uid)
+        self.send(chat, TESTER_HELLO, reply_markup={"remove_keyboard": True})
 
     def grant(self, chat: int, arg: str):
         role, _, uid = arg.partition(":")
@@ -1863,6 +1919,8 @@ class Pult:
         if t.startswith("/start login_"):
             return self.login_request(m, t.removeprefix("/start login_").strip())
         uid = (m.get("from") or {}).get("id")
+        if t in ("/start", "/menu") and uid not in self.cfg.owners and self.people.tenant(uid):
+            return self.tester_start(chat, uid)
         if m.get("contact"):
             return self.on_contact(m)
         if t == "/start phone":                            # из панели: «подтвердите номер в боте»
@@ -1957,7 +2015,8 @@ class Pult:
         люди с ролью — ещё и страну."""
         src = u.get("message") or u.get("callback_query") or {}
         uid = src.get("from", {}).get("id")
-        return uid in self.cfg.owners or public(u) or bool(self.people.role(uid) and self.country_update(u))
+        return uid in self.cfg.owners or public(u) or bool(self.people.role(uid) and self.country_update(u)) or \
+            tester_start(u, self.people)
 
     def run(self):
         me = self.api("getMe")
