@@ -205,5 +205,20 @@
  "help.thanks": "Thank you!",
  "help.thanks.bad": "Thanks — we will improve the tip",
  "help.close": "Close",
- "help.sheet": "Help: what to do in this sheet"
+ "help.sheet": "Help: what to do in this sheet",
+ "persona.title": "How do you plan to work here?",
+ "persona.sub": "Pick what fits you best. You can change it any time in settings — your data stays.",
+ "persona.change.sub": "Only the panel's look changes: agents, conversations and connections stay.",
+ "persona.sub.short": "your role",
+ "persona.saving": "Saving…",
+ "caps.title": "Panel features",
+ "caps.entry.sub": "Role: {role} — what to show on screens",
+ "caps.open": "Open features",
+ "caps.sub": "Turn on what you need and hide the rest. This only changes how the panel looks.",
+ "caps.locked": "closed by the panel owner",
+ "caps.soon": "coming soon",
+ "caps.role": "Role: {role}",
+ "caps.change": "Change the whole role",
+ "caps.change.sub": "Your data, history and connected apps will stay.",
+ "caps.dev": "For developers"
 }

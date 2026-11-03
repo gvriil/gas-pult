@@ -183,3 +183,15 @@ def test_team_ceiling_enforced(server):
     assert call(base, "/api/screen?w=@1", token=viewer)[0] == 200                   # гостю экран смотреть можно
     panel.people.remove(2)
     assert panel.team.person(2) == {"caps": None, "sections": None}
+
+
+def test_demo_catalog_in_sync():
+    """Демо панели (?demo&persona=1) показывает тот же справочник ролей, что сервер."""
+    import re
+    from pathlib import Path
+    index = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    demo = json.loads(re.search(r"const DEMO_PERSONAS = (\{.*?\});\n", index).group(1))
+    assert demo == {lang: personas.catalog(lang) for lang in ("ru", "en")}
+    # тумблеры и роли в панели — только по справочнику с сервера, своих списков нет
+    for c in CAPS:
+        assert index.count(f'"{c}"') == index.count(f'"{c}"', index.index("const DEMO_PERSONAS"))
