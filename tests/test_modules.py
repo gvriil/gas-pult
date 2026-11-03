@@ -1,6 +1,8 @@
 """Модули-агенты: формат module.toml, общие блоки, создание пространства, расписание, панель и /modules в боте."""
 
+import itertools
 import json
+import os
 import re
 import threading
 import urllib.error
@@ -11,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from gas_pult import bot, modules, webapp, webauth
+from gas_pult import bot, modules, tmux, webapp, webauth
 from gas_pult.config import Config
 
 BUILTIN = ("night-shift", "morning-numbers", "client-alerts")
@@ -245,8 +247,10 @@ def test_bot_modules_list_view_create(pult, tmp_path):
     folder = tmp_path / "projects" / "morning-numbers"
     assert (folder / "data" / "fact.csv").is_file() and p.opened[-1][1] == str(folder)
     assert p.later[-1][0] == "@5" and "откуда брать цифры" in p.later[-1][1]
-    cb(p, "md:v:morning-numbers")
-    assert "Создать «morning-numbers-2»" in json.dumps(p.sent[-1][1], ensure_ascii=False)   # имя занято — суффикс
+    cb(p, "md:v:morning-numbers")                                         # уже есть — первым «Открыть»
+    assert "📂 Открыть «morning-numbers»" in json.dumps(p.sent[-1][1], ensure_ascii=False)
+    cb(p, "md:again:morning-numbers")                                     # ещё одно — с подтверждением
+    assert "создать «morning-numbers-2»" in json.dumps(p.sent[-1][1], ensure_ascii=False)   # имя занято — суффикс
     cb(p, "md:name:night-shift")
     p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "../evil"})
     assert "имя папки" in p.sent[-1][0] and not (tmp_path / "evil").exists()
@@ -305,8 +309,10 @@ def test_panel_new_folder_api(server, tmp_path):
     assert code == 200 and d == {"id": "@9", "path": "shop-bot", "folder": "shop-bot"}
     assert (tmp_path / "projects" / "shop-bot").is_dir()
     assert panel.opened[-1][1] == str(tmp_path / "projects" / "shop-bot")
-    code, d = call(base, "/api/folder", {"name": "shop-bot"}, member)
-    assert code == 400 and "уже есть" in d["error"]
+    code, d = call(base, "/api/folder", {"name": "shop-bot"}, member)       # занято — предложить открыть, не ошибка
+    assert code == 200 and d["exists"] is True and d["folder"] == "shop-bot" and d["path"] == "shop-bot"
+    assert d["i"] == panel.pult.projects().index(str(tmp_path / "projects" / "shop-bot")) and "id" not in d
+    assert panel.opened[-1][1] == str(tmp_path / "projects" / "shop-bot")      # второй сессии не открывали
     code, d = call(base, "/api/folder", {"name": "../evil"}, member)
     assert code == 400 and "латиница" in d["error"] and not (tmp_path / "evil").exists()
     code, d = call(base, "/api/folder", {"name": "member-proj"}, member)
@@ -332,3 +338,158 @@ def test_bot_new_menu_has_new_folder(pult, tmp_path):
     cb(p, "mk:")
     p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "shop-bot"})
     assert "уже есть" in p.sent[-1][0]
+
+
+# ---------- (27) «Завершить» ждёт выхода и не теряет черновик; «Из модуля» и «Новая папка» не плодят папки ----------
+# ---------- А: «Завершить» ----------
+class Fake:
+    """Окно, где Claude выходит через ``exit_after`` опросов; после выхода остаётся оболочка (или окно пропадает)."""
+
+    def __init__(self, exit_after: int, gone: bool = False, background: bool = False, draft: str = ""):
+        self.exit_after, self.gone, self.background, self.draft_text = exit_after, gone, background, draft
+        self.polls, self.sent, self.killed = 0, [], []
+
+    def draft(self, wid):
+        return self.draft_text
+
+    def keys(self, wid, *keys):
+        self.sent += keys
+        if "C-c" in keys:
+            self.draft_text = "__стёрто__"              # Ctrl+C стирает поле ввода — черновик берём раньше
+
+    def type(self, wid, text):
+        self.sent.append(text)
+
+    def screen(self, wid, n=25):
+        return ["Enter to confirm"] if self.background else ["❯ "]
+
+    def window(self, wid):
+        self.polls += 1
+        if self.polls <= self.exit_after:
+            return {"id": wid, "cmd": "claude"}
+        return None if self.gone else {"id": wid, "cmd": "bash"}
+
+    def kill(self, wid):
+        self.killed.append(wid)
+
+
+@pytest.fixture
+def quitter(tmp_path, monkeypatch):
+    p = bot.Pult(Config(token="1:T", owners=[1], project_roots=[str(tmp_path / "projects")]))
+    clock = itertools.count(0, 0.5)                     # каждый опрос — +0,5 с; настоящих пауз нет
+    monkeypatch.setattr(bot.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(bot.time, "sleep", lambda s: None)
+    return p
+
+
+def test_quit_waits_for_long_exit_and_kills_shell(quitter):
+    p = quitter
+    p.tmux = Fake(exit_after=16, draft="допиши отчёт")   # ~8 с: прежние 4 с не дождались бы
+    r = p.quit_ex({"id": "@1", "name": "carwash-reviews"})
+    assert r == {"result": "closed", "draft": "допиши отчёт"} and p.tmux.killed == ["@1"]
+    assert p.tmux.sent[:3] == ["C-c", "/exit", "Enter"]
+    assert p.quit({"id": "@2", "name": "x"}) in ("closed",)          # прежний ответ — строка, как раньше
+
+
+def test_quit_window_gone_is_closed(quitter):
+    p = quitter
+    p.tmux = Fake(exit_after=3, gone=True)
+    assert p.quit_ex({"id": "@1"}) == {"result": "closed", "draft": ""} and p.tmux.killed == []
+
+
+def test_quit_gives_up_after_20_seconds(quitter):
+    p = quitter
+    p.tmux = Fake(exit_after=10_000, draft="черновик")
+    r = p.quit_ex({"id": "@1"})
+    assert r == {"result": "busy", "draft": "черновик"} and p.tmux.killed == []
+    assert 38 <= p.tmux.polls <= 42                                  # раз в 0,5 с до 20 с
+
+
+def test_quit_background_tasks_not_closed(quitter):
+    p = quitter
+    p.tmux = Fake(exit_after=10_000, background=True)
+    assert p.quit_ex({"id": "@1"})["result"] == "background" and "Escape" in p.tmux.sent
+
+
+def test_close_shows_draft_in_bot_and_panel(quitter, monkeypatch):
+    p = quitter
+    p.tmux, sent = Fake(exit_after=2, draft="текст, который не ушёл"), []
+    p.send = lambda chat, text, **kw: sent.append(text)
+    p.close(1, {"id": "@1", "name": "carwash-reviews", "cmd": "claude"})
+    assert "завершена" in sent[-1] and "Черновик" in sent[-1] and "текст, который не ушёл" in sent[-1]
+    panel_ = webapp.Panel(Config(token="1:T", owners=[1]))
+    monkeypatch.setattr(panel_.pult, "quit_ex", lambda w: {"result": "closed", "draft": "ещё черновик"})
+    assert panel_.close_ex({"id": "@1"}) == {"result": "закрыто", "draft": "ещё черновик"}
+    assert panel_.close({"id": "@1"}) == "закрыто"
+
+
+def test_prompt_draft_parsing():
+    dim = "\x1b[2m"
+    assert tmux.prompt_draft(["╭────╮", "│ ❯ допиши отчёт за неделю │", "╰────╯"]) == "допиши отчёт за неделю"
+    assert tmux.prompt_draft(["────", "❯ первая строка", "  вторая строка", "────", "  ? for shortcuts"]) == \
+        "первая строка\nвторая строка"
+    assert tmux.prompt_draft(["────", f"❯ {dim}Try \"fix lint\"\x1b[0m", "────"]) == ""   # бледное — подсказка
+    assert tmux.prompt_draft(["────", "❯ ", "────"]) == ""
+    assert tmux.prompt_draft(["● Готово", "нет поля ввода"]) == ""
+
+
+# ---------- Б: не плодить папки ----------
+def test_existing_spaces_listed_freshest_first(tmp_path):
+    root = tmp_path / "projects"
+    a = modules.create("night-shift", root)
+    b = modules.create("night-shift", root, "night-shift-2")
+    os.utime(a, (1_000, 1_000))
+    for f in a.iterdir():
+        os.utime(f, (1_000, 1_000), follow_symlinks=False)
+    have = modules.existing(root, "night-shift")
+    assert [x["folder"] for x in have] == ["night-shift-2", "night-shift"] and have[0]["path"] == b
+    assert modules.existing(root, "client-alerts") == []
+
+
+def test_panel_module_offers_existing_then_confirmed_another(server, tmp_path):
+    p, base = server
+    owner = p.auth.issue(1)
+    assert call(base, "/api/modules/create", {"id": "night-shift"}, owner)[0] == 200
+    mods = call(base, "/api/modules", None, owner)[1]["modules"]
+    night = next(m for m in mods if m["id"] == "night-shift")
+    assert [x["folder"] for x in night["existing"]] == ["night-shift"] and night["existing"][0]["changed"] > 0
+    assert night["existing"][0]["i"] == p.pult.projects().index(str(tmp_path / "projects" / "night-shift"))
+    code, d = call(base, "/api/modules/create", {"id": "night-shift"}, owner)          # без подтверждения — нет
+    assert code == 400 and "уже есть" in d["error"] and not (tmp_path / "projects" / "night-shift-2").exists()
+    code, d = call(base, "/api/modules/create", {"id": "night-shift", "again": True}, owner)
+    assert code == 200 and d["folder"] == "night-shift-2"
+    html = (Path(webapp.__file__).with_name("web") / "index.html").read_text(encoding="utf-8")
+    assert "data-mopen" in html and "Создать ещё одно пространство" in html and "again" in html
+
+
+def test_bot_module_offers_open_first_and_confirms_another(pult, tmp_path):
+    p = pult
+    p.projects = lambda: [str(tmp_path / "projects" / x) for x in sorted(os_listdir(tmp_path / "projects"))]
+    cb(p, "md:new:night-shift")
+    assert (tmp_path / "projects" / "night-shift").is_dir()
+    cb(p, "md:v:night-shift")
+    _, kw = p.sent[-1]
+    rows = kw["reply_markup"]["inline_keyboard"]
+    assert rows[0][0]["text"].startswith("📂 Открыть «night-shift»") and rows[0][0]["callback_data"].startswith("new:")
+    assert rows[1][0]["callback_data"] == "md:again:night-shift" and "md:new:night-shift" not in buttons(kw)
+    cb(p, "md:new:night-shift")                                      # старая кнопка «Создать» — снова выбор
+    assert not (tmp_path / "projects" / "night-shift-2").exists() and "уже есть" in p.sent[-1][0]
+    cb(p, "md:again:night-shift")
+    assert "Точно создать ещё одно" in p.sent[-1][0] and "md:new2:night-shift" in buttons(p.sent[-1][1])
+    cb(p, "md:new2:night-shift")
+    assert (tmp_path / "projects" / "night-shift-2").is_dir()
+
+
+def test_bot_new_folder_taken_offers_open(pult, tmp_path):
+    p = pult
+    p.projects = lambda: [str(tmp_path / "projects" / x) for x in sorted(os_listdir(tmp_path / "projects"))]
+    cb(p, "mk:")
+    p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "shop-bot"})
+    cb(p, "mk:")
+    p.on_message({"chat": {"id": 1}, "from": {"id": 1}, "text": "shop-bot"})
+    text, kw = p.sent[-1]
+    assert "уже есть" in text and buttons(kw) == ["new:0"]
+
+
+def os_listdir(d):
+    return os.listdir(d) if d.is_dir() else []
