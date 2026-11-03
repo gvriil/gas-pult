@@ -143,6 +143,7 @@ class Panel:
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.model_cache: dict[tuple, tuple[str, str]] = {}  # (папка, папка Claude) → (ревизия, модель ответа)
+        self.mod_sections: tuple[float, dict] = (0.0, {})    # модуль → разделы чата (sections_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
@@ -205,8 +206,18 @@ class Panel:
                         "preview": self.preview(w["path"], rev, home),
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
-                        "agent": self.agent_of(w["path"])})               # простой режим: имя агента модуля
+                        "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
+                        "sections": self.sections_of(w["path"])})         # разделы чата бизнес-ролей; [] — во всех
         return out
+
+    def sections_of(self, path: str) -> list[str]:
+        """Разделы (Поиск, Цифры, Бумаги, Общение) модуля пространства — по каталогу, раз в минуту."""
+        mk = modules.mark_of(Path(path))
+        if not mk:
+            return []
+        if time.time() - self.mod_sections[0] > 60:
+            self.mod_sections = (time.time(), {m["id"]: m["sections"] for m in modules.catalog()})
+        return list(self.mod_sections[1].get(str(mk.get("id")), []))
 
     def agent_of(self, path: str) -> str:
         """Название модуля, из которого создано пространство (простой режим зовёт агента так), иначе ""."""

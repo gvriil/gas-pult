@@ -183,3 +183,45 @@ def test_team_ceiling_enforced(server):
     assert call(base, "/api/screen?w=@1", token=viewer)[0] == 200                   # гостю экран смотреть можно
     panel.people.remove(2)
     assert panel.team.person(2) == {"caps": None, "sections": None}
+
+
+def test_demo_catalog_in_sync():
+    """Демо панели (?demo&persona=1) показывает тот же справочник ролей, что сервер."""
+    import re
+    from pathlib import Path
+    index = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    demo = json.loads(re.search(r"const DEMO_PERSONAS = (\{.*?\});\n", index).group(1))
+    assert demo == {lang: personas.catalog(lang) for lang in ("ru", "en")}
+    # тумблеры и роли в панели — только по справочнику с сервера, своих списков нет
+    for c in CAPS:
+        assert index.count(f'"{c}"') == index.count(f'"{c}"', index.index("const DEMO_PERSONAS"))
+
+
+# ---------- часть 3: разделы чата у модулей ----------
+def test_module_sections(tmp_path):
+    from gas_pult import modules
+    mods = modules.catalog()
+    assert all(set(m["sections"]) <= set(personas.SECTIONS) for m in mods)
+    assert sum(1 for m in mods if m["sections"]) >= len(mods) - 1      # кроме общих — у каждого есть раздел
+    for s in personas.SECTIONS:                                         # в каждом разделе есть хотя бы один агент
+        assert any(s in m["sections"] for m in mods), s
+    src = next(m for m in mods if m["sections"])
+    bad = tmp_path / "bad-mod"
+    import shutil
+    shutil.copytree(src["path"], bad)
+    toml = (bad / "module.toml").read_text(encoding="utf-8")
+    (bad / "module.toml").write_text(toml.replace(f'id = "{src["id"]}"', 'id = "bad-mod"')
+                                     .replace("sections = [", 'sections = ["money", '), encoding="utf-8")
+    with pytest.raises(modules.ModuleError):
+        modules.parse(bad)
+
+
+def test_session_sections(server, tmp_path):
+    from gas_pult import modules
+    panel, _ = server
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    assert panel.sections_of(str(ws)) == []                                      # не из модуля — во всех разделах
+    m = next(x for x in modules.catalog() if x["sections"])
+    (ws / modules.MARK).write_text(json.dumps({"id": m["id"], "title": m["title"]}))
+    assert panel.sections_of(str(ws)) == m["sections"]
