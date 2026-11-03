@@ -85,6 +85,7 @@ PERSONAS: dict[str, dict] = {
 }
 DEFAULT = "developer"                   # нет выбора — прежний полный интерфейс
 SIMPLE = ("business_owner", "point_admin", "student")   # простой режим из #80
+SPACE_FIXED = frozenset({"cap.dev_sessions"})          # «Моё пространство» владельца: всегда с сессиями
 
 # Права пульта → access_role.
 ACCESS = {"owner": "owner", "member": "staff", "viewer": "guest"}

@@ -46,12 +46,20 @@ def window_name(name: str) -> str:
 
 
 class Tmux:
-    def __init__(self, session: str, socket: str = ""):
+    def __init__(self, session: str, socket: str = "", user: str = "", home: str = "", tmux: str = "tmux"):
         """``socket`` (или ``GAS_PULT_TMUX_SOCKET``) — свой сервер tmux по пути сокета (``tmux -S``): тесты и проверки
-        работают только с ним и не видят боевой сервер. Пусто — сервер tmux по умолчанию."""
+        работают только с ним и не видят боевой сервер. Пусто — сервер tmux по умолчанию.
+
+        ``user`` — окна пространства (``tenants.py``): каждая команда tmux идёт как ``sudo -n -u <user> <tmux> -S
+        <socket>``, ``home`` — папка, где открывается сессия, оболочка — /bin/bash. Без ``user`` всё как раньше."""
         self.session = session
         self.socket = socket or os.environ.get("GAS_PULT_TMUX_SOCKET", "")
+        self.user, self.home = user, home
         self.tmux = ["tmux", "-S", self.socket] if self.socket else ["tmux"]
+        if user:
+            if not socket:
+                raise ValueError("у пространства должен быть свой сокет tmux")
+            self.tmux = ["sudo", "-n", "-u", user, tmux, "-S", socket]
 
     def run(self, *args: str, input: str | None = None) -> str:
         return subprocess.run([*self.tmux, *args], capture_output=True, text=True, input=input).stdout
@@ -110,10 +118,14 @@ class Tmux:
     def kill(self, wid: str):
         self.run("kill-window", "-t", wid)
 
+    def shell(self) -> str:
+        """Оболочка после выхода Claude: у пространства — /bin/bash (у его пользователя входа нет), иначе $SHELL."""
+        return "/bin/bash" if self.user else os.environ.get("SHELL", "/bin/bash")
+
     def ensure_session(self):
         if subprocess.run([*self.tmux, "has-session", "-t", self.session], capture_output=True).returncode == 0:
             return
-        cmd = [*self.tmux, "new-session", "-d", "-s", self.session, "-c", os.path.expanduser("~")]
+        cmd = [*self.tmux, "new-session", "-d", "-s", self.session, "-c", self.home or os.path.expanduser("~")]
         if sys.platform == "linux" and shutil.which("systemd-run") and not self.socket:
             # сервер tmux — в своей группе systemd: иначе перезапуск службы пульта убьёт все окна
             cmd = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
@@ -127,7 +139,7 @@ class Tmux:
         когда Claude в нём завершился (тогда сессия «остановлена», а не пропадает). ``by`` — Telegram ID человека,
         открывшего окно со своей папкой Claude Code (``@gas_pult_by``); пусто — окно владельца."""
         self.ensure_session()
-        shell = os.environ.get("SHELL", "/bin/bash")
+        shell = self.shell()
         r = subprocess.run([*self.tmux, "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
                             "-n", name, "-c", path, f"{command}; exec {shlex.quote(shell)}"],
                            capture_output=True, text=True)
@@ -141,7 +153,7 @@ class Tmux:
 
     def respawn(self, wid: str, path: str, command: str, mark: str = "claude"):
         """Запустить Claude заново в том же окне (то же имя и id): оболочку — закрыть, команду — запустить."""
-        shell = os.environ.get("SHELL", "/bin/bash")
+        shell = self.shell()
         r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path,
                             f"{command}; exec {shlex.quote(shell)}"], capture_output=True, text=True)
         if r.returncode != 0:
