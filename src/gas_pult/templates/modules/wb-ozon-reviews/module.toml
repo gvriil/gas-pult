@@ -3,6 +3,7 @@ id = "wb-ozon-reviews"
 version = "1.0"
 title = "Отзывы и вопросы WB и Ozon"
 industry = "Селлеры WB и Ozon"
+sections = ["comms"]
 about = "Черновики ответов на отзывы и вопросы покупателей; негатив — сразу вам; публикуется только после «Да»."
 description = """
 Дважды в день агент берёт новые отзывы и вопросы покупателей — через официальный API Wildberries и Ozon Seller API

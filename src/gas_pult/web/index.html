@@ -643,6 +643,15 @@
   .s-comp textarea { flex: 1; min-width: 0; border: 0; background: transparent; resize: none; padding: 10px 0; max-height: 40vh; outline: none; font: inherit;
                      font-size: calc(16px * var(--fz, 1)); color: var(--text-primary); }
   .s-view { text-align: center; color: var(--text-secondary); padding: 8px; }
+  /* Чат бизнес-ролей: 4 чипа-фильтра (Поиск, Цифры, Бумаги, Общение) и «Ждут вашего Да» — сверху (personas.py) */
+  .s-secs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; } .s-secs::-webkit-scrollbar { display: none; }
+  .s-secs .scn-opt { flex: none; width: auto; min-height: 34px; padding: 5px 12px; font-size: calc(14px * var(--fz, 1)); }
+  .s-yes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 2px 0 8px; } .s-yes .s-lbl { margin: 0; font-size: calc(12px * var(--fz, 1)); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--status-approval); }
+  .s-yc { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius-md); background: var(--status-approval-bg); border: 1px solid var(--status-approval); }
+  .s-yc .t { flex: 1; min-width: 0; } .s-yc b { display: block; font-size: calc(14px * var(--fz, 1)); } .s-yc small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-yc .scn-opt { flex: none; width: auto; min-height: 34px; padding: 5px 12px; font-size: calc(14px * var(--fz, 1)); }
+  .s-yc .scn-opt.yes { background: var(--status-approval); border-color: var(--status-approval); color: var(--on-approval); }
+  .s-tips { padding: 8px 0 0; } .s-tips .note { margin: 0 0 6px; } .s-tips .scn-opts { margin: 0; }
   .sheet.s-sheet .s-body { padding: 0 16px 8px; }
   .sheet.s-sheet .s-body p { margin: 0 0 10px; }
   .sheet.s-sheet .s-lbl { margin: 14px 0 8px; font-weight: 600; }
@@ -791,8 +800,11 @@
     </div>
     <p class="s-demo" id="sDemo" hidden></p>
     <div class="s-agents" id="sAgents" role="group" hidden></div>
+    <div class="s-secs" id="sSecs" role="group" hidden></div>
+    <div class="s-yes" id="sYes" aria-live="polite" hidden></div>
   </div></header>
   <div class="s-scroll" id="sScroll"><div class="s-col">
+    <div class="s-tips" id="sTips" hidden></div>
     <div class="chat" id="sFeed"></div>
     <div class="act off" id="sAct" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>
     <div id="sAsk" aria-live="polite"></div>
@@ -3968,7 +3980,7 @@ async function loadDict(lang) {
 function T(k, v) { let s = DICT[k] ?? k; for (const x in v || {}) s = s.split("{" + x + "}").join(String(v[x])); return s; }
 const L = (k, ru) => ((SIM.on || (view === "login" && LANG === "en")) && DICT[k] ? T(k) : ru);   // общее: помощник, переходы
 const LL = (k, ru) => (LANG === "en" && DICT[k] ? T(k) : ru);                                   // первый экран
-const SIM = { on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
+const SIM = { sec: null, yes: {}, on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
 // Инструмент Claude Code → обобщённое действие строки статуса (то же, что humanize.TOOLS — тест сверяет).
 const SIMPLE_TOOL = {"Read":"reads","Grep":"reads","Glob":"reads","LS":"reads","Edit":"edits","MultiEdit":"edits","Write":"writes","NotebookEdit":"edits","Bash":"acts","PowerShell":"acts","BashOutput":"acts","KillShell":"acts","Skill":"acts","WebSearch":"web","WebFetch":"web","Task":"helper","Agent":"helper","TodoWrite":"plans","TaskCreate":"plans","TaskUpdate":"plans","AskUserQuestion":"waiting","ExitPlanMode":"waiting"};
 const SIMPLE_PH = ["sent", "delivered", "started", "working", "thinking", "waiting", "done", "queued", "stuck", "idle"];
@@ -4049,9 +4061,55 @@ function sHead() {
   const s = SIM.list.find((x) => x.id === SIM.w);
   $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T("s.agents"))}</b><small>${esc(s ? T("s.status." + (s.status in ST ? s.status : "idle")) : "")}</small></span>${SIM.list.length > 1 || canNew() ? ic("chevron", "s16") : ""}`;
   $("sWho").setAttribute("aria-label", T("s.agents"));
-  $("sAgents").hidden = SIM.list.length < 2;
-  $("sAgents").innerHTML = SIM.list.length < 2 ? "" : SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
+  const shown = SIM.list.filter((x) => sSecOk(x) || x.id === SIM.w);
+  $("sAgents").hidden = shown.length < 2 && !SIM.sec;
+  $("sAgents").innerHTML = $("sAgents").hidden ? "" : shown.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
+  sSecs();
   $("sAgents").querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+// Разделы над чатом: фильтр агентов по модулю (поле sections; без него — во всех) и примеры просьб раздела.
+const sSecOk = (x) => !SIM.sec || !x.sections?.length || x.sections.includes(SIM.sec);
+function sSecs() {
+  const on = !!UI && cap("four_tabs") && UI.sections.length > 0, box = $("sSecs");
+  box.hidden = !on;
+  if (!on) { SIM.sec = null; $("sTips").hidden = true; return; }
+  if (SIM.sec && !UI.sections.includes(SIM.sec)) SIM.sec = null;
+  box.setAttribute("aria-label", T("sec.title"));
+  const html = UI.sections.map((id) => sChip(SIM.sec === id, `data-sec="${id}"`, T("sec." + id))).join("");
+  if (box.innerHTML !== html) box.innerHTML = html;
+  const tips = $("sTips"); tips.hidden = !SIM.sec;
+  tips.innerHTML = SIM.sec ? `<p class="note">${esc(T("sec.tips"))}</p><div class="scn-opts">${[1, 2, 3].map((n) => sChip(false, `data-tip="sec.${SIM.sec}.p${n}"`, T(`sec.${SIM.sec}.p${n}`))).join("")}</div>` : "";
+}
+// «Ждут вашего Да»: другие агенты, которые ждут решения. «Да» — только у понятных вопросов (есть пункт «Да» первого
+// уровня), иначе — «Открыть»: решение принимается в разговоре, где видно подробности.
+async function sYesLoad() {
+  if (!UI || !cap("approvals_yes_no")) { SIM.yes = {}; return sYes(); }
+  const wait = SIM.list.filter((x) => x.status === "dialog" && x.id !== SIM.w).slice(0, 3), next = {};
+  for (const x of wait) {
+    const old = SIM.yes[x.id];
+    if (old && Date.now() - old.t < 6000) { next[x.id] = old; continue; }
+    try { next[x.id] = { t: Date.now(), ask: (await api("/api/ask?w=" + encodeURIComponent(x.id))).ask }; } catch (e) { if (old) next[x.id] = old; }
+  }
+  SIM.yes = next; sYes();
+}
+function sYes() {
+  const box = $("sYes"), rows = SIM.list.filter((x) => SIM.yes[x.id] && x.status === "dialog" && x.id !== SIM.w);
+  const viewer = meta?.role === "viewer";
+  const html = rows.length ? `<p class="s-lbl">${esc(T("yes.title", { n: rows.length }))}</p>` + rows.map((x) => {
+    const a = SIM.yes[x.id].ask, yes = a?.known && a.options.find((o) => o.key === "yes" && o.level !== 2);
+    return `<div class="s-yc">${ic("warn")}<div class="t"><b>${esc(sName(x))}</b><small>${esc(a ? a["title_" + LANG] || a.title_ru : T("yes.wait"))}</small></div>
+      ${yes && !viewer ? `<button class="scn-opt yes" type="button" data-yes="${esc(x.id)}">${esc(sLab(yes))}</button>` : ""}<button class="scn-opt" type="button" data-w="${esc(x.id)}">${esc(T("yes.open"))}</button></div>`;
+  }).join("") : "";
+  box.hidden = !html;
+  if (box.innerHTML !== html) box.innerHTML = html;
+}
+async function sYesGo(w, btn) {
+  const a = SIM.yes[w]?.ask, o = a?.options.find((x) => x.key === "yes" && x.level !== 2);
+  if (!o?.send?.n) return sPick(w);
+  haptic("impactOccurred", "medium"); btn.disabled = true; btn.textContent = T("s.sending");
+  try { await api("/api/select", { w, text: "", n: o.send.n, go: true }); delete SIM.yes[w]; toast(T("s.sent")); setTimeout(sTick, 600); }
+  catch (e) { toast(T("s.fail"), 3500); btn.disabled = false; }
+  sYes();
 }
 async function sLoad(first) {
   let d; try { d = await api("/api/sessions"); } catch (e) { return; }
@@ -4062,7 +4120,7 @@ async function sLoad(first) {
     const pick = SIM.list.find((x) => x.id === want) || SIM.list.find((x) => x.active) || SIM.list.find((x) => x.status === "dialog") || SIM.list[0];
     SIM.w = pick?.id || null; SIM.hist = []; SIM.rev = ""; SIM.ask = null; SIM.act = null; first = true;
   }
-  sHead();
+  sHead(); sYesLoad();
   if (first) { sRender(true); await sHist(true); }
 }
 function sPick(w) {
@@ -4196,6 +4254,9 @@ $("simple").addEventListener("click", (e) => {
   if (b.dataset.sopt) return sChoose(SIM.ask?.options[+b.dataset.sopt], b);
   if (b.dataset.smore) { SIM.open2 = !SIM.open2; haptic("selectionChanged"); return sAsk(); }
   if (b.dataset.w) return sPick(b.dataset.w);
+  if (b.dataset.yes) return sYesGo(b.dataset.yes, b);
+  if (b.dataset.sec) { SIM.sec = SIM.sec === b.dataset.sec ? null : b.dataset.sec; haptic("selectionChanged"); return sHead(); }
+  if (b.dataset.tip) { const t = $("sInput"); t.value = T(b.dataset.tip); sGrow(); t.focus(); return; }
   if (b.dataset.snew) return sNewAgent();
   if (b.dataset.solder) return sOlder(b);
   if (b.id === "sWho") return sAgents();
@@ -4333,8 +4394,8 @@ if (DEMO && params.get("view") === "login") showLogin(); else start();
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана" },
-    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon" },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана", sections: ["analytics"] },
+    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon", sections: ["comms"] },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
     { id: "@5", name: "shop-bot", path: "/home/u/projects/shop-bot", branch: "main", status: "stopped", context: null, model: "", active: false, channel: false, rev: "", preview: "", profile: "zai" },
     { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
