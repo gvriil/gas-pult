@@ -805,7 +805,7 @@ purpose_en = "Simple mode: here you write a task to the agent, and it replies an
 steps = ["Напишите задачу в поле внизу и нажмите стрелку.", "Строка над полем показывает, чем агент занят.", "Агент спрашивает — нажмите подходящую кнопку, цифры вводить не нужно."]
 steps_en = ["Write the task in the field below and tap the arrow.", "The line above the field shows what the agent is doing.", "When the agent asks, tap the right button — no need to type numbers."]
 next = ["go:simple.agents", "go:simple.settings"]
-chips = ["s-ask", "s-safe", "s-lang"]
+chips = ["s-ask", "s-safe", "s-lang", "s-yes", "s-secs"]
 
 [[screen.faq]]
 id = "s-ask"
@@ -813,6 +813,22 @@ q = "Агент спрашивает разрешение — что нажат�
 a = "Прочитайте вопрос над кнопками. «Да» — разрешить один раз, «Нет» — отказаться и написать, как иначе. Не уверены — «Показать подробности»."
 q_en = "The agent asks for permission — what should I tap?"
 a_en = "Read the question above the buttons. «Yes» allows once, «No» declines so you can write what to do instead. Not sure? Tap «Show details»."
+actions = ["go:simple.chat"]
+
+[[screen.faq]]
+id = "s-yes"
+q = "Что за карточки «Ждут вашего Да»?"
+a = "Другие ваши агенты ждут решения. «Да» — разрешить один раз, если вопрос понятен из строки на карточке. Не уверены — «Открыть»: там видно подробности и все варианты."
+q_en = "What are the «Waiting for your Yes» cards?"
+a_en = "Your other agents are waiting for a decision. «Yes» allows once if the line on the card is clear. Not sure — «Open» shows details and all options."
+actions = ["go:simple.chat"]
+
+[[screen.faq]]
+id = "s-secs"
+q = "Зачем Поиск, Цифры, Бумаги и Общение?"
+a = "Это фильтры: нажмите раздел — останутся агенты этого раздела и появятся примеры просьб. Нажмите ещё раз — снова все."
+q_en = "What are Search, Numbers, Papers and Messages for?"
+a_en = "They are filters: tap a section to keep only its agents and see example requests. Tap again to show all."
 actions = ["go:simple.chat"]
 
 [[screen.faq]]

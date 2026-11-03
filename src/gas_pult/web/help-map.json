@@ -1934,7 +1934,9 @@
    "chips": [
     "s-ask",
     "s-safe",
-    "s-lang"
+    "s-lang",
+    "s-yes",
+    "s-secs"
    ],
    "faq": [
     {
@@ -1946,6 +1948,28 @@
      "id": "s-ask",
      "q": "Агент спрашивает разрешение — что нажать?",
      "q_en": "The agent asks for permission — what should I tap?",
+     "roles": []
+    },
+    {
+     "a": "Другие ваши агенты ждут решения. «Да» — разрешить один раз, если вопрос понятен из строки на карточке. Не уверены — «Открыть»: там видно подробности и все варианты.",
+     "a_en": "Your other agents are waiting for a decision. «Yes» allows once if the line on the card is clear. Not sure — «Open» shows details and all options.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "s-yes",
+     "q": "Что за карточки «Ждут вашего Да»?",
+     "q_en": "What are the «Waiting for your Yes» cards?",
+     "roles": []
+    },
+    {
+     "a": "Это фильтры: нажмите раздел — останутся агенты этого раздела и появятся примеры просьб. Нажмите ещё раз — снова все.",
+     "a_en": "They are filters: tap a section to keep only its agents and see example requests. Tap again to show all.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "s-secs",
+     "q": "Зачем Поиск, Цифры, Бумаги и Общение?",
+     "q_en": "What are Search, Numbers, Papers and Messages for?",
      "roles": []
     },
     {
