@@ -532,9 +532,11 @@ class Panel:
 
     def help_ask(self, role: str, uid, b: dict) -> dict:
         """Вопрос вошедшего: роль — с сервера; от клиента — только экран, шаг, модуль и сам вопрос."""
+        v = self.ui(uid, role)                         # вид — с сервера: чипы роли и переходы по возможностям
         return self.helper.ask(role, b.get("ctx"), str(b.get("q", "")), str(b.get("chip", "")),
                                who=[self.helper.who_key("u", uid)], extra={"module_ids": self.module_ids()},
-                               lang=str(b.get("lang", "ru")))
+                               lang=str(b.get("lang", "ru")),
+                               ui={k: v[k] for k in ("persona", "caps", "ceiling")})
 
     def help_guest(self, o: dict, sid: str, ip: str, b: dict) -> dict:
         """Вопрос гостя предложения: только экраны страницы и мастера и публичное о модулях ЕГО предложения;

@@ -287,5 +287,6 @@
  "sec.comms.p3": "Who should we invite back — a list and a draft message",
  "yes.title": "Waiting for your “Yes” ({n})",
  "yes.wait": "The agent is waiting for your decision",
- "yes.open": "Open"
+ "yes.open": "Open",
+ "help.enable": "Turn on and open: {t}"
 }

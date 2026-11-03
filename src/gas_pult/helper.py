@@ -31,13 +31,15 @@ from datetime import datetime, timedelta
 from importlib import resources
 from pathlib import Path
 
-from gas_pult import country
+from gas_pult import country, personas
 from gas_pult.config import write_private
 
 ROLES = ("owner", "member", "viewer", "guest", "anon")
 STAFF = ("owner", "member", "viewer")
 WHERE = ("panel", "offer")
 WHAT, WHAT_Q = "what", "Что здесь делать?"
+EXPLAIN = "explain"              # чип студента «Объясни на пальцах»: то же, что «Что здесь делать?», с вступлением
+EXPLAIN_RU, EXPLAIN_EN = "Если совсем просто: ", "In plain words: "
 WHAT_Q_EN = "What can I do here?"
 SIMPLE = "simple."              # экраны простого режима: тексты и на английском (поля *_en) — обязательно
 LANGS = ("ru", "en")
@@ -77,6 +79,10 @@ def parse_map(raw: dict) -> dict:
         if not roles or set(roles) - set(ROLES):
             raise MapError(f"{aid}: roles — из {', '.join(ROLES)}")
         actions[aid] = {"id": aid, "title": str(a.get("title") or aid), "roles": roles}
+        if a.get("required_cap") is not None:          # экран виден только с этой возможностью (personas.py)
+            if a["required_cap"] not in personas.CAPS:
+                raise MapError(f"{aid}: required_cap — из {', '.join(personas.CAPS)}")
+            actions[aid]["cap"] = a["required_cap"]
         if a.get("title_en"):
             actions[aid]["title_en"] = str(a["title_en"])
 
@@ -142,7 +148,22 @@ def parse_map(raw: dict) -> dict:
                 raise MapError(f"{sid}: переходам простого режима нужен title_en: {', '.join(bad)}")
             screens[sid] |= {"title_en": s["title_en"].strip(), "purpose_en": s["purpose_en"].strip(),
                              "steps_en": steps_en}
-    return {"version": raw.get("version", 1), "actions": actions, "faq": common, "screens": screens}
+    roles_ui: dict[str, dict] = {}                     # [[persona]]: свои чипы и тон для роли интерфейса
+    for p in _list(raw.get("persona", []), "[[persona]]", dict):
+        pid = p.get("id", "")
+        if pid not in personas.PERSONAS or pid in roles_ui:
+            raise MapError(f"[[persona]] {pid!r}: id — из {', '.join(personas.PERSONAS)}, без повторов")
+        own = [faq(x, pid, False) for x in _list(p.get("faq", []), f"{pid}.faq", dict)]
+        if bad := [f["id"] for f in own if not f.get("q_en") or not f.get("a_en")]:
+            raise MapError(f"{pid}: вопросам роли нужны q_en и a_en: {', '.join(bad)}")
+        if bad := [a for f in own for a in f["actions"] if not actions[a].get("title_en")]:
+            raise MapError(f"{pid}: переходам вопросов роли нужен title_en: {', '.join(bad)}")
+        for k in ("tone", "tone_en"):
+            if not str(p.get(k, "")).strip():
+                raise MapError(f"{pid}: нужно поле {k}")
+        roles_ui[pid] = {"id": pid, "tone": p["tone"].strip(), "tone_en": p["tone_en"].strip(), "faq": own}
+    return {"version": raw.get("version", 1), "actions": actions, "faq": common, "screens": screens,
+            "personas": roles_ui}
 
 
 @functools.cache
@@ -184,22 +205,36 @@ def english(sid: str, lang: str) -> bool:
     return lang == "en" and bilingual(sid)
 
 
-def chips_for(sid: str, role: str, m: dict | None = None, lang: str = "ru") -> list[dict]:
+def persona_faq(persona: str | None, m: dict | None = None) -> list[dict]:
+    """Вопросы роли интерфейса — первыми чипами на любом экране (тон и фокус роли: польза, контроль, учёба, техника)."""
+    return list(((m or the_map())["personas"].get(persona or "") or {}).get("faq", []))
+
+
+def chips_for(sid: str, role: str, m: dict | None = None, lang: str = "ru", persona: str | None = None) -> list[dict]:
     m = m or the_map()
     by = {f["id"]: f for f in faq_for(sid, role, m)}
     en = english(sid, lang)
-    return [{"id": WHAT, "label": WHAT_Q_EN if en else WHAT_Q}] + [
+    mine = [{"id": f["id"], "label": f["q_en"] if en else f["q"]} for f in persona_faq(persona, m)]
+    return [{"id": WHAT, "label": WHAT_Q_EN if en else WHAT_Q}] + mine + [
         {"id": c, "label": by[c]["q_en"] if en else by[c]["q"]} for c in m["screens"][sid]["chips"] if c in by]
 
 
-def actions_public(ids, role: str, m: dict | None = None, en: bool = False) -> list[dict]:
-    """id действий → [{id, title}]: только из карты и для роли, без повторов, не больше MAX_ACTIONS."""
+def actions_public(ids, role: str, m: dict | None = None, en: bool = False, ui: dict | None = None) -> list[dict]:
+    """id действий → [{id, title}]: только из карты и для роли, без повторов, не больше MAX_ACTIONS.
+
+    ``ui`` — вид человека (``personas.view``): экрана без нужной возможности помощник не предлагает; если её можно
+    включить (она в потолке прав) — переход ``{…, enable: cap}``: «Включить и перейти», иначе — не показывается."""
     m = m or the_map()
     out: list[dict] = []
     for a in ids:
         if isinstance(a, str) and action_ok(a, role, m) and all(x["id"] != a for x in out):
             x = m["actions"][a]
-            out.append({"id": a, "title": x.get("title_en", x["title"]) if en else x["title"]})
+            item = {"id": a, "title": x.get("title_en", x["title"]) if en else x["title"]}
+            if ui is not None and x.get("cap") and x["cap"] not in ui.get("caps", ()):
+                if x["cap"] not in ui.get("ceiling", ()):
+                    continue                                 # права не позволяют — и не предлагаем
+                item["enable"] = x["cap"]
+            out.append(item)
     return out[:MAX_ACTIONS]
 
 
@@ -404,16 +439,18 @@ class Helper:
         return kind + ":" + hmac.new(country.salt(self.data), f"{kind}:{value}".encode(),
                                      hashlib.sha256).hexdigest()[:20]
 
-    def simple(self, role: str, sid: str, chip: str, question: str, en: bool) -> dict:
+    def simple(self, role: str, sid: str, chip: str, question: str, en: bool, persona: str | None = None) -> dict:
         """Экран простого режима (и первый экран): ответы только из вопросов таких же экранов, на языке человека —
         без технических экранов, docs и терминов."""
         m = the_map()
         s = m["screens"][sid]
         sfx = "_en" if en else ""
-        if chip == WHAT or (not chip and not question.strip()):
+        if chip in (WHAT, EXPLAIN) or (not chip and not question.strip()):
             steps = " ".join(f"{i}) {x}" for i, x in enumerate(s["steps" + sfx], 1))
-            return {"text": shorten(f"{s['purpose' + sfx]} {steps}".strip()), "actions": s["next"], "source": "screen"}
-        own = [f for f in s["faq"] if not f["roles"] or role in f["roles"]]
+            pre = (EXPLAIN_EN if en else EXPLAIN_RU) if chip == EXPLAIN else ""
+            return {"text": shorten(f"{pre}{s['purpose' + sfx]} {steps}".strip()), "actions": s["next"],
+                    "source": "screen"}
+        own = [f for f in s["faq"] if not f["roles"] or role in f["roles"]] + persona_faq(persona, m)
         if chip and (f := next((x for x in own if x["id"] == chip), None)):
             return {"text": f["a" + sfx], "actions": f["actions"] or s["next"], "source": "faq"}
         entries = [{"text": f"{f['q' + sfx]} {f['a' + sfx]}", "w": 1.6 if o["id"] == sid else 0.9, "faq": f}
@@ -427,15 +464,16 @@ class Helper:
         return {"text": shorten(none + s["purpose" + sfx]), "actions": s["next"], "source": "none"}
 
     def offline(self, role: str, sid: str, chip: str, question: str, extra: dict | None = None,
-                lang: str = "ru") -> dict:
+                lang: str = "ru", persona: str | None = None) -> dict:
         m = the_map()
         s = m["screens"][sid]
         if bilingual(sid, m):
-            return self.simple(role, sid, chip, question, english(sid, lang))
-        fq = faq_for(sid, role, m)
-        if chip == WHAT or (not chip and not question.strip()):
+            return self.simple(role, sid, chip, question, english(sid, lang), persona)
+        fq = faq_for(sid, role, m) + persona_faq(persona, m)
+        if chip in (WHAT, EXPLAIN) or (not chip and not question.strip()):
             steps = " ".join(f"{i}) {x}" for i, x in enumerate(s["steps"], 1))
-            return {"text": shorten(f"{s['purpose']} {steps}".strip()), "actions": s["next"], "source": "screen"}
+            pre = EXPLAIN_RU if chip == EXPLAIN else ""
+            return {"text": shorten(f"{pre}{s['purpose']} {steps}".strip()), "actions": s["next"], "source": "screen"}
         if chip:
             f = next((x for x in fq if x["id"] == chip), None)
             if f:
@@ -473,10 +511,12 @@ class Helper:
                 "actions": s["next"], "source": "none"}
 
     def ask(self, role: str, ctx=None, question: str = "", chip: str = "", who: list[str] | tuple = (),
-            extra: dict | None = None, now: float | None = None, lang: str = "ru") -> dict:
+            extra: dict | None = None, now: float | None = None, lang: str = "ru", ui: dict | None = None) -> dict:
         """Ответ помощника: {id, screen, title, text, actions [{id, title}], chips, mode: "offline"}.
         ``extra`` — гостю: модули его предложения ({id, title, about}); сотрудникам — ``module_ids`` каталога.
-        ``lang`` — язык человека: на экранах простого режима ответ, чипы и переходы — на нём."""
+        ``lang`` — язык человека: на экранах простого режима ответ, чипы и переходы — на нём.
+        ``ui`` — вид человека с сервера (``personas.view``: persona, caps, ceiling): чипы роли первыми, переходы — по
+        возможностям («Включить и перейти», если право есть). Гостю и до входа — None."""
         lang = lang if lang in LANGS else "ru"
         if role not in ROLES:
             raise ValueError("нет такой роли")
@@ -486,14 +526,16 @@ class Helper:
         ctx = sanitize(ctx, role, mods)
         sid = ctx["screen"]
         question = re.sub(r"\s+", " ", str(question or "")).strip()[:MAX_Q]
+        persona = (ui or {}).get("persona")
         chip = str(chip or "")
-        if chip and chip not in {c["id"] for c in chips_for(sid, role, m)}:
+        if chip and chip not in {c["id"] for c in chips_for(sid, role, m, persona=persona)}:
             chip = ""
         if not self.rate.ok(who[0] if who else f"{role}:anon", now):
             raise ValueError("слишком много вопросов — подождите несколько минут")
-        off = self.offline(role, sid, chip, question, extra, lang)
+        off = self.offline(role, sid, chip, question, extra, lang, persona)
         en = english(sid, lang)
-        acts = actions_public(off["actions"], role, m, en) or actions_public(m["screens"][sid]["next"], role, m, en)
+        acts = actions_public(off["actions"], role, m, en, ui) or actions_public(m["screens"][sid]["next"], role, m,
+                                                                                en, ui)
         rid = secrets.token_urlsafe(8)
         free = bool(question and not chip)
         self.log.write({"kind": "ask", "id": rid, "screen": sid, "step": ctx["step"], "role": role,
@@ -502,7 +544,7 @@ class Helper:
                         "qh": qhash(question) if free else "", "actions": [a["id"] for a in acts]}, now)
         s = m["screens"][sid]
         return {"id": rid, "screen": sid, "title": s["title_en"] if en else s["title"], "text": off["text"],
-                "actions": acts, "chips": chips_for(sid, role, m, lang), "mode": "offline"}
+                "actions": acts, "chips": chips_for(sid, role, m, lang, persona), "mode": "offline"}
 
     def feedback(self, rid: str, useful=None, action: str = "", role: str = ""):
         if not re.match(r"^[A-Za-z0-9_\-]{6,20}$", str(rid or "")):
