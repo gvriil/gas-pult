@@ -89,5 +89,8 @@ def test_create_workspace(m, tmp_path):
     assert "{{" not in text and "../acc-primary/registry" in text and "## Общий блок: Документы" in text
     for s in ("edo-intake", "edo-match", "edo-to-1c", "document-draft"):
         assert (p / ".claude" / "skills" / s / "SKILL.md").is_file()
-    assert sorted(x.name for x in (p / "inbox" / "1").glob("*.xml")) == ["akt-7-example.xml", "upd-12-example.xml"]
+    xml = sorted(x.name for x in (p / "data" / "edo-example" / "1").glob("*.xml"))
+    assert xml == ["akt-7-example.xml", "upd-12-example.xml"]
+    # inbox/ в .gitignore (входящие клиентов не коммитят) — пример лежит в data/, иначе в пакет он не попадёт
+    assert not (Path(m["path"]) / "inbox").exists()
     assert not (p / "module.toml").exists() and modules.mark_of(p)["id"] == MID

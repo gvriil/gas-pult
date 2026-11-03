@@ -16,8 +16,8 @@ description = """
 решения дольше {{remind_after}} рабочих дней — напоминание бухгалтеру. Для клиентов в РФ — российская модель
 (GigaChat или YandexGPT, docs/RU-MODELS.md).
 """
-start = """Прочитай CLAUDE.md, data/clients.csv и inbox/ (пример выдуманный). Разбери пример навыком edo-intake, сверь \
-с первичкой навыком edo-match (если рядом нет папки acc-primary — с data/primary-example/) и покажи, что попадёт в \
+start = """Прочитай CLAUDE.md и data/clients.csv (пример выдуманный). Разбери пример выгрузки data/edo-example/ \
+навыком edo-intake так, как если бы его положили в inbox/, сверь с первичкой навыком edo-match (если рядом нет папки acc-primary — с data/primary-example/) и покажи, что попадёт в \
 реестр, — в 1С ничего не загружай, ничего не подписывай и не отправляй."""
 uses = ["documents"]
 
