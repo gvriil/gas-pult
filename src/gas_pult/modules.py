@@ -426,6 +426,24 @@ def workspaces(roots: list[Path]) -> list[tuple[Path, dict]]:
     return out
 
 
+def changed_at(folder: Path) -> float:
+    """Последнее изменение пространства: сама папка и её файлы первого уровня (без обхода всего дерева)."""
+    ts = [folder.stat().st_mtime]
+    try:
+        ts += [p.stat().st_mtime for p in folder.iterdir()]
+    except OSError:
+        pass
+    return max(ts)
+
+
+def existing(root: Path, mid: str) -> list[dict]:
+    """Уже созданные пространства модуля ``mid`` в корне — свежие первыми: [{folder, path, changed}]. Чтобы не
+    плодить ``<id>-2``, ``<id>-3``: панель и бот сначала предлагают открыть существующее."""
+    out = [{"folder": d.name, "path": d, "changed": int(changed_at(d))}
+           for d, mk in workspaces([root]) if mk.get("id") == mid]
+    return sorted(out, key=lambda x: -x["changed"])
+
+
 def days_text(days: list[int]) -> str:
     if days == list(range(1, 8)):
         return "каждый день"

@@ -288,5 +288,9 @@
  "yes.title": "Waiting for your “Yes” ({n})",
  "yes.wait": "The agent is waiting for your decision",
  "yes.open": "Open",
- "help.enable": "Turn on and open: {t}"
+ "help.enable": "Turn on and open: {t}",
+ "s.new.exists": "This agent already exists: «{f}», changed {t}.",
+ "s.new.open": "Open it",
+ "s.new.again": "Create another one",
+ "s.new.again.sure": "Really create another one?"
 }

@@ -722,14 +722,33 @@ class Panel:
     def modules_list(self) -> dict:
         """Каталог модулей для «Новое пространство → Из модуля»: имя папки по умолчанию — свободное."""
         root, errors = self.pult.module_root(), []
-        items = [{**modules.public(m), "folder": modules.free_name(root, m["id"])} for m in modules.catalog(errors)]
+        items = [{**modules.public(m), "folder": modules.free_name(root, m["id"]),
+                  "existing": self.module_spaces(m["id"])} for m in modules.catalog(errors)]
         return {"modules": items, "root": self.pult.short(str(root)), "errors": errors}
 
+    def module_spaces(self, mid: str) -> list[dict]:
+        """Пространства модуля, которые уже есть: папка, последнее изменение, номер в списке папок (для /api/new),
+        открытое окно — если есть."""
+        dirs = self.pult.projects()
+        out = []
+        for x in modules.existing(self.pult.module_root(), mid):
+            p = str(x["path"])
+            w = self.pult.project_window(p)
+            out.append({"folder": x["folder"], "path": self.pult.short(p), "changed": x["changed"],
+                        "i": dirs.index(p) if p in dirs else None, "open": w["id"] if w else None})
+        return out
+
     def module_create(self, mid: str, name: str, profile: str = "", person: int | None = None, uid=None,
-                      lang: str = "") -> dict:
+                      lang: str = "", again: bool = False) -> dict:
         """Пространство из модуля: папка в первом корне проектов → сессия в ней (как «Новая сессия») → первое
         задание модуля, когда Claude будет готов. Проверки — до создания папки, чтобы не оставлять пустых.
-        ``lang`` (ru, en) — из простого режима: язык ответов агента в настройках Claude Code пространства."""
+        ``lang`` (ru, en) — из простого режима: язык ответов агента в настройках Claude Code пространства.
+        Пространство этого модуля уже есть — без ``again`` (человек подтвердил «Создать ещё одно») не создаём."""
+        if name:
+            modules.check_name(name)                   # неверное имя — сразу, до вопроса «уже есть»
+        if not again and (have := modules.existing(self.pult.module_root(), mid)):
+            raise ValueError(f"пространство «{have[0]['folder']}» этого модуля уже есть — откройте его или "
+                             "подтвердите «Создать ещё одно»")
         if uid is not None:
             self.check(profile, uid)
         self.need_claude()
@@ -746,8 +765,11 @@ class Panel:
         self.need_claude()
         try:
             path = self.pult.make_folder(name.strip().lower())
-        except FileExistsError as e:
-            raise ValueError(f"{e} — выберите её в списке папок") from None
+        except FileExistsError:                         # занято — не ошибка: предложим открыть существующую
+            p = str(self.pult.module_root() / name.strip().lower())
+            dirs, w = self.pult.projects(), self.pult.project_window(p)
+            return {"exists": True, "folder": name.strip().lower(), "path": self.pult.short(p),
+                    "i": dirs.index(p) if p in dirs else None, "open": w["id"] if w else None}
         out = self.new(self.pult.projects().index(str(path)), profile, person, uid)
         return {**out, "path": self.pult.short(str(path)), "folder": path.name}
 
@@ -787,8 +809,14 @@ class Panel:
         return {"id": wid}
 
     def close(self, w: dict) -> str:
-        return {"background": "не закрыл: у сессии есть фоновые задачи — решите в самом окне",
-                "busy": "Claude не вышел (возможно, занят) — посмотрите экран"}.get(self.pult.quit(w), "закрыто")
+        return self.close_ex(w)["result"]
+
+    def close_ex(self, w: dict) -> dict:
+        """Завершить сессию: текст итога и неотправленный черновик из поля ввода (если был) — панель его покажет."""
+        r = self.pult.quit_ex(w)
+        text = {"background": "не закрыл: у сессии есть фоновые задачи — решите в самом окне",
+                "busy": "Claude не вышел за 20 с (возможно, занят) — посмотрите экран"}.get(r["result"], "закрыто")
+        return {"result": text, "draft": r["draft"]}
 
     def upload(self, name: str, data: bytes) -> str:
         """Файл из панели → inbox пульта; Claude получает путь (как файлы из чата бота)."""
@@ -1780,7 +1808,8 @@ def handler(panel: Panel):
                                         self.terms_uid())
             if path == "/api/modules/create":
                 return panel.module_create(str(b.get("id", "")), str(b.get("name", "")), str(b.get("profile", "")),
-                                           self.person(), self.terms_uid(), str(b.get("lang", "")))
+                                           self.person(), self.terms_uid(), str(b.get("lang", "")),
+                                           b.get("again") is True)
             if path == "/api/openrouter/start":
                 base = panel.public_url or f"https://{self.headers.get('Host', '')}"
                 return {"url": panel.openrouter.start(base)}
@@ -1827,7 +1856,7 @@ def handler(panel: Panel):
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
             if path == "/api/close":
-                return {"result": panel.close(w)}
+                return panel.close_ex(w)                   # {result, draft}: черновик не теряется молча
             if path == "/api/restart":
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
             if path == "/api/run":

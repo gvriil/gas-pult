@@ -545,31 +545,53 @@ class Pult:
             if w := self.tmux.window(wid):
                 self.to_claude(w, first)
 
+    QUIT_WAIT, QUIT_STEP = 20.0, 0.5                # длинная переписка: Claude выходит дольше 4 с — ждём до 20 с
+
     def quit(self, w: dict) -> str:
         """Выйти из Claude штатно (/exit — переписка сохранится) и закрыть окно — одно для бота и панели.
         «closed» — закрыто; «background» — у сессии фоновые задачи, не закрываем; «busy» — Claude не вышел."""
+        return self.quit_ex(w)["result"]
+
+    def quit_ex(self, w: dict) -> dict:
+        """То же, что ``quit``, плюс ``draft`` — неотправленный текст из поля ввода (Ctrl+C его стирает): его
+        возвращаем, чтобы показать человеку, а не потерять молча. Выход ждём до ``QUIT_WAIT`` с, опрос — раз в
+        ``QUIT_STEP`` с; Claude вышел, а окно с оболочкой осталось — окно закрываем."""
         with self.hold(w["id"]):
+            try:
+                draft = self.tmux.draft(w["id"])
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                draft = ""
             self.tmux.keys(w["id"], "C-c")
             self.tmux.type(w["id"], "/exit")
             self.tmux.keys(w["id"], "Enter")
-            time.sleep(4)
-            if "Enter to confirm" in "\n".join(self.tmux.screen(w["id"])):
-                self.tmux.keys(w["id"], "Escape")
-                return "background"
-            if (self.tmux.window(w["id"]) or w)["cmd"] == "claude":
-                return "busy"
-            self.tmux.kill(w["id"])
-            return "closed"
+            end = time.monotonic() + self.QUIT_WAIT
+            while True:
+                time.sleep(self.QUIT_STEP)
+                cur = self.tmux.window(w["id"])
+                if cur is None:                            # окно закрылось вместе с Claude
+                    return {"result": "closed", "draft": draft}
+                if "Enter to confirm" in "\n".join(self.tmux.screen(w["id"])):
+                    self.tmux.keys(w["id"], "Escape")
+                    return {"result": "background", "draft": draft}
+                if cur["cmd"] != "claude":
+                    self.tmux.kill(w["id"])
+                    return {"result": "closed", "draft": draft}
+                if time.monotonic() >= end:
+                    return {"result": "busy", "draft": draft}
 
     def close(self, chat: int, w: dict):
         if w["cmd"] != "claude":
             self.tmux.kill(w["id"])
-        elif (done := self.quit(w)) == "background":
+            return self.send(chat, f"«{w['name']}» завершена.")
+        r = self.quit_ex(w)
+        tail = f"\n\nЧерновик из поля ввода (не отправлен):\n{r['draft']}" if r["draft"] else ""
+        if r["result"] == "background":
             return self.send(chat, f"«{w['name']}» не завершена: у сессии есть фоновые задачи, они бы "
-                                   "остановились. Реши в самом окне.")
-        elif done == "busy":
-            return self.send(chat, f"«{w['name']}»: Claude не вышел (возможно, занят). Посмотри 📺 Экран.")
-        self.send(chat, f"«{w['name']}» завершена.")
+                                   "остановились. Реши в самом окне." + tail)
+        if r["result"] == "busy":
+            return self.send(chat, f"«{w['name']}»: Claude не вышел за {self.QUIT_WAIT:.0f} с (возможно, занят). "
+                                   "Посмотри 📺 Экран." + tail)
+        self.send(chat, f"«{w['name']}» завершена." + tail)
 
     # ---------- голос ----------
     def say(self, chat: int, text: str):
@@ -1006,9 +1028,16 @@ class Pult:
             out += [f"• {x['question']} ({' / '.join(x['options'])})" for x in m["decisions"]]
         return "\n".join(out)
 
+    def open_rows(self, mid: str) -> list:
+        """Кнопки «📂 Открыть «папка» · изменено …» для пространств модуля, которые уже есть (свежие первыми)."""
+        dirs = self.projects()
+        return [[(f"📂 Открыть «{x['folder']}» · {ago.ago(x['changed'])}", f"new:{dirs.index(str(x['path']))}")]
+                for x in modules.existing(self.module_root(), mid)[:3] if str(x["path"]) in dirs]
+
     def on_module(self, chat: int, arg: str):
         """md:v:<id> — описание; md:new:<id> — создать с именем по умолчанию; md:name:<id> — спросить имя; md:list —
-        каталог; md:g:<n> — модули отрасли."""
+        каталог; md:g:<n> — модули отрасли. Пространство модуля уже есть — первым «Открыть», «Создать ещё одно» —
+        вторым и с подтверждением (md:again → md:new2), чтобы не плодить <id>-2, <id>-3."""
         act, _, mid = arg.partition(":")
         if act == "list":
             return self.show_modules(chat)
@@ -1019,10 +1048,21 @@ class Pult:
         except LookupError as e:
             return self.send(chat, f"Не нашёл модуль: {e}")
         folder = modules.free_name(self.module_root(), m["id"])
-        if act == "v":
+        have = self.open_rows(m["id"])
+        if act == "v" or (act == "new" and have):         # старая кнопка «Создать» при уже созданном — снова выбор
+            if have:
+                return self.send(chat, self.module_text(m) + "\n\nЭтот модуль уже есть — откройте его.",
+                                 reply_markup=kb([*have, [("➕ Создать ещё одно…", f"md:again:{m['id']}")],
+                                                  [("‹ Все модули", "md:list:")]]))
             return self.send(chat, self.module_text(m), reply_markup=kb([
                 [(f"✅ Создать «{folder}»", f"md:new:{m['id']}")], [("✏️ Другое имя папки", f"md:name:{m['id']}")],
                 [("‹ Все модули", "md:list:")]]))
+        if act == "again":
+            return self.send(chat, f"Пространство «{m['title']}» уже есть. Точно создать ещё одно — «{folder}»?",
+                             reply_markup=kb([[(f"✅ Да, создать «{folder}»", f"md:new2:{m['id']}")],
+                                              [("✏️ Другое имя папки", f"md:name:{m['id']}")], *have]))
+        if act == "new2":
+            return self.module_create(chat, m["id"], folder)
         if act == "name":
             self.waiting[chat] = f"md:{m['id']}"
             return self.send(chat, f"Имя папки для «{m['title']}» (латиница, цифры, дефис), например {folder}:",
@@ -1211,8 +1251,10 @@ class Pult:
     def new_folder(self, chat: int, name: str):
         try:
             path = self.make_folder(name)
-        except FileExistsError:
-            return self.send(chat, f"Папка {name} уже есть — выбери её в 🆕 Новая.")
+        except FileExistsError:                         # занято — предложить открыть существующую
+            p, dirs = str(self.module_root() / name), self.projects()
+            more = {"reply_markup": kb([[(f"📂 Открыть «{name}»", f"new:{dirs.index(p)}")]])} if p in dirs else {}
+            return self.send(chat, f"Папка {name} уже есть — откройте её или нажмите 📁 и введите другое имя.", **more)
         except ValueError:
             return self.send(chat, "Имя: латиница в нижнем регистре, цифры, дефис (2–41 знак). Нажми 📁 ещё раз.")
         self.send(chat, f"📁 Создал {path} (git init).")

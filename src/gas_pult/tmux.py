@@ -37,6 +37,30 @@ def prompt_hint(lines: list[str]) -> str:
     return ""
 
 
+BOX = re.compile(r"^[\s─━═╭╮╰╯│┃]*$")              # рамка поля ввода Claude Code (линии без текста)
+
+
+def prompt_draft(lines: list[str]) -> str:
+    """Неотправленный текст в поле ввода Claude Code: обычный (не бледный) текст после «❯» в последнем поле ввода и
+    его продолжение до нижней рамки. Бледный текст сразу после «❯» — подсказка или заглушка, не черновик."""
+    for i in range(len(lines) - 1, max(-1, len(lines) - 40), -1):
+        raw = lines[i]
+        plain = ANSI.sub("", raw)
+        if not plain.lstrip().lstrip("│┃ ").startswith("❯"):
+            continue
+        after = raw.split("❯", 1)[1].lstrip(" \u00a0")
+        if after.startswith("\x1b[2m") or not ANSI.sub("", after).strip():
+            return ""
+        out = [ANSI.sub("", after).rstrip(" │┃")]
+        for nxt in lines[i + 1:]:
+            t = ANSI.sub("", nxt)
+            if BOX.match(t) or not t.strip():
+                break
+            out.append(t.strip(" │┃"))
+        return "\n".join(x.rstrip() for x in out).strip()[:4000]
+    return ""
+
+
 def window_name(name: str) -> str:
     """Имя сессии (окна tmux): 1–40 знаков, без «:» и «.» — в tmux это разделители цели (сессия:окно.панель)."""
     name = " ".join(str(name).split())
@@ -81,6 +105,10 @@ class Tmux:
             # окно открыл пульт (метка — поставщик), а Claude в нём завершился и осталась оболочка — «остановлена»
             w["stopped"] = not claude and bool(w.get("mark")) and w["cmd"] in SHELLS
         return ws
+
+    def draft(self, wid: str) -> str:
+        """Неотправленный текст в поле ввода окна (``prompt_draft``); нет — пусто."""
+        return prompt_draft(self.run("capture-pane", "-p", "-e", "-J", "-t", wid).splitlines())
 
     def hint(self, wid: str) -> str:
         """Что Claude Code предлагает написать следующим (бледный текст в строке ввода); нет — пусто."""
