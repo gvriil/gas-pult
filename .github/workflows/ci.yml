@@ -22,8 +22,8 @@ jobs:
           python-version: "3.13"
       - run: pip install ruff
       - run: ruff check .
-      - name: shellcheck install.sh
-        run: shellcheck install.sh
+      - name: shellcheck install.sh, bin/pult-tenant-setup
+        run: shellcheck install.sh bin/pult-tenant-setup
 
   test:
     runs-on: ${{ matrix.os }}

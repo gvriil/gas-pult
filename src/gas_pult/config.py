@@ -44,6 +44,8 @@ def data_dir() -> Path:
 SECTIONS = {
     "email": {"provider", "host", "port", "user", "from", "name", "password", "timeout"},
     "passkeys": {"rp_id", "origin", "rp_name"},
+    "google": {"client_id", "client_secret", "redirect_uri"},
+    "yandex": {"client_id", "client_secret", "redirect_uri"},
 }
 
 
@@ -80,6 +82,8 @@ class Config:
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
     email: dict = field(default_factory=dict)               # [email]: SMTP входа по коду (emailcode.py); {} — выкл.
     passkeys: dict = field(default_factory=dict)            # [passkeys]: rp_id и origin (passkeys.py); {} — выкл.
+    google: dict = field(default_factory=dict)              # [google]: вход через Google (oidc.py); {} — выкл.
+    yandex: dict = field(default_factory=dict)              # [yandex]: вход через Яндекс ID (oidc.py); {} — выкл.
 
     @property
     def data(self) -> Path:

@@ -44,6 +44,7 @@ from gas_pult import (
     modules,
     offer_report,
     offers,
+    oidc,
     passkeys,
     personas,
     providers,
@@ -136,10 +137,13 @@ class Panel:
         self.logins = webauth.TgLogins(cfg.data / "tg_logins.json")
         self.email = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # вход по почте
         self.keys = passkeys.Passkeys(cfg.passkeys, self.people, cfg.data / "passkeys.json")    # Face ID / ключ
+        self.oidc = oidc.Oidc({"google": cfg.google, "yandex": cfg.yandex}, self.people, cfg.data / "oidc.json",
+                              base=lambda: self.public_url)                                # Google, Яндекс ID
         self._bot = ""
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.model_cache: dict[tuple, tuple[str, str]] = {}  # (папка, папка Claude) → (ревизия, модель ответа)
+        self.mod_sections: tuple[float, dict] = (0.0, {})    # модуль → разделы чата (sections_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
@@ -202,8 +206,18 @@ class Panel:
                         "preview": self.preview(w["path"], rev, home),
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
-                        "agent": self.agent_of(w["path"])})               # простой режим: имя агента модуля
+                        "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
+                        "sections": self.sections_of(w["path"])})         # разделы чата бизнес-ролей; [] — во всех
         return out
+
+    def sections_of(self, path: str) -> list[str]:
+        """Разделы (Поиск, Цифры, Бумаги, Общение) модуля пространства — по каталогу, раз в минуту."""
+        mk = modules.mark_of(Path(path))
+        if not mk:
+            return []
+        if time.time() - self.mod_sections[0] > 60:
+            self.mod_sections = (time.time(), {m["id"]: m["sections"] for m in modules.catalog()})
+        return list(self.mod_sections[1].get(str(mk.get("id")), []))
 
     def agent_of(self, path: str) -> str:
         """Название модуля, из которого создано пространство (простой режим зовёт агента так), иначе ""."""
@@ -324,28 +338,66 @@ class Panel:
                 "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
                 "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
 
+    def is_owner(self, uid) -> bool:
+        try:
+            return int(uid) in self.cfg.owners
+        except (TypeError, ValueError):
+            return False
+
     def ui(self, uid, role: str | None) -> dict:
-        """Вид панели человека (``personas.view``): роль интерфейса, возможности, потолок, справочник."""
-        return personas.view(self.people.ui(uid), personas.access(role), self.team, uid,
-                             self.people.prefs(uid)["lang"])
+        """Вид панели человека (``personas.view``): роль интерфейса, возможности, потолок, справочник.
+
+        Владелец пульта — всегда «Моё пространство» с видом разработчика: экран выбора роли ему сам не показывается
+        (``onboarded``), другой вид — только временный просмотр в панели («Демо и тесты»), на сервере не хранится."""
+        rec = self.people.ui(uid)
+        if self.is_owner(uid):
+            rec = {**rec, "persona": personas.DEFAULT, "onboarded": True}
+        out = personas.view(rec, personas.access(role), self.team, uid, self.people.prefs(uid)["lang"])
+        own = self.is_owner(uid)                       # fixed — что владелец у себя не прячет (иначе ушёл бы в чат)
+        return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else []}
 
     def set_ui(self, uid, role: str | None, b: dict) -> dict:
         """Выбор человека: ``persona`` (сменить роль целиком), ``add`` ({cap: true|false}) — тумблеры. Простой режим
         (#80) следует за видом: бизнес-роли — чат, разработчик — прежний интерфейс."""
-        add = b.get("add")
-        rec = personas.change(self.people.ui(uid), personas.access(role), self.team, uid,
-                              None if b.get("persona") is None else str(b["persona"]),
+        add, persona = b.get("add"), None if b.get("persona") is None else str(b["persona"])
+        owner = self.is_owner(uid)
+        if owner and persona not in (None, personas.DEFAULT):
+            raise ValueError("ваше пространство — всегда вид разработчика; посмотреть как бизнес — «Демо и тесты», "
+                             "без сохранения")
+        rec = personas.change(self.people.ui(uid), personas.access(role), self.team, uid, persona,
                               add if isinstance(add, dict) else None)
+        if owner and personas.simple(personas.effective(personas.DEFAULT, rec.get("added"), rec.get("hidden"),
+                                                         personas.ALL)):
+            raise ValueError("в вашем пространстве сессии не прячутся — посмотреть без них можно в «Демо и тестах»")
         self.people.set_ui(uid, rec)
         out = self.ui(uid, role)
-        self.people.set_prefs(uid, simple=out["simple"])
+        if not owner:                                  # простой режим следует за выбором человека — не владельца
+            self.people.set_prefs(uid, simple=out["simple"])
         return out
 
     def prefs(self, uid, role: str | None) -> dict:
         """Настройки панели; ``simple`` — по виду, если человек выбрал роль или владелец закрыл ему инженерное."""
         p, v = self.people.prefs(uid), self.ui(uid, role)
+        if self.is_owner(uid):
+            return {**p, "simple": False}              # владелец — всегда полный пульт в своём пространстве
         return {**p, "simple": v["simple"] if v["chosen"] or "cap.dev_sessions" not in v["ceiling"]
                 else p["simple"]}
+
+    def owner_space_fix(self):
+        """Один раз при старте: у владельца вид не разработчика или простой режим — это не его выбор (так было после
+        #82: экран выбора роли показывался и владельцу). Сбросить, прежние файлы — рядом с отметкой времени."""
+        for o in self.cfg.owners:
+            if self.people.ui(o).get("persona") in (None, personas.DEFAULT) and not self.people.prefs(o)["simple"]:
+                continue
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            for f in (self.people.ui_store, self.people.prefs_store):
+                if f.is_file():
+                    bak = f.with_name(f"{f.name}.bak-{stamp}")
+                    bak.write_bytes(f.read_bytes())
+                    bak.chmod(0o600)
+            self.people.set_ui(o, {**self.people.ui(o), "persona": personas.DEFAULT, "onboarded": True})
+            self.people.set_prefs(o, simple=False)
+            print(f"владелец: вид разработчика и полный режим восстановлены (бэкап *.bak-{stamp})", flush=True)
 
     def team_info(self) -> dict:
         """Экран «Команда»: общая политика для сотрудников и поправки по людям (только участники — staff)."""
@@ -385,7 +437,8 @@ class Panel:
 
     def login_methods(self) -> dict:
         """Способы входа для экрана входа (без входа): только «включено ли», без настроек."""
-        return {"telegram": True, "owner_code": True, "email": self.email.enabled, "passkey": self.keys.enabled}
+        return {"telegram": True, "owner_code": True, "email": self.email.enabled, "passkey": self.keys.enabled,
+                **self.oidc.methods()}                                              # google, yandex
 
     def key_label(self, uid) -> str:
         """Подпись ключа в менеджере паролей устройства: имя человека, без Telegram ID."""
@@ -1060,6 +1113,9 @@ EMAIL_LOGIN = ("/api/login/email/start", "/api/login/email/verify", "/api/login/
 # Ключи входа (passkeys.py): свои у каждого вошедшего; вход по ключу — до входа (лимит по IP).
 PASSKEY_OWN = ("/api/passkeys", "/api/passkeys/options", "/api/passkeys/add", "/api/passkeys/remove")
 PASSKEY_LOGIN = ("/api/login/passkey/options", "/api/login/passkey/verify")
+# Вход через Google и Яндекс ID (oidc.py): привязки — свои у каждого вошедшего; сам вход — переходами браузера.
+OIDC_OWN = ("/api/oidc", "/api/oidc/link", "/api/oidc/unlink")
+OIDC_PATH = re.compile(r"^/api/login/oidc/(google|yandex)/(start|back)$")
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
 # Отметки короткого тура (пройден / «Не сейчас») — настройка самого человека: менять может и наблюдатель.
@@ -1080,6 +1136,12 @@ OFFER_404 = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content
              '<h1 style="font-size:22px">Страница не найдена</h1><p>Ссылка неверна, устарела или отозвана.</p></body>')
 
 # Страница после входа в OpenRouter: открывается во внешнем браузере, поэтому самодостаточная.
+# Страница входа через Google и Яндекс ID: открывается во внешнем браузере, поэтому самодостаточная.
+OIDC_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+             '<title>gas-pult · вход</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
+             'sans-serif;background:#F6F5F0;color:#181816;text-align:center"><h1 style="font:600 22px Georgia,serif">'
+             '{title}</h1><p style="color:#6E6C65">{text}</p><p><a href="/" style="color:#181816">Открыть панель</a>'
+             '</p></body>')
 DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              '<title>gas-pult · OpenRouter</title><body style="margin:0;padding:48px 24px;font:16px/1.5 system-ui,'
              'sans-serif;background:#F6F5F0;color:#181816;text-align:center"><h1 style="font:600 22px Georgia,serif">'
@@ -1172,7 +1234,7 @@ def handler(panel: Panel):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA,
-                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN)                       # и наблюдателю
+                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN)            # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if not allowed(role, need):
@@ -1236,6 +1298,8 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: self.tg_poll(q))
             if url.path == "/api/login/methods":         # экран входа: какие способы включены на этом пульте
                 return self.json(panel.login_methods())
+            if m := OIDC_PATH.match(url.path):           # вход через Google / Яндекс ID: переходы браузера
+                return self.oidc_step(m.group(1), m.group(2), q)
             if not self.permit(url.path, "GET"):
                 return None
             self.dispatch(lambda: self.get(url.path, q))
@@ -1271,6 +1335,8 @@ def handler(panel: Panel):
                 return panel.email.info(self.terms_uid())
             if path == "/api/passkeys":
                 return panel.keys.info(self.terms_uid())
+            if path == "/api/oidc":
+                return panel.oidc.info(self.terms_uid())
             if path == "/api/people":
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/setup/status":
@@ -1430,6 +1496,54 @@ def handler(panel: Panel):
             panel.seen_ip(uid, ip, force=True)
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
+        def oidc_page(self, code: int, title: str, text: str, cookies: tuple[str, ...] = ()):
+            self.send_response(code)
+            for c in cookies:
+                self.send_header("Set-Cookie", c)
+            body = OIDC_PAGE.format(title=escape(title), text=escape(text)).encode()
+            for k, v in {**NOINDEX, "Content-Type": "text/html; charset=utf-8", "Content-Length": str(len(body)),
+                         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}.items():
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def go(self, location: str, cookies: tuple[str, ...] = ()):
+            self.send_response(303 if location.startswith("/") else 302)
+            for c in cookies:
+                self.send_header("Set-Cookie", c)
+            for k, v in {**NOINDEX, "Location": location, "Content-Length": "0", "Cache-Control": "no-store"}.items():
+                self.send_header(k, v)
+            self.end_headers()
+
+        def oidc_step(self, p: str, step: str, q: dict):
+            """Вход через Google / Яндекс ID: start → сайт провайдера → back → сессия (или второй фактор, или привязка).
+            Это переходы браузера, поэтому ответы — переадресации и короткие страницы, а не JSON."""
+            title = oidc.PROVIDERS[p]["title"]
+            if not panel.oidc.enabled(p):
+                return self.oidc_page(503, "Вход выключен", f"Вход через {title} на этом пульте выключен.")
+            ip, ua = self.client()
+            drop = oidc.set_cookie("", 0)
+            try:
+                if step == "start":
+                    url, browser = panel.oidc.start(p, ip, str(q.get("link", ""))[:64])
+                    return self.go(url, (oidc.set_cookie(browser),))
+                r = panel.oidc.finish(p, q, oidc.cookie_value(self.headers.get("Cookie", "")), ip)
+            except emailcode.LimitError as e:
+                return self.oidc_page(429, "Слишком часто", str(e))
+            except (ValueError, RuntimeError) as e:
+                return self.oidc_page(400, "Не получилось", str(e), (drop,))
+            if r["mode"] == "link":
+                return self.oidc_page(200, f"{title} привязан",
+                                      f"Теперь на экране входа можно нажать «Войти через {title}». "
+                                      "Эту вкладку можно закрыть.", (drop,))
+            uid = r["uid"]
+            if panel.email.wants_second(uid):                       # второй фактор: код ещё и на почту
+                d = panel.email.second_start(uid, ip)
+                frag = urllib.parse.urlencode({"2fa": d["id"], "to": d["to"]})
+                return self.go(f"/#{frag}", (drop,))                 # номер — во фрагменте: на сервер он не уходит
+            panel.seen_ip(uid, ip, force=True)
+            return self.go("/", (drop, webauth.set_cookie(panel.auth.issue(uid, ua))))
+
         def login(self):
             b = json.loads(self.body() or b"{}")
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
@@ -1551,7 +1665,9 @@ def handler(panel: Panel):
             b = json.loads(self.body() or b"{}")
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои
                 lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
-                if b.get("simple") is not None:                # прежний переключатель — это смена роли целиком
+                if b.get("simple") is True and panel.is_owner(uid):
+                    raise ValueError("ваше пространство — всегда полный пульт; простой режим — в «Демо и тестах»")
+                if b.get("simple") is not None and not panel.is_owner(uid):   # прежний переключатель — смена роли
                     cur = panel.ui(uid, role)["persona"]
                     want = b.get("simple") is True
                     if want != (cur in personas.SIMPLE):
@@ -1586,6 +1702,12 @@ def handler(panel: Panel):
                                                            str(b.get("name", "")), self.client_ip())}
             if path == "/api/passkeys/remove":
                 return {"keys": panel.keys.remove(self.terms_uid(), str(b.get("id", "")))}
+            if path == "/api/oidc/link":                   # ссылка на привязку — открыть в браузере (и из Telegram)
+                p = str(b.get("provider", ""))
+                ticket = panel.oidc.ticket(self.terms_uid(), p, self.client_ip())
+                return {"url": f"/api/login/oidc/{p}/start?link={ticket}"}
+            if path == "/api/oidc/unlink":
+                return panel.oidc.unlink(self.terms_uid(), str(b.get("provider", "")))
             if path == "/api/email/bind":
                 return panel.email.bind_start(self.terms_uid(), b.get("email"), self.client_ip())
             if path == "/api/email/confirm":
@@ -1751,6 +1873,7 @@ def set_menu(api: Api, owners: list[int], url: str):
 
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
     panel = Panel(cfg)
+    panel.owner_space_fix()                         # вид владельца — его выбор, не чужой (см. owner_space_fix)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list() if p["role"] != "owner"]   # кнопка «📱 Панель»
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
 

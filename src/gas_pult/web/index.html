@@ -664,6 +664,15 @@
   .s-comp textarea { flex: 1; min-width: 0; border: 0; background: transparent; resize: none; padding: 10px 0; max-height: 40vh; outline: none; font: inherit;
                      font-size: calc(16px * var(--fz, 1)); color: var(--text-primary); }
   .s-view { text-align: center; color: var(--text-secondary); padding: 8px; }
+  /* Чат бизнес-ролей: 4 чипа-фильтра (Поиск, Цифры, Бумаги, Общение) и «Ждут вашего Да» — сверху (personas.py) */
+  .s-secs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; } .s-secs::-webkit-scrollbar { display: none; }
+  .s-secs .scn-opt { flex: none; width: auto; min-height: 34px; padding: 5px 12px; font-size: calc(14px * var(--fz, 1)); }
+  .s-yes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 2px 0 8px; } .s-yes .s-lbl { margin: 0; font-size: calc(12px * var(--fz, 1)); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--status-approval); }
+  .s-yc { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius-md); background: var(--status-approval-bg); border: 1px solid var(--status-approval); }
+  .s-yc .t { flex: 1; min-width: 0; } .s-yc b { display: block; font-size: calc(14px * var(--fz, 1)); } .s-yc small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-yc .scn-opt { flex: none; width: auto; min-height: 34px; padding: 5px 12px; font-size: calc(14px * var(--fz, 1)); }
+  .s-yc .scn-opt.yes { background: var(--status-approval); border-color: var(--status-approval); color: var(--on-approval); }
+  .s-tips { padding: 8px 0 0; } .s-tips .note { margin: 0 0 6px; } .s-tips .scn-opts { margin: 0; }
   .sheet.s-sheet .s-body { padding: 0 16px 8px; }
   .sheet.s-sheet .s-body p { margin: 0 0 10px; }
   .sheet.s-sheet .s-lbl { margin: 14px 0 8px; font-weight: 600; }
@@ -674,10 +683,21 @@
   .sheet.s-sheet .scn-opt .i { width: 16px; height: 16px; }
   .sheet.s-sheet .s-notes { margin: 0 0 10px; padding: 0 0 0 18px; } .sheet.s-sheet .s-notes li { margin: 0 0 6px; }
   .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
+  /* Пространство владельца: «Моё пространство» (его настоящий пульт) и «Демо и тесты» — разными цветами. Просмотр
+     другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
+  .spaces { display: flex; gap: 6px; padding: 2px 0 6px; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
+    border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
+  .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
+  .spaces .sp-demo { border-color: var(--status-approval); color: var(--status-approval); } .spaces .i { width: 15px; height: 15px; }
+  .pvbar { position: fixed; left: 0; right: 0; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px;
+    padding: calc(6px + env(safe-area-inset-top)) 12px 6px; background: var(--status-approval); color: var(--on-approval); font-size: calc(13.5px * var(--fz, 1)); font-weight: 600; text-align: center; }
+  .pvbar button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
+  body.previewing { padding-top: var(--pv, 40px); } body.previewing #simple { top: var(--pv, 40px); }
   .s-langsw .scn-opt { min-height: 34px; padding: 4px 12px; font-size: calc(13px * var(--fz, 1)); }
 </style>
 </head>
 <body>
+<div class="pvbar" id="previewBar" hidden role="status"></div>
 <!-- Зона уведомлений: всё всплывающее — здесь, под шапкой и выше нижней панели (NOTICES и notice() в скрипте). -->
 <div class="notices" id="notices">
   <div class="upd" id="updateBar" role="status" hidden><span id="updText">Есть новая версия</span><button class="go" id="updGo" type="button">Обновить</button><button class="later" id="updLater" type="button">Позже</button></div>
@@ -686,6 +706,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-demo" type="button" data-space="demo" aria-pressed="false"></button></div>
   <div class="toprow">
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
     <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
@@ -707,6 +728,9 @@
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
+        <button class="btn ghost" id="googleLogin" hidden data-l="login.google">Войти через Google</button>
+        <button class="btn ghost" id="yandexLogin" hidden data-l="login.yandex">Войти через Яндекс ID</button>
+        <p class="note" id="oidcNote" hidden style="margin:0 2px 6px" data-l="login.oidc.tg">Google и Яндекс не открываются внутри Telegram: вход продолжится в браузере телефона, и панель откроется там.</p>
         <button class="btn ghost" id="emailLogin" hidden data-l="login.email">Войти по почте</button>
         <button class="btn ghost" id="getCode" data-l="login.code">Войти по коду — для владельца</button>
         <button class="btn ghost" id="tryDemo" data-l="login.demo">Посмотреть демо — без входа</button>
@@ -815,8 +839,11 @@
     </div>
     <p class="s-demo" id="sDemo" hidden></p>
     <div class="s-agents" id="sAgents" role="group" hidden></div>
+    <div class="s-secs" id="sSecs" role="group" hidden></div>
+    <div class="s-yes" id="sYes" aria-live="polite" hidden></div>
   </div></header>
   <div class="s-scroll" id="sScroll"><div class="s-col">
+    <div class="s-tips" id="sTips" hidden></div>
     <div class="chat" id="sFeed"></div>
     <div class="act off" id="sAct" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>
     <div id="sAsk" aria-live="polite"></div>
@@ -1311,8 +1338,9 @@ function reloadPanel() {
 const NOTICES = ["#updateBar", "#net", ".toast", ".tour-offer"];
 // Над нижней панелью: кнопки — высота дока + 12 px (hideDock, padDock, placeMini), шторка помощника — --nz-dock.
 const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
-// position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное.
-const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", "body.split #home", "body.split:not(.side-mini) .grip", "#simple", ".notices"];
+// position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
+// .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", "body.split #home", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar"];
 function notice(el) { $("notices").append(el); placeNotices(); return el; }
 function placeNotices() {
   const root = document.documentElement.style, H = document.body.clientHeight;
@@ -1374,11 +1402,13 @@ function restoreDraft() {
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); }
+function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); }
 // Способы входа, которые включены на этом пульте (почта — если владелец настроил SMTP).
 async function loginMethods() {
-  try { const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk()); }
-  catch (e) { $("emailLogin").hidden = $("pkLogin").hidden = true; }
+  try {
+    const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk());
+    $("googleLogin").hidden = !m.google; $("yandexLogin").hidden = !m.yandex; $("oidcNote").hidden = !(tg?.initData && (m.google || m.yandex));
+  } catch (e) { for (const x of ["emailLogin", "pkLogin", "googleLogin", "yandexLogin", "oidcNote"]) $(x).hidden = true; }
 }
 function loginPane(id) {                          // один шаг входа на экране: способы, код владельцу, почта, второй фактор
   for (const x of ["loginStep1", "loginStep2", "loginEmail", "login2fa"]) $(x).hidden = x !== id;
@@ -1509,6 +1539,22 @@ $("pkLogin").onclick = (e) => busy(e.currentTarget, "Жду ключ…", async 
     haptic("notificationOccurred", "success"); await start();
   } catch (err) { loginMsg(false, pkError(err)); }
 });
+// Вход через Google и Яндекс ID (oidc.py): переход на сайт провайдера и обратно. В Telegram — во внешнем браузере
+// (Google не пускает во встроенные окна): вход и панель продолжаются там. Второй фактор с почты возвращается во фрагменте.
+function oidcGo(p) {
+  const url = `/api/login/oidc/${p}/start`, name = p === "google" ? "Google" : LL("login.yandex.name", "Яндекс ID");
+  if (DEMO) return loginMsg(true, LL("login.oidc.demo", "В демо вход не выполняется: на пульте здесь откроется сайт {name}.").replace("{name}", name));
+  if (tg?.initData) { tg.openLink(location.origin + url); return loginMsg(true, LL("login.oidc.opened", "Открыли браузер: войдите там через {name} — панель откроется в браузере.").replace("{name}", name)); }
+  location.href = url;
+}
+$("googleLogin").onclick = () => oidcGo("google");
+$("yandexLogin").onclick = () => oidcGo("yandex");
+function oidcReturn() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.get("2fa")) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  askSecond({ id: h.get("2fa"), to: h.get("to") || "вашу почту" });
+}
 // Вход по коду на почту: адрес → код из письма. Ответ одинаковый, привязан адрес или нет.
 let emTimer = null;
 $("emailLogin").onclick = () => { loginPane("loginEmail"); $("emCodeBox").hidden = true; $("emAddr").focus(); };
@@ -3469,6 +3515,30 @@ async function keysSheet() {
   ]);
 }
 
+// ---------- способы входа: Google и Яндекс ID (oidc.py) ----------
+// Привязка — переходом на сайт провайдера по одноразовой ссылке (5 минут); из Telegram — во внешнем браузере.
+async function oidcSheet() {
+  let d; try { d = await api("/api/oidc"); } catch (e) { return toast(e.message, 4000); }
+  const day = (t) => t ? new Date(t * 1000).toLocaleDateString("ru-RU") : "";
+  const link = async (p) => {
+    try {
+      const r = await api("/api/oidc/link", { provider: p });
+      if (DEMO) return toast("В демо привязка не выполняется", 4000);
+      if (tg?.initData) { tg.openLink(location.origin + r.url); toast("Открыли браузер — закончите привязку там", 5000); }
+      else location.href = r.url;
+    } catch (e) { toast(e.message, 4000); }
+  };
+  const unlink = (p, x) => confirmDanger(`Отвязать ${x.title}? Войти через него больше не получится.`, () => api("/api/oidc/unlink", { provider: p }).then(() => { toast("Отвязано"); oidcSheet(); }).catch((e) => toast(e.message, 4000)));
+  const rows = Object.entries(d).map(([p, x]) => !x.enabled ? { info: true, icon: "warn", label: x.title + ": не настроено на этом пульте", sub: `владелец включает вход в config.toml ([${p}]) — инструкция в docs/AUTH.md` }
+    : x.linked ? { label: x.title + ": привязан", icon: "check", sub: (x.email ? x.email + " · " : "") + `с ${day(x.at)} — нажмите, чтобы отвязать`, run: () => unlink(p, x) }
+    : { label: "Привязать " + x.title, icon: "ext", sub: "откроется сайт " + x.title + ": войдите в свой аккаунт — после этого им можно входить в пульт", run: () => link(p) });
+  helpSheet("settings.oidc");
+  sheet("Способы входа", [
+    ...rows,
+    { info: true, icon: "lock", label: "Только вход", sub: "пульт получает лишь адрес и номер аккаунта — без писем, файлов и диска. Совпал подтверждённый адрес с почтой в пульте — вход работает и без привязки" },
+  ]);
+}
+
 // ---------- почта для входа и оповещений (emailcode.py) ----------
 // Адрес подтверждается кодом из письма; по нему можно войти, включить второй фактор и письма-оповещения.
 async function emailSheet() {
@@ -3561,6 +3631,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
+    { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: emailSheet },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
@@ -3921,6 +3992,7 @@ function showTourOffer() {
 }
 async function tourOffer() {                           // один раз: сервер говорит, что тур не пройден и не отклонён
   if (tourOffer.asked || (DEMO && !params.get("tour")) || !meta) return;
+  if ((meta.role === "owner" || UI?.own_space) && !(DEMO && params.get("tour"))) return;   // владельцу — только по его кнопке
   tourOffer.asked = true;
   const has = (r) => !!(r && (r.business || r.dev)), local = tourCache();
   let remote;
@@ -3937,7 +4009,8 @@ async function start() {
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
-  if (UI && !UI.onboarded && (!DEMO || params.has("persona"))) return showPersona();   // потом — роль (один раз)
+  if (UI && !UI.onboarded && !UI.own_space && meta.role !== "owner" && (!DEMO || params.has("persona"))) return showPersona();   // роль — один раз, не владельцу
+  paintSpaces();
   if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
   $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";  // после первого экрана на английском
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
@@ -4018,6 +4091,7 @@ async function showPersona(change) {                  // первый вход �
   $("personaBack")?.addEventListener("click", () => location.reload());
 }
 async function pickPersona(id, btn) {
+  if (UI?.own_space) return previewAs(id);  // владелец: только временный просмотр, в его настройки не пишем
   await busy(btn, T("persona.saving"), async () => {
     try { UI = await api("/api/persona", { persona: id }); haptic("notificationOccurred", "success"); }
     catch (e) { $("personaResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
@@ -4027,15 +4101,17 @@ async function pickPersona(id, btn) {
 }
 function capsSheet() {                                // «Возможности панели»: тумблеры по-человечески и смена роли
   if (!UI) return;
-  const ceil = new Set(UI.ceiling), rows = UI.catalog.caps.map((c, i, all) => {
-    const on = UI.caps.includes(c.id), locked = !ceil.has(c.id), soon = !c.ready;
-    const note = locked ? T("caps.locked") : soon ? T("caps.soon") : "";
+  if (UI.preview) return sSheet(hv("settings.caps"), T("caps.title"), `<p>Это временный просмотр — возможности меняются в «Моём пространстве».</p>
+    <div class="scn-opts">${sChip(true, 'data-mine="1"', "Вернуться в моё пространство", ic("back"))}</div>`, () => location.reload());
+  const ceil = new Set(UI.ceiling), mine = UI.own_space, rows = UI.catalog.caps.map((c, i, all) => {
+    const on = UI.caps.includes(c.id), fixed = (UI.fixed || []).includes(c.id), locked = !ceil.has(c.id) || fixed, soon = !c.ready;
+    const note = fixed ? "в вашем пространстве всегда" : locked ? T("caps.locked") : soon ? T("caps.soon") : "";
     const head = c.dev && !all[i - 1]?.dev ? `<p class="s-lbl">${esc(T("caps.dev"))}</p>` : "";
     return `${head}<div class="scn-opts">${sChip(on, `data-cap="${esc(c.id)}"${locked || soon ? " disabled" : on ? "" : ' aria-pressed="false"'}`, c.title, on ? ic("check") : "")}${note ? `<span class="note">${esc(note)}</span>` : ""}</div>`;
   }).join("");
   const html = `<p class="note">${esc(T("caps.sub"))}</p>${rows}
     <p class="s-lbl">${esc(T("caps.role", { role: personaTitle(UI.persona) }))}</p>
-    <div class="scn-opts">${sChip(false, 'data-role="1"', T("caps.change"), ic("refresh"))}</div><p class="note">${esc(T("caps.change.sub"))}</p>`;
+    <div class="scn-opts">${sChip(false, 'data-role="1"', mine ? "Посмотреть как другая роль" : T("caps.change"), ic("refresh"))}</div><p class="note">${esc(mine ? "Временно, только в этой вкладке: ваши настройки не меняются, перезагрузка вернёт в ваше пространство." : T("caps.change.sub"))}</p>`;
   sSheet(hv("settings.caps"), T("caps.title"), html, async (b, bg) => {
     if (b.dataset.role) { bg.remove(); return showPersona(true); }
     if (!b.dataset.cap) return;
@@ -4047,6 +4123,41 @@ function capsSheet() {                                // «Возможност�
   });
 }
 function demoUrl() { const u = new URL(location.href); UI.simple ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("ui", UI.persona); return u; }
+
+// «Моё пространство» и «Демо и тесты» (только владельцу): его пульт неприкосновенен. Просмотр другой роли — на вкладку,
+// в памяти страницы: на сервер не пишется, перезагрузка возвращает в своё пространство; сверху — яркая полоса.
+function paintSpaces() {
+  const on = !!UI?.own_space && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
+  $("spaces").hidden = !on; if (!on) return;
+  $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
+  $("spaces").querySelector(".sp-demo").innerHTML = ic("spark") + "Демо и тесты";
+}
+$("spaces").addEventListener("click", (e) => { if (e.target.closest("[data-space=demo]")) demoSheet(); });
+function demoSheet() {
+  helpSheet("spaces.demo");
+  sheet("Демо и тесты", [
+    { head: "Посмотреть как — ваши настоящие сессии, без сохранения" },
+    ...(UI?.catalog?.personas || []).filter((p) => p.id !== "developer").map((p) => ({ label: p.title, icon: PERSONA_ICON[p.id] || "spark", sub: p.sub, run: () => previewAs(p.id) })),
+    { head: "На примерах" },
+    { label: "Примерочная", icon: "spark", sub: "сценарии и калькулятор — выдуманные цифры", run: () => scenariosView() },
+    { label: "Демо панели", icon: "ext", sub: "вся панель на примерах — в новой вкладке, ничего никуда не уходит", run: () => window.open("/?demo", "_blank", "noopener") },
+    { info: true, icon: "lock", label: "Демо-пространства", sub: "отдельные пространства с демо-данными — готовятся" },
+  ]);
+}
+async function previewAs(id) {
+  const p = UI?.catalog?.personas.find((x) => x.id === id); if (!p) return;
+  const caps = p.caps.filter((c) => UI.ceiling.includes(c)).sort();
+  UI = { ...UI, persona: id, caps, simple: p.simple || !caps.some((c) => UI.fixed?.includes(c)), preview: true };   // только в памяти вкладки
+  applyCaps();
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+  $("previewBar").innerHTML = `<span>ПРОСМОТР · вид «${esc(p.title)}» · ваши настоящие сессии</span><button type="button" id="previewBack">Вернуться в моё пространство</button>`;
+  $("previewBar").hidden = false; document.body.classList.add("previewing");
+  const fit = () => document.body.style.setProperty("--pv", $("previewBar").offsetHeight + "px");   // полоса — не поверх шапки
+  fit(); addEventListener("resize", fit);
+  $("previewBack").onclick = () => location.reload();
+  $("spaces").hidden = true;
+  if (UI.simple) { clearInterval(start.timer); start.timer = null; await simpleStart(); }
+}
 
 // ---------- простой режим (docs/SIMPLE-MODE.md): один разговор с агентом, без английских слов и техники ----------
 // Включается настройкой человека на сервере (/api/prefs; localStorage — только кэш языка). Строки — словари
@@ -4064,7 +4175,7 @@ async function loadDict(lang) {
 function T(k, v) { let s = DICT[k] ?? k; for (const x in v || {}) s = s.split("{" + x + "}").join(String(v[x])); return s; }
 const L = (k, ru) => ((SIM.on || (view === "login" && LANG === "en")) && DICT[k] ? T(k) : ru);   // общее: помощник, переходы
 const LL = (k, ru) => (LANG === "en" && DICT[k] ? T(k) : ru);                                   // первый экран
-const SIM = { on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
+const SIM = { sec: null, yes: {}, on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
 // Инструмент Claude Code → обобщённое действие строки статуса (то же, что humanize.TOOLS — тест сверяет).
 const SIMPLE_TOOL = {"Read":"reads","Grep":"reads","Glob":"reads","LS":"reads","Edit":"edits","MultiEdit":"edits","Write":"writes","NotebookEdit":"edits","Bash":"acts","PowerShell":"acts","BashOutput":"acts","KillShell":"acts","Skill":"acts","WebSearch":"web","WebFetch":"web","Task":"helper","Agent":"helper","TodoWrite":"plans","TaskCreate":"plans","TaskUpdate":"plans","AskUserQuestion":"waiting","ExitPlanMode":"waiting"};
 const SIMPLE_PH = ["sent", "delivered", "started", "working", "thinking", "waiting", "done", "queued", "stuck", "idle"];
@@ -4076,7 +4187,7 @@ const canNew = () => meta?.role !== "viewer";
 function simplePrefs(m) {
   let p = m?.prefs || { simple: false, lang: "ru", saved: false };
   if (DEMO) p = { simple: params.get("simple") === "1", lang: LANG, saved: true };
-  else if (!p.saved && p.lang !== LANG) { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }
+  else if (!p.saved && p.lang !== LANG && m?.role !== "owner") { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }   // владельцу — только его выбор
   if (p.lang !== LANG && LANGS.includes(p.lang)) { LANG = p.lang; dictReady = loadDict(LANG); }
   store("lang", LANG);
   return p;
@@ -4145,9 +4256,55 @@ function sHead() {
   const s = SIM.list.find((x) => x.id === SIM.w);
   $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T("s.agents"))}</b><small>${esc(s ? T("s.status." + (s.status in ST ? s.status : "idle")) : "")}</small></span>${SIM.list.length > 1 || canNew() ? ic("chevron", "s16") : ""}`;
   $("sWho").setAttribute("aria-label", T("s.agents"));
-  $("sAgents").hidden = SIM.list.length < 2;
-  $("sAgents").innerHTML = SIM.list.length < 2 ? "" : SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
+  const shown = SIM.list.filter((x) => sSecOk(x) || x.id === SIM.w);
+  $("sAgents").hidden = shown.length < 2 && !SIM.sec;
+  $("sAgents").innerHTML = $("sAgents").hidden ? "" : shown.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
+  sSecs();
   $("sAgents").querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+// Разделы над чатом: фильтр агентов по модулю (поле sections; без него — во всех) и примеры просьб раздела.
+const sSecOk = (x) => !SIM.sec || !x.sections?.length || x.sections.includes(SIM.sec);
+function sSecs() {
+  const on = !!UI && cap("four_tabs") && UI.sections.length > 0, box = $("sSecs");
+  box.hidden = !on;
+  if (!on) { SIM.sec = null; $("sTips").hidden = true; return; }
+  if (SIM.sec && !UI.sections.includes(SIM.sec)) SIM.sec = null;
+  box.setAttribute("aria-label", T("sec.title"));
+  const html = UI.sections.map((id) => sChip(SIM.sec === id, `data-sec="${id}"`, T("sec." + id))).join("");
+  if (box.innerHTML !== html) box.innerHTML = html;
+  const tips = $("sTips"); tips.hidden = !SIM.sec;
+  tips.innerHTML = SIM.sec ? `<p class="note">${esc(T("sec.tips"))}</p><div class="scn-opts">${[1, 2, 3].map((n) => sChip(false, `data-tip="sec.${SIM.sec}.p${n}"`, T(`sec.${SIM.sec}.p${n}`))).join("")}</div>` : "";
+}
+// «Ждут вашего Да»: другие агенты, которые ждут решения. «Да» — только у понятных вопросов (есть пункт «Да» первого
+// уровня), иначе — «Открыть»: решение принимается в разговоре, где видно подробности.
+async function sYesLoad() {
+  if (!UI || !cap("approvals_yes_no")) { SIM.yes = {}; return sYes(); }
+  const wait = SIM.list.filter((x) => x.status === "dialog" && x.id !== SIM.w).slice(0, 3), next = {};
+  for (const x of wait) {
+    const old = SIM.yes[x.id];
+    if (old && Date.now() - old.t < 6000) { next[x.id] = old; continue; }
+    try { next[x.id] = { t: Date.now(), ask: (await api("/api/ask?w=" + encodeURIComponent(x.id))).ask }; } catch (e) { if (old) next[x.id] = old; }
+  }
+  SIM.yes = next; sYes();
+}
+function sYes() {
+  const box = $("sYes"), rows = SIM.list.filter((x) => SIM.yes[x.id] && x.status === "dialog" && x.id !== SIM.w);
+  const viewer = meta?.role === "viewer";
+  const html = rows.length ? `<p class="s-lbl">${esc(T("yes.title", { n: rows.length }))}</p>` + rows.map((x) => {
+    const a = SIM.yes[x.id].ask, yes = a?.known && a.options.find((o) => o.key === "yes" && o.level !== 2);
+    return `<div class="s-yc">${ic("warn")}<div class="t"><b>${esc(sName(x))}</b><small>${esc(a ? a["title_" + LANG] || a.title_ru : T("yes.wait"))}</small></div>
+      ${yes && !viewer ? `<button class="scn-opt yes" type="button" data-yes="${esc(x.id)}">${esc(sLab(yes))}</button>` : ""}<button class="scn-opt" type="button" data-w="${esc(x.id)}">${esc(T("yes.open"))}</button></div>`;
+  }).join("") : "";
+  box.hidden = !html;
+  if (box.innerHTML !== html) box.innerHTML = html;
+}
+async function sYesGo(w, btn) {
+  const a = SIM.yes[w]?.ask, o = a?.options.find((x) => x.key === "yes" && x.level !== 2);
+  if (!o?.send?.n) return sPick(w);
+  haptic("impactOccurred", "medium"); btn.disabled = true; btn.textContent = T("s.sending");
+  try { await api("/api/select", { w, text: "", n: o.send.n, go: true }); delete SIM.yes[w]; toast(T("s.sent")); setTimeout(sTick, 600); }
+  catch (e) { toast(T("s.fail"), 3500); btn.disabled = false; }
+  sYes();
 }
 async function sLoad(first) {
   let d; try { d = await api("/api/sessions"); } catch (e) { return; }
@@ -4159,7 +4316,7 @@ async function sLoad(first) {
     const pick = SIM.list.find((x) => x.id === want) || SIM.list.find((x) => x.active) || SIM.list.find((x) => x.status === "dialog") || SIM.list[0];
     SIM.w = pick?.id || null; SIM.hist = []; SIM.rev = ""; SIM.ask = null; SIM.act = null; first = true;
   }
-  sHead();
+  sHead(); sYesLoad();
   if (first) { sRender(true); await sHist(true); }
 }
 function sPick(w) {
@@ -4293,6 +4450,9 @@ $("simple").addEventListener("click", (e) => {
   if (b.dataset.sopt) return sChoose(SIM.ask?.options[+b.dataset.sopt], b);
   if (b.dataset.smore) { SIM.open2 = !SIM.open2; haptic("selectionChanged"); return sAsk(); }
   if (b.dataset.w) return sPick(b.dataset.w);
+  if (b.dataset.yes) return sYesGo(b.dataset.yes, b);
+  if (b.dataset.sec) { SIM.sec = SIM.sec === b.dataset.sec ? null : b.dataset.sec; haptic("selectionChanged"); return sHead(); }
+  if (b.dataset.tip) { const t = $("sInput"); t.value = T(b.dataset.tip); sGrow(); t.focus(); return; }
   if (b.dataset.snew) return sNewAgent();
   if (b.dataset.solder) return sOlder(b);
   if (b.id === "sWho") return sAgents();
@@ -4410,7 +4570,8 @@ function demoUi(body) {
   const base = c.personas.find((p) => p.id === st.persona)?.caps || [];
   const caps = [...new Set([...base, ...st.added])].filter((x) => !st.hidden.includes(x) && ceil.includes(x)).sort();
   return { ...st, chosen: true, access: { owner: "owner", member: "staff", viewer: "guest" }[role], ceiling: [...ceil].sort(), caps,
-           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c };
+           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c,
+           own_space: role === "owner" && params.has("space"), fixed: role === "owner" && params.has("space") ? ["cap.dev_sessions"] : [] };
 }
 
 paintIcons();
@@ -4430,8 +4591,8 @@ if (DEMO && params.get("view") === "login") showLogin(); else start();
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
   const S = [
-    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана" },
-    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon" },
+    { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана", sections: ["analytics"] },
+    { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon", sections: ["comms"] },
     { id: "@3", name: "gas-pult", path: "/home/u/projects/gas-pult", branch: "feature/mini-app", status: "idle", context: 63, active: false, channel: false, rev: "c2", preview: "Готово: панель переписана, тесты зелёные" },
     { id: "@5", name: "shop-bot", path: "/home/u/projects/shop-bot", branch: "main", status: "stopped", context: null, model: "", active: false, channel: false, rev: "", preview: "", profile: "zai" },
     { id: "@4", name: "digest-0716", path: "/home/u/projects/gastech-digest", branch: "main", status: "idle", context: 86, model: "DeepSeek V4 Pro", active: false, channel: false, rev: "d", preview: "Вы: собери дайджест за неделю", profile: "deepseek" },
@@ -4620,7 +4781,13 @@ function demoApi(path, body) {
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
-  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true });
+  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true });
+  if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
+  if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет
+    demoApi.oidc ||= { google: { enabled: true, title: "Google", linked: true, email: "i***@example.com", at: Date.now() / 1000 - 86400 * 2 | 0 }, yandex: { enabled: true, title: "Яндекс ID", linked: false, email: "", at: null } };
+    if (key === "/api/oidc/unlink") Object.assign(demoApi.oidc[body.provider], { linked: false, email: "", at: null });
+    return Promise.resolve(demoApi.oidc);
+  }
   if (key === "/api/login/passkey/options" || key === "/api/passkeys/options") return Promise.resolve({ id: "demo", options: { challenge: "AAAA", rpId: "localhost", user: { id: "AAAA", name: "demo", displayName: "demo" } } });
   if (key.startsWith("/api/passkeys")) {             // демо: ключ «добавляется» без устройства
     demoApi.pk ||= [{ id: "k1", name: "iPhone", created: Date.now() / 1000 - 86400 * 3 | 0, last_used: Date.now() / 1000 - 3600 | 0 }];
