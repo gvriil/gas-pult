@@ -29,6 +29,9 @@ dev, at}`` (``"done"`` — проходил, ``"dismissed"`` — «Не сейч
 — рядом, в ``<data>/emails.json`` (0600), тем же видом. Адрес подтверждён кодом; по нему можно войти, пока у человека
 есть роль.
 
+Вид панели (``personas.py``): у человека из people.json — поле ``ui: {persona, added, hidden, onboarded}``; у владельцев
+— ``<data>/ui.json`` (0600) тем же видом. Это его настройка: менять может и наблюдатель (в пределах потолка).
+
 Настройки человека (``prefs``): простой режим панели и язык интерфейса — ``{simple: bool, lang: "ru"|"en"}``; у
 человека из people.json — поле ``prefs`` в его записи, у владельцев — ``<data>/prefs.json`` (0600). Нет записи —
 полный режим и русский, как раньше.
@@ -63,6 +66,7 @@ class People:
         self.prefs_store = store.with_name("prefs.json")          # их же настройки панели (простой режим, язык)
         self.email_store = store.with_name("emails.json")         # их же почта (emailcode.py)
         self.tour_store = store.with_name("tours.json")          # их же отметки тура
+        self.ui_store = store.with_name("ui.json")               # их же вид панели (роль интерфейса)
 
     def _load(self) -> dict:
         try:
@@ -105,7 +109,7 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            for k in ("terms", "country", "email", "tour", "prefs"):   # смена роли их не сбрасывает
+            for k in ("terms", "country", "email", "tour", "prefs", "ui"):   # смена роли их не сбрасывает
                 if old.get(k):
                     rec[k] = old[k]
             d[str(int(uid))] = rec
@@ -117,7 +121,8 @@ class People:
             d = self._load()
             if d.pop(str(int(uid)), None) is not None:
                 self._save(d)
-            for f in (self.terms_store, self.country_store, self.email_store, self.tour_store, self.prefs_store):
+            for f in (self.terms_store, self.country_store, self.email_store, self.tour_store, self.prefs_store,
+                      self.ui_store):
                 t = self._load_side(f)
                 if t.pop(str(int(uid)), None) is not None:
                     write_private(f, json.dumps(t))
@@ -243,6 +248,30 @@ class People:
                 side[str(uid)] = rec
                 write_private(self.tour_store, json.dumps(side))
         return rec
+    def ui(self, uid) -> dict:
+        """Вид панели человека (``personas.py``): {persona, added, hidden, onboarded}; нет — пустая запись."""
+        try:
+            uid = int(uid)
+        except (TypeError, ValueError):
+            return {}
+        p = None if uid in self.owners else self._load().get(str(uid))
+        rec = (p or {}).get("ui") if p else self._load_side(self.ui_store).get(str(uid))
+        return dict(rec) if isinstance(rec, dict) else {}
+
+    def set_ui(self, uid: int, rec: dict):
+        """Сохранить вид панели целиком (запись готовит ``personas.change``)."""
+        uid = int(uid)
+        rec = {**{k: rec[k] for k in ("persona", "added", "hidden", "onboarded") if k in rec}, "at": int(time.time())}
+        with self.lock:
+            d = self._load()
+            if uid not in self.owners and str(uid) in d:
+                d[str(uid)]["ui"] = rec
+                self._save(d)
+            else:
+                side = self._load_side(self.ui_store)
+                side[str(uid)] = rec
+                write_private(self.ui_store, json.dumps(side))
+
     def email(self, uid) -> dict:
         """Почта человека: {address, at, second_factor, notify} или пустая запись."""
         try:
