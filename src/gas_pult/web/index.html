@@ -662,15 +662,27 @@
   .sheet.s-sheet .scn-opt .i { width: 16px; height: 16px; }
   .sheet.s-sheet .s-notes { margin: 0 0 10px; padding: 0 0 0 18px; } .sheet.s-sheet .s-notes li { margin: 0 0 6px; }
   .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
+  /* Пространство владельца: «Моё пространство» (его настоящий пульт) и «Демо и тесты» — разными цветами. Просмотр
+     другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
+  .spaces { display: flex; gap: 6px; padding: 2px 0 6px; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
+    border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
+  .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
+  .spaces .sp-demo { border-color: var(--status-approval); color: var(--status-approval); } .spaces .i { width: 15px; height: 15px; }
+  .pvbar { position: fixed; left: 0; right: 0; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px;
+    padding: calc(6px + env(safe-area-inset-top)) 12px 6px; background: var(--status-approval); color: var(--on-approval); font-size: calc(13.5px * var(--fz, 1)); font-weight: 600; text-align: center; }
+  .pvbar button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
+  body.previewing { padding-top: var(--pv, 40px); } body.previewing #simple { top: var(--pv, 40px); }
   .s-langsw .scn-opt { min-height: 34px; padding: 4px 12px; font-size: calc(13px * var(--fz, 1)); }
 </style>
 </head>
 <body>
+<div class="pvbar" id="previewBar" hidden role="status"></div>
 <button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 <header class="top" id="top">
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-demo" type="button" data-space="demo" aria-pressed="false"></button></div>
   <div class="toprow">
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
     <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
@@ -3903,6 +3915,7 @@ function showTourOffer() {
 }
 async function tourOffer() {                           // один раз: сервер говорит, что тур не пройден и не отклонён
   if (tourOffer.asked || (DEMO && !params.get("tour")) || !meta) return;
+  if ((meta.role === "owner" || UI?.own_space) && !(DEMO && params.get("tour"))) return;   // владельцу — только по его кнопке
   tourOffer.asked = true;
   const has = (r) => !!(r && (r.business || r.dev)), local = tourCache();
   let remote;
@@ -3919,7 +3932,8 @@ async function start() {
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
-  if (UI && !UI.onboarded && (!DEMO || params.has("persona"))) return showPersona();   // потом — роль (один раз)
+  if (UI && !UI.onboarded && !UI.own_space && meta.role !== "owner" && (!DEMO || params.has("persona"))) return showPersona();   // роль — один раз, не владельцу
+  paintSpaces();
   if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
   $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";  // после первого экрана на английском
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
@@ -3999,6 +4013,7 @@ async function showPersona(change) {                  // первый вход �
   $("personaBack")?.addEventListener("click", () => location.reload());
 }
 async function pickPersona(id, btn) {
+  if (UI?.own_space) return previewAs(id);  // владелец: только временный просмотр, в его настройки не пишем
   await busy(btn, T("persona.saving"), async () => {
     try { UI = await api("/api/persona", { persona: id }); haptic("notificationOccurred", "success"); }
     catch (e) { $("personaResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
@@ -4008,15 +4023,17 @@ async function pickPersona(id, btn) {
 }
 function capsSheet() {                                // «Возможности панели»: тумблеры по-человечески и смена роли
   if (!UI) return;
-  const ceil = new Set(UI.ceiling), rows = UI.catalog.caps.map((c, i, all) => {
-    const on = UI.caps.includes(c.id), locked = !ceil.has(c.id), soon = !c.ready;
-    const note = locked ? T("caps.locked") : soon ? T("caps.soon") : "";
+  if (UI.preview) return sSheet(hv("settings.caps"), T("caps.title"), `<p>Это временный просмотр — возможности меняются в «Моём пространстве».</p>
+    <div class="scn-opts">${sChip(true, 'data-mine="1"', "Вернуться в моё пространство", ic("back"))}</div>`, () => location.reload());
+  const ceil = new Set(UI.ceiling), mine = UI.own_space, rows = UI.catalog.caps.map((c, i, all) => {
+    const on = UI.caps.includes(c.id), fixed = (UI.fixed || []).includes(c.id), locked = !ceil.has(c.id) || fixed, soon = !c.ready;
+    const note = fixed ? "в вашем пространстве всегда" : locked ? T("caps.locked") : soon ? T("caps.soon") : "";
     const head = c.dev && !all[i - 1]?.dev ? `<p class="s-lbl">${esc(T("caps.dev"))}</p>` : "";
     return `${head}<div class="scn-opts">${sChip(on, `data-cap="${esc(c.id)}"${locked || soon ? " disabled" : on ? "" : ' aria-pressed="false"'}`, c.title, on ? ic("check") : "")}${note ? `<span class="note">${esc(note)}</span>` : ""}</div>`;
   }).join("");
   const html = `<p class="note">${esc(T("caps.sub"))}</p>${rows}
     <p class="s-lbl">${esc(T("caps.role", { role: personaTitle(UI.persona) }))}</p>
-    <div class="scn-opts">${sChip(false, 'data-role="1"', T("caps.change"), ic("refresh"))}</div><p class="note">${esc(T("caps.change.sub"))}</p>`;
+    <div class="scn-opts">${sChip(false, 'data-role="1"', mine ? "Посмотреть как другая роль" : T("caps.change"), ic("refresh"))}</div><p class="note">${esc(mine ? "Временно, только в этой вкладке: ваши настройки не меняются, перезагрузка вернёт в ваше пространство." : T("caps.change.sub"))}</p>`;
   sSheet(hv("settings.caps"), T("caps.title"), html, async (b, bg) => {
     if (b.dataset.role) { bg.remove(); return showPersona(true); }
     if (!b.dataset.cap) return;
@@ -4028,6 +4045,41 @@ function capsSheet() {                                // «Возможност�
   });
 }
 function demoUrl() { const u = new URL(location.href); UI.simple ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("ui", UI.persona); return u; }
+
+// «Моё пространство» и «Демо и тесты» (только владельцу): его пульт неприкосновенен. Просмотр другой роли — на вкладку,
+// в памяти страницы: на сервер не пишется, перезагрузка возвращает в своё пространство; сверху — яркая полоса.
+function paintSpaces() {
+  const on = !!UI?.own_space && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
+  $("spaces").hidden = !on; if (!on) return;
+  $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
+  $("spaces").querySelector(".sp-demo").innerHTML = ic("spark") + "Демо и тесты";
+}
+$("spaces").addEventListener("click", (e) => { if (e.target.closest("[data-space=demo]")) demoSheet(); });
+function demoSheet() {
+  helpSheet("spaces.demo");
+  sheet("Демо и тесты", [
+    { head: "Посмотреть как — ваши настоящие сессии, без сохранения" },
+    ...(UI?.catalog?.personas || []).filter((p) => p.id !== "developer").map((p) => ({ label: p.title, icon: PERSONA_ICON[p.id] || "spark", sub: p.sub, run: () => previewAs(p.id) })),
+    { head: "На примерах" },
+    { label: "Примерочная", icon: "spark", sub: "сценарии и калькулятор — выдуманные цифры", run: () => scenariosView() },
+    { label: "Демо панели", icon: "ext", sub: "вся панель на примерах — в новой вкладке, ничего никуда не уходит", run: () => window.open("/?demo", "_blank", "noopener") },
+    { info: true, icon: "lock", label: "Демо-пространства", sub: "отдельные пространства с демо-данными — готовятся" },
+  ]);
+}
+async function previewAs(id) {
+  const p = UI?.catalog?.personas.find((x) => x.id === id); if (!p) return;
+  const caps = p.caps.filter((c) => UI.ceiling.includes(c)).sort();
+  UI = { ...UI, persona: id, caps, simple: p.simple || !caps.some((c) => UI.fixed?.includes(c)), preview: true };   // только в памяти вкладки
+  applyCaps();
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+  $("previewBar").innerHTML = `<span>ПРОСМОТР · вид «${esc(p.title)}» · ваши настоящие сессии</span><button type="button" id="previewBack">Вернуться в моё пространство</button>`;
+  $("previewBar").hidden = false; document.body.classList.add("previewing");
+  const fit = () => document.body.style.setProperty("--pv", $("previewBar").offsetHeight + "px");   // полоса — не поверх шапки
+  fit(); addEventListener("resize", fit);
+  $("previewBack").onclick = () => location.reload();
+  $("spaces").hidden = true;
+  if (UI.simple) { clearInterval(start.timer); start.timer = null; await simpleStart(); }
+}
 
 // ---------- простой режим (docs/SIMPLE-MODE.md): один разговор с агентом, без английских слов и техники ----------
 // Включается настройкой человека на сервере (/api/prefs; localStorage — только кэш языка). Строки — словари
@@ -4057,7 +4109,7 @@ const canNew = () => meta?.role !== "viewer";
 function simplePrefs(m) {
   let p = m?.prefs || { simple: false, lang: "ru", saved: false };
   if (DEMO) p = { simple: params.get("simple") === "1", lang: LANG, saved: true };
-  else if (!p.saved && p.lang !== LANG) { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }
+  else if (!p.saved && p.lang !== LANG && m?.role !== "owner") { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }   // владельцу — только его выбор
   if (p.lang !== LANG && LANGS.includes(p.lang)) { LANG = p.lang; dictReady = loadDict(LANG); }
   store("lang", LANG);
   return p;
@@ -4439,7 +4491,8 @@ function demoUi(body) {
   const base = c.personas.find((p) => p.id === st.persona)?.caps || [];
   const caps = [...new Set([...base, ...st.added])].filter((x) => !st.hidden.includes(x) && ceil.includes(x)).sort();
   return { ...st, chosen: true, access: { owner: "owner", member: "staff", viewer: "guest" }[role], ceiling: [...ceil].sort(), caps,
-           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c };
+           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c,
+           own_space: role === "owner" && params.has("space"), fixed: role === "owner" && params.has("space") ? ["cap.dev_sessions"] : [] };
 }
 
 paintIcons();
