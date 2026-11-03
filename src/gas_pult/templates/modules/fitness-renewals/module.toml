@@ -3,6 +3,7 @@ id = "fitness-renewals"
 version = "1.0"
 title = "Продления клубных карт"
 industry = "Фитнес-клубы (семейные)"
+sections = ["analytics", "comms"]
 about = "Точки 60/30/7 дней до конца карты, семейное продление; утром — «под риском»."
 description = """
 Каждое утро агент смотрит карты участников (data/members.csv) и посещения (data/visits.csv). Менеджеру в
