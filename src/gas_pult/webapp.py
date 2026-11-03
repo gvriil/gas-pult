@@ -51,6 +51,8 @@ from gas_pult import (
     providers,
     scenarios,
     setup,
+    spaces,
+    tenants,
     terms,
     transcripts,
     usage,
@@ -129,6 +131,8 @@ class Panel:
 
     def __init__(self, cfg: Config):
         self.cfg, self.pult = cfg, Pult(cfg)
+        # окна владельца и демо-пространств (spaces.py): запрос тестировщика ограничен его пространством (scope)
+        self.pult.tmux = spaces.Routed(self.pult.tmux)
         self.tmux = self.pult.tmux
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
         self.mcp = Mcp()
@@ -251,6 +255,9 @@ class Panel:
         """Папка Claude Code пула: владелец — None (~/.claude); участник — его папка (не создаём, если её нет)."""
         if pool == "owner":
             return None
+        if pool.startswith("space:"):                    # тестировщик: расход его пространства
+            d = tenants.paths(pool.removeprefix("space:"))["claude"]
+            return d if d.is_dir() else False
         d = self.cfg.data / "people" / pool / "claude"
         return d if d.is_dir() else False
 
@@ -358,15 +365,29 @@ class Panel:
         rec = self.people.ui(uid)
         if self.is_owner(uid):
             rec = {**rec, "persona": personas.DEFAULT, "onboarded": True}
+        if sp := self.space_info(uid):                 # тестировщик: вид — тот, что задан пространству
+            rec = {**rec, "persona": sp["persona"], "onboarded": True}
         out = personas.view(rec, personas.access(role), self.team, uid, self.people.prefs(uid)["lang"])
         own = self.is_owner(uid)                       # fixed — что владелец у себя не прячет (иначе ушёл бы в чат)
-        return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else []}
+        return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else [],
+                **({"space": sp} if sp else {})}
+
+    def space_info(self, uid) -> dict | None:
+        """Пространство тестировщика для панели: имя, название, вид. Не тестировщик — None."""
+        slug = self.people.tenant(uid)
+        if not slug:
+            return None
+        t = tenants.load(slug) if tenants.enabled() else None
+        return {"slug": slug, "title": (t or {}).get("title") or slug, "ready": t is not None,
+                "persona": (t or {}).get("persona") or tenants.DEFAULT_PERSONA}
 
     def set_ui(self, uid, role: str | None, b: dict) -> dict:
         """Выбор человека: ``persona`` (сменить роль целиком), ``add`` ({cap: true|false}) — тумблеры. Простой режим
         (#80) следует за видом: бизнес-роли — чат, разработчик — прежний интерфейс."""
         add, persona = b.get("add"), None if b.get("persona") is None else str(b["persona"])
         owner = self.is_owner(uid)
+        if self.people.tenant(uid):
+            raise ValueError("вид панели в демо-пространстве задаёт владелец пульта")
         if owner and persona not in (None, personas.DEFAULT):
             raise ValueError("ваше пространство — всегда вид разработчика; посмотреть как бизнес — «Демо и тесты», "
                              "без сохранения")
@@ -426,6 +447,11 @@ class Panel:
 
     def meta(self, uid=None) -> dict:
         voices = catalog.installed(self.personal(uid))
+        if sp := self.space_info(uid):                 # тестировщик: ни папок, ни имени сервера владельца
+            return {"host": sp["title"], "tz": server_tz(), "commands": [t for t, _ in self.pult.command_list()],
+                    "models": [], "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS], "profiles": [],
+                    "projects": [], "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
+                    "voice": self.voice(voices), "space": sp}
         return {"host": self.cfg.host, "tz": server_tz(),
                 "commands": [t for t, _ in self.pult.command_list()],
                 "models": self.cfg.models,
@@ -578,6 +604,7 @@ class Panel:
     def activity(self, wid: str) -> dict:
         """Живая строка статуса окна (activity.py): опрос раз в 1,5 с из открытого чата — поэтому список окон
         кэшируется на 3 с (в нём ``ps`` по каждому окну), экран читается не чаще раза в 2 с, журнал — с хвоста."""
+        self.tmux.target(wid)                        # окно не своего пространства — «окна нет» (кэш общий)
         now = time.time()
         if wid not in self.wins[1] or now - self.wins[0] > 3:
             self.wins = (now, {w["id"]: w for w in self.tmux.windows() if w["cmd"] == "claude"})
@@ -698,6 +725,8 @@ class Panel:
     def new(self, i: int, profile: str = "", person: int | None = None, uid=None) -> dict:
         """``person`` — Telegram ID участника: окно с его папкой Claude Code (вход, MCP); None — владелец.
         ``uid`` — кто нажал: по его странам проверяется поставщик и ставится метка окна для запасных."""
+        if slug := self.tmux.scoped:                     # тестировщик: окно — только в его пространстве
+            return self.new_in_space(slug)
         if uid is not None:
             self.check(profile, uid)                     # поставщик не для страны — отказ сразу
         dirs = self.pult.projects()
@@ -717,6 +746,14 @@ class Panel:
             self.mark_by(wid, uid)
         self.pult.set_state(active=wid)
         return {"id": wid}
+
+    def new_in_space(self, slug: str, name: str = "") -> dict:
+        """Новая сессия в демо-пространстве: ``tenants.new_window`` — от его пользователя Linux, в его папке, с его
+        CLAUDE_CONFIG_DIR и моделью. Функция выключена (нет настройки) — понятный отказ."""
+        if not tenants.enabled():
+            raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
+        raw = tenants.new_window(slug, name or f"{slug}-{time.strftime('%H%M')}")
+        return {"id": spaces.wid_of(slug, raw)}
 
     # ---------- модули-агенты (modules.py) ----------
     def modules_list(self) -> dict:
@@ -1158,6 +1195,13 @@ NOTIFY_DONE = "/api/notify-done"
 TOUR = "/api/tour"
 # До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
 COUNTRY_FREE = TERMS_FREE | {"/api/country"}
+# Тестировщик демо-пространства (задача 31): только это — и только с окнами своего пространства (spaces.Routed.scope).
+# Остальное (папки и модули владельца, файлы, интеграции, ключи, люди, модели, расход владельца) — 403 code=space.
+SPACE_OK = TERMS_FREE | {
+    "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
+    "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
+    "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename",
+}
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
@@ -1238,8 +1282,11 @@ def handler(panel: Panel):
             return None if role == "owner" or uid is None else uid
 
         def pool(self) -> str | None:
-            """Чей расход видит вошедший: владелец — «owner», участник — свой ID, наблюдатель — ничей."""
+            """Чей расход видит вошедший: владелец — «owner», участник — свой ID, наблюдатель — ничей,
+            тестировщик — его пространство."""
             _, role, uid = self.who()
+            if slug := self.space():
+                return f"space:{slug}"
             return "owner" if role == "owner" else str(uid) if role == "member" and uid is not None else None
 
         def home(self):
@@ -1249,6 +1296,11 @@ def handler(panel: Panel):
 
         def session(self) -> str:
             return webauth.cookie_value(self.headers.get("Cookie", ""))
+
+        def space(self) -> str | None:
+            """Демо-пространство тестировщика (``people.tenant``); владелец и обычные люди — None."""
+            _, role, uid = self.who()
+            return None if role == "owner" or uid is None else panel.people.tenant(uid)
 
         def terms_uid(self) -> int | None:
             """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
@@ -1268,6 +1320,9 @@ def handler(panel: Panel):
                 return False
             if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
+                return False
+            if self.space() and path not in SPACE_OK:     # тестировщик — только своё пространство
+                self.json({"error": "в демо-пространстве этого нет", "code": "space"}, 403)
                 return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA,
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN)            # и наблюдателю
@@ -1338,11 +1393,16 @@ def handler(panel: Panel):
                 return self.oidc_step(m.group(1), m.group(2), q)
             if not self.permit(url.path, "GET"):
                 return None
-            self.dispatch(lambda: self.get(url.path, q))
+            with panel.tmux.scope(self.space()):
+                self.dispatch(lambda: self.get(url.path, q))
 
         def get(self, path: str, q: dict):
             if path == "/api/sessions":
                 pool = self.pool()
+                if self.space():                          # тестировщик: без имени сервера и событий владельца
+                    sp = panel.space_info(self.terms_uid()) or {}
+                    return {"sessions": panel.sessions(pool), "host": sp.get("title", ""), "build": build,
+                            "now": time.time(), "cost": panel.cost_summary(pool), "fallback": [], "space": sp}
                 return {"sessions": panel.sessions(pool), "host": panel.cfg.host, "build": build,
                         "now": time.time(),                                   # часы сервера: «N назад» без сдвига
                         "cost": panel.cost_summary(pool),
@@ -1479,7 +1539,8 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: self.help_anon(path))
             if not path.startswith("/api/") or not self.permit(path, "POST"):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
-            self.dispatch(lambda: self.post(path))
+            with panel.tmux.scope(self.space()):
+                self.dispatch(lambda: self.post(path))
 
         def help_anon(self, path: str):
             if not panel.help_anon.ok(self.client_ip()):

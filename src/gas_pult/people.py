@@ -45,6 +45,7 @@ import time
 from pathlib import Path
 
 from gas_pult import country as geo
+from gas_pult import tenants
 from gas_pult.config import data_dir, write_private
 from gas_pult.terms import VERSION as TERMS_VERSION
 
@@ -99,7 +100,9 @@ class People:
         p = self._load().get(str(uid))
         return p["role"] if p and p.get("role") in ROLES else None
 
-    def add(self, uid: int, role: str, name: str = "", username: str = ""):
+    def add(self, uid: int, role: str, name: str = "", username: str = "", tenant: str | None = None):
+        """``tenant`` — тестировщик демо-пространства (задача 31): его сессии — только там. None — оставить как было
+        (смена роли его не снимает), "" — снять."""
         if role not in ROLES:
             raise ValueError("роль: участник или наблюдатель")
         if int(uid) in self.owners:
@@ -112,8 +115,22 @@ class People:
             for k in ("terms", "country", "email", "tour", "prefs", "ui"):   # смена роли их не сбрасывает
                 if old.get(k):
                     rec[k] = old[k]
+            space = old.get("tenant", "") if tenant is None else tenant
+            if space:                                    # имя — по тем же правилам, что у pult-tenant
+                rec["tenant"] = tenants.check_slug(space)
             d[str(int(uid))] = rec
             self._save(d)
+
+    def tenant(self, uid) -> str | None:
+        """Пространство тестировщика (``tenant`` в people.json) или None. Владельцу — никогда."""
+        try:
+            uid = int(uid)
+        except (TypeError, ValueError):
+            return None
+        if uid in self.owners:
+            return None
+        p = self._load().get(str(uid)) or {}
+        return p.get("tenant") or None if p.get("role") in ROLES else None
 
     def remove(self, uid: int):
         """Отключить человека: роль и согласие удаляются, любой его вход перестаёт работать сразу."""
@@ -357,6 +374,8 @@ def home_of(w: dict, data: Path | None = None) -> Path | None:
 
     Окна владельца тоже помечаются его ID (для запасных — по его странам), но своей папки у него нет: отметка без
     папки — учётка владельца (None). Участнику папку создаёт ``claude_dir`` до запуска окна."""
+    if w.get("space"):                                  # окно демо-пространства — его папка Claude (tenants.py)
+        return tenants.paths(w["space"])["claude"]
     by = str(w.get("by") or "")
     d = (data or data_dir()) / "people" / by / "claude"
     return d if by.isdigit() and d.is_dir() else None

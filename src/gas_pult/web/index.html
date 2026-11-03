@@ -1886,6 +1886,7 @@ $("sessionsView").addEventListener("click", (e) => {
 });
 $("newBtn").onclick = () => newSession();
 function newSession(profile) {
+  if (meta?.space) return startSession(0, "");     // тестировщик: сессия — только в его демо-пространстве, без выбора папки
   helpSheet("sheet.new-session");
   sheet("Новая сессия — в какой папке?", [
     { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => newFolder(profile) },
@@ -4760,6 +4761,10 @@ function sAgents() {
 }
 async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш
   if (!canNew()) return;
+  if (meta?.space) {                                 // тестировщик демо-пространства: новая сессия — только в нём
+    try { const r = await api("/api/new", {}); await sLoad(); if (r.id) sPick(r.id); } catch (e) { toast(T("s.fail"), 3500); }
+    return;
+  }
   if (LANG !== "ru") {                               // каталог модулей пока только на русском
     return sSheet(hv("simple.new-agent"), T("s.new"), `<p>${esc(T("s.new.ru_only"))}</p><div class="scn-opts">${sChip(false, 'data-lang="ru"', T("set.lang.ru"))}</div>`,
       (b, bg) => { if (b.dataset.lang) { bg.remove(); setLang("ru").then(sNewAgent); } });
