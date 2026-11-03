@@ -324,28 +324,66 @@ class Panel:
                 "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
                 "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
 
+    def is_owner(self, uid) -> bool:
+        try:
+            return int(uid) in self.cfg.owners
+        except (TypeError, ValueError):
+            return False
+
     def ui(self, uid, role: str | None) -> dict:
-        """Вид панели человека (``personas.view``): роль интерфейса, возможности, потолок, справочник."""
-        return personas.view(self.people.ui(uid), personas.access(role), self.team, uid,
-                             self.people.prefs(uid)["lang"])
+        """Вид панели человека (``personas.view``): роль интерфейса, возможности, потолок, справочник.
+
+        Владелец пульта — всегда «Моё пространство» с видом разработчика: экран выбора роли ему сам не показывается
+        (``onboarded``), другой вид — только временный просмотр в панели («Демо и тесты»), на сервере не хранится."""
+        rec = self.people.ui(uid)
+        if self.is_owner(uid):
+            rec = {**rec, "persona": personas.DEFAULT, "onboarded": True}
+        out = personas.view(rec, personas.access(role), self.team, uid, self.people.prefs(uid)["lang"])
+        own = self.is_owner(uid)                       # fixed — что владелец у себя не прячет (иначе ушёл бы в чат)
+        return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else []}
 
     def set_ui(self, uid, role: str | None, b: dict) -> dict:
         """Выбор человека: ``persona`` (сменить роль целиком), ``add`` ({cap: true|false}) — тумблеры. Простой режим
         (#80) следует за видом: бизнес-роли — чат, разработчик — прежний интерфейс."""
-        add = b.get("add")
-        rec = personas.change(self.people.ui(uid), personas.access(role), self.team, uid,
-                              None if b.get("persona") is None else str(b["persona"]),
+        add, persona = b.get("add"), None if b.get("persona") is None else str(b["persona"])
+        owner = self.is_owner(uid)
+        if owner and persona not in (None, personas.DEFAULT):
+            raise ValueError("ваше пространство — всегда вид разработчика; посмотреть как бизнес — «Демо и тесты», "
+                             "без сохранения")
+        rec = personas.change(self.people.ui(uid), personas.access(role), self.team, uid, persona,
                               add if isinstance(add, dict) else None)
+        if owner and personas.simple(personas.effective(personas.DEFAULT, rec.get("added"), rec.get("hidden"),
+                                                         personas.ALL)):
+            raise ValueError("в вашем пространстве сессии не прячутся — посмотреть без них можно в «Демо и тестах»")
         self.people.set_ui(uid, rec)
         out = self.ui(uid, role)
-        self.people.set_prefs(uid, simple=out["simple"])
+        if not owner:                                  # простой режим следует за выбором человека — не владельца
+            self.people.set_prefs(uid, simple=out["simple"])
         return out
 
     def prefs(self, uid, role: str | None) -> dict:
         """Настройки панели; ``simple`` — по виду, если человек выбрал роль или владелец закрыл ему инженерное."""
         p, v = self.people.prefs(uid), self.ui(uid, role)
+        if self.is_owner(uid):
+            return {**p, "simple": False}              # владелец — всегда полный пульт в своём пространстве
         return {**p, "simple": v["simple"] if v["chosen"] or "cap.dev_sessions" not in v["ceiling"]
                 else p["simple"]}
+
+    def owner_space_fix(self):
+        """Один раз при старте: у владельца вид не разработчика или простой режим — это не его выбор (так было после
+        #82: экран выбора роли показывался и владельцу). Сбросить, прежние файлы — рядом с отметкой времени."""
+        for o in self.cfg.owners:
+            if self.people.ui(o).get("persona") in (None, personas.DEFAULT) and not self.people.prefs(o)["simple"]:
+                continue
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            for f in (self.people.ui_store, self.people.prefs_store):
+                if f.is_file():
+                    bak = f.with_name(f"{f.name}.bak-{stamp}")
+                    bak.write_bytes(f.read_bytes())
+                    bak.chmod(0o600)
+            self.people.set_ui(o, {**self.people.ui(o), "persona": personas.DEFAULT, "onboarded": True})
+            self.people.set_prefs(o, simple=False)
+            print(f"владелец: вид разработчика и полный режим восстановлены (бэкап *.bak-{stamp})", flush=True)
 
     def team_info(self) -> dict:
         """Экран «Команда»: общая политика для сотрудников и поправки по людям (только участники — staff)."""
@@ -1551,7 +1589,9 @@ def handler(panel: Panel):
             b = json.loads(self.body() or b"{}")
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои
                 lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
-                if b.get("simple") is not None:                # прежний переключатель — это смена роли целиком
+                if b.get("simple") is True and panel.is_owner(uid):
+                    raise ValueError("ваше пространство — всегда полный пульт; простой режим — в «Демо и тестах»")
+                if b.get("simple") is not None and not panel.is_owner(uid):   # прежний переключатель — смена роли
                     cur = panel.ui(uid, role)["persona"]
                     want = b.get("simple") is True
                     if want != (cur in personas.SIMPLE):
@@ -1751,6 +1791,7 @@ def set_menu(api: Api, owners: list[int], url: str):
 
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
     panel = Panel(cfg)
+    panel.owner_space_fix()                         # вид владельца — его выбор, не чужой (см. owner_space_fix)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list() if p["role"] != "owner"]   # кнопка «📱 Панель»
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
 
