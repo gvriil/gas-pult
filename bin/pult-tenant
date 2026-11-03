@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Демо-пространства gas-pult: create | list | backup | destroy | purge | key | login | logout | check.
+
+Запускает владелец: sudo bin/pult-tenant <команда> (или --dry-run — только показать шаги). Подробно — docs/TENANTS.md.
+Код — src/gas_pult/tenant_admin.py этого же репозитория (только стандартная библиотека Python).
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "src"))
+
+from gas_pult.tenant_admin import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

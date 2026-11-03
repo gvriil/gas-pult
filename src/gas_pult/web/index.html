@@ -138,6 +138,11 @@
   .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
   .preview { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 6px 6px 0 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.current { border-color: var(--border-focus); box-shadow: 0 0 0 1px var(--border-focus); }
+  /* «изменена N назад» (ago.py): цифры одной ширины — текст меняется на месте, без прыжков */
+  .ago { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; cursor: help; }
+  .sub .ago { font-size: inherit; }
+  .card.stale .name, .card.stale .meta, .card.stale .preview { color: var(--text-muted); }
+  .chip.stale { color: var(--text-secondary); background: var(--bg-subtle); }
   .kebab { width: 36px; height: 36px; border: 0; background: transparent; border-radius: 10px; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
   .kebab:active { background: var(--bg-subtle); }
   .reply { margin: 10px 6px 0 18px; }
@@ -207,7 +212,7 @@
   .live { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
   .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); display: inline-block; }
   .live.stale { color: var(--status-approval); } .live.stale i { background: var(--status-approval); }
-  .net { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); z-index: 15; display: flex; align-items: center; gap: 8px;
+  .net { align-self: stretch; display: flex; align-items: center; gap: 8px;
          background: var(--status-approval-bg); color: var(--text-primary); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent);
          border-radius: var(--radius-md); padding: 6px 6px 6px 12px; font-size: calc(14px * var(--fz, 1)); box-shadow: var(--shadow-lg); animation: fade .2s ease; }
   .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
@@ -493,8 +498,8 @@
   .top h1.sw .sig { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--status-approval); }
   .sheet button.on { color: var(--accent-primary); font-weight: 600; } .sheet button.danger, .sheet button.danger .i { color: var(--status-danger); }
   .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
-  .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; animation: fade .15s ease;
-           background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); max-width: 92vw; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  .toast { animation: fade .15s ease; max-width: min(560px, 100%);
+           background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
   .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
   .brand { display: none; } .brand h1 { margin: 0; font-size: calc(20px * var(--fz, 1)); font-weight: 600; }
   .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
@@ -507,7 +512,7 @@
   body.split .brand { display: block; padding: 2px 44px 12px 4px; }
   body.split .top, body.split main, body.split .demo { margin-left: var(--side); }
   body.split .tabsbar .seg { max-width: 860px; margin: 0 auto; }
-  body.split .dock { left: var(--side); } body.split .homebar { right: auto; width: var(--side); } body.split .net, body.split .update { left: calc(var(--side) + 12px); }
+  body.split .dock { left: var(--side); } body.split .homebar { right: auto; width: var(--side); } body.split .notices { left: var(--side); }
   body.split #session, body.split #mcpForm, body.split .dock > * { max-width: 860px; margin-left: auto; margin-right: auto; }
   .sidebtn, .grip, .rail { display: none; }
   body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
@@ -531,7 +536,22 @@
   .rail .rb.new::before { content: ""; position: absolute; right: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-canvas); }
   .rail .rnew { background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-secondary); margin-top: 4px; }
   .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; }
-  .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; width: auto; box-shadow: var(--shadow-lg); }
+  /* ===== Зона уведомлений (задача 26): тосты, «Есть новая версия», «Нет связи», предложение тура — только здесь.
+     Под шапкой (её нет — под вырезом экрана) и не ниже верха нижней панели: --nz-top и --nz-max считает placeNotices()
+     из шапки, дока и visualViewport (клавиатура). Не влезло — обрезается, но поле ввода и кнопки не закрывает.
+     Новый всплывающий элемент — в реестр NOTICES в скрипте и через notice(el); tests/test_notices.py следит. */
+  .notices { position: fixed; z-index: 30; left: 0; right: 0; top: max(var(--nz-top, 0px), calc(8px + env(safe-area-inset-top)));
+             max-height: var(--nz-max, 50%); overflow: hidden; padding: 0 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+             pointer-events: none; }
+  .notices > * { pointer-events: auto; flex: none; }
+  .notices:empty, .notices:not(:has(> :not([hidden]))) { display: none; }
+  .upd { display: flex; align-items: center; gap: 2px; max-width: min(560px, 100%); min-height: 34px; padding: 0 4px 0 12px; border-radius: var(--radius-pill);
+         background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); box-shadow: 0 2px 10px rgba(0,0,0,.12);
+         font-size: calc(13px * var(--fz, 1)); animation: fade .2s ease; }
+  .upd > .i { width: 16px; height: 16px; color: var(--accent-primary); margin-right: 6px; }
+  .upd > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .upd button { border: 0; background: transparent; border-radius: var(--radius-pill); padding: 6px 10px; min-height: 30px; font-weight: 600; flex: none; }
+  .upd .go { color: var(--accent-primary); } .upd .later { color: var(--text-secondary); font-weight: 500; }
 
   /* ===== Дежурный помощник «? Подсказать» (helper.py, docs/HELPER.md): пилюля в шапке и в каждом листе; шторка на 55 %
      высоты — поверх экрана или листа, закрылась — вы там же. */
@@ -545,6 +565,11 @@
   @media (max-width: 359px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }
   .help-bg { z-index: 35; }
   .help-bg { justify-content: center; }
+  /* Шторка помощника поверх экрана — над нижней панелью, а не на ней: поле ввода и кнопки видны (задача 26).
+     Поверх другого листа — как раньше, на весь экран: под ней лист, а не поле ввода. */
+  .help-bg { bottom: var(--nz-dock, 0px); } body:has(> .sheet-bg:not(.help-bg)) .help-bg { bottom: 0; }
+  .help-bg .sheet.help { height: min(100%, calc(var(--app-h, 100vh) * .55)); max-height: 100%; }   /* 55 % экрана, не фона */
+  @media (min-width: 1024px) { .help-bg .sheet.help { height: min(100%, calc(var(--app-h, 100vh) * .6)); } }
   .sheet.help { display: flex; flex-direction: column; height: 55%; max-height: 55%; min-height: 320px; }
   @media (min-width: 1024px) { .sheet.help { max-width: 720px; height: 60%; max-height: 60%; } }
   .sheet.help button { width: auto; min-height: 0; padding: 0; gap: 6px; font-size: inherit; display: inline-flex; align-items: center; }   /* не пункты шторки */
@@ -578,9 +603,10 @@
                        background: transparent; color: var(--accent-primary); font-weight: 600; font-size: calc(13px * var(--fz, 1)); align-self: flex-start; }
 
   /* ===== Короткий тур (driver.js 1.8.0 с cdnjs — грузится только при старте тура): попап — токенами панели ===== */
-  .tour-offer { position: fixed; z-index: 28; right: 12px; top: calc(var(--top-h, 56px) + 8px + env(safe-area-inset-top)); width: min(340px, calc(100vw - 24px));
+  .tour-offer { align-self: flex-end; width: min(340px, 100%);
                 background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
                 box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 12px 12px 14px; animation: up .2s ease; }
+  .kb .tour-offer { display: none; }                   /* клавиатура открыта — человек пишет: предложение тура подождёт */
   .tour-offer .row { align-items: flex-start; } .tour-offer .row > .i { color: var(--accent-primary); margin-top: 2px; }
   .tour-offer b { font-size: calc(15px * var(--fz, 1)); }
   .tour-offer .meta { white-space: normal; margin-top: 2px; }
@@ -607,7 +633,7 @@
 
   /* ===== Простой режим (docs/SIMPLE-MODE.md): один разговор с агентом по центру, выбор — овальными чипами ===== */
   body.simple-on #scroller, body.simple-on #dock, body.simple-on #homeBar, body.simple-on #toBottom, body.simple-on #mini,
-  body.simple-on #sideGrip, body.simple-on #updateBar, body.simple-on .ptr { display: none !important; }
+  body.simple-on #sideGrip, body.simple-on #net, body.simple-on .ptr { display: none !important; }
   #simple { position: fixed; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--bg-canvas); color: var(--text-primary); }
   .s-col { width: 100%; max-width: 760px; margin: 0 auto; padding: 0 16px; }
   .s-top { flex: none; padding-top: env(safe-area-inset-top); border-bottom: 1px solid var(--border-subtle); background: var(--bg-canvas); }
@@ -662,15 +688,30 @@
   .sheet.s-sheet .scn-opt .i { width: 16px; height: 16px; }
   .sheet.s-sheet .s-notes { margin: 0 0 10px; padding: 0 0 0 18px; } .sheet.s-sheet .s-notes li { margin: 0 0 6px; }
   .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
+  /* Пространство владельца: «Моё пространство» (его настоящий пульт) и «Демо и тесты» — разными цветами. Просмотр
+     другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
+  .spaces { display: flex; gap: 6px; padding: 2px 0 6px; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
+    border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
+  .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
+  .spaces .sp-demo { border-color: var(--status-approval); color: var(--status-approval); } .spaces .i { width: 15px; height: 15px; }
+  .pvbar { position: fixed; left: 0; right: 0; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px;
+    padding: calc(6px + env(safe-area-inset-top)) 12px 6px; background: var(--status-approval); color: var(--on-approval); font-size: calc(13.5px * var(--fz, 1)); font-weight: 600; text-align: center; }
+  .pvbar button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
+  body.previewing { padding-top: var(--pv, 40px); } body.previewing #simple { top: var(--pv, 40px); }
   .s-langsw .scn-opt { min-height: 34px; padding: 4px 12px; font-size: calc(13px * var(--fz, 1)); }
 </style>
 </head>
 <body>
-<button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
+<div class="pvbar" id="previewBar" hidden role="status"></div>
+<!-- Зона уведомлений: всё всплывающее — здесь, под шапкой и выше нижней панели (NOTICES и notice() в скрипте). -->
+<div class="notices" id="notices">
+  <div class="upd" id="updateBar" role="status" hidden><span id="updText">Есть новая версия</span><button class="go" id="updGo" type="button">Обновить</button><button class="later" id="updLater" type="button">Позже</button></div>
+  <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
+</div>
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
-<div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 <header class="top" id="top">
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-demo" type="button" data-space="demo" aria-pressed="false"></button></div>
   <div class="toprow">
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
     <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
@@ -940,7 +981,7 @@ const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="non
 function paintIcons() {
   $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
-  $("netIcon").innerHTML = ic("warn"); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
+  $("netIcon").innerHTML = ic("warn"); $("updateBar").insertAdjacentHTML("afterbegin", ic("refresh", "s16")); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
@@ -1015,7 +1056,7 @@ function setFont(px) {
 const initial = (n) => (String(n).match(/[\p{L}\p{N}]/u)?.[0] || "?").toUpperCase();
 function renderRail() {
   if (!split() || !sideMini) return;
-  const sorted = [...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status] || (b.active - a.active));
+  const sorted = [...sessions].sort(byChange);
   $("rail").innerHTML = sorted.map((s) => {
     const st = ST[s.status], prov = provName(s), nw = isNew(s);
     const tip = `${s.name} — ${st.label}${prov ? " · " + prov : ""}${nw ? " · новый ответ" : ""}`;
@@ -1064,7 +1105,7 @@ document.addEventListener("keydown", (e) => {
 function toast(text, ms = 2600) {
   document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
-  document.body.append(t); setTimeout(() => t.remove(), ms);
+  notice(t); setTimeout(() => t.remove(), ms);
 }
 
 // ---------- сеть ----------
@@ -1143,6 +1184,7 @@ function show(v) {
   $("pick").hidden = !(two && v === "home");
   $("dock").hidden = v !== "session";
   $("homeBar").hidden = !((v === "home" || two) && !gate && homeView === "sessions");
+  placeNotices();
   syncBack();
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
@@ -1182,7 +1224,7 @@ function setBars(show) {
   barsShown = show; barsRun = 0;
   if (!show) document.documentElement.style.setProperty("--top-h", $("top").offsetHeight + "px");   // для «Назад»
   $("top").classList.toggle("hide", !show);
-  hideDock(!show);
+  hideDock(!show); placeNotices(); setTimeout(placeNotices, 250);    // шапка уезжает .2 с — зона следом
 }
 function hideDock(on) {
   const d = $("dock");
@@ -1191,6 +1233,7 @@ function hideDock(on) {
   d.classList.toggle("hide", on);
   const h = on ? 0 : d.offsetHeight;                   // кнопка «к последнему» и мини-плеер — следом за панелью
   $("toBottom").style.bottom = (h + 12) + "px"; document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
+  placeNotices();
 }
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
@@ -1234,6 +1277,7 @@ function fitViewport() {
   root.classList.toggle("kb", kb);
   if (kb && !barsShown) setBars(true);               // клавиатура открылась — поле ввода на виду
   if (!kb && window.scrollY) scrollTo(0, 0);           // iOS иногда оставляет страницу сдвинутой после клавиатуры
+  placeNotices();
 }
 
 // Потяните ленту вниз в самом верху — панель обновится, как в мобильных приложениях. Свайпы Telegram, которые
@@ -1274,7 +1318,7 @@ async function pullRefresh() {
   const el = $("ptr"), t0 = Date.now();
   el.classList.add("back", "spin"); el.style.transform = `translateY(${PULL * 0.8}px)`;
   await refresh();
-  if (!$("updateBar").hidden) return reloadPanel();  // вышла новая версия панели — сразу её и загружаем
+  if (UPD.found) return reloadPanel();               // вышла новая версия панели — сами просили обновить: загружаем
   if (view === "session") await loadContent();
   else if (view === "home" && homeView === "integrations") await loadMcp(true);
   else if (view === "home" && homeView === "commands") await loadCommands();
@@ -1288,7 +1332,77 @@ SC.addEventListener("touchend", onPullEnd); SC.addEventListener("touchcancel", o
 // Перезагрузка возвращает туда же: открытая сессия и вкладка переживают обновление страницы.
 function reloadPanel() {
   try { sessionStorage.setItem("resume", JSON.stringify({ id: view === "session" ? current : null, tab })); } catch (e) {}
-  location.reload();
+  saveDraft(); location.reload();
+}
+
+// ---------- зона уведомлений (задача 26) ----------
+// Всё всплывающее — тосты, баннеры, подсказки — живёт в #notices: под шапкой и не ниже верха нижней панели, с учётом
+// клавиатуры (body — ровно видимая область, fitViewport). Поле ввода, микрофон и кнопки ничто не закрывает.
+// Новый всплывающий элемент — сюда в реестр и через notice(el); tests/test_notices.py сверяет реестр со стилями,
+// tests/e2e/notices_demo.py — с геометрией в браузере (390×844, клавиатура открыта).
+const NOTICES = ["#updateBar", "#net", ".toast", ".tour-offer"];
+// Над нижней панелью: кнопки — высота дока + 12 px (hideDock, padDock, placeMini), шторка помощника — --nz-dock.
+const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
+// position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
+// .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", "body.split #home", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar"];
+function notice(el) { $("notices").append(el); placeNotices(); return el; }
+function placeNotices() {
+  const root = document.documentElement.style, H = document.body.clientHeight;
+  const head = SIM.on ? document.querySelector(".s-top") : view === "login" || $("top").classList.contains("hide") ? null : $("top");
+  const r = head?.getBoundingClientRect(), top = r && r.height ? Math.max(0, r.bottom - document.body.getBoundingClientRect().top) : 0;
+  const dock = SIM.on ? document.querySelector(".s-dock") : !$("dock").hidden ? ($("dock").classList.contains("hide") ? null : $("dock"))
+    : !$("homeBar").hidden ? $("homeBar") : null;
+  const bottom = H - (dock ? dock.offsetHeight : 0);    // нижние панели прижаты к низу видимой области
+  root.setProperty("--nz-top", Math.round(top + 8) + "px"); root.setProperty("--nz-dock", Math.round(H - bottom) + "px");
+  root.setProperty("--nz-max", Math.max(0, Math.round(bottom - Math.max(top + 8, 8) - 8)) + "px");
+}
+if (window.ResizeObserver) {                          // шапка, док и поле ввода меняют высоту — зона следом
+  const ro = new ResizeObserver(() => placeNotices());
+  for (const el of [$("top"), $("dock"), $("homeBar"), document.querySelector(".s-top"), document.querySelector(".s-dock")]) if (el) ro.observe(el);
+}
+
+// ---------- новая версия панели ----------
+// /api/sessions отдаёт build; не совпал с тем, с которым панель загрузилась, — вышла новая. Тонкая строка под шапкой
+// «Есть новая версия · Обновить · Позже»; «Позже» прячет её до следующего открытия панели. Сама панель
+// перезагружается, только когда это никому не мешает (updSafe): вернулись в неё из фона или открыли заново.
+const UPD = { found: false, later: false };
+function updateFound() {
+  if (UPD.found) return;
+  UPD.found = true;
+  $("updText").textContent = L("upd.text", "Есть новая версия"); $("updGo").textContent = L("upd.go", "Обновить");
+  $("updLater").textContent = L("upd.later", "Позже");
+  $("updateBar").hidden = UPD.later; placeNotices();
+  if (document.hidden) updAuto();                      // нашли, пока панель в фоне, — можно сразу
+}
+function checkBuild(d) { if (BUILD && d?.build && d.build !== BUILD) updateFound(); }
+// Безопасно: поле ввода пустое (и в простом режиме), ничего не прикреплено и не грузится, не идёт запись голоса,
+// не открыт лист, помощник, тур или мастер (форма подключения, вход, условия, страна, роль).
+function updSafe() {
+  if ($("input").value.trim() || $("sInput").value.trim() || files.length || rec || micBar) return false;
+  if (document.querySelector(".sheet-bg, .tour-offer, .driver-popover") || tourOn) return false;
+  return SIM.on || view === "home" || view === "session";
+}
+function updAuto() { if (UPD.found && updSafe()) reloadPanel(); }
+$("updGo").onclick = reloadPanel;
+$("updLater").onclick = () => { UPD.later = true; $("updateBar").hidden = true; placeNotices(); };
+document.addEventListener("visibilitychange", () => { if (!document.hidden) updAuto(); });
+tg?.onEvent?.("activated", updAuto);                    // Telegram: Mini App снова на экране
+
+// Черновик переживает перезагрузку (новая версия, «Перезагрузить панель», потянуть ленту): поле ввода полного
+// и простого режима и уже загруженные файлы — в sessionStorage этой вкладки, после запуска возвращаются на место.
+function saveDraft() {
+  const d = { input: $("input").value, sInput: $("sInput").value, files: files.filter((f) => f.path) };
+  try { if (d.input.trim() || d.sInput.trim() || d.files.length) sessionStorage.setItem("draft", JSON.stringify(d)); else sessionStorage.removeItem("draft"); } catch (e) {}
+}
+addEventListener("pagehide", saveDraft);
+function restoreDraft() {
+  let d = null;
+  try { d = JSON.parse(sessionStorage.getItem("draft") || "null"); sessionStorage.removeItem("draft"); } catch (e) {}
+  if (!d) return;
+  if (d.input && !$("input").value.trim()) { $("input").value = d.input; grow(); }
+  if (d.files?.length && !files.length) { files = d.files; renderFiles(); }
+  if (d.sInput && !$("sInput").value.trim()) { $("sInput").value = d.sInput; sGrow(); }
 }
 function setSub(html) { $("subtitle").innerHTML = html; }
 
@@ -1527,14 +1641,88 @@ function ctxMeter(s) {
   const u = ctxUsed(s);
   return u == null ? "" : `<span class="ctx ${u > 70 ? "warn" : ""}" title="${u > 70 ? "Контекст почти заполнен — пора /compact" : "Заполнение контекста"}">Контекст: ${u}%<span class="bar"><i style="width:${u}%"></i></span></span>`;
 }
+// ---------- «изменена N назад» (ago.py — те же правила и словари ago.*; тест сверяет обе реализации) ----------
+// Шкала: до 5 с — «только что», дальше секунды, минуты, часы, «вчера» (до двух суток), дни, недели, месяцы, дата.
+// Текст обновляется на месте (agoTick): раз в секунду, пока что-то изменилось меньше минуты назад, иначе раз в 30 с.
+const AGO_STEPS = [[5, "now"], [60, "s"], [3600, "min"], [86400, "h"], [172800, "yesterday"], [604800, "d"], [2592000, "w"], [31536000, "mo"]];
+const AGO_UNIT = {"s": 1, "min": 60, "h": 3600, "d": 86400, "w": 604800, "mo": 2592000};
+const AGO_STALE = 604800;
+let agoSkew = 0;                                      // часы сервера − часы браузера (из /api/sessions)
+const nowSec = () => Date.now() / 1000 + agoSkew;
+function agoPlural(n) {                               // ru: 1 минуту · 2 минуты · 5 минут; en: 1 minute · 2 minutes
+  n = Math.abs(Math.trunc(n));
+  if (LANG !== "ru") return n === 1 ? "one" : "many";
+  return n % 10 === 1 && n % 100 !== 11 ? "one" : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? "few" : "many";
+}
+function agoParts(ts) {                               // местный часовой пояс браузера
+  const d = new Date(ts * 1000), p = (x) => String(x).padStart(2, "0");
+  return { d: p(d.getDate()), m: p(d.getMonth() + 1), y: String(d.getFullYear()), t: `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` };
+}
+function agoText(ts, now = nowSec(), full = false) {
+  if (!ts || !DICT["ago.now"]) return "";
+  const sec = Math.max(0, Math.trunc(now - ts));
+  for (const [lim, u] of AGO_STEPS) {
+    if (sec >= lim) continue;
+    if (u === "now" || u === "yesterday") return T("ago." + u);
+    const n = Math.floor(sec / AGO_UNIT[u]);
+    return T(full ? `ago.${u}.${agoPlural(n)}` : "ago." + u, { n });
+  }
+  return T("ago.date", agoParts(ts));
+}
+function agoExact(ts, now = nowSec()) {
+  if (!ts || !DICT["ago.now"]) return "";
+  return T(new Date(ts * 1000).getFullYear() === new Date(now * 1000).getFullYear() ? "ago.exact" : "ago.exact.year", agoParts(ts));
+}
+const isStale = (s) => !!s.changed && s.status !== "dialog" && nowSec() - s.changed > AGO_STALE;
+// Ждущие ответа (и пауза по расходу) — сверху, дальше — по последнему изменению; без времени — в конце.
+const byChange = (a, b) => (a.status === "dialog" || a.cost_paused ? 0 : 1) - (b.status === "dialog" || b.cost_paused ? 0 : 1)
+  || (b.changed || 0) - (a.changed || 0) || (b.active - a.active);
+// Ответ агента и ваше сообщение — отдельно, если по шкале они не совпадают с последним изменением.
+function agoLabel(x, now) {
+  if (!x.full) return agoText(+x.ago, now);
+  const main = agoText(+x.ago, now, true), out = [T("ago.changed", { ago: main })];
+  for (const k of x.more ? ["said", "asked"] : []) if (+x[k] && agoText(+x[k], now, true) !== main) out.push(T("ago." + k, { ago: agoText(+x[k], now, true) }));
+  return main ? out.join(" · ") : "";
+}
+function agoTip(x) {                                  // подсказка и тап: точное время всех трёх отметок
+  return [["changed", x.ago], ["said", x.said], ["asked", x.asked]].filter(([, t]) => +t).map(([k, t]) => T("ago.tip." + k, { at: agoExact(+t) })).join("\n");
+}
+function agoSpan(s, head = false) {                    // шапка на широком экране — полные слова, ответ и сообщение
+  if (!s.changed) return "";
+  queueMicrotask(agoTick);
+  const full = head && split();                       // на телефоне шапка узкая — короткая форма, подробности по тапу
+  const x = { ago: s.changed, said: s.said || 0, asked: s.asked || 0, full: full ? "1" : "", more: full ? "1" : "" };
+  const d = Object.entries(x).filter(([, v]) => v !== "").map(([k, v]) => ` data-${k}="${esc(v)}"`).join("");
+  return `<span class="ago"${d} title="${esc(agoTip(x))}">${esc(agoLabel(x, nowSec()))}</span>`;
+}
+function agoTick() {
+  clearTimeout(agoTick.t);
+  const now = nowSec(); let fast = false;
+  for (const el of document.querySelectorAll(".ago[data-ago]")) {
+    if (now - +el.dataset.ago < 60) fast = true;
+    const tx = agoLabel(el.dataset, now), tip = agoTip(el.dataset);
+    if (el.textContent !== tx) el.textContent = tx;     // только текст: без перерисовки карточки и мигания
+    if (el.title !== tip) el.title = tip;
+  }
+  for (const el of document.querySelectorAll(".chip.stale")) {     // карточка могла нарисоваться до словаря
+    if (el.textContent !== T("ago.stale")) { el.textContent = T("ago.stale"); el.title = T("ago.stale.tip"); }
+  }
+  agoTick.t = setTimeout(agoTick, fast ? 1000 : 30000);
+}
+// Тап (на телефоне подсказки нет) — точное время всплывающим сообщением; карточку при этом не открываем.
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.(".ago[data-ago]");
+  if (!a || !a.title) return;
+  e.stopPropagation(); e.preventDefault(); toast(a.title, 4000);
+}, true);
 function card(s) {
-  const st = ST[s.status];
-  return `<div class="card ${st.cls}${s.active ? " active" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
+  const st = ST[s.status], old = isStale(s);
+  return `<div class="card ${st.cls}${s.active ? " active" : ""}${old ? " stale" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
       <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
-      <button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
+      ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${costChip(s)}
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
     ${costBar(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
@@ -1624,9 +1812,9 @@ function fallbackNotices(list) {
 async function refresh() {
   try {
     const d = await api("/api/sessions");
-    sessions = d.sessions; costInfo = d.cost || null;
+    sessions = d.sessions; costInfo = d.cost || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
-    if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
+    checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
     $("brandSub").textContent = hostLine;
@@ -1635,8 +1823,7 @@ async function refresh() {
     if (!$("home").hidden) {
       const n = (k) => sessions.filter((s) => s.status === k).length;
       if (homeView === "sessions") {
-        const rank = (x) => x.cost_paused ? ORDER.dialog : ORDER[x.status];     // пауза по расходу — рядом с «ждут ответа»
-        const sorted = [...sessions].sort((a, b) => rank(a) - rank(b) || (b.active - a.active));
+        const sorted = [...sessions].sort(byChange);             // ждущие ответа (и пауза по расходу) — сверху
         $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
@@ -1662,9 +1849,12 @@ function paintSession(s) {
     const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
     $("title").innerHTML = `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`;
   }
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""}</span>`);
+  // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
+  // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
+  const ag = agoSpan(s, true);
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""}</span>${split() ? ag : ""}`);
   const cb = costBar(s); $("costPause").hidden = !cb; $("costPause").innerHTML = cb;     // пауза по расходу — над полем ввода
-  $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${st.label}</span>`;
+  $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`;
   $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
   paintWorking(s);
 }
@@ -2426,8 +2616,8 @@ async function closeSession(id = current) {
 // Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
 function openSwitcher() {
   helpSheet("sheet.switcher");
-  sheet("Сессии", [...[...sessions].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((s) => ({
-    label: s.name, sub: `${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
+  sheet("Сессии", [...[...sessions].sort(byChange).map((s) => ({
+    label: s.name, sub: `${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
     ...(meta?.role !== "viewer" ? [{ label: "Новая сессия", icon: "plus", run: () => newSession() }] : []),
     { label: "Команды из всех сессий", icon: "term", run: () => { back(); setHome("commands"); } },
@@ -3566,7 +3756,6 @@ $("settingsBtn").onclick = () => {
 };
 $("backBtn").onclick = back;
 $("target").onclick = () => { haptic("selectionChanged"); openSwitcher(); };   // «куда уйдёт» у поля ввода — сменить сессию
-$("updateBar").onclick = reloadPanel;
 
 // ---------- мастер: Claude Code не установлен или вход не выполнен (setup.py) ----------
 let setupData = null, setupMsg = "";
@@ -3908,10 +4097,11 @@ function showTourOffer() {
     if (b.hasAttribute("data-tgo")) { store("tourKind", kind); startTour(kind); }
   });
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); no(); } });
-  document.body.append(box);
+  notice(box);
 }
 async function tourOffer() {                           // один раз: сервер говорит, что тур не пройден и не отклонён
   if (tourOffer.asked || (DEMO && !params.get("tour")) || !meta) return;
+  if ((meta.role === "owner" || UI?.own_space) && !(DEMO && params.get("tour"))) return;   // владельцу — только по его кнопке
   tourOffer.asked = true;
   const has = (r) => !!(r && (r.business || r.dev)), local = tourCache();
   let remote;
@@ -3928,7 +4118,8 @@ async function start() {
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
-  if (UI && !UI.onboarded && (!DEMO || params.has("persona"))) return showPersona();   // потом — роль (один раз)
+  if (UI && !UI.onboarded && !UI.own_space && meta.role !== "owner" && (!DEMO || params.has("persona"))) return showPersona();   // роль — один раз, не владельцу
+  paintSpaces();
   if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
   $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";  // после первого экрана на английском
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
@@ -3982,6 +4173,7 @@ async function start() {
   if (DEMO && params.has("modules")) { await modulesView(); if (params.get("modules")) moduleView(modData.modules.find((m) => m.id === params.get("modules"))); }
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
+  restoreDraft();                                     // черновик — после того, как открылась сессия
   goFromLink();
 }
 
@@ -4008,6 +4200,7 @@ async function showPersona(change) {                  // первый вход �
   $("personaBack")?.addEventListener("click", () => location.reload());
 }
 async function pickPersona(id, btn) {
+  if (UI?.own_space) return previewAs(id);  // владелец: только временный просмотр, в его настройки не пишем
   await busy(btn, T("persona.saving"), async () => {
     try { UI = await api("/api/persona", { persona: id }); haptic("notificationOccurred", "success"); }
     catch (e) { $("personaResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
@@ -4017,15 +4210,17 @@ async function pickPersona(id, btn) {
 }
 function capsSheet() {                                // «Возможности панели»: тумблеры по-человечески и смена роли
   if (!UI) return;
-  const ceil = new Set(UI.ceiling), rows = UI.catalog.caps.map((c, i, all) => {
-    const on = UI.caps.includes(c.id), locked = !ceil.has(c.id), soon = !c.ready;
-    const note = locked ? T("caps.locked") : soon ? T("caps.soon") : "";
+  if (UI.preview) return sSheet(hv("settings.caps"), T("caps.title"), `<p>Это временный просмотр — возможности меняются в «Моём пространстве».</p>
+    <div class="scn-opts">${sChip(true, 'data-mine="1"', "Вернуться в моё пространство", ic("back"))}</div>`, () => location.reload());
+  const ceil = new Set(UI.ceiling), mine = UI.own_space, rows = UI.catalog.caps.map((c, i, all) => {
+    const on = UI.caps.includes(c.id), fixed = (UI.fixed || []).includes(c.id), locked = !ceil.has(c.id) || fixed, soon = !c.ready;
+    const note = fixed ? "в вашем пространстве всегда" : locked ? T("caps.locked") : soon ? T("caps.soon") : "";
     const head = c.dev && !all[i - 1]?.dev ? `<p class="s-lbl">${esc(T("caps.dev"))}</p>` : "";
     return `${head}<div class="scn-opts">${sChip(on, `data-cap="${esc(c.id)}"${locked || soon ? " disabled" : on ? "" : ' aria-pressed="false"'}`, c.title, on ? ic("check") : "")}${note ? `<span class="note">${esc(note)}</span>` : ""}</div>`;
   }).join("");
   const html = `<p class="note">${esc(T("caps.sub"))}</p>${rows}
     <p class="s-lbl">${esc(T("caps.role", { role: personaTitle(UI.persona) }))}</p>
-    <div class="scn-opts">${sChip(false, 'data-role="1"', T("caps.change"), ic("refresh"))}</div><p class="note">${esc(T("caps.change.sub"))}</p>`;
+    <div class="scn-opts">${sChip(false, 'data-role="1"', mine ? "Посмотреть как другая роль" : T("caps.change"), ic("refresh"))}</div><p class="note">${esc(mine ? "Временно, только в этой вкладке: ваши настройки не меняются, перезагрузка вернёт в ваше пространство." : T("caps.change.sub"))}</p>`;
   sSheet(hv("settings.caps"), T("caps.title"), html, async (b, bg) => {
     if (b.dataset.role) { bg.remove(); return showPersona(true); }
     if (!b.dataset.cap) return;
@@ -4037,6 +4232,41 @@ function capsSheet() {                                // «Возможност�
   });
 }
 function demoUrl() { const u = new URL(location.href); UI.simple ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("ui", UI.persona); return u; }
+
+// «Моё пространство» и «Демо и тесты» (только владельцу): его пульт неприкосновенен. Просмотр другой роли — на вкладку,
+// в памяти страницы: на сервер не пишется, перезагрузка возвращает в своё пространство; сверху — яркая полоса.
+function paintSpaces() {
+  const on = !!UI?.own_space && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
+  $("spaces").hidden = !on; if (!on) return;
+  $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
+  $("spaces").querySelector(".sp-demo").innerHTML = ic("spark") + "Демо и тесты";
+}
+$("spaces").addEventListener("click", (e) => { if (e.target.closest("[data-space=demo]")) demoSheet(); });
+function demoSheet() {
+  helpSheet("spaces.demo");
+  sheet("Демо и тесты", [
+    { head: "Посмотреть как — ваши настоящие сессии, без сохранения" },
+    ...(UI?.catalog?.personas || []).filter((p) => p.id !== "developer").map((p) => ({ label: p.title, icon: PERSONA_ICON[p.id] || "spark", sub: p.sub, run: () => previewAs(p.id) })),
+    { head: "На примерах" },
+    { label: "Примерочная", icon: "spark", sub: "сценарии и калькулятор — выдуманные цифры", run: () => scenariosView() },
+    { label: "Демо панели", icon: "ext", sub: "вся панель на примерах — в новой вкладке, ничего никуда не уходит", run: () => window.open("/?demo", "_blank", "noopener") },
+    { info: true, icon: "lock", label: "Демо-пространства", sub: "отдельные пространства с демо-данными — готовятся" },
+  ]);
+}
+async function previewAs(id) {
+  const p = UI?.catalog?.personas.find((x) => x.id === id); if (!p) return;
+  const caps = p.caps.filter((c) => UI.ceiling.includes(c)).sort();
+  UI = { ...UI, persona: id, caps, simple: p.simple || !caps.some((c) => UI.fixed?.includes(c)), preview: true };   // только в памяти вкладки
+  applyCaps();
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+  $("previewBar").innerHTML = `<span>ПРОСМОТР · вид «${esc(p.title)}» · ваши настоящие сессии</span><button type="button" id="previewBack">Вернуться в моё пространство</button>`;
+  $("previewBar").hidden = false; document.body.classList.add("previewing");
+  const fit = () => document.body.style.setProperty("--pv", $("previewBar").offsetHeight + "px");   // полоса — не поверх шапки
+  fit(); addEventListener("resize", fit);
+  $("previewBack").onclick = () => location.reload();
+  $("spaces").hidden = true;
+  if (UI.simple) { clearInterval(start.timer); start.timer = null; await simpleStart(); }
+}
 
 // ---------- простой режим (docs/SIMPLE-MODE.md): один разговор с агентом, без английских слов и техники ----------
 // Включается настройкой человека на сервере (/api/prefs; localStorage — только кэш языка). Строки — словари
@@ -4066,7 +4296,7 @@ const canNew = () => meta?.role !== "viewer";
 function simplePrefs(m) {
   let p = m?.prefs || { simple: false, lang: "ru", saved: false };
   if (DEMO) p = { simple: params.get("simple") === "1", lang: LANG, saved: true };
-  else if (!p.saved && p.lang !== LANG) { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }
+  else if (!p.saved && p.lang !== LANG && m?.role !== "owner") { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }   // владельцу — только его выбор
   if (p.lang !== LANG && LANGS.includes(p.lang)) { LANG = p.lang; dictReady = loadDict(LANG); }
   store("lang", LANG);
   return p;
@@ -4076,7 +4306,7 @@ async function setLang(l) {
   LANG = l; store("lang", l); dictReady = loadDict(l); await dictReady;
   if (DEMO) { const u = new URL(location.href); u.searchParams.set("lang", l); history.replaceState(null, "", u); if (SIM.on) { demoApi.h = null; SIM.rev = ""; } }
   else if (meta) api("/api/prefs", { lang: l }).catch(() => {});
-  paintLoginLang();
+  paintLoginLang(); agoTick();
   if (SIM.on) { sPaint(); sRender(); $("sAsk").dataset.sig = ""; sAsk(); sAct(); }
 }
 async function switchMode(on) {                       // простой ⇄ полный: настройка на сервере, панель — заново
@@ -4101,7 +4331,7 @@ async function simpleStart() {
   for (const id of ["login", "terms", "country", "persona"]) $(id).hidden = true;
   $("simple").hidden = false; sPaint();
   try { tg?.BackButton.hide(); } catch (e) {}
-  await sLoad(true);
+  await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
   if (!sAct.timer) sAct.timer = setInterval(sAct, 1000);
   start.done = true;
@@ -4187,6 +4417,7 @@ async function sYesGo(w, btn) {
 }
 async function sLoad(first) {
   let d; try { d = await api("/api/sessions"); } catch (e) { return; }
+  checkBuild(d);
   sessions = d.sessions || [];
   SIM.list = sessions.filter((x) => x.status !== "stopped");
   if (!SIM.list.some((x) => x.id === SIM.w)) {
@@ -4458,7 +4689,8 @@ function demoUi(body) {
   const base = c.personas.find((p) => p.id === st.persona)?.caps || [];
   const caps = [...new Set([...base, ...st.added])].filter((x) => !st.hidden.includes(x) && ceil.includes(x)).sort();
   return { ...st, chosen: true, access: { owner: "owner", member: "staff", viewer: "guest" }[role], ceiling: [...ceil].sort(), caps,
-           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c };
+           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c,
+           own_space: role === "owner" && params.has("space"), fixed: role === "owner" && params.has("space") ? ["cap.dev_sessions"] : [] };
 }
 
 paintIcons();
@@ -4473,10 +4705,15 @@ wideMQ.addEventListener?.("change", () => { show(view); refresh(); });
 termWrap = store("termWrap") === "1";
 if (DEMO) $("demoBar").hidden = false;
 dictReady.then(paintLoginLang);
+dictReady.then(agoTick);                              // «изменена N назад» — тексты из словаря
 if (DEMO && params.get("view") === "login") showLogin(); else start();
 
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
+  // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
+  const t0 = demoApi.t0 ||= Math.floor(Date.now() / 1000) - 8, H = 3600, D = 86400;
+  const AT = { "@1": [t0, t0, t0 - 87], "@2": [t0 - 232, t0 - 232, t0 - 1492], "@3": [t0 - 3 * H - 600, t0 - 3 * H - 600, t0 - 3 * H - 900],
+               "@4": [t0 - 26 * H, t0 - 26 * H, t0 - 27 * H], "@5": [t0 - 12 * D, t0 - 12 * D - 40, t0 - 12 * D - 300] };
   const S = [
     { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана", sections: ["analytics"] },
     { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon", sections: ["comms"] },
@@ -4509,7 +4746,7 @@ function demoApi(path, body) {
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
-    "/api/sessions": { host: "ubuntu", sessions: S.map((x) => ({ ...x, name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
+    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, sessions: S.map((x) => ({ ...x, changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: true }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false }, prices_checked: "2026-11-02",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
@@ -4580,6 +4817,7 @@ function demoApi(path, body) {
     { id: "z-ai/glm-5.3-flash", name: "Z.ai: GLM 5.3 Flash", ctx: 200000, in: 0.1, out: 0.4 },
     { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek: V4.1 Flash", ctx: 786432, in: 0.07, out: 0.28 },
     { id: "openrouter/auto", name: "Auto Router", ctx: 2000000, in: null, out: null }] };
+  if (params.has("upd")) { R["/api/meta"].build = "demo-1"; R["/api/sessions"].build = "demo-2"; }   // ?upd — вышла новая версия
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];

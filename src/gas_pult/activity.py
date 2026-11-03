@@ -140,11 +140,12 @@ def parse(entries, subagent: dict | None = None) -> dict:
     """Записи журнала (по порядку) → статус последнего хода.
 
     Ответ: ``phase`` (working, thinking, waiting, started, done, idle), ``text``, ``tool``, ``since``;
-    служебные ``turn`` (когда начался ход), ``last`` (время последней записи), ``prompt`` (отпечаток запроса),
+    служебные ``turn`` (когда начался ход), ``last`` (время последней записи), ``said`` (последний текст агента),
+    ``prompt`` (отпечаток запроса),
     ``queued`` (сколько сообщений ждёт в очереди Claude Code). ``subagent`` — статус помощника (его журнал), если он
     сейчас работает: добавляется к «Запустил помощника».
     """
-    turn = last = enq = picked = 0.0
+    turn = last = enq = picked = said = 0.0
     prompt, done, queued, state = "", True, 0, "idle"
     open_tools: dict[str, tuple[str, dict, float]] = {}
     for e in entries:
@@ -196,13 +197,14 @@ def parse(entries, subagent: dict | None = None) -> dict:
             elif b.get("type") in ("thinking", "redacted_thinking"):
                 state = "thinking"
             elif b.get("type") == "text":
-                state = "text"
+                state, said = "text", ts or said
         done = False
         # конец хода: end_turn у записи с текстом (у «размышления» того же ответа stop_reason тоже end_turn)
         kinds = {b.get("type") for b in blocks}
         if msg.get("stop_reason") in ("end_turn", "stop_sequence") and kinds - {"thinking"} and "tool_use" not in kinds:
             done, state, open_tools = True, "done", {}
-    out = {"turn": turn, "last": last, "prompt": prompt, "queued": queued, "enq": enq, "picked": picked, "tool": ""}
+    out = {"turn": turn, "last": last, "said": said, "prompt": prompt, "queued": queued, "enq": enq, "picked": picked,
+           "tool": ""}
     if not turn and not last:
         return {**out, "phase": "idle", "text": "", "since": 0.0}
     if done:
