@@ -212,7 +212,7 @@
   .live { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
   .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); display: inline-block; }
   .live.stale { color: var(--status-approval); } .live.stale i { background: var(--status-approval); }
-  .net { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); z-index: 15; display: flex; align-items: center; gap: 8px;
+  .net { align-self: stretch; display: flex; align-items: center; gap: 8px;
          background: var(--status-approval-bg); color: var(--text-primary); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent);
          border-radius: var(--radius-md); padding: 6px 6px 6px 12px; font-size: calc(14px * var(--fz, 1)); box-shadow: var(--shadow-lg); animation: fade .2s ease; }
   .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
@@ -498,8 +498,8 @@
   .top h1.sw .sig { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--status-approval); }
   .sheet button.on { color: var(--accent-primary); font-weight: 600; } .sheet button.danger, .sheet button.danger .i { color: var(--status-danger); }
   .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
-  .toast { position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; animation: fade .15s ease;
-           background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); max-width: 92vw; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  .toast { animation: fade .15s ease; max-width: min(560px, 100%);
+           background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
   .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
   .brand { display: none; } .brand h1 { margin: 0; font-size: calc(20px * var(--fz, 1)); font-weight: 600; }
   .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
@@ -512,7 +512,7 @@
   body.split .brand { display: block; padding: 2px 44px 12px 4px; }
   body.split .top, body.split main, body.split .demo { margin-left: var(--side); }
   body.split .tabsbar .seg { max-width: 860px; margin: 0 auto; }
-  body.split .dock { left: var(--side); } body.split .homebar { right: auto; width: var(--side); } body.split .net, body.split .update { left: calc(var(--side) + 12px); }
+  body.split .dock { left: var(--side); } body.split .homebar { right: auto; width: var(--side); } body.split .notices { left: var(--side); }
   body.split #session, body.split #mcpForm, body.split .dock > * { max-width: 860px; margin-left: auto; margin-right: auto; }
   .sidebtn, .grip, .rail { display: none; }
   body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
@@ -536,7 +536,22 @@
   .rail .rb.new::before { content: ""; position: absolute; right: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-canvas); }
   .rail .rnew { background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-secondary); margin-top: 4px; }
   .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; }
-  .update { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 25; width: auto; box-shadow: var(--shadow-lg); }
+  /* ===== Зона уведомлений (задача 26): тосты, «Есть новая версия», «Нет связи», предложение тура — только здесь.
+     Под шапкой (её нет — под вырезом экрана) и не ниже верха нижней панели: --nz-top и --nz-max считает placeNotices()
+     из шапки, дока и visualViewport (клавиатура). Не влезло — обрезается, но поле ввода и кнопки не закрывает.
+     Новый всплывающий элемент — в реестр NOTICES в скрипте и через notice(el); tests/test_notices.py следит. */
+  .notices { position: fixed; z-index: 30; left: 0; right: 0; top: max(var(--nz-top, 0px), calc(8px + env(safe-area-inset-top)));
+             max-height: var(--nz-max, 50%); overflow: hidden; padding: 0 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+             pointer-events: none; }
+  .notices > * { pointer-events: auto; flex: none; }
+  .notices:empty, .notices:not(:has(> :not([hidden]))) { display: none; }
+  .upd { display: flex; align-items: center; gap: 2px; max-width: min(560px, 100%); min-height: 34px; padding: 0 4px 0 12px; border-radius: var(--radius-pill);
+         background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); box-shadow: 0 2px 10px rgba(0,0,0,.12);
+         font-size: calc(13px * var(--fz, 1)); animation: fade .2s ease; }
+  .upd > .i { width: 16px; height: 16px; color: var(--accent-primary); margin-right: 6px; }
+  .upd > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .upd button { border: 0; background: transparent; border-radius: var(--radius-pill); padding: 6px 10px; min-height: 30px; font-weight: 600; flex: none; }
+  .upd .go { color: var(--accent-primary); } .upd .later { color: var(--text-secondary); font-weight: 500; }
 
   /* ===== Дежурный помощник «? Подсказать» (helper.py, docs/HELPER.md): пилюля в шапке и в каждом листе; шторка на 55 %
      высоты — поверх экрана или листа, закрылась — вы там же. */
@@ -550,6 +565,11 @@
   @media (max-width: 359px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }
   .help-bg { z-index: 35; }
   .help-bg { justify-content: center; }
+  /* Шторка помощника поверх экрана — над нижней панелью, а не на ней: поле ввода и кнопки видны (задача 26).
+     Поверх другого листа — как раньше, на весь экран: под ней лист, а не поле ввода. */
+  .help-bg { bottom: var(--nz-dock, 0px); } body:has(> .sheet-bg:not(.help-bg)) .help-bg { bottom: 0; }
+  .help-bg .sheet.help { height: min(100%, calc(var(--app-h, 100vh) * .55)); max-height: 100%; }   /* 55 % экрана, не фона */
+  @media (min-width: 1024px) { .help-bg .sheet.help { height: min(100%, calc(var(--app-h, 100vh) * .6)); } }
   .sheet.help { display: flex; flex-direction: column; height: 55%; max-height: 55%; min-height: 320px; }
   @media (min-width: 1024px) { .sheet.help { max-width: 720px; height: 60%; max-height: 60%; } }
   .sheet.help button { width: auto; min-height: 0; padding: 0; gap: 6px; font-size: inherit; display: inline-flex; align-items: center; }   /* не пункты шторки */
@@ -583,9 +603,10 @@
                        background: transparent; color: var(--accent-primary); font-weight: 600; font-size: calc(13px * var(--fz, 1)); align-self: flex-start; }
 
   /* ===== Короткий тур (driver.js 1.8.0 с cdnjs — грузится только при старте тура): попап — токенами панели ===== */
-  .tour-offer { position: fixed; z-index: 28; right: 12px; top: calc(var(--top-h, 56px) + 8px + env(safe-area-inset-top)); width: min(340px, calc(100vw - 24px));
+  .tour-offer { align-self: flex-end; width: min(340px, 100%);
                 background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
                 box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 12px 12px 14px; animation: up .2s ease; }
+  .kb .tour-offer { display: none; }                   /* клавиатура открыта — человек пишет: предложение тура подождёт */
   .tour-offer .row { align-items: flex-start; } .tour-offer .row > .i { color: var(--accent-primary); margin-top: 2px; }
   .tour-offer b { font-size: calc(15px * var(--fz, 1)); }
   .tour-offer .meta { white-space: normal; margin-top: 2px; }
@@ -612,7 +633,7 @@
 
   /* ===== Простой режим (docs/SIMPLE-MODE.md): один разговор с агентом по центру, выбор — овальными чипами ===== */
   body.simple-on #scroller, body.simple-on #dock, body.simple-on #homeBar, body.simple-on #toBottom, body.simple-on #mini,
-  body.simple-on #sideGrip, body.simple-on #updateBar, body.simple-on .ptr { display: none !important; }
+  body.simple-on #sideGrip, body.simple-on #net, body.simple-on .ptr { display: none !important; }
   #simple { position: fixed; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--bg-canvas); color: var(--text-primary); }
   .s-col { width: 100%; max-width: 760px; margin: 0 auto; padding: 0 16px; }
   .s-top { flex: none; padding-top: env(safe-area-inset-top); border-bottom: 1px solid var(--border-subtle); background: var(--bg-canvas); }
@@ -682,10 +703,13 @@
 </head>
 <body>
 <div class="pvbar" id="previewBar" hidden role="status"></div>
-<button class="btn update" id="updateBar" hidden>Панель обновилась — нажмите, чтобы загрузить новую версию</button>
+<!-- Зона уведомлений: всё всплывающее — здесь, под шапкой и выше нижней панели (NOTICES и notice() в скрипте). -->
+<div class="notices" id="notices">
+  <div class="upd" id="updateBar" role="status" hidden><span id="updText">Есть новая версия</span><button class="go" id="updGo" type="button">Обновить</button><button class="later" id="updLater" type="button">Позже</button></div>
+  <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
+</div>
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
-<div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 <header class="top" id="top">
   <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-demo" type="button" data-space="demo" aria-pressed="false"></button></div>
   <div class="toprow">
@@ -957,7 +981,7 @@ const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="non
 function paintIcons() {
   $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
-  $("netIcon").innerHTML = ic("warn"); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
+  $("netIcon").innerHTML = ic("warn"); $("updateBar").insertAdjacentHTML("afterbegin", ic("refresh", "s16")); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
@@ -1081,7 +1105,7 @@ document.addEventListener("keydown", (e) => {
 function toast(text, ms = 2600) {
   document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
-  document.body.append(t); setTimeout(() => t.remove(), ms);
+  notice(t); setTimeout(() => t.remove(), ms);
 }
 
 // ---------- сеть ----------
@@ -1160,6 +1184,7 @@ function show(v) {
   $("pick").hidden = !(two && v === "home");
   $("dock").hidden = v !== "session";
   $("homeBar").hidden = !((v === "home" || two) && !gate && homeView === "sessions");
+  placeNotices();
   syncBack();
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
@@ -1199,7 +1224,7 @@ function setBars(show) {
   barsShown = show; barsRun = 0;
   if (!show) document.documentElement.style.setProperty("--top-h", $("top").offsetHeight + "px");   // для «Назад»
   $("top").classList.toggle("hide", !show);
-  hideDock(!show);
+  hideDock(!show); placeNotices(); setTimeout(placeNotices, 250);    // шапка уезжает .2 с — зона следом
 }
 function hideDock(on) {
   const d = $("dock");
@@ -1208,6 +1233,7 @@ function hideDock(on) {
   d.classList.toggle("hide", on);
   const h = on ? 0 : d.offsetHeight;                   // кнопка «к последнему» и мини-плеер — следом за панелью
   $("toBottom").style.bottom = (h + 12) + "px"; document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
+  placeNotices();
 }
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
@@ -1251,6 +1277,7 @@ function fitViewport() {
   root.classList.toggle("kb", kb);
   if (kb && !barsShown) setBars(true);               // клавиатура открылась — поле ввода на виду
   if (!kb && window.scrollY) scrollTo(0, 0);           // iOS иногда оставляет страницу сдвинутой после клавиатуры
+  placeNotices();
 }
 
 // Потяните ленту вниз в самом верху — панель обновится, как в мобильных приложениях. Свайпы Telegram, которые
@@ -1291,7 +1318,7 @@ async function pullRefresh() {
   const el = $("ptr"), t0 = Date.now();
   el.classList.add("back", "spin"); el.style.transform = `translateY(${PULL * 0.8}px)`;
   await refresh();
-  if (!$("updateBar").hidden) return reloadPanel();  // вышла новая версия панели — сразу её и загружаем
+  if (UPD.found) return reloadPanel();               // вышла новая версия панели — сами просили обновить: загружаем
   if (view === "session") await loadContent();
   else if (view === "home" && homeView === "integrations") await loadMcp(true);
   else if (view === "home" && homeView === "commands") await loadCommands();
@@ -1305,7 +1332,77 @@ SC.addEventListener("touchend", onPullEnd); SC.addEventListener("touchcancel", o
 // Перезагрузка возвращает туда же: открытая сессия и вкладка переживают обновление страницы.
 function reloadPanel() {
   try { sessionStorage.setItem("resume", JSON.stringify({ id: view === "session" ? current : null, tab })); } catch (e) {}
-  location.reload();
+  saveDraft(); location.reload();
+}
+
+// ---------- зона уведомлений (задача 26) ----------
+// Всё всплывающее — тосты, баннеры, подсказки — живёт в #notices: под шапкой и не ниже верха нижней панели, с учётом
+// клавиатуры (body — ровно видимая область, fitViewport). Поле ввода, микрофон и кнопки ничто не закрывает.
+// Новый всплывающий элемент — сюда в реестр и через notice(el); tests/test_notices.py сверяет реестр со стилями,
+// tests/e2e/notices_demo.py — с геометрией в браузере (390×844, клавиатура открыта).
+const NOTICES = ["#updateBar", "#net", ".toast", ".tour-offer"];
+// Над нижней панелью: кнопки — высота дока + 12 px (hideDock, padDock, placeMini), шторка помощника — --nz-dock.
+const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
+// position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
+// .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", "body.split #home", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar"];
+function notice(el) { $("notices").append(el); placeNotices(); return el; }
+function placeNotices() {
+  const root = document.documentElement.style, H = document.body.clientHeight;
+  const head = SIM.on ? document.querySelector(".s-top") : view === "login" || $("top").classList.contains("hide") ? null : $("top");
+  const r = head?.getBoundingClientRect(), top = r && r.height ? Math.max(0, r.bottom - document.body.getBoundingClientRect().top) : 0;
+  const dock = SIM.on ? document.querySelector(".s-dock") : !$("dock").hidden ? ($("dock").classList.contains("hide") ? null : $("dock"))
+    : !$("homeBar").hidden ? $("homeBar") : null;
+  const bottom = H - (dock ? dock.offsetHeight : 0);    // нижние панели прижаты к низу видимой области
+  root.setProperty("--nz-top", Math.round(top + 8) + "px"); root.setProperty("--nz-dock", Math.round(H - bottom) + "px");
+  root.setProperty("--nz-max", Math.max(0, Math.round(bottom - Math.max(top + 8, 8) - 8)) + "px");
+}
+if (window.ResizeObserver) {                          // шапка, док и поле ввода меняют высоту — зона следом
+  const ro = new ResizeObserver(() => placeNotices());
+  for (const el of [$("top"), $("dock"), $("homeBar"), document.querySelector(".s-top"), document.querySelector(".s-dock")]) if (el) ro.observe(el);
+}
+
+// ---------- новая версия панели ----------
+// /api/sessions отдаёт build; не совпал с тем, с которым панель загрузилась, — вышла новая. Тонкая строка под шапкой
+// «Есть новая версия · Обновить · Позже»; «Позже» прячет её до следующего открытия панели. Сама панель
+// перезагружается, только когда это никому не мешает (updSafe): вернулись в неё из фона или открыли заново.
+const UPD = { found: false, later: false };
+function updateFound() {
+  if (UPD.found) return;
+  UPD.found = true;
+  $("updText").textContent = L("upd.text", "Есть новая версия"); $("updGo").textContent = L("upd.go", "Обновить");
+  $("updLater").textContent = L("upd.later", "Позже");
+  $("updateBar").hidden = UPD.later; placeNotices();
+  if (document.hidden) updAuto();                      // нашли, пока панель в фоне, — можно сразу
+}
+function checkBuild(d) { if (BUILD && d?.build && d.build !== BUILD) updateFound(); }
+// Безопасно: поле ввода пустое (и в простом режиме), ничего не прикреплено и не грузится, не идёт запись голоса,
+// не открыт лист, помощник, тур или мастер (форма подключения, вход, условия, страна, роль).
+function updSafe() {
+  if ($("input").value.trim() || $("sInput").value.trim() || files.length || rec || micBar) return false;
+  if (document.querySelector(".sheet-bg, .tour-offer, .driver-popover") || tourOn) return false;
+  return SIM.on || view === "home" || view === "session";
+}
+function updAuto() { if (UPD.found && updSafe()) reloadPanel(); }
+$("updGo").onclick = reloadPanel;
+$("updLater").onclick = () => { UPD.later = true; $("updateBar").hidden = true; placeNotices(); };
+document.addEventListener("visibilitychange", () => { if (!document.hidden) updAuto(); });
+tg?.onEvent?.("activated", updAuto);                    // Telegram: Mini App снова на экране
+
+// Черновик переживает перезагрузку (новая версия, «Перезагрузить панель», потянуть ленту): поле ввода полного
+// и простого режима и уже загруженные файлы — в sessionStorage этой вкладки, после запуска возвращаются на место.
+function saveDraft() {
+  const d = { input: $("input").value, sInput: $("sInput").value, files: files.filter((f) => f.path) };
+  try { if (d.input.trim() || d.sInput.trim() || d.files.length) sessionStorage.setItem("draft", JSON.stringify(d)); else sessionStorage.removeItem("draft"); } catch (e) {}
+}
+addEventListener("pagehide", saveDraft);
+function restoreDraft() {
+  let d = null;
+  try { d = JSON.parse(sessionStorage.getItem("draft") || "null"); sessionStorage.removeItem("draft"); } catch (e) {}
+  if (!d) return;
+  if (d.input && !$("input").value.trim()) { $("input").value = d.input; grow(); }
+  if (d.files?.length && !files.length) { files = d.files; renderFiles(); }
+  if (d.sInput && !$("sInput").value.trim()) { $("sInput").value = d.sInput; sGrow(); }
 }
 function setSub(html) { $("subtitle").innerHTML = html; }
 
@@ -1717,7 +1814,7 @@ async function refresh() {
     const d = await api("/api/sessions");
     sessions = d.sessions; costInfo = d.cost || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
-    if (BUILD && d.build && d.build !== BUILD) $("updateBar").hidden = false;
+    checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
     $("brandSub").textContent = hostLine;
@@ -3632,7 +3729,6 @@ $("settingsBtn").onclick = () => {
 };
 $("backBtn").onclick = back;
 $("target").onclick = () => { haptic("selectionChanged"); openSwitcher(); };   // «куда уйдёт» у поля ввода — сменить сессию
-$("updateBar").onclick = reloadPanel;
 
 // ---------- мастер: Claude Code не установлен или вход не выполнен (setup.py) ----------
 let setupData = null, setupMsg = "";
@@ -3973,7 +4069,7 @@ function showTourOffer() {
     if (b.hasAttribute("data-tgo")) { store("tourKind", kind); startTour(kind); }
   });
   box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); no(); } });
-  document.body.append(box);
+  notice(box);
 }
 async function tourOffer() {                           // один раз: сервер говорит, что тур не пройден и не отклонён
   if (tourOffer.asked || (DEMO && !params.get("tour")) || !meta) return;
@@ -4049,6 +4145,7 @@ async function start() {
   if (DEMO && params.has("modules")) { await modulesView(); if (params.get("modules")) moduleView(modData.modules.find((m) => m.id === params.get("modules"))); }
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
+  restoreDraft();                                     // черновик — после того, как открылась сессия
   goFromLink();
 }
 
@@ -4206,7 +4303,7 @@ async function simpleStart() {
   for (const id of ["login", "terms", "country", "persona"]) $(id).hidden = true;
   $("simple").hidden = false; sPaint();
   try { tg?.BackButton.hide(); } catch (e) {}
-  await sLoad(true);
+  await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
   if (!sAct.timer) sAct.timer = setInterval(sAct, 1000);
   start.done = true;
@@ -4292,6 +4389,7 @@ async function sYesGo(w, btn) {
 }
 async function sLoad(first) {
   let d; try { d = await api("/api/sessions"); } catch (e) { return; }
+  checkBuild(d);
   sessions = d.sessions || [];
   SIM.list = sessions.filter((x) => x.status !== "stopped");
   if (!SIM.list.some((x) => x.id === SIM.w)) {
@@ -4681,6 +4779,7 @@ function demoApi(path, body) {
     { id: "z-ai/glm-5.3-flash", name: "Z.ai: GLM 5.3 Flash", ctx: 200000, in: 0.1, out: 0.4 },
     { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek: V4.1 Flash", ctx: 786432, in: 0.07, out: 0.28 },
     { id: "openrouter/auto", name: "Auto Router", ctx: 2000000, in: null, out: null }] };
+  if (params.has("upd")) { R["/api/meta"].build = "demo-1"; R["/api/sessions"].build = "demo-2"; }   // ?upd — вышла новая версия
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
