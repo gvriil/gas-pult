@@ -36,6 +36,7 @@ from gas_pult import (
     digest,
     emailcode,
     fallback,
+    invites,
     models,
     modules,
     offers,
@@ -1694,6 +1695,8 @@ class Pult:
         if not info:
             return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
         role = self.people.role(u["id"])
+        if not role and info.get("invite") and (inv := invites.redeem(info["invite"], u["id"])):
+            role = self.invited(u, inv)                    # приглашение: доступ сразу, владельцу — уведомление
         if role:
             return send(f"Войти в панель пульта ({TITLES[role]})?\n\nБраузер: {info['ua'] or '—'}\n"
                         f"Адрес: {info['ip'] or '—'}\n\nЕсли входите не вы — нажмите «Это не я».",
@@ -1701,6 +1704,16 @@ class Pult:
         send("У вас пока нет доступа к пульту. Я спросил владельца — когда он ответит, нажмите «Войти через Telegram» "
              "в браузере ещё раз.")
         self.ask_owner(u, info.get("offer"))
+
+    def invited(self, u: dict, inv: dict) -> str:
+        """Вход по приглашению (invites.py): роль и пространство из него, без ожидания владельца."""
+        name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or str(u["id"])
+        self.people.add(u["id"], inv["role"], name, u.get("username", ""), tenant=inv["tenant"])
+        self.menu_for(u["id"])
+        self.broadcast(f"🎟 {name} (@{u.get('username') or '—'}, ID {u['id']}) вошёл по приглашению — "
+                       f"{TITLES[inv['role']]}, тестировщик в пространстве «{inv['tenant']}». Убрать — «Настройки» → "
+                       "«Люди».")
+        return inv["role"]
 
     def ask_owner(self, u: dict, offer: dict | None = None):
         """Запрос доступа владельцам: кто и, если человек пришёл со страницы предложения, — с какого и что выбрал."""

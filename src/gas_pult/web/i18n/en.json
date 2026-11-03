@@ -293,5 +293,7 @@
  "s.new.open": "Open it",
  "s.new.again": "Create another one",
  "s.new.again.sure": "Really create another one?",
- "s.owner_here": "the owner joined"
+ "s.owner_here": "the owner joined",
+ "login.invite": "Invitation to «{t}». Sign in with Telegram — access opens right away.",
+ "login.invite.bad": "This invitation is no longer valid: it expired, was used or revoked. Ask for a new one."
 }

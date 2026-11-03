@@ -220,6 +220,36 @@ def cmd_geoip(a):
         print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
 
 
+def cmd_invite(a):
+    """Одноразовые приглашения тестировщиков (invites.py, docs/TENANTS.md): ссылка на 24 часа, пространство и роль;
+    вход через Telegram по ней — доступ сразу. list — какие есть; revoke — отозвать."""
+    from gas_pult import invites
+
+    try:
+        if a.action == "create":
+            if not a.arg:
+                raise SystemExit("Укажите пространство: gas-pult invite create <имя>")
+            code = invites.create(a.arg, a.role)
+            base = (a.url or "").rstrip("/")
+            print(f"✓ Приглашение в «{a.arg}» ({a.role}), 24 часа, один вход.")
+            print(f"  Ссылка: {base}/invite/{code}" if base else
+                  f"  Путь: /invite/{code} — перед ним адрес панели (--url https://…)")
+            print(f"  Отозвать: gas-pult invite revoke {code[:invites.HINT]}")
+        elif a.action == "list":
+            items = invites.listing()
+            if not items:
+                return print("Приглашений нет.")
+            for x in items:
+                till = time.strftime("%d.%m %H:%M", time.localtime(x["exp"]))
+                print(f"{x['hint']}…  {x['tenant']} · {x['role']} · {x['state']} · до {till}")
+        elif a.action == "revoke":
+            if not a.arg:
+                raise SystemExit("Укажите код: gas-pult invite revoke <код>")
+            print(f"✓ Отозвано: {invites.revoke(a.arg)}… — ссылка больше не работает.")
+    except (ValueError, OSError) as e:
+        raise SystemExit(f"Приглашение: {e}") from None
+
+
 def cmd_offer(a):
     """Предложения GASTECH (offers.py, docs/OFFERS.md): new — новый неугадываемый код и файл 0600 в
     ``<config>/offers/``; list — какие есть; revoke — отозвать (страница сразу отвечает 404)."""
@@ -362,6 +392,12 @@ def main(argv: list[str] | None = None):
     s.add_argument("--expires", help="последний день работы ссылки, ГГГГ-ММ-ДД")
     s.add_argument("--url", help="адрес панели снаружи — чтобы напечатать готовую ссылку")
     s.set_defaults(fn=cmd_offer)
+    s = sub.add_parser("invite", help="приглашение тестировщика: create <пространство> | list | revoke <код>")
+    s.add_argument("action", choices=["create", "list", "revoke"])
+    s.add_argument("arg", nargs="?", help="create — имя пространства; revoke — код или его первые знаки")
+    s.add_argument("--role", choices=["member", "viewer"], default="member", help="роль (по умолчанию участник)")
+    s.add_argument("--url", help="адрес панели снаружи — чтобы напечатать готовую ссылку")
+    s.set_defaults(fn=cmd_invite)
     s = sub.add_parser("email", help="почта для входа по коду: status | password | test <адрес>")
     s.add_argument("action", choices=["status", "password", "test"], nargs="?", default="status")
     s.add_argument("to", nargs="?", help="test — куда отправить пробное письмо")

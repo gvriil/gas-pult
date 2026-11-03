@@ -746,6 +746,7 @@
       <h2 class="serif" style="margin:2px 0 6px;font-size:21px" data-l="login.title">Вход в пульт</h2>
       <p class="note" style="margin:0 0 12px" data-l="login.note">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
       <div id="loginStep1">
+        <div class="result ok" id="inviteNote" hidden></div>
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
@@ -1428,7 +1429,15 @@ function restoreDraft() {
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); }
+function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck(); }
+// Приглашение (/invite/<код> → /?invite=<код>): пометка над «Войти через Telegram»; после входа доступ — сразу.
+const INVITE = params.get("invite") || "";
+async function inviteCheck() {
+  if (!INVITE) return;
+  let r = { ok: false }; try { r = await api("/api/invite?code=" + encodeURIComponent(INVITE)); } catch (e) { /* покажем, что не вышло */ }
+  $("inviteNote").hidden = false; $("inviteNote").className = "result " + (r.ok ? "ok" : "bad");
+  $("inviteNote").innerHTML = ic(r.ok ? "check" : "warn") + `<span>${esc(r.ok ? LL("login.invite", "Приглашение в «{t}». Войдите через Telegram — доступ откроется сразу.").replace("{t}", r.title) : LL("login.invite.bad", "Приглашение недействительно: истёк срок, оно уже использовано или отозвано. Попросите новое."))}</span>`;
+}
 // Способы входа, которые включены на этом пульте (почта — если владелец настроил SMTP).
 async function loginMethods() {
   try {
@@ -1497,7 +1506,7 @@ $("tryDemo").onclick = () => { location.href = "/?demo"; };
 let tgTimer = null;
 $("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Готовлю вход…"), async () => {
   try {
-    const d = await api("/api/login/tg", {});
+    const d = await api("/api/login/tg", INVITE ? { invite: INVITE } : {});
     tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");   // в браузере — новой вкладкой, не уходя со страницы
     $("tgWait").hidden = false;
     $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>${esc(LL("login.wait", "В Telegram нажмите «Запустить» (Start), затем «Войти». Жду подтверждения…"))}</span></div>
@@ -1760,7 +1769,7 @@ function spaceChips(s) {
 }
 function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
   if (meta?.role !== "owner" || (!list.length && !spacesInfo?.tenants?.length)) return "";
-  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" : ""}</div>`
+  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" : ""}</div>`
     + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
 }
 async function loadSpaces() {
@@ -1770,6 +1779,18 @@ async function loadSpaces() {
 async function spaceConnect(id) {
   try { await api("/api/space/connect", { w: id }); toast("Подключились — тестировщик видит «Владелец подключился»"); openSession(id); refresh(); }
   catch (e) { toast("Не вышло: " + e.message, 4000); }
+}
+function spaceInvite() {                              // ссылка на 24 часа: вход через Telegram — сразу тестировщик
+  const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
+  if (!list.length) return toast("Нет готовых пространств — docs/TENANTS.md", 4000);
+  helpSheet("sheet.space-invite");
+  sheet("Пригласить тестировщика — в какое пространство?", list.map((t) => ({ label: t.title, icon: "flask", run: async () => {
+    try {
+      const r = await api("/api/invite/new", { space: t.slug }), link = location.origin + r.path;
+      copyText(link);
+      sheet("Приглашение готово", [{ info: true, icon: "check", label: "Ссылка скопирована — отправьте её тестировщику", sub: link + " · 24 часа, один вход. Отозвать: gas-pult invite revoke " + r.path.split("/").pop().slice(0, 6) }]);
+    } catch (e) { toast("Не вышло: " + e.message, 4000); }
+  } })));
 }
 function spaceTaskForm() {
   const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
@@ -1924,6 +1945,7 @@ $("sessionsView").addEventListener("click", (e) => {
   if (costClick(e)) return;
   if (e.target.closest("[data-cost-sum]")) return costSheet();
   if (e.target.closest("[data-space-task]")) return spaceTaskForm();
+  if (e.target.closest("[data-space-invite]")) return spaceInvite();
   if (e.target.closest("[data-scn-home]")) return scenariosView();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
