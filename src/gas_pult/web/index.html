@@ -96,6 +96,9 @@
   .chip.new, .chip.ok { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); }
   .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
   .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
+  .chip.space { color: var(--text-secondary); background: var(--bg-subtle); }
+  .space-h { display: flex; align-items: center; gap: 8px; margin: 18px 4px 8px; font-weight: 600; color: var(--text-secondary); }
+  .space-h button { margin-left: auto; border: 0; cursor: pointer; }
   .manual { margin: 4px 0 8px; } .manual summary { cursor: pointer; padding: 6px 2px; }
   .picker .search { position: sticky; top: -8px; background: var(--bg-surface); padding: 4px 16px 8px; z-index: 1; }
   .picker .search input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); outline: none; }
@@ -990,6 +993,7 @@ const P = {
   puzzle: '<path d="M12 3.2l7.8 4.4v8.8L12 20.8l-7.8-4.4V7.6z"/><path d="M4.4 7.7L12 12l7.6-4.3M12 12v8.6"/>',
   coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.8-1.4-1.3-2.6-1.3-1.5 0-2.6.8-2.6 2s1.1 1.6 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.1-.5-2.6-1.3M12 6.5V8M12 16v1.5"/>',
   pause: '<path d="M9 6.5v11M15 6.5v11"/>',
+  flask: '<path d="M9.5 3.5h5M10.5 3.5v6L5 18.5a1.5 1.5 0 0 0 1.3 2.2h11.4a1.5 1.5 0 0 0 1.3-2.2L13.5 9.5v-6"/><path d="M7.5 15h9"/>',
   rew15: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 3.8v3.5H8"/><text x="12.3" y="15.2" font-size="7.6" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">15</text>',
   fwd15: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 3.8v3.5H16"/><text x="11.7" y="15.2" font-size="7.6" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">15</text>',
 };
@@ -1739,11 +1743,51 @@ function card(s) {
       <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
     ${costBar(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
     ${s.status === "stopped" && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-revive="${esc(s.id)}">${ic("refresh", "s16")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
+}
+// ---------- демо-пространства (задача 31, docs/TENANTS.md) ----------
+// Владелец видит окна пространств отдельной группой «Пространства»: читает, пишет, отвечает («Подключиться» —
+// тестировщик увидит «Владелец подключился»), ставит задачу новой сессией. Тестировщик видит только своё.
+let spacesInfo = null;                                // /api/spaces (владельцу): включено ли и какие есть
+function spaceChips(s) {
+  if (!s.space) return "";
+  return (meta?.role === "owner" ? `<span class="chip space" title="Сессия демо-пространства">${ic("flask")}${esc(s.space_title || s.space)}</span>` : "")
+    + (s.owner_here && meta?.role !== "owner" ? '<span class="chip accent">Владелец подключился</span>' : "");
+}
+function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
+  if (meta?.role !== "owner" || (!list.length && !spacesInfo?.tenants?.length)) return "";
+  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" : ""}</div>`
+    + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
+}
+async function loadSpaces() {
+  if (meta?.role !== "owner") return;
+  try { spacesInfo = await api("/api/spaces"); } catch (e) { spacesInfo = null; }
+}
+async function spaceConnect(id) {
+  try { await api("/api/space/connect", { w: id }); toast("Подключились — тестировщик видит «Владелец подключился»"); openSession(id); refresh(); }
+  catch (e) { toast("Не вышло: " + e.message, 4000); }
+}
+function spaceTaskForm() {
+  const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
+  if (!list.length) return toast("Нет готовых пространств — docs/TENANTS.md", 4000);
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.space-task");
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Поставить задачу в пространстве</h3>
+    <div class="field" style="margin:4px 16px 10px"><label for="stSpace">Пространство</label><select id="stSpace">${list.map((t) => `<option value="${esc(t.slug)}">${esc(t.title)}</option>`).join("")}</select></div>
+    <div class="field" style="margin:0 16px 10px"><label for="stName">Название сессии — так её увидит тестировщик</label><input id="stName" maxlength="60" autocomplete="off" placeholder="Сверка счетов за октябрь"></div>
+    <div class="field" style="margin:0 16px 0"><label for="stTask">Задание — первое сообщение агенту</label><textarea id="stTask" rows="4" placeholder="Разбери выгрузку в папке inbox и составь реестр"></textarea></div>
+    <p class="note" id="stErr" style="margin:8px 16px 0">Сессия откроется в пространстве; задание уйдёт, как только агент будет готов.</p>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="stOk">Поставить</button></div></div>`;
+  document.body.append(bg);
+  $("stOk").onclick = () => busy($("stOk"), "Открываю…", async () => {
+    try { const r = await api("/api/space/task", { space: $("stSpace").value, name: $("stName").value, task: $("stTask").value });
+          bg.remove(); toast("Сессия «" + r.name + "» открыта в пространстве"); await refresh(); openSession(r.id); }
+    catch (e) { $("stErr").textContent = e.message; $("stErr").style.color = "var(--status-danger)"; }
+  });
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
 }
 // ---------- расход (usage.py): токены и деньги по журналам Claude Code, лимиты, пауза ----------
 // Сервер показывает расход только хозяину учётки: владельцу — его пул, участнику — его папку Claude.
@@ -1841,10 +1885,11 @@ async function refresh() {
       const n = (k) => sessions.filter((s) => s.status === k).length;
       if (homeView === "sessions") {
         const sorted = [...sessions].sort(byChange);             // ждущие ответа (и пауза по расходу) — сверху
+        const mine = (x) => meta?.role === "owner" && x.space;     // владельцу окна пространств — своей группой ниже
         $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
-            + sorted.map(card).join("") : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + scnEntry();
+            + sorted.filter((x) => !mine(x)).map(card).join("") : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry();
       }
       if (homeView === "commands") loadCommands(true);
     }
@@ -1869,7 +1914,7 @@ function paintSession(s) {
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
   const ag = agoSpan(s, true);
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""}</span>${split() ? ag : ""}`);
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}${spaceChips(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""}</span>${split() ? ag : ""}`);
   const cb = costBar(s); $("costPause").hidden = !cb; $("costPause").innerHTML = cb;     // пауза по расходу — над полем ввода
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`;
   $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
@@ -1878,6 +1923,7 @@ function paintSession(s) {
 $("sessionsView").addEventListener("click", (e) => {
   if (costClick(e)) return;
   if (e.target.closest("[data-cost-sum]")) return costSheet();
+  if (e.target.closest("[data-space-task]")) return spaceTaskForm();
   if (e.target.closest("[data-scn-home]")) return scenariosView();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
@@ -1952,7 +1998,8 @@ function sessionSheet(id) {
   helpSheet("sheet.session");
   sheet(s.name, [
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
-    { label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) },
+    ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
+    ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role !== "viewer" ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
   ]);
@@ -4301,6 +4348,7 @@ async function tourOffer() {                           // один раз: се�
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
+  loadSpaces().then(() => { if (spacesInfo?.tenants?.length && view === "home") refresh(); });   // группа «Пространства»
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
@@ -4550,7 +4598,7 @@ const sDot = (x) => (x.status === "dialog" ? '<i class="sdot s-approval"></i>' :
 const sChip = (on, attrs, label, extra = "") => `<button class="scn-opt${on ? " on" : ""}" type="button" ${attrs}${on ? ' aria-pressed="true"' : ""}>${extra}${esc(label)}</button>`;
 function sHead() {
   const s = SIM.list.find((x) => x.id === SIM.w);
-  $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T("s.agents"))}</b><small>${esc(s ? T("s.status." + (s.status in ST ? s.status : "idle")) : "")}</small></span>${SIM.list.length > 1 || canNew() ? ic("chevron", "s16") : ""}`;
+  $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T("s.agents"))}</b><small>${esc(s ? T("s.status." + (s.status in ST ? s.status : "idle")) + (s.owner_here ? " · " + T("s.owner_here") : "") : "")}</small></span>${SIM.list.length > 1 || canNew() ? ic("chevron", "s16") : ""}`;
   $("sWho").setAttribute("aria-label", T("s.agents"));
   const shown = SIM.list.filter((x) => sSecOk(x) || x.id === SIM.w);
   $("sAgents").hidden = shown.length < 2 && !SIM.sec;
@@ -4914,7 +4962,8 @@ function demoApi(path, body) {
   // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
   const t0 = demoApi.t0 ||= Math.floor(Date.now() / 1000) - 8, H = 3600, D = 86400;
   const AT = { "@1": [t0, t0, t0 - 87], "@2": [t0 - 232, t0 - 232, t0 - 1492], "@3": [t0 - 3 * H - 600, t0 - 3 * H - 600, t0 - 3 * H - 900],
-               "@4": [t0 - 26 * H, t0 - 26 * H, t0 - 27 * H], "@5": [t0 - 12 * D, t0 - 12 * D - 40, t0 - 12 * D - 300] };
+               "@4": [t0 - 26 * H, t0 - 26 * H, t0 - 27 * H], "@5": [t0 - 12 * D, t0 - 12 * D - 40, t0 - 12 * D - 300],
+               "t:demo:@1": [t0 - 600, t0 - 600, t0 - 900] };
   const S = [
     { id: "@1", name: "tgi-0904", path: "/home/u/projects/tgi", branch: "chore/claude-files-unify", status: "busy", context: 22, model: "Opus 5.5", active: true, channel: false, rev: "a", preview: "Команда: прогон тестов комнат и сверка П8", agent: "Утренние цифры против плана", sections: ["analytics"] },
     { id: "@2", name: "icon-1146", path: "/home/u/projects/icon", branch: "main", status: "dialog", context: 82, active: false, channel: false, rev: "b", preview: "Удалить dist и пересобрать проект?", agent: "Отзывы и вопросы WB и Ozon", sections: ["comms"] },
@@ -4924,6 +4973,9 @@ function demoApi(path, body) {
   ];
   // расход (usage.py): владелец видит свой пул, участник — свою учётку, наблюдатель — ничего; ?cost=pause — сессия на паузе
   const role = params.get("role") || "owner", own = role === "owner";
+  if (params.has("spaces") && own && !S.some((x) => x.space))   // ?spaces — сессия демо-пространства (группа «Пространства»)
+    S.push({ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false, channel: false,
+             rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", space_title: "Демо для бухгалтерии", owner_here: null });
   demoApi.lim ||= { session: 10, day: 25 };
   if (demoApi.pz === undefined) demoApi.pz = params.get("cost") === "pause" ? "ask" : "";
   if (path === "/api/cost/limits" && body) demoApi.lim = { session: +String(body.session).replace(",", ".") || null, day: +String(body.day).replace(",", ".") || null };
@@ -4999,6 +5051,7 @@ function demoApi(path, body) {
       cards: [{ id: "elevenlabs", name: "Ксения (клон)", kind: "облачный", ok: true, why: "", install: "" }, ...loc] }; }
   demoApi.fb ||= ["openrouter", "claude"];
   if (path === "/api/fallback" && body) demoApi.fb = body.chain;
+  R["/api/spaces"] = params.has("spaces") ? { enabled: true, tenants: [{ slug: "demo", title: "Демо для бухгалтерии", ready: true }] } : { enabled: false, tenants: [] };
   R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
     options: [{ id: "claude", title: "Claude", why: "" }, { id: "openrouter", title: "OpenRouter", why: params.get("orkey") ? "" : "нет ключа" },
               { id: "zai", title: "GLM (Z.ai)", why: "" }, { id: "deepseek", title: "DeepSeek", why: "" }],
