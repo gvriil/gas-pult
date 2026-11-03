@@ -69,7 +69,7 @@ src/gas_pult/
 ├── mcp.py          MCP-серверы Claude Code через `claude mcp`: коннекторы claude.ai, шаблоны PRESETS, свой сервер
 ├── providers.py    ключи API (secrets.json, 0600) и ElevenLabs: озвучка, распознавание, голоса
 ├── templates/
-│   ├── modules/    30 модулей-агентов (3 общих + 27 отраслевых в шести отраслях) и общие блоки _common/ (5)
+│   ├── modules/    31 модуль-агент (3 общих + 28 отраслевых в шести отраслях) и общие блоки _common/ (5)
 │   ├── scenarios/  роли «Примерочной»: carwash-owner.toml, uk-director.toml
 │   └── offers/     example.toml — пример предложения (настоящие — вне репозитория)
 ├── web/
