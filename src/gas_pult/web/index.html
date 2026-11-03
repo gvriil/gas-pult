@@ -97,6 +97,7 @@
   .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
   .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
   .chip.space { color: var(--text-secondary); background: var(--bg-subtle); }
+  body:not(.tester) .tester-only { display: none; }
   .space-h { display: flex; align-items: center; gap: 8px; margin: 18px 4px 8px; font-weight: 600; color: var(--text-secondary); }
   .space-h button { margin-left: auto; border: 0; cursor: pointer; }
   .manual { margin: 4px 0 8px; } .manual summary { cursor: pointer; padding: 6px 2px; }
@@ -1010,7 +1011,8 @@ function paintIcons() {
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
   $("menu").innerHTML = `<button data-act="close" class="danger" data-owner>${ic("power")}Завершить</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"],
     ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
-    .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("");
+    .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
+    + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`;      // тестировщик пространства
 }
 
 // ---------- тема ----------
@@ -1775,6 +1777,11 @@ function spacesGroup(list) {                          // группа под с�
 async function loadSpaces() {
   if (meta?.role !== "owner") return;
   try { spacesInfo = await api("/api/spaces"); } catch (e) { spacesInfo = null; }
+}
+async function callHelp(id) {                        // тестировщик: владельцу — сессия и последний вопрос агента
+  if (!id) return toast(T("s.sos.none"), 3500);
+  try { await api("/api/help/call", { w: id }); toast(T("s.sos.sent"), 4500); haptic("notificationOccurred", "success"); }
+  catch (e) { toast(e.message, 4500); }
 }
 async function spaceConnect(id) {
   try { await api("/api/space/connect", { w: id }); toast("Подключились — тестировщик видит «Владелец подключился»"); openSession(id); refresh(); }
@@ -2747,6 +2754,7 @@ function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("o
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
 const ACTIONS = {
+  sos: () => callHelp(current),
   say: (b) => say(false, b),
   sayfull: (b) => say(true, b),
   commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
@@ -4238,6 +4246,8 @@ async function enableAndGo(c, id) {
 function goFromLink() {                                // #go=<id> из бота («📱 Открыть в панели») — сразу на нужный экран
   const id = new URLSearchParams(location.hash.slice(1)).get("go") || params.get("go");
   if (id && /^go:[a-z0-9.\-]+$/.test(id)) setTimeout(() => go(id), 300);
+  const sid = params.get("session");                  // «📱 Открыть сессию» из бота (зов тестировщика на помощь)
+  if (sid && !DEMO && !SIM.on) setTimeout(async () => { await refresh(); if (sessions.some((x) => x.id === sid)) openSession(sid); }, 300);
 }
 
 // ---------- короткий тур (docs/MINI_APP.md#тур) ----------
@@ -4374,6 +4384,7 @@ async function start() {
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
+  document.body.classList.toggle("tester", !!meta.space);         // тестировщик демо-пространства (задача 31)
   if (UI && !UI.onboarded && !UI.own_space && meta.role !== "owner" && (!DEMO || params.has("persona"))) return showPersona();   // роль — один раз, не владельцу
   paintSpaces();
   if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
@@ -4846,8 +4857,9 @@ function sDetails() {
 function sAgents() {
   const rows = SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
   sSheet(hv("simple.agents"), T("s.agents"), `<p class="note">${esc(T("s.agents.hint"))}</p>${rows ? `<div class="scn-opts">${rows}</div>` : ""}
-    ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}`,
-    (b, bg) => { if (b.dataset.w) { bg.remove(); sPick(b.dataset.w); } else if (b.dataset.snew) { bg.remove(); sNewAgent(); } });
+    ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}
+    ${meta?.space ? `<div class="scn-opts">${sChip(false, 'data-sos="1"', T("s.sos"), ic("bell"))}</div>` : ""}`,
+    (b, bg) => { if (b.dataset.w) { bg.remove(); sPick(b.dataset.w); } else if (b.dataset.snew) { bg.remove(); sNewAgent(); } else if (b.dataset.sos) { bg.remove(); callHelp(SIM.w); } });
 }
 async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш
   if (!canNew()) return;

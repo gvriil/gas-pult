@@ -56,6 +56,7 @@ from gas_pult import (
     spaces,
     tenants,
     terms,
+    testers,
     transcripts,
     usage,
     voice,
@@ -167,6 +168,7 @@ class Panel:
         self.help_anon = helper.Rate(30, 600)                        # помощник на экране входа — по IP
         self._mod_ids: tuple[float, frozenset] = (0.0, frozenset())
         self.owner_seen: dict[str, float] = {}                       # окно пространства → когда владелец подключился
+        self.help_calls: dict[str, float] = {}                       # окно → когда тестировщик звал на помощь
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -243,6 +245,24 @@ class Panel:
             return {"ok": False}
         t = tenants.load(rec["tenant"]) if tenants.enabled() else None
         return {"ok": True, "title": (t or {}).get("title") or rec["tenant"]}
+
+    def call_help(self, uid, w: dict) -> dict:
+        """«Позвать на помощь» из сессии пространства: владельцам — кто, сессия, последний вопрос агента и кнопка
+        «Открыть сессию». Из одной сессии — не чаще раза в 5 минут."""
+        slug = self.people.tenant(uid)
+        if not slug or w.get("space") != slug:
+            raise ValueError("позвать на помощь можно из сессии своего демо-пространства")
+        if time.time() - self.help_calls.get(w["id"], 0) < testers.HELP_EVERY:
+            raise ValueError("владелец уже получил сообщение — подождите несколько минут")
+        self.help_calls[w["id"]] = time.time()
+        person = next((p for p in self.people.list() if p["id"] == int(uid)), {"id": uid})
+        text, kb = testers.help_message(person, slug, w, self.pult.panel_url())
+        for chat in self.cfg.owners:
+            try:
+                self.pult.api("sendMessage", chat_id=chat, text=text, **({"reply_markup": kb} if kb else {}))
+            except (TelegramError, OSError) as e:
+                print("help:", e, file=sys.stderr, flush=True)
+        return {"ok": True}
 
     def owner_join(self, w: dict) -> dict:
         """Владелец подключился к окну пространства (сам — «Подключиться» — или написал, ответил на вопрос)."""
@@ -1261,7 +1281,7 @@ COUNTRY_FREE = TERMS_FREE | {"/api/country"}
 SPACE_OK = TERMS_FREE | {
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
-    "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename",
+    "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
 }
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
@@ -1970,6 +1990,8 @@ def handler(panel: Panel):
             w = self.win(b.get("w"))
             if path == "/api/space/connect":
                 return panel.owner_join(w)
+            if path == "/api/help/call":                    # тестировщик: «Позвать на помощь» — владельцу в бот
+                return panel.call_help(self.terms_uid(), w)
             if w.get("space") and self.who()[1] == "owner" and path in ("/api/send", "/api/select", "/api/key"):
                 panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
             if path == NOTIFY_DONE:                       # одно сообщение в бот, когда ход закончится (бот следит)

@@ -295,5 +295,8 @@
  "s.new.again.sure": "Really create another one?",
  "s.owner_here": "the owner joined",
  "login.invite": "Invitation to «{t}». Sign in with Telegram — access opens right away.",
- "login.invite.bad": "This invitation is no longer valid: it expired, was used or revoked. Ask for a new one."
+ "login.invite.bad": "This invitation is no longer valid: it expired, was used or revoked. Ask for a new one.",
+ "s.sos": "Call for help",
+ "s.sos.sent": "The owner got a message with your session and will join",
+ "s.sos.none": "Open a session first"
 }

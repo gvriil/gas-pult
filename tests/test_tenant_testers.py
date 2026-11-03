@@ -21,7 +21,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from gas_pult import bot, people, spaces, tenants, webapp, webauth
+from gas_pult import bot, people, spaces, tenants, testers, webapp, webauth
 from gas_pult.config import Config
 from gas_pult.tmux import Tmux
 
@@ -348,3 +348,80 @@ def test_owner_connect_and_task(world):
     mine = call(w, "/api/sessions")[1]["sessions"]                     # тестировщик видит её с понятным именем
     assert [(s["id"], s["name"]) for s in mine] == [(d["id"], "Сверка счетов")] and mine[0]["owner_here"]
     assert len(w["own"].windows()) == w["own_n"]
+
+
+# ---------- «Позвать на помощь», /help, сводка (п. 7, 8) ----------
+class PanelApi(FakeApi):
+    def __call__(self, method, files=None, **params):
+        self.calls.append((method, params))
+        if method == "getChatMenuButton":
+            return {"type": "web_app", "web_app": {"url": "https://panel.example/"}}
+        return {}
+
+
+def journal(root, slug, path, rows):
+    from gas_pult import transcripts
+    d = transcripts.project_dir(path, root / slug / "config/claude")
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+
+
+def now_iso(shift=0):
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() + shift))
+
+
+def test_help_call_from_panel(world):
+    w = world
+    w["p"].pult.api = PanelApi()
+    wid = open_tester_session(w)
+    path = call(w, "/api/sessions")[1]["sessions"][0]["path"]
+    journal(w["root"], "demo", path, [
+        {"type": "user", "timestamp": now_iso(-60), "message": {"content": "сверь счета"}},
+        {"type": "assistant", "timestamp": now_iso(-30), "message": {"content": [{"type": "text",
+         "text": "Нашёл расхождение.\n\nКакой из двух счетов считать верным?"}], "stop_reason": "end_turn"}}])
+    assert call(w, "/api/help/call", {"w": w["owner_w"]})[0] == 404          # чужое окно — «окна нет»
+    code, d = call(w, "/api/help/call", {"w": wid})
+    assert code == 200 and d["ok"]
+    sent = [x for m, x in w["p"].pult.api.calls if m == "sendMessage"]
+    assert [x["chat_id"] for x in sent] == [OWNER]
+    assert "Тестировщик зовёт на помощь" in sent[0]["text"] and "«Демо для кафе»" in sent[0]["text"]
+    assert "Какой из двух счетов считать верным?" in sent[0]["text"]
+    url = sent[0]["reply_markup"]["inline_keyboard"][0][0]["web_app"]["url"]
+    assert url == f"https://panel.example/?session={wid}"
+    code, d = call(w, "/api/help/call", {"w": wid})                         # повтор сразу — не спамим
+    assert code == 400 and "подождите" in d["error"]
+    assert call(w, "/api/help/call", {"w": wid}, who=MEMBER)[0] == 400       # не тестировщик — нельзя
+
+
+def test_bot_help_and_report(world):
+    w = world
+    wid = open_tester_session(w)
+    path = call(w, "/api/sessions")[1]["sessions"][0]["path"]
+    journal(w["root"], "demo", path, [
+        {"type": "user", "timestamp": now_iso(-3 * 86400), "message": {"content": "старое сообщение"}},
+        {"type": "user", "timestamp": now_iso(-120), "message": {"content": "загрузи выгрузку из СБИС"}},
+        {"type": "assistant", "timestamp": now_iso(-100), "message": {"content": [{"type": "text",
+         "text": "API Error: 500 Internal server error"}], "stop_reason": "end_turn"}}])
+    b = bot.Pult(Config(token="t", owners=[OWNER], session="test"))
+    b.api = PanelApi()
+    b.people.add(TESTER, "member", "Тестировщик", tenant="demo")
+    b.people.accept(TESTER)
+    b.people.set_country(TESTER, chosen="NL")
+    upd = {"message": {"message_id": 1, "chat": {"id": TESTER}, "from": {"id": TESTER}, "text": "/help"}}
+    assert b.admitted(upd)
+    b.handle(upd)
+    to_owner = [x for m, x in b.api.calls if m == "sendMessage" and x["chat_id"] == OWNER]
+    assert to_owner and "зовёт на помощь" in to_owner[0]["text"] and wid in json.dumps(to_owner[0]["reply_markup"])
+    assert any("Позвал владельца" in x["text"] for m, x in b.api.calls
+               if m == "sendMessage" and x["chat_id"] == TESTER)
+    b.handle(upd)                                                       # второй раз сразу — без нового сообщения
+    assert len([1 for m, x in b.api.calls if m == "sendMessage" and x["chat_id"] == OWNER]) == 1
+    # сводка: что делали (только за сутки), ошибки; обычному участнику /help не открывает ничего
+    rep = testers.report(b.people, b.meter)
+    assert "«Демо для кафе» — Тестировщик" in rep and "загрузи выгрузку из СБИС" in rep
+    assert "старое сообщение" not in rep and "Ошибки (1)" in rep
+    b.api.calls.clear()
+    b.on_message({"message_id": 2, "chat": {"id": OWNER}, "from": {"id": OWNER}, "text": "/testers"})
+    assert any("Тестировщики за 24 ч" in x["text"] for m, x in b.api.calls if m == "sendMessage")
+    b.people.remove(TESTER)
+    assert testers.report(b.people, b.meter) == ""                       # тестировщиков нет — сводки нет

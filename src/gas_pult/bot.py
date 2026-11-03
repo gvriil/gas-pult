@@ -45,6 +45,7 @@ from gas_pult import (
     setup,
     tenants,
     terms,
+    testers,
     transcripts,
     usage,
     voice,
@@ -82,14 +83,15 @@ TESTER_HELLO = ("🧪 Вы — тестировщик демо-простран�
                 "1. Нажмите кнопку «📱 Панель» внизу чата — откроется ваше пространство.\n"
                 "2. «Новая сессия» — агент запустится только в нём: ни чужих окон, ни файлов сервера.\n"
                 "3. Пишите агенту задания так, как написали бы сотруднику.\n\n"
-                "Если что-то непонятно или агент застрял — напишите владельцу пульта.")
+                "Если что-то непонятно или агент застрял — «Позвать на помощь» в панели или /help здесь: "
+                "владелец получит вашу сессию и подключится.")
 
 
 def tester_start(u: dict, ppl) -> bool:
     """/start и /menu от тестировщика демо-пространства — бот отвечает инструкцией (остальное ему не работает)."""
     m = u.get("message") or {}
     uid = (m.get("from") or {}).get("id")
-    return (m.get("text") or "").strip() in ("/start", "/menu") and bool(ppl.tenant(uid))
+    return (m.get("text") or "").strip() in ("/start", "/menu", "/help") and bool(ppl.tenant(uid))
 
 
 def public(u: dict) -> bool:
@@ -178,6 +180,7 @@ class Pult:
         self.logins = TgLogins(cfg.data / "tg_logins.json")
         self.mail = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # письма-оповещения
         self.requests: dict[int, dict] = {}                # кто просит доступ: Telegram ID → имя, @username
+        self.help_calls: dict[int, float] = {}             # тестировщик → когда звал на помощь (/help)
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
@@ -945,6 +948,7 @@ class Pult:
                 if self.digest.due(self.cfg.digest_at, now):
                     self.digest.mark_sent(now.strftime("%Y-%m-%d"))      # сначала отметка — не слать дважды
                     self.send_digest()
+                    self.send_testers()                          # и сводка по тестировщикам (п. 8 задачи 31)
             except Exception as e:
                 print("digest:", self.api.redact(e), flush=True)
             time.sleep(60)
@@ -1764,6 +1768,25 @@ class Pult:
         self.send(chat, f"Готово: {who} — тестировщик в пространстве «{slug}». Убрать — «Настройки» → «Люди».")
         self.notify(int(uid), TESTER_HELLO)
 
+    def tester_help(self, chat: int, uid: int):
+        """/help тестировщика: владельцам — кто, сессия (где ждут ответа или самая свежая), последний вопрос агента."""
+        slug = self.people.tenant(uid)
+        now = time.time()
+        if now - self.help_calls.get(uid, 0) < testers.HELP_EVERY:
+            return self.send(chat, "Владелец уже получил сообщение — он подключится. Подождите несколько минут.")
+        self.help_calls[uid] = now
+        person = next((p for p in self.people.list() if p["id"] == uid), {"id": uid})
+        text, kbd = testers.help_message(person, slug, testers.pick(testers.windows(slug)), self.panel_url())
+        self.broadcast(text, **({"reply_markup": kbd} if kbd else {}))
+        self.send(chat, "🆘 Позвал владельца пульта — он получил сообщение с вашей сессией и подключится.")
+
+    def send_testers(self, chat: int | None = None):
+        """Сводка по тестировщикам: по расписанию — владельцам (пусто — молчим), /testers — в чат."""
+        text = testers.report(self.people, self.meter)
+        if chat:
+            return self.send(chat, text or "Тестировщиков нет.")
+        return text and self.broadcast(text)
+
     def tester_start(self, chat: int, uid: int):
         """/start тестировщика: коротко, что можно, и кнопка «📱 Панель» (команды пульта ему не работают)."""
         self.menu_for(uid)
@@ -1934,6 +1957,8 @@ class Pult:
         uid = (m.get("from") or {}).get("id")
         if t in ("/start", "/menu") and uid not in self.cfg.owners and self.people.tenant(uid):
             return self.tester_start(chat, uid)
+        if t == "/help" and uid not in self.cfg.owners and self.people.tenant(uid):
+            return self.tester_help(chat, uid)
         if m.get("contact"):
             return self.on_contact(m)
         if t == "/start phone":                            # из панели: «подтвердите номер в боте»
@@ -1963,6 +1988,8 @@ class Pult:
                 return fn(chat)
         if t == "/digest":
             return self.send_digest(chat)
+        if t == "/testers":
+            return self.send_testers(chat)
         if t == "/modules":
             return self.show_modules(chat)
         if t in ("/start", "/menu", "/help"):
