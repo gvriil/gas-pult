@@ -15,6 +15,17 @@
   `conftest` ставит временные `GAS_PULT_DATA_DIR` и `GAS_PULT_CONFIG_DIR`.
 
 ### Добавлено
+- **Изолированные демо-пространства — основа (задача 25, часть A).** Пространство — пользователь Linux
+  `pult_t_<slug>` без входа в систему, папка `/srv/pult/tenants/<slug>` (0700/0710) на своём образе ext4 (по умолчанию
+  2 ГБ), свой сервер tmux — служба systemd в slice `MemoryMax=1G`, `CPUQuota=80%`, `TasksMax=128` с песочницей
+  (`ProtectHome`, `ProtectProc=invisible`), своя папка Claude Code. Скрипты владельца (через sudo, сам пульт их не
+  запускает): `bin/pult-tenant` — create, list, backup, destroy (сначала бэкап, затем корзина), purge (второе
+  подтверждение), key (ключ API профиля), login/logout (ручной вход в Claude — «только для ваших тестов»);
+  `bin/pult-tenant-setup` — группы, правило sudo (проверка `visudo`), `hidepid=invisible` для /proc, откат каждого
+  шага. Модель по умолчанию — профиль с ключом API (OpenRouter, GLM, DeepSeek), для юрисдикции RU — только российские
+  профили; подписка владельца не копируется. Модуль `tenants.py` — API для экрана пространств (`status`, `tmux_of`,
+  `new_window`, `command`), `Tmux(user=…)` — команды через `sudo -n -u … tmux -S …`. Без настройки функция выключена,
+  пульт работает как раньше. docs/TENANTS.md.
 - **Вход через Google и Яндекс ID (задача 25 D).** Новый модуль `oidc.py` — только стандартная библиотека:
   authorization code flow + PKCE (S256), одноразовый `state` (10 минут, привязан к cookie браузера `gp_oidc`), `nonce`,
   сверка `redirect_uri`. `id_token` Google проверяется полностью: подпись RS256 по JWKS (PKCS#1 v1.5 на `pow`),
