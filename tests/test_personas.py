@@ -140,17 +140,21 @@ def call(base, path, body=None, token=""):
 def test_persona_api(server):
     panel, base = server
     owner, member, viewer = panel.auth.issue(1), panel.auth.issue(2), panel.auth.issue(3)
-    st, m = call(base, "/api/meta", token=owner)
+    st, m = call(base, "/api/meta", token=member)
     assert st == 200 and m["ui"]["persona"] == "developer" and m["ui"]["onboarded"] is False   # ещё не выбирал
-    assert m["ui"]["access"] == "owner" and m["prefs"]["simple"] is False
-    st, v = call(base, "/api/persona", {"persona": "business_owner"}, owner)
+    assert m["ui"]["access"] == "staff" and m["prefs"]["simple"] is False
+    st, v = call(base, "/api/persona", {"persona": "business_owner"}, member)
     assert st == 200 and v["simple"] is True and v["onboarded"] is True
-    assert call(base, "/api/meta", token=owner)[1]["prefs"]["simple"] is True          # простой режим — за ролью
-    st, v = call(base, "/api/persona", {"add": {"cap.dev_terminal": True}}, owner)
+    assert call(base, "/api/meta", token=member)[1]["prefs"]["simple"] is True         # простой режим — за ролью
+    st, v = call(base, "/api/persona", {"add": {"cap.dev_terminal": True}}, member)
     assert "cap.dev_terminal" in v["caps"] and v["persona"] == "business_owner"
     # прежний переключатель «Простой режим» = смена роли целиком
-    assert call(base, "/api/prefs", {"simple": False}, owner)[1]["simple"] is False
-    assert call(base, "/api/persona", token=owner)[1]["persona"] == "developer"
+    assert call(base, "/api/prefs", {"simple": False}, member)[1]["simple"] is False
+    assert call(base, "/api/persona", token=member)[1]["persona"] == "developer"
+    # владелец — всегда «Моё пространство»: экран роли ему не показывается, сменить вид на сервере нельзя
+    m = call(base, "/api/meta", token=owner)[1]
+    assert m["ui"]["onboarded"] is True and m["ui"]["own_space"] is True and m["prefs"]["simple"] is False
+    assert call(base, "/api/persona", {"persona": "business_owner"}, owner)[0] == 400
     # и наблюдатель выбирает себе вид
     assert call(base, "/api/persona", {"persona": "student"}, viewer)[1]["access"] == "guest"
     assert call(base, "/api/persona", {"persona": "boss"}, member)[0] == 400

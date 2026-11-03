@@ -13,5 +13,10 @@ def no_default_tmux(monkeypatch):
     d = tempfile.mkdtemp(prefix="gp-", dir="/tmp")
     monkeypatch.setenv("GAS_PULT_TMUX_SOCKET", os.path.join(d, "none"))
     monkeypatch.delenv("TMUX", raising=False)
+    # данные и настройки пульта — всегда во временной папке: тест не может задеть боевые people.json, ui.json,
+    # prefs.json владельца (свой фикстур файла может поставить другую временную папку — он важнее)
+    monkeypatch.setenv("GAS_PULT_DATA_DIR", os.path.join(d, "data"))
+    monkeypatch.setenv("GAS_PULT_CONFIG_DIR", os.path.join(d, "cfg"))
+    os.makedirs(os.path.join(d, "data"))
     yield
     shutil.rmtree(d, ignore_errors=True)
