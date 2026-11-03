@@ -12,6 +12,10 @@
 #   anon — ещё не вошёл (экран входа). Гостю — только экраны offer.* и действия go:offer.*.
 # Только реальные экраны: новый экран — сначала в панели, потом сюда (тест проверит оба направления).
 #
+# [[persona]] — роль интерфейса (personas.py): tone / tone_en — тон ответов модели (итерация 2), [[persona.faq]] — её
+#   вопросы, первыми чипами на любом экране (на двух языках). У [[action]] — required_cap: возможность, без которой
+#   экрана нет; помощник предложит «Включить и перейти», если права позволяют, иначе переход не покажет.
+#
 # Тексты — коротко, по-русски, без путей, ключей, адресов серверов и команд терминала: их видит каждый.
 
 version = 1
@@ -21,16 +25,19 @@ version = 1
 id = "go:sessions"
 title = "Сессии"
 roles = ["owner", "member", "viewer"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:new-session"
 title = "Новая сессия"
 roles = ["owner", "member"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:new-folder"
 title = "Новая папка"
 roles = ["owner", "member"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:modules"
@@ -41,51 +48,64 @@ roles = ["owner", "member", "viewer"]
 id = "go:scenarios"
 title = "Примерить на себя — день с агентом"
 roles = ["owner", "member", "viewer"]
+required_cap = "cap.scenarios_try"
 
 [[action]]
 id = "go:commands"
 title = "Команды из всех сессий"
 roles = ["owner", "member", "viewer"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:integrations"
 title = "Интеграции"
 roles = ["owner", "member"]
+required_cap = "cap.dev_models_mcp"
 
 [[action]]
 id = "go:models"
 title = "Модели и ключи"
+title_en = "Models of other providers"
 roles = ["owner"]
+required_cap = "cap.dev_models_mcp"
 
 [[action]]
 id = "go:voice"
 title = "Голос озвучки"
 roles = ["owner"]
+required_cap = "cap.dev_models_mcp"
 
 [[action]]
 id = "go:switch"
 title = "Другая сессия"
 roles = ["owner", "member", "viewer"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:session.chat"
 title = "Переписка сессии"
 roles = ["owner", "member", "viewer"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:session.screen"
 title = "Экран сессии"
+title_en = "Terminal screen"
 roles = ["owner", "member", "viewer"]
+required_cap = "cap.dev_terminal"
 
 [[action]]
 id = "go:session.menu"
 title = "Меню действий сессии"
 roles = ["owner", "member"]
+required_cap = "cap.dev_sessions"
 
 [[action]]
 id = "go:session.model"
 title = "Модель сессии"
+title_en = "Session model"
 roles = ["owner", "member"]
+required_cap = "cap.dev_models_mcp"
 
 [[action]]
 id = "go:settings"
@@ -101,11 +121,13 @@ roles = ["owner", "member", "viewer"]
 id = "go:settings.cost"
 title = "Расход и лимиты"
 roles = ["owner", "member"]
+required_cap = "cap.dev_cost_tokens"
 
 [[action]]
 id = "go:settings.limits"
 title = "Изменить лимиты"
 roles = ["owner"]
+required_cap = "cap.dev_cost_tokens"
 
 [[action]]
 id = "go:settings.people"
@@ -1217,3 +1239,108 @@ id = "g-cost"
 q = "Сколько стоит?"
 a = "Вход ничего не списывает: сессии не создаются и модель не тратится до решения владельца. Стоимость называет GASTECH."
 actions = ["go:offer.connect.login"]
+
+# ---------- роли интерфейса: тон и первые чипы ----------
+[[persona]]
+id = "business_owner"
+tone = "Говори языком владельца бизнеса: выручка, клиенты, смена, документы. Никаких слов про сервер, токены и терминал."
+tone_en = "Speak like a business owner would: revenue, clients, shifts, documents. No words about servers, tokens or terminals."
+
+[[persona.faq]]
+id = "bo-yes"
+q = "Что изменится, если я нажму «Да»?"
+a = "Агент сделает одно действие, о котором спросил, — только его и только один раз. Пункты «больше не спрашивать» спрятаны отдельно. Перед отправкой людям агент показывает черновик."
+q_en = "What changes if I tap «Yes»?"
+a_en = "The agent does the one action it asked about — only that, and only once. «Don't ask again» options are hidden separately. Before sending anything to people, the agent shows a draft."
+actions = ["go:simple.chat"]
+
+[[persona.faq]]
+id = "bo-undo"
+q = "Как отменить последнее действие?"
+a = "Кнопки «Отменить» пока нет — журнал и откат готовятся. Напишите агенту «верни как было»: он покажет, что изменил, и предложит, как вернуть. Отправленные письма вернуть нельзя — поэтому агент спрашивает перед отправкой."
+q_en = "How do I undo the last action?"
+a_en = "There is no «Undo» button yet — the log and undo are coming. Write to the agent «put it back»: it will show what it changed and offer how to restore it. Sent messages can't be recalled — that's why the agent asks before sending."
+actions = ["go:simple.chat"]
+
+[[persona]]
+id = "point_admin"
+tone = "Говори коротко и по делу для администратора точки: что проверить, кому ответить, какую кнопку нажать."
+tone_en = "Be short and practical for a site administrator: what to check, whom to answer, which button to tap."
+
+[[persona.faq]]
+id = "pa-first"
+q = "Что проверить в первую очередь?"
+a = "Карточки «Ждут вашего Да» сверху — агенты ждут решения. Потом разделы «Общение» и «Бумаги»: ответы клиентам и документы смены."
+q_en = "What should I check first?"
+a_en = "The «Waiting for your Yes» cards on top — agents are waiting for a decision. Then «Messages» and «Papers»: replies to clients and shift documents."
+actions = ["go:simple.chat"]
+
+[[persona.faq]]
+id = "pa-reply"
+q = "Кому ответить сейчас?"
+a = "Нажмите «Общение» над разговором: останутся агенты, которые отвечают клиентам, и примеры просьб. Черновики ответов агент показывает до отправки."
+q_en = "Whom should I answer now?"
+a_en = "Tap «Messages» above the conversation: only the agents that answer clients stay, with example requests. The agent shows reply drafts before sending."
+actions = ["go:simple.chat"]
+
+[[persona]]
+id = "project_manager"
+tone = "Фокусируйся на статусах поручений, сроках, узких местах и журнале выполнения."
+tone_en = "Focus on assignment statuses, deadlines, bottlenecks and the execution log."
+
+[[persona.faq]]
+id = "pm-late"
+q = "Какие задачи сегодня опаздывают?"
+a = "Доски задач и сроков пока нет — она готовится. Сейчас попросите агента «сводку поручений на сегодня: что сделано, что задерживается»; кто ждёт решения — в «Ждут вашего Да»."
+q_en = "Which tasks are late today?"
+a_en = "There is no tasks and deadlines board yet — it's coming. For now ask the agent for «today's assignments: what's done, what's late»; who waits for a decision is in «Waiting for your Yes»."
+actions = ["go:simple.chat", "go:settings.caps"]
+
+[[persona.faq]]
+id = "pm-week"
+q = "Как выгрузить отчёт за неделю?"
+a = "Попросите агента: «сделай отчёт за неделю таблицей» — файл появится в переписке. Каждую неделю сам — агент из модуля с расписанием («Подключить агента»)."
+q_en = "How do I export a weekly report?"
+a_en = "Ask the agent: «make a weekly report as a table» — the file appears in the conversation. Every week on its own — an agent from a module with a schedule («Connect an agent»)."
+actions = ["go:simple.chat", "go:simple.new-agent"]
+
+[[persona]]
+id = "student"
+tone = "Объясняй дружелюбно и пошагово, как наставник. Напоминай, что в демо и песочнице ничего нельзя сломать."
+tone_en = "Explain kindly and step by step, like a mentor. Remind that nothing can break in the demo and sandbox."
+
+[[persona.faq]]
+id = "explain"
+q = "Объясни на пальцах, что здесь происходит"
+a = "Назначение экрана и шаги — простыми словами."
+q_en = "Explain in plain words what's going on here"
+a_en = "What this screen is for and the steps — in plain words."
+
+[[persona.faq]]
+id = "st-safe"
+q = "Можно ли здесь что-то сломать?"
+a = "В демо — нет: всё на выдуманных примерах. В настоящем пространстве агент спрашивает перед каждым действием — без вашего «Да» он ничего не меняет и никому не пишет."
+q_en = "Can I break anything here?"
+a_en = "Not in the demo: everything is made-up examples. In a real workspace the agent asks before every action — without your «Yes» it changes nothing and writes to no one."
+actions = ["go:simple.chat"]
+
+[[persona]]
+id = "developer"
+tone = "Говори кратко и технически точно: сессии tmux, профили моделей, MCP-коннекторы, ветки git и коды ошибок."
+tone_en = "Be brief and technically precise: tmux sessions, model profiles, MCP connectors, git branches and error codes."
+
+[[persona.faq]]
+id = "dev-log"
+q = "Где лог ошибок сессии?"
+a = "Вкладка «Экран» открытой сессии — терминал tmux как есть: ошибки Claude Code и вывод команд. Ошибки API в переписке помечены отдельно."
+q_en = "Where is the session error log?"
+a_en = "The «Screen» tab of an open session is the tmux terminal as is: Claude Code errors and command output. API errors are marked in the conversation."
+actions = ["go:session.screen"]
+
+[[persona.faq]]
+id = "dev-model"
+q = "Как переключить сессию на GLM или DeepSeek?"
+a = "Ключ поставщика — «Интеграции» → «Модели других поставщиков»; затем новая сессия на этом профиле или меню сессии → «Модель»."
+q_en = "How do I switch a session to GLM or DeepSeek?"
+a_en = "Provider key — «Integrations» → «Models of other providers»; then a new session on that profile or the session menu → «Model»."
+actions = ["go:models", "go:session.model"]
