@@ -172,7 +172,15 @@
   .terms ol { margin: 0 0 12px; padding-left: 22px; } .terms li { margin: 0 0 10px; color: var(--text-primary); }
   .terms li::marker { color: var(--text-muted); }
   .terms .full { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary); text-decoration: none; font-size: calc(14px * var(--fz, 1)); margin: 0 0 14px; }
-  .terms .btn { margin: 0 0 8px; } #terms, #country { max-width: 620px; margin: 8px auto 0; }
+  .terms .btn { margin: 0 0 8px; } #terms, #country, #persona { max-width: 620px; margin: 8px auto 0; }
+  /* Роли интерфейса (personas.py): экран выбора роли и скрытие частей по возможностям (body.nocap-…) */
+  .pcards { display: grid; gap: 10px; margin: 0 0 12px; } .pcard { display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%;
+    padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer; }
+  .pcard:hover { border-color: var(--accent-primary); } .pcard.on { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .pcard .i { flex: none; width: 22px; height: 22px; color: var(--accent-primary); margin-top: 2px; }
+  .pcard b { display: block; font-size: calc(16px * var(--fz, 1)); margin: 0 0 3px; } .pcard small { display: block; color: var(--text-muted); font-size: calc(13.5px * var(--fz, 1)); line-height: 1.4; }
+  body.nocap-assistant_guide #helpBtn, body.nocap-assistant_guide #sHelp, body.nocap-dev_terminal [data-tab="screen"],
+  body.nocap-dev_models_mcp #homeSeg [data-v="integrations"], body.nocap-dev_cost_tokens .chip.cost { display: none !important; }
   /* Страна человека: выбор кнопками частых или кодом; номер подтверждается в боте; отметка страны по IP */
   .cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 0 0 14px; }
   .cc-grid button { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-subtle);
@@ -721,6 +729,7 @@
 
   <section id="terms" hidden><div class="panel terms" id="termsBox"></div></section>
   <section id="country" hidden><div class="panel terms" id="countryBox"></div></section>
+  <section id="persona" hidden><div class="panel terms" id="personaBox"></div></section>
 
   <section id="home" hidden>
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
@@ -1110,9 +1119,9 @@ function confirmDanger(text, go) {
 // ---------- навигация ----------
 function show(v) {
   view = v; if (v !== "mcpForm") formBack = null;
-  for (const id of ["login", "terms", "country", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
-  const gate = v === "login" || v === "terms" || v === "country";  // вход, условия, страна — без списка, меню и настроек
-  const two = split() && !["terms", "country"].includes(v);       // условия и страна — одной колонкой, без списка сессий
+  for (const id of ["login", "terms", "country", "persona", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
+  const gate = ["login", "terms", "country", "persona"].includes(v);   // вход, условия, страна, роль — без списка и меню
+  const two = split() && !["terms", "country", "persona"].includes(v);  // одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
   applyWide(); renderRail();
   if (two && !gate) $("home").hidden = false;                     // список всегда на виду
@@ -3462,7 +3471,7 @@ $("settingsBtn").onclick = () => {
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
-    { label: "Простой режим", icon: "chat", sub: "только разговор с агентом, без технических экранов", run: () => switchMode(true) },
+    ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
     { label: "Язык: " + (LANG === "en" ? "English" : "русский"), icon: "globe", sub: "простого режима и экрана входа — нажмите, чтобы сменить", run: () => setLang(LANG === "en" ? "ru" : "en") },
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
     ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOURS[k].title, icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, интеграции, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
@@ -3553,6 +3562,7 @@ function helpViewId() {
   if (view === "login") return hv("login");
   if (view === "terms") return hv("terms");
   if (view === "country") return hv("country");
+  if (view === "persona") return hv("persona");
   if (view === "mcpForm") return formHelp || hv("modules");
   if (view === "session") return !$("menu").hidden ? hv("session.menu") : tab === "screen" ? hv("session.screen") : hv("session.chat");
   if (homeView === "sessions" && setupData && !setupData.ready) return hv("setup");
@@ -3602,6 +3612,8 @@ const HELP_GO = {                                      // действие ка�
   "go:simple.agents": () => simpleGo().then(sAgents),
   "go:simple.new-agent": () => simpleGo().then(sNewAgent),
   "go:simple.settings": () => simpleGo().then(sSettings),
+  "go:settings.caps": () => capsSheet(),
+  "go:persona": () => showPersona(true),
 };
 function go(id) {
   const f = HELP_GO[id];
@@ -3829,6 +3841,8 @@ async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
+  UI = meta.ui || null; applyCaps();
+  if (UI && !UI.onboarded && (!DEMO || params.has("persona"))) return showPersona();   // потом — роль (один раз)
   if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
   $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";  // после первого экрана на английском
   document.body.dataset.role = meta.role || "owner";             // роль: владелец / участник / наблюдатель
@@ -3884,6 +3898,59 @@ async function start() {
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
   goFromLink();
 }
+
+// ---------- роли интерфейса (personas.py, docs/MINI_APP.md#роли): вид панели отдельно от прав ----------
+// Сервер присылает вид в /api/meta (ui): роль, возможности cap.* (уже с потолком по правам), справочник. Панель только
+// показывает или прячет части (body.nocap-…) и выбирает экран: без «Сессий» (cap.dev_sessions) — простой режим (чат).
+let UI = null;
+const PERSONA_ICON = { business_owner: "coin", point_admin: "pin", project_manager: "tasks", student: "book", developer: "term" };
+const cap = (c) => !UI || UI.caps.includes("cap." + c);
+function applyCaps() {
+  for (const c of UI?.catalog?.caps || []) document.body.classList.toggle("no" + c.id.replace(".", "-"), !UI.caps.includes(c.id));
+}
+const personaTitle = (id) => UI?.catalog?.personas.find((p) => p.id === id)?.title || id;
+async function showPersona(change) {                  // первый вход — 5 карточек; из настроек — «Сменить роль целиком»
+  await dictReady;
+  if (SIM.on) simpleHide();
+  clearInterval(start.timer); start.timer = null;
+  show("persona"); $("title").textContent = T("login.brand"); setSub(`<span>${esc(T("persona.sub.short"))}</span>`);
+  const list = UI?.catalog?.personas || [];
+  $("personaBox").innerHTML = `<h2 class="serif">${esc(T("persona.title"))}</h2><p class="ver">${esc(T(change ? "persona.change.sub" : "persona.sub"))}</p>
+    <div class="pcards" role="group" aria-label="${esc(T("persona.title"))}">${list.map((p) => `<button class="pcard${change && p.id === UI.persona ? " on" : ""}" data-persona="${esc(p.id)}" aria-pressed="${!!change && p.id === UI.persona}">${ic(PERSONA_ICON[p.id] || "spark")}<span><b>${esc(p.title)}</b><small>${esc(p.sub)}</small></span></button>`).join("")}</div>
+    ${change ? `<button class="btn ghost" id="personaBack">${esc(T("s.close"))}</button>` : ""}<div id="personaResult"></div>`;
+  $("personaBox").querySelectorAll("[data-persona]").forEach((b) => (b.onclick = () => pickPersona(b.dataset.persona, b)));
+  $("personaBack")?.addEventListener("click", () => location.reload());
+}
+async function pickPersona(id, btn) {
+  await busy(btn, T("persona.saving"), async () => {
+    try { UI = await api("/api/persona", { persona: id }); haptic("notificationOccurred", "success"); }
+    catch (e) { $("personaResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
+    if (DEMO) { const u = new URL(location.href); u.searchParams.delete("persona"); UI.simple ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("ui", id); u.searchParams.set("lang", LANG); return location.replace(u); }
+    location.reload();                                // вид сменился целиком — панель заново, данные те же
+  });
+}
+function capsSheet() {                                // «Возможности панели»: тумблеры по-человечески и смена роли
+  if (!UI) return;
+  const ceil = new Set(UI.ceiling), rows = UI.catalog.caps.map((c, i, all) => {
+    const on = UI.caps.includes(c.id), locked = !ceil.has(c.id), soon = !c.ready;
+    const note = locked ? T("caps.locked") : soon ? T("caps.soon") : "";
+    const head = c.dev && !all[i - 1]?.dev ? `<p class="s-lbl">${esc(T("caps.dev"))}</p>` : "";
+    return `${head}<div class="scn-opts">${sChip(on, `data-cap="${esc(c.id)}"${locked || soon ? " disabled" : on ? "" : ' aria-pressed="false"'}`, c.title, on ? ic("check") : "")}${note ? `<span class="note">${esc(note)}</span>` : ""}</div>`;
+  }).join("");
+  const html = `<p class="note">${esc(T("caps.sub"))}</p>${rows}
+    <p class="s-lbl">${esc(T("caps.role", { role: personaTitle(UI.persona) }))}</p>
+    <div class="scn-opts">${sChip(false, 'data-role="1"', T("caps.change"), ic("refresh"))}</div><p class="note">${esc(T("caps.change.sub"))}</p>`;
+  sSheet(hv("settings.caps"), T("caps.title"), html, async (b, bg) => {
+    if (b.dataset.role) { bg.remove(); return showPersona(true); }
+    if (!b.dataset.cap) return;
+    const was = UI.simple, on = !UI.caps.includes(b.dataset.cap);
+    try { UI = await api("/api/persona", { add: { [b.dataset.cap]: on } }); haptic("selectionChanged"); }
+    catch (e) { return toast(e.message, 4000); }
+    if (UI.simple !== was) return DEMO ? location.replace(demoUrl()) : location.reload();   // сменился экран целиком
+    applyCaps(); bg.remove(); capsSheet();
+  });
+}
+function demoUrl() { const u = new URL(location.href); UI.simple ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("ui", UI.persona); return u; }
 
 // ---------- простой режим (docs/SIMPLE-MODE.md): один разговор с агентом, без английских слов и техники ----------
 // Включается настройкой человека на сервере (/api/prefs; localStorage — только кэш языка). Строки — словари
@@ -3945,7 +4012,7 @@ $("loginLang").onclick = (e) => { const b = e.target.closest("[data-lang]"); if 
 async function simpleStart() {
   await dictReady;
   SIM.on = true; document.body.classList.add("simple-on");
-  for (const id of ["login", "terms", "country"]) $(id).hidden = true;
+  for (const id of ["login", "terms", "country", "persona"]) $(id).hidden = true;
   $("simple").hidden = false; sPaint();
   try { tg?.BackButton.hide(); } catch (e) {}
   await sLoad(true);
@@ -4199,14 +4266,16 @@ function sSettings() {
   const html = `<p class="s-lbl">${esc(T("set.lang"))}</p><div class="scn-opts">${LANGS.map((l) => sChip(l === LANG, `data-lang="${l}"`, T("set.lang." + l))).join("")}</div>
     ${SIM.w && canNew() ? `<div class="scn-opts">${sChip(false, 'data-reply="1"', T("set.answers"), ic("chat"))}</div><p class="note">${esc(T("set.answers.sub"))}</p>` : ""}
     <p class="s-lbl">${esc(T("set.theme"))}</p><div class="scn-opts">${["auto", "light", "dark"].map((m) => sChip(m === mode, `data-theme="${m}"`, T("set.theme." + m))).join("")}</div>
-    <p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
-    <div class="scn-opts">${sChip(false, 'data-full="1"', T("set.simple.off"))}</div><p class="note">${esc(T("set.simple.off.sub"))}</p>
+    ${UI ? `<p class="s-lbl">${esc(T("caps.title"))}</p><p class="note">${esc(T("caps.entry.sub", { role: personaTitle(UI.persona) }))}</p>
+    <div class="scn-opts">${sChip(false, 'data-caps="1"', T("caps.open"), ic("settings"))}</div>` : `<p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
+    <div class="scn-opts">${sChip(false, 'data-full="1"', T("set.simple.off"))}</div><p class="note">${esc(T("set.simple.off.sub"))}</p>`}
     <div class="scn-opts">${sChip(false, 'data-reload="1"', T("set.reload"), ic("refresh"))}${meta?.via === "browser" ? sChip(false, 'data-logout="1"', T("set.logout"), ic("power")) : ""}</div>`;
   sSheet(hv("simple.settings"), T("set.title"), html, async (b, bg) => {
     if (b.dataset.lang) { haptic("selectionChanged"); await setLang(b.dataset.lang); bg.remove(); return sSettings(); }
     if (b.dataset.theme) { store("theme", b.dataset.theme); applyTheme(); bg.remove(); return sSettings(); }
     if (b.dataset.reply) { bg.remove(); return sReply(); }
     if (b.dataset.full) { bg.remove(); return switchMode(false); }
+    if (b.dataset.caps) { bg.remove(); return capsSheet(); }
     if (b.dataset.reload) return reloadPanel();
     if (b.dataset.logout) { try { await api("/api/logout", {}); } catch (e) {} location.reload(); }
   });
@@ -4228,6 +4297,23 @@ function simpleDemoHist() {
   const x = simpleDemoText();
   return [{ i: 1, role: "user", text: x.ask, ts: "2026-11-03 07:58" }, { i: 2, role: "assistant", text: x.reply, ts: "2026-11-03 08:00" },
           { i: 3, role: "user", text: x.ask2, ts: "2026-11-03 08:02" }];
+}
+
+// Демо ролей (?demo&persona=1 — экран выбора, &ui=<роль>): тот же справочник, что personas.catalog() — тест сверяет.
+const DEMO_PERSONAS = {"ru":{"caps":[{"id":"cap.four_tabs","title":"4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение","ready":true,"dev":false},{"id":"cap.approvals_yes_no","title":"Карточки «Ждут вашего Да» наверху","ready":true,"dev":false},{"id":"cap.scenarios_try","title":"Примерочная: сценарии и калькулятор","ready":true,"dev":false},{"id":"cap.assistant_guide","title":"Помощник «Подсказать» на каждом экране","ready":true,"dev":false},{"id":"cap.pm_tasks_deadlines","title":"Доска задач, сроков и отчётов","ready":false,"dev":false},{"id":"cap.audit_journal","title":"Журнал действий и откат","ready":false,"dev":false},{"id":"cap.sandbox_safe","title":"Учебная песочница с уроками","ready":false,"dev":false},{"id":"cap.dev_sessions","title":"Сессии, папки и ветки","ready":true,"dev":true},{"id":"cap.dev_terminal","title":"Экран терминала и клавиши","ready":true,"dev":true},{"id":"cap.dev_models_mcp","title":"Модели, ключи и подключения (MCP)","ready":true,"dev":true},{"id":"cap.dev_cost_tokens","title":"Подробный расход: токены и стоимость","ready":true,"dev":true}],"personas":[{"id":"business_owner","title":"Владелец или директор бизнеса","sub":"Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide"],"simple":true},{"id":"point_admin","title":"Сотрудник или администратор точки","sub":"Заявки, расписание, клиенты и документы на точке.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.assistant_guide"],"simple":true},{"id":"project_manager","title":"Руковожу проектами и задачами","sub":"Сроки, поручения помощникам, отчёты и журнал.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.pm_tasks_deadlines","cap.audit_journal"],"simple":false},{"id":"student","title":"Учусь или хочу примерить","sub":"Безопасно попробовать на готовых примерах.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide","cap.sandbox_safe"],"simple":true},{"id":"developer","title":"Разработчик или инженер","sub":"Сессии, терминал, модели, подключения и расход — как сейчас.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.audit_journal","cap.dev_sessions","cap.dev_terminal","cap.dev_models_mcp","cap.dev_cost_tokens"],"simple":false}],"sections":[{"id":"search","title":"Поиск"},{"id":"analytics","title":"Цифры"},{"id":"docs","title":"Бумаги"},{"id":"comms","title":"Общение"}]},"en":{"caps":[{"id":"cap.four_tabs","title":"4 business sections: Search, Numbers, Papers, Messages","ready":true,"dev":false},{"id":"cap.approvals_yes_no","title":"“Waiting for your Yes” cards on top","ready":true,"dev":false},{"id":"cap.scenarios_try","title":"Try-on: scenarios and calculator","ready":true,"dev":false},{"id":"cap.assistant_guide","title":"“Help me” assistant on every screen","ready":true,"dev":false},{"id":"cap.pm_tasks_deadlines","title":"Tasks, deadlines and reports board","ready":false,"dev":false},{"id":"cap.audit_journal","title":"Action log and undo","ready":false,"dev":false},{"id":"cap.sandbox_safe","title":"Practice sandbox with lessons","ready":false,"dev":false},{"id":"cap.dev_sessions","title":"Sessions, folders and branches","ready":true,"dev":true},{"id":"cap.dev_terminal","title":"Terminal screen and keys","ready":true,"dev":true},{"id":"cap.dev_models_mcp","title":"Models, keys and connections (MCP)","ready":true,"dev":true},{"id":"cap.dev_cost_tokens","title":"Detailed usage: tokens and cost","ready":true,"dev":true}],"personas":[{"id":"business_owner","title":"Business owner or director","sub":"Revenue, documents and clients; decisions with one “Yes”, no complex settings.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide"],"simple":true},{"id":"point_admin","title":"Staff member or site administrator","sub":"Requests, schedule, clients and documents on site.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.assistant_guide"],"simple":true},{"id":"project_manager","title":"I manage projects and tasks","sub":"Deadlines, assignments to assistants, reports and the log.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.pm_tasks_deadlines","cap.audit_journal"],"simple":false},{"id":"student","title":"I'm learning or want to try","sub":"Try safely on ready-made examples.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide","cap.sandbox_safe"],"simple":true},{"id":"developer","title":"Developer or engineer","sub":"Sessions, terminal, models, connections and usage — as now.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.audit_journal","cap.dev_sessions","cap.dev_terminal","cap.dev_models_mcp","cap.dev_cost_tokens"],"simple":false}],"sections":[{"id":"search","title":"Search"},{"id":"analytics","title":"Numbers"},{"id":"docs","title":"Papers"},{"id":"comms","title":"Messages"}]}};
+function demoUi(body) {
+  const role = params.get("role") || "owner", c = DEMO_PERSONAS[LANG] || DEMO_PERSONAS.ru;
+  const all = c.caps.map((x) => x.id), ceil = role === "viewer" ? all.filter((x) => x !== "cap.dev_models_mcp") : all;
+  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" ? "business_owner" : "developer"), added: [], hidden: [], onboarded: !params.has("persona") };
+  if (body?.persona) Object.assign(st, { persona: body.persona, added: [], hidden: [], onboarded: true });
+  for (const [k, on] of Object.entries(body?.add || {})) {
+    if (on && !ceil.includes(k)) throw new Error("эту возможность вам не разрешил владелец пульта");
+    st.added = st.added.filter((x) => x !== k); st.hidden = st.hidden.filter((x) => x !== k); (on ? st.added : st.hidden).push(k);
+  }
+  const base = c.personas.find((p) => p.id === st.persona)?.caps || [];
+  const caps = [...new Set([...base, ...st.added])].filter((x) => !st.hidden.includes(x) && ceil.includes(x)).sort();
+  return { ...st, chosen: true, access: { owner: "owner", member: "staff", viewer: "guest" }[role], ceiling: [...ceil].sort(), caps,
+           simple: !caps.includes("cap.dev_sessions"), sections: c.sections.map((x) => x.id), can_team: role === "owner", catalog: c };
 }
 
 paintIcons();
@@ -4269,7 +4355,7 @@ function demoApi(path, body) {
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
   const R = {
-    "/api/meta": { host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
+    "/api/meta": { ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
                    projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", terms: { version: "2026-11-02", accepted: !params.has("terms") || !!demoApi.terms },
                    country: { chosen: demoApi.cc || (params.has("country") ? "" : "NL"), need: params.has("country") && !demoApi.cc, mismatch: false, phone: !params.has("country"), ip_cc: "NL", check: ["NL"] },
@@ -4427,6 +4513,7 @@ function demoApi(path, body) {
   }
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
+  if (key === "/api/persona") return Promise.resolve(demoUi(body));
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
   if (key === "/api/stt") {                          // как на сервере: распознавание занимает секунды; ?stt=empty|slow|fail — ошибки
     const m = params.get("stt"), text = m === "empty" ? "" : "Покажи, что изменилось за сегодня";
