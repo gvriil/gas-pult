@@ -50,6 +50,8 @@ src/gas_pult/
 ├── openrouter.py   вход в OpenRouter (OAuth PKCE), ключ и каталог моделей
 ├── fallback.py     запасные: отказ поставщика в журнале → следующий по цепочке с учётом стран и ключей
 ├── usage.py        расход: токены и USD по журналам (прайс API Anthropic), пулы по учёткам, лимиты и пауза
+├── tenants.py      демо-пространства: список, включено ли, окна через sudo -u … tmux -S (docs/TENANTS.md)
+├── tenant_admin.py bin/pult-tenant владельца: create, list, backup, destroy, purge, key, login (через sudo)
 ├── modules.py      модули-агенты: каталог templates/modules (module.toml), общие блоки _common, пространство, расписание
 ├── scenarios.py    «Примерочная»: роли из templates/scenarios (*.toml), день с агентом, калькулятор пользы без eval
 ├── offers.py       предложения бизнесу: /offer/<код>, демо-данные, сценарий Telegram, защита (docs/OFFERS.md)
@@ -180,6 +182,13 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 сессию и на день — `cost_limits` в state.json, задаёт только владелец (`/api/cost/limits`). Превышение: Esc, если
 Claude работает, окно в `cost_paused` (текст туда не отправляется), владельцу один вопрос «Продолжить, +лимит /
 Остановить» — решение общее для бота и панели (`Pult.cost_decide`, `/api/cost/decide`).
+
+### Демо-пространства (tenants.py, bin/pult-tenant)
+
+Пространство — отдельный пользователь Linux `pult_t_<slug>`, папка `/srv/pult/tenants/<slug>` на своём образе ext4,
+свой сервер tmux в slice systemd с лимитами и своя папка Claude Code; модель — профиль с ключом API. Создаёт и убирает
+их владелец скриптами через sudo; пульт только открывает окна (`sudo -n -u … tmux -S …`) и читает журналы (группа
+`pult-ro`). Без настройки функция выключена. Подробно, с шагами и откатом, — [TENANTS.md](TENANTS.md).
 
 ### Модули-агенты (modules.py, templates/modules)
 

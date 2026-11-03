@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# Настройка демо-пространств gas-pult — один раз на сервер. Запускает владелец: sudo bin/pult-tenant-setup <команда>.
+#   install   [--owner ПОЛЬЗОВАТЕЛЬ] [--fix-home]  группы, папки /srv/pult, правило sudo, отметка «включено»
+#   hidepid                                       /proc с hidepid=invisible (чужие процессы не видны) + строка в fstab
+#   hidepid-off                                   откат hidepid
+#   uninstall                                     откат install: правило sudo и отметка (пространства не трогает)
+#   status                                        что сейчас настроено (только чтение)
+# Общие флаги: --dry-run — только показать шаги. Подробно, с откатом каждого шага, — docs/TENANTS.md.
+set -euo pipefail
+
+SRV=/srv/pult
+TENANTS=$SRV/tenants
+SUDOERS=/etc/sudoers.d/gas-pult-tenants
+FSTAB=/etc/fstab
+BACKUP=$SRV/etc-backup
+GROUP_RO=pult-ro
+GROUP_TENANTS=pult-tenants
+VISUDO=$(command -v visudo || echo /usr/sbin/visudo)
+
+DRY=0
+OWNER=${SUDO_USER:-}
+FIX_HOME=0
+CMD=${1:-}
+[ $# -gt 0 ] && shift
+while [ $# -gt 0 ]; do
+  case $1 in
+    --dry-run) DRY=1 ;;
+    --owner) OWNER=${2:-}; shift ;;
+    --owner=*) OWNER=${1#--owner=} ;;
+    --fix-home) FIX_HOME=1 ;;
+    -h|--help) CMD=help ;;
+    *) echo "Неизвестный параметр: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
+run() {  # команда, меняющая систему: печатается всегда, выполняется — кроме сухого прогона
+  printf '$'; printf ' %q' "$@"; printf '\n'
+  [ "$DRY" = 1 ] || "$@"
+}
+need_root() {
+  [ "$DRY" = 1 ] || [ "$(id -u)" = 0 ] || die "нужны права root: sudo $0 $CMD … (или --dry-run — только показать шаги)"
+}
+stamp() { date +%Y%m%d-%H%M%S; }
+backup() {  # бэкап системного файла перед правкой
+  local f=$1 dst
+  [ -e "$f" ] || return 0
+  dst="$BACKUP/$(basename "$f").$(stamp)"
+  run install -d -m 0700 "$BACKUP"
+  run cp -a "$f" "$dst"
+  say "  бэкап: $dst"
+}
+check_owner() {
+  [ -n "$OWNER" ] || die "не знаю пользователя пульта: --owner ПОЛЬЗОВАТЕЛЬ (тот, под кем работает пульт)"
+  [ "$OWNER" != root ] || die "пользователь пульта — не root: --owner ПОЛЬЗОВАТЕЛЬ"
+  [[ $OWNER =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "странное имя пользователя: $OWNER"
+  id -u "$OWNER" >/dev/null 2>&1 || die "нет пользователя $OWNER"
+}
+
+check_home() {  # пространства не должны видеть домашнюю папку владельца: «прочие» — без прав
+  local home mode
+  home=$(getent passwd "$OWNER" | cut -d: -f6)
+  mode=$(stat -c %a "$home")
+  if [ $(( 8#$mode & 8#007 )) -eq 0 ]; then
+    say "✓ $home — права $mode: пространства в неё не заглянут"
+  elif [ "$FIX_HOME" = 1 ]; then
+    say "! $home — права $mode, ставлю 0750 (откат: chmod $mode $home)"
+    run chmod 0750 "$home"
+  else
+    say "! $home — права $mode: прочие пользователи (и пространства) могут в неё заглянуть."
+    say "  Исправить: sudo chmod 0750 $home (откат: sudo chmod $mode $home) или повторить с --fix-home."
+  fi
+}
+
+sudoers_text() {
+  local tmux=$1
+  cat <<EOF
+# gas-pult: пульт ($OWNER) управляет окнами демо-пространств — tmux и claude от имени их пользователей
+# (группа $GROUP_TENANTS), без пароля. Создано bin/pult-tenant-setup. Откат: sudo bin/pult-tenant-setup uninstall
+# (или sudo rm $SUDOERS).
+# tmux — с любыми аргументами: сузить их нечем (sudo-rs не знает шаблонов в аргументах), и это не даёт больше,
+# чем само право открыть окно в пространстве (а в нём — любую команду от имени его пользователя).
+$OWNER ALL=(%$GROUP_TENANTS) NOPASSWD: $tmux
+$OWNER ALL=(%$GROUP_TENANTS) NOPASSWD: $TENANTS/*/home/.local/bin/claude, /usr/local/bin/claude
+EOF
+}
+
+cmd_install() {
+  need_root
+  check_owner
+  local tmux
+  tmux=$(command -v tmux) || die "нет tmux: sudo apt install tmux"
+  say "== 1. Группы: $GROUP_RO (пульт читает журналы пространств), $GROUP_TENANTS (пользователи пространств)"
+  getent group "$GROUP_RO" >/dev/null || run groupadd --system "$GROUP_RO"
+  getent group "$GROUP_TENANTS" >/dev/null || run groupadd --system "$GROUP_TENANTS"
+  if id -nG "$OWNER" | tr ' ' '\n' | grep -qx "$GROUP_RO"; then
+    say "✓ $OWNER уже в $GROUP_RO"
+  else
+    run usermod -aG "$GROUP_RO" "$OWNER"
+    say "  перезапустите пульт, чтобы группа подхватилась: systemctl --user restart gas-pult gas-pult-webapp (от $OWNER)"
+  fi
+
+  say "== 2. Папки $SRV"
+  run install -d -m 0755 -o root -g root "$SRV"
+  run install -d -m 0751 -o root -g "$GROUP_RO" "$TENANTS"
+  for d in images backups trash etc-backup; do run install -d -m 0700 -o root -g root "$SRV/$d"; done
+
+  say "== 3. Правило sudo: $SUDOERS"
+  local tmp
+  tmp=$(mktemp)
+  sudoers_text "$tmux" >"$tmp"
+  if [ -f "$SUDOERS" ] && cmp -s "$tmp" "$SUDOERS"; then
+    say "✓ правило уже такое"
+  else
+    sed 's/^/    /' "$tmp"
+    if [ "$DRY" = 1 ]; then
+      say "  (сухой прогон: правило не ставлю)"
+      if "$VISUDO" -cf "$tmp" >/dev/null 2>&1; then say "  visudo: правило верно"; else say "  visudo: правило НЕ принято"; fi
+    else
+      "$VISUDO" -cf "$tmp" >/dev/null || { rm -f "$tmp"; die "visudo не принял правило — ничего не поставлено"; }
+      backup "$SUDOERS"
+      run install -m 0440 -o root -g root "$tmp" "$SUDOERS"
+      "$VISUDO" -c >/dev/null || { rm -f "$SUDOERS"; die "visudo -c: ошибка во всём sudoers — правило убрано"; }
+    fi
+  fi
+  rm -f "$tmp"
+
+  say "== 4. Домашняя папка $OWNER"
+  check_home
+
+  say "== 5. Отметка «включено»: $TENANTS/.enabled"
+  local json
+  json=$(printf '{"owner": "%s", "tmux": "%s", "setup": "%s"}' "$OWNER" "$tmux" "$(date +%Y-%m-%dT%H:%M:%S)")
+  if [ "$DRY" = 1 ]; then
+    say "  запись $TENANTS/.enabled: $json"
+  else
+    printf '%s\n' "$json" >"$TENANTS/.enabled"
+    chmod 0644 "$TENANTS/.enabled"
+  fi
+  say "Готово. Дальше: sudo bin/pult-tenant-setup hidepid (по желанию), затем sudo bin/pult-tenant create <имя>."
+}
+
+proc_line() {
+  local gid
+  gid=$(getent group "$GROUP_RO" | cut -d: -f3) || true
+  [ -n "$gid" ] || die "нет группы $GROUP_RO — сначала install"
+  printf 'proc /proc proc defaults,hidepid=invisible,gid=%s 0 0' "$gid"
+}
+
+cmd_hidepid() {
+  need_root
+  local line gid
+  line=$(proc_line)
+  gid=${line##*gid=}; gid=${gid%% *}
+  if grep -Eq '^[[:space:]]*proc[[:space:]]+/proc[[:space:]]' "$FSTAB"; then
+    if grep -Eq '^[[:space:]]*proc[[:space:]]+/proc[[:space:]].*hidepid=' "$FSTAB"; then
+      say "✓ в $FSTAB уже есть /proc с hidepid"
+    else
+      die "в $FSTAB уже есть своя строка /proc — поправьте её вручную (docs/TENANTS.md, шаг 2)"
+    fi
+  else
+    backup "$FSTAB"
+    say "дописать в $FSTAB: $line"
+    [ "$DRY" = 1 ] || printf '%s # gas-pult: откат — bin/pult-tenant-setup hidepid-off\n' "$line" >>"$FSTAB"
+  fi
+  run mount -o "remount,hidepid=invisible,gid=$gid" /proc
+  say "Готово: процессы других пользователей не видны (кроме группы $GROUP_RO — пульту они нужны)."
+}
+
+cmd_hidepid_off() {
+  need_root
+  if grep -q 'gas-pult: откат — bin/pult-tenant-setup hidepid-off' "$FSTAB"; then
+    backup "$FSTAB"
+    if [ "$DRY" = 1 ]; then
+      say "убрать из $FSTAB строку /proc от gas-pult"
+    else
+      local tmp
+      tmp=$(mktemp)
+      grep -v 'gas-pult: откат — bin/pult-tenant-setup hidepid-off' "$FSTAB" >"$tmp" || true
+      cat "$tmp" >"$FSTAB"
+      rm -f "$tmp"
+    fi
+  else
+    say "✓ строки /proc от gas-pult в $FSTAB нет"
+  fi
+  run mount -o remount,hidepid=off /proc
+}
+
+cmd_uninstall() {
+  need_root
+  if [ -f "$SUDOERS" ]; then
+    backup "$SUDOERS"
+    run rm -f "$SUDOERS"
+  else
+    say "✓ правила sudo нет"
+  fi
+  if [ -f "$TENANTS/.enabled" ]; then run rm -f "$TENANTS/.enabled"; else say "✓ отметки нет"; fi
+  say "Готово: пульт больше не управляет пространствами. Пространства, группы и /srv/pult не тронуты —"
+  say "убрать пространство: sudo bin/pult-tenant destroy <имя>; группы: sudo groupdel $GROUP_TENANTS; sudo groupdel $GROUP_RO."
+}
+
+cmd_status() {
+  if [ -f "$TENANTS/.enabled" ]; then say "отметка: $(cat "$TENANTS/.enabled")"; else say "отметки нет — функция выключена"; fi
+  if [ -e "$SUDOERS" ]; then say "правило sudo: $SUDOERS"; else say "правила sudo нет (или не видно без root)"; fi
+  if getent group "$GROUP_RO" >/dev/null; then
+    say "группа $GROUP_RO: $(getent group "$GROUP_RO" | cut -d: -f4)"
+  else
+    say "группы $GROUP_RO нет"
+  fi
+  if grep -Eq '^[^#]*hidepid=' /proc/mounts; then say "/proc: hidepid включён"; else say "/proc: hidepid выключен"; fi
+  if [ -n "$OWNER" ] && id -u "$OWNER" >/dev/null 2>&1; then
+    say "домашняя папка $OWNER: $(stat -c %a "$(getent passwd "$OWNER" | cut -d: -f6)")"
+  fi
+}
+
+case $CMD in
+  install) cmd_install ;;
+  hidepid) cmd_hidepid ;;
+  hidepid-off) cmd_hidepid_off ;;
+  uninstall) cmd_uninstall ;;
+  status) cmd_status ;;
+  help|-h|--help|"") sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "Неизвестная команда: $CMD (install | hidepid | hidepid-off | uninstall | status)" >&2; exit 2 ;;
+esac
