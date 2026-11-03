@@ -166,6 +166,11 @@ title_en = "Panel features"
 roles = ["owner", "member", "viewer"]
 
 [[action]]
+id = "go:settings.team"
+title = "Команда: что видят сотрудники"
+roles = ["owner"]
+
+[[action]]
 id = "go:persona"
 title = "Сменить роль целиком"
 title_en = "Change the whole role"
@@ -918,6 +923,28 @@ a = "В полном режиме видны все сессии, экран т�
 q_en = "How is full mode different from simple mode?"
 a_en = "Full mode shows all sessions, the terminal screen, commands, integrations and spending. Simple mode is just the conversation with the agent."
 actions = ["go:simple.settings"]
+
+[[screen]]
+id = "settings.team"
+where = "panel"
+title = "Команда"
+roles = ["owner"]
+purpose = "Какие разделы и возможности видят сотрудники (участники пульта): общая настройка и поправка на человека."
+steps = ["Отметьте разделы над чатом и возможности — так будет у всех участников.", "Нажмите человека, чтобы задать ему своё поверх общего; «Как у всех сотрудников» — убрать.", "Это права: закрытое здесь сервер сотруднику не отдаст, а сам он не включит."]
+next = ["go:settings.people"]
+chips = ["team-default", "team-viewer"]
+
+[[screen.faq]]
+id = "team-default"
+q = "Что видят сотрудники, если ничего не настраивать?"
+a = "Всё, как было до ролей: пока общая настройка не задана, у участников нет ограничений сверх их прав участника."
+actions = ["go:settings.team"]
+
+[[screen.faq]]
+id = "team-viewer"
+q = "Почему здесь нет наблюдателей?"
+a = "Наблюдатель только смотрит: у него постоянный набор без моделей и подключений. Здесь — участники, которые работают с агентами."
+actions = ["go:settings.people"]
 
 [[screen]]
 id = "persona"

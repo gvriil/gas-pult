@@ -22,6 +22,7 @@ DEEP = {
     "go:settings.legend": "settings.legend", "go:login": "login", "go:demo": "home.sessions",
     "go:simple.chat": "simple.chat", "go:simple.agents": "simple.agents", "go:simple.new-agent": "simple.new-agent",
     "go:simple.settings": "simple.settings", "go:settings.caps": "settings.caps", "go:persona": "persona",
+    "go:settings.team": "settings.team",
 }
 
 

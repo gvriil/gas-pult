@@ -225,3 +225,18 @@ def test_session_sections(server, tmp_path):
     m = next(x for x in modules.catalog() if x["sections"])
     (ws / modules.MARK).write_text(json.dumps({"id": m["id"], "title": m["title"]}))
     assert panel.sections_of(str(ws)) == m["sections"]
+
+
+# ---------- часть 5: экран «Команда» ----------
+def test_team_screen_fields_match_server(server):
+    """Экран «Команда» читает только то, что отдаёт /api/team; пункт — только владельцу."""
+    import re
+    from pathlib import Path
+    panel, base = server
+    t = call(base, "/api/team", token=panel.auth.issue(1))[1]
+    index = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    body = index[index.index("async function teamSheet("):index.index("function personSheet(")]
+    assert {"staff_caps", "sections", "people", "catalog"} <= set(t)
+    used = set(re.findall(r"\b(?:x|p)\.(own_caps|own_sections|ceiling|sections|name|username|id)\b", body))
+    assert used <= set(t["people"][0]) and used                       # поля человека — из ответа сервера
+    assert 'meta?.role === "owner" && UI?.can_team' in index           # в настройках — только владельцу

@@ -3368,10 +3368,36 @@ async function peopleSheet() {
     { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" },
     ...(d.geoip ? [{ info: true, icon: "globe", label: "Страна по IP", sub: (d.attribution || "IP Geolocation by DB-IP") + " · db-ip.com, CC BY 4.0" }] : [])]);
 }
+// ---------- «Команда» (только владельцу): потолок возможностей и разделы сотрудников (personas.Team, /api/team) ----------
+// Общая политика — для всех участников; поправка — для одного человека поверх неё. Это права: сервер не отдаёт
+// сотруднику API возможностей вне потолка. Наблюдателей здесь нет — у них свой постоянный потолок.
+async function teamSheet(uid) {
+  let d; try { d = await api("/api/team"); } catch (e) { return toast(e.message, 4000); }
+  const p = uid == null ? null : d.people.find((x) => x.id === uid);
+  const caps = p ? (p.own_caps ?? p.ceiling) : (d.staff_caps ?? d.catalog.caps.map((c) => c.id));
+  const secs = p ? (p.own_sections ?? p.sections) : d.sections;
+  const name = (x) => x.name || (x.username ? "@" + x.username : "ID " + x.id);
+  const save = (body) => api("/api/team", body).then(() => { toast("Сохранено"); teamSheet(uid); }).catch((e) => toast(e.message, 4000));
+  const flip = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  const who = p ? { id: uid } : {};
+  helpSheet("settings.team");
+  sheet(p ? "Команда: " + name(p) : "Команда", [
+    { info: true, icon: "lock", label: p ? (p.own_caps ? "Свои настройки — поверх общих" : "Как у всех сотрудников") : "Для всех сотрудников",
+      sub: p ? "что видит этот человек; права проверяет сервер" : d.staff_caps == null ? "пока не задано — сотрудники видят всё, как раньше" : "что видят участники пульта; права проверяет сервер" },
+    { head: "Разделы над чатом" },
+    ...d.catalog.sections.map((x) => ({ label: x.title, on: secs.includes(x.id), run: () => save({ ...who, sections: flip(secs, x.id) }) })),
+    { head: "Возможности" },
+    ...d.catalog.caps.map((c) => ({ label: c.title, on: caps.includes(c.id), sub: c.ready ? (c.dev ? "инженерное" : "") : "готовится", run: () => save({ ...who, caps: flip(caps, c.id) }) })),
+    ...(p ? [{ label: "Как у всех сотрудников", icon: "refresh", sub: "убрать свои настройки этого человека", run: () => save({ id: uid, reset: true }) }]
+      : [{ head: "Сотрудники" }, ...d.people.map((x) => ({ label: name(x), icon: "pin", sub: x.own_caps ? "свои настройки" : "как у всех", run: () => teamSheet(x.id) })),
+         ...(d.people.length ? [] : [{ info: true, icon: "plus", label: "Сотрудников пока нет", sub: "участники появятся здесь — «Настройки» → «Люди»" }])]),
+  ]);
+}
 function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
   helpSheet("settings.person");
   sheet(p.name || "ID " + p.id, [
+    ...(p.role === "member" ? [{ label: "Что видит в пульте", icon: "tasks", sub: "разделы и возможности — экран «Команда»", run: () => teamSheet(p.id) }] : []),
     { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
     { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
     { label: "Отключить", icon: "power", danger: true, sub: "доступ прекратится сразу: вход перестанет работать на всех устройствах", run: () => confirmDanger(`Отключить ${p.name || "ID " + p.id}? Доступ к пульту прекратится сразу.`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Отключён: " + (p.name || "ID " + p.id))).catch((e) => toast(e.message, 4000))) },
@@ -3528,6 +3554,7 @@ $("settingsBtn").onclick = () => {
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
+    ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
     { label: "Язык: " + (LANG === "en" ? "English" : "русский"), icon: "globe", sub: "простого режима и экрана входа — нажмите, чтобы сменить", run: () => setLang(LANG === "en" ? "ru" : "en") },
@@ -3672,6 +3699,7 @@ const HELP_GO = {                                      // действие ка�
   "go:simple.settings": () => simpleGo().then(sSettings),
   "go:settings.caps": () => capsSheet(),
   "go:persona": () => showPersona(true),
+  "go:settings.team": () => teamSheet(),
 };
 function go(id) {
   const f = HELP_GO[id];
@@ -4408,6 +4436,16 @@ function simpleDemoHist() {
 
 // Демо ролей (?demo&persona=1 — экран выбора, &ui=<роль>): тот же справочник, что personas.catalog() — тест сверяет.
 const DEMO_PERSONAS = {"ru":{"caps":[{"id":"cap.four_tabs","title":"4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение","ready":true,"dev":false},{"id":"cap.approvals_yes_no","title":"Карточки «Ждут вашего Да» наверху","ready":true,"dev":false},{"id":"cap.scenarios_try","title":"Примерочная: сценарии и калькулятор","ready":true,"dev":false},{"id":"cap.assistant_guide","title":"Помощник «Подсказать» на каждом экране","ready":true,"dev":false},{"id":"cap.pm_tasks_deadlines","title":"Доска задач, сроков и отчётов","ready":false,"dev":false},{"id":"cap.audit_journal","title":"Журнал действий и откат","ready":false,"dev":false},{"id":"cap.sandbox_safe","title":"Учебная песочница с уроками","ready":false,"dev":false},{"id":"cap.dev_sessions","title":"Сессии, папки и ветки","ready":true,"dev":true},{"id":"cap.dev_terminal","title":"Экран терминала и клавиши","ready":true,"dev":true},{"id":"cap.dev_models_mcp","title":"Модели, ключи и подключения (MCP)","ready":true,"dev":true},{"id":"cap.dev_cost_tokens","title":"Подробный расход: токены и стоимость","ready":true,"dev":true}],"personas":[{"id":"business_owner","title":"Владелец или директор бизнеса","sub":"Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide"],"simple":true},{"id":"point_admin","title":"Сотрудник или администратор точки","sub":"Заявки, расписание, клиенты и документы на точке.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.assistant_guide"],"simple":true},{"id":"project_manager","title":"Руковожу проектами и задачами","sub":"Сроки, поручения помощникам, отчёты и журнал.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.pm_tasks_deadlines","cap.audit_journal"],"simple":false},{"id":"student","title":"Учусь или хочу примерить","sub":"Безопасно попробовать на готовых примерах.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide","cap.sandbox_safe"],"simple":true},{"id":"developer","title":"Разработчик или инженер","sub":"Сессии, терминал, модели, подключения и расход — как сейчас.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.audit_journal","cap.dev_sessions","cap.dev_terminal","cap.dev_models_mcp","cap.dev_cost_tokens"],"simple":false}],"sections":[{"id":"search","title":"Поиск"},{"id":"analytics","title":"Цифры"},{"id":"docs","title":"Бумаги"},{"id":"comms","title":"Общение"}]},"en":{"caps":[{"id":"cap.four_tabs","title":"4 business sections: Search, Numbers, Papers, Messages","ready":true,"dev":false},{"id":"cap.approvals_yes_no","title":"“Waiting for your Yes” cards on top","ready":true,"dev":false},{"id":"cap.scenarios_try","title":"Try-on: scenarios and calculator","ready":true,"dev":false},{"id":"cap.assistant_guide","title":"“Help me” assistant on every screen","ready":true,"dev":false},{"id":"cap.pm_tasks_deadlines","title":"Tasks, deadlines and reports board","ready":false,"dev":false},{"id":"cap.audit_journal","title":"Action log and undo","ready":false,"dev":false},{"id":"cap.sandbox_safe","title":"Practice sandbox with lessons","ready":false,"dev":false},{"id":"cap.dev_sessions","title":"Sessions, folders and branches","ready":true,"dev":true},{"id":"cap.dev_terminal","title":"Terminal screen and keys","ready":true,"dev":true},{"id":"cap.dev_models_mcp","title":"Models, keys and connections (MCP)","ready":true,"dev":true},{"id":"cap.dev_cost_tokens","title":"Detailed usage: tokens and cost","ready":true,"dev":true}],"personas":[{"id":"business_owner","title":"Business owner or director","sub":"Revenue, documents and clients; decisions with one “Yes”, no complex settings.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide"],"simple":true},{"id":"point_admin","title":"Staff member or site administrator","sub":"Requests, schedule, clients and documents on site.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.assistant_guide"],"simple":true},{"id":"project_manager","title":"I manage projects and tasks","sub":"Deadlines, assignments to assistants, reports and the log.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.pm_tasks_deadlines","cap.audit_journal"],"simple":false},{"id":"student","title":"I'm learning or want to try","sub":"Try safely on ready-made examples.","caps":["cap.four_tabs","cap.approvals_yes_no","cap.scenarios_try","cap.assistant_guide","cap.sandbox_safe"],"simple":true},{"id":"developer","title":"Developer or engineer","sub":"Sessions, terminal, models, connections and usage — as now.","caps":["cap.approvals_yes_no","cap.assistant_guide","cap.audit_journal","cap.dev_sessions","cap.dev_terminal","cap.dev_models_mcp","cap.dev_cost_tokens"],"simple":false}],"sections":[{"id":"search","title":"Search"},{"id":"analytics","title":"Numbers"},{"id":"docs","title":"Papers"},{"id":"comms","title":"Messages"}]}};
+function demoTeam(body) {                            // «Команда» в демо: как personas.Team, в памяти страницы
+  const t = demoApi.team ||= { staff_caps: null, sections: ["search", "analytics", "docs", "comms"], people: { 2: {} } }, c = DEMO_PERSONAS.ru;
+  if (body) { const r = body.id != null ? (t.people[body.id] ||= {}) : t;
+    if (body.reset) t.people[body.id] = {};
+    else { if (body.caps) r[body.id != null ? "caps" : "staff_caps"] = [...body.caps].sort(); if (body.sections) r.sections = c.sections.map((x) => x.id).filter((x) => body.sections.includes(x)); } }
+  const all = c.caps.map((x) => x.id);
+  return { staff_caps: t.staff_caps, sections: t.sections, catalog: c,
+    people: Object.entries(t.people).map(([id, r]) => ({ id: +id, name: "Иван", username: "", own_caps: r.caps || null, own_sections: r.sections || null,
+      ceiling: r.caps || t.staff_caps || all, sections: r.sections || t.sections })) };
+}
 function demoUi(body) {
   const role = params.get("role") || "owner", c = DEMO_PERSONAS[LANG] || DEMO_PERSONAS.ru;
   const all = c.caps.map((x) => x.id), ceil = role === "viewer" ? all.filter((x) => x !== "cap.dev_models_mcp") : all;
@@ -4621,6 +4659,7 @@ function demoApi(path, body) {
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/persona") return Promise.resolve(demoUi(body));
+  if (key === "/api/team") return Promise.resolve(demoTeam(body));
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
   if (key === "/api/stt") {                          // как на сервере: распознавание занимает секунды; ?stt=empty|slow|fail — ошибки
     const m = params.get("stt"), text = m === "empty" ? "" : "Покажи, что изменилось за сегодня";
