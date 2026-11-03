@@ -3682,7 +3682,7 @@ function go(id) {
 function helpAnswer(r) {
   const box = document.createElement("div"); box.className = "ha"; box.dataset.id = r.id;
   box.innerHTML = `<p>${esc(r.text)}</p>
-    ${r.actions.length ? `<div class="hgo">${r.actions.map((a) => `<button data-go="${esc(a.id)}">${ic("chevron", "s16")}${esc(L("help.go", "Перейти: {t}").replace("{t}", a.title))}</button>`).join("")}</div>` : ""}
+    ${r.actions.length ? `<div class="hgo">${r.actions.map((a) => `<button data-go="${esc(a.id)}"${a.enable ? ` data-enable="${esc(a.enable)}"` : ""}>${ic(a.enable ? "bolt" : "chevron", "s16")}${esc((a.enable ? L("help.enable", "Включить и перейти: {t}") : L("help.go", "Перейти: {t}")).replace("{t}", a.title))}</button>`).join("")}</div>` : ""}
     <div class="hfoot"><span class="hmark">${esc(L("help.mark", "Подсказка из карты"))}</span>
       <button class="hfb" data-fb="1" aria-label="${esc(L("help.useful", "Помогло"))}">${ic("check")}</button><button class="hfb" data-fb="0" aria-label="${esc(L("help.useless", "Не помогло"))}">${ic("x")}</button></div>`;
   return box;
@@ -3720,7 +3720,10 @@ function openHelp() {
       api("/api/help/feedback", { id, useful: b.dataset.fb === "1" }).catch(() => {});
       return toast(b.dataset.fb === "1" ? L("help.thanks", "Спасибо!") : L("help.thanks.bad", "Спасибо — поправим подсказку"));
     }
-    if (b.dataset.go) { api("/api/help/feedback", { id, action: b.dataset.go }).catch(() => {}); haptic("selectionChanged"); return go(b.dataset.go); }
+    if (b.dataset.go) {
+      api("/api/help/feedback", { id, action: b.dataset.go }).catch(() => {}); haptic("selectionChanged");
+      return b.dataset.enable ? enableAndGo(b.dataset.enable, b.dataset.go) : go(b.dataset.go);
+    }
   });
   bg.querySelector("form").addEventListener("submit", (e) => {
     e.preventDefault(); const inp = e.target.q, q = inp.value.trim(); if (!q) return inp.focus();
@@ -3750,10 +3753,17 @@ async function demoHelp(b) {
   const s = { ...loc(s0), faq: s0.faq.map(loc) };              // английский — только у экранов простого режима и входа
   const faq = [...s.faq.filter((f) => !f.roles.length || f.roles.includes(role))];
   if (!s0.title_en) m.faq.forEach((f) => { if (f.roles.includes(role) && !faq.some((x) => x.id === f.id)) faq.push(f); });
-  const acts = (ids) => [...new Set(ids)].filter((a) => m.actions[a]?.roles.includes(role)).slice(0, 3).map((a) => ({ id: a, title: en ? m.actions[a].title_en || m.actions[a].title : m.actions[a].title }));
-  const chips = [{ id: "what", label: en ? "What can I do here?" : "Что здесь делать?" }, ...s.chips.map((c) => faq.find((f) => f.id === c)).filter(Boolean).map((f) => ({ id: f.id, label: f.q }))];
+  const mine = (m.personas?.[UI?.persona]?.faq || []).map(loc);                  // вопросы роли — первыми чипами
+  faq.push(...mine.filter((f) => !faq.some((x) => x.id === f.id)));
+  const acts = (ids) => [...new Set(ids)].filter((a) => m.actions[a]?.roles.includes(role))
+    .map((a) => ({ id: a, title: en ? m.actions[a].title_en || m.actions[a].title : m.actions[a].title, cap: m.actions[a].cap }))
+    .filter((a) => !UI || !a.cap || UI.caps.includes(a.cap) || UI.ceiling.includes(a.cap))
+    .map(({ cap: c, ...a }) => (UI && c && !UI.caps.includes(c) ? { ...a, enable: c } : a)).slice(0, 3);
+  const chips = [{ id: "what", label: en ? "What can I do here?" : "Что здесь делать?" }, ...mine.map((f) => ({ id: f.id, label: f.q })),
+    ...s.chips.map((c) => faq.find((f) => f.id === c)).filter(Boolean).map((f) => ({ id: f.id, label: f.q }))];
   const out = { id: "demo" + Date.now(), screen: sid, title: s.title, chips, mode: "offline" };
   const f = b.chip && faq.find((x) => x.id === b.chip);
+  if (b.chip === "explain") return { ...out, text: (en ? "In plain words: " : "Если совсем просто: ") + s.purpose + " " + s.steps.map((x, i) => `${i + 1}) ${x}`).join(" "), actions: acts(s.next) };
   if (f) return { ...out, text: f.a, actions: acts(f.actions.length ? f.actions : s.next) };
   if (b.q) {                                        // простое ранжирование слов, как на сервере
     const w = (t) => new Set(String(t).toLowerCase().replace(/ё/g, "е").match(/[а-яa-z0-9]{3,}/g)?.map((x) => x.slice(0, 5)) || []);
@@ -3762,6 +3772,15 @@ async function demoHelp(b) {
     return { ...out, text: (en ? "No exact answer in the tips. On this screen: " : "Точного ответа в подсказках нет. На этом экране: ") + s.purpose, actions: acts(s.next) };
   }
   return { ...out, text: s.purpose + " " + s.steps.map((x, i) => `${i + 1}) ${x}`).join(" "), actions: acts(s.next) };
+}
+// «Включить и перейти»: помощник предложил экран, которого нет в виде человека, — сервер включает возможность (только
+// если права позволяют), потом переход. Сменился режим целиком (простой ⇄ полный) — панель заново, сразу на экран.
+async function enableAndGo(c, id) {
+  const was = UI?.simple;
+  try { UI = await api("/api/persona", { add: { [c]: true } }); } catch (e) { return toast(e.message, 4000); }
+  applyCaps();
+  if (UI.simple !== was) { if (DEMO) { const u = demoUrl(); u.hash = "go=" + id; location.replace(u); return; } location.hash = "go=" + id; return location.reload(); }
+  go(id);
 }
 function goFromLink() {                                // #go=<id> из бота («📱 Открыть в панели») — сразу на нужный экран
   const id = new URLSearchParams(location.hash.slice(1)).get("go") || params.get("go");

@@ -6,6 +6,7 @@ import threading
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
@@ -225,3 +226,66 @@ def test_session_sections(server, tmp_path):
     m = next(x for x in modules.catalog() if x["sections"])
     (ws / modules.MARK).write_text(json.dumps({"id": m["id"], "title": m["title"]}))
     assert panel.sections_of(str(ws)) == m["sections"]
+
+
+# ---------- часть 4: помощник — переходы по возможностям, чипы и тон роли ----------
+def test_helper_actions_follow_caps():
+    from gas_pult import helper
+    bo = sorted(PERSONAS["business_owner"]["caps"])
+    dev = sorted(PERSONAS["developer"]["caps"])
+    a = helper.actions_public(["go:session.screen"], "owner", ui={"caps": dev, "ceiling": sorted(ALL)})
+    assert [x["id"] for x in a] == ["go:session.screen"] and "enable" not in a[0]      # есть — обычный переход
+    a = helper.actions_public(["go:session.screen"], "owner", ui={"caps": bo, "ceiling": sorted(ALL)})
+    assert a and a[0]["enable"] == "cap.dev_terminal"                       # можно включить — «Включить и перейти»
+    assert helper.actions_public(["go:session.screen"], "member", ui={"caps": bo, "ceiling": bo}) == []   # нельзя
+    chat = helper.actions_public(["go:simple.chat"], "member", ui={"caps": bo, "ceiling": bo})
+    assert chat[0]["id"] == "go:simple.chat"
+    m = helper.the_map()
+    assert {a.get("cap") for a in m["actions"].values()} - {None} <= ALL
+    assert set(m["personas"]) == set(PERSONAS)                              # у каждой роли — тон и свои чипы
+
+
+def test_helper_persona_chips_and_tone():
+    import tempfile
+
+    from gas_pult import helper
+    h = helper.Helper(Path(tempfile.mkdtemp()))
+    bo = {"persona": "business_owner", "caps": sorted(PERSONAS["business_owner"]["caps"]), "ceiling": sorted(ALL)}
+    r = h.ask("owner", {"screen": "simple.chat"}, ui=bo)
+    assert [c["id"] for c in r["chips"]][:3] == ["what", "bo-yes", "bo-undo"]
+    assert h.ask("owner", {"screen": "simple.chat"}, chip="bo-undo", ui=bo)["text"].startswith("Кнопки «Отменить»")
+    st = {"persona": "student", "caps": sorted(PERSONAS["student"]["caps"]), "ceiling": sorted(ALL)}
+    assert h.ask("viewer", {"screen": "simple.chat"}, chip="explain", ui=st)["text"].startswith("Если совсем просто")
+    en = h.ask("viewer", {"screen": "simple.chat"}, chip="explain", ui=st, lang="en")
+    assert en["text"].startswith("In plain words") and en["chips"][1]["label"].startswith("Explain")
+    dev = {"persona": "developer", "caps": sorted(PERSONAS["developer"]["caps"]), "ceiling": sorted(ALL)}
+    r = h.ask("owner", {"screen": "home.sessions"}, chip="dev-log", ui=dev)
+    assert r["actions"][0]["id"] == "go:session.screen" and "enable" not in r["actions"][0]
+    what = h.ask("owner", {"screen": "home.sessions"}, chip="what", ui=dev)["text"]
+    assert h.ask("owner", {"screen": "home.sessions"}, chip="bo-yes", ui=dev)["text"] == what   # чужой чип — не его
+    assert all(p["tone"] and p["tone_en"] for p in helper.the_map()["personas"].values())
+
+
+def test_helper_map_rejects_bad_caps_and_personas():
+    from gas_pult import helper
+    base = {"action": [{"id": "go:x", "title": "x", "roles": ["owner"], "required_cap": "cap.nope"}]}
+    with pytest.raises(helper.MapError):
+        helper.parse_map(base)
+    with pytest.raises(helper.MapError):
+        helper.parse_map({"persona": [{"id": "boss", "tone": "t", "tone_en": "t"}]})
+    with pytest.raises(helper.MapError):
+        helper.parse_map({"persona": [{"id": "student", "tone": "t"}]})
+
+
+def test_helper_server_respects_ceiling(server):
+    panel, base = server
+    owner, member = panel.auth.issue(1), panel.auth.issue(2)
+    call(base, "/api/team", {"caps": ["cap.four_tabs", "cap.approvals_yes_no", "cap.assistant_guide"]}, owner)
+    st, r = call(base, "/api/help/ask", {"ctx": {"screen": "home.sessions"}, "chip": "what"}, member)
+    assert st == 200
+    caps = {a["id"]: a.get("enable") for a in r["actions"]}
+    m = __import__("gas_pult.helper", fromlist=["x"]).the_map()
+    assert all(m["actions"][a].get("cap") in (None, "cap.four_tabs", "cap.approvals_yes_no", "cap.assistant_guide")
+               for a in caps)                                           # вне потолка — ни перехода, ни «включить»
+    st, r = call(base, "/api/help/ask", {"ctx": {"screen": "home.sessions"}, "chip": "what"}, owner)
+    assert st == 200 and r["actions"]
