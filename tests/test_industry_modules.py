@@ -14,7 +14,7 @@ from gas_pult.config import Config
 
 INDUSTRIES = {
     "Селлеры WB и Ozon": {"wb-ozon-reviews", "wb-ozon-stock", "wb-ozon-prices"},
-    "Бухгалтеры и юристы на аутсорсе": {"acc-primary", "acc-deadlines", "law-drafts"},
+    "Бухгалтеры и юристы на аутсорсе": {"acc-primary", "acc-deadlines", "law-drafts", "acc-edo"},
     "Поставщики HoReCa": {"horeca-orders", "horeca-reorder", "horeca-harvest", "horeca-receivables"},
     "Управляющие компании — «УК-старт»": {"uk-requests", "uk-emergency", "uk-morning", "uk-debts", "uk-inspections",
                                           "uk-gis-disclosure"},
