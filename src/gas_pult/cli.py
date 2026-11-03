@@ -295,6 +295,36 @@ def cmd_email(a):
         print(f"✓ Письмо отправлено на {to}.")
 
 
+def cmd_oidc(a):
+    """Вход через Google и Яндекс ID (oidc.py, docs/AUTH.md): status — включён ли; secret google|yandex — секрет
+    приложения в secrets.json (0600, ввод скрыт), чтобы не держать его в config.toml."""
+    from gas_pult import oidc, providers
+
+    if a.action == "secret":
+        if a.provider not in oidc.PROVIDERS:
+            raise SystemExit("Укажите, чей секрет: gas-pult oidc secret google | yandex")
+        title = oidc.PROVIDERS[a.provider]["title"]
+        sec = getpass.getpass(f"Секрет приложения {title} (ввод скрыт; пусто — удалить): ").strip()
+        providers.save_key(oidc.secret_key(a.provider), sec or None)
+        return print(f"✓ {'Сохранён' if sec else 'Удалён'}: {providers.secrets_file()} (0600). "
+                     "Перезапустите панель: systemctl --user restart gas-pult-webapp")
+    try:
+        cfg = config.load()
+    except config.ConfigError as e:
+        raise SystemExit(str(e)) from None
+    o = oidc.Oidc({"google": cfg.google, "yandex": cfg.yandex}, None, cfg.data / "oidc.json", base=lambda: a.url or "")
+    for p, meta in oidc.PROVIDERS.items():
+        sec, s = getattr(cfg, p), o.settings(p)
+        if s:
+            print(f"{meta['title']}: включён · client_id …{s['client_id'][-6:]} · возврат {s['redirect_uri']}")
+            continue
+        miss = [x for x, ok in (("client_id", sec.get("client_id")),
+                                (f"секрет (gas-pult oidc secret {p})",
+                                 sec.get("client_secret") or providers.load_keys().get(oidc.secret_key(p))),
+                                ("redirect_uri (или --url панели)", sec.get("redirect_uri") or a.url)) if not ok]
+        print(f"{meta['title']}: выключен — в [{p}] config.toml не хватает: {', '.join(miss) or 'https-адреса'}.")
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -336,6 +366,11 @@ def main(argv: list[str] | None = None):
     s.add_argument("action", choices=["status", "password", "test"], nargs="?", default="status")
     s.add_argument("to", nargs="?", help="test — куда отправить пробное письмо")
     s.set_defaults(fn=cmd_email)
+    s = sub.add_parser("oidc", help="вход через Google и Яндекс ID: status [--url …] | secret google|yandex")
+    s.add_argument("action", choices=["status", "secret"], nargs="?", default="status")
+    s.add_argument("provider", nargs="?", help="secret — google или yandex")
+    s.add_argument("--url", help="адрес панели снаружи (как у gas-pult webapp --url) — для адреса возврата")
+    s.set_defaults(fn=cmd_oidc)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

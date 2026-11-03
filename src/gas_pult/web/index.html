@@ -675,6 +675,9 @@
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
+        <button class="btn ghost" id="googleLogin" hidden data-l="login.google">Войти через Google</button>
+        <button class="btn ghost" id="yandexLogin" hidden data-l="login.yandex">Войти через Яндекс ID</button>
+        <p class="note" id="oidcNote" hidden style="margin:0 2px 6px" data-l="login.oidc.tg">Google и Яндекс не открываются внутри Telegram: вход продолжится в браузере телефона, и панель откроется там.</p>
         <button class="btn ghost" id="emailLogin" hidden data-l="login.email">Войти по почте</button>
         <button class="btn ghost" id="getCode" data-l="login.code">Войти по коду — для владельца</button>
         <button class="btn ghost" id="tryDemo" data-l="login.demo">Посмотреть демо — без входа</button>
@@ -1269,11 +1272,13 @@ function reloadPanel() {
 function setSub(html) { $("subtitle").innerHTML = html; }
 
 // ---------- вход ----------
-function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); }
+function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); }
 // Способы входа, которые включены на этом пульте (почта — если владелец настроил SMTP).
 async function loginMethods() {
-  try { const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk()); }
-  catch (e) { $("emailLogin").hidden = $("pkLogin").hidden = true; }
+  try {
+    const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk());
+    $("googleLogin").hidden = !m.google; $("yandexLogin").hidden = !m.yandex; $("oidcNote").hidden = !(tg?.initData && (m.google || m.yandex));
+  } catch (e) { for (const x of ["emailLogin", "pkLogin", "googleLogin", "yandexLogin", "oidcNote"]) $(x).hidden = true; }
 }
 function loginPane(id) {                          // один шаг входа на экране: способы, код владельцу, почта, второй фактор
   for (const x of ["loginStep1", "loginStep2", "loginEmail", "login2fa"]) $(x).hidden = x !== id;
@@ -1404,6 +1409,22 @@ $("pkLogin").onclick = (e) => busy(e.currentTarget, "Жду ключ…", async 
     haptic("notificationOccurred", "success"); await start();
   } catch (err) { loginMsg(false, pkError(err)); }
 });
+// Вход через Google и Яндекс ID (oidc.py): переход на сайт провайдера и обратно. В Telegram — во внешнем браузере
+// (Google не пускает во встроенные окна): вход и панель продолжаются там. Второй фактор с почты возвращается во фрагменте.
+function oidcGo(p) {
+  const url = `/api/login/oidc/${p}/start`, name = p === "google" ? "Google" : LL("login.yandex.name", "Яндекс ID");
+  if (DEMO) return loginMsg(true, LL("login.oidc.demo", "В демо вход не выполняется: на пульте здесь откроется сайт {name}.").replace("{name}", name));
+  if (tg?.initData) { tg.openLink(location.origin + url); return loginMsg(true, LL("login.oidc.opened", "Открыли браузер: войдите там через {name} — панель откроется в браузере.").replace("{name}", name)); }
+  location.href = url;
+}
+$("googleLogin").onclick = () => oidcGo("google");
+$("yandexLogin").onclick = () => oidcGo("yandex");
+function oidcReturn() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.get("2fa")) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  askSecond({ id: h.get("2fa"), to: h.get("to") || "вашу почту" });
+}
 // Вход по коду на почту: адрес → код из письма. Ответ одинаковый, привязан адрес или нет.
 let emTimer = null;
 $("emailLogin").onclick = () => { loginPane("loginEmail"); $("emCodeBox").hidden = true; $("emAddr").focus(); };
@@ -3364,6 +3385,30 @@ async function keysSheet() {
   ]);
 }
 
+// ---------- способы входа: Google и Яндекс ID (oidc.py) ----------
+// Привязка — переходом на сайт провайдера по одноразовой ссылке (5 минут); из Telegram — во внешнем браузере.
+async function oidcSheet() {
+  let d; try { d = await api("/api/oidc"); } catch (e) { return toast(e.message, 4000); }
+  const day = (t) => t ? new Date(t * 1000).toLocaleDateString("ru-RU") : "";
+  const link = async (p) => {
+    try {
+      const r = await api("/api/oidc/link", { provider: p });
+      if (DEMO) return toast("В демо привязка не выполняется", 4000);
+      if (tg?.initData) { tg.openLink(location.origin + r.url); toast("Открыли браузер — закончите привязку там", 5000); }
+      else location.href = r.url;
+    } catch (e) { toast(e.message, 4000); }
+  };
+  const unlink = (p, x) => confirmDanger(`Отвязать ${x.title}? Войти через него больше не получится.`, () => api("/api/oidc/unlink", { provider: p }).then(() => { toast("Отвязано"); oidcSheet(); }).catch((e) => toast(e.message, 4000)));
+  const rows = Object.entries(d).map(([p, x]) => !x.enabled ? { info: true, icon: "warn", label: x.title + ": не настроено на этом пульте", sub: `владелец включает вход в config.toml ([${p}]) — инструкция в docs/AUTH.md` }
+    : x.linked ? { label: x.title + ": привязан", icon: "check", sub: (x.email ? x.email + " · " : "") + `с ${day(x.at)} — нажмите, чтобы отвязать`, run: () => unlink(p, x) }
+    : { label: "Привязать " + x.title, icon: "ext", sub: "откроется сайт " + x.title + ": войдите в свой аккаунт — после этого им можно входить в пульт", run: () => link(p) });
+  helpSheet("settings.oidc");
+  sheet("Способы входа", [
+    ...rows,
+    { info: true, icon: "lock", label: "Только вход", sub: "пульт получает лишь адрес и номер аккаунта — без писем, файлов и диска. Совпал подтверждённый адрес с почтой в пульте — вход работает и без привязки" },
+  ]);
+}
+
 // ---------- почта для входа и оповещений (emailcode.py) ----------
 // Адрес подтверждается кодом из письма; по нему можно войти, включить второй фактор и письма-оповещения.
 async function emailSheet() {
@@ -3456,6 +3501,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
+    { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: emailSheet },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
@@ -4435,7 +4481,13 @@ function demoApi(path, body) {
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
-  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true });
+  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true });
+  if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
+  if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет
+    demoApi.oidc ||= { google: { enabled: true, title: "Google", linked: true, email: "i***@example.com", at: Date.now() / 1000 - 86400 * 2 | 0 }, yandex: { enabled: true, title: "Яндекс ID", linked: false, email: "", at: null } };
+    if (key === "/api/oidc/unlink") Object.assign(demoApi.oidc[body.provider], { linked: false, email: "", at: null });
+    return Promise.resolve(demoApi.oidc);
+  }
   if (key === "/api/login/passkey/options" || key === "/api/passkeys/options") return Promise.resolve({ id: "demo", options: { challenge: "AAAA", rpId: "localhost", user: { id: "AAAA", name: "demo", displayName: "demo" } } });
   if (key.startsWith("/api/passkeys")) {             // демо: ключ «добавляется» без устройства
     demoApi.pk ||= [{ id: "k1", name: "iPhone", created: Date.now() / 1000 - 86400 * 3 | 0, last_used: Date.now() / 1000 - 3600 | 0 }];

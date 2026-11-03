@@ -5,6 +5,17 @@
 ## [Не выпущено]
 
 ### Добавлено
+- **Вход через Google и Яндекс ID (задача 25 D).** Новый модуль `oidc.py` — только стандартная библиотека:
+  authorization code flow + PKCE (S256), одноразовый `state` (10 минут, привязан к cookie браузера `gp_oidc`), `nonce`,
+  сверка `redirect_uri`. `id_token` Google проверяется полностью: подпись RS256 по JWKS (PKCS#1 v1.5 на `pow`),
+  `iss`, `aud`, `azp`, `exp`, `iat`, `nonce`; Яндекс ID — `login.yandex.ru/info` по токену. Права — только на вход
+  (`openid email profile` / `login:email`), без Gmail и Drive. Войти может только человек с ролью: по явной привязке
+  из «Настроек» → «Способы входа» или по совпадению подтверждённого провайдером адреса с почтой в пульте; новых людей
+  не заводит, ответ одинаковый, 20 попыток за 10 минут с IP. В Mini App — через `openLink` в системном браузере.
+  Без `[google]` / `[yandex]` в config.toml выключено; секрет — `gas-pult oidc secret google|yandex` (secrets.json,
+  0600), проверка — `gas-pult oidc status`. API: `GET /api/login/oidc/<p>/start|back`, `GET /api/oidc`,
+  `POST /api/oidc/link|unlink`, поля `google`, `yandex` в `/api/login/methods`. «Яндекс ID» — в белом списке
+  `humanize.LATIN_OK`. Регистрация приложений — docs/AUTH.md.
 - **Роли интерфейса — основа (задача 23, часть 1).** Новый модуль `personas.py`: права (`access_role`: владелец →
   `owner`, участник → `staff`, наблюдатель → `guest`, проверяет сервер) отделены от вида панели (`ui_persona`: владелец
   бизнеса, сотрудник точки, руководитель проектов, студент, разработчик). Вид — набор из 11 возможностей `cap.*`;
