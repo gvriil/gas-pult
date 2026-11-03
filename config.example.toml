@@ -76,3 +76,13 @@ personal_voices = false
 # rp_id = "pult.example.com"                  # домен панели, без схемы и порта
 # origin = "https://pult.example.com:8443"    # адрес панели в браузере целиком (с портом, если не 443)
 # rp_name = "gas-pult"
+
+# Вход через Google и Яндекс ID (docs/AUTH.md). Нет client_id или секрета — кнопок нет. Секрет лучше не сюда,
+# а командой `gas-pult oidc secret google` (secrets.json, 0600). redirect_uri — по умолчанию из --url панели.
+# [google]
+# client_id = "….apps.googleusercontent.com"
+# redirect_uri = "https://pult.example.com:8443/api/login/oidc/google/back"
+#
+# [yandex]
+# client_id = "…"
+# redirect_uri = "https://pult.example.com:8443/api/login/oidc/yandex/back"

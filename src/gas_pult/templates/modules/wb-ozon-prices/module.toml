@@ -3,6 +3,7 @@ id = "wb-ozon-prices"
 version = "1.0"
 title = "Ценовой страж WB и Ozon"
 industry = "Селлеры WB и Ozon"
+sections = ["analytics"]
 about = "Ловит цену ниже минимальной, маржу ниже порога и скачки цены после акций площадки; изменить цену решаете вы."
 description = """
 Дважды в день агент сверяет цены продажи на Wildberries и Ozon (официальный API или выгрузка data/prices.csv)
