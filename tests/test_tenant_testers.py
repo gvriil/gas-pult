@@ -121,9 +121,11 @@ def test_tester_sees_only_own_space(world):
     # новая сессия — в tmux пространства demo, у владельца окон не прибавилось
     assert len(w["own"].windows()) == w["own_n"]
     assert [x["id"] for x in tenants.tmux_of("demo").windows() if x["cmd"] == "claude"] == [spaces.split(wid)[1]]
-    # владелец своих окон не теряет и (пока сам не попросит) окон пространств в списке не видит
+    # владелец своих окон не теряет и видит окна пространств рядом (п. 6 — группа «Пространства»)
     own_ids = [s["id"] for s in call(w, "/api/sessions", who=OWNER)[1]["sessions"]]
-    assert w["owner_w"] in own_ids and not any(i.startswith("t:") for i in own_ids)
+    assert w["owner_w"] in own_ids and wid in own_ids and w["other_w"] in own_ids
+    # обычный участник окон пространств не видит
+    assert not any(s["id"].startswith("t:") for s in call(w, "/api/sessions", who=MEMBER)[1]["sessions"])
 
 
 @pytest.mark.parametrize("target", ["owner", "other"])
@@ -307,3 +309,42 @@ def test_bot_offers_tester_button_only_when_enabled(tmp_path, monkeypatch):
     assert any("📱 Панель" in x.get("text", "") for _, x in p.api.calls if _ == "sendMessage")
     p.people.add(57, "member", "Сотрудник")
     assert not p.admitted({"message": {"message_id": 1, "chat": {"id": 57}, "from": {"id": 57}, "text": "/start"}})
+
+
+# ---------- владелец и сессии пространств (п. 3, 6) ----------
+def test_owner_sees_spaces_group_and_works_there(world):
+    w = world
+    wid = open_tester_session(w)
+    ss = {s["id"]: s for s in call(w, "/api/sessions", who=OWNER)[1]["sessions"]}
+    assert w["owner_w"] in ss and wid in ss and w["other_w"] in ss
+    assert ss[wid]["space"] == "demo" and ss[wid]["space_title"] == "Демо для кафе" and ss[wid]["owner_here"] is None
+    assert "space" not in ss[w["owner_w"]]
+    # читает и пишет в окно тестировщика; тестировщик видит «Владелец подключился»
+    assert call(w, f"/api/screen?w={q(wid)}", who=OWNER)[0] == 200
+    assert call(w, "/api/send", {"w": wid, "text": "это владелец"}, who=OWNER)[0] == 200
+    assert wait(lambda: "got: это владелец" in "\n".join(call(w, f"/api/screen?w={q(wid)}")[1].get("lines", [])))
+    mine = call(w, "/api/sessions")[1]["sessions"]
+    assert [s["id"] for s in mine] == [wid] and mine[0]["owner_here"]
+    # список тестировщика по-прежнему без окон владельца и чужого пространства
+    assert call(w, "/api/active", {"w": wid}, who=OWNER)[0] == 400       # активная в боте — только своё окно
+
+
+def test_owner_connect_and_task(world):
+    w = world
+    assert call(w, "/api/space/connect", {"w": w["owner_w"]}, who=OWNER)[0] == 400   # не пространство
+    assert call(w, "/api/space/connect", {"w": w["other_w"]}, who=OWNER)[1]["ok"] is True
+    assert call(w, "/api/space/connect", {"w": w["other_w"]})[0] == 403            # тестировщику — нельзя
+    sp = call(w, "/api/spaces", who=OWNER)[1]
+    assert sp["enabled"] and {t["slug"] for t in sp["tenants"]} == {"demo", "other"}
+    assert call(w, "/api/spaces")[0] == 403
+    assert call(w, "/api/space/task", {"space": "demo", "name": "", "task": "x"}, who=OWNER)[0] == 400
+    assert call(w, "/api/space/task", {"space": "../x", "name": "a", "task": "x"}, who=OWNER)[0] == 400
+    assert call(w, "/api/space/task", {"space": "demo", "name": "Сверка", "task": "x"})[0] == 403
+    code, d = call(w, "/api/space/task", {"space": "demo", "name": "Сверка счетов", "task": "разбери inbox"},
+                   who=OWNER)
+    assert code == 200 and d["id"].startswith("t:demo:@") and d["name"] == "Сверка счетов"
+    assert wait(lambda: "got: разбери inbox" in "\n".join(call(w, f"/api/screen?w={q(d['id'])}")[1].get("lines", [])),
+                30)
+    mine = call(w, "/api/sessions")[1]["sessions"]                     # тестировщик видит её с понятным именем
+    assert [(s["id"], s["name"]) for s in mine] == [(d["id"], "Сверка счетов")] and mine[0]["owner_here"]
+    assert len(w["own"].windows()) == w["own_n"]
