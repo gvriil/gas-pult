@@ -507,3 +507,55 @@ def test_cli_new_list_revoke(tmp_path, capsys):
         cli.main(["offer", "revoke", code])
     with pytest.raises(SystemExit, match="ГГГГ-ММ-ДД"):
         cli.main(["offer", "new", "--name", "x", "--expires", "завтра"])
+
+
+# ---------- день с агентом и калькулятор пользы (задача 28) ----------
+CARWASH4 = """business = "Сеть моек «Тест»"
+industry = "carwash"
+pains = ["цифры по филиалам к обеду"]
+modules = ["carwash-morning", "carwash-return"]
+[demo]
+points = ["Север", "Центр", "Юг", "Запад"]
+avg_check = 1250
+clients = 2200
+"""
+
+
+def test_offer_calculator_defaults_from_demo(server):
+    """Предложение с 4 точками → ползунок «Филиалов» = 4; средний чек и клиенты — из [demo]; гостю, без входа."""
+    _, base = server
+    code = make(text=CARWASH4)
+    st, d, _ = Client(base).json(f"/api/offer/{code}")
+    assert st == 200 and d["scenario"]["id"] == "carwash-owner"
+    inp = {x["id"]: x for x in d["scenario"]["calculator"]["inputs"]}
+    assert inp["points"]["default"] == 4 and inp["avg_check"]["default"] == 1250 and inp["clients"]["default"] == 2200
+    assert inp["return_share"]["assumption"] and inp["minutes"]["assumption"]          # допущения подписаны
+    assert d["scenario"]["calculator"]["assumptions_disclaimer"]
+    assert "4 шт." in d["scenario"]["who"] and "Сеть моек «Тест»" in d["scenario"]["timeline_steps"][0]["text"]
+    assert all(st["decisions"] for st in d["scenario"]["timeline_steps"][:1])
+    assert "path" not in json.dumps(d["scenario"]) and code not in json.dumps(d["scenario"], ensure_ascii=False)
+    # тот же расчёт, что в «Примерочной»: значения по умолчанию — те, что пришли со страницы
+    from gas_pult import scenarios
+    py = scenarios.benefit(d["scenario"], {})
+    assert py["inputs"]["points"] == 4 and py["lines"][0]["low"] > 0
+
+
+def test_offer_calculator_clamped_and_absent_without_scenario():
+    big = offers.parse({"business": "Б", "industry": "carwash", "pains": ["x"], "modules": ["carwash-morning"],
+                        "demo": {"points": ["А"], "avg_check": 999_999_999 - 1, "clients": 10}})
+    inp = {x["id"]: x["default"] for x in offers.role_for(big)["calculator"]["inputs"]}
+    assert inp["points"] == 1 and inp["avg_check"] == 50000 and inp["clients"] == 50   # в границах ползунка
+    fit = offers.parse({"business": "Клуб", "industry": "fitness", "pains": ["x"], "modules": ["fitness-lapsed"]})
+    assert offers.role_for(fit) is None                       # нет роли с этими модулями — блока нет
+
+
+def test_offer_page_calculator_same_js_as_panel():
+    import re
+    from pathlib import Path
+    web = Path(offers.__file__).with_name("web")
+    block = lambda t: re.search(r"/\* benefit:start.*?/\* benefit:end \*/", t, re.S).group(0)   # noqa: E731
+    offer = (web / "offer.html").read_text(encoding="utf-8")
+    assert block(offer) == block((web / "index.html").read_text(encoding="utf-8"))
+    day = offer[offer.index("function dayHtml("):offer.index("function bindDemo(")]
+    assert "api(" not in day and "fetch(" not in day                 # модель и сервер не вызываются
+    assert "Допущения" in day and "assumptions_disclaimer" in day and 'type="range"' in day

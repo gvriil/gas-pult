@@ -55,7 +55,7 @@
   .pains .i { color: var(--status-approval); margin-top: 2px; }
   .chip { display: inline-flex; align-items: center; gap: 5px; font-size: calc(12px * var(--fz, 1)); font-weight: 500; padding: 2px 8px; border-radius: var(--radius-pill);
           background: var(--bg-subtle); color: var(--text-secondary); white-space: nowrap; }
-  .chip.demo { color: var(--status-approval); background: var(--status-approval-bg); }
+  .chip.demo { color: var(--status-approval); background: var(--status-approval-bg); margin: 0; padding: 2px 8px; border-radius: var(--radius-pill); }
   .mod-head { display: flex; gap: 12px; align-items: flex-start; }
   .mod-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-primary); flex: none; }
   .demo { margin-top: 14px; border-radius: var(--radius-md); background: var(--bg-subtle); padding: 12px; }
@@ -118,6 +118,8 @@
            padding: 0 12px 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--accent-primary);
            font-size: calc(13px * var(--fz, 1)); font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.10); }
   .hpill .i { width: 18px; height: 18px; }
+  /* на телефоне пилюля — в шапке страницы и уезжает с ней: поверх ползунков и кнопок при прокрутке не ложится */
+  @media (max-width: 899px) { body { position: relative; } .hpill { position: absolute; } }
   .hbg { position: fixed; inset: 0; z-index: 40; background: rgba(17,17,16,.42); display: flex; align-items: flex-end; justify-content: center; }
   .hsheet { width: 100%; max-width: 640px; height: 55%; min-height: 320px; display: flex; flex-direction: column; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
             padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,.2); }
@@ -139,6 +141,17 @@
   .hsheet .hrow { display: flex; gap: 8px; padding: 8px 16px 2px; flex: none; }
   .hsheet .hrow input { flex: 1; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); padding: 10px 14px; background: var(--bg-canvas); font-size: calc(16px * var(--fz, 1)); }
   .hsheet .hsend { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; border: 0; background: var(--accent-primary); color: var(--on-accent); padding: 0; }
+  /* День с агентом и калькулятор пользы — та же роль, что в «Примерочной» панели (offers.role_for, scenarios.py) */
+  .day { display: grid; gap: 10px; margin-top: 12px; }
+  .when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; } .when .t { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .gain { display: grid; gap: 8px; } .gline { background: var(--bg-subtle); border-radius: var(--radius-md); padding: 10px 12px; }
+  .gline .v { font-size: calc(18px * var(--fz, 1)); font-weight: 600; font-variant-numeric: tabular-nums; } .gline small { display: block; color: var(--text-muted); font-size: calc(12.5px * var(--fz, 1)); margin-top: 2px; }
+  .calc-in { display: grid; gap: 4px; } .calc-in .field { margin: 10px 0 0; }
+  .slide { display: flex; align-items: center; gap: 10px; } .slide input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent-primary); height: 32px; }
+  .slide input[type=number] { width: 104px; flex: none; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px 10px; background: var(--bg-canvas); min-height: 40px; font-variant-numeric: tabular-nums; }
+  .slide input[type=number].bad { border-color: var(--status-danger); } .slide .u { flex: none; color: var(--text-muted); font-size: calc(13px * var(--fz, 1)); min-width: 28px; }
+  .calc-in .hint { color: var(--text-muted); font-size: calc(12.5px * var(--fz, 1)); margin-top: 2px; }
+  .sub { margin: 16px 0 4px; font-size: calc(12px * var(--fz, 1)); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
   .hsheet .hclose { margin: 8px 16px 0; padding: 12px; border: 0; border-top: 1px solid var(--border-subtle); background: none; color: var(--text-secondary); }
 </style>
 </head>
@@ -228,6 +241,7 @@ function render() {
         ${demoCard(m)}
         <div class="row"><button class="btn ghost sm" data-tg="${esc(m.id)}">${ic("send")}Попробовать в Telegram</button></div><div data-tgout="${esc(m.id)}"></div></div>`).join("")}
     </section>
+    ${d.scenario ? dayHtml(d.scenario) : ""}
     <section id="upload"><h2>Загрузите выгрузку — отчёт за 2 минуты</h2>
       <p class="lead">CSV или XLSX из кассы, CRM или 1С: продажи, клиенты или должники. Сводку считает скрипт — без модели, за секунды.</p>
       ${note("info", "lock", `Файл обрабатывается в памяти и удаляется через ${d.upload.ttl_min} минут или по кнопке «Удалить мои данные»; на диск не пишется, данные не используются для обучения, модель не вызывается. В отчёте — только итоги и сокращённые имена («Иван П.»), без телефонов и ИНН.`)}
@@ -242,11 +256,82 @@ function render() {
       <div class="card" id="wiz"></div></section>
     <footer>Предложение GASTECH · страница не индексируется · ${esc(d.industry)}</footer>`;
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => $(b.dataset.go).scrollIntoView({ behavior: "smooth" })));
-  bindDemo(); bindUpload(); renderReports(); wizard();
+  bindDemo(); bindDay(); bindUpload(); renderReports(); wizard();
+}
+
+// ---------- день с агентом и калькулятор пользы: та же роль, что в «Примерочной» панели; модель не вызывается ----------
+/* benefit:start — тот же расчёт, что scenarios.benefit() в Python; тест сверяет */
+function benefitCalc(s, vals) {
+  const c = s.calculator;
+  const num = (x, d) => { if (typeof x === "boolean" || x == null) return d; const v0 = typeof x === "string" ? x.trim().replace(",", ".") : x;
+    if (v0 === "") return d; const v = Number(v0); return Number.isFinite(v) ? v : d; };
+  const inp = {};
+  for (const x of c.inputs) inp[x.id] = Math.min(x.max, Math.max(x.min, num(vals?.[x.id], x.default)));
+  const rnd = (v, r) => Math.floor(v / r + 0.5) * r;
+  const fmt = (v) => { const t = Math.floor(v * 10 + 0.5), w = Math.floor(t / 10), f = t % 10; return String(w).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (f ? "," + f : ""); };
+  const lines = c.formulas.map((l) => {
+    let base = 1; for (const k of l.of) base *= inp[k];
+    const low = rnd(base * l.low, l.round), high = rnd(base * l.high, l.round);
+    return { title: l.title, caption: l.caption, unit: l.unit, low, high, text: (low === high ? "≈ " + fmt(low) : fmt(low) + "–" + fmt(high)) + " " + l.unit, about: l.about };
+  });
+  return { inputs: inp, lines, disclaimer: c.assumptions_disclaimer };
+}
+/* benefit:end */
+const CALC = {};                                       // значения ползунков; по умолчанию — из [demo] предложения
+function dayHtml(r) {
+  const c = r.calculator;
+  const field = (x) => { const v = CALC[x.id] ?? x.default, id = esc(x.id);
+    return `<div class="field"><label for="cR_${id}">${esc(x.title)}</label>
+      <div class="slide"><input id="cR_${id}" data-range="${id}" type="range" min="${x.min}" max="${x.max}" step="${x.step}" value="${esc(v)}" aria-describedby="cH_${id}">
+        <input data-num="${id}" type="number" inputmode="decimal" min="${x.min}" max="${x.max}" step="${x.step}" value="${esc(v)}" aria-label="${esc(x.title)}"><span class="u">${esc(x.unit)}</span></div>
+      <div class="hint" id="cH_${id}">${esc(x.about)}</div></div>`; };
+  return `<section id="day"><h2>День с агентом — ${esc(r.title.toLowerCase())}</h2>
+      <p class="lead">${esc(r.who)}</p>
+      <div class="day">${r.timeline_steps.map((st, i) => `<div class="card"><div class="when"><span class="t">${esc(st.at)}</span>${st.day ? `<span class="chip">${esc(st.day)}</span>` : ""}${st.module_title ? `<span class="chip">${ic("puzzle", "s16")}${esc(st.module_title)}</span>` : ""}<span class="chip demo">пример</span></div>
+        <div class="msg">${esc(st.text)}</div>
+        ${st.decisions.length ? `<div class="q"><div class="opts">${st.decisions.map((x, j) => `<button class="opt" data-st="${i}" data-dj="${j}">${esc(x.label)}</button>`).join("")}</div><div class="next" hidden></div></div>` : ""}</div>`).join("")}</div>
+    </section>
+    <section id="calc"><h2>Ваша польза — оценка</h2>
+      <p class="lead">Без агента: ${esc(r.without)}</p>
+      <div class="card"><div class="gain" id="gain"></div>
+        ${note("warn", "warn", esc(c.assumptions_disclaimer))}
+        <div class="sub">Ваши цифры — из предложения, поправьте</div><div class="calc-in">${c.inputs.filter((x) => !x.assumption).map(field).join("")}</div>
+        <div class="sub">Допущения — поправьте</div><div class="calc-in">${c.inputs.filter((x) => x.assumption).map(field).join("")}</div></div>
+      <p class="muted" style="margin:10px 2px 0">Первый шаг: ${esc(r.first_step)}</p>
+    </section>`;
+}
+function gain() {                                      // результат и рядом — допущения, из которых он посчитан
+  const r = D.scenario; if (!r) return;
+  const res = benefitCalc(r, CALC), byId = Object.fromEntries(r.calculator.inputs.map((x) => [x.id, x]));
+  const fmtv = (v) => String(v).replace(".", ",");
+  $("gain").innerHTML = res.lines.map((x, i) => {
+    const used = r.calculator.formulas[i].of.filter((k) => byId[k].assumption).map((k) => `${byId[k].title.toLowerCase()} — ${fmtv(res.inputs[k])} ${byId[k].unit}`);
+    return `<div class="gline"><div>${esc(x.title)}${x.caption ? ` <span class="chip demo">${esc(x.caption)}</span>` : ""}</div><div class="v">${esc(x.text)}</div>
+      ${used.length ? `<small>Допущение: ${esc(used.join("; "))}</small>` : ""}<small>${esc(x.about)}</small></div>`;
+  }).join("");
+}
+function bindDay() {
+  const r = D.scenario; if (!r) return;
+  document.querySelectorAll("[data-st]").forEach((b) => b.addEventListener("click", () => {
+    const d = r.timeline_steps[+b.dataset.st].decisions[+b.dataset.dj], box = b.closest(".q");
+    box.querySelectorAll(".opt").forEach((x) => x.classList.toggle("on", x === b));
+    const nx = box.querySelector(".next"); nx.hidden = false;
+    nx.innerHTML = `${ic("next")}<span><b>Что произошло бы:</b> ${esc(d.outcome_toast)} <span class="chip demo">демо — ничего не выполнено</span></span>`;
+  }));
+  $("calc").addEventListener("input", (e) => {
+    const x = e.target.closest("[data-num], [data-range]"); if (!x) return;
+    const id = x.dataset.num || x.dataset.range, d = r.calculator.inputs.find((y) => y.id === id), v = Number(String(x.value).replace(",", "."));
+    const ok = x.value.trim() !== "" && Number.isFinite(v) && v >= d.min && v <= d.max, box = x.closest(".field");
+    if (x.dataset.range) box.querySelector("[data-num]").value = x.value; else if (ok) box.querySelector("[data-range]").value = x.value;
+    box.querySelector("[data-num]").classList.toggle("bad", !ok);
+    box.querySelector(".hint").textContent = ok ? d.about : `Число от ${String(d.min).replace(".", ",")} до ${String(d.max).replace(".", ",")} — считаю по ближайшей границе.`;
+    CALC[id] = x.value; gain();
+  });
+  gain();
 }
 
 function bindDemo() {
-  document.querySelectorAll(".opt").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".opt[data-m]").forEach((b) => b.addEventListener("click", () => {
     const m = D.modules.find((x) => x.id === b.dataset.m), o = m.demo.question.options[+b.dataset.j];
     const box = b.closest(".q");
     box.querySelectorAll(".opt").forEach((x) => x.classList.toggle("on", x === b));
