@@ -552,6 +552,10 @@ def parser() -> argparse.ArgumentParser:
     lg.add_argument("--yes", metavar="да")
     lo = sub.add_parser("logout", help="выключить вход в Claude в пространстве")
     lo.add_argument("slug")
+    ck = sub.add_parser("check", help="автотест изоляции: из A — к файлам, процессам и tmux B и к ~владельца")
+    ck.add_argument("a")
+    ck.add_argument("b")
+    ck.add_argument("--owner", help="пользователь пульта (по умолчанию — тот, кто запустил sudo)")
     return ap
 
 
@@ -580,6 +584,9 @@ def main(argv: list[str] | None = None) -> int:
             login(lay, s, a.slug, a.yes)
         elif a.cmd == "logout":
             logout(lay, s, a.slug)
+        elif a.cmd == "check":
+            from gas_pult import tenant_check
+            return tenant_check.main(lay.tenants, a.a, a.b, a.owner)
     except ValueError as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         return 2
