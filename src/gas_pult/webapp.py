@@ -46,6 +46,7 @@ from gas_pult import (
     offer_report,
     offers,
     passkeys,
+    personas,
     providers,
     scenarios,
     setup,
@@ -132,6 +133,7 @@ class Panel:
         self.mcp = Mcp()
         self.openrouter = OpenRouter()
         self.people = People(cfg.data / "people.json", cfg.owners)
+        self.team = personas.Team(cfg.data / "team.json")      # потолок возможностей сотрудников (экран «Команда»)
         self.logins = webauth.TgLogins(cfg.data / "tg_logins.json")
         self.email = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # вход по почте
         self.keys = passkeys.Passkeys(cfg.passkeys, self.people, cfg.data / "passkeys.json")    # Face ID / ключ
@@ -326,6 +328,37 @@ class Panel:
         return {**country.public(rec), **self.geo.info(), "need": not country.norm(rec.get("chosen")),
                 "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
                 "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
+
+    def ui(self, uid, role: str | None) -> dict:
+        """Вид панели человека (``personas.view``): роль интерфейса, возможности, потолок, справочник."""
+        return personas.view(self.people.ui(uid), personas.access(role), self.team, uid,
+                             self.people.prefs(uid)["lang"])
+
+    def set_ui(self, uid, role: str | None, b: dict) -> dict:
+        """Выбор человека: ``persona`` (сменить роль целиком), ``add`` ({cap: true|false}) — тумблеры. Простой режим
+        (#80) следует за видом: бизнес-роли — чат, разработчик — прежний интерфейс."""
+        add = b.get("add")
+        rec = personas.change(self.people.ui(uid), personas.access(role), self.team, uid,
+                              None if b.get("persona") is None else str(b["persona"]),
+                              add if isinstance(add, dict) else None)
+        self.people.set_ui(uid, rec)
+        out = self.ui(uid, role)
+        self.people.set_prefs(uid, simple=out["simple"])
+        return out
+
+    def prefs(self, uid, role: str | None) -> dict:
+        """Настройки панели; ``simple`` — по виду, если человек выбрал роль или владелец закрыл ему инженерное."""
+        p, v = self.people.prefs(uid), self.ui(uid, role)
+        return {**p, "simple": v["simple"] if v["chosen"] or "cap.dev_sessions" not in v["ceiling"]
+                else p["simple"]}
+
+    def team_info(self) -> dict:
+        """Экран «Команда»: общая политика для сотрудников и поправки по людям (только участники — staff)."""
+        people = [{"id": p["id"], "name": p.get("name") or "", "username": p.get("username") or "",
+                   **{f"own_{k}": v for k, v in self.team.person(p["id"]).items()},
+                   "ceiling": sorted(self.team.ceiling(p["id"])), "sections": self.team.sections(p["id"])}
+                  for p in self.people.list() if p.get("role") == "member"]
+        return {**self.team.policy(), "people": people, "catalog": personas.catalog()}
 
     def people_list(self) -> list[dict]:
         """Люди для панели: страна — кодами и временем, без хеша номера."""
@@ -1011,16 +1044,18 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
-              "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback",
+              "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 
+# Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
+PERSONA = "/api/persona"
 # До согласия с условиями использования (terms.py) — только это; остальное API отвечает 403 с code="terms".
 TERMS_FREE = {"/api/meta", "/api/terms", "/api/terms/accept", "/api/logout", "/api/help/ask", "/api/help/feedback",
-              "/api/prefs"}
+              "/api/prefs", PERSONA}
 # Помощник «? Подсказать» — любому вошедшему (и наблюдателю), а на экране входа — и до входа.
 HELP_OPEN = ("/api/help/ask", "/api/help/feedback")
 # Почта для входа и оповещений (emailcode.py) — своя у каждого вошедшего, в том числе у наблюдателя.
@@ -1141,15 +1176,19 @@ def handler(panel: Panel):
             if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
                 self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
                 return False
-            free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, *HELP_OPEN,
-                    *EMAIL_OWN, *PASSKEY_OWN)                                   # и наблюдателю
+            free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA,
+                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN)                       # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
-            if allowed(role, need):
-                return True
-            why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
-            self.json({"error": why}, 403)
-            return False
+            if not allowed(role, need):
+                why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
+                self.json({"error": why}, 403)
+                return False
+            cap = personas.PATH_CAP.get(path)               # потолок возможностей — это права, не только вид
+            if cap and cap not in personas.ceiling(personas.access(role), panel.team, uid):
+                self.json({"error": "этот раздел вам не открыл владелец пульта", "code": "cap", "cap": cap}, 403)
+                return False
+            return True
 
         def client_ip(self) -> str:
             """Адрес клиента. За обратным прокси на этой машине — из ``X-Forwarded-For`` (последний адрес: его дописал
@@ -1219,13 +1258,17 @@ def handler(panel: Panel):
                 tu = self.terms_uid()
                 cinfo = panel.country_info(tu)
                 return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
-                        "whatsnew": whatsnew[:1], "prefs": panel.people.prefs(tu),
+                        "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
                         "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
             if path == "/api/prefs":
-                return panel.people.prefs(self.terms_uid())
+                return panel.prefs(self.terms_uid(), self.who()[1])
+            if path == PERSONA:
+                return panel.ui(self.terms_uid(), self.who()[1])
+            if path == "/api/team":
+                return panel.team_info()
             if path == TOUR:                             # тур: пройден / «Не сейчас» — у каждого свой
                 return panel.people.tour(self.terms_uid())
             if path == "/api/country":
@@ -1513,9 +1556,25 @@ def handler(panel: Panel):
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои
-                lang = b.get("lang")
-                return panel.people.set_prefs(self.terms_uid(), None if b.get("simple") is None else
-                                              b.get("simple") is True, None if lang is None else str(lang))
+                lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
+                if b.get("simple") is not None:                # прежний переключатель — это смена роли целиком
+                    cur = panel.ui(uid, role)["persona"]
+                    want = b.get("simple") is True
+                    if want != (cur in personas.SIMPLE):
+                        panel.set_ui(uid, role, {"persona": "business_owner" if want else "developer"})
+                p = panel.people.set_prefs(uid, None if b.get("simple") is None else b.get("simple") is True,
+                                           None if lang is None else str(lang))
+                return {**p, "simple": panel.prefs(uid, role)["simple"]}
+            if path == PERSONA:
+                return panel.set_ui(self.terms_uid(), self.who()[1], b if isinstance(b, dict) else {})
+            if path == "/api/team":
+                uid = b.get("id")
+                caps, secs = b.get("caps"), b.get("sections")
+                if uid is not None and int(uid) not in [p["id"] for p in panel.team_info()["people"]]:
+                    raise ValueError("это не сотрудник пульта")
+                panel.team.set(caps if isinstance(caps, list) else None, secs if isinstance(secs, list) else None,
+                               None if uid is None else int(uid), b.get("reset") is True)
+                return panel.team_info()
             if path == "/api/terms/accept":
                 if str(b.get("version", "")) != terms.VERSION:
                     raise ValueError("условия обновились — прочитайте новую версию")
@@ -1555,6 +1614,7 @@ def handler(panel: Panel):
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/people/remove":
                 panel.people.remove(int(b.get("id", 0)))
+                panel.team.forget(int(b.get("id", 0)))
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/logout":
                 panel.auth.logout(self.session())

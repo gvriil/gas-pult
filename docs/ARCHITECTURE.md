@@ -44,6 +44,7 @@ src/gas_pult/
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение; Journal — вкладка «Команды»
 ├── digest.py       утренняя сводка «ждёт владельца»: PR (gh), окна с вопросом, строки о решениях из HANDOFF.md
 ├── people.py       роли (владелец / участник / наблюдатель), согласие с условиями, страна, папка Claude человека
+├── personas.py     роли интерфейса: access_role (права) отдельно от ui_persona (вид), возможности cap.*, потолок
 ├── terms.py        условия использования: версия и короткий текст для бота и панели (полный — docs/TERMS.md)
 ├── country.py      страна человека: выбор, код номера (хеш с солью), GeoIP по локальной базе db-ip lite
 ├── models.py       профили поставщиков (Claude, OpenRouter, GLM, DeepSeek, GigaChat и YandexGPT через шлюз), страны
@@ -119,7 +120,7 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 (`cmds`, `run`, `command`, `commands*`), голос (`stt`, `tts`, `voice/*`, `providers`, `keys*`), модели (`model`,
 `models`, `effort`, `openrouter/*`, `fallback`), расход (`cost/limits`, `cost/decide`), люди и вход (`people*`,
 `login/*`, `logout`, `terms*`, `country`), MCP (`mcp*`), мастер (`setup/*`), модули (`modules`, `modules/create`),
-«Примерочная» (`scenarios`), простой режим (`prefs`, `ask`; словари `/i18n/ru.json`, `/i18n/en.json` — и до входа),
+«Примерочная» (`scenarios`), роли интерфейса (`persona`; `team` — только владельцу), простой режим (`prefs`, `ask`; словари `/i18n/ru.json`, `/i18n/en.json` — и до входа),
 предложения (`/offer/<код>`, `/api/offer/<код>/…`).
 
 | Модуль | Что делает |
@@ -149,6 +150,14 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 - **Своя папка Claude Code** у каждого человека из `people.json` — `<data>/people/<id>/claude` (`CLAUDE_CONFIG_DIR`):
   свой вход в Claude, свои MCP, свои журналы. Окна человека помечены `@gas_pult_by`; `people.home_of` по окну находит,
   в какой папке искать журналы (окна владельца — `~/.claude`). Решение — [ADR 0001](adr/0001-claude-config-per-person.md).
+- **Роли интерфейса** (`personas.py`): права (`access_role`: владелец → `owner`, участник → `staff`, наблюдатель →
+  `guest`) отдельно от вида (`ui_persona`: `business_owner`, `point_admin`, `project_manager`, `student`, `developer`).
+  Вид — набор возможностей `cap.*`: `(пресет роли ∪ добавленные) − скрытые, ∩ потолок по access_role`. Потолок
+  владельцу — всё, гостю — `GUEST`, сотруднику — что разрешил владелец (`<data>/team.json`; не задано — всё, как до
+  ролей). Потолок — это права: `permit` не пускает к API из `CAP_PATHS` того, у кого возможности нет в потолке (403
+  `code="cap"`); скрытое в виде сервер не закрывает. Вид хранится у человека (`ui` в people.json, у владельцев —
+  `ui.json`), простой режим (#80) следует за видом: нет `cap.dev_sessions` — чат. `GET/POST /api/persona`,
+  `GET/POST /api/team`, поле `ui` в `/api/meta`.
 - **Условия** (`terms.py`, `VERSION`): без согласия с текущей версией человек не работает; подняли версию — бот и
   панель спрашивают заново. Полный текст — [TERMS.md](TERMS.md) (черновик, на проверку юристу).
 - **Страна** (`country.py`): выбор, код номера телефона из «Поделиться номером» (хранится только HMAC с солью
