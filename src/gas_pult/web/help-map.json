@@ -1,6 +1,7 @@
 {
  "actions": {
   "go:commands": {
+   "cap": "cap.dev_sessions",
    "id": "go:commands",
    "roles": [
     "owner",
@@ -18,6 +19,7 @@
    "title_en": "See the demo"
   },
   "go:integrations": {
+   "cap": "cap.dev_models_mcp",
    "id": "go:integrations",
    "roles": [
     "owner",
@@ -34,11 +36,13 @@
    "title_en": "Sign in with Telegram"
   },
   "go:models": {
+   "cap": "cap.dev_models_mcp",
    "id": "go:models",
    "roles": [
     "owner"
    ],
-   "title": "Модели и ключи"
+   "title": "Модели и ключи",
+   "title_en": "Models of other providers"
   },
   "go:modules": {
    "id": "go:modules",
@@ -50,6 +54,7 @@
    "title": "Из модуля — каталог агентов"
   },
   "go:new-folder": {
+   "cap": "cap.dev_sessions",
    "id": "go:new-folder",
    "roles": [
     "owner",
@@ -58,6 +63,7 @@
    "title": "Новая папка"
   },
   "go:new-session": {
+   "cap": "cap.dev_sessions",
    "id": "go:new-session",
    "roles": [
     "owner",
@@ -139,6 +145,7 @@
    "title_en": "Change the whole role"
   },
   "go:scenarios": {
+   "cap": "cap.scenarios_try",
    "id": "go:scenarios",
    "roles": [
     "owner",
@@ -148,6 +155,7 @@
    "title": "Примерить на себя — день с агентом"
   },
   "go:session.chat": {
+   "cap": "cap.dev_sessions",
    "id": "go:session.chat",
    "roles": [
     "owner",
@@ -157,6 +165,7 @@
    "title": "Переписка сессии"
   },
   "go:session.menu": {
+   "cap": "cap.dev_sessions",
    "id": "go:session.menu",
    "roles": [
     "owner",
@@ -165,23 +174,28 @@
    "title": "Меню действий сессии"
   },
   "go:session.model": {
+   "cap": "cap.dev_models_mcp",
    "id": "go:session.model",
    "roles": [
     "owner",
     "member"
    ],
-   "title": "Модель сессии"
+   "title": "Модель сессии",
+   "title_en": "Session model"
   },
   "go:session.screen": {
+   "cap": "cap.dev_terminal",
    "id": "go:session.screen",
    "roles": [
     "owner",
     "member",
     "viewer"
    ],
-   "title": "Экран сессии"
+   "title": "Экран сессии",
+   "title_en": "Terminal screen"
   },
   "go:sessions": {
+   "cap": "cap.dev_sessions",
    "id": "go:sessions",
    "roles": [
     "owner",
@@ -210,6 +224,7 @@
    "title_en": "Panel features"
   },
   "go:settings.cost": {
+   "cap": "cap.dev_cost_tokens",
    "id": "go:settings.cost",
    "roles": [
     "owner",
@@ -236,6 +251,7 @@
    "title": "Обозначения"
   },
   "go:settings.limits": {
+   "cap": "cap.dev_cost_tokens",
    "id": "go:settings.limits",
    "roles": [
     "owner"
@@ -296,6 +312,7 @@
    "title_en": "Settings"
   },
   "go:switch": {
+   "cap": "cap.dev_sessions",
    "id": "go:switch",
    "roles": [
     "owner",
@@ -305,6 +322,7 @@
    "title": "Другая сессия"
   },
   "go:voice": {
+   "cap": "cap.dev_models_mcp",
    "id": "go:voice",
    "roles": [
     "owner"
@@ -459,6 +477,154 @@
    ]
   }
  ],
+ "personas": {
+  "business_owner": {
+   "faq": [
+    {
+     "a": "Агент сделает одно действие, о котором спросил, — только его и только один раз. Пункты «больше не спрашивать» спрятаны отдельно. Перед отправкой людям агент показывает черновик.",
+     "a_en": "The agent does the one action it asked about — only that, and only once. «Don't ask again» options are hidden separately. Before sending anything to people, the agent shows a draft.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "bo-yes",
+     "q": "Что изменится, если я нажму «Да»?",
+     "q_en": "What changes if I tap «Yes»?",
+     "roles": []
+    },
+    {
+     "a": "Кнопки «Отменить» пока нет — журнал и откат готовятся. Напишите агенту «верни как было»: он покажет, что изменил, и предложит, как вернуть. Отправленные письма вернуть нельзя — поэтому агент спрашивает перед отправкой.",
+     "a_en": "There is no «Undo» button yet — the log and undo are coming. Write to the agent «put it back»: it will show what it changed and offer how to restore it. Sent messages can't be recalled — that's why the agent asks before sending.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "bo-undo",
+     "q": "Как отменить последнее действие?",
+     "q_en": "How do I undo the last action?",
+     "roles": []
+    }
+   ],
+   "id": "business_owner",
+   "tone": "Говори языком владельца бизнеса: выручка, клиенты, смена, документы. Никаких слов про сервер, токены и терминал.",
+   "tone_en": "Speak like a business owner would: revenue, clients, shifts, documents. No words about servers, tokens or terminals."
+  },
+  "developer": {
+   "faq": [
+    {
+     "a": "Вкладка «Экран» открытой сессии — терминал tmux как есть: ошибки Claude Code и вывод команд. Ошибки API в переписке помечены отдельно.",
+     "a_en": "The «Screen» tab of an open session is the tmux terminal as is: Claude Code errors and command output. API errors are marked in the conversation.",
+     "actions": [
+      "go:session.screen"
+     ],
+     "id": "dev-log",
+     "q": "Где лог ошибок сессии?",
+     "q_en": "Where is the session error log?",
+     "roles": []
+    },
+    {
+     "a": "Ключ поставщика — «Интеграции» → «Модели других поставщиков»; затем новая сессия на этом профиле или меню сессии → «Модель».",
+     "a_en": "Provider key — «Integrations» → «Models of other providers»; then a new session on that profile or the session menu → «Model».",
+     "actions": [
+      "go:models",
+      "go:session.model"
+     ],
+     "id": "dev-model",
+     "q": "Как переключить сессию на GLM или DeepSeek?",
+     "q_en": "How do I switch a session to GLM or DeepSeek?",
+     "roles": []
+    }
+   ],
+   "id": "developer",
+   "tone": "Говори кратко и технически точно: сессии tmux, профили моделей, MCP-коннекторы, ветки git и коды ошибок.",
+   "tone_en": "Be brief and technically precise: tmux sessions, model profiles, MCP connectors, git branches and error codes."
+  },
+  "point_admin": {
+   "faq": [
+    {
+     "a": "Карточки «Ждут вашего Да» сверху — агенты ждут решения. Потом разделы «Общение» и «Бумаги»: ответы клиентам и документы смены.",
+     "a_en": "The «Waiting for your Yes» cards on top — agents are waiting for a decision. Then «Messages» and «Papers»: replies to clients and shift documents.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "pa-first",
+     "q": "Что проверить в первую очередь?",
+     "q_en": "What should I check first?",
+     "roles": []
+    },
+    {
+     "a": "Нажмите «Общение» над разговором: останутся агенты, которые отвечают клиентам, и примеры просьб. Черновики ответов агент показывает до отправки.",
+     "a_en": "Tap «Messages» above the conversation: only the agents that answer clients stay, with example requests. The agent shows reply drafts before sending.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "pa-reply",
+     "q": "Кому ответить сейчас?",
+     "q_en": "Whom should I answer now?",
+     "roles": []
+    }
+   ],
+   "id": "point_admin",
+   "tone": "Говори коротко и по делу для администратора точки: что проверить, кому ответить, какую кнопку нажать.",
+   "tone_en": "Be short and practical for a site administrator: what to check, whom to answer, which button to tap."
+  },
+  "project_manager": {
+   "faq": [
+    {
+     "a": "Доски задач и сроков пока нет — она готовится. Сейчас попросите агента «сводку поручений на сегодня: что сделано, что задерживается»; кто ждёт решения — в «Ждут вашего Да».",
+     "a_en": "There is no tasks and deadlines board yet — it's coming. For now ask the agent for «today's assignments: what's done, what's late»; who waits for a decision is in «Waiting for your Yes».",
+     "actions": [
+      "go:simple.chat",
+      "go:settings.caps"
+     ],
+     "id": "pm-late",
+     "q": "Какие задачи сегодня опаздывают?",
+     "q_en": "Which tasks are late today?",
+     "roles": []
+    },
+    {
+     "a": "Попросите агента: «сделай отчёт за неделю таблицей» — файл появится в переписке. Каждую неделю сам — агент из модуля с расписанием («Подключить агента»).",
+     "a_en": "Ask the agent: «make a weekly report as a table» — the file appears in the conversation. Every week on its own — an agent from a module with a schedule («Connect an agent»).",
+     "actions": [
+      "go:simple.chat",
+      "go:simple.new-agent"
+     ],
+     "id": "pm-week",
+     "q": "Как выгрузить отчёт за неделю?",
+     "q_en": "How do I export a weekly report?",
+     "roles": []
+    }
+   ],
+   "id": "project_manager",
+   "tone": "Фокусируйся на статусах поручений, сроках, узких местах и журнале выполнения.",
+   "tone_en": "Focus on assignment statuses, deadlines, bottlenecks and the execution log."
+  },
+  "student": {
+   "faq": [
+    {
+     "a": "Назначение экрана и шаги — простыми словами.",
+     "a_en": "What this screen is for and the steps — in plain words.",
+     "actions": [],
+     "id": "explain",
+     "q": "Объясни на пальцах, что здесь происходит",
+     "q_en": "Explain in plain words what's going on here",
+     "roles": []
+    },
+    {
+     "a": "В демо — нет: всё на выдуманных примерах. В настоящем пространстве агент спрашивает перед каждым действием — без вашего «Да» он ничего не меняет и никому не пишет.",
+     "a_en": "Not in the demo: everything is made-up examples. In a real workspace the agent asks before every action — without your «Yes» it changes nothing and writes to no one.",
+     "actions": [
+      "go:simple.chat"
+     ],
+     "id": "st-safe",
+     "q": "Можно ли здесь что-то сломать?",
+     "q_en": "Can I break anything here?",
+     "roles": []
+    }
+   ],
+   "id": "student",
+   "tone": "Объясняй дружелюбно и пошагово, как наставник. Напоминай, что в демо и песочнице ничего нельзя сломать.",
+   "tone_en": "Explain kindly and step by step, like a mentor. Remind that nothing can break in the demo and sandbox."
+  }
+ },
  "screens": {
   "country": {
    "chips": [
