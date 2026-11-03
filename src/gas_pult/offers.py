@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import random
@@ -341,11 +342,40 @@ def page(o: dict) -> dict:
                      "decisions": [{"question": x["question"], "options": x["options"]} for x in m["decisions"]],
                      "demo": demo_module(o, m)})
     return {"business": o["business"], "industry": INDUSTRIES[o["industry"]]["title"], "pains": o["pains"],
-            "expires": o["expires"], "modules": mods,
+            "expires": o["expires"], "modules": mods, "scenario": role_for(o),
             "terms": {"version": terms.VERSION, "title": terms.TITLE, "points": list(terms.POINTS), "url": terms.URL},
             "countries": [{"code": c, "name": country.name(c)} for c in country.COMMON],
             "upload": {"max_mb": offer_report.MAX_BYTES >> 20, "max_rows": offer_report.MAX_ROWS,
                        "ttl_min": DEMO_TTL // 60, "kinds": offer_report.KINDS}}
+
+
+# ---------- сценарий отрасли и калькулятор пользы (как в «Примерочной», scenarios.py) ----------
+# Вводные калькулятора из [demo] предложения: число точек — сколько их в предложении, средний чек и клиенты — как есть.
+FROM_DEMO = {"points": lambda d: len(d["points"]), "avg_check": lambda d: d["avg_check"],
+             "clients": lambda d: d["clients"]}
+
+
+def role_for(o: dict) -> dict | None:
+    """Роль «Примерочной» для страницы предложения: та, где больше всего модулей предложения (нет общих — None).
+    Значения калькулятора по умолчанию — из [demo] (в границах ползунка), имя и первая точка — из предложения.
+    Только данные и расчёт по формулам из toml — без модели."""
+    from gas_pult import scenarios
+
+    best = None
+    for s in scenarios.catalog():
+        n = len(set(s["modules"]) & set(o["modules"]))
+        if n and (best is None or n > best[0]):
+            best = (n, s)
+    if not best:
+        return None
+    s = copy.deepcopy(best[1])
+    for x in s["calculator"]["inputs"]:
+        if x["id"] in FROM_DEMO:
+            x["default"] = min(x["max"], max(x["min"], FROM_DEMO[x["id"]](o["demo"])))
+    s["demo"] = {**s["demo"], "business": o["business"], "point": o["demo"]["points"][0]}
+    out = scenarios.public(s)
+    return {k: out[k] for k in ("id", "title", "short", "who", "without", "modules", "timeline_steps", "calculator",
+                                "needs", "first_step") if k in out}
 
 
 # ---------- сценарий демо в Telegram ----------
