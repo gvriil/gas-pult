@@ -3,6 +3,7 @@ id = "horeca-harvest"
 version = "1.0"
 title = "Остатки и урожай"
 industry = "Поставщики HoReCa"
+sections = ["analytics", "docs"]
 about = "Каждое утро — что есть, что поспевает, что заказано; излишек с коротким сроком — предложить скидку, решаете вы."
 description = """
 Свежая продукция живёт 5–10 дней. В 7:00 агент сводит остатки и ожидаемый сбор (data/stock.csv, data/harvest.csv)
