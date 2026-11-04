@@ -85,7 +85,8 @@ def test_web_flow():
         code = invites.create("demo")
         st, h, _ = req(base, f"/invite/{code}")
         assert st == 302 and h["Location"] == f"/?invite={code}" and "noindex" in h["X-Robots-Tag"]
-        assert req(base, f"/api/invite?code={code}")[2] == {"ok": True, "title": "Демо для кафе"}
+        info = req(base, f"/api/invite?code={code}")[2]                 # поля только добавляются (задача 34)
+        assert {k: info[k] for k in ("ok", "title")} == {"ok": True, "title": "Демо для кафе"}
         assert req(base, "/api/invite?code=nope-nope-nope-nope")[2] == {"ok": False}
         assert req(base, "/api/login/tg", {"invite": "nope-nope-nope-nope"})[0] == 400
         st, _, d = req(base, "/api/login/tg", {"invite": code})

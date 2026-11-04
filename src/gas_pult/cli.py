@@ -228,21 +228,42 @@ def cmd_geoip(a):
         print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
 
 
+def invite_qr(link: str, hint: str) -> Path:
+    """PNG с QR ссылки — в данных пульта (папка 0700, файл 0600): показать с экрана или распечатать."""
+    from gas_pult import qr
+    from gas_pult.config import data_dir
+
+    d = data_dir() / "invites"
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    d.chmod(0o700)
+    f = d / f"qr-{hint}.png"
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(qr.png_of(link))
+    f.chmod(0o600)
+    return f
+
+
 def cmd_invite(a):
     """Одноразовые приглашения тестировщиков (invites.py, docs/TENANTS.md): ссылка на 24 часа, пространство и роль;
-    вход через Telegram по ней — доступ сразу. list — какие есть; revoke — отозвать."""
+    вход по ней (или по короткому коду, или по QR) — без Telegram, именем, или через Telegram. list — какие есть;
+    revoke — отозвать."""
     from gas_pult import invites
 
     try:
         if a.action == "create":
             if not a.arg:
                 raise SystemExit("Укажите пространство: gas-pult invite create <имя>")
-            code = invites.create(a.arg, a.role)
+            inv = invites.new(a.arg, a.role)
             base = (a.url or "").rstrip("/")
-            print(f"✓ Приглашение в «{a.arg}» ({a.role}), 24 часа, один вход.")
-            print(f"  Ссылка: {base}/invite/{code}" if base else
-                  f"  Путь: /invite/{code} — перед ним адрес панели (--url https://…)")
-            print(f"  Отозвать: gas-pult invite revoke {code[:invites.HINT]}")
+            link = f"{base}/invite/{inv['code']}"
+            print(f"✓ Приглашение в «{a.arg}» ({a.role}), 24 часа, один вход — ссылкой, QR или кодом.")
+            print(f"  Ссылка: {link}" if base else
+                  f"  Путь: /invite/{inv['code']} — перед ним адрес панели (--url https://…)")
+            print(f"  Код:    {inv['short']}  (экран входа → «Есть код приглашения?»)")
+            print(f"  QR:     {invite_qr(link, inv['hint'])}" if base else
+                  "  QR:     нужен адрес панели — добавьте --url https://…")
+            print(f"  Отозвать: gas-pult invite revoke {inv['hint']}")
         elif a.action == "list":
             items = invites.listing()
             if not items:
