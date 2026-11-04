@@ -623,3 +623,76 @@ def test_space_folder_names():
         n = space_sessions.folder_name(bad)
         assert "/" not in n and not n.startswith((".", "~", "-")) and "\n" not in n and n
     assert len(space_sessions.folder_name("я" * 200)) == space_sessions.NAME_MAX
+
+
+def raw(w, method, path, data=None, headers=None, who=TESTER):
+    hd = {"Cookie": f"{webauth.COOKIE}={w['tok'][who]}", **(headers or {})}
+    req = urllib.request.Request(w["base"] + path, data, hd, method=method)
+    try:
+        r = urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        r = e
+    return (r.status if hasattr(r, "status") else r.code), r.read(), dict(r.headers)
+
+
+def test_space_files_upload_download_and_escape(world, tmp_path, monkeypatch):
+    """Задача 32, п. 4: файлы сессии пространства — загрузка и скачивание через буфер tmux пространства (от его
+    пользователя), кириллица в именах, двоичные данные; наружу из папки сессии — нельзя (../, абсолютный путь, симлинк);
+    места нет — понятный текст."""
+    from gas_pult import space_files, space_sessions
+    w = world
+    code, d = call(w, "/api/new", {"i": 0, "name": "Документы"})
+    assert code == 200, d
+    wid = d["id"]
+    folder = w["root"] / "demo" / "home" / "projects" / "Документы"
+    assert wait(lambda: any(s["id"] == wid and s["path"] == str(folder)
+                            for s in call(w, "/api/sessions")[1]["sessions"]))
+    data = b"%PDF-1.4\x00\x01\xff" + bytes(range(256)) * 50
+    qw = q(wid)
+    st, body, _ = raw(w, "POST", f"/api/space/upload?w={qw}", data,
+                      {"X-File-Name": urllib.parse.quote("Акт сверки №1.pdf"), "Content-Type": "application/pdf"})
+    assert st == 200 and json.loads(body)["name"] == "Акт сверки №1.pdf", body
+    assert (folder / "Акт сверки №1.pdf").read_bytes() == data
+    hd = {"X-File-Name": urllib.parse.quote("../Акт сверки №1.pdf")}
+    st, body, _ = raw(w, "POST", f"/api/space/upload?w={qw}", b"v2", hd)
+    assert json.loads(body)["name"] == "Акт сверки №1 (2).pdf"
+    assert (folder / "Акт сверки №1 (2).pdf").read_bytes() == b"v2"
+    st, body, _ = raw(w, "POST", f"/api/space/upload?w={qw}", b"", {"X-File-Name": urllib.parse.quote("пусто.txt")})
+    assert st == 200 and (folder / "пусто.txt").read_bytes() == b""
+    lst = call(w, f"/api/space/files?w={qw}")[1]
+    names = {f["name"]: f["size"] for f in lst["files"]}
+    assert names["Акт сверки №1.pdf"] == len(data) and lst["free"] > 0
+    st, body, hd = raw(w, "GET", f"/api/space/download?w={qw}&f={urllib.parse.quote('Акт сверки №1.pdf')}")
+    assert st == 200 and body == data
+    assert "filename*=UTF-8''" + urllib.parse.quote("Акт сверки №1.pdf") in hd["Content-Disposition"]
+    assert raw(w, "GET", f"/api/space/download?w={qw}&f={urllib.parse.quote('пусто.txt')}")[:2] == (200, b"")
+    # наружу — нельзя
+    secret = tmp_path / "secret.txt"
+    secret.write_text("секрет владельца")
+    (folder / "ссылка").symlink_to(secret)
+    (folder / "sub").mkdir()
+    for f in ("../../../secret.txt", str(secret), "ссылка", "sub", "нет-такого", "", "a/../../x"):
+        st, body, _ = raw(w, "GET", f"/api/space/download?w={qw}&f={urllib.parse.quote(f)}")
+        assert st in (400, 404) and b"\xd1\x81\xd0\xb5\xd0\xba\xd1\x80\xd0\xb5\xd1\x82" not in body, (f, st, body)
+    # чужие окна и люди
+    assert raw(w, "GET", f"/api/space/files?w={q(w['owner_w'])}")[0] == 404
+    assert raw(w, "GET", f"/api/space/files?w={q(w['other_w'])}")[0] == 404
+    assert raw(w, "GET", f"/api/space/files?w={qw}", who=MEMBER)[0] == 404
+    assert raw(w, "GET", f"/api/space/files?w={qw}", who=OWNER)[0] == 200
+    # места нет — понятный текст
+    real = space_sessions.sh
+
+    def full(slug, s, **k):
+        if "df -B1" in s and ": >" in s:
+            raise RuntimeError(space_sessions.DISK_FULL)
+        return real(slug, s, **k)
+    monkeypatch.setattr(space_files, "sh", full)
+    st, body, _ = raw(w, "POST", f"/api/space/upload?w={qw}", b"x" * 10, {"X-File-Name": "big.bin"})
+    assert st == 400 and "закончилось место" in json.loads(body)["error"]
+    # имена
+    assert space_files.file_name("C:\\Users\\a\\..\\Отчёт.xlsx") == "Отчёт.xlsx"
+    assert space_files.file_name(".bashrc") == "bashrc" and space_files.file_name("") == "файл"
+    assert len(space_files.file_name("я" * 300 + ".pdf")) == space_files.NAME_MAX
+    for bad in ("/etc/passwd", "../x", "a/../../b", ""):
+        with pytest.raises(ValueError):
+            space_files.check_rel(bad)

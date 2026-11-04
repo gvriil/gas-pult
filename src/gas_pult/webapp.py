@@ -54,6 +54,7 @@ from gas_pult import (
     qr,
     scenarios,
     setup,
+    space_files,
     space_sessions,
     spaces,
     tenants,
@@ -1500,6 +1501,7 @@ SPACE_OK = TERMS_FREE | {
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
     "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
     "/api/space/sessions", "/api/space/close", "/api/space/resume", "/api/space/delete", "/api/space/restore",
+    "/api/space/files", "/api/space/upload", "/api/space/download",
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
                                                             "/api/passkeys/add", "/api/passkeys/remove"),
 }
@@ -1615,6 +1617,16 @@ def handler(panel: Panel):
             if self.who()[1] == "owner" and b.get("space"):
                 return tenants.check_slug(str(b["space"]))
             raise ValueError("это действие — для сессий демо-пространства")
+
+        def space_win(self, q: dict) -> tuple[str, dict]:
+            """Окно пространства из запроса (``w``): тестировщику — только своё; владельцу — любое пространство."""
+            w = panel.tmux.window(str(q.get("w") or ""))
+            slug = self.space()
+            if not slug and self.who()[1] == "owner":
+                slug = (w or {}).get("space")
+            if not w or not slug or w.get("space") != slug:
+                raise LookupError("окна уже нет")
+            return slug, w
 
         def terms_uid(self) -> int | None:
             """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
@@ -1811,6 +1823,14 @@ def handler(panel: Panel):
                 return tenants.status(check=True)
             if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
                 return panel.space_list(self.space_of(q))
+            if path in ("/api/space/files", "/api/space/download"):   # файлы папки сессии пространства
+                slug, w = self.space_win(q)
+                folder = space_files.folder_of(slug, w)
+                if path == "/api/space/files":
+                    return space_files.listing(slug, folder)
+                name, data = space_files.get(slug, folder, q.get("f", ""))
+                disp = "attachment; filename*=UTF-8''" + urllib.parse.quote(name)
+                return ("application/octet-stream", data, {"Content-Disposition": disp})
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
@@ -2107,6 +2127,10 @@ def handler(panel: Panel):
                     "accepted": rec.get("version") == terms.VERSION, "at": rec.get("at")}
 
         def post(self, path: str):
+            if path == "/api/space/upload":              # файл — в папку сессии пространства (от его пользователя)
+                slug, w = self.space_win(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)))
+                name = urllib.parse.unquote(self.headers.get("X-File-Name", "file"))
+                return {"name": space_files.put(slug, space_files.folder_of(slug, w), name, self.body())}
             if path == "/api/upload":
                 return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
             if path == "/api/stt":
@@ -2324,8 +2348,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e) or "ошибка"}, 400)
             if isinstance(out, tuple) and out[0] == "cookie":
                 return self.reply(200, json.dumps(out[2], ensure_ascii=False).encode(), cookie=out[1])
-            if isinstance(out, tuple):
-                return self.reply(200, out[1], out[0])
+            if isinstance(out, tuple):                   # (тип, байты[, заголовки]) — файл, звук
+                return self.reply(200, out[1], out[0], headers=out[2] if len(out) > 2 else None)
             return self.json(out)
 
     return H
