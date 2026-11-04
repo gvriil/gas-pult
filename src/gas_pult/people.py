@@ -35,11 +35,20 @@ dev, at}`` (``"done"`` — проходил, ``"dismissed"`` — «Не сейч
 Настройки человека (``prefs``): простой режим панели и язык интерфейса — ``{simple: bool, lang: "ru"|"en"}``; у
 человека из people.json — поле ``prefs`` в его записи, у владельцев — ``<data>/prefs.json`` (0600). Нет записи —
 полный режим и русский, как раньше.
+
+Гость без Telegram (задача 34, ``invites.py``): человек вошёл по приглашению — ссылкой или коротким кодом — и назвал
+только имя. Ключ его записи — внутренний **отрицательный** ID не больше ``GUEST_FLOOR`` (у людей Telegram ID
+положительный, у групп и каналов — от −10¹³ и выше, ``webauth.LEGACY`` = −1), в записи ``kind: "guest"``, ``name`` и
+``tenant`` — гость всегда тестировщик своего пространства. Всё, что пишет человеку в Telegram (кнопка «📱 Панель»,
+«сообщить по готовности», рассылки), гостей пропускает (``has_telegram``). «Привязать Telegram» (``adopt``) переносит
+запись целиком — роль, пространство, согласия, страну, настройки — под его Telegram ID, и гость исчезает.
+У любого человека из people.json панель запоминает последний вход: ``last: {at, device}`` — без IP.
 """
 
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -57,6 +66,23 @@ LANGS = ("ru", "en")
 PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
 TOURS = ("business", "dev")                 # тур для бизнеса и для разработчика
 TOUR_STATES = ("done", "dismissed")
+GUEST_FLOOR = -(10 ** 15)                   # гости — от −2·10¹⁵ до −10¹⁵: ни с Telegram ID, ни с группами не совпадут
+
+
+def is_guest(uid) -> bool:
+    """Внутренний ID гостя без Telegram (а не Telegram ID)."""
+    try:
+        return int(uid) <= GUEST_FLOOR
+    except (TypeError, ValueError):
+        return False
+
+
+def has_telegram(uid) -> bool:
+    """Можно ли писать человеку в Telegram: настоящий ID пользователя (положительный)."""
+    try:
+        return int(uid) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 class People:
@@ -112,7 +138,7 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            for k in ("terms", "country", "email", "tour", "prefs", "ui"):   # смена роли их не сбрасывает
+            for k in ("terms", "country", "email", "tour", "prefs", "ui", "kind", "last"):   # смена роли — не сброс
                 if old.get(k):
                     rec[k] = old[k]
             space = old.get("tenant", "") if tenant is None else tenant
@@ -120,6 +146,57 @@ class People:
                 rec["tenant"] = tenants.check_slug(space)
             d[str(int(uid))] = rec
             self._save(d)
+
+    def add_guest(self, name: str, role: str, tenant: str) -> int:
+        """Новый гость без Telegram — тестировщик пространства ``tenant``. Возвращает его внутренний ID."""
+        name = " ".join(str(name or "").split())[:60]
+        if not name:
+            raise ValueError("напишите, как вас зовут")
+        if role not in ROLES:
+            raise ValueError("роль: участник или наблюдатель")
+        tenant = tenants.check_slug(tenant)
+        with self.lock:
+            d = self._load()
+            while str(uid := GUEST_FLOOR - secrets.randbelow(10 ** 15)) in d:
+                pass
+            d[str(uid)] = {"role": role, "name": name, "username": "", "added": int(time.time()), "tenant": tenant,
+                           "kind": "guest"}
+            self._save(d)
+        return uid
+
+    def seen(self, uid, device: str = ""):
+        """Вход в панель: когда и с какого устройства (коротко, без IP) — владелец видит это в «Людях»."""
+        try:
+            key = str(int(uid))
+        except (TypeError, ValueError):
+            return
+        with self.lock:
+            d = self._load()
+            if key in d:
+                d[key]["last"] = {"at": int(time.time()), "device": str(device or "")[:60]}
+                self._save(d)
+
+    def adopt(self, guest: int, tg_uid: int, name: str = "", username: str = "") -> dict:
+        """«Привязать Telegram»: запись гостя целиком (роль, пространство, согласия, страна, настройки) — под его
+        Telegram ID; гость исчезает. Этот Telegram уже в пульте — отказ (две записи не сливаем)."""
+        guest, tg_uid = int(guest), int(tg_uid)
+        if not is_guest(guest) or not has_telegram(tg_uid):
+            raise ValueError("привязать можно только вход без Telegram")
+        if tg_uid in self.owners:
+            raise ValueError("это Telegram владельца пульта")
+        with self.lock:
+            d = self._load()
+            if str(tg_uid) in d:
+                raise ValueError("этот Telegram уже есть в пульте — войдите через него")
+            rec = d.pop(str(guest), None)
+            if not rec or rec.get("role") not in ROLES:
+                raise ValueError("вход уже отключён")
+            rec.pop("kind", None)
+            rec["name"] = rec.get("name") or name[:60]
+            rec["username"] = username[:40]
+            d[str(tg_uid)] = rec
+            self._save(d)
+        return rec
 
     def tenant(self, uid) -> str | None:
         """Пространство тестировщика (``tenant`` в people.json) или None. Владельцу — никогда."""

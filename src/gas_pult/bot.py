@@ -24,6 +24,7 @@ import re
 import subprocess
 import threading
 import time
+import urllib.parse
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -42,6 +43,7 @@ from gas_pult import (
     offers,
     people,
     providers,
+    qr,
     setup,
     tenants,
     terms,
@@ -51,12 +53,12 @@ from gas_pult import (
     voice,
 )
 from gas_pult.commands import TAIL, Commands, Journal, fail_key, triage_text
-from gas_pult.config import Config
-from gas_pult.people import TITLES, People, allowed
+from gas_pult.config import Config, write_private
+from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
-from gas_pult.webauth import TgLogins
+from gas_pult.webauth import Auth, TgLogins
 
 # Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
 # сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
@@ -96,10 +98,11 @@ def tester_start(u: dict, ppl) -> bool:
 
 def public(u: dict) -> bool:
     """Что принимаем и от незнакомых: начало входа в панель и кнопки подтверждения входа; демо предложения
-    (``/start demo_<токен>`` и его кнопки ``dm:``) — изолированно, без роли и без доступа к пульту."""
+    (``/start demo_<токен>`` и его кнопки ``dm:``) — изолированно, без роли и без доступа к пульту; ``lk:`` — гость
+    привязывает свой Telegram (у этого Telegram роли ещё нет)."""
     if m := u.get("message"):
         return (m.get("text") or "").startswith(("/start login_", "/start demo_"))
-    return (u.get("callback_query") or {}).get("data", "").startswith(("lg:", "dm:"))
+    return (u.get("callback_query") or {}).get("data", "").startswith(("lg:", "lk:", "dm:"))
 
 
 DEMO_GONE = "Демо закончилось — откройте ссылку на странице предложения снова."
@@ -458,6 +461,8 @@ class Pult:
         сообщение на человека, без повторов; следит монитор бота (``notify_done_check``)."""
         if chat is None:
             raise ValueError("не знаю, кому писать")
+        if not has_telegram(chat):
+            raise ValueError("у вас не привязан Telegram — «Настройки» → «Привязать Telegram»")
         with self.lock:
             nd = dict(self.state().get("notify_done") or {})
             rec = nd.get(wid) or {}
@@ -1409,10 +1414,18 @@ class Pult:
                                    "панель и нажмёт «Войти через Telegram» — я спрошу вас.")
         rows = [[(f"⛔ Отключить: {p.get('name') or p.get('username') or p['id']}", f"off:{p['id']}")] for p in rest]
         lines = [f"• {p.get('name') or '—'}" + (f" @{p['username']}" if p.get("username") else "")
-                 + f" — {TITLES[p['role']]}" + (", условия приняты" if self.people.accepted(p["id"]) else "")
+                 + (" (без Telegram)" if is_guest(p["id"]) else "") + f" — {TITLES[p['role']]}"
+                 + self.last_line(p.get("last")) + (", условия приняты" if self.people.accepted(p["id"]) else "")
                  + self.country_line(p.get("country")) for p in rest]
         self.send(chat, "👥 Люди пульта:\n" + "\n".join(lines) + "\n\nОтключить — доступ прекращается сразу, "
                         "любой вход человека перестаёт работать.", reply_markup=kb(rows))
+
+    @staticmethod
+    def last_line(rec: dict | None) -> str:
+        """«вошёл 04.11 12:30 · iPhone · Safari» — последний вход в панель (без IP)."""
+        if not (rec or {}).get("at"):
+            return ""
+        return f", вошёл {time.strftime('%d.%m %H:%M', time.localtime(rec['at']))} · {rec.get('device') or 'браузер'}"
 
     @staticmethod
     def country_line(rec: dict | None) -> str:
@@ -1437,6 +1450,8 @@ class Pult:
             return self.send(chat, f"Отключить {who}? Доступ к пульту прекратится сразу.",
                              reply_markup=kb([[("Да, отключить", f"off:yes:{uid}"), ("Нет", "noop:")]]))
         self.people.remove(int(uid))
+        self.web_sessions().drop(int(uid))                 # сессии браузера и ссылки для входа — сразу
+        invites.drop_for(int(uid))
         self.send(chat, f"Готово: {who} отключён(а) — вход больше не работает.")
 
     # ---------- обработчики ----------
@@ -1455,6 +1470,9 @@ class Pult:
             if not self.logins.decide(nonce, uid, verdict == "ok"):
                 return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
             return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
+        if kind == "lk":                                   # гость привязывает свой Telegram (из панели)
+            verdict, _, nonce = arg.partition(":")
+            return self.link_done(chat, q["from"], verdict, nonce)
         if kind == "dm":                                   # демо предложения — изолированно, кому угодно
             return self.on_demo(q, arg)
         if q["from"]["id"] not in self.cfg.owners and kind not in ("tm", "cc"):
@@ -1698,6 +1716,8 @@ class Pult:
         info = self.logins.info(nonce)
         if not info:
             return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
+        if info.get("link") is not None:                   # гость без Telegram привязывает этот Telegram
+            return self.link_request(m, nonce, info)
         role = self.people.role(u["id"])
         if not role and info.get("invite") and (inv := invites.redeem(info["invite"], u["id"])):
             role = self.invited(u, inv)                    # приглашение: доступ сразу, владельцу — уведомление
@@ -1708,6 +1728,65 @@ class Pult:
         send("У вас пока нет доступа к пульту. Я спросил владельца — когда он ответит, нажмите «Войти через Telegram» "
              "в браузере ещё раз.")
         self.ask_owner(u, info.get("offer"))
+
+    def link_request(self, m: dict, nonce: str, info: dict):
+        """«Привязать Telegram» из панели гостя: спросить человека, затем перенести запись (``People.adopt``)."""
+        u, send = m["from"], self.to(m["chat"]["id"])
+        p = next((x for x in self.people.list() if x["id"] == info["link"]), None)
+        if not p:
+            return send("Вход, к которому вы привязываете Telegram, уже отключён.")
+        if self.people.role(u["id"]):
+            return send("Этот Telegram уже есть в пульте — войдите через него («Войти через Telegram»).")
+        send(f"Привязать этот Telegram к вашему входу «{p.get('name') or 'гость'}»? Потом входить можно будет и через "
+             f"Telegram, а в этом чате появится кнопка «📱 Панель».\n\nБраузер: {info['ua'] or '—'}\n\n"
+             "Если это не вы — нажмите «Это не я».",
+             reply_markup=kb([[("✅ Привязать", f"lk:ok:{nonce}"), ("✖️ Это не я", f"lk:no:{nonce}")]]))
+
+    def link_done(self, chat: int, u: dict, verdict: str, nonce: str):
+        """lk:ok|no:<nonce> — перенос записи гостя под Telegram ID; его прежние сессии браузера гаснут, браузер,
+        который ждёт по ``rid``, получает новую."""
+        send = self.to(chat)
+        info = self.logins.info(nonce)
+        if not info or info.get("link") is None:
+            return send("Ссылка устарела — нажмите «Привязать Telegram» в панели ещё раз.")
+        if verdict != "ok":
+            self.logins.decide(nonce, u["id"], False)
+            return send("Хорошо, не привязываю.")
+        name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x)
+        try:
+            rec = self.people.adopt(int(info["link"]), u["id"], name, u.get("username", ""))
+        except ValueError as e:
+            self.logins.decide(nonce, u["id"], False)
+            return send(f"Не получилось: {e}.")
+        self.web_sessions().drop(int(info["link"]))
+        self.rebind_keys(int(info["link"]), u["id"])
+        self.logins.decide(nonce, u["id"], True)
+        self.menu_for(u["id"])
+        send("✅ Telegram привязан — вернитесь в браузер. Панель теперь открывается и кнопкой «📱 Панель» внизу чата.")
+        self.broadcast(f"🔗 {rec.get('name') or name} привязал(а) Telegram (@{u.get('username') or '—'}, "
+                       f"ID {u['id']}) — тестировщик в пространстве «{rec.get('tenant') or '—'}».")
+
+    def web_sessions(self) -> Auth:
+        return Auth(self.cfg.data / "web_sessions.json")
+
+    def rebind_keys(self, old: int, new: int):
+        """Ключи входа (passkeys.json) гостя — под его Telegram ID: Face ID продолжает работать."""
+        f = self.cfg.data / "passkeys.json"
+        try:
+            d = json.loads(f.read_text())
+        except (OSError, ValueError):
+            return
+        if not isinstance(d, dict):
+            return
+        changed = False
+        for c in (d.get("creds") or {}).values():
+            if c.get("uid") == old:
+                c["uid"], changed = new, True
+        if str(old) in (d.get("handles") or {}):
+            d["handles"][str(new)] = d["handles"].pop(str(old))
+            changed = True
+        if changed:
+            write_private(f, json.dumps(d))
 
     def invited(self, u: dict, inv: dict) -> str:
         """Вход по приглашению (invites.py): роль и пространство из него, без ожидания владельца."""
@@ -1786,6 +1865,26 @@ class Pult:
         if chat:
             return self.send(chat, text or "Тестировщиков нет.")
         return text and self.broadcast(text)
+
+    def send_invite(self, chat: int, slug: str):
+        """/invite <пространство> (владелец): приглашение — QR картинкой, ссылка и короткий код в подписи."""
+        sp = self.spaces()
+        if not sp:
+            return self.send(chat, "Демо-пространств нет — создайте его: docs/TENANTS.md, шаг 3.")
+        if slug not in [t["slug"] for t in sp]:
+            return self.send(chat, "Для кого приглашение? /invite <пространство>: "
+                                   + ", ".join(t["slug"] for t in sp))
+        base = urllib.parse.urlsplit(self.panel_url())
+        if not base.netloc:
+            return self.send(chat, "Не знаю адрес панели: запустите её с --url (кнопка «📱 Панель»).")
+        inv = invites.new(slug, by=chat)
+        link = f"{base.scheme}://{base.netloc}/invite/{inv['code']}"
+        title = next((t.get("title") or slug for t in sp if t["slug"] == slug), slug)
+        cap = (f"🎟 Приглашение в «{title}» — 24 часа, один вход, Telegram не нужен.\n\n"
+               f"Наведите камеру телефона на QR или откройте ссылку:\n{link}\n\n"
+               f"Или код на экране входа («Есть код приглашения?»): {inv['short']}\n\n"
+               f"Отозвать: gas-pult invite revoke {inv['hint']}")
+        self.api("sendPhoto", chat_id=chat, caption=cap, files={"photo": ("invite.png", qr.png_of(link))})
 
     def tester_start(self, chat: int, uid: int):
         """/start тестировщика: коротко, что можно, и кнопка «📱 Панель» (команды пульта ему не работают)."""
@@ -1990,6 +2089,8 @@ class Pult:
             return self.send_digest(chat)
         if t == "/testers":
             return self.send_testers(chat)
+        if t == "/invite" or t.startswith("/invite "):
+            return self.send_invite(chat, t.removeprefix("/invite").strip())
         if t == "/modules":
             return self.show_modules(chat)
         if t in ("/start", "/menu", "/help"):

@@ -21,6 +21,7 @@
     --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
     --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
+    --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
   }
   :root[data-theme="dark"] {
     --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
@@ -30,6 +31,7 @@
     --status-idle: #8E918F; --status-running: #81C995; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
     --status-success: #6DD58C; --status-danger: #F2B8B5; --status-stopped: #EE675C;
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
+    --qr-bg: #FFFFFF;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   /* Каркас приложения, как в Telegram и ChatGPT: документ не прокручивается — прокручивается только лента (#scroller).
@@ -720,6 +722,17 @@
   .pvbar button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
   body.previewing { padding-top: var(--pv, 40px); } body.previewing #simple { top: var(--pv, 40px); }
   .s-langsw .scn-opt { min-height: 34px; padding: 4px 12px; font-size: calc(13px * var(--fz, 1)); }
+  /* Лёгкий вход по приглашению (задача 34): крупно, одна главная кнопка на экран; QR — на белом при любой теме. */
+  #login .inv-title { margin: 4px 0 14px; font-size: calc(22px * var(--fz, 1)); line-height: 1.3; }
+  #login .inv-big { font-size: calc(19px * var(--fz, 1)); font-weight: 600; color: var(--text-primary); }
+  #login .inv-in { font-size: calc(21px * var(--fz, 1)) !important; min-height: 52px; }
+  #login .inv-code { letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+  #login .inv-alt { display: block; width: 100%; margin: 6px 0 0; padding: 10px 4px; border: 0; background: none; cursor: pointer;
+    font: inherit; font-size: calc(15px * var(--fz, 1)); color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+  .inv-qr { display: block; width: min(240px, 70vw); height: auto; margin: 6px auto 10px; padding: 8px; background: var(--qr-bg); border-radius: var(--radius-md); image-rendering: pixelated; }
+  div.inv-qr { aspect-ratio: 1; display: grid; place-items: center; color: var(--text-muted); } div.inv-qr .i { width: 55%; height: 55%; }
+  .inv-codebig { margin: 4px 0 6px; text-align: center; font: 700 calc(24px * var(--fz, 1))/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; color: var(--text-primary); }
+  .inv-url { margin: 0 0 10px; text-align: center; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -754,6 +767,7 @@
         <div class="result ok" id="inviteNote" hidden></div>
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
+        <button class="btn ghost" id="invCodeBtn" hidden data-l="login.inv.have">Есть код приглашения?</button>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
         <button class="btn ghost" id="googleLogin" hidden data-l="login.google">Войти через Google</button>
         <button class="btn ghost" id="yandexLogin" hidden data-l="login.yandex">Войти через Яндекс ID</button>
@@ -797,6 +811,26 @@
         </div>
         <button class="btn" id="tfEnter">Войти</button>
         <button class="btn ghost" data-login-back>Начать вход заново</button>
+      </div>
+      <!-- Лёгкий вход (задача 34): код приглашения → «Как вас зовут?» → панель, без Telegram -->
+      <div id="loginInvCode" hidden>
+        <div class="field">
+          <label for="invCode" class="inv-big" data-l="login.inv.code.label">Введите код приглашения</label>
+          <input id="invCode" class="inv-in inv-code" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="24" placeholder="PLANETA-482157">
+          <div class="hint" data-l="login.inv.code.hint">Код вам прислал тот, кто пригласил: слово и цифры. Большие или маленькие буквы — не важно.</div>
+        </div>
+        <button class="btn" id="invCodeGo" data-l="login.inv.next">Дальше</button>
+        <button class="inv-alt" type="button" data-login-back data-l="login.inv.other">Другие способы входа</button>
+      </div>
+      <div id="loginName" hidden>
+        <h3 class="serif inv-title" id="invTitle"></h3>
+        <div class="field" id="invNameBox">
+          <label for="invName" class="inv-big" data-l="login.inv.name">Как вас зовут?</label>
+          <input id="invName" class="inv-in" autocomplete="name" maxlength="60" enterkeyhint="go">
+          <div class="hint" data-l="login.inv.name.hint">Так вас увидит тот, кто пригласил. Пароль и Telegram не нужны.</div>
+        </div>
+        <button class="btn" id="invEnter" data-l="login.inv.enter">Войти</button>
+        <button class="inv-alt" type="button" id="invTg" data-l="login.inv.tg">У меня есть Telegram — войти через него</button>
       </div>
       <div id="loginResult"></div>
     </div>
@@ -997,6 +1031,7 @@ const P = {
   tasks: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17.5h2"/>',
+  qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>',
   puzzle: '<path d="M12 3.2l7.8 4.4v8.8L12 20.8l-7.8-4.4V7.6z"/><path d="M4.4 7.7L12 12l7.6-4.3M12 12v8.6"/>',
   coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.8-1.4-1.3-2.6-1.3-1.5 0-2.6.8-2.6 2s1.1 1.6 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.1-.5-2.6-1.3M12 6.5V8M12 16v1.5"/>',
   pause: '<path d="M9 6.5v11M15 6.5v11"/>',
@@ -1527,22 +1562,62 @@ function setSub(html) { $("subtitle").innerHTML = html; }
 // ---------- вход ----------
 function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck(); }
 // Приглашение (/invite/<код> → /?invite=<код>): пометка над «Войти через Telegram»; после входа доступ — сразу.
+// Лёгкий вход (задача 34): если на пульте есть демо-пространства (guest) — сразу экран «Как вас зовут?» → панель,
+// без Telegram; ссылка для входа на другое устройство (kind=device) — одна кнопка «Войти», имя не спрашиваем.
 const INVITE = params.get("invite") || "";
+let invCode = "";
 async function inviteCheck() {
   if (!INVITE) return;
   let r = { ok: false }; try { r = await api("/api/invite?code=" + encodeURIComponent(INVITE)); } catch (e) { /* покажем, что не вышло */ }
+  if (r.ok && r.guest) return inviteShow(INVITE, r);
   $("inviteNote").hidden = false; $("inviteNote").className = "result " + (r.ok ? "ok" : "bad");
   $("inviteNote").innerHTML = ic(r.ok ? "check" : "warn") + `<span>${esc(r.ok ? LL("login.invite", "Приглашение в «{t}». Войдите через Telegram — доступ откроется сразу.").replace("{t}", r.title) : LL("login.invite.bad", "Приглашение недействительно: истёк срок, оно уже использовано или отозвано. Попросите новое."))}</span>`;
 }
+let invInfo = null;
+async function inviteShow(code, r) {              // экран «Как вас зовут?» (или «Вход для …» — другое устройство)
+  await dictReady;                                // заголовок — на языке экрана входа
+  invCode = code; invInfo = r; loginPane("loginName"); invTitle();
+  const dev = r.kind === "device";
+  $("invNameBox").hidden = dev; $("invTg").hidden = dev || code !== INVITE;      // Telegram — только по ссылке
+  if (!dev) setTimeout(() => $("invName").focus(), 50);
+}
+function invTitle() {                             // и после смены языка (paintLoginLang)
+  if (!invInfo) return;
+  $("invTitle").textContent = invInfo.kind === "device" ? LL("login.inv.device", "Вход для «{n}»").replace("{n}", invInfo.name || "")
+    : LL("login.inv.title", "Вас пригласили в «{t}»").replace("{t}", invInfo.title);
+}
+$("invCodeBtn").onclick = () => { loginPane("loginInvCode"); setTimeout(() => $("invCode").focus(), 50); };
+$("invCodeGo").onclick = (e) => busy(e.currentTarget, LL("login.inv.checking", "Проверяю…"), async () => {
+  const code = $("invCode").value.trim();
+  if (!code) return loginMsg(false, LL("login.inv.empty", "Введите код — слово и цифры."));
+  try { inviteShow(code, await api("/api/invite/check", { code })); }
+  catch (err) { loginMsg(false, err.message); }
+});
+$("invCode").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("invCodeGo").click(); } };
+$("invName").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("invEnter").click(); } };
+$("invEnter").onclick = (e) => busy(e.currentTarget, LL("login.inv.entering", "Вхожу…"), async () => {
+  const name = $("invName").value.trim();
+  if (!$("invNameBox").hidden && !name) { $("invName").focus(); return loginMsg(false, LL("login.inv.noname", "Напишите, как вас зовут.")); }
+  try {
+    await api("/api/invite/enter", { code: invCode, name });
+    haptic("notificationOccurred", "success");
+    if (INVITE) history.replaceState(null, "", location.pathname + location.search.replace(/([?&])invite=[^&]*&?/, "$1").replace(/[?&]$/, ""));
+    if (DEMO) return loginMsg(true, LL("login.inv.demo", "В демо вход не выполняется: здесь откроется панель пространства."));
+    await start();
+  } catch (err) { loginMsg(false, err.message); }
+});
+$("invTg").onclick = () => { loginPane("loginStep1"); $("tgLogin").click(); };
 // Способы входа, которые включены на этом пульте (почта — если владелец настроил SMTP).
 async function loginMethods() {
   try {
     const m = await api("/api/login/methods"); $("emailLogin").hidden = !m.email; $("pkLogin").hidden = !(m.passkey && passkeyOk());
+    $("invCodeBtn").hidden = !m.invite;
     $("googleLogin").hidden = !m.google; $("yandexLogin").hidden = !m.yandex; $("oidcNote").hidden = !(tg?.initData && (m.google || m.yandex));
-  } catch (e) { for (const x of ["emailLogin", "pkLogin", "googleLogin", "yandexLogin", "oidcNote"]) $(x).hidden = true; }
+  } catch (e) { for (const x of ["emailLogin", "pkLogin", "googleLogin", "yandexLogin", "oidcNote", "invCodeBtn"]) $(x).hidden = true; }
 }
 function loginPane(id) {                          // один шаг входа на экране: способы, код владельцу, почта, второй фактор
-  for (const x of ["loginStep1", "loginStep2", "loginEmail", "login2fa"]) $(x).hidden = x !== id;
+  for (const x of ["loginStep1", "loginStep2", "loginEmail", "login2fa", "loginInvCode", "loginName"]) $(x).hidden = x !== id;
+  document.querySelector('#login [data-l="login.note"]').hidden = id === "loginInvCode" || id === "loginName";   // «подтвердите в Telegram» — не про приглашение
   $("loginResult").innerHTML = "";
 }
 const loginMsg = (ok, text) => { $("loginResult").innerHTML = `<div class="result ${ok ? "ok" : "bad"}">${ic(ok ? "check" : "warn")}<span>${esc(text)}</span></div>`; };
@@ -1887,11 +1962,77 @@ function spaceInvite() {                              // ссылка на 24 ч
   helpSheet("sheet.space-invite");
   sheet("Пригласить тестировщика — в какое пространство?", list.map((t) => ({ label: t.title, icon: "flask", run: async () => {
     try {
-      const r = await api("/api/invite/new", { space: t.slug }), link = location.origin + r.path;
-      copyText(link);
-      sheet("Приглашение готово", [{ info: true, icon: "check", label: "Ссылка скопирована — отправьте её тестировщику", sub: link + " · 24 часа, один вход. Отозвать: gas-pult invite revoke " + r.path.split("/").pop().slice(0, 6) }]);
+      inviteReady(await api("/api/invite/new", { space: t.slug }), t.title);
     } catch (e) { toast("Не вышло: " + e.message, 4000); }
   } })));
+}
+// ---------- лёгкий вход (задача 34): ссылка, QR и короткий код одного приглашения ----------
+// QR — картинка с сервера (/api/invite/qr, PNG; владельцу — любого приглашения, человеку — своей ссылки входа).
+function invQr(link) {
+  return DEMO ? `<div class="inv-qr" role="img" aria-label="QR">${ic("qr")}</div>`
+    : `<img class="inv-qr" alt="QR" src="/api/invite/qr?u=${encodeURIComponent(link)}">`;
+}
+function inviteReady(r, title, who) {             // владелец: приглашение (или ссылка входа человека) готово
+  const link = location.origin + r.path, hint = r.hint || r.path.split("/").pop().slice(0, 6);
+  copyText(link, "Ссылка скопирована");
+  sSheet(hv("sheet.invite-ready"), who ? "Вход на другом устройстве: " + who : "Приглашение в «" + title + "»",
+    `<p class="note">${who ? "Отправьте человеку ссылку или покажите QR — он откроет её на новом устройстве и сразу войдёт."
+      : "Отправьте человеку ссылку или покажите QR — пусть наведёт камеру телефона. Можно продиктовать код: экран входа → «Есть код приглашения?». Telegram не нужен."}</p>
+    ${invQr(link)}<div class="inv-codebig">${esc(r.code || "")}</div><div class="inv-url">${esc(link)}</div>
+    <div class="scn-opts">${sChip(false, 'data-cp="link"', "Скопировать ссылку", ic("copy"))}${sChip(false, 'data-cp="code"', "Скопировать код", ic("copy"))}</div>
+    <p class="note">24 часа, один вход: после него ссылка и код сгорают. Отозвать — gas-pult invite revoke ${esc(hint)}</p>`,
+    (b) => { if (b.dataset.cp) copyText(b.dataset.cp === "code" ? r.code : link, b.dataset.cp === "code" ? "Код скопирован" : "Ссылка скопирована"); });
+}
+async function personDevice(p) {                  // владелец: ссылка для входа человека на другом устройстве
+  try { inviteReady(await api("/api/invite/device", { id: p.id }), "", p.name || "ID " + p.id); }
+  catch (e) { toast("Не вышло: " + e.message, 4000); }
+}
+// Человек в пространстве: «Вход с другого устройства» — Face ID на этом устройстве, ссылка для другого, а гость без
+// Telegram — ещё и «Привязать Telegram». Открывается и из простого режима, поэтому строки — T().
+const isGuest = () => meta?.uid != null && meta.uid <= -1e15;
+async function deviceSheet() {
+  let pk = false; try { pk = (await api("/api/login/methods")).passkey && passkeyOk(); } catch (e) { /* без ключей */ }
+  const bg = sSheet(hv("settings.device"), T("dev.title"), `<p class="note">${esc(T("dev.note"))}</p>
+    <div class="scn-opts">${pk ? sChip(false, 'data-pk="1"', T("dev.passkey"), ic("key")) : ""}${sChip(false, 'data-link="1"', T("dev.link"), ic("phone"))}${isGuest() ? sChip(false, 'data-tg="1"', T("dev.tg"), ic("send")) : ""}</div>
+    ${isGuest() ? `<p class="note">${esc(T("dev.tg.note"))}</p>` : ""}<div id="devOut"></div>`, async (b) => {
+    const out = $("devOut");
+    if (b.dataset.cp) return copyText(b.dataset.cp, T("dev.copied"));
+    if (b.dataset.pk) {
+      try {
+        const r = await api("/api/passkeys/options", {});
+        const cred = await pkCall("create", pkCreation(r.options));
+        await api("/api/passkeys/add", { id: r.id, credential: pkJson(cred), name: deviceName() });
+        haptic("notificationOccurred", "success"); out.innerHTML = `<div class="result ok">${ic("check")}<span>${esc(T("dev.pk.done"))}</span></div>`;
+      } catch (e) { out.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(pkError(e))}</span></div>`; }
+    }
+    if (b.dataset.link) {
+      try {
+        const r = await api("/api/invite/device", {}), link = location.origin + r.path;
+        out.innerHTML = `<p class="note">${esc(T("dev.link.ready"))}</p>${invQr(link)}<p class="note">${esc(T("dev.link.code"))}</p>
+          <div class="inv-codebig">${esc(r.code)}</div><div class="inv-url">${esc(link)}</div><div class="scn-opts">${sChip(false, `data-cp="${esc(link)}"`, T("dev.copy"), ic("copy"))}</div>`;
+      } catch (e) { out.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
+    }
+    if (b.dataset.tg) return linkTelegram(out, bg);
+  });
+}
+async function linkTelegram(out, bg) {            // гость: тот же вход через бота (TgLogins), бот переносит запись
+  try {
+    const d = await api("/api/link/tg", {});
+    tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");
+    out.innerHTML = `<div class="result wait">${ic("wait")}<span>${esc(T("dev.tg.wait"))}</span></div>
+      <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}${esc(T("dev.tg.again"))}</a>`;
+    if (DEMO) return;
+    const t0 = Date.now(), timer = setInterval(async () => {
+      if (!bg.isConnected || Date.now() - t0 > d.ttl * 1000) return clearInterval(timer);
+      try {
+        const r = await api("/api/login/tg?id=" + encodeURIComponent(d.id));
+        if (r.state === "wait") return;
+        clearInterval(timer);
+        if (r.state === "ok") { toast(T("dev.tg.done"), 3000); setTimeout(() => location.reload(), 800); }
+        else out.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(T("dev.tg.no"))}</span></div>`;
+      } catch (e) { /* сеть моргнула — следующая попытка через 2 с */ }
+    }, 2000);
+  } catch (e) { out.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
 }
 function spaceTaskForm() {
   const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
@@ -3892,7 +4033,7 @@ async function peopleSheet() {
   sheet("Люди", [...(d.geoip === false ? [{ info: true, icon: "warn", label: "Страна по IP: нет данных", sub: "база стран по IP не загружена — на сервере: gas-pult geoip update" }] : []),
     ...d.people.map((p) => ({
     label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: p.country?.mismatch ? "warn" : "pin",
-    sub: ROLE[p.role] + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + countryLine(p.country, d.geoip) + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
+    sub: ROLE[p.role] + (p.kind === "guest" ? " · без Telegram" : "") + (p.tenant ? " · пространство " + p.tenant : "") + (p.last?.at ? " · вошёл " + new Date(p.last.at * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + ", " + p.last.device : "") + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + countryLine(p.country, d.geoip) + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
     run: () => p.role !== "owner" && personSheet(p) })),
     { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" },
     ...(d.geoip ? [{ info: true, icon: "globe", label: "Страна по IP", sub: (d.attribution || "IP Geolocation by DB-IP") + " · db-ip.com, CC BY 4.0" }] : [])]);
@@ -3927,6 +4068,7 @@ function personSheet(p) {
   helpSheet("settings.person");
   sheet(p.name || "ID " + p.id, [
     ...(p.role === "member" ? [{ label: "Что видит в пульте", icon: "tasks", sub: "разделы и возможности — экран «Команда»", run: () => teamSheet(p.id) }] : []),
+    ...(p.tenant ? [{ label: "Ссылка для входа на другое устройство", icon: "phone", sub: "одноразовая, 24 часа: QR, ссылка и код", run: () => personDevice(p) }] : []),
     { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
     { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
     { label: "Отключить", icon: "power", danger: true, sub: "доступ прекратится сразу: вход перестанет работать на всех устройствах", run: () => confirmDanger(`Отключить ${p.name || "ID " + p.id}? Доступ к пульту прекратится сразу.`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Отключён: " + (p.name || "ID " + p.id))).catch((e) => toast(e.message, 4000))) },
@@ -4077,6 +4219,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
+    ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: emailSheet },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
@@ -4681,6 +4824,7 @@ function paintLoginLang() {                           // первый экран
   $("loginLang").innerHTML = LANGS.map((l) => `<button class="scn-opt${l === LANG ? " on" : ""}" type="button" data-lang="${l}" aria-pressed="${l === LANG}">${esc(DICT["set.lang." + l] || (l === "ru" ? "Русский" : "English"))}</button>`).join("");
   $("loginLang").setAttribute("aria-label", LL("login.lang", "Язык"));
   document.querySelectorAll("#login [data-l], #demoBar [data-l]").forEach((el) => { el.dataset.ru ??= el.textContent; el.textContent = LL(el.dataset.l, el.dataset.ru); });
+  invTitle();
   if (view === "login" && !SIM.on) {
     $("title").textContent = LL("login.brand", "Пульт"); setSub(`<span>${esc(LL("login.sub", "вход через Telegram"))}</span>`);
     $("helpBtn").innerHTML = ic("help") + `<span>${esc(LL("s.help", "Подсказать"))}</span>`;
@@ -5014,6 +5158,7 @@ function sSettings() {
     ${UI ? `<p class="s-lbl">${esc(T("caps.title"))}</p><p class="note">${esc(T("caps.entry.sub", { role: personaTitle(UI.persona) }))}</p>
     <div class="scn-opts">${sChip(false, 'data-caps="1"', T("caps.open"), ic("settings"))}</div>` : `<p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
     <div class="scn-opts">${sChip(false, 'data-full="1"', T("set.simple.off"))}</div><p class="note">${esc(T("set.simple.off.sub"))}</p>`}
+    ${meta?.space && meta?.role !== "owner" ? `<p class="s-lbl">${esc(T("dev.title"))}</p><p class="note">${esc(T("dev.sub"))}</p><div class="scn-opts">${sChip(false, 'data-device="1"', T("dev.open"), ic("phone"))}</div>` : ""}
     <div class="scn-opts">${sChip(false, 'data-reload="1"', T("set.reload"), ic("refresh"))}${meta?.via === "browser" ? sChip(false, 'data-logout="1"', T("set.logout"), ic("power")) : ""}</div>`;
   sSheet(hv("simple.settings"), T("set.title"), html, async (b, bg) => {
     if (b.dataset.lang) { haptic("selectionChanged"); await setLang(b.dataset.lang); bg.remove(); return sSettings(); }
@@ -5021,6 +5166,7 @@ function sSettings() {
     if (b.dataset.reply) { bg.remove(); return sReply(); }
     if (b.dataset.full) { bg.remove(); return switchMode(false); }
     if (b.dataset.caps) { bg.remove(); return capsSheet(); }
+    if (b.dataset.device) { bg.remove(); return deviceSheet(); }
     if (b.dataset.reload) return reloadPanel();
     if (b.dataset.logout) { try { await api("/api/logout", {}); } catch (e) {} location.reload(); }
   });
@@ -5293,7 +5439,12 @@ function demoApi(path, body) {
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
-  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true });
+  if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true, invite: true });
+  if (key === "/api/invite") return Promise.resolve(params.get("invite") === "bad" ? { ok: false } : { ok: true, guest: true, title: "Планета", kind: params.get("invite") === "device" ? "device" : "invite", name: "Анна" });
+  if (key === "/api/invite/check") return /^\s*planeta[\s-]*482157\s*$/i.test(body?.code || "") ? Promise.resolve({ ok: true, guest: true, title: "Планета", kind: "invite" })
+    : Promise.reject(new Error("Код не подошёл: проверьте буквы и цифры. Код работает один раз и 24 часа — если он уже использован, попросите новый."));
+  if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: 86400 });
+  if (key === "/api/link/tg") return Promise.resolve({ id: "demo", link: "https://t.me/", ttl: 300 });
   if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
   if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет
     demoApi.oidc ||= { google: { enabled: true, title: "Google", linked: true, email: "i***@example.com", at: Date.now() / 1000 - 86400 * 2 | 0 }, yandex: { enabled: true, title: "Яндекс ID", linked: false, email: "", at: null } };

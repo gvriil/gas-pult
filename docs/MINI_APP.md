@@ -505,3 +505,7 @@ Anthropic-совместимый API. Claude Code тот же (инструме�
 | Нет кнопок 🔊 | Голоса не установлены: `gas-pult voices install irina` (нужен `gas-pult[voice]`) |
 | Кнопки «📱 Панель» нет | `gas-pult webapp` не запущен или не дошёл до Telegram — `journalctl --user -u gas-pult-webapp -n 20` |
 | Сертификат не выдаётся | Снаружи закрыт порт 80 → сервер:8080, или A-запись ещё не обновилась (`dig +short pult.example.com`) |
+
+## Лёгкий вход по приглашению
+
+Экран входа: «Есть код приглашения?» → код → «Как вас зовут?» → панель; ссылка `/invite/<код>` открывает сразу «Как вас зовут?». Демо: `?demo&view=login&invite=x` (приглашение), `&invite=device` (ссылка для другого устройства), `&invite=bad`; код в демо — `PLANETA-482157`. Владелец: `?demo&home&spaces=1` → «Пригласить». Подробно — docs/TENANTS.md.
