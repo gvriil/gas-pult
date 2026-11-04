@@ -185,7 +185,7 @@ def service_unit(lay: Layout, slug: str, tmux: str) -> str:
     p = tenants.paths(slug, lay.tenants)
     u = tenants.user_of(slug)
     env = {"HOME": p["home"], "TMPDIR": p["tmp"], "CLAUDE_CONFIG_DIR": p["claude"], "SHELL": "/bin/bash",
-           "PATH": f"{p['home']}/.local/bin:/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}
+           "PATH": tenants.path_env(slug, lay.tenants), "LANG": "C.UTF-8"}
     return (f"# gas-pult: tmux пространства {slug}. Создано pult-tenant; откат — pult-tenant destroy {slug}\n"
             f"[Unit]\nDescription=gas-pult: tmux пространства {slug}\nRequiresMountsFor={p['base']}\n\n"
             f"[Service]\nType=simple\nUser={u}\nGroup={u}\nSlice={u}.slice\nUMask=0027\n"

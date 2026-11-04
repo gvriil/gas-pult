@@ -231,16 +231,24 @@ def tmux_of(slug: str, session: str = "main", base_root: Path | None = None) -> 
     return Tmux(session, socket=str(p["socket"]), user=user_of(slug), home=str(p["home"]), tmux=tmux_bin(base_root))
 
 
+def path_env(slug: str, base_root: Path | None = None) -> str:
+    """PATH пространства: Claude Code ставится в его ``home/.local/bin``. Тот же PATH — у службы tmux пространства."""
+    return f"{paths(slug, base_root)['home']}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+
 def command(t: dict, base: str = "claude", base_root: Path | None = None) -> str:
     """Команда запуска Claude Code в пространстве: своя папка Claude и файл настроек профиля с ключом (его пишет
-    ``pult-tenant key`` в ``config/profiles/<id>.json``, 0600). «claude» — только после ручного входа владельца."""
+    ``pult-tenant key`` в ``config/profiles/<id>.json``, 0600). «claude» — только после ручного входа владельца.
+
+    Сначала — ``export PATH=<home>/.local/bin:…``: окно получает окружение клиента tmux, а это ``sudo`` с его
+    ``secure_path`` без папки пространства — без этого «claude: command not found». ``export`` — чтобы тот же PATH
+    был у программ, которые запускает Claude, и у оболочки, что остаётся в окне после его выхода."""
     p = paths(t["slug"], base_root)
     profile = check_profile(t.get("profile") or default_profile(t.get("jurisdiction", "")),
                             t.get("jurisdiction", ""), bool(t.get("claude_login")))
-    if profile == "claude":
-        return models.with_home(base, p["claude"])
-    return models.with_home(f"{base} --settings {shlex.quote(str(p['config_profiles'] / f'{profile}.json'))}",
-                            p["claude"])
+    if profile != "claude":
+        base = f"{base} --settings {shlex.quote(str(p['config_profiles'] / f'{profile}.json'))}"
+    return f"export PATH={shlex.quote(path_env(t['slug'], base_root))}; {models.with_home(base, p['claude'])}"
 
 
 def new_window(slug: str, name: str, path: str = "", session: str = "main", base_root: Path | None = None) -> str:
