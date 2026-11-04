@@ -2156,6 +2156,49 @@ function ssPickSpace(fn) {                               // владелец: и
   sheet(T("ss.pick"), list.map((x) => ({ label: x.title || x.slug, icon: "flask", run: () => fn(x.slug) })));
 }
 // space-sessions:end
+// space-files:start — файлы сессии демо-пространства (задача 32, п. 4): в папку сессии и обратно, через сервер пульта.
+// Скачивание — fetch с подписью (в Mini App куки нет) → файл; имена — с кириллицей. Тексты — T().
+const sfSize = (n) => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
+function sfPut(w, f, name) {
+  if (f.size > 50 * 1024 * 1024) return Promise.reject(new Error(T("sf.too_big", { n: name || f.name })));
+  return api("/api/space/upload?w=" + encodeURIComponent(w), f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(name || f.name || "file") });
+}
+async function sfGet(w, name, b) {
+  const go = async () => {
+    try {
+      const blob = await api("/api/space/download?w=" + encodeURIComponent(w) + "&f=" + encodeURIComponent(name));
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name.split("/").pop();
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      toast(T("sf.get.done", { n: a.download }), 3500);
+    } catch (e) { toast(e.message, 5000); }
+  };
+  return b ? busy(b, T("sf.get.wait"), go) : go();
+}
+async function sfFiles(w) {
+  if (!w) return;
+  let d; try { d = await api("/api/space/files?w=" + encodeURIComponent(w)); } catch (e) { return toast(e.message, 5000); }
+  const now = nowSec();
+  const rows = (d.files || []).map((x) => `<div class="ss-row"><b>${esc(x.name)}</b><small>${esc(sfSize(x.size))} · ${esc(agoText(x.changed, now, true))}</small>
+      <div class="scn-opts">${sChip(false, `data-sfget="${esc(x.name)}"`, T("sf.get"), ic("down"))}</div></div>`).join("");
+  const bg = sSheet(hv("sheet.space-files"), T("sf.title"), `<p class="note">${esc(T("sf.hint"))}${d.free != null ? " " + esc(T("sf.free", { n: sfSize(d.free) })) : ""}</p>
+    <button class="btn wide" type="button" data-sfup="1">${ic("attach")}${esc(T("sf.up"))}</button><input type="file" multiple hidden data-sfin>
+    ${rows || `<p class="note">${esc(T("sf.empty"))}</p>`}`, (b) => {
+    if (b.dataset.sfget) return sfGet(w, b.dataset.sfget, b);
+    if (b.dataset.sfup) bg.querySelector("[data-sfin]").click();
+  });
+  bg.querySelector("[data-sfin]").onchange = async (e) => {
+    const list = [...e.target.files]; e.target.value = "";
+    const b = bg.querySelector("[data-sfup]"), done = [];
+    await busy(b, T("sf.up.wait"), async () => {
+      for (const f of list) { try { done.push((await sfPut(w, f)).name); } catch (err) { toast(T("sf.up.fail", { n: f.name, e: err.message }), 6000); } }
+    });
+    if (!done.length) return;
+    bg.remove(); toast(T("sf.up.done", { n: done.join(", ") }), 4000);
+    const inp = meta?.space && SIM.on ? $("sInput") : $("input");          // сказать агенту — одним касанием «Отправить»
+    if (inp) { inp.value = (inp.value ? inp.value + "\n" : "") + T("sf.msg", { n: done.join(", ") }); fitLines(inp); inp.focus(); }
+  };
+}
+// space-files:end
 // ---------- расход (usage.py): токены и деньги по журналам Claude Code, лимиты, пауза ----------
 // Сервер показывает расход только хозяину учётки: владельцу — его пул, участнику — его папку Claude.
 let costInfo = null;                                  // итог дня, лимиты (владельцу) — d.cost из /api/sessions
@@ -2376,7 +2419,8 @@ function sessionSheet(id) {
     ...(s.space && meta?.role !== "viewer" ? [
       { label: T("ss.close.item"), sub: T("ss.close.sub"), icon: "power", run: () => ssClose(s) },
       { label: T("ss.del.item"), sub: T("ss.del.sub"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) },
-      { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed(s.space) }] : []),
+      { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed(s.space) },
+      { label: T("sf.title"), sub: T("sf.sub"), icon: "file", run: () => sfFiles(s.id) }] : []),
   ]);
 }
 function confirmClose(id) {
@@ -3265,7 +3309,11 @@ for (const id of ["fCam", "fPhoto", "fFile"]) $(id).onchange = (e) => { [...e.ta
 async function upload(f) {
   if (f.size > 50 * 1024 * 1024) return toast(`«${f.name}» больше 50 МБ`, 4000);
   const item = { name: f.name || "photo.jpg", path: null }; files.push(item); renderFiles();
-  try { item.path = (await api("/api/upload", f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(item.name) })).path; }
+  try {
+    item.path = cur()?.space                         // сессия пространства: файл — в её папку (sfPut), агенту — имя
+      ? (await sfPut(current, f, item.name)).name
+      : (await api("/api/upload", f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(item.name) })).path;
+  }
   catch (e) { files = files.filter((x) => x !== item); toast(`«${item.name}» не загрузился: ${e.message}`, 4500); }
   renderFiles();
 }
@@ -5209,12 +5257,13 @@ function sAgents() {
   const rows = SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
   sSheet(hv("simple.agents"), T("s.agents"), `<p class="note">${esc(T("s.agents.hint"))}</p>${rows ? `<div class="scn-opts">${rows}</div>` : ""}
     ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}
-    ${meta?.space ? `<div class="scn-opts">${SIM.w ? sChip(false, 'data-ssclose="1"', T("ss.close.item"), ic("power")) : ""}${sChip(false, 'data-ssclosed="1"', T("ss.list.title"), ic("folder"))}</div>
+    ${meta?.space ? `<div class="scn-opts">${SIM.w ? sChip(false, 'data-ssclose="1"', T("ss.close.item"), ic("power")) : ""}${sChip(false, 'data-ssclosed="1"', T("ss.list.title"), ic("folder"))}${SIM.w ? sChip(false, 'data-sffiles="1"', T("sf.title"), ic("file")) : ""}</div>
       <div class="scn-opts">${sChip(false, 'data-sos="1"', T("s.sos"), ic("bell"))}</div>` : ""}`,
     (b, bg) => {
       if (b.dataset.w) { bg.remove(); sPick(b.dataset.w); } else if (b.dataset.snew) { bg.remove(); sNewAgent(); } else if (b.dataset.sos) { bg.remove(); callHelp(SIM.w); }
       else if (b.dataset.ssclose) { const x = SIM.list.find((y) => y.id === SIM.w); if (x) { bg.remove(); ssClose({ id: x.id, name: sName(x), space: x.space }); } }
       else if (b.dataset.ssclosed) { bg.remove(); ssClosed(); }
+      else if (b.dataset.sffiles) { bg.remove(); sfFiles(SIM.w); }
     });
 }
 async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш
@@ -5450,6 +5499,10 @@ function demoApi(path, body) {
   R["/api/space/resume"] = { id: "t:demo:@1", continued: true, draft: "А что со счётом №14?" };
   R["/api/space/delete"] = { id: "x", until: t0 + 14 * D, keep_days: 14 };
   R["/api/space/restore"] = { folder: "Черновик реестра" };
+  R["/api/space/files"] = { free: 1600 * 1024 * 1024, files: [{ name: "Реестр входящих.xlsx", size: 48213, changed: t0 - 300 },
+    { name: "Акт сверки №14.pdf", size: 1288490, changed: t0 - 2 * H }, { name: "data/выгрузка 1С.xml", size: 913, changed: t0 - D }] };
+  R["/api/space/upload"] = { name: "Счёт.pdf" };
+  if (path.startsWith("/api/space/download")) return Promise.resolve(new Blob(["демо"], { type: "text/plain" }));
   R["/api/spaces"] = params.has("spaces") ? { enabled: true, tenants: [{ slug: "demo", title: "Демо для бухгалтерии", ready: true }] } : { enabled: false, tenants: [] };
   R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
     options: [{ id: "claude", title: "Claude", why: "" }, { id: "openrouter", title: "OpenRouter", why: params.get("orkey") ? "" : "нет ключа" },

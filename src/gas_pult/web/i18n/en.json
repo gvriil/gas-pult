@@ -390,5 +390,19 @@
  "ss.trash.until": "can be restored until {d}",
  "ss.trash.restore": "Restore",
  "ss.trash.done": "Session “{n}” is back in “Closed”",
- "ss.pick": "Which space?"
+ "ss.pick": "Which space?",
+ "sf.title": "Session files",
+ "sf.sub": "upload a file for the agent or download what it made",
+ "sf.hint": "Files live in this session's folder — the agent sees them.",
+ "sf.free": "Free: {n}.",
+ "sf.up": "Upload a file",
+ "sf.up.wait": "Uploading…",
+ "sf.up.done": "Uploaded: {n}",
+ "sf.up.fail": "“{n}” was not uploaded: {e}",
+ "sf.msg": "Have a look at the file: {n}",
+ "sf.get": "Download",
+ "sf.get.wait": "Downloading…",
+ "sf.get.done": "Downloaded: {n}",
+ "sf.empty": "No files in the session folder yet.",
+ "sf.too_big": "“{n}” is larger than 50 MB"
 }
