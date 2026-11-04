@@ -42,6 +42,7 @@ from gas_pult import (
     fallback,
     helper,
     humanize,
+    invites,
     models,
     modules,
     offer_report,
@@ -234,6 +235,14 @@ class Panel:
         seen = self.owner_seen.get(w["id"])
         return {"space": slug, "space_title": t.get("title") or slug,
                 "owner_here": seen if seen and time.time() - seen < self.OWNER_HERE else None}
+
+    def invite_info(self, code: str) -> dict:
+        """Экран входа по приглашению: действует ли и в какое пространство (название — без путей и ролей)."""
+        rec = invites.check(code)
+        if not rec:
+            return {"ok": False}
+        t = tenants.load(rec["tenant"]) if tenants.enabled() else None
+        return {"ok": True, "title": (t or {}).get("title") or rec["tenant"]}
 
     def owner_join(self, w: dict) -> dict:
         """Владелец подключился к окну пространства (сам — «Подключиться» — или написал, ответил на вопрос)."""
@@ -1217,7 +1226,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
-              "/api/cost/limits", "/api/cost/decide", "/api/spaces", "/api/space/task", "/api/space/connect",
+              "/api/cost/limits", "/api/cost/decide",
+              "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
@@ -1259,6 +1269,7 @@ LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 # Страница предложения (offers.py): без входа, не индексируется, не кэшируется, ссылка не уходит в Referer.
 NOINDEX = {"X-Robots-Tag": "noindex, nofollow, noarchive", "Referrer-Policy": "no-referrer",
            "X-Frame-Options": "DENY"}
+INVITE_PATH = re.compile(r"^/invite/([A-Za-z0-9_-]{16,64})/?$")
 OFFER_PATH = re.compile(r"^/(api/)?offer/([^/]{1,80})(?:/([a-z]{1,20}))?/?$")
 ROBOTS = "User-agent: *\nDisallow: /offer/\nDisallow: /api/\n"
 OFFER_404 = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -1431,6 +1442,10 @@ def handler(panel: Panel):
                 return self.reply(200, i18n[url.path])
             if url.path == "/robots.txt":
                 return self.reply(200, ROBOTS.encode(), "text/plain; charset=utf-8")
+            if m := INVITE_PATH.match(url.path):         # приглашение: на экран входа с кодом
+                return self.reply(302, b"", "text/plain", headers={**NOINDEX, "Location": f"/?invite={m.group(1)}"})
+            if url.path == "/api/invite":                # экран входа: «приглашение в …» — только для действующего
+                return self.json(panel.invite_info(dict(urllib.parse.parse_qsl(url.query)).get("code", "")))
             if url.path.startswith(("/offer/", "/api/offer/")):     # предложение: без входа, только по коду
                 return self.offer("GET", url.path)
             if not url.path.startswith("/api/"):
@@ -1607,7 +1622,11 @@ def handler(panel: Panel):
                                     who=[panel.helper.who_key("ip", self.client_ip())])
 
         def tg_start(self):
-            rid, nonce = panel.logins.start(*self.client())
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            code = str((b if isinstance(b, dict) else {}).get("invite") or "")
+            if code and not invites.check(code):
+                raise ValueError("приглашение недействительно: истёк срок, уже использовано или отозвано")
+            rid, nonce = panel.logins.start(*self.client(), invite=code)
             return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
                     "ttl": webauth.LOGIN_TTL}
 
@@ -1943,6 +1962,9 @@ def handler(panel: Panel):
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
+            if path == "/api/invite/new":                  # владелец: ссылка-приглашение тестировщику
+                code = invites.create(str(b.get("space", "")), str(b.get("role") or "member"), by=self.terms_uid())
+                return {"path": f"/invite/{code}", "ttl": invites.TTL}
             if path == "/api/space/task":
                 return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
             w = self.win(b.get("w"))

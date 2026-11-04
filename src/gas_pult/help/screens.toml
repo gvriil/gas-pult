@@ -741,6 +741,15 @@ steps = ["Пусто или 0 — без лимита.", "«Сохранить»
 next = ["go:settings.cost"]
 
 [[screen]]
+id = "sheet.space-invite"
+where = "panel"
+title = "Пригласить тестировщика"
+roles = ["owner"]
+purpose = "Одноразовая ссылка на 24 часа: человек входит через Telegram и сразу становится тестировщиком выбранного пространства."
+steps = ["Выберите пространство — ссылка скопируется.", "Отправьте её человеку: он откроет, нажмёт «Войти через Telegram» и Start в боте.", "Отозвать — gas-pult invite revoke <первые знаки>."]
+next = ["go:sessions"]
+
+[[screen]]
 id = "sheet.space-task"
 where = "panel"
 title = "Поставить задачу в пространстве"
