@@ -171,6 +171,7 @@ class Panel:
         self._mod_ids: tuple[float, frozenset] = (0.0, frozenset())
         self.owner_seen: dict[str, float] = {}                       # окно пространства → когда владелец подключился
         self.help_calls: dict[str, float] = {}                       # окно → когда тестировщик звал на помощь
+        self.budget_told: dict[str, str] = {}                        # пространство → день, когда сказали владельцу
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
 
     def setup_status(self, fresh: bool = False) -> dict:
@@ -358,6 +359,40 @@ class Panel:
                 print("help:", e, file=sys.stderr, flush=True)
         return {"ok": True}
 
+    def space_budget(self, slug: str) -> dict | None:
+        """Дневной бюджет пространства (``budget.json``) и расход за сегодня по его журналам (цены API; на подписке —
+        оценка). Бюджета нет — None."""
+        t = tenants.load(slug) or {}
+        lim = t.get("budget_usd")
+        if lim is None:
+            return None
+        home = tenants.paths(slug)["claude"]
+        spent = (usage.public(self.pult.meter.day(home)).get("usd") or 0.0) if home.is_dir() else 0.0
+        return {"usd": lim, "spent": round(spent, 2), "over": spent >= lim,
+                "estimate": (t.get("profile") or "") == "claude"}
+
+    def check_budget(self, slug: str):
+        """Тестировщик пишет или открывает сессию: бюджет за сегодня исчерпан — отказ (ValueError) и владельцу —
+        одно сообщение в день по пространству."""
+        b = self.space_budget(slug)
+        if not b or not b["over"]:
+            return
+        today = time.strftime("%Y-%m-%d")
+        if self.budget_told.get(slug) != today:
+            self.budget_told[slug] = today
+            t = tenants.load(slug) or {}
+            text = (f"💸 Пространство «{t.get('title') or slug}» исчерпало дневной бюджет: ${b['spent']:.2f} из "
+                    f"${b['usd']:.2f}" + (" (оценка по ценам API — работает на подписке)" if b["estimate"] else "")
+                    + ". Тестировщик до завтра не может писать агенту и открывать сессии. Поднять бюджет — "
+                    f"sudo bin/pult-tenant create {slug} --budget <USD>.")
+            for chat in self.cfg.owners:
+                try:
+                    self.pult.api("sendMessage", chat_id=chat, text=text)
+                except (TelegramError, OSError) as e:
+                    print("budget:", e, file=sys.stderr, flush=True)
+        raise ValueError(f"Дневной лимит пространства исчерпан (${b['spent']:.2f} из ${b['usd']:.2f}). Владелец "
+                         "получил сообщение; завтра лимит обновится.")
+
     def owner_join(self, w: dict) -> dict:
         """Владелец подключился к окну пространства (сам — «Подключиться» — или написал, ответил на вопрос)."""
         if not w.get("space"):
@@ -443,6 +478,8 @@ class Panel:
         day = usage.empty() if home is False else self.pult.meter.day(home)
         out = {"pool": "owner" if pool == "owner" else "own", "today": usage.public(day),
                "prices_checked": usage.PRICES_CHECKED, "prices_url": usage.PRICES_URL}
+        if pool.startswith("space:"):                    # тестировщик: дневной бюджет его пространства
+            out["budget"] = self.space_budget(pool.removeprefix("space:"))
         if pool == "owner":
             st = self.pult.state()
             out |= {"limits": usage.limits(st), "paused": len(st.get("cost_paused") or {})}
@@ -1151,13 +1188,14 @@ class Panel:
         return next((v["name"] for v in voices if v["id"] == vid), "")
 
     # ---------- карточки голосов: экран «Голос», шторка у ответа, /voice в боте ----------
-    def voice_cards(self, owner: bool) -> dict:
+    def voice_cards(self, owner: bool, cloud: bool = True) -> dict:
         """Голоса, доступные этому человеку: ElevenLabs первой, затем локальные (``catalog.ORDER``). Silero — только
-        владельцу при ``personal_voices``; не установленные — только владельцу. Выбирает — владелец."""
+        владельцу при ``personal_voices``; не установленные — только владельцу. Выбирает — владелец.
+        ``cloud=False`` — тестировщик пространства: только локальные (ключ ElevenLabs — владельца)."""
         personal = owner and self.cfg.personal_voices
-        st, key = self.pult.state(), "elevenlabs" in providers.key_info()
+        st, key = self.pult.state(), cloud and "elevenlabs" in providers.key_info()
         out = []
-        if key or owner:
+        if cloud and (key or owner):
             vid = st.get("el_voice") if key else None
             out.append({"id": "elevenlabs", "name": (self.el_voice_name(vid) if vid else "") or "ElevenLabs",
                         "kind": "облачный", "ok": key, "why": "" if key else "нужен ключ ElevenLabs", "install": ""})
@@ -1255,12 +1293,12 @@ class Panel:
         t, note = getattr(self, "last_fallback", (0, ""))
         return note if time.time() - t < 3600 else ""
 
-    def stt(self, data: bytes, ctype: str) -> str:
+    def stt(self, data: bytes, ctype: str, cloud: bool = True) -> str:
         """Голос из панели → текст. Пустая запись или пустой результат — понятная ошибка (400), не пустая строка."""
         if not data:
             raise ValueError(STT_EMPTY)
         ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
-        if self.voice_settings()["stt"] == "elevenlabs":
+        if cloud and self.voice_settings()["stt"] == "elevenlabs":
             try:
                 text = (providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}") or "").strip()
                 if not text:
@@ -1291,13 +1329,13 @@ class Panel:
             raise ValueError("сообщение не найдено — обновите переписку")
         return items[0]["text"]
 
-    def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False) -> bytes:
+    def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False, cloud: bool = True) -> bytes:
         text = transcripts.clean(self.message(w, msg))
         text = (text if full else brief(text))[:3500]
         if not text:
             raise ValueError("нечего озвучивать")
         vs = self.voice_settings()
-        if vs["tts"] == "elevenlabs":
+        if cloud and vs["tts"] == "elevenlabs":
             voice_id = vs["el_voice"] or next(iter(self.el_voices()), {}).get("id")
             if not voice_id:
                 raise ValueError("в аккаунте ElevenLabs нет голосов")
@@ -1465,6 +1503,8 @@ SPACE_OK = TERMS_FREE | {
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
                                                             "/api/passkeys/add", "/api/passkeys/remove"),
 }
+# Что тратит деньги: тестировщику — только пока дневной бюджет пространства не исчерпан (клавиши, Esc — можно).
+BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume"}
 # Лёгкий вход (задача 34): ссылка для входа на другое устройство, её QR и «Привязать Telegram» — свои у каждого.
 INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
@@ -1598,6 +1638,12 @@ def handler(panel: Panel):
             if self.space() and path not in SPACE_OK:     # тестировщик — только своё пространство
                 self.json({"error": "в демо-пространстве этого нет", "code": "space"}, 403)
                 return False
+            if method == "POST" and path in BUDGET_PATHS and (slug := self.space()):
+                try:
+                    panel.check_budget(slug)              # дневной бюджет пространства исчерпан — не писать агенту
+                except ValueError as e:
+                    self.json({"error": str(e), "code": "budget"}, 403)
+                    return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA,
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN)   # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
@@ -1755,7 +1801,7 @@ def handler(panel: Panel):
                     raise LookupError("вывода этой команды уже нет")
                 return {"out": out}
             if path == "/api/voice/cards":
-                return panel.voice_cards(self.who()[1] == "owner")
+                return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
@@ -1782,7 +1828,8 @@ def handler(panel: Panel):
             if path == "/api/tts":
                 msg = int(q["msg"]) if q.get("msg", "").isdigit() else None
                 return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg,
-                                                 panel.cfg.personal_voices and self.who()[1] == "owner"))
+                                                 panel.cfg.personal_voices and self.who()[1] == "owner",
+                                                 cloud=not self.space()))
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 rev = transcripts.revision(w["path"], home := panel.pult.home_of(w))
@@ -2064,7 +2111,7 @@ def handler(panel: Panel):
                 return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
             if path == "/api/stt":
                 before = panel.fallback_note()
-                text = panel.stt(self.body(), self.headers.get("Content-Type", ""))
+                text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")

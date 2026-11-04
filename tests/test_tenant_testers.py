@@ -21,7 +21,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from gas_pult import bot, people, spaces, tenants, testers, webapp, webauth
+from gas_pult import bot, people, spaces, tenants, testers, usage, webapp, webauth
 from gas_pult.config import Config
 from gas_pult.tmux import Tmux
 
@@ -472,6 +472,54 @@ def test_bot_help_and_report(world):
     assert any("Тестировщики за 24 ч" in x["text"] for m, x in b.api.calls if m == "sendMessage")
     b.people.remove(TESTER)
     assert testers.report(b.people, b.meter) == ""                       # тестировщиков нет — сводки нет
+
+
+def test_space_budget_stops_tester_and_tells_owner_once(world, monkeypatch):
+    """Задача 32, п. 7: дневной бюджет пространства (budget.json) — не только цифра. Исчерпан — тестировщик не пишет
+    агенту и не открывает сессии (403 code=budget, понятный текст), клавиши (Esc) — можно; владельцу — одно сообщение
+    в день. Расход и бюджет тестировщик видит в /api/sessions → cost.budget."""
+    w = world
+    w["p"].pult.api = PanelApi()
+    wid = open_tester_session(w)
+    (w["root"] / "demo" / tenants.BUDGET).write_text(json.dumps({"daily_usd": 3.0}))
+    spent = {"usd": 1.25}
+    monkeypatch.setattr(w["p"].pult.meter, "day", lambda home: {**usage.empty(), "usd": spent["usd"]})
+    cost = call(w, "/api/sessions")[1]["cost"]
+    assert cost["budget"] == {"usd": 3.0, "spent": 1.25, "over": False, "estimate": False}
+    assert call(w, "/api/send", {"w": wid, "text": "пока можно"})[0] == 200
+    spent["usd"] = 3.4                                                       # перерасход
+    for path, body in (("/api/send", {"w": wid, "text": "ещё"}), ("/api/new", {"i": 0}),
+                       ("/api/command", {"w": wid, "i": 0}), ("/api/select", {"w": wid, "i": 0}),
+                       ("/api/space/resume", {"folder": "любая"})):
+        code, d = call(w, path, body)
+        assert code == 403 and d["code"] == "budget" and "$3.40 из $3.00" in d["error"], (path, d)
+    assert call(w, "/api/key", {"w": wid, "key": "Escape"})[0] == 200      # остановить агента — можно
+    sent = [x for m, x in w["p"].pult.api.calls if m == "sendMessage"]
+    assert [x["chat_id"] for x in sent] == [OWNER] and "исчерпало дневной бюджет" in sent[0]["text"]
+    assert call(w, "/api/sessions")[1]["cost"]["budget"]["over"] is True
+    # владелец бюджетом не ограничен; обычный участник — тоже (бюджет — только пространства)
+    assert call(w, "/api/send", {"w": wid, "text": "это владелец"}, who=OWNER)[0] == 200
+    assert call(w, "/api/send", {"w": w["owner_w"], "text": "я"}, who=OWNER)[0] == 200
+
+
+def test_tester_voice_is_local_only(world, monkeypatch):
+    """Ключ ElevenLabs — владельца: тестировщику облачного голоса нет ни в карточках, ни в озвучке/распознавании."""
+    from gas_pult import providers
+    monkeypatch.setattr(providers, "key_info", lambda: {"elevenlabs": {"tail": "…abcd"}})
+    w = world
+    cards = call(w, "/api/voice/cards")[1]["cards"]
+    assert all(c["id"] != "elevenlabs" for c in cards)
+    assert any(c["id"] == "elevenlabs" for c in call(w, "/api/voice/cards", who=MEMBER)[1]["cards"])
+    p = w["p"]
+    monkeypatch.setattr(p, "voice_settings", lambda: {"tts": "elevenlabs", "stt": "elevenlabs", "el_voice": "v"})
+    monkeypatch.setattr(providers, "el_tts", lambda *a: pytest.fail("тестировщику — не ElevenLabs"))
+    monkeypatch.setattr(providers, "el_stt", lambda *a: pytest.fail("тестировщику — не ElevenLabs"))
+    monkeypatch.setattr(p, "message", lambda w_, msg=None: "Привет")
+    monkeypatch.setattr(p, "voice", lambda personal=False: None)
+    with pytest.raises((ValueError, RuntimeError, OSError)):
+        p.tts({"id": "t:demo:@1"}, True, cloud=False)                    # локального голоса нет — но не облако
+    with pytest.raises((ValueError, RuntimeError, OSError)):
+        p.stt(b"", "audio/webm", cloud=False)
 
 
 def test_space_sessions_close_resume_delete_restore(world, monkeypatch, tmp_path):
