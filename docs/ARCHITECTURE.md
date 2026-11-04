@@ -52,6 +52,7 @@ src/gas_pult/
 ├── fallback.py     запасные: отказ поставщика в журнале → следующий по цепочке с учётом стран и ключей
 ├── usage.py        расход: токены и USD по журналам (прайс API Anthropic), пулы по учёткам, лимиты и пауза
 ├── tenants.py      демо-пространства: список, включено ли, окна через sudo -u … tmux -S (docs/TENANTS.md)
+├── rogroup.py      группа pult-ro у бота и панели: sg / newgrp при запуске, проверка в doctor (docs/TENANTS.md)
 ├── tenant_admin.py bin/pult-tenant владельца: create, list, backup, destroy, purge, key, login (через sudo)
 ├── modules.py      модули-агенты: каталог templates/modules (module.toml), общие блоки _common, пространство, расписание
 ├── scenarios.py    «Примерочная»: роли из templates/scenarios (*.toml), день с агентом, калькулятор пользы без eval

@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from gas_pult import __version__, config, setup, transcripts
+from gas_pult import __version__, config, rogroup, setup, transcripts
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -103,6 +103,8 @@ def cmd_doctor(_):
           'pip install "gas-pult[voice]" && gas-pult voices install irina (необязательно)')
     check("распознавание голосовых (faster-whisper)", catalog.has("faster_whisper"), 'pip install "gas-pult[voice]"')
     check("ffmpeg", catalog.has("imageio_ffmpeg") or shutil.which("ffmpeg"), "pip install imageio-ffmpeg")
+    for name, good, hint in rogroup.checks():          # демо-пространства: у бота и панели должна быть pult-ro
+        check(name, good, hint)
     sys.exit(0 if ok else 1)
 
 
@@ -157,13 +159,14 @@ def cmd_service(a):
         subprocess.run(["systemctl", "--user", "daemon-reload"])
         return print("✓ служба удалена")
     unit.parent.mkdir(parents=True, exist_ok=True)
+    _group, wrap = rogroup.ready()                     # группа pult-ro есть — бот запускается с ней (sg / newgrp)
     unit.write_text(f"""[Unit]
 Description=gas-pult — Telegram-пульт сессий Claude Code
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart={" ".join(_python_cmd())}
+ExecStart={rogroup.exec_start(_python_cmd(), wrap)}
 Environment=PATH={path_env}
 Restart=always
 RestartSec=10
@@ -177,6 +180,11 @@ WantedBy=default.target
     subprocess.run(["systemctl", "--user", "enable", "--now", UNIT], check=True)
     subprocess.run(["systemctl", "--user", "restart", UNIT], check=True)
     print(f"✓ служба запущена: systemctl --user status {UNIT} · лог: journalctl --user -u {UNIT} -f")
+    if wrap:
+        print(f"  бот запускается с группой {rogroup.GROUP_RO} через {wrap[0]}; панель (gas-pult webapp) получает её "
+              "сама при запуске")
+    elif _group is not None and rogroup.member(_group):
+        print(f"  ! группа {rogroup.GROUP_RO} у пульта не появится: {rogroup.HINT_TOOL}")
     linger = subprocess.run(["loginctl", "show-user", os.environ.get("USER", ""), "-p", "Linger"],
                             capture_output=True, text=True).stdout
     if "Linger=yes" not in linger:
@@ -375,4 +383,7 @@ def main(argv: list[str] | None = None):
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)
     a = p.parse_args(argv)
-    (getattr(a, "fn", None) or cmd_run)(a)
+    fn = getattr(a, "fn", None) or cmd_run
+    if fn in (cmd_run, cmd_webapp):
+        rogroup.regain()                               # группа pult-ro не дошла от systemd --user — получить её
+    fn(a)

@@ -63,9 +63,29 @@ backups,trash,etc-backup}`; правило sudo (проверяется `visudo 
 правило не ставится или сразу убирается; прежний файл, если был, — в `/srv/pult/etc-backup/`); отметка
 `/srv/pult/tenants/.enabled` (по ней пульт понимает, что функция включена).
 
-После — перезапустить пульт, чтобы он получил группу: `systemctl --user restart gas-pult gas-pult-webapp`.
+После — перезапустить пульт: `systemctl --user restart gas-pult gas-pult-webapp`.
 
-Проверить: `sudo bin/pult-tenant-setup status`; `id` — в списке групп есть `pult-ro`.
+**Группа `pult-ro` у пульта.** Простой перезапуск служб группу не даёт: менеджер `systemd --user` запущен до того, как
+вас добавили в `pult-ro`, и все его службы получают прежний список групп (`Groups:` в `/proc/<PID>/status` — без
+`pult-ro`). Перезапускать сам `user@<uid>` нельзя — он убьёт tmux с вашими сессиями. Поэтому пульт получает группу
+сам:
+
+- `gas-pult run` (бот) и `gas-pult webapp` (панель) при запуске смотрят в `/etc/group`: группа `pult-ro` есть, вы в ней,
+  а у процесса её нет — процесс один раз перезапускает себя через `sg pult-ro -c …` (пакет `login`/shadow) или
+  `newgrp -c … pult-ro` (util-linux; в Ubuntu 26.04 — пакет `util-linux-extra`). PID тот же — systemd этого не
+  замечает. Перед этим — пробный `id -G` через ту же программу: не дал группу — пульт работает как раньше, без
+  перезапусков по кругу. Группы в `/etc/group` нет — всё как раньше.
+- `gas-pult service install` пишет в юнит бота `ExecStart=… sg/newgrp …` сразу, если группа есть; иначе — как раньше.
+  Юнит панели (`gas-pult-webapp.service`, его пишут вручную по [MINI_APP.md](MINI_APP.md)) менять не нужно.
+- `setpriv` не подходит: без прав root он группу не добавит.
+
+Нет ни `sg`, ни `newgrp` с `-c` (так в Ubuntu 26.04 по умолчанию): `sudo apt install util-linux-extra`, затем
+`systemctl --user restart gas-pult gas-pult-webapp`. Откат: `sudo apt remove util-linux-extra` — пульт снова без
+группы.
+
+Проверить: `sudo bin/pult-tenant-setup status` — строки «обёртка группы: …» и по каждому процессу пульта «✓ … группа
+pult-ro есть» или «✗ у пульта нет группы pult-ro»; то же — `gas-pult doctor`. В журнале службы при запуске —
+`gas-pult: перезапуск с группой pult-ro через newgrp`.
 
 Откат: `sudo bin/pult-tenant-setup uninstall` (убирает правило sudo и отметку — пульт снова работает без
 пространств); группы — `sudo gpasswd -d <ваш пользователь> pult-ro`, `sudo groupdel pult-tenants`, `sudo groupdel pult-ro`

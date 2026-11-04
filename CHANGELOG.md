@@ -14,6 +14,13 @@
   `tests/test_enter_keys.py`, в браузере — `tests/e2e/enter_demo.py`.
 
 ### Исправлено
+- **Бот и панель без группы `pult-ro` после настройки пространств (задача 31).** Менеджер `systemd --user` запущен до
+  того, как владельца добавили в `pult-ro`, и перезапуск служб группу не давал — пульт не читал журналы
+  пространств. Теперь `gas-pult run` и `gas-pult webapp` при запуске получают группу сами: она есть в `/etc/group`, а у
+  процесса нет — один раз перезапуск через `sg pult-ro -c …` или `newgrp -c … pult-ro` (util-linux, Ubuntu 26.04:
+  `util-linux-extra`) с пробным `id -G`; иначе — как раньше. `gas-pult service install` пишет обёртку в `ExecStart`.
+  Проверка «у пульта нет группы pult-ro» — в `gas-pult doctor` и `pult-tenant-setup status` (`rogroup.py`,
+  `tests/test_pult_ro_group.py`, docs/TENANTS.md).
 - Демо простого режима: папка уже созданного модуля называлась латиницей (`night-shift`) — проверка «без чужих букв»
   (`tests/e2e/simple_mode.py`) падала с #92. Теперь «ночная-смена».
 
