@@ -292,5 +292,6 @@
  "s.new.exists": "This agent already exists: «{f}», changed {t}.",
  "s.new.open": "Open it",
  "s.new.again": "Create another one",
- "s.new.again.sure": "Really create another one?"
+ "s.new.again.sure": "Really create another one?",
+ "s.owner_here": "the owner joined"
 }

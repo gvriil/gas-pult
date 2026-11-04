@@ -18,6 +18,7 @@ MCP-серверы Claude Code (``mcp``), ключи API и поставщики
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -164,6 +165,7 @@ class Panel:
         self.helper = helper.Helper(cfg.data)
         self.help_anon = helper.Rate(30, 600)                        # помощник на экране входа — по IP
         self._mod_ids: tuple[float, frozenset] = (0.0, frozenset())
+        self.owner_seen: dict[str, float] = {}                       # окно пространства → когда владелец подключился
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -217,8 +219,56 @@ class Panel:
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
                         "sections": self.sections_of(w["path"]),          # разделы чата бизнес-ролей; [] — во всех
+                        **self.space_fields(w),                           # окно демо-пространства (spaces.py)
                         **when})                                          # когда менялась (ago.py)
         return out
+
+    OWNER_HERE = 15 * 60                                 # с: «Владелец подключился» видно тестировщику 15 минут
+
+    def space_fields(self, w: dict) -> dict:
+        """Окно пространства: имя и название пространства, был ли владелец (``owner_here`` — когда, иначе None)."""
+        slug = w.get("space")
+        if not slug:
+            return {}
+        t = tenants.load(slug) or {}
+        seen = self.owner_seen.get(w["id"])
+        return {"space": slug, "space_title": t.get("title") or slug,
+                "owner_here": seen if seen and time.time() - seen < self.OWNER_HERE else None}
+
+    def owner_join(self, w: dict) -> dict:
+        """Владелец подключился к окну пространства (сам — «Подключиться» — или написал, ответил на вопрос)."""
+        if not w.get("space"):
+            raise ValueError("это не сессия демо-пространства")
+        self.owner_seen[w["id"]] = time.time()
+        return {"ok": True, "space": w["space"]}
+
+    def space_task(self, slug: str, name: str, task: str) -> dict:
+        """«Поставить задачу» владельцем: новая сессия в пространстве с понятным именем; первое сообщение —
+        задание (уходит, когда Claude в окне готов принять текст). Тестировщик видит её у себя этой сессией."""
+        slug, name, task = tenants.check_slug(slug), name.strip()[:60], task.strip()
+        if not tenants.enabled() or not tenants.load(slug):
+            raise ValueError("нет такого пространства")
+        if not name:
+            raise ValueError("назовите сессию — так её увидит тестировщик")
+        wid = spaces.wid_of(slug, tenants.new_window(slug, name))
+        self.owner_seen[wid] = time.time()
+        if task:
+            threading.Thread(target=self.first_message, args=(wid, task), daemon=True).start()
+        return {"id": wid, "name": name}
+
+    def first_message(self, wid: str, text: str, timeout: float = 90):
+        """Дождаться Claude в новом окне и отправить первое сообщение (то же, что «Отправить» в панели)."""
+        end, why = time.time() + timeout, "Claude не запустился"
+        while time.time() < end:
+            if w := self.window(wid):
+                try:
+                    self.pult.to_claude(w, text)
+                    return True
+                except Exception as e:                    # не готов ещё — пробуем, пока не выйдет время
+                    why = str(e)
+            time.sleep(2)
+        print(f"задание в {wid} не отправлено: {why}", flush=True)
+        return False
 
     def sections_of(self, path: str) -> list[str]:
         """Разделы (Поиск, Цифры, Бумаги, Общение) модуля пространства — по каталогу, раз в минуту."""
@@ -237,18 +287,19 @@ class Panel:
     # ---------- расход (usage.py) ----------
     def cost_of(self, w: dict, pool: str | None, st: dict) -> dict | None:
         """Расход текущей сессии окна — если окно в пуле того, кто смотрит (чужие учётки не показываем)."""
-        if pool is None or self.pult.pool_of(w) != pool:
+        own_space = pool == "owner" and w.get("space")      # владелец видит расход пространств
+        if pool is None or (self.pult.pool_of(w) != pool and not own_space):
             return None
         s = self.pult.meter.session(w["path"], self.pult.home_of(w))
         if not s:
             return None
-        lim = usage.limits(st)["session"] if pool == "owner" else None
+        lim = usage.limits(st)["session"] if pool == "owner" and not own_space else None
         by = self.pult.opened_by(w)
         name = next((p.get("name") or (f"@{p['username']}" if p.get("username") else "")
                      for p in self.people.list() if p["id"] == by), "") if by else ""
         return {**usage.public(s["total"]), "today": usage.public(s["today"]), "session": s["id"][:8],
                 "limit": None if lim is None else round(lim + (st.get("cost_extra") or {}).get(s["id"], 0.0), 2),
-                "paused": (st.get("cost_paused") or {}).get(w["id"]) if pool == "owner" else None,
+                "paused": (st.get("cost_paused") or {}).get(w["id"]) if pool == "owner" and not own_space else None,
                 **({"by": {"id": by, "name": name}} if by else {})}
 
     def pool_home(self, pool: str):
@@ -1166,7 +1217,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
-              "/api/cost/limits", "/api/cost/decide",
+              "/api/cost/limits", "/api/cost/decide", "/api/spaces", "/api/space/task", "/api/space/connect",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
@@ -1403,7 +1454,9 @@ def handler(panel: Panel):
                     sp = panel.space_info(self.terms_uid()) or {}
                     return {"sessions": panel.sessions(pool), "host": sp.get("title", ""), "build": build,
                             "now": time.time(), "cost": panel.cost_summary(pool), "fallback": [], "space": sp}
-                return {"sessions": panel.sessions(pool), "host": panel.cfg.host, "build": build,
+                with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
+                    ss = panel.sessions(pool)                 # владелец: и окна пространств (группа «Пространства»)
+                return {"sessions": ss, "host": panel.cfg.host, "build": build,
                         "now": time.time(),                                   # часы сервера: «N назад» без сдвига
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
@@ -1478,6 +1531,8 @@ def handler(panel: Panel):
                 return panel.voice_cards(self.who()[1] == "owner")
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
+            if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
+                return tenants.status(check=True)
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
@@ -1888,7 +1943,13 @@ def handler(panel: Panel):
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
+            if path == "/api/space/task":
+                return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
             w = self.win(b.get("w"))
+            if path == "/api/space/connect":
+                return panel.owner_join(w)
+            if w.get("space") and self.who()[1] == "owner" and path in ("/api/send", "/api/select", "/api/key"):
+                panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
             if path == NOTIFY_DONE:                       # одно сообщение в бот, когда ход закончится (бот следит)
                 return {"result": panel.pult.ask_notify_done(w["id"], self.terms_uid())}
             if path in ("/api/send", "/api/command", "/api/select", "/api/key", "/api/model"):
@@ -1900,6 +1961,8 @@ def handler(panel: Panel):
                 return {"ok": True, "dup": panel.send(w, text, str(b.get("id", ""))[:64])}
             if path == "/api/rename":
                 return {"name": panel.tmux.rename(w["id"], str(b.get("name", "")))}
+            if path == "/api/active" and w.get("space"):
+                raise ValueError("сессия демо-пространства не бывает активной в чате бота — откройте её в панели")
             if path == "/api/active":
                 panel.pult.set_state(active=w["id"])
                 return {"ok": True}
