@@ -329,6 +329,27 @@ def test_owner_sees_spaces_group_and_works_there(world):
     assert call(w, "/api/active", {"w": wid}, who=OWNER)[0] == 400       # активная в боте — только своё окно
 
 
+def test_owner_revives_space_window_with_space_command(world, monkeypatch):
+    """«Перезапустить» остановленную сессию пространства — командой пространства (tenants.command: свой PATH, профиль
+    и ключ), а не командой владельца с его настройками; активной в боте она не становится."""
+    w = world
+    wid = open_tester_session(w)
+    raw = spaces.split(wid)[1]
+    tm = tenants.tmux_of("demo")
+    tm.run("respawn-pane", "-k", "-t", raw, "bash")                        # Claude вышел — в окне оболочка
+    assert wait(lambda: (tm.window(raw) or {}).get("stopped"))
+    used = []
+    real = tenants.command
+    monkeypatch.setattr(tenants, "command", lambda t, base="claude", base_root=None: used.append(t) or real(t))
+    active = w["p"].pult.state().get("active")
+    assert call(w, "/api/revive", {"w": wid}, who=TESTER)[0] == 403         # тестировщику — нет
+    code, d = call(w, "/api/revive", {"w": wid}, who=OWNER)
+    assert code == 200 and d["id"] == wid, d
+    assert [t.get("title") for t in used] == ["Демо для кафе"]
+    assert wait(lambda: any(s["id"] == wid and not s.get("stopped") for s in call(w, "/api/sessions")[1]["sessions"]))
+    assert w["p"].pult.state().get("active") == active
+
+
 def test_owner_connect_and_task(world):
     w = world
     assert call(w, "/api/space/connect", {"w": w["owner_w"]}, who=OWNER)[0] == 400   # не пространство

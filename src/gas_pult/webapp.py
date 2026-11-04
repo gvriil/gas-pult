@@ -895,6 +895,13 @@ class Panel:
         w = self.tmux.window(wid)
         if not w or not w.get("stopped"):
             raise ValueError("сессия не остановлена — перезапускать нечего")
+        if w.get("space"):                              # окно пространства — его команда: свой PATH, профиль, ключ
+            t = tenants.load(w["space"])
+            if not t:
+                raise ValueError("пространства уже нет")
+            profile, cmd = w["mark"] or "claude", tenants.command(t)
+            self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)
+            return {"id": wid}
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
         if uid is not None:
             self.check(profile, uid)

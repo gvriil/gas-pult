@@ -199,7 +199,11 @@ Claude Code в пространстве — свой, в его домашней
 - `tenants.status(check=True)` — список пространств (slug, название, юрисдикция, вид, профиль, бюджет) и `ready`:
   пускает ли sudo без пароля (`sudo -n -u … tmux -S … -V`, кэш 60 секунд).
 - `tenants.new_window(slug, name)` — окно с Claude Code в пространстве: `sudo -n -u pult_t_<slug> tmux -S <сокет>
-  new-window …` с командой `CLAUDE_CONFIG_DIR=<папка> claude --settings <папка>/config/profiles/<профиль>.json`.
+  new-window …` с командой `export PATH=<home>/.local/bin:/usr/local/bin:/usr/bin:/bin; CLAUDE_CONFIG_DIR=<папка>
+  claude --settings <папка>/config/profiles/<профиль>.json` (у профиля «claude» — без `--settings`). PATH ставит сама
+  команда: окно получает окружение клиента tmux, а это `sudo` с `secure_path` без папки пространства — иначе
+  «claude: command not found». «Перезапустить» остановленную сессию пространства — той же командой
+  (`tenants.command`) с `--continue`, не командой владельца.
   Остальная работа с окном — тот же `tmux.Tmux`, только с префиксом `sudo -n -u … tmux -S …` (`tenants.tmux_of`).
 
 Экран пространств в панели (переключатель, «Войти как…») — отдельная задача.

@@ -106,7 +106,7 @@ def test_tmux_of_and_new_window(tmp_path, monkeypatch):
     assert f"CLAUDE_CONFIG_DIR={root}/demo-1/config/claude" in cmd
     assert f"--settings {root}/demo-1/config/profiles/openrouter.json" in cmd
     assert ".claude " not in cmd and str(Path.home()) not in cmd
-    assert models.profile_of(cmd.split(";")[0].split()[1:]) == "openrouter"
+    assert models.profile_of(cmd.split("; ")[1].split()[1:]) == "openrouter"   # после export PATH
 
 
 def test_ready_cached_and_safe(tmp_path):
@@ -186,8 +186,32 @@ def test_command_claude_only_after_login(tmp_path):
     with pytest.raises(ValueError):
         tenants.command(t, base_root=tmp_path)
     cmd = tenants.command(t | {"claude_login": True}, base_root=tmp_path)
-    assert cmd == f"CLAUDE_CONFIG_DIR={tmp_path}/demo/config/claude claude"
+    assert cmd == (f"export PATH={tmp_path}/demo/home/.local/bin:/usr/local/bin:/usr/bin:/bin; "
+                   f"CLAUDE_CONFIG_DIR={tmp_path}/demo/config/claude claude")
     assert "warning" in tenants.public(t | {"claude_login": True})
+
+
+@pytest.mark.parametrize("profile", ["claude", "openrouter"])
+def test_command_finds_claude_in_space_home_without_its_path(tmp_path, profile):
+    """Окно пространства получает окружение клиента tmux — sudo с secure_path без home/.local/bin пространства.
+    Команда сама ставит PATH: claude находится, тот же PATH — у его программ и у оболочки после выхода (buh-demo)."""
+    home = tmp_path / "demo/home"
+    fake = home / ".local/bin/claude"
+    fake.parent.mkdir(parents=True)
+    fake.write_text('#!/bin/sh\necho "claude $* | $CLAUDE_CONFIG_DIR | $PATH"\n')
+    fake.chmod(0o755)
+    t = {"slug": "demo", "jurisdiction": "NL", "profile": profile, "claude_login": True}
+    cmd = tenants.command(t, base_root=tmp_path)
+    secure = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"     # как sudo secure_path
+    r = subprocess.run(["sh", "-c", f'{cmd} --continue; echo "after | $PATH"'], capture_output=True, text=True,
+                       env={"PATH": secure}, cwd=tmp_path)
+    assert r.returncode == 0 and "command not found" not in r.stderr, r.stderr
+    first, after = r.stdout.splitlines()
+    want = f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+    assert first.startswith("claude ") and first.endswith(f" | {tmp_path}/demo/config/claude | {want}")
+    assert "--continue" in first and ("--settings" in first) == (profile != "claude")
+    assert after == f"after | {want}"
+    assert tenants.path_env("demo", tmp_path) == want
 
 
 # --- скрипт владельца: сухой прогон и мок ------------------------------------------------------------------------
