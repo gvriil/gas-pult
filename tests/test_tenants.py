@@ -476,3 +476,28 @@ def test_setup_dry_run_touches_nothing(tmp_path):
     assert r.returncode == 1 and "не root" in r.stderr
     r = subprocess.run(["bash", str(SETUP), "nope"], capture_output=True, text=True)
     assert r.returncode == 2
+
+
+def test_create_budget_period_and_legacy(tmp_path, monkeypatch):
+    """Задача 35: pult-tenant create … --budget 4 --period 30 --day-cap 3 → budget.json с нормой, периодом, началом и
+    потолком дня; повтор без флагов — прежние значения; старый budget.json ({"daily_usd": 3}) читается."""
+    from datetime import date
+    fs = FakeSystem(monkeypatch)
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    s = tenant_admin.Sys(out=lambda *_: None, runner=fs.runner)
+    tenant_admin.create(lay, s, "demo", budget=4, period=30, day_cap=3, start="2026-11-02")
+    p = tenants.paths("demo", lay.tenants)
+    assert json.loads(p["budget"].read_text()) == {"daily_usd": 4.0, "period_days": 30, "start": "2026-11-02",
+                                                   "day_cap_x": 3.0}
+    tenant_admin.create(lay, s, "demo")                                  # повтор — всё как было
+    assert json.loads(p["budget"].read_text())["start"] == "2026-11-02"
+    tenant_admin.create(lay, s, "demo", day_cap=0)                       # 0 — потолок дня выключен
+    assert json.loads(p["budget"].read_text())["day_cap_x"] is None
+    assert "budget" not in json.loads(p["meta"].read_text())             # в описание пространства бюджет не пишем
+    p["budget"].write_text('{"daily_usd": 3}')                          # старый вид
+    t = tenants.load("demo", lay.tenants)
+    assert t["budget_usd"] == 3 and t["budget"]["period_days"] == 30 and t["budget"]["start"] == date.today()
+    for bad in ({"period": 0}, {"day_cap": 0.5}, {"start": "вчера"}):
+        with pytest.raises(ValueError):
+            tenant_admin.create(lay, s, "demo", **bad)

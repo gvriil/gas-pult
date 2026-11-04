@@ -30,6 +30,7 @@ import threading
 import time
 import urllib.parse
 import uuid
+from datetime import date, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -54,6 +55,7 @@ from gas_pult import (
     qr,
     scenarios,
     setup,
+    space_budget,
     space_files,
     space_sessions,
     spaces,
@@ -173,6 +175,7 @@ class Panel:
         self.owner_seen: dict[str, float] = {}                       # окно пространства → когда владелец подключился
         self.help_calls: dict[str, float] = {}                       # окно → когда тестировщик звал на помощь
         self.budget_told: dict[str, str] = {}                        # пространство → день, когда сказали владельцу
+        self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
 
     def setup_status(self, fresh: bool = False) -> dict:
@@ -360,39 +363,78 @@ class Panel:
                 print("help:", e, file=sys.stderr, flush=True)
         return {"ok": True}
 
-    def space_budget(self, slug: str) -> dict | None:
-        """Дневной бюджет пространства (``budget.json``) и расход за сегодня по его журналам (цены API; на подписке —
-        оценка). Бюджета нет — None."""
+    def space_budget(self, slug: str, fresh: bool = False) -> dict | None:
+        """Запас пространства на период (space_budget.py): норма × дни + пополнения, расход по дням (журналы, цены
+        API; на подписке — оценка). Бюджета нет — None. Кэш 10 с: список сессий спрашивает часто."""
+        hit = self.budget_cache.get(slug)
+        if hit and not fresh and time.time() - hit[0] < 10:
+            return hit[1]
         t = tenants.load(slug) or {}
-        lim = t.get("budget_usd")
-        if lim is None:
+        cfg = t.get("budget")
+        if not cfg:
             return None
+        today = date.today()
+        first, _ = space_budget.period(cfg, today)
         home = tenants.paths(slug)["claude"]
-        spent = (usage.public(self.pult.meter.day(home)).get("usd") or 0.0) if home.is_dir() else 0.0
-        return {"usd": lim, "spent": round(spent, 2), "over": spent >= lim,
-                "estimate": (t.get("profile") or "") == "claude"}
+        seen = self.pult.meter.days(home, first.isoformat()) if home.is_dir() else {}
+        spent = space_budget.remember(slug, seen, first)
+        b = space_budget.state(cfg, spent, today, space_budget.extra(slug, first),
+                               estimate=(t.get("profile") or "") == "claude")
+        b["text"] = space_budget.text(b)
+        self.budget_cache[slug] = (time.time(), b)
+        return b
 
-    def check_budget(self, slug: str):
-        """Тестировщик пишет или открывает сессию: бюджет за сегодня исчерпан — отказ (ValueError) и владельцу —
-        одно сообщение в день по пространству."""
-        b = self.space_budget(slug)
-        if not b or not b["over"]:
-            return
+    def budget_watch(self, slug: str, b: dict):
+        """Владельцу — на 80% и 100% запаса (раз за период; после пополнения — заново) и при потолке дня (раз в день);
+        с кнопкой «+ добавить»."""
+        t = tenants.load(slug) or {}
+        title = t.get("title") or slug
+        end = date.fromisoformat(b["end"]).strftime("%d.%m")
+        msgs = []
+        if (x := space_budget.warn_due(slug, b)) is not None:
+            if x >= 1:
+                msgs.append(f"💸 Запас пространства «{title}» исчерпан: ${b['spent']:.2f} из ${b['reserve']:.2f} "
+                            f"(период до {end}). Тестировщик не может писать агенту до нового периода или пополнения.")
+            else:
+                msgs.append(f"⚠️ Пространство «{title}» потратило {round(b['pct'] * 100)}% запаса: ${b['spent']:.2f} "
+                            f"из ${b['reserve']:.2f} (период до {end}). {b['text'][0].upper() + b['text'][1:]}.")
         today = time.strftime("%Y-%m-%d")
-        if self.budget_told.get(slug) != today:
+        if b["reason"] == "day" and self.budget_told.get(slug) != today:
             self.budget_told[slug] = today
-            t = tenants.load(slug) or {}
-            text = (f"💸 Пространство «{t.get('title') or slug}» исчерпало дневной бюджет: ${b['spent']:.2f} из "
-                    f"${b['usd']:.2f}" + (" (оценка по ценам API — работает на подписке)" if b["estimate"] else "")
-                    + ". Тестировщик до завтра не может писать агенту и открывать сессии. Поднять бюджет — "
-                    f"sudo bin/pult-tenant create {slug} --budget <USD>.")
+            msgs.append(f"⏸ Пространство «{title}» дошло до потолка дня: ${b['today']:.2f} из ${b['day_cap']:.2f}. "
+                        "Тестировщик продолжит завтра — или пополните запас.")
+        kb = {"inline_keyboard": [[{"text": "➕ Добавить", "callback_data": f"bt:{slug}"}]]}
+        for text in msgs:
             for chat in self.cfg.owners:
                 try:
-                    self.pult.api("sendMessage", chat_id=chat, text=text)
+                    self.pult.api("sendMessage", chat_id=chat, text=text, reply_markup=kb)
                 except (TelegramError, OSError) as e:
                     print("budget:", e, file=sys.stderr, flush=True)
-        raise ValueError(f"Дневной лимит пространства исчерпан (${b['spent']:.2f} из ${b['usd']:.2f}). Владелец "
-                         "получил сообщение; завтра лимит обновится.")
+
+    def check_budget(self, slug: str):
+        """Тестировщик пишет, отвечает или открывает сессию: запас периода исчерпан (или потолок дня) — отказ
+        (ValueError) с понятным текстом; владельцу — сообщения (budget_watch)."""
+        b = self.space_budget(slug, fresh=True)
+        if not b:
+            return
+        self.budget_watch(slug, b)
+        if not b["over"]:
+            return
+        if b["reason"] == "day":
+            raise ValueError(f"На сегодня потрачен потолок дня (${b['today']:.2f} из ${b['day_cap']:.2f}). Завтра "
+                             "можно продолжить — владелец получил сообщение.")
+        nxt = (date.fromisoformat(b["end"]) + timedelta(days=1)).strftime("%d.%m")
+        raise ValueError(f"Запас пространства на период исчерпан (${b['spent']:.2f} из ${b['reserve']:.2f}). Владелец "
+                         f"получил сообщение и может пополнить запас; новый период — с {nxt}.")
+
+    def budget_add(self, slug: str, usd: float, by: int | None = None) -> dict:
+        """«+ добавить» из панели владельца: пополнить запас текущего периода."""
+        t = tenants.load(slug) or {}
+        if not t.get("budget"):
+            raise ValueError("у пространства нет бюджета — sudo bin/pult-tenant create <slug> --budget <USD>")
+        first, _ = space_budget.period(t["budget"], date.today())
+        space_budget.top_up(slug, usd, first, by)
+        return self.space_budget(slug, fresh=True)
 
     def owner_join(self, w: dict) -> dict:
         """Владелец подключился к окну пространства (сам — «Подключиться» — или написал, ответил на вопрос)."""
@@ -1465,7 +1507,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
-              "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect",
+              "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
@@ -1820,7 +1862,10 @@ def handler(panel: Panel):
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] == "owner",
                                                      self.terms_uid()))
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
-                return tenants.status(check=True)
+                st = tenants.status(check=True)
+                for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
+                    x["budget"] = panel.space_budget(x["slug"])
+                return st
             if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
                 return panel.space_list(self.space_of(q))
             if path in ("/api/space/files", "/api/space/download"):   # файлы папки сессии пространства
@@ -2241,6 +2286,9 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/new" and (slug := self.space()):
                 return panel.new_in_space(slug, str(b.get("name", "")))
+            if path == "/api/space/budget/add":         # владелец: «+ добавить» к запасу пространства
+                return panel.budget_add(tenants.check_slug(str(b.get("space", ""))), float(b.get("usd") or 0),
+                                        self.terms_uid())
             if path == "/api/space/close":
                 return panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
             if path == "/api/space/resume":

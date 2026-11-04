@@ -27,7 +27,7 @@ import time
 import urllib.parse
 import uuid
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from gas_pult import (
@@ -45,6 +45,7 @@ from gas_pult import (
     providers,
     qr,
     setup,
+    space_budget,
     tenants,
     terms,
     testers,
@@ -1479,6 +1480,10 @@ class Pult:
             return                                         # участникам кнопки бота — только условия и страна
         if kind == "pp":                                   # владелец решает, пускать ли человека
             return self.grant(chat, arg)
+        if kind == "bt":                                   # «➕ Добавить» к запасу пространства — на сколько
+            return self.budget_offer(chat, arg)
+        if kind == "ba":                                   # … пополнить на выбранную сумму
+            return self.budget_add(chat, arg, q["from"]["id"])
         if kind == "pt":                                   # … тестировщиком в демо-пространстве: какое
             return self.pick_space(chat, arg)
         if kind == "ps":
@@ -1824,6 +1829,29 @@ class Pult:
         if not tenants.enabled():
             return []
         return [t for s in tenants.slugs() if (t := tenants.load(s))]
+
+    def budget_offer(self, chat: int, slug: str):
+        """Сколько добавить к запасу пространства: неделя нормы, две недели, $10."""
+        t = tenants.load(slug) if tenants.SLUG.match(slug or "") else None
+        if not t or not t.get("budget"):
+            return self.send(chat, "У пространства нет бюджета — sudo bin/pult-tenant create <slug> --budget <USD>.")
+        d = t["budget"]["daily"]
+        opts = [(f"+ неделя (${7 * d:g})", 7 * d), (f"+ 2 недели (${14 * d:g})", 14 * d), ("+ $10", 10.0)]
+        self.send(chat, f"Сколько добавить к запасу «{t.get('title') or slug}» на этот период?",
+                  reply_markup=kb([[(label, f"ba:{slug}:{usd:g}")] for label, usd in opts]))
+
+    def budget_add(self, chat: int, arg: str, by: int):
+        slug, _, usd = arg.rpartition(":")
+        t = tenants.load(slug) if tenants.SLUG.match(slug or "") else None
+        if not t or not t.get("budget"):
+            return self.send(chat, "У пространства нет бюджета.")
+        try:
+            first, _ = space_budget.period(t["budget"], date.today())
+            extra = space_budget.top_up(slug, float(usd), first, by)
+        except ValueError as e:
+            return self.send(chat, f"Не вышло: {e}")
+        self.send(chat, f"✅ Запас «{t.get('title') or slug}» пополнен на ${float(usd):g} — всего пополнений в этом "
+                        f"периоде ${extra:g}. Тестировщик может продолжать.")
 
     def pick_space(self, chat: int, uid: str):
         """pt:<uid> — выбрать пространство для тестировщика."""

@@ -710,6 +710,8 @@
   .sheet.s-sheet .scn-opt.on { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--accent-soft); }
   .sheet.s-sheet .scn-opt .i { width: 16px; height: 16px; }
   .sheet.s-sheet .s-notes { margin: 0 0 10px; padding: 0 0 0 18px; } .sheet.s-sheet .s-notes li { margin: 0 0 6px; }
+  .space-bud { margin: 2px 16px 8px; line-height: 1.45; } .space-bud .chip { margin-left: 4px; vertical-align: middle; } .space-bud.warn b { color: var(--status-danger); }
+  .sec-h.space-h { flex-wrap: wrap; row-gap: 6px; }
   .sheet.s-sheet .btn.wide { width: 100%; min-height: 48px; margin: 6px 0 4px; justify-content: center; border-radius: var(--radius-pill);
     background: var(--accent-primary); color: var(--on-accent); font-weight: 600; }
   .sheet.s-sheet .btn.wide:disabled { opacity: .45; } .sheet.s-sheet .btn.wide.danger { background: transparent; border: 1px solid var(--status-danger); color: var(--status-danger); } .sheet.s-sheet .field input { width: 100%; }
@@ -1947,6 +1949,7 @@ function spaceChips(s) {
 function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
   if (meta?.role !== "owner" || (!list.length && !spacesInfo?.tenants?.length)) return "";
   return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" + '<button class="chip" data-space-closed>' + ic("folder") + "Закрытые</button>" : ""}</div>`
+    + (spacesInfo?.tenants || []).filter((x) => x.budget).map((x) => `<div class="note space-bud${x.budget.pct >= 0.8 ? " warn" : ""}"><b>${esc(x.title || x.slug)}</b> — ${esc(x.budget.text)} <button class="chip" data-space-add="${esc(x.slug)}">${ic("plus")}${esc(T("bud.add"))}</button></div>`).join("")
     + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
 }
 async function loadSpaces() {
@@ -2057,6 +2060,15 @@ function spaceTaskForm() {
     catch (e) { $("stErr").textContent = e.message; $("stErr").style.color = "var(--status-danger)"; }
   });
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
+// «+ добавить» к запасу пространства (задача 35): неделя нормы, две недели, $10.
+function budgetAdd(slug) {
+  const t = (spacesInfo?.tenants || []).find((x) => x.slug === slug), d = t?.budget?.daily || 0;
+  if (!t?.budget) return toast(T("bud.none"), 4000);
+  sheet(T("bud.add.title", { n: t.title || slug }), [[7 * d, T("bud.add.week")], [14 * d, T("bud.add.2w")], [10, "$10"]].map(([v, label]) => ({
+    label: label + (label.startsWith("$") ? "" : " — " + usd(v)), icon: "plus",
+    run: async () => { try { const b = await api("/api/space/budget/add", { space: slug, usd: Math.round(v * 100) / 100 }); toast(T("bud.add.done", { l: usd(b.left) }), 4000); await loadSpaces(); refresh(); } catch (e) { toast(e.message, 5000); } },
+  })));
 }
 // space-sessions:start — сессии демо-пространства (задача 32): своя папка; «Закрыть» — агент выходит, папка и разговор
 // остаются; «Продолжить» — тот же разговор; «Удалить» — в корзину пространства на N дней. Тексты — T(): и простой режим.
@@ -2222,6 +2234,10 @@ function costBar(s) {
 }
 function costSummary() {
   const c = costInfo;
+  if (c?.budget) {                                    // пространство: запас на период (задача 35)
+    const b = c.budget;
+    return `<button class="chip cost${b.pct >= 0.8 ? " warn" : ""}" data-cost-sum data-tour="cost" title="${esc(b.text)}">${ic("coin")}${esc(T("bud.chip", { t: usd(b.today), l: usd(b.left) }))}</button>`;
+  }
   if (!c?.today) return "";
   const lim = c.limits?.day, over = lim && c.today.usd != null && c.today.usd >= lim * 0.8;
   return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="Расход за сегодня по вашей учётке">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}</button>`;
@@ -2244,6 +2260,7 @@ function costSheet() {
   const lim = c.limits || {};
   helpSheet("settings.cost");
   sheet("Расход", [
+    ...(c.budget ? [{ info: true, icon: "coin", label: c.budget.text, sub: T("bud.sub", { r: usd(c.budget.reserve), d: c.budget.period_days }) }] : []),
     { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.unknown ? " · часть ответов — модели без цены" : "") },
     ...(own ? [{ info: true, icon: "pause", label: `Лимит на сессию: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
                { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
@@ -2281,6 +2298,7 @@ function fallbackNotices(list) {
   try { localStorage.setItem("fbSeen", String(fresh.at(-1).ts)); } catch (e) { /* не страшно */ }
 }
 async function refresh() {
+  await dictReady;                                     // чипы запаса и «+ добавить» — из словаря (T)
   try {
     const d = await api("/api/sessions");
     sessions = d.sessions; costInfo = d.cost || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
@@ -2336,6 +2354,7 @@ $("sessionsView").addEventListener("click", (e) => {
   if (e.target.closest("[data-space-task]")) return spaceTaskForm();
   if (e.target.closest("[data-space-invite]")) return spaceInvite();
   if (e.target.closest("[data-space-closed]")) return ssPickSpace(ssClosed);
+  if (e.target.closest("[data-space-add]")) return budgetAdd(e.target.closest("[data-space-add]").dataset.spaceAdd);
   if (e.target.closest("[data-scn-home]")) return scenariosView();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
@@ -5083,6 +5102,7 @@ async function sYesGo(w, btn) {
 }
 async function sLoad(first) {
   let d; try { d = await api("/api/sessions"); } catch (e) { return; }
+  costInfo = d.cost || costInfo;                       // запас пространства (cost.budget) — в «Агенты»
   checkBuild(d);
   sessions = d.sessions || [];
   SIM.list = sessions.filter((x) => x.status !== "stopped");
@@ -5257,6 +5277,7 @@ function sAgents() {
   const rows = SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
   sSheet(hv("simple.agents"), T("s.agents"), `<p class="note">${esc(T("s.agents.hint"))}</p>${rows ? `<div class="scn-opts">${rows}</div>` : ""}
     ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}
+    ${meta?.space && costInfo?.budget ? `<p class="note">${esc(costInfo.budget.text)}</p>` : ""}
     ${meta?.space ? `<div class="scn-opts">${SIM.w ? sChip(false, 'data-ssclose="1"', T("ss.close.item"), ic("power")) : ""}${sChip(false, 'data-ssclosed="1"', T("ss.list.title"), ic("folder"))}${SIM.w ? sChip(false, 'data-sffiles="1"', T("sf.title"), ic("file")) : ""}</div>
       <div class="scn-opts">${sChip(false, 'data-sos="1"', T("s.sos"), ic("bell"))}</div>` : ""}`,
     (b, bg) => {
@@ -5503,7 +5524,9 @@ function demoApi(path, body) {
     { name: "Акт сверки №14.pdf", size: 1288490, changed: t0 - 2 * H }, { name: "data/выгрузка 1С.xml", size: 913, changed: t0 - D }] };
   R["/api/space/upload"] = { name: "Счёт.pdf" };
   if (path.startsWith("/api/space/download")) return Promise.resolve(new Blob(["демо"], { type: "text/plain" }));
-  R["/api/spaces"] = params.has("spaces") ? { enabled: true, tenants: [{ slug: "demo", title: "Демо для бухгалтерии", ready: true }] } : { enabled: false, tenants: [] };
+  const demoBud = { daily: 4, period_days: 30, reserve: 120, spent: 97.4, today: 9.2, left: 22.6, pct: 0.81, over: false, reason: "", day_cap: null, estimate: true,
+    text: "сегодня $9.20 · в запасе $22.60 до 01.12 · норма $4.00/день; при нынешнем темпе хватит до 21.11 (оценка по ценам за токены — работает на подписке)" };
+  R["/api/spaces"] = params.has("spaces") ? { enabled: true, tenants: [{ slug: "demo", title: "Демо для бухгалтерии", ready: true, budget: demoBud }] } : { enabled: false, tenants: [] };
   R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
     options: [{ id: "claude", title: "Claude", why: "" }, { id: "openrouter", title: "OpenRouter", why: params.get("orkey") ? "" : "нет ключа" },
               { id: "zai", title: "GLM (Z.ai)", why: "" }, { id: "deepseek", title: "DeepSeek", why: "" }],
@@ -5529,6 +5552,7 @@ function demoApi(path, body) {
   if (params.has("upd")) { R["/api/meta"].build = "demo-1"; R["/api/sessions"].build = "demo-2"; }   // ?upd — вышла новая версия
   if (params.has("tester")) {                       // ?tester — тестировщик демо-пространства: только его сессия
     R["/api/meta"].space = { slug: "demo", title: "Демо для бухгалтерии", ready: true }; R["/api/meta"].role = "member"; R["/api/meta"].projects = [];
+    R["/api/sessions"].cost = { pool: "own", today: { tokens: { in: 0, out: 0, cw: 0, cr: 0 }, total: 0, usd: 9.2 }, budget: demoBud };
     R["/api/sessions"].sessions = [{ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false,
       channel: false, rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", owner_here: null }];
   }

@@ -25,9 +25,10 @@ import re
 import shlex
 import subprocess
 import time
+from datetime import date
 from pathlib import Path
 
-from gas_pult import models, personas
+from gas_pult import models, personas, space_budget
 from gas_pult.tmux import Tmux
 
 ROOT = "/srv/pult/tenants"
@@ -140,10 +141,12 @@ def load(slug: str, base_root: Path | None = None) -> dict | None:
     if not isinstance(meta, dict):
         return None
     try:
-        budget = float(json.loads(p["budget"].read_text()).get("daily_usd"))
-    except (OSError, ValueError, TypeError, AttributeError):
-        budget = None
-    return meta | {"slug": slug, "budget_usd": budget}
+        raw = json.loads(p["budget"].read_text())
+        made = date.fromtimestamp(p["budget"].stat().st_mtime)      # старый budget.json без start — от даты файла
+    except (OSError, ValueError):
+        raw, made = None, None
+    cfg = space_budget.config(raw, made)
+    return meta | {"slug": slug, "budget_usd": cfg["daily"] if cfg else None, "budget": cfg}
 
 
 def slugs(base_root: Path | None = None) -> list[str]:
