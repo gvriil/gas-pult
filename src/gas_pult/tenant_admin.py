@@ -181,7 +181,11 @@ def slice_unit(slug: str, limits: dict | None = None) -> str:
 
 def service_unit(lay: Layout, slug: str, tmux: str) -> str:
     """Сервер tmux пространства (``tmux -D``: не уходит в фон и не выходит без сессий). Окна, которые пульт открывает
-    через сокет, — его дети: они в slice пространства и в его песочнице."""
+    через сокет, — его дети: они в slice пространства и в его песочнице.
+
+    ``RestrictSUIDSGID`` здесь нет: его фильтр seccomp запрещает ``openat2`` целиком (ENOSYS), а GNU tar 1.35 открывает
+    им файлы во вложенных папках архива — «Cannot open: Function not implemented», агент не распаковывает архивы.
+    suid/sgid и так не дают прав: образ смонтирован ``nosuid``, у службы ``NoNewPrivileges=yes``."""
     p = tenants.paths(slug, lay.tenants)
     u = tenants.user_of(slug)
     env = {"HOME": p["home"], "TMPDIR": p["tmp"], "CLAUDE_CONFIG_DIR": p["claude"], "SHELL": "/bin/bash",
@@ -195,7 +199,7 @@ def service_unit(lay: Layout, slug: str, tmux: str) -> str:
             "Restart=always\nRestartSec=3\n"
             "NoNewPrivileges=yes\nPrivateTmp=yes\nProtectHome=yes\nProtectProc=invisible\nProtectSystem=strict\n"
             f"ReadWritePaths={p['base']}\nProtectKernelTunables=yes\nProtectKernelModules=yes\n"
-            "ProtectControlGroups=yes\nRestrictSUIDSGID=yes\nLockPersonality=yes\n\n"
+            "ProtectControlGroups=yes\nLockPersonality=yes\n\n"
             "[Install]\nWantedBy=multi-user.target\n")
 
 
@@ -323,12 +327,18 @@ def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, person
     # 5. slice с лимитами, служба tmux пространства, таймер «журналы — группе пульта»
     un = lay.units(slug)
     s.write(un["slice"], slice_unit(slug), 0o644)
-    s.write(un["service"], service_unit(lay, slug, tmux), 0o644)
+    unit = service_unit(lay, slug, tmux)
+    changed = un["service"].exists() and un["service"].read_text(errors="replace") != unit
+    s.write(un["service"], unit, 0o644)
     share, timer = share_units(lay, slug)
     s.write(un["share"], share, 0o644)
     s.write(un["timer"], timer, 0o644)
     s.run("systemctl", "daemon-reload")
     s.run("systemctl", "enable", "--now", un["service"].name, un["timer"].name)
+    if changed:                                         # работающая служба живёт по старому юниту до перезапуска
+        s.out(f"! Служба пространства изменилась. Перезапустите её, когда в окнах никто не работает: sudo systemctl "
+              f"restart {un['service'].name}. Окна закроются; история разговоров и файлы остаются — сессии "
+              "продолжаются кнопкой «Продолжить».")
     audit(s, p, "update" if old else "create", profile=meta["profile"], size=size)
     s.out(f"Готово: {slug}. Ключ модели — sudo bin/pult-tenant key {slug} {meta['profile']} (ключ — со стандартного "
           f"ввода). Проверка изоляции — sudo bin/pult-tenant check {slug} <другое>.")

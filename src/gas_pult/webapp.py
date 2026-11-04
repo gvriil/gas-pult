@@ -51,6 +51,7 @@ from gas_pult import (
     passkeys,
     personas,
     providers,
+    qr,
     scenarios,
     setup,
     spaces,
@@ -67,7 +68,7 @@ from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
-from gas_pult.people import TITLES, People, allowed
+from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.voice import catalog
 
@@ -170,6 +171,7 @@ class Panel:
         self.owner_seen: dict[str, float] = {}                       # окно пространства → когда владелец подключился
         self.help_calls: dict[str, float] = {}                       # окно → когда тестировщик звал на помощь
         self.budget_told: dict[str, str] = {}                        # пространство → день, когда сказали владельцу
+        self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -239,13 +241,104 @@ class Panel:
         return {"space": slug, "space_title": t.get("title") or slug,
                 "owner_here": seen if seen and time.time() - seen < self.OWNER_HERE else None}
 
-    def invite_info(self, code: str) -> dict:
-        """Экран входа по приглашению: действует ли и в какое пространство (название — без путей и ролей)."""
-        rec = invites.check(code)
+    def invite_info(self, code: str, short: bool = False) -> dict:
+        """Экран входа по приглашению: действует ли и в какое пространство (название — без путей и ролей).
+        ``guest`` — можно войти без Telegram (только именем); ``kind=device`` — ссылка для входа на другое устройство
+        уже существующего человека (имя не спрашиваем)."""
+        rec = invites.check(code, short)            # короткий код — только из invite_check (с лимитом попыток)
         if not rec:
             return {"ok": False}
         t = tenants.load(rec["tenant"]) if tenants.enabled() else None
-        return {"ok": True, "title": (t or {}).get("title") or rec["tenant"]}
+        out = {"ok": True, "title": (t or {}).get("title") or rec["tenant"], "guest": tenants.enabled(),
+               "kind": "device" if "uid" in rec else "invite"}
+        if "uid" in rec:
+            p = next((x for x in self.people.list() if x["id"] == rec["uid"]), {})
+            out["name"] = p.get("name") or ""
+        return out
+
+    def invite_check(self, code: str, ip: str) -> dict:
+        """Короткий код с экрана входа («Есть код приглашения?»): не больше 5 промахов с IP за 10 минут."""
+        self.invite_guard(ip)
+        info = self.invite_info(code, short=True)
+        if not info["ok"] or not info["guest"]:
+            self.invite_miss(code, ip)
+        return info
+
+    def invite_guard(self, ip: str):
+        if not tenants.enabled():
+            raise ValueError("вход по приглашению на этом пульте выключен")
+        if wait := self.invite_misses.blocked(ip):
+            raise emailcode.LimitError(f"слишком много неверных кодов — попробуйте через {max(1, wait // 60)} мин.",
+                                       wait)
+
+    def invite_miss(self, code: str, ip: str):
+        self.invite_misses.miss(ip)
+        emailcode.log("invite_failed", ip=ip, hint=invites.norm_short(code)[:3] + "…" if code else "")
+        raise ValueError("Код не подошёл: проверьте буквы и цифры. Код работает один раз и 24 часа — если он уже "
+                         "использован, попросите новый.")
+
+    def invite_enter(self, code: str, name: str, ip: str, ua: str) -> int:
+        """Вход по ссылке или короткому коду без Telegram. Приглашение — новый гость (имя → сразу панель);
+        ссылка для входа на другое устройство — сессия того, кому её выпустили. Код сгорает."""
+        self.invite_guard(ip)
+        rec = invites.check(code)
+        if not rec:
+            self.invite_miss(code, ip)
+        dev = webauth.device(ua)
+        if "uid" in rec:                                      # ссылка для входа на другое устройство
+            uid = int(rec["uid"])
+            if not self.people.role(uid) or not invites.redeem(code, uid):
+                self.invite_miss(code, ip)
+            how = "по ссылке для входа на другое устройство"
+        else:
+            name = " ".join(str(name or "").split())[:60]
+            if not name:
+                raise ValueError("Напишите, как вас зовут — так вас увидит владелец пульта")
+            uid = self.people.add_guest(name, rec["role"], rec["tenant"])
+            if not invites.redeem(code, uid):                 # кто-то успел раньше — гостя не оставляем
+                self.people.remove(uid)
+                self.invite_miss(code, ip)
+            how = "по приглашению, без Telegram"
+        self.people.seen(uid, dev)
+        p = next((x for x in self.people.list() if x["id"] == uid), {})
+        emailcode.log("invite_ok", uid=uid, ip=ip, hint=rec.get("hint", ""), kind="device" if "uid" in rec else "guest")
+        t = tenants.load(rec["tenant"]) or {}
+        text = (f"🎟 {p.get('name') or 'Гость'} вошёл {how} — пространство «{t.get('title') or rec['tenant']}», "
+                f"{TITLES.get(p.get('role'), '')}.\nУстройство: {dev} · {time.strftime('%d.%m %H:%M')}.\n"
+                "Убрать — «Настройки» → «Люди» → «Отключить»: все его входы гаснут сразу.")
+        for chat in self.cfg.owners:
+            try:
+                self.pult.api("sendMessage", chat_id=chat, text=text)
+            except (TelegramError, OSError) as e:
+                print("invite:", e, file=sys.stderr, flush=True)
+        return uid
+
+    def device_link(self, uid: int, by) -> dict:
+        """Ссылка для входа на другое устройство: одноразовая, 24 часа; выпускает сам человек или владелец."""
+        role = self.people.role(uid)
+        if not role or role == "owner":
+            raise ValueError("ссылку для входа можно выпустить только человеку из «Людей»")
+        slug = self.people.tenant(uid)
+        if not slug or not tenants.enabled():
+            raise ValueError("ссылка для входа — для тестировщиков демо-пространства")
+        inv = invites.new(slug, role, by=by, uid=int(uid))
+        return {"path": f"/invite/{inv['code']}", "code": inv["short"], "ttl": invites.TTL}
+
+    def invite_qr(self, url: str, owner: bool, uid) -> bytes:
+        """PNG с QR ссылки ``…/invite/<код>``: только для действующего приглашения; не владельцу — только своей ссылки
+        для входа на другое устройство."""
+        m = re.match(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}/invite/([A-Za-z0-9_-]{16,64})$", url)
+        rec = invites.check(m.group(1), short=False) if m else None
+        if not rec or (not owner and rec.get("uid") != uid):
+            raise LookupError("приглашения нет: истёк срок, оно использовано или отозвано")
+        return qr.png_of(url)
+
+    def forget_person(self, uid: int):
+        """Отключить человека: роль, сессии браузера и его ссылки для входа — сразу."""
+        self.people.remove(uid)
+        self.team.forget(uid)
+        self.auth.drop(uid)
+        invites.drop_for(uid)
 
     def call_help(self, uid, w: dict) -> dict:
         """«Позвать на помощь» из сессии пространства: владельцам — кто, сессия, последний вопрос агента и кнопка
@@ -587,6 +680,7 @@ class Panel:
     def login_methods(self) -> dict:
         """Способы входа для экрана входа (без входа): только «включено ли», без настроек."""
         return {"telegram": True, "owner_code": True, "email": self.email.enabled, "passkey": self.keys.enabled,
+                "invite": tenants.enabled(),                                         # «Есть код приглашения?»
                 **self.oidc.methods()}                                              # google, yandex
 
     def key_label(self, uid) -> str:
@@ -1327,9 +1421,13 @@ SPACE_OK = TERMS_FREE | {
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
     "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
+    "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
+                                                            "/api/passkeys/add", "/api/passkeys/remove"),
 }
 # Что тратит деньги: тестировщику — только пока дневной бюджет пространства не исчерпан (клавиши, Esc — можно).
 BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select"}
+# Лёгкий вход (задача 34): ссылка для входа на другое устройство, её QR и «Привязать Telegram» — свои у каждого.
+INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
@@ -1460,7 +1558,7 @@ def handler(panel: Panel):
                     self.json({"error": str(e), "code": "budget"}, 403)
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA,
-                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN)            # и наблюдателю
+                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN)   # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if not allowed(role, need):
@@ -1619,6 +1717,9 @@ def handler(panel: Panel):
                 return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
+            if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
+                return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] == "owner",
+                                                     self.terms_uid()))
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 return tenants.status(check=True)
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
@@ -1679,6 +1780,8 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: self.email_login(path))
             if path.startswith("/api/offer/"):
                 return self.offer("POST", path)
+            if path in ("/api/invite/check", "/api/invite/enter"):   # лёгкий вход: код или ссылка, без Telegram
+                return self.dispatch(lambda: self.invite_login(path))
             if path in HELP_OPEN and not self.who()[1]:   # экран входа: подсказки только по нему
                 return self.dispatch(lambda: self.help_anon(path))
             if not path.startswith("/api/") or not self.permit(path, "POST"):
@@ -1698,11 +1801,23 @@ def handler(panel: Panel):
         def tg_start(self):
             b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
             code = str((b if isinstance(b, dict) else {}).get("invite") or "")
-            if code and not invites.check(code):
+            if code and not invites.check(code, short=False):    # через Telegram — только ссылкой (без перебора)
                 raise ValueError("приглашение недействительно: истёк срок, уже использовано или отозвано")
             rid, nonce = panel.logins.start(*self.client(), invite=code)
             return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
                     "ttl": webauth.LOGIN_TTL}
+
+        def invite_login(self, path: str):
+            """«Есть код приглашения?» → проверка кода; «Как вас зовут?» → гость и cookie-сессия на 30 дней."""
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            if not isinstance(b, dict):
+                raise ValueError("ожидался объект")
+            ip, ua = self.client()
+            if path == "/api/invite/check":
+                return panel.invite_check(str(b.get("code") or ""), ip)
+            uid = panel.invite_enter(str(b.get("code") or ""), str(b.get("name") or ""), ip, ua)
+            panel.seen_ip(uid, ip, force=True)
+            return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def tg_poll(self, q: dict):
             state, uid = panel.logins.poll(q.get("id", ""))
@@ -1710,6 +1825,7 @@ def handler(panel: Panel):
                 if panel.email.wants_second(uid):                           # второй фактор: код ещё и на почту
                     return panel.email.second_start(uid, self.client_ip())
                 panel.seen_ip(uid, self.client_ip(), force=True)            # вход — сверяем страну по IP
+                panel.people.seen(uid, webauth.device(self.client()[1]))   # «вошёл: устройство, время»
                 return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
             return {"state": state}
 
@@ -1725,6 +1841,7 @@ def handler(panel: Panel):
             if panel.email.wants_second(uid):
                 return panel.email.second_start(uid, ip)
             panel.seen_ip(uid, ip, force=True)
+            panel.people.seen(uid, webauth.device(ua))
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def email_login(self, path: str):
@@ -1975,8 +2092,7 @@ def handler(panel: Panel):
                 panel.set_role(int(b.get("id", 0)), str(b.get("role", "")))
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/people/remove":
-                panel.people.remove(int(b.get("id", 0)))
-                panel.team.forget(int(b.get("id", 0)))
+                panel.forget_person(int(b.get("id", 0)))
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/logout":
                 panel.auth.logout(self.session())
@@ -2036,9 +2152,20 @@ def handler(panel: Panel):
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
-            if path == "/api/invite/new":                  # владелец: ссылка-приглашение тестировщику
-                code = invites.create(str(b.get("space", "")), str(b.get("role") or "member"), by=self.terms_uid())
-                return {"path": f"/invite/{code}", "ttl": invites.TTL}
+            if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
+                inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), by=self.terms_uid())
+                return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": invites.TTL}
+            if path == "/api/invite/device":               # ссылка для входа на другое устройство: себе или владелец
+                owner = self.who()[1] == "owner"
+                target = int(b["id"]) if owner and b.get("id") is not None else self.terms_uid()
+                return panel.device_link(target, self.terms_uid())
+            if path == "/api/link/tg":                     # гость: «Привязать Telegram» — ссылка на бота
+                uid = self.terms_uid()
+                if not is_guest(uid):
+                    raise ValueError("Telegram у вас уже привязан")
+                rid, nonce = panel.logins.start(*self.client(), link=uid)
+                return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
+                        "ttl": webauth.LOGIN_TTL}
             if path == "/api/space/task":
                 return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
             w = self.win(b.get("w"))
@@ -2134,7 +2261,8 @@ def set_menu(api: Api, owners: list[int], url: str):
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
     panel = Panel(cfg)
     panel.owner_space_fix()                         # вид владельца — его выбор, не чужой (см. owner_space_fix)
-    menu_for = cfg.owners + [p["id"] for p in panel.people.list() if p["role"] != "owner"]   # кнопка «📱 Панель»
+    menu_for = cfg.owners + [p["id"] for p in panel.people.list()               # кнопка «📱 Панель»; гостям без
+                             if p["role"] != "owner" and has_telegram(p["id"])]   # Telegram — некуда
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
 
     def learn_bot():                                       # имя бота — для ссылки «подтвердите номер в боте»

@@ -18,7 +18,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from gas_pult import config, oidc, providers, webapp, webauth
+from gas_pult import config, oidc, providers, tenants, webapp, webauth
 from gas_pult.config import Config
 from gas_pult.people import People
 
@@ -545,7 +545,7 @@ def test_http_off_without_settings(server):
     panel.oidc.sections = {"google": {}, "yandex": {}}
     assert json.loads(req(port, "/api/login/methods")[3]) | {} == {
         "telegram": True, "owner_code": True, "email": False, "passkey": panel.keys.enabled,
-        "google": False, "yandex": False}
+        "google": False, "yandex": False, "invite": tenants.enabled()}   # поле invite — задача 34
     st, _, ck, body = req(port, "/api/login/oidc/google/start")
     assert st == 503 and "выключен" in body.decode() and not ck
     assert req(port, "/api/login/oidc/yandex/back?code=x&state=y")[0] == 503

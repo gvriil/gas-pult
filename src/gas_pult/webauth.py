@@ -98,11 +98,32 @@ class Auth:
     def check(self, token: str) -> bool:
         return self.uid(token) is not None
 
+    def drop(self, uid: int) -> int:
+        """Погасить все сессии человека (его отключили или вход перенесён). Возвращает, сколько."""
+        with self.lock:
+            d = self._load()
+            keep = {k: v for k, v in d.items() if v.get("uid", LEGACY) != int(uid)}
+            if len(keep) != len(d):
+                self._save(keep)
+        return len(d) - len(keep)
+
     def logout(self, token: str):
         with self.lock:
             d = self._load()
             if d.pop(_h(token), None) is not None:
                 self._save(d)
+
+
+def device(ua: str) -> str:
+    """Устройство коротко — для «вошёл: имя, устройство, время»: «iPhone · Safari», «Windows · Chrome»."""
+    ua = ua or ""
+    os_ = next((n for k, n in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"),
+                               ("Mac OS X", "Mac"), ("Macintosh", "Mac"), ("CrOS", "Chromebook"), ("Linux", "Linux"))
+                if k in ua), "")
+    br = next((n for k, n in (("YaBrowser", "Яндекс Браузер"), ("Edg/", "Edge"), ("OPR/", "Opera"),
+                              ("Firefox/", "Firefox"), ("CriOS", "Chrome"), ("Chrome/", "Chrome"),
+                              ("Safari/", "Safari")) if k in ua), "")
+    return " · ".join(x for x in (os_, br) if x) or "браузер"
 
 
 def cookie_value(header: str) -> str:
@@ -134,9 +155,11 @@ class TgLogins:
     def _save(self, d: dict):
         write_private(self.store, json.dumps(d))
 
-    def start(self, ip: str = "", ua: str = "", offer: dict | None = None, invite: str = "") -> tuple[str, str]:
+    def start(self, ip: str = "", ua: str = "", offer: dict | None = None, invite: str = "",
+              link: int | None = None) -> tuple[str, str]:
         """(rid — браузеру для опроса, nonce — в ссылку на бота). ``offer`` — вход с предложения (offers.py): имя
-        бизнеса, начало кода, выбранный модуль, страна, версия условий — без ПДн; бот покажет это владельцу."""
+        бизнеса, начало кода, выбранный модуль, страна, версия условий — без ПДн; бот покажет это владельцу.
+        ``link`` — гость без Telegram привязывает свой Telegram (``People.adopt``): бот переносит запись."""
         rid, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(12)
         with self.lock:
             d = self._load()
@@ -144,7 +167,8 @@ class TgLogins:
                 raise ValueError("слишком много входов сразу — подождите пару минут")
             d[nonce] = {"rid": _h(rid), "exp": time.time() + LOGIN_TTL, "ip": ip[:45], "ua": ua[:120],
                         "uid": None, "state": "wait", **({"offer": offer} if offer else {}),
-                        **({"invite": invite} if invite else {})}      # приглашение (invites.py): доступ — сразу
+                        **({"invite": invite} if invite else {}),      # приглашение (invites.py): доступ — сразу
+                        **({"link": int(link)} if link is not None else {})}
             self._save(d)
         return rid, nonce
 

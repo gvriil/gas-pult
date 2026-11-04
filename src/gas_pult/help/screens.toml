@@ -341,7 +341,15 @@ purpose_en = "Sign in to the panel without a password — by confirming in your 
 steps = ["Нажмите «Войти через Telegram».", "В Telegram нажмите «Запустить» (Start), затем «Войти».", "Вернитесь сюда — панель откроется сама."]
 steps_en = ["Tap «Sign in with Telegram».", "In Telegram tap «Start», then «Sign in».", "Come back here — the panel opens by itself."]
 next = ["go:login", "go:demo"]
-chips = ["noaccess", "demo", "email", "passkey"]
+chips = ["noaccess", "demo", "email", "passkey", "invite-code"]
+
+[[screen.faq]]
+id = "invite-code"
+q = "Мне дали код или ссылку-приглашение — как войти?"
+a = "Откройте ссылку или нажмите «Есть код приглашения?» и введите код (слово и цифры). Затем напишите, как вас зовут, и нажмите «Войти» — Telegram не нужен. Код работает один раз и 24 часа."
+q_en = "I got an invitation code or link — how do I sign in?"
+a_en = "Open the link or tap «Have an invitation code?» and enter the code (a word and digits). Then write your name and tap «Sign in» — no Telegram needed. The code works once, for 24 hours."
+actions = ["go:login"]
 
 [[screen.faq]]
 id = "noaccess"
@@ -750,6 +758,27 @@ steps = ["Выберите пространство — ссылка скопи�
 next = ["go:sessions"]
 
 [[screen]]
+id = "sheet.invite-ready"
+where = "panel"
+title = "Приглашение готово"
+roles = ["owner"]
+purpose = "Одно приглашение — три способа: ссылка, QR-код и короткий код. Человек входит без Telegram, назвав только имя; после первого входа всё сгорает."
+steps = ["Отправьте ссылку или покажите QR — человек наведёт камеру телефона.", "Или продиктуйте код: экран входа → «Есть код приглашения?».", "Кто и с какого устройства вошёл — «Настройки» → «Люди»; там же «Отключить»: все его входы гаснут сразу."]
+next = ["go:sessions", "go:settings"]
+
+[[screen]]
+id = "settings.device"
+where = "panel"
+title = "Вход с другого устройства"
+title_en = "Sign in on another device"
+roles = ["member", "viewer"]
+purpose = "На этом устройстве вы уже вошли. Здесь — как входить и с другого: Face ID, одноразовая ссылка или Telegram."
+purpose_en = "You are already signed in on this device. Here is how to sign in from another one: Face ID, a one-time link or Telegram."
+steps = ["«Сохранить вход: Face ID» — на этом устройстве вход будет по лицу или отпечатку.", "«Ссылка для входа на другое устройство» — откройте её там или наведите камеру на QR; работает один раз.", "«Привязать Telegram» — входить через Telegram и получить кнопку «Панель» в боте."]
+steps_en = ["«Save sign-in: Face ID» — on this device you will sign in with your face or fingerprint.", "«Sign-in link for another device» — open it there or point the camera at the QR; it works once.", "«Link Telegram» — sign in with Telegram and get the «Panel» button in the bot."]
+next = ["go:simple.settings"]
+
+[[screen]]
 id = "sheet.space-task"
 where = "panel"
 title = "Поставить задачу в пространстве"
@@ -845,6 +874,15 @@ title = "Скопируйте вручную"
 roles = ["owner", "member", "viewer"]
 purpose = "Браузер не дал скопировать автоматически — текст выделен, скопируйте его сами."
 steps = ["Выделите текст и скопируйте.", "«Закрыть»."]
+next = ["go:sessions"]
+
+[[screen]]
+id = "sheet.link"
+where = "panel"
+title = "Ссылка"
+roles = ["owner", "member", "viewer"]
+purpose = "Меню ссылки из переписки: открыть, скопировать адрес или поделиться им. Открывается долгим нажатием на ссылку."
+steps = ["«Открыть» — ссылка откроется в браузере.", "«Копировать» — адрес попадёт в буфер обмена.", "«Поделиться» — отправить адрес в другое приложение; где этого нет, адрес просто скопируется."]
 next = ["go:sessions"]
 
 # ---------- панель: простой режим (тексты и на английском: *_en) ----------
