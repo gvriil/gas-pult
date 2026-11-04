@@ -710,6 +710,11 @@
   .sheet.s-sheet .scn-opt.on { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--accent-soft); }
   .sheet.s-sheet .scn-opt .i { width: 16px; height: 16px; }
   .sheet.s-sheet .s-notes { margin: 0 0 10px; padding: 0 0 0 18px; } .sheet.s-sheet .s-notes li { margin: 0 0 6px; }
+  .sheet.s-sheet .btn.wide { width: 100%; min-height: 48px; margin: 6px 0 4px; justify-content: center; border-radius: var(--radius-pill);
+    background: var(--accent-primary); color: var(--on-accent); font-weight: 600; }
+  .sheet.s-sheet .btn.wide:disabled { opacity: .45; } .sheet.s-sheet .btn.wide.danger { background: transparent; border: 1px solid var(--status-danger); color: var(--status-danger); } .sheet.s-sheet .field input { width: 100%; }
+  .sheet.s-sheet .ss-row { padding: 10px 0; border-top: 1px solid var(--border-subtle); } .sheet.s-sheet .ss-row b { display: block; overflow-wrap: anywhere; }
+  .sheet.s-sheet .ss-row small { display: block; color: var(--text-secondary); margin: 2px 0 6px; }
   .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
   /* Пространство владельца: «Моё пространство» (его настоящий пульт) и «Демо и тесты» — разными цветами. Просмотр
      другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
@@ -995,6 +1000,7 @@ const P = {
   send: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z"/>', stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>', pause: '<path d="M9 5.5v13M15 5.5v13"/>',
   chev: '<path d="M7 10l5 5 5-5"/>',
+  trash: '<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   bulb: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.4 10.9c.6.4.9 1 .9 1.7V16h5v-.4c0-.7.3-1.3.9-1.7A6 6 0 0 0 12 3z"/>',
   vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
@@ -1940,7 +1946,7 @@ function spaceChips(s) {
 }
 function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
   if (meta?.role !== "owner" || (!list.length && !spacesInfo?.tenants?.length)) return "";
-  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" : ""}</div>`
+  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" + '<button class="chip" data-space-closed>' + ic("folder") + "Закрытые</button>" : ""}</div>`
     + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
 }
 async function loadSpaces() {
@@ -2052,6 +2058,104 @@ function spaceTaskForm() {
   });
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
 }
+// space-sessions:start — сессии демо-пространства (задача 32): своя папка; «Закрыть» — агент выходит, папка и разговор
+// остаются; «Продолжить» — тот же разговор; «Удалить» — в корзину пространства на N дней. Тексты — T(): и простой режим.
+const ssBody = (slug, b = {}) => (meta?.role === "owner" && slug ? { ...b, space: slug } : b);
+const ssDate = (x) => new Date(x * 1000).toLocaleDateString(LANG === "en" ? "en-GB" : "ru-RU", { day: "numeric", month: "long" });
+function ssErr(bg, e) { const er = bg.querySelector(".ss-err"); if (er) { er.textContent = e.message; er.style.color = "var(--status-danger)"; } else toast(e.message, 5000); }
+function ssNew(after) {                                  // имя → своя папка → сессия
+  const bg = sSheet(hv("sheet.space-new"), T("ss.new.title"), `<p>${esc(T("ss.new.text"))}</p>
+    <div class="field"><input id="ssName" maxlength="60" autocomplete="off" placeholder="${esc(T("ss.new.ph"))}"></div><p class="note ss-err"></p>
+    <button class="btn wide" type="button" data-ssgo="1">${ic("plus")}${esc(T("ss.new.go"))}</button>`, (b) => b.dataset.ssgo && go(b));
+  const inp = bg.querySelector("#ssName"); setTimeout(() => inp.focus(), 50);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); go(bg.querySelector("[data-ssgo]")); } });
+  function go(b) {
+    return busy(b, T("s.new.wait"), async () => {
+      try { const r = await api("/api/new", { i: 0, name: inp.value.trim() }); bg.remove(); toast(T("ss.new.done", { n: r.name }), 3500); after ? after(r.id) : (await refresh(), openSession(r.id)); }
+      catch (e) { ssErr(bg, e); }
+    });
+  }
+}
+function ssClose(s, done) {                              // s: {id, name, space}; done — после закрытия (например, «Удалить»)
+  sSheet(hv("sheet.space-close"), T("ss.close.title", { n: s.name }), `<ul class="s-notes"><li>${esc(T("ss.close.what"))}</li>
+    <li>${esc(T("ss.close.keep"))}</li><li>${esc(T("ss.close.lost"))}</li></ul>
+    <button class="btn wide" type="button" data-ssok="1">${ic("power")}${esc(T("ss.close.go"))}</button>`, (b, bg) => b.dataset.ssok && run(b, bg, false));
+  function run(b, bg, force) {
+    return busy(b, T("ss.close.wait"), async () => {
+      try {
+        const d = await api("/api/space/close", ssBody(s.space, { w: s.id, force }));
+        bg.remove();
+        if (d.result === "busy" && !force) {          // агент работает — спросить «прервать работу?»
+          return sSheet(hv("sheet.space-close"), T("ss.busy.title"), `<p>${esc(T("ss.busy.text"))}</p>
+            <button class="btn danger wide" type="button" data-ssforce="1">${ic("stop")}${esc(T("ss.busy.go"))}</button>`, (b2, bg2) => b2.dataset.ssforce && run(b2, bg2, true), T("ss.busy.no"));
+        }
+        if (d.result !== "closed") return toast(T("ss.close.not"), 5000);
+        toast(d.draft ? T("ss.close.draft") : T("ss.close.done"), 5000);
+        if (s.id === current) back(); else refresh();
+        if (meta?.space) sLoad?.();
+        done && done(d.folder);
+      } catch (e) { toast(e.message, 5000); }
+    });
+  }
+}
+function ssDelete(slug, folder, keep) {                  // два шага: что произойдёт → ввести имя
+  sSheet(hv("sheet.space-delete"), T("ss.del.title", { n: folder }), `<ul class="s-notes"><li>${esc(T("ss.del.what", { d: keep || 14 }))}</li>
+    <li>${esc(T("ss.del.after"))}</li><li>${esc(T("ss.del.lost"))}</li></ul>
+    <button class="btn danger wide" type="button" data-ssnext="1">${ic("trash")}${esc(T("ss.del.next"))}</button>`, (b, bg) => { if (b.dataset.ssnext) { bg.remove(); step2(); } });
+  function step2() {
+    const bg = sSheet(hv("sheet.space-delete"), T("ss.del.confirm"), `<p>${esc(T("ss.del.type", { n: folder }))}</p>
+      <div class="field"><input id="ssConfirm" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false"></div><p class="note ss-err"></p>
+      <button class="btn danger wide" type="button" data-ssdel="1" disabled>${ic("trash")}${esc(T("ss.del.go"))}</button>`, (b) => b.dataset.ssdel && go(b));
+    const inp = bg.querySelector("#ssConfirm"), btn = bg.querySelector("[data-ssdel]");
+    inp.addEventListener("input", () => { btn.disabled = inp.value.trim() !== folder; });
+    setTimeout(() => inp.focus(), 50);
+    function go(b) {
+      return busy(b, T("ss.del.wait"), async () => {
+        try { const d = await api("/api/space/delete", ssBody(slug, { folder, confirm: inp.value.trim() })); bg.remove();
+              toast(T("ss.del.done", { d: ssDate(d.until) }), 5000); refresh(); }
+        catch (e) { ssErr(bg, e); }
+      });
+    }
+  }
+}
+async function ssResume(slug, folder, b) {
+  const go = async () => {
+    try {
+      const d = await api("/api/space/resume", ssBody(slug, { folder }));
+      document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+      if (meta?.space && SIM.on) { await sLoad(); sPick(d.id); } else { await refresh(); openSession(d.id); }
+      toast(d.continued ? T("ss.res.done") : T("ss.res.fresh"), 4000);
+      if (d.draft) setTimeout(() => {                   // черновик, сохранённый при «Закрыть», — обратно в поле
+        for (const id of ["sInput", "input"]) { const el = $(id); if (el && !el.value) { el.value = d.draft; fitLines(el); } }
+        toast(T("ss.res.draft"), 4000);
+      }, 400);
+    } catch (e) { toast(e.message, 5000); }
+  };
+  return b ? busy(b, T("ss.res.wait"), go) : go();
+}
+async function ssClosed(slug) {                          // «Закрытые и корзина»
+  let d; try { d = await api("/api/space/sessions" + (meta?.role === "owner" && slug ? "?space=" + encodeURIComponent(slug) : "")); } catch (e) { return toast(e.message, 5000); }
+  const now = nowSec();
+  const closed = (d.closed || []).map((x) => `<div class="ss-row"><b>${esc(x.folder)}</b><small>${esc(T("ss.list.when", { t: agoText(x.changed, now, true) }))}${x.draft ? " · " + esc(T("ss.list.draft")) : ""}</small>
+      <div class="scn-opts">${sChip(true, `data-ssres="${esc(x.folder)}"`, T(x.history ? "ss.res.go" : "ss.res.open"), ic("refresh"))}${sChip(false, `data-ssdel="${esc(x.folder)}"`, T("ss.del.short"), ic("trash"))}</div></div>`).join("");
+  const trash = (d.trash || []).map((x) => `<div class="ss-row"><b>${esc(x.folder)}</b><small>${esc(T("ss.trash.until", { d: ssDate(x.until) }))}</small>
+      <div class="scn-opts">${sChip(false, `data-ssrest="${esc(x.id)}"`, T("ss.trash.restore"), ic("refresh"))}</div></div>`).join("");
+  sSheet(hv("sheet.space-closed"), T("ss.list.title"), `<p class="note">${esc(T("ss.list.hint"))}</p>${closed || `<p class="note">${esc(T("ss.list.empty"))}</p>`}
+    ${trash ? `<p class="s-lbl">${esc(T("ss.trash.title", { d: d.keep_days }))}</p>${trash}` : ""}`, async (b, bg) => {
+    if (b.dataset.ssres) return ssResume(slug, b.dataset.ssres, b);
+    if (b.dataset.ssdel) { bg.remove(); return ssDelete(slug, b.dataset.ssdel, d.keep_days); }
+    if (b.dataset.ssrest) return busy(b, T("ss.res.wait"), async () => {
+      try { const r = await api("/api/space/restore", ssBody(slug, { id: b.dataset.ssrest })); bg.remove(); toast(T("ss.trash.done", { n: r.folder }), 4000); ssClosed(slug); }
+      catch (e) { toast(e.message, 5000); }
+    });
+  });
+}
+function ssPickSpace(fn) {                               // владелец: из какого пространства
+  const list = spacesInfo?.tenants || [];
+  if (list.length === 1) return fn(list[0].slug);
+  sheet(T("ss.pick"), list.map((x) => ({ label: x.title || x.slug, icon: "flask", run: () => fn(x.slug) })));
+}
+// space-sessions:end
 // ---------- расход (usage.py): токены и деньги по журналам Claude Code, лимиты, пауза ----------
 // Сервер показывает расход только хозяину учётки: владельцу — его пул, участнику — его папку Claude.
 let costInfo = null;                                  // итог дня, лимиты (владельцу) — d.cost из /api/sessions
@@ -2188,6 +2292,7 @@ $("sessionsView").addEventListener("click", (e) => {
   if (e.target.closest("[data-cost-sum]")) return costSheet();
   if (e.target.closest("[data-space-task]")) return spaceTaskForm();
   if (e.target.closest("[data-space-invite]")) return spaceInvite();
+  if (e.target.closest("[data-space-closed]")) return ssPickSpace(ssClosed);
   if (e.target.closest("[data-scn-home]")) return scenariosView();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
@@ -2196,7 +2301,9 @@ $("sessionsView").addEventListener("click", (e) => {
 });
 $("newBtn").onclick = () => newSession();
 function newSession(profile) {
-  if (meta?.space) return startSession(0, "");     // тестировщик: сессия — только в его демо-пространстве, без выбора папки
+  if (meta?.space) return sheet(T("ss.menu"), [    // тестировщик: новая сессия (своя папка в пространстве) или закрытые
+    { label: T("ss.new.title"), sub: T("ss.new.sub"), icon: "plus", run: () => ssNew() },
+    { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed() }]);
   helpSheet("sheet.new-session");
   sheet("Новая сессия — в какой папке?", [
     { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => newFolder(profile) },
@@ -2265,7 +2372,11 @@ function sessionSheet(id) {
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role !== "viewer" ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
-    ...(meta?.role === "owner" ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
+    ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
+    ...(s.space && meta?.role !== "viewer" ? [
+      { label: T("ss.close.item"), sub: T("ss.close.sub"), icon: "power", run: () => ssClose(s) },
+      { label: T("ss.del.item"), sub: T("ss.del.sub"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) },
+      { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed(s.space) }] : []),
   ]);
 }
 function confirmClose(id) {
@@ -5098,14 +5209,18 @@ function sAgents() {
   const rows = SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
   sSheet(hv("simple.agents"), T("s.agents"), `<p class="note">${esc(T("s.agents.hint"))}</p>${rows ? `<div class="scn-opts">${rows}</div>` : ""}
     ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}
-    ${meta?.space ? `<div class="scn-opts">${sChip(false, 'data-sos="1"', T("s.sos"), ic("bell"))}</div>` : ""}`,
-    (b, bg) => { if (b.dataset.w) { bg.remove(); sPick(b.dataset.w); } else if (b.dataset.snew) { bg.remove(); sNewAgent(); } else if (b.dataset.sos) { bg.remove(); callHelp(SIM.w); } });
+    ${meta?.space ? `<div class="scn-opts">${SIM.w ? sChip(false, 'data-ssclose="1"', T("ss.close.item"), ic("power")) : ""}${sChip(false, 'data-ssclosed="1"', T("ss.list.title"), ic("folder"))}</div>
+      <div class="scn-opts">${sChip(false, 'data-sos="1"', T("s.sos"), ic("bell"))}</div>` : ""}`,
+    (b, bg) => {
+      if (b.dataset.w) { bg.remove(); sPick(b.dataset.w); } else if (b.dataset.snew) { bg.remove(); sNewAgent(); } else if (b.dataset.sos) { bg.remove(); callHelp(SIM.w); }
+      else if (b.dataset.ssclose) { const x = SIM.list.find((y) => y.id === SIM.w); if (x) { bg.remove(); ssClose({ id: x.id, name: sName(x), space: x.space }); } }
+      else if (b.dataset.ssclosed) { bg.remove(); ssClosed(); }
+    });
 }
 async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш
   if (!canNew()) return;
   if (meta?.space) {                                 // тестировщик демо-пространства: новая сессия — только в нём
-    try { const r = await api("/api/new", {}); await sLoad(); if (r.id) sPick(r.id); } catch (e) { toast(T("s.fail"), 3500); }
-    return;
+    return ssNew(async (id) => { await sLoad(); sPick(id); });
   }
   if (LANG !== "ru") {                               // каталог модулей пока только на русском
     return sSheet(hv("simple.new-agent"), T("s.new"), `<p>${esc(T("s.new.ru_only"))}</p><div class="scn-opts">${sChip(false, 'data-lang="ru"', T("set.lang.ru"))}</div>`,
@@ -5327,6 +5442,14 @@ function demoApi(path, body) {
       cards: [{ id: "elevenlabs", name: "Ксения (клон)", kind: "облачный", ok: true, why: "", install: "" }, ...loc] }; }
   demoApi.fb ||= ["openrouter", "claude"];
   if (path === "/api/fallback" && body) demoApi.fb = body.chain;
+  // сессии пространства (space-sessions): закрытые и корзина; закрыть — сначала «агент работает», потом закрыто
+  R["/api/space/sessions"] = { keep_days: 14, closed: [{ folder: "Сверка актов за октябрь", changed: t0 - 5 * H, history: true, draft: true },
+                                                      { folder: "Пустая проба", changed: t0 - 2 * D, history: false, draft: false }],
+                               trash: [{ id: "20261101-101500__Черновик реестра", folder: "Черновик реестра", deleted: t0 - D, until: t0 + 13 * D }] };
+  if (path === "/api/space/close") return body.force || params.get("ss") !== "busy" ? { result: "closed", folder: "Сверка счетов", draft: "" } : { result: "busy", folder: "Сверка счетов" };
+  R["/api/space/resume"] = { id: "t:demo:@1", continued: true, draft: "А что со счётом №14?" };
+  R["/api/space/delete"] = { id: "x", until: t0 + 14 * D, keep_days: 14 };
+  R["/api/space/restore"] = { folder: "Черновик реестра" };
   R["/api/spaces"] = params.has("spaces") ? { enabled: true, tenants: [{ slug: "demo", title: "Демо для бухгалтерии", ready: true }] } : { enabled: false, tenants: [] };
   R["/api/fallback"] = { chain: demoApi.fb, region: "NL", voice_note: "",
     options: [{ id: "claude", title: "Claude", why: "" }, { id: "openrouter", title: "OpenRouter", why: params.get("orkey") ? "" : "нет ключа" },
@@ -5351,6 +5474,11 @@ function demoApi(path, body) {
     { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek: V4.1 Flash", ctx: 786432, in: 0.07, out: 0.28 },
     { id: "openrouter/auto", name: "Auto Router", ctx: 2000000, in: null, out: null }] };
   if (params.has("upd")) { R["/api/meta"].build = "demo-1"; R["/api/sessions"].build = "demo-2"; }   // ?upd — вышла новая версия
+  if (params.has("tester")) {                       // ?tester — тестировщик демо-пространства: только его сессия
+    R["/api/meta"].space = { slug: "demo", title: "Демо для бухгалтерии", ready: true }; R["/api/meta"].role = "member"; R["/api/meta"].projects = [];
+    R["/api/sessions"].sessions = [{ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false,
+      channel: false, rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", owner_here: null }];
+  }
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" }] };
   const key = path.split("?")[0];
