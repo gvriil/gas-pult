@@ -14,6 +14,10 @@
   `tests/test_enter_keys.py`, в браузере — `tests/e2e/enter_demo.py`.
 
 ### Исправлено
+- **Пространство: tar не распаковывал архивы — «Cannot open: Function not implemented» (задача 32).** Служба tmux
+  пространства шла с `RestrictSUIDSGID=yes`; его фильтр seccomp запрещает `openat2` целиком, а GNU tar 1.35 открывает
+  им файлы во вложенных папках. Строка убрана (suid и так без силы: `nosuid` на образе, `NoNewPrivileges=yes`).
+  `pult-tenant create <slug>` перепишет юнит существующего пространства и попросит перезапустить службу.
 - **Окно в демо-пространстве: «claude: command not found» (задача 31).** Окно получало окружение клиента tmux —
   `sudo` с `secure_path` без `<home>/.local/bin` пространства, куда ставится Claude Code. Теперь команда запуска
   (`tenants.command`) сама начинается с `export PATH=<home>/.local/bin:/usr/local/bin:/usr/bin:/bin;` — тот же PATH у
