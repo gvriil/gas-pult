@@ -523,7 +523,11 @@ def test_space_sessions_close_resume_delete_restore(world, monkeypatch, tmp_path
     assert lst[0] == 200 and lst[1]["trash"] == [] and not old.exists(), lst
     # чужое: путь вместо имени, обычный участник; владелец — по имени пространства
     for bad in ("../Сверка актов 2", "/etc", ".journal", ""):
-        assert call(w, "/api/space/delete", {"folder": bad, "confirm": bad})[0] in (400, 404), bad
+        code, d = call(w, "/api/space/delete", {"folder": bad, "confirm": bad})
+        assert code in (400, 404) and str(root) not in d.get("error", ""), (bad, d)
+    # ошибка команды в пространстве — понятный текст без самой команды и путей сервера
+    code, d = call(w, "/api/space/restore", {"id": "20260101-000000__нет такой"})
+    assert code == 400 and d["error"] == "нет такой записи в корзине" and str(root) not in d["error"], d
     assert call(w, "/api/space/sessions", who=MEMBER)[0] == 400
     assert call(w, "/api/space/sessions?space=demo", who=OWNER)[0] == 200
     assert call(w, "/api/space/close", {"w": w["owner_w"]})[0] == 404       # окно владельца — «окна нет»

@@ -29,6 +29,7 @@ NAME_MAX = 60
 TRASH = "sessions"                        # trash/sessions/<время>__<папка>
 JOURNAL = ".journal"                      # журнал разговора внутри записи корзины
 TRASH_ID = re.compile(r"^\d{8}-\d{6}__[^/\x00]+$")
+RETURNED = re.compile(r"' returned \d+$")
 DISK_FULL = "В пространстве закончилось место (лимит диска). Удалите лишние сессии или файлы — или попросите владельца."
 
 
@@ -52,8 +53,9 @@ def sh(slug: str, script: str, timeout: int = 30) -> str:
     if r.returncode != 0:
         if "No space left" in out or "Disk quota" in out:
             raise RuntimeError(DISK_FULL)
-        tail = out.strip().splitlines()[-2:] if out.strip() else [r.stderr.strip()]
-        raise RuntimeError("не вышло: " + " ".join(x for x in tail if x)[:300])
+        # последняя строка run-shell — «'<команда>' returned N»: команду с путями сервера человеку не показываем
+        lines = [x for x in out.strip().splitlines() if x.strip() and not RETURNED.search(x)]
+        raise RuntimeError(" ".join(lines[-2:])[:300] or "не вышло — попробуйте ещё раз")
     return out
 
 
