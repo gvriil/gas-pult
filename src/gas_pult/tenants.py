@@ -251,8 +251,10 @@ def command(t: dict, base: str = "claude", base_root: Path | None = None) -> str
     return f"export PATH={shlex.quote(path_env(t['slug'], base_root))}; {models.with_home(base, p['claude'])}"
 
 
-def new_window(slug: str, name: str, path: str = "", session: str = "main", base_root: Path | None = None) -> str:
-    """Открыть окно с Claude Code в пространстве. Выключено или sudo не пускает — ошибка, окно не открывается."""
+def new_window(slug: str, name: str, path: str = "", session: str = "main", base_root: Path | None = None,
+               args: str = "") -> str:
+    """Открыть окно с Claude Code в пространстве. Выключено или sudo не пускает — ошибка, окно не открывается.
+    ``args`` — к команде claude (``--continue`` — продолжить разговор папки)."""
     if not enabled(base_root):
         raise RuntimeError("пространства выключены: не сделана настройка (bin/pult-tenant-setup)")
     t = load(slug, base_root)
@@ -261,5 +263,5 @@ def new_window(slug: str, name: str, path: str = "", session: str = "main", base
     if not ready(slug, base_root):
         raise RuntimeError(f"sudo не пускает пульт в пространство {slug} — см. docs/TENANTS.md, «Проверка»")
     tm = tmux_of(slug, session, base_root)
-    cmd = command(t, base_root=base_root)
+    cmd = command(t, base_root=base_root) + (f" {args}" if args else "")
     return tm.new_window(name, path or str(paths(slug, base_root)["home"]), cmd, mark=t.get("profile") or "claude")

@@ -98,7 +98,9 @@ def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None
     tenant = tenants.check_slug(tenant)
     if role not in ROLES:
         raise ValueError("роль: member (участник) или viewer (наблюдатель)")
-    code, short, now = secrets.token_urlsafe(18), short_code(tenant), time.time()
+    while (code := secrets.token_urlsafe(18)).startswith("-"):    # «-» в начале — CLI примет код за ключ (revoke)
+        pass
+    short, now = short_code(tenant), time.time()
     with _lock:
         d = {k: v for k, v in _load().items() if now - v.get("exp", 0) < 30 * 86400}   # месяц после срока — чистим
         d[_h(code)] = {"tenant": tenant, "role": role, "created": int(now), "exp": int(now + ttl),

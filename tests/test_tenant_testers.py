@@ -489,7 +489,8 @@ def test_space_budget_stops_tester_and_tells_owner_once(world, monkeypatch):
     assert call(w, "/api/send", {"w": wid, "text": "пока можно"})[0] == 200
     spent["usd"] = 3.4                                                       # перерасход
     for path, body in (("/api/send", {"w": wid, "text": "ещё"}), ("/api/new", {"i": 0}),
-                       ("/api/command", {"w": wid, "i": 0}), ("/api/select", {"w": wid, "i": 0})):
+                       ("/api/command", {"w": wid, "i": 0}), ("/api/select", {"w": wid, "i": 0}),
+                       ("/api/space/resume", {"folder": "любая"})):
         code, d = call(w, path, body)
         assert code == 403 and d["code"] == "budget" and "$3.40 из $3.00" in d["error"], (path, d)
     assert call(w, "/api/key", {"w": wid, "key": "Escape"})[0] == 200      # остановить агента — можно
@@ -519,3 +520,106 @@ def test_tester_voice_is_local_only(world, monkeypatch):
         p.tts({"id": "t:demo:@1"}, True, cloud=False)                    # локального голоса нет — но не облако
     with pytest.raises((ValueError, RuntimeError, OSError)):
         p.stt(b"", "audio/webm", cloud=False)
+
+
+def test_space_sessions_close_resume_delete_restore(world, monkeypatch, tmp_path):
+    """Задача 32, п. 3: у сессии пространства своя папка; «Закрыть» — агент выходит, окно закрыто, папка, файлы и
+    разговор остаются (агент работает — сначала «прервать?»; черновик — сохраняем); «Продолжить» — claude --continue
+    в той же папке, черновик — обратно; «Удалить» — только закрытую и с именем во втором подтверждении: папка и журнал —
+    в корзину пространства на KEEP_DAYS, потом — навсегда; «Восстановить» — обратно."""
+    import os as _os
+
+    from gas_pult import space_sessions, transcripts
+    w, root = world, world["root"]
+    fake = tmp_path / "bin2" / "claude"
+    fake.parent.mkdir()
+    fake.write_text("#!/usr/bin/env bash\necho \"args: $*\"\nwhile true; do printf '❯ '; IFS= read -r line || exit 0; "
+                    "case \"$line\" in /exit) exit 0;; work) echo '✻ Working… (esc to interrupt)';; "
+                    "*) echo \"got: $line\";; esac; done\n")
+    fake.chmod(0o755)
+    monkeypatch.setattr(tenants, "command", lambda t, base="claude", base_root=None: str(fake))
+    monkeypatch.setattr(type(w["p"].pult), "QUIT_WAIT", 3.0)
+    code, d = call(w, "/api/new", {"i": 0, "name": "Сверка актов"})
+    assert code == 200 and d["folder"] == "Сверка актов", d
+    wid, home = d["id"], root / "demo" / "home"
+    path = home / "projects" / "Сверка актов"
+    assert path.is_dir()
+    assert wait(lambda: any(s["id"] == wid and s["path"] == str(path) for s in call(w, "/api/sessions")[1]["sessions"]))
+    assert call(w, "/api/new", {"i": 0, "name": "Сверка актов"})[1]["folder"] == "Сверка актов 2"   # имя занято
+    odd = call(w, "/api/new", {"i": 0, "name": "../../etc/x"})[1]["folder"]           # путь в имени — просто имя
+    assert "/" not in odd and (home / "projects" / odd).is_dir() and not (root / "demo" / "etc").exists()
+    jdir = transcripts.project_dir(str(path), root / "demo" / "config/claude")
+    jdir.mkdir(parents=True)
+    (jdir / "s.jsonl").write_text('{"type":"user","message":{"content":"сверь"}}\n')
+    raw = spaces.split(wid)[1]
+    tm = tenants.tmux_of("demo")
+    # агент работает — без подтверждения не закрываем
+    assert call(w, "/api/send", {"w": wid, "text": "work"})[0] == 200
+    assert wait(lambda: "esc to interrupt" in "\n".join(tm.screen(raw)))
+    code, d = call(w, "/api/space/close", {"w": wid})
+    assert code == 200 and d["result"] == "busy"
+    tm.run("send-keys", "-t", raw, "-l", "недописанный вопрос")                # черновик в поле ввода
+    assert wait(lambda: "недописанный вопрос" in "\n".join(tm.screen(raw)))
+    code, d = call(w, "/api/space/close", {"w": wid, "force": True})
+    assert code == 200 and d["result"] == "closed" and d["draft"] == "недописанный вопрос", d
+    assert wait(lambda: tm.window(raw) is None)
+    assert path.is_dir() and (jdir / "s.jsonl").exists()                     # файлы и разговор остались
+    lst = call(w, "/api/space/sessions")[1]
+    mine = {x["folder"]: x for x in lst["closed"]}
+    assert mine["Сверка актов"]["history"] and mine["Сверка актов"]["draft"] and lst["keep_days"] == 14
+    assert "path" not in mine["Сверка актов"]                               # путей сервера тестировщику не отдаём
+    # «Продолжить» — тот же разговор, черновик — обратно
+    code, d = call(w, "/api/space/resume", {"folder": "Сверка актов"})
+    assert code == 200 and d["continued"] and d["draft"] == "недописанный вопрос", d
+    wid2 = d["id"]
+    assert wait(lambda: "args: --continue" in "\n".join(tm.screen(spaces.split(wid2)[1])))
+    assert call(w, "/api/space/resume", {"folder": "Сверка актов"})[0] == 400        # уже открыта
+    assert call(w, "/api/space/delete", {"folder": "Сверка актов", "confirm": "Сверка актов"})[0] == 400   # открыта
+    assert call(w, "/api/space/close", {"w": wid2, "force": True})[1]["result"] == "closed"
+    # «Удалить» — второе подтверждение именем
+    assert call(w, "/api/space/delete", {"folder": "Сверка актов", "confirm": "да"})[0] == 400
+    code, d = call(w, "/api/space/delete", {"folder": "Сверка актов", "confirm": "Сверка актов"})
+    assert code == 200 and d["keep_days"] == 14, d
+    assert not path.exists() and not jdir.exists()
+    tr = call(w, "/api/space/sessions")[1]["trash"]
+    assert [x["folder"] for x in tr] == ["Сверка актов"] and tr[0]["until"] - tr[0]["deleted"] == 14 * 86400
+    entry = root / "demo" / "trash" / "sessions" / tr[0]["id"]
+    assert (entry / ".journal" / "s.jsonl").exists()
+    # «Восстановить» — папка и разговор на месте
+    assert call(w, "/api/space/restore", {"id": tr[0]["id"]})[1]["folder"] == "Сверка актов"
+    assert path.is_dir() and (jdir / "s.jsonl").exists() and not entry.exists()
+    # через KEEP_DAYS — навсегда
+    call(w, "/api/space/delete", {"folder": "Сверка актов", "confirm": "Сверка актов"})
+    old = next((root / "demo" / "trash" / "sessions").iterdir())
+    t0 = time.time() - (space_sessions.KEEP_DAYS + 2) * 86400
+    _os.utime(old, (t0, t0))
+    lst = call(w, "/api/space/sessions")
+    assert lst[0] == 200 and lst[1]["trash"] == [] and not old.exists(), lst
+    # чужое: путь вместо имени, обычный участник; владелец — по имени пространства
+    for bad in ("../Сверка актов 2", "/etc", ".journal", ""):
+        code, d = call(w, "/api/space/delete", {"folder": bad, "confirm": bad})
+        assert code in (400, 404) and str(root) not in d.get("error", ""), (bad, d)
+    # ошибка команды в пространстве — понятный текст без самой команды и путей сервера
+    code, d = call(w, "/api/space/restore", {"id": "20260101-000000__нет такой"})
+    assert code == 400 and d["error"] == "нет такой записи в корзине" and str(root) not in d["error"], d
+    assert call(w, "/api/space/sessions", who=MEMBER)[0] == 400
+    assert call(w, "/api/space/sessions?space=demo", who=OWNER)[0] == 200
+    assert call(w, "/api/space/close", {"w": w["owner_w"]})[0] == 404       # окно владельца — «окна нет»
+    # окно в пространстве мимо панели (другая сессия tmux) — его папка не «закрытая»: не продолжить, не удалить
+    side = home / "projects" / "Своя работа"
+    side.mkdir()
+    subprocess.run(["tmux", "-S", w["socks"]["demo"], "new-session", "-d", "-s", "side", "-c", str(side), "sleep 300"],
+                   check=True)
+    assert "Своя работа" not in {x["folder"] for x in call(w, "/api/space/sessions")[1]["closed"]}
+    assert call(w, "/api/space/resume", {"folder": "Своя работа"})[0] == 400
+    assert call(w, "/api/space/delete", {"folder": "Своя работа", "confirm": "Своя работа"})[0] == 400
+    assert side.is_dir()
+
+
+def test_space_folder_names():
+    from gas_pult import space_sessions
+    assert space_sessions.folder_name("Сверка актов") == "Сверка актов"
+    for bad in ("../../etc/passwd", "a/b", ".hidden", "~root", "x\ny", "  "):
+        n = space_sessions.folder_name(bad)
+        assert "/" not in n and not n.startswith((".", "~", "-")) and "\n" not in n and n
+    assert len(space_sessions.folder_name("я" * 200)) == space_sessions.NAME_MAX

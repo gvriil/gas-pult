@@ -54,6 +54,7 @@ from gas_pult import (
     qr,
     scenarios,
     setup,
+    space_sessions,
     spaces,
     tenants,
     terms,
@@ -407,7 +408,7 @@ class Panel:
             raise ValueError("нет такого пространства")
         if not name:
             raise ValueError("назовите сессию — так её увидит тестировщик")
-        wid = spaces.wid_of(slug, tenants.new_window(slug, name))
+        wid = self.new_in_space(slug, name)["id"]       # своя папка, как у сессий тестировщика
         self.owner_seen[wid] = time.time()
         if task:
             threading.Thread(target=self.first_message, args=(wid, task), daemon=True).start()
@@ -959,12 +960,89 @@ class Panel:
         return {"id": wid}
 
     def new_in_space(self, slug: str, name: str = "") -> dict:
-        """Новая сессия в демо-пространстве: ``tenants.new_window`` — от его пользователя Linux, в его папке, с его
-        CLAUDE_CONFIG_DIR и моделью. Функция выключена (нет настройки) — понятный отказ."""
+        """Новая сессия в демо-пространстве: своя папка ``home/projects/<имя>`` (``space_sessions.create``) и окно
+        ``tenants.new_window`` в ней — от пользователя пространства, с его CLAUDE_CONFIG_DIR и моделью. Функция
+        выключена (нет настройки) — понятный отказ."""
         if not tenants.enabled():
             raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
-        raw = tenants.new_window(slug, name or f"{slug}-{time.strftime('%H%M')}")
-        return {"id": spaces.wid_of(slug, raw)}
+        name = space_sessions.folder_name(name) if str(name or "").strip() else f"Сессия {time.strftime('%d.%m %H-%M')}"
+        path = space_sessions.create(slug, name)
+        raw = tenants.new_window(slug, path.name, str(path))
+        return {"id": spaces.wid_of(slug, raw), "name": path.name, "folder": path.name}
+
+    # ---------- сессии пространства: закрыть, продолжить, удалить в корзину (space_sessions.py) ----------
+    def space_windows(self, slug: str) -> list[dict]:
+        return [w for w in self.tmux.windows() if w.get("space") == slug]
+
+    def space_list(self, slug: str) -> dict:
+        """Закрытые сессии (папки без окна) и корзина — для «Закрытые» в панели тестировщика."""
+        open_paths = {w.get("path", "") for w in self.space_windows(slug)} | space_sessions.open_paths(slug)
+        drafts = self.space_drafts().get(slug, {})
+        closed = [{**x, "draft": bool(drafts.get(x["folder"]))} for x in space_sessions.closed(slug, open_paths)]
+        return {"closed": [{k: v for k, v in x.items() if k != "path"} for x in closed],
+                "trash": space_sessions.trash_list(slug), "keep_days": space_sessions.KEEP_DAYS}
+
+    def space_drafts(self) -> dict:
+        try:
+            return json.loads((self.cfg.data / "space-drafts.json").read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def space_draft_set(self, slug: str, folder: str, text: str):
+        d = self.space_drafts()
+        if text:
+            d.setdefault(slug, {})[folder] = text[:20000]
+        else:
+            d.get(slug, {}).pop(folder, None)
+        webauth.write_private(self.cfg.data / "space-drafts.json", json.dumps(d, ensure_ascii=False))
+
+    def space_close(self, slug: str, wid: str, force: bool = False) -> dict:
+        """«Закрыть»: агент выходит штатно, окно закрывается; папка, файлы и разговор остаются. Агент работает —
+        без ``force`` не закрываем (``busy``: панель спросит «прервать работу?»). Черновик из поля — сохраняем."""
+        w = self.tmux.window(wid)
+        if not w or w.get("space") != slug:
+            raise LookupError("окна уже нет")
+        folder = os.path.basename(w.get("path", ""))
+        if w["cmd"] != "claude":                          # Claude уже вышел — окно с оболочкой просто закрыть
+            self.tmux.kill(wid)
+            return {"result": "closed", "folder": folder, "draft": ""}
+        if not force and BUSY.search("\n".join(self.tmux.screen(wid, 40))):
+            return {"result": "busy", "folder": folder}
+        r = self.pult.quit_ex(w)
+        if r["result"] == "busy" and force:               # не вышел за 20 с — закрываем окно (разговор в журнале)
+            self.tmux.kill(wid)
+            r["result"] = "closed"
+        if r.get("draft"):
+            self.space_draft_set(slug, folder, r["draft"])
+        return {"result": r["result"], "folder": folder, "draft": r.get("draft", "")}
+
+    def space_resume(self, slug: str, folder: str) -> dict:
+        """«Продолжить»: окно в папке сессии — ``claude --continue`` (тот же разговор); черновик — обратно в поле."""
+        path = space_sessions.check_folder(slug, folder)
+        if any(w.get("path") == str(path) for w in self.space_windows(slug)) or space_sessions.is_open(slug, path):
+            raise ValueError("эта сессия уже открыта")
+        if folder not in {x["folder"] for x in space_sessions.listing(slug)}:
+            raise LookupError("нет такой сессии")
+        args = "--continue" if space_sessions.has_history(slug, path) else ""
+        raw = tenants.new_window(slug, folder, str(path), args=args)
+        draft = self.space_drafts().get(slug, {}).get(folder, "")
+        if draft:
+            self.space_draft_set(slug, folder, "")
+        return {"id": spaces.wid_of(slug, raw), "draft": draft, "continued": bool(args)}
+
+    def space_delete(self, slug: str, folder: str, confirm: str) -> dict:
+        """«Удалить»: только закрытую сессию и только с именем во втором подтверждении — в корзину на KEEP_DAYS."""
+        path = space_sessions.check_folder(slug, folder)
+        if confirm != folder:
+            raise ValueError("для удаления введите имя сессии точно")
+        if any(w.get("path") == str(path) for w in self.space_windows(slug)) or space_sessions.is_open(slug, path):
+            raise ValueError("сессия открыта — сначала закройте её")
+        out = space_sessions.trash(slug, folder)
+        self.space_draft_set(slug, folder, "")
+        return {**out, "keep_days": space_sessions.KEEP_DAYS}
+
+    def space_restore(self, slug: str, tid: str) -> dict:
+        return {"folder": space_sessions.restore(slug, tid)}
 
     # ---------- модули-агенты (modules.py) ----------
     def modules_list(self) -> dict:
@@ -1421,11 +1499,12 @@ SPACE_OK = TERMS_FREE | {
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
     "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
+    "/api/space/sessions", "/api/space/close", "/api/space/resume", "/api/space/delete", "/api/space/restore",
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
                                                             "/api/passkeys/add", "/api/passkeys/remove"),
 }
 # Что тратит деньги: тестировщику — только пока дневной бюджет пространства не исчерпан (клавиши, Esc — можно).
-BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select"}
+BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume"}
 # Лёгкий вход (задача 34): ссылка для входа на другое устройство, её QR и «Привязать Telegram» — свои у каждого.
 INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
@@ -1528,6 +1607,14 @@ def handler(panel: Panel):
             """Демо-пространство тестировщика (``people.tenant``); владелец и обычные люди — None."""
             _, role, uid = self.who()
             return None if role == "owner" or uid is None else panel.people.tenant(uid)
+
+        def space_of(self, b: dict) -> str:
+            """Чьё пространство: тестировщика — его; владельцу — из запроса (``space``); остальным — отказ."""
+            if slug := self.space():
+                return slug
+            if self.who()[1] == "owner" and b.get("space"):
+                return tenants.check_slug(str(b["space"]))
+            raise ValueError("это действие — для сессий демо-пространства")
 
         def terms_uid(self) -> int | None:
             """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
@@ -1722,6 +1809,8 @@ def handler(panel: Panel):
                                                      self.terms_uid()))
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 return tenants.status(check=True)
+            if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
+                return panel.space_list(self.space_of(q))
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
@@ -2126,6 +2215,16 @@ def handler(panel: Panel):
             if path == "/api/setup/cancel":
                 panel.login.cancel()
                 return {"ok": True}
+            if path == "/api/new" and (slug := self.space()):
+                return panel.new_in_space(slug, str(b.get("name", "")))
+            if path == "/api/space/close":
+                return panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
+            if path == "/api/space/resume":
+                return panel.space_resume(self.space_of(b), str(b.get("folder", "")))
+            if path == "/api/space/delete":
+                return panel.space_delete(self.space_of(b), str(b.get("folder", "")), str(b.get("confirm", "")))
+            if path == "/api/space/restore":
+                return panel.space_restore(self.space_of(b), str(b.get("id", "")))
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
             if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
