@@ -404,5 +404,13 @@
  "sf.get.wait": "Downloading…",
  "sf.get.done": "Downloaded: {n}",
  "sf.empty": "No files in the session folder yet.",
- "sf.too_big": "“{n}” is larger than 50 MB"
+ "sf.too_big": "“{n}” is larger than 50 MB",
+ "bud.chip": "Today {t} · left {l}",
+ "bud.sub": "Reserve {r} for {d} days: busy days may spend more than the daily norm — unspent money stays. On a subscription it is an estimate at API prices.",
+ "bud.add": "Add",
+ "bud.add.title": "Add to the reserve of “{n}”",
+ "bud.add.week": "A week of norm",
+ "bud.add.2w": "Two weeks of norm",
+ "bud.add.done": "Reserve topped up: now {l}",
+ "bud.none": "The space has no budget"
 }

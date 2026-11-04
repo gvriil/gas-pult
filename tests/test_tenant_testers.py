@@ -21,7 +21,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from gas_pult import bot, people, spaces, tenants, testers, usage, webapp, webauth
+from gas_pult import bot, people, spaces, tenants, testers, webapp, webauth
 from gas_pult.config import Config
 from gas_pult.tmux import Tmux
 
@@ -474,30 +474,50 @@ def test_bot_help_and_report(world):
     assert testers.report(b.people, b.meter) == ""                       # тестировщиков нет — сводки нет
 
 
-def test_space_budget_stops_tester_and_tells_owner_once(world, monkeypatch):
-    """Задача 32, п. 7: дневной бюджет пространства (budget.json) — не только цифра. Исчерпан — тестировщик не пишет
-    агенту и не открывает сессии (403 code=budget, понятный текст), клавиши (Esc) — можно; владельцу — одно сообщение
-    в день. Расход и бюджет тестировщик видит в /api/sessions → cost.budget."""
+def test_space_budget_reserve_for_period(world, monkeypatch):
+    """Задача 35 (изменение требования задачи 32): бюджет — запас на 30 дней, а не лимит дня. Сегодня можно больше
+    нормы за счёт будущих дней; стоп — когда запас периода исчерпан (403 code=budget, понятный текст; Esc — можно).
+    Владельцу — сообщения на 80% и 100% запаса с кнопкой «➕ Добавить»; «+ добавить» из панели снова открывает работу.
+    Тестировщик видит «сегодня $X · в запасе $Y до … · норма $Z/день; при нынешнем темпе хватит до …»."""
+    from datetime import date
     w = world
     w["p"].pult.api = PanelApi()
+    monkeypatch.setenv("GAS_PULT_DATA_DIR", str(w["root"].parent / "data"))
     wid = open_tester_session(w)
-    (w["root"] / "demo" / tenants.BUDGET).write_text(json.dumps({"daily_usd": 3.0}))
-    spent = {"usd": 1.25}
-    monkeypatch.setattr(w["p"].pult.meter, "day", lambda home: {**usage.empty(), "usd": spent["usd"]})
-    cost = call(w, "/api/sessions")[1]["cost"]
-    assert cost["budget"] == {"usd": 3.0, "spent": 1.25, "over": False, "estimate": False}
-    assert call(w, "/api/send", {"w": wid, "text": "пока можно"})[0] == 200
-    spent["usd"] = 3.4                                                       # перерасход
+    today = date.today().isoformat()
+    (w["root"] / "demo" / tenants.BUDGET).write_text(json.dumps({"daily_usd": 4, "period_days": 30, "start": today}))
+    spent = {today: 9.0}                                                     # больше нормы — но в запасе $120
+    monkeypatch.setattr(w["p"].pult.meter, "days", lambda home, since: dict(spent))
+    w["p"].budget_cache.clear()
+    b = call(w, "/api/sessions")[1]["cost"]["budget"]
+    assert b["reserve"] == 120 and b["today"] == 9 and b["left"] == 111 and not b["over"]
+    assert b["text"].startswith("сегодня $9.00 · в запасе $111.00 до ") and "норма $4.00/день" in b["text"]
+    assert call(w, "/api/send", {"w": wid, "text": "сегодня больше нормы"})[0] == 200
+    assert not [x for m, x in w["p"].pult.api.calls if m == "sendMessage"]   # до 80% — тихо
+    spent[today] = 100.0                                                     # 83% запаса
+    assert call(w, "/api/send", {"w": wid, "text": "ещё"})[0] == 200
+    sent = [x for m, x in w["p"].pult.api.calls if m == "sendMessage"]
+    assert len(sent) == 1 and "потратило 83% запаса" in sent[0]["text"]
+    assert sent[0]["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "bt:demo"
+    spent[today] = 121.0                                                     # запас исчерпан
     for path, body in (("/api/send", {"w": wid, "text": "ещё"}), ("/api/new", {"i": 0}),
                        ("/api/command", {"w": wid, "i": 0}), ("/api/select", {"w": wid, "i": 0}),
                        ("/api/space/resume", {"folder": "любая"})):
         code, d = call(w, path, body)
-        assert code == 403 and d["code"] == "budget" and "$3.40 из $3.00" in d["error"], (path, d)
+        assert code == 403 and d["code"] == "budget", (path, d)
+        assert "Запас пространства на период исчерпан" in d["error"], (path, d)
     assert call(w, "/api/key", {"w": wid, "key": "Escape"})[0] == 200      # остановить агента — можно
     sent = [x for m, x in w["p"].pult.api.calls if m == "sendMessage"]
-    assert [x["chat_id"] for x in sent] == [OWNER] and "исчерпало дневной бюджет" in sent[0]["text"]
-    assert call(w, "/api/sessions")[1]["cost"]["budget"]["over"] is True
-    # владелец бюджетом не ограничен; обычный участник — тоже (бюджет — только пространства)
+    assert len(sent) == 2 and "исчерпан" in sent[1]["text"]                 # 100% — одно сообщение, без повторов
+    # владелец: запас в /api/spaces и «+ добавить»
+    sp = call(w, "/api/spaces", who=OWNER)[1]["tenants"]
+    assert next(x for x in sp if x["slug"] == "demo")["budget"]["over"] is True
+    assert call(w, "/api/space/budget/add", {"space": "demo", "usd": 28}, who=TESTER)[0] == 403
+    code, d = call(w, "/api/space/budget/add", {"space": "demo", "usd": 28}, who=OWNER)
+    assert code == 200 and d["reserve"] == 148 and d["extra"] == 28 and not d["over"], d
+    assert call(w, "/api/send", {"w": wid, "text": "после пополнения"})[0] == 200
+    # владелец и обычный участник бюджетом не ограничены
+    spent[today] = 500.0
     assert call(w, "/api/send", {"w": wid, "text": "это владелец"}, who=OWNER)[0] == 200
     assert call(w, "/api/send", {"w": w["owner_w"], "text": "я"}, who=OWNER)[0] == 200
 

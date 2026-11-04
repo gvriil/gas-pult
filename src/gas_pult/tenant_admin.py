@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 from gas_pult import models, tenants
@@ -264,7 +265,8 @@ def need_setup(lay: Layout, s: Sys):
 
 
 def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, persona=None, profile=None,
-           budget: float | None = None, size: str = DEFAULT_SIZE) -> dict:
+           budget: float | None = None, size: str = DEFAULT_SIZE, period: int | None = None,
+           day_cap: float | None = None, start: str | None = None) -> dict:
     slug, size = tenants.check_slug(slug), check_size(size)
     need_setup(lay, s)
     p = tenants.paths(slug, lay.tenants)
@@ -273,6 +275,12 @@ def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, person
     meta = meta_of(old, slug, title, jurisdiction, persona, profile)
     if budget is not None and not 0 <= float(budget) <= 1000:
         raise ValueError("бюджет — от 0 до 1000 USD в день")
+    if period is not None and not 1 <= int(period) <= 366:
+        raise ValueError("период бюджета — от 1 до 366 дней")
+    if day_cap is not None and not (float(day_cap) == 0 or 1 <= float(day_cap) <= 30):
+        raise ValueError("потолок дня — от 1 до 30 норм (0 — выключить)")
+    if start is not None:
+        date.fromisoformat(start)                       # ГГГГ-ММ-ДД, иначе ValueError
     tmux = tenants.tmux_bin(lay.tenants)
     s.out(f"== пространство {slug}: пользователь {u}, диск {size}, профиль {meta['profile']}")
 
@@ -319,10 +327,15 @@ def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, person
         s.fix(p["secrets"], 0o600, u, u)
     if not p["audit"].exists():
         s.write(p["audit"], "", 0o640, "root", GROUP_RO)
-    budget_old = (old or {}).get("budget_usd")
-    daily = float(budget) if budget is not None else (budget_old if budget_old is not None else tenants.DEFAULT_BUDGET)
-    s.write(p["budget"], json.dumps({"daily_usd": daily}) + "\n", 0o640, "root", GROUP_RO)
-    s.write(p["meta"], json.dumps({k: v for k, v in meta.items() if k not in ("slug", "budget_usd")},
+    # бюджет — запас на период (space_budget.py): норма в день × дни; прежние значения — если не заданы заново
+    bo = (old or {}).get("budget") or {}
+    daily = float(budget) if budget is not None else bo.get("daily", tenants.DEFAULT_BUDGET)
+    cap = float(day_cap) if day_cap is not None else bo.get("day_cap_x")
+    s.write(p["budget"], json.dumps({
+        "daily_usd": daily, "period_days": int(period) if period is not None else bo.get("period_days", 30),
+        "start": start or (bo["start"].isoformat() if bo.get("start") else date.today().isoformat()),
+        "day_cap_x": cap or None}) + "\n", 0o640, "root", GROUP_RO)
+    s.write(p["meta"], json.dumps({k: v for k, v in meta.items() if k not in ("slug", "budget_usd", "budget")},
                                   ensure_ascii=False, indent=1) + "\n", 0o644)
     # 5. slice с лимитами, служба tmux пространства, таймер «журналы — группе пульта»
     un = lay.units(slug)
@@ -440,7 +453,8 @@ def listing(lay: Layout, s: Sys) -> list[dict]:
         rows.append({"slug": slug, "user": tenants.user_of(slug), "mounted": mounted(p["base"]),
                      "service": s.read("systemctl", "is-active", sv.name) or "?", "disk": "".join(used).strip(),
                      "profile": t.get("profile", ""), "jurisdiction": t.get("jurisdiction", ""),
-                     "budget": t.get("budget_usd")})
+                     "budget": (f"${t['budget']['daily']:g}/день × {t['budget']['period_days']} дн. с "
+                                f"{t['budget']['start']:%d.%m}" if t.get("budget") else None)})
     s.out("Включено (настройка сделана)" if tenants.enabled(lay.tenants) else "Выключено: нет настройки")
     for r in rows:
         s.out(f"{r['slug']:<24} {r['user']:<31} смонтирован={'да' if r['mounted'] else 'нет'} "
@@ -482,7 +496,7 @@ def set_key(lay: Layout, s: Sys, slug: str, profile: str, key: str, base_url: st
             json.dumps({"env": models.env_of(prof, key, state)}, ensure_ascii=False) + "\n", 0o600, u, u)
     if default:
         meta = meta_of(t, slug, profile=profile)
-        s.write(p["meta"], json.dumps({k: v for k, v in meta.items() if k not in ("slug", "budget_usd")},
+        s.write(p["meta"], json.dumps({k: v for k, v in meta.items() if k not in ("slug", "budget_usd", "budget")},
                                       ensure_ascii=False, indent=1) + "\n", 0o644)
     audit(s, p, "key", profile=profile, tail=key[-4:])
 
@@ -501,7 +515,7 @@ def login(lay: Layout, s: Sys, slug: str, yes: str | None = None):
     if not confirm(yes, "да", "Это только для ваших тестов? Введите «да»: "):
         raise SystemExit("Не подтверждено — ничего не сделано (нужно --yes да).")
     p = tenants.paths(slug, lay.tenants)
-    meta = {k: v for k, v in t.items() if k not in ("slug", "budget_usd")} | {
+    meta = {k: v for k, v in t.items() if k not in ("slug", "budget_usd", "budget")} | {
         "claude_login": True, "claude_login_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     s.write(p["meta"], json.dumps(meta, ensure_ascii=False, indent=1) + "\n", 0o644)
     audit(s, p, "claude_login")
@@ -517,7 +531,7 @@ def logout(lay: Layout, s: Sys, slug: str):
     if not t:
         raise SystemExit(f"нет пространства {slug}")
     p = tenants.paths(slug, lay.tenants)
-    meta = {k: v for k, v in t.items() if k not in ("slug", "budget_usd", "claude_login", "claude_login_at")}
+    meta = {k: v for k, v in t.items() if k not in ("slug", "budget_usd", "budget", "claude_login", "claude_login_at")}
     if meta.get("profile") == "claude":
         meta["profile"] = tenants.default_profile(meta.get("jurisdiction", ""))
     s.write(p["meta"], json.dumps(meta, ensure_ascii=False, indent=1) + "\n", 0o644)
@@ -541,7 +555,12 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--jurisdiction", help="страна клиента: RU — только российские профили")
     c.add_argument("--persona", help=f"вид панели по умолчанию ({', '.join(tenants.personas.PERSONAS)})")
     c.add_argument("--profile", help="профиль модели (по умолчанию — первый с ключом API для юрисдикции)")
-    c.add_argument("--budget", type=float, help=f"USD в день (по умолчанию {tenants.DEFAULT_BUDGET})")
+    c.add_argument("--budget", type=float, help=f"норма USD в день (по умолчанию {tenants.DEFAULT_BUDGET}); запас "
+                   "периода = норма × --period, тратить можно больше нормы за счёт будущих дней")
+    c.add_argument("--period", type=int, help="дней в периоде бюджета (по умолчанию 30)")
+    c.add_argument("--day-cap", type=float,
+                   help="потолок дня в нормах, например 3 (по умолчанию выключен; 0 — выключить)")
+    c.add_argument("--start", help="первый день периода ГГГГ-ММ-ДД (по умолчанию — прежний или сегодня)")
     c.add_argument("--size", default=DEFAULT_SIZE, help="диск пространства (по умолчанию 2G)")
     sub.add_parser("list", help="пространства, их состояние и корзина")
     b = sub.add_parser("backup", help="архив пространства в /srv/pult/backups")
@@ -578,7 +597,8 @@ def main(argv: list[str] | None = None) -> int:
     os.umask(0o077)
     try:
         if a.cmd == "create":
-            create(lay, s, a.slug, a.title, a.jurisdiction, a.persona, a.profile, a.budget, a.size)
+            create(lay, s, a.slug, a.title, a.jurisdiction, a.persona, a.profile, a.budget, a.size, a.period,
+                   a.day_cap, a.start)
         elif a.cmd == "list":
             listing(lay, s)
         elif a.cmd == "backup":

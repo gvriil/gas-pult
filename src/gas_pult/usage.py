@@ -287,6 +287,28 @@ class Meter:
             return acc
 
 
+    def days(self, home: Path | None, since: str) -> dict[str, float]:
+        """Расход пула в USD по дням начиная с ``since`` («ГГГГ-ММ-ДД»): все журналы, изменённые с этого дня."""
+        start = time.mktime(date.fromisoformat(since).timetuple())
+        out: dict[str, dict] = {}
+        with self.lock:
+            root = self.projects(home)
+            try:
+                files = [*root.glob("*/*.jsonl"), *root.glob("*/*/subagents/*.jsonl")]
+            except OSError:
+                files = []
+            for f in files:
+                try:
+                    if f.stat().st_mtime < start and f not in self.files:
+                        continue
+                    for day, acc in self.read(f).days.items():
+                        if day >= since:
+                            out[day] = merge(out.get(day, empty()), acc)
+                except OSError:
+                    continue
+        return {d: round(x["usd"], 4) for d, x in out.items()}
+
+
 # ---------- лимиты и пауза: чистые функции над state.json ----------
 
 def limits(state: dict) -> dict:
