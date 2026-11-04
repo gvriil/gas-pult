@@ -302,6 +302,10 @@
   .md pre { background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 10px; overflow-x: auto; font-size: calc(12.5px * var(--fz, 1)); }
   .md code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: calc(13px * var(--fz, 1)); background: var(--bg-subtle); padding: 1px 4px; border-radius: 5px; }
   .md pre code { background: none; padding: 0; } .md a { color: var(--accent-primary); }
+  /* ссылки в переписке (задача 33): длинный адрес переносится в любом месте и не раздвигает ленту; долгое нажатие — наше меню */
+  .chat .bubble a.clink { color: var(--accent-primary); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; word-break: break-word;
+                          -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  .sheet button small.url { overflow-wrap: anywhere; word-break: break-all; }
   .md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--border-subtle); color: var(--text-secondary); }
 
   /* ===== Экран (терминал) — всегда контрастный, без простыни ===== */
@@ -961,6 +965,7 @@ const P = {
   bulb: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.4 10.9c.6.4.9 1 .9 1.7V16h5v-.4c0-.7.3-1.3.9-1.7A6 6 0 0 0 12 3z"/>',
   vol: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
   volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
+  share: '<circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
   bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>', chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', refresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4.5v4.5h-4.5"/>',
@@ -1040,6 +1045,95 @@ async function copyText(text, what = "Скопировано") {
   bg.onclick = (e) => { if (e.target === bg || e.target.closest("button")) bg.remove(); };
   document.body.append(bg); ta.focus(); ta.setSelectionRange(0, text.length);
 }
+// link:start — ссылки в переписке (задача 33). Только http(s); элементы — через DOM (textContent/href), сырого
+// HTML нет. Блоки кода, свёрнутые логи и готовые ссылки не трогаем. Хвост «.», «,», «!», «?»… и лишняя «)» — не адрес.
+const LINK_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
+function safeUrl(u) {                                // адрес для href или "" — javascript:, data:, mailto: и прочее не проходят
+  try { const x = new URL(String(u)); return (x.protocol === "http:" || x.protocol === "https:") && x.hostname ? x.href : ""; }
+  catch (e) { return ""; }
+}
+function trimUrl(u) {
+  for (;;) {
+    const c = u.slice(-1), n = (ch) => u.split(ch).length - 1;
+    if (/[.,;:!?…»”’]/.test(c)) u = u.slice(0, -1);
+    else if ((c === ")" && n(")") > n("(")) || (c === "]" && n("]") > n("[")) || (c === "}" && n("}") > n("{"))) u = u.slice(0, -1);
+    else return u;
+  }
+}
+function linkParts(text) {                           // "см. https://a.b/c." → ["см. ", { url: "https://a.b/c", href }, "."]
+  const s = String(text ?? ""), out = []; let last = 0;
+  for (const m of s.matchAll(LINK_RE)) {
+    const u = trimUrl(m[0]), href = safeUrl(u);
+    if (!href) continue;
+    if (m.index > last) out.push(s.slice(last, m.index));
+    out.push({ url: u, href }); last = m.index + u.length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+function linkEl(a, href) { a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.className = "clink"; return a; }
+function linkify(root) {
+  root.querySelectorAll("a").forEach((a) => {         // ссылки из markdown: http(s) — наши, остальное — простой текст
+    const href = a.closest("pre, code") ? "" : safeUrl(a.getAttribute("href") || "");
+    if (href) linkEl(a, href); else a.replaceWith(...a.childNodes);
+  });
+  const skip = (n) => n.parentElement?.closest("a, pre, code, details, button, textarea");
+  const nodes = [], walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walk.nextNode()) if (!skip(walk.currentNode) && /https?:\/\//i.test(walk.currentNode.data)) nodes.push(walk.currentNode);
+  for (const t of nodes) {
+    const parts = linkParts(t.data); if (!parts.some((p) => typeof p !== "string")) continue;
+    const frag = document.createDocumentFragment();
+    for (const p of parts) {
+      if (typeof p === "string") { frag.append(document.createTextNode(p)); continue; }
+      const a = linkEl(document.createElement("a"), p.href); a.textContent = p.url; frag.append(a);
+    }
+    t.replaceWith(frag);
+  }
+  return root;
+}
+// link:end
+const LT = (k, ru) => (DICT[k] ? T(k) : ru);         // строки ссылок — из словаря (ru/en), пока он грузится — по-русски
+function openLink(href) {                             // в Telegram — его методом (браузер телефона); иначе false — обычный переход
+  if (tg?.initData && typeof tg.openLink === "function") { tg.openLink(href); return true; }
+  return false;
+}
+async function shareLink(href) {
+  if (navigator.share) {
+    try { await navigator.share({ url: href }); return; } catch (e) { if (e?.name === "AbortError") return; }
+  }
+  copyText(href, LT("link.share.copied", "Поделиться отсюда нельзя — ссылка скопирована"));
+}
+let linkMenuAt = 0;
+function linkMenu(a) {
+  if (Date.now() - linkMenuAt < 800) return;           // долгое нажатие и contextmenu одного касания — одно меню
+  linkMenuAt = Date.now(); haptic("impactOccurred", "medium");
+  const href = a.href;
+  helpSheet("sheet.link");
+  sheet(LT("link.title", "Ссылка"), [
+    { label: LT("link.open", "Открыть"), icon: "ext", run: () => openLink(href) || window.open(href, "_blank", "noopener,noreferrer") },
+    { label: LT("link.copy", "Копировать"), sub: href, icon: "copy", run: () => copyText(href, LT("link.copied", "Ссылка скопирована")) },
+    { label: LT("link.share", "Поделиться"), icon: "share", run: () => shareLink(href) },
+  ], LT("link.close", "Закрыть"));
+  [...document.querySelectorAll(".sheet-bg")].pop()?.querySelector("button[data-i='1'] small")?.classList.add("url");
+}
+let linkHold = null, linkHeld = false, linkTouch = false;
+document.addEventListener("pointerdown", (e) => {
+  linkHeld = false; linkTouch = e.pointerType !== "mouse";
+  const a = e.target.closest?.("a.clink"); if (!a || e.button > 0) return;
+  linkHold = { x: e.clientX, y: e.clientY, t: setTimeout(() => { linkHold = null; linkHeld = true; linkMenu(a); }, 500) };
+});
+const linkUnhold = () => { if (linkHold) clearTimeout(linkHold.t); linkHold = null; };
+document.addEventListener("pointerup", linkUnhold); document.addEventListener("pointercancel", linkUnhold);
+document.addEventListener("pointermove", (e) => { if (linkHold && Math.hypot(e.clientX - linkHold.x, e.clientY - linkHold.y) > 10) linkUnhold(); });
+document.addEventListener("contextmenu", (e) => {     // долгое нажатие пальцем (Android) — наше меню; правая кнопка мыши — меню браузера
+  const a = e.target.closest?.("a.clink"); if (!a || !linkTouch) return;
+  e.preventDefault(); linkUnhold(); linkHeld = true; linkMenu(a);
+});
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.("a.clink"); if (!a) return;
+  if (linkHeld) { linkHeld = false; e.preventDefault(); return; }   // долгое нажатие уже открыло меню
+  if (openLink(a.href)) e.preventDefault();
+});
 // Время в журналах — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code). Показываем в часовом поясе сервера
 // (meta.tz, например Europe/Amsterdam) — одинаково на любом телефоне; пояс неизвестен — время телефона.
 const localTs = (t) => {
@@ -2276,6 +2370,7 @@ function renderChat(toBottom) {
         fail: "не отправлено — " + esc(p.err || ""),
         lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div></div>`).join("");
   voiceUi();
+  box.querySelectorAll(".msg .bubble").forEach(linkify);
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
   box.querySelectorAll(".msg.ai").forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
@@ -4737,6 +4832,7 @@ function sRender(toBottom) {
   const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div></div>`).join("");
   box.innerHTML = (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>`);
+  box.querySelectorAll(".msg .bubble").forEach(linkify);
   box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
   sAct();
   if (toBottom && !params.has("noscroll")) sBottom();
@@ -5022,7 +5118,7 @@ function demoApi(path, body) {
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
-  const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```";
+  const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
   const R = {
     "/api/meta": { ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
