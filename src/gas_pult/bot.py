@@ -44,6 +44,7 @@ from gas_pult import (
     people,
     providers,
     qr,
+    selftest,
     setup,
     space_budget,
     tenants,
@@ -958,6 +959,31 @@ class Pult:
             except Exception as e:
                 print("digest:", self.api.redact(e), flush=True)
             time.sleep(60)
+
+    # ---------- автотест поставщиков (selftest.py): раз в сутки и /selftest ----------
+    def selftest_loop(self):
+        """Раз в сутки — проверка всех поставщиков с ключом; что-то не прошло — одна строка владельцам."""
+        time.sleep(300)                                   # не в первые минуты после запуска
+        while True:
+            try:
+                if selftest.due(self.cfg.data, self.state()):
+                    d = selftest.run_all(self.cfg.data, self.state())
+                    if any(not all((r.get("checks") or {}).values()) for r in (d.get("results") or {}).values()):
+                        self.broadcast(selftest.summary(self.cfg.data, self.state()))
+            except Exception as e:
+                print("selftest:", self.api.redact(e), flush=True)
+            time.sleep(600)
+
+    def on_selftest(self, chat: int):
+        if selftest.running(selftest.load(self.cfg.data)):
+            return self.send(chat, "Проверка уже идёт — итог появится в «Настройки» → «Поставщики» панели.")
+        self.send(chat, "🧪 Проверяю поставщиков с ключом — пара минут, короткий запрос к каждому…")
+
+        def go():
+            selftest.run_all(self.cfg.data, self.state())
+            self.send(chat, selftest.summary(self.cfg.data, self.state()))
+        threading.Thread(target=go, daemon=True).start()
+        return None
 
     def on_digest(self, chat: int, arg: str):
         """dg:y — «да» (PR и «да» штабу — с подтверждением dg:Y), dg:c — закрыть, dg:l — позже."""
@@ -2117,6 +2143,8 @@ class Pult:
             return self.send_digest(chat)
         if t == "/testers":
             return self.send_testers(chat)
+        if t == "/selftest":
+            return self.on_selftest(chat)
         if t == "/invite" or t.startswith("/invite "):
             return self.send_invite(chat, t.removeprefix("/invite").strip())
         if t == "/modules":
@@ -2197,6 +2225,7 @@ class Pult:
             print(f"gas-pult: Claude Code {why} · /start в боте — мастер входа", flush=True)
         threading.Thread(target=self.monitor, daemon=True).start()
         threading.Thread(target=self.digest_loop, daemon=True).start()
+        threading.Thread(target=self.selftest_loop, daemon=True).start()
         threading.Thread(target=self.modules_loop, daemon=True).start()
         offset = None
         while True:

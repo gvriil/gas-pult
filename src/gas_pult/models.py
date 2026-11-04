@@ -31,7 +31,7 @@ import shlex
 from itertools import pairwise
 from pathlib import Path
 
-from gas_pult import providers
+from gas_pult import mcp, providers
 from gas_pult.config import config_dir, write_private
 
 # Санкционные страны: запрещены у всех поставщиков (Z.ai и DeepSeek запрещают санкционные регионы без перечня;
@@ -85,7 +85,9 @@ PROFILES = [
      "long_context": True,                       # «[1m]» — по документации Z.ai
      "key_url": "https://z.ai/manage-apikey/apikey-list",
      "about": "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает",
-     "env": {"API_TIMEOUT_MS": "3000000", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
+     # окно GLM-5.3 — 1M, ответ до 128K (docs.z.ai/guides/llm/glm-5.3); Z.ai советует сжимать на 1000000 — без запаса
+     # на ответ, поэтому сжимаем раньше, как DeepSeek советует для своего окна 1M (CAPS ниже, docs/PROVIDERS.md)
+     "env": {"API_TIMEOUT_MS": "3000000", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "786432",
              "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
      "blocked": UNSUPPORTED},
     {"id": "deepseek", "title": "DeepSeek", "short": "DeepSeek", "key": "deepseek",
@@ -113,7 +115,50 @@ PROFILES = [
      "env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
      "regions": RU_ONLY},
 ]
+
+# Что работает и что нет у поставщика в Claude Code (задача 38, docs/PROVIDERS.md). С чужим ключом
+# (ANTHROPIC_AUTH_TOKEN) Claude Code выключает коннекторы claude.ai («claude.ai connectors are disabled because
+# ANTHROPIC_API_KEY or another auth source is set») и то, что идёт через аккаунт claude.ai (уведомления на телефон,
+# удалённый запуск, DesignSync). WebSearch — серверный инструмент Anthropic: у Z.ai молча пустой, DeepSeek его
+# поддерживает сам (api-docs.deepseek.com/guides/anthropic_api). ``limits`` — не работает, ``unsure`` — зависит от
+# модели или не проверено, ``works`` — работает. Тексты — в словарях панели (gap.*, work.*), названия — здесь
+# (``NAMES``): латиницу в русский словарь не кладём.
+NAMES = {"connectors": "claude.ai (Google Drive, Notion, Gmail, Claude Docs…)", "remote": "PushNotification, "
+         "RemoteTrigger, DesignSync", "claude_md": "CLAUDE.md", "webfetch": "WebFetch", "websearch": "WebSearch"}
+OUTSIDE = ["connectors", "remote"]                 # у всех, кроме Claude
+CAPS = {
+    "claude": {"limits": [], "unsure": [],
+               "works": ["claude_md", "files", "mcp", "webfetch", "websearch", "connectors", "images"]},
+    "openrouter": {"limits": OUTSIDE, "unsure": ["websearch"],
+                   "works": ["claude_md", "files", "mcp", "webfetch", "images"]},
+    "zai": {"limits": [*OUTSIDE, "websearch", "images"], "unsure": [],     # GLM-5.3 — только текст
+            "works": ["claude_md", "files", "mcp", "webfetch"]},
+    "deepseek": {"limits": [*OUTSIDE, "images"], "unsure": [],   # V4 Pro: картинка → «[Unsupported Image]»
+                 "works": ["claude_md", "files", "mcp", "webfetch", "websearch"]},
+    "gigachat": {"limits": [*OUTSIDE, "websearch"], "unsure": ["images", "tools"],
+                 "works": ["claude_md", "files", "mcp", "webfetch"]},
+    "yandexgpt": {"limits": [*OUTSIDE, "websearch"], "unsure": ["images", "tools"],
+                  "works": ["claude_md", "files", "mcp", "webfetch"]},
+}
+# Замена тому, что не работает: MCP-серверы из «Интеграций» (mcp.PRESETS) — они не зависят от поставщика (ADR-0002).
+ALT = {"connectors": ["notion", "gdrive"], "websearch": ["tavily"]}
+for _p in PROFILES:
+    _p.update(CAPS[_p["id"]])
 BY_ID = {p["id"]: p for p in PROFILES}
+
+
+def gaps_of(p: dict) -> dict:
+    """Для панели: что не работает (``limits``), под вопросом (``unsure``), работает (``works``) — [{id, names}] — и
+    какими интеграциями заменить (``alt`` — id шаблонов «Интеграций»)."""
+    def items(ids):
+        return [{"id": i, "names": NAMES.get(i, "")} for i in ids]
+    missing = [*p.get("limits", ()), *p.get("unsure", ())]
+    alt = list(dict.fromkeys(a for g in missing for a in ALT.get(g, ())))
+    title = {x["id"]: x["title"] for x in mcp.PRESETS}
+    return {"limits": items(p.get("limits", ())), "unsure": items(p.get("unsure", ())),
+            "works": items(p.get("works", ())), "alt": alt, "alt_names": ", ".join(title[a] for a in alt)}
+
+
 SETTINGS = re.compile(r"/profiles/([a-z0-9-]+)\.json$")
 MODEL = re.compile(r"^[\w./:@~\[\]-]{1,120}$")
 
@@ -235,6 +280,7 @@ def public(state: dict, countries=None) -> list[dict]:
                       "gateway": bool(p.get("gateway")), "base_url": base_url_of(p, state) if p.get("gateway") else "",
                       "guide": p.get("guide", ""), "regions": sorted(p.get("regions", ())) if p.get("gateway") else [],
                       "not_ready": "" if has_gateway(p["id"], state) else no_gateway(p)})
+        out[-1] |= gaps_of(p)                    # что работает у поставщика (задача 38) — поля добавлены
         if countries is not None:
             ok = allowed(p["id"], countries)
             out[-1] |= {"allowed": ok, "denied": "" if ok else DENY}

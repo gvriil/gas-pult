@@ -5,6 +5,20 @@
 ## [Не выпущено]
 
 ### Добавлено
+- **Поставщики моделей: что работает честно, интеграции для любой модели, автотест (задача 38).** У профиля в
+  `models.py` — `limits` (не работает), `unsure` (под вопросом), `works` и замена `alt` (`models.CAPS`), в
+  `/api/meta` — добавлением полей. Панель пишет, что недоступно: при выборе поставщика, на экране поставщика и
+  строкой над полем ввода сессии (коннекторы claude.ai, веб-поиск у GLM, картинки у GLM и DeepSeek V4 Pro,
+  PushNotification/RemoteTrigger/DesignSync). «Интеграции»: раздел «Для любой модели» (MCP-серверы в папке Claude
+  Code, отметка «все поставщики») и «Через сайт Claude» (только сессии Claude, у коннектора — замена «через
+  сервер»); новые шаблоны — Jira и Confluence (`mcp.atlassian.com`, OAuth), Google Диск (официальный
+  `drivemcp.googleapis.com`, превью, свой OAuth-клиент: `oauth.clientId`, секрет — `--client-secret` через
+  `MCP_CLIENT_SECRET`, не в `.claude.json`), веб-поиск Tavily (`mcp.tavily.com`, ключ). Автотест `selftest.py`: раз в
+  сутки (бот) и «Проверить сейчас» («Настройки» → «Поставщики», `/api/selftest`; в боте `/selftest`) — `claude -p` на
+  каждом поставщике с ключом: кодовое слово из `CLAUDE.md`, список инструментов, вызов Read, WebFetch; итог —
+  `<data>/selftest.json`. ADR-0002 «Интеграции не зависят от поставщика модели» (этап 2 — MCP-шлюз на пространство,
+  сравнение ContextForge и Strata; картинки для моделей без зрения), `docs/PROVIDERS.md`. Тесты —
+  `tests/test_selftest.py` (подмена `subprocess` и поддельный `claude`), в браузере — `tests/e2e/providers_demo.py`.
 - **Ссылки в переписке нажимаются (задача 33).** В сообщениях агента и человека — в полном и простом режиме — адреса
   `http://…` и `https://…` становятся ссылками (`target="_blank"`, `rel="noopener noreferrer"`). Другие схемы
   (`javascript:`, `data:`, `mailto:` и прочие, в том числе markdown-ссылки `[текст](…)`) остаются простым текстом.
@@ -53,6 +67,9 @@
   `tests/test_enter_keys.py`, в браузере — `tests/e2e/enter_demo.py`.
 
 ### Исправлено
+- **GLM: сжатие контекста с запасом на ответ (задача 38).** `CLAUDE_CODE_AUTO_COMPACT_WINDOW` у Z.ai — 786 432
+  вместо 1 000 000: окно GLM-5.3 — 1M при ответе до 128K, а 1 000 000 не оставляло запаса (берём значение, которое
+  DeepSeek советует для своего окна 1M; `docs/PROVIDERS.md`).
 - **CI: прерванные задания macOS больше не блокируют слияние (задача 36).** Причина по логам: «The job was not
   acquired by Runner of type hosted even after multiple attempts» — раннеров macOS arm64 не хватало, задание 15 минут
   ждало и отменялось без шагов; а прогоны `push main` отменяли друг друга (concurrency по ref). Теперь: в PR — только

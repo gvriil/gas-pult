@@ -47,7 +47,9 @@ src/gas_pult/
 ├── personas.py     роли интерфейса: access_role (права) отдельно от ui_persona (вид), возможности cap.*, потолок
 ├── terms.py        условия использования: версия и короткий текст для бота и панели (полный — docs/TERMS.md)
 ├── country.py      страна человека: выбор, код номера (хеш с солью), GeoIP по локальной базе db-ip lite
-├── models.py       профили поставщиков (Claude, OpenRouter, GLM, DeepSeek, GigaChat и YandexGPT через шлюз), страны
+├── models.py       профили поставщиков (Claude, OpenRouter, GLM, DeepSeek, GigaChat и YandexGPT через шлюз), страны,
+│                   что работает у поставщика (CAPS: limits/unsure/works/alt — docs/PROVIDERS.md)
+├── selftest.py     автотест поставщиков раз в сутки: claude -p — CLAUDE.md, инструменты, Read, WebFetch
 ├── openrouter.py   вход в OpenRouter (OAuth PKCE), ключ и каталог моделей
 ├── fallback.py     запасные: отказ поставщика в журнале → следующий по цепочке с учётом стран и ключей
 ├── usage.py        расход: токены и USD по журналам (прайс API Anthropic), пулы по учёткам, лимиты и пауза
