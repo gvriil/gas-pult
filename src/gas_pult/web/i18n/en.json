@@ -412,5 +412,6 @@
  "bud.add.week": "A week of norm",
  "bud.add.2w": "Two weeks of norm",
  "bud.add.done": "Reserve topped up: now {l}",
- "bud.none": "The space has no budget"
+ "bud.none": "The space has no budget",
+ "err.balance": "The provider has run out of money — top up the account or switch this chat to another provider."
 }
