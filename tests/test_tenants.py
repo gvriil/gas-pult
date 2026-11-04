@@ -247,6 +247,8 @@ def test_units_limits_and_sandbox():
                  "ExecStart=/usr/bin/tmux -D -f /dev/null -S /srv/pult/tenants/demo/run/tmux/default",
                  "Environment=CLAUDE_CONFIG_DIR=/srv/pult/tenants/demo/config/claude"):
         assert want in sv
+    # RestrictSUIDSGID запрещает openat2 (ENOSYS): tar не распаковывает вложенные папки — его нет; suid и так без силы
+    assert "RestrictSUIDSGID" not in sv and "NoNewPrivileges=yes" in sv
     share, timer = tenant_admin.share_units(lay, "demo")
     assert "User=pult_t_demo" in share and "chmod g+r" in share and "OnUnitActiveSec=30s" in timer
 
@@ -302,7 +304,19 @@ def test_create_idempotent_and_files(tmp_path, monkeypatch):
     assert t["profile"] == "openrouter"
     assert json.loads(p["audit"].read_text().splitlines()[0])["event"] == "create"
     assert (lay.systemd / "pult_t_demo.slice").exists() and (lay.systemd / "pult-share-demo.timer").exists()
-    # повтор — ничего не пересоздаёт: ни пользователя, ни образа, ни строки fstab
+    # повтор — ничего не пересоздаёт: ни пользователя, ни образа, ни строки fstab; юнит тот же — без просьбы перезапуска
+    fs.cmds.clear()
+    said = []
+    s.out = said.append
+    tenant_admin.create(lay, s, "demo")
+    assert not any("Служба пространства изменилась" in x for x in said)
+    # юнит старой версии (с RestrictSUIDSGID) — create его перепишет и попросит перезапустить службу
+    sv = lay.units("demo")["service"]
+    sv.write_text(sv.read_text().replace("LockPersonality=yes", "RestrictSUIDSGID=yes\nLockPersonality=yes"))
+    said.clear()
+    tenant_admin.create(lay, s, "demo")
+    assert "RestrictSUIDSGID" not in sv.read_text()
+    assert any("systemctl restart pult_t_demo.service" in x for x in said)
     fs.cmds.clear()
     tenant_admin.create(lay, s, "demo")
     assert not {"useradd", "mkfs.ext4", "fallocate", "mount"} & set(fs.names())
