@@ -150,3 +150,14 @@ def test_cli(capsys):
     assert invites.check(code) is None
     with pytest.raises(SystemExit):
         cli.main(["invite", "create", "Плохое имя"])
+
+
+def test_code_never_starts_with_dash(monkeypatch):
+    """Код с «-» в начале ломал `gas-pult invite revoke <первые знаки>` (argparse: «unrecognized arguments») —
+    тест CI падал раз в ~64 запуска. Генератор такие коды пропускает."""
+    seq = iter(["-WpuNSabcdefghijklmnopqrs", "-x" * 12, "AbcdefGhijklmnopqrstuvwx"])
+    monkeypatch.setattr(invites.secrets, "token_urlsafe", lambda n=None: next(seq))
+    code = invites.create("demo")
+    assert code == "AbcdefGhijklmnopqrstuvwx"
+    cli.main(["invite", "revoke", code[:invites.HINT]])
+    assert invites.check(code) is None
