@@ -56,6 +56,7 @@ from gas_pult import (
     providers,
     qr,
     scenarios,
+    selftest,
     setup,
     space_budget,
     space_files,
@@ -1586,6 +1587,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
+SELFTEST = "/api/selftest"               # автотест поставщиков (selftest.py): итог и «Проверить сейчас» — владельцу
+OWNER_ONLY |= {SELFTEST}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
 PERSONA = "/api/persona"
@@ -1916,6 +1919,8 @@ def handler(panel: Panel):
                 return {"models": panel.openrouter.models()}
             if path == "/api/fallback":
                 return panel.fallback_info(self.terms_uid())
+            if path == SELFTEST:
+                return selftest.public(panel.cfg.data, panel.pult.state())
             if path == "/api/cost/limits":
                 return panel.cost_limits()
             if path == "/api/providers":
@@ -2393,6 +2398,9 @@ def handler(panel: Panel):
                 return {"url": panel.openrouter.start(base)}
             if path == "/api/fallback":
                 return panel.set_fallback(b.get("chain"), self.terms_uid())
+            if path == SELFTEST:                          # «Проверить сейчас» — в фоне, итог — GET
+                started = selftest.start(panel.cfg.data, panel.pult.state())
+                return {"started": started, **selftest.public(panel.cfg.data, panel.pult.state())}
             if path == "/api/cost/limits":
                 return panel.set_cost_limits(b)
             if path == "/api/cost/decide":                  # пауза по расходу: «go» — продолжить, «stop» — оставить

@@ -6,6 +6,13 @@
    «claude.ai <Сервис>» со статусом ✔. Ничего не копируется, ключей нет.
 2. **По ключу** (``PRESETS`` с полями): кнопка открывает страницу, где сервис выдаёт ключ, ключ — в одно поле.
 3. **Для продвинутых**: свой адрес или своя программа (``add-json -s user``).
+Пути 2 и 3 — MCP-серверы в папке Claude Code человека: Claude Code сам MCP-клиент, поэтому они работают на любом
+поставщике модели (GLM, DeepSeek, OpenRouter…). Коннекторы claude.ai — только в сессиях Claude: с чужим ключом
+Claude Code их выключает (ADR-0002, ``docs/PROVIDERS.md``). Поле ``providers``: «all» или «claude».
+Вход по OAuth (Notion, Linear, Atlassian, Google Диск) — один раз на папку Claude Code человека: токен там же, и его
+видят сессии любого поставщика. Своё OAuth-приложение (Google): поле ``oauth_client`` — id клиента в настройке
+сервера, секрет — в ``MCP_CLIENT_SECRET`` для ``add-json --client-secret`` (Claude Code кладёт его в своё хранилище
+ключей, не в ``.claude.json``).
 Ключи сохраняются в настройках Claude Code на сервере: у владельца — ``~/.claude.json``, у человека из people.json —
 в его папке (``home`` = ``CLAUDE_CONFIG_DIR``, ``people.claude_dir``): интеграции у каждого свои.
 """
@@ -46,6 +53,10 @@ CONNECTORS = [
     {"id": "figma", "title": "Figma", "icon": "🎨", "match": "Figma", "about": "Макеты и дизайн",
      "example": "Опиши последний макет в Figma"},
 ]
+# Коннекторы claude.ai работают только в сессиях Claude (подписка); замена для других поставщиков — шаблон ``alt``.
+ALT = {"notion": "notion", "gdrive": "gdrive", "linear": "linear", "atlassian": "atlassian"}
+for _c in CONNECTORS:
+    _c.update(providers="claude", alt=ALT.get(_c["id"], ""))
 
 # Шаблоны: что это, куда подключаемся и какие поля спросить у человека (с подсказкой, где взять значение).
 PRESETS = [
@@ -78,6 +89,29 @@ PRESETS = [
                  "format": "Bearer {}", "placeholder": "eyJ…",
                  "hint": "Home Assistant → профиль (внизу слева) → Безопасность → Долгосрочные токены → Создать."}],
      "after": ""},
+    {"id": "atlassian", "title": "Jira и Confluence", "about": "Задачи Jira и страницы Confluence — официальный "
+     "сервер Atlassian", "type": "http", "url": "https://mcp.atlassian.com/v1/mcp", "fields": [],
+     "after": "Вход через Atlassian: «Войти» ниже — откроется страница входа, потом адрес страницы — сюда."},
+    {"id": "gdrive", "title": "Google Диск", "about": "Найти, прочитать, создать файлы на Диске — официальный "
+     "сервер Google (превью)", "key_url": "https://console.cloud.google.com/auth/clients",
+     "type": "http", "url": "https://drivemcp.googleapis.com/mcp/v1",
+     "fields": [{"key": "client_id", "label": "ID клиента OAuth", "oauth_client": True,
+                 "placeholder": "123….apps.googleusercontent.com",
+                 "hint": "Google Cloud → включите Google Drive API и Drive MCP API → Google Auth Platform → Clients → "
+                         "Create client → тип «Desktop app». Нужен свой проект Google Cloud — у Google нет "
+                         "автоматической регистрации клиентов."},
+                {"key": "client_secret", "label": "Секрет клиента", "secret": True, "oauth_secret": True,
+                 "placeholder": "GOCSPX-…", "hint": "Там же, в созданном клиенте. Хранится в хранилище ключей "
+                                                    "Claude Code на сервере."}],
+     "after": "Вход через Google: «Войти» ниже. Сервер Google — в превью: доступ может быть закрыт для вашего "
+              "аккаунта или проекта."},
+    {"id": "tavily", "title": "Веб-поиск Tavily", "about": "Поиск и чтение страниц — для поставщиков, у которых "
+     "нет своего веб-поиска (GLM и другие)", "key_url": "https://app.tavily.com/home", "type": "http",
+     "url": "https://mcp.tavily.com/mcp/",
+     "fields": [{"key": "token", "label": "API-ключ Tavily", "secret": True, "header": "Authorization",
+                 "format": "Bearer {}", "placeholder": "tvly-…",
+                 "hint": "app.tavily.com → API Keys. Бесплатно — 1000 запросов в месяц; запросы и найденное "
+                         "уходят в Tavily."}], "after": ""},
     {"id": "http", "title": "Свой сервер (адрес)", "about": "Любой MCP-сервер по адресу HTTPS", "type": "http",
      "url": "{url}",
      "fields": [{"key": "url", "label": "Адрес сервера", "placeholder": "https://mcp.example.com/mcp",
@@ -94,12 +128,16 @@ PRESETS = [
                  "placeholder": "API_KEY=…", "hint": "По одной на строку: ИМЯ=значение. Ключи — здесь."}],
      "after": ""},
 ]
+for _p in PRESETS:
+    _p.setdefault("providers", "all")           # MCP-сервер в папке Claude Code — на любом поставщике (ADR-0002)
 
 
-def _claude(*args: str, home: Path | None = None) -> subprocess.CompletedProcess:
-    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)} if home else None   # None — окружение пульта (владелец)
+def _claude(*args: str, home: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
+    """``env`` — добавочные переменные (секрет клиента OAuth): только этому процессу, в журнал не пишутся."""
+    full = {**os.environ, **({"CLAUDE_CONFIG_DIR": str(home)} if home else {}), **(env or {})}
     try:
-        return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT, env=env)
+        return subprocess.run(["claude", "mcp", *args], capture_output=True, text=True, timeout=TIMEOUT,
+                              env=full if home or env else None)  # None — окружение пульта (владелец)
     except FileNotFoundError:                    # Claude Code не установлен: список пуст, добавление — понятной ошибкой
         return subprocess.CompletedProcess(["claude", "mcp", *args], 127, "",
                                            "Claude Code не установлен — сначала «Войти в Claude» в боте или панели")
@@ -156,12 +194,20 @@ class Mcp:
                        if f.get("header") and vals[f["key"]]}
             if headers:
                 cfg["headers"] = headers
+            oauth = next((vals[f["key"]] for f in p["fields"] if f.get("oauth_client")), "")
+            if oauth:
+                if not re.match(r"^[\w.-]{4,200}$", oauth):
+                    raise ValueError("ID клиента OAuth — без пробелов, как в консоли сервиса")
+                cfg["oauth"] = {"clientId": oauth}
         else:
             cmd = shlex.split(vals["command"])
             env = dict(line.split("=", 1) for line in vals.get("env", "").splitlines() if "=" in line)
             cfg = {"type": "stdio", "command": cmd[0], "args": cmd[1:], "env": {k.strip(): v.strip()
                                                                                  for k, v in env.items()}}
-        r = _claude("add-json", name, json.dumps(cfg), "-s", "user", home=home)
+        secret = next((vals[f["key"]] for f in p["fields"] if f.get("oauth_secret")), "")
+        args = ("add-json", name, json.dumps(cfg), "-s", "user")
+        r = (_claude(*args, "--client-secret", home=home, env={"MCP_CLIENT_SECRET": secret}) if secret
+             else _claude(*args, home=home))
         if r.returncode != 0:
             raise ValueError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip()
                              else "claude mcp add-json не сработал")
