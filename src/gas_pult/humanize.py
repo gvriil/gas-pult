@@ -97,6 +97,9 @@ COMPOSE = {"type", "other", "chat", "plan-change"}
 # Ошибки и служебные строки Claude Code (журнал и экран) → err.<key>.
 ERRORS: list[tuple[str, re.Pattern]] = [
     ("credit", re.compile(r"Credit balance is too low", re.I)),
+    # у поставщика закончились деньги: Z.ai — 429 с кодом 1113, DeepSeek — 402 (balance.py); раньше «limit» (429)
+    ("balance", re.compile(r'"code"\s*:\s*"?1113\b|insufficient[ _](account[ _])?balance|API Error:\s*402\b|'
+                           r"Payment Required", re.I)),
     ("limit", re.compile(r"usage limit reached|limit reached\b|hit your (usage )?limit|rate[_ ]limit|"
                          r"API Error:\s*429|Too many requests", re.I)),
     ("overloaded", re.compile(r"Overloaded|API Error:\s*5\d\d|overloaded_error|internal server error", re.I)),

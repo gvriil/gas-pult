@@ -24,6 +24,7 @@ import hmac
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -38,6 +39,7 @@ from pathlib import Path
 
 from gas_pult import (
     ago,
+    balance,
     country,
     emailcode,
     fallback,
@@ -175,6 +177,7 @@ class Panel:
         self._mod_ids: tuple[float, frozenset] = (0.0, frozenset())
         self.owner_seen: dict[str, float] = {}                       # окно пространства → когда владелец подключился
         self.help_calls: dict[str, float] = {}                       # окно → когда тестировщик звал на помощь
+        self.balance_at = 0.0                                        # когда последний раз спрашивали баланс (раз в час)
         self.budget_told: dict[str, str] = {}                        # пространство → день, когда сказали владельцу
         self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
@@ -196,6 +199,7 @@ class Panel:
 
     def sessions(self, pool: str | None = "owner") -> list[dict]:
         """``pool`` — чей расход показывать на карточках (``cost``): «owner» или ID участника; None — ничей."""
+        self.balance_watch()
         st = self.pult.state()
         act, out, paused = st.get("active"), [], st.get("cost_paused") or {}
         for w in self.tmux.windows():
@@ -232,6 +236,8 @@ class Panel:
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
                         "sections": self.sections_of(w["path"]),          # разделы чата бизнес-ролей; [] — во всех
                         **self.space_fields(w),                           # окно демо-пространства (spaces.py)
+                        **self.money_of(w, lines),                        # у поставщика нет денег (balance.py)
+                        "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
                         **when})                                          # когда менялась (ago.py)
         return out
 
@@ -895,10 +901,63 @@ class Panel:
             raise ValueError("такого уровня усилий нет")
         return self.slash(w, f"/effort {level}")
 
-    def model(self, w: dict, name: str) -> list[str]:
-        if name not in self.cfg.models and name != "":
+    def model(self, w: dict, name: str, uid=None) -> dict:
+        """Модель — только для этого чата (задача 37): окно перезапускается с ``--model`` у того же поставщика, разговор
+        продолжается. ``/model`` Claude Code не шлём: он сохраняет выбор в общие настройки (``~/.claude/settings.json``)
+        — модель менялась во всех сессиях. Модель по умолчанию для новых — отдельно: ``default_model``."""
+        if name not in self.cfg.models:
             raise ValueError("такой модели нет в настройках (models)")
-        return self.slash(w, f"/model {name}".strip())
+        if w.get("space"):
+            raise ValueError("в сессии пространства модель задаёт его профиль")
+        return self.restart(w, w.get("profile") or (w.get("mark") if w.get("mark") in models.BY_ID else "claude"),
+                            keep=True, uid=uid, model=name)
+
+    def money_of(self, w: dict, lines: list[str]) -> dict:
+        """Поставщик окна ответил «нет денег» (Z.ai 1113, DeepSeek 402) — в карточку и отметку на час (balance.py)."""
+        prof = w.get("profile") or "claude"
+        if prof == "claude" or not balance.seen("\n".join(lines[-15:])):
+            return {}
+        if (new := balance.mark(self.pult.state(), prof)) is not None:
+            self.pult.set_state(no_balance=new)
+        return {"no_balance": True}
+
+    def balance_watch(self):
+        """Раз в час — баланс поставщиков, у которых есть бесплатная проверка (DeepSeek): нет денег — отметка, есть —
+        снять. В фоне: список сессий не ждёт сеть."""
+        if time.time() - self.balance_at < balance.TTL:
+            return
+        self.balance_at = time.time()
+
+        def run():
+            keys = providers.load_keys()
+            for prov in balance.BALANCE_URL:
+                ok = balance.check(prov, keys.get(prov, ""))
+                st = self.pult.state()
+                if ok is False and (new := balance.mark(st, prov)) is not None:
+                    self.pult.set_state(no_balance=new)
+                elif ok is True and prov in balance.marked(st):
+                    self.pult.set_state(no_balance=balance.clear(st, prov))
+        threading.Thread(target=run, daemon=True).start()
+
+    def default_model(self, name: str | None = None) -> dict:
+        """Модель Claude по умолчанию для новых сессий (``model`` в ``~/.claude/settings.json`` владельца) — только
+        явной настройкой владельца. ``name``: None — прочитать, «» — убрать (как решит Claude Code)."""
+        f = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "settings.json"
+        try:
+            d = json.loads(f.read_text())
+        except (OSError, ValueError):
+            d = {}
+        if name is not None:
+            if name and name not in self.cfg.models:
+                raise ValueError("такой модели нет в настройках (models)")
+            if name:
+                d["model"] = name
+            else:
+                d.pop("model", None)
+            tmp = f.with_name(f".{f.name}.gas-pult")
+            tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
+            os.replace(tmp, f)
+        return {"model": d.get("model") or "", "models": list(self.cfg.models)}
 
     def key(self, w: dict, key: str) -> list[str]:
         if key not in {k for _, k in KEYS + PANEL_KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты
@@ -1159,12 +1218,14 @@ class Panel:
         if uid is not None:
             self.check(profile, uid)
         self.need_claude()
-        cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=self.pult.home_of(w))  # нет ключа — тут
+        st = self.pult.state()
+        cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w))  # нет ключа — тут
+        if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
+            cmd += f" --model {shlex.quote(own)}"
         self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)   # @gas_pult_by окна остаётся
-        self.pult.set_state(active=wid)
         return {"id": wid}
 
-    def restart(self, w: dict, profile: str, keep: bool = True, uid=None) -> dict:
+    def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None) -> dict:
         """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
 
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
@@ -1173,7 +1234,13 @@ class Panel:
         if uid is not None:
             self.check(profile, uid)                                          # не для страны — до закрытия
         home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал
-        cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=home)   # нет ключа — ошибка до закрытия
+        st = self.pult.state()
+        cmd = models.command(self.cfg.claude, profile, st, home=home)   # нет ключа — ошибка до закрытия
+        own = dict(st.get("window_models") or {})
+        same = profile == (w.get("profile") or w.get("mark") or "claude")
+        if model is None:                               # смена поставщика: модель этого чата — его по умолчанию;
+            model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
+        cmd += f" --model {shlex.quote(model)}" if model else ""
         cmd += " --continue" if keep else ""
         result = self.close(w)
         if result != "закрыто":
@@ -1182,8 +1249,14 @@ class Panel:
                                    by=w.get("by", "") if home else "")
         if not home:                                    # окно владельца: метка прежняя, иначе — кто нажал
             self.mark_by(wid, w.get("by") or uid)
-        self.pult.set_state(active=wid)
-        return {"id": wid}
+        own.pop(w["id"], None)
+        if model:
+            own[wid] = model                            # выбор — только этого чата: «Продолжить» и перезапуск — с ним
+        upd = {"window_models": own}
+        if st.get("active") == w["id"]:                 # активная в боте — та же сессия, но чужую не делаем активной
+            upd["active"] = wid
+        self.pult.set_state(**upd)
+        return {"id": wid, **({"model": model} if model else {})}
 
     def close(self, w: dict) -> str:
         return self.close_ex(w)["result"]
@@ -1508,6 +1581,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
+              "/api/model/default", "/api/balance/clear",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
@@ -1866,6 +1940,8 @@ def handler(panel: Panel):
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] == "owner",
                                                      self.terms_uid()))
+            if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
+                return panel.default_model()
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 st = tenants.status(check=True)
                 for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
@@ -2291,6 +2367,12 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/new" and (slug := self.space()):
                 return panel.new_in_space(slug, str(b.get("name", "")))
+            if path == "/api/model/default":             # только явной настройкой — не из чата
+                return panel.default_model(str(b.get("model") or ""))
+            if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
+                st = panel.pult.state()
+                panel.pult.set_state(no_balance=balance.clear(st, str(b.get("profile", ""))))
+                return {"ok": True}
             if path == "/api/space/budget/add":         # владелец: «+ добавить» к запасу пространства
                 return panel.budget_add(tenants.check_slug(str(b.get("space", ""))), float(b.get("usd") or 0),
                                         self.terms_uid())
@@ -2372,8 +2454,8 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/command":
                 return panel.command(w, int(b.get("i", -1)))
-            if path == "/api/model":
-                return {"lines": panel.model(w, str(b.get("name", "")))}
+            if path == "/api/model":                     # модель — только этого чата (перезапуск с --model)
+                return panel.model(w, str(b.get("name", "")), self.terms_uid())
             if path == "/api/effort":
                 return {"lines": panel.effort(w, str(b.get("level", "")))}
             if path == "/api/key":

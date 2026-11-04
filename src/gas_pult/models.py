@@ -31,7 +31,7 @@ import shlex
 from itertools import pairwise
 from pathlib import Path
 
-from gas_pult import mcp, providers
+from gas_pult import balance, mcp, providers
 from gas_pult.config import config_dir, write_private
 
 # Санкционные страны: запрещены у всех поставщиков (Z.ai и DeepSeek запрещают санкционные регионы без перечня;
@@ -72,7 +72,8 @@ PROFILES = [
     {"id": "openrouter", "title": "OpenRouter", "short": "OpenRouter", "key": "openrouter",
      "base_url": "https://openrouter.ai/api",
      "main": "anthropic/claude-sonnet-5.5", "fast": "anthropic/claude-haiku-5.5",
-     "key_url": "https://openrouter.ai/settings/keys", "oauth": True,     # вход в одно касание (openrouter.py)
+     "key_url": "https://openrouter.ai/settings/keys", "billing_url": "https://openrouter.ai/settings/credits",
+     "oauth": True,                              # вход в одно касание (openrouter.py)
      "about": "Один ключ — сотни моделей, оплата по факту. По умолчанию — Claude Sonnet и Haiku через OpenRouter",
      "hint": "id модели из каталога openrouter.ai/models. Надёжно работают только модели Anthropic — "
              "с другими Claude Code может ошибаться",
@@ -83,7 +84,7 @@ PROFILES = [
     {"id": "zai", "title": "GLM (Z.ai)", "short": "GLM", "key": "zai",
      "base_url": "https://api.z.ai/api/anthropic", "main": "glm-5.3[1m]", "fast": "glm-5.3-flash[1m]",
      "long_context": True,                       # «[1m]» — по документации Z.ai
-     "key_url": "https://z.ai/manage-apikey/apikey-list",
+     "key_url": "https://z.ai/manage-apikey/apikey-list", "billing_url": "https://z.ai/manage-apikey/billing",
      "about": "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает",
      # окно GLM-5.3 — 1M, ответ до 128K (docs.z.ai/guides/llm/glm-5.3); Z.ai советует сжимать на 1000000 — без запаса
      # на ответ, поэтому сжимаем раньше, как DeepSeek советует для своего окна 1M (CAPS ниже, docs/PROVIDERS.md)
@@ -93,7 +94,7 @@ PROFILES = [
     {"id": "deepseek", "title": "DeepSeek", "short": "DeepSeek", "key": "deepseek",
      "base_url": "https://api.deepseek.com/anthropic", "main": "deepseek-v4-pro[1m]", "fast": "deepseek-flash",
      "long_context": True,                       # «[1m]» — по документации DeepSeek
-     "key_url": "https://platform.deepseek.com/api_keys",
+     "key_url": "https://platform.deepseek.com/api_keys", "billing_url": "https://platform.deepseek.com/top_up",
      "about": "DeepSeek V4: быстро и очень дёшево. Основная — V4 Pro, быстрая — Flash",
      "hint": "в документации DeepSeek основная по умолчанию — deepseek-flash[1m] (быстрее и дешевле)",
      "env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "786432"},
@@ -279,7 +280,9 @@ def public(state: dict, countries=None) -> list[dict]:
                       # шлюз клиента (GigaChat, YandexGPT): адрес не секрет, ключ — как у всех, только хвост
                       "gateway": bool(p.get("gateway")), "base_url": base_url_of(p, state) if p.get("gateway") else "",
                       "guide": p.get("guide", ""), "regions": sorted(p.get("regions", ())) if p.get("gateway") else [],
-                      "not_ready": "" if has_gateway(p["id"], state) else no_gateway(p)})
+                      "not_ready": "" if has_gateway(p["id"], state) else no_gateway(p),
+                      # у поставщика кончились деньги (balance.py): час не предлагаем; куда идти пополнить
+                      "no_balance": p["id"] in balance.marked(state), "billing_url": p.get("billing_url", "")})
         out[-1] |= gaps_of(p)                    # что работает у поставщика (задача 38) — поля добавлены
         if countries is not None:
             ok = allowed(p["id"], countries)

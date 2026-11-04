@@ -202,6 +202,7 @@
   .cc-sig { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: calc(14px * var(--fz, 1)); }
   .cc-sig .i { flex: none; color: var(--text-secondary); margin-top: 1px; } .cc-sig b { font-weight: 600; }
   .cc-sig .hint { margin-top: 2px; } .cc-sig a { color: var(--accent-primary); }
+  .panel.money { margin: 0 0 8px; padding: 10px 12px; border-color: var(--status-danger); } .money-act { display: flex; flex-wrap: wrap; gap: 8px; } .money-act .btn { width: auto; flex: 1 1 160px; margin: 0; }
   .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
   /* «Запасные»: порядок поставщиков, на которые сессия переходит сама */
   .fb-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
@@ -891,6 +892,7 @@
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" data-tour="new" style="margin:0"></button></div>
 
 <div class="dock" id="dock" hidden>
+  <div id="money" class="panel money" hidden role="alert"></div>
   <div id="costPause" hidden></div>
   <div id="ask"></div>
   <div class="keys" id="keys" hidden></div>
@@ -2314,9 +2316,9 @@ function fallbackNotices(list) {
   try { localStorage.setItem("fbSeen", String(fresh.at(-1).ts)); } catch (e) { /* не страшно */ }
 }
 async function refresh() {
-  await dictReady;                                     // чипы запаса и «+ добавить» — из словаря (T)
   try {
     const d = await api("/api/sessions");
+    await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
     sessions = d.sessions; costInfo = d.cost || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
@@ -2349,6 +2351,7 @@ async function refresh() {
 }
 // Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
 function paintSession(s) {
+  moneyBar(s);
   const st = ST[s.status];
   if (split()) $("title").textContent = s.name;
   else {                                            // телефон: имя ▾ — шторка сессий; точка — что-то ждёт в другой сессии
@@ -2424,16 +2427,54 @@ function newFolder(profile) {
   inp.onkeydown = (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") bg.remove(); };
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
 }
+// Модель этого чата: окно перезапускается с --model у того же поставщика (разговор продолжается); другие не трогаем.
+async function setModel(s, alias, name) {
+  if (!s) return;
+  toast("Перезапускаю этот чат с " + name + "…", 6000);
+  try { const d = await api("/api/model", { w: s.id, name: alias }); await refresh(); openSession(d.id); toast(`Модель «${name}» — только для этого чата`, 4500); }
+  catch (e) { toast("Не вышло: " + e.message, 5000); }
+}
+// Модель Claude по умолчанию для новых сессий — отдельной явной настройкой владельца (не из чата).
+async function defaultModelSheet() {
+  let d; try { d = await api("/api/model/default"); } catch (e) { return toast(e.message, 4500); }
+  const set = async (m) => { try { await api("/api/model/default", { model: m }); toast(m ? "Новые сессии Claude — с " + m : "Модель по умолчанию снята — решает Claude Code"); } catch (e) { toast(e.message, 4500); } };
+  helpSheet("settings.default-model");
+  sheet("Модель по умолчанию для новых сессий", [
+    { info: true, icon: "help", label: d.model ? "Сейчас: " + d.model : "Сейчас не задана — решает Claude Code", sub: "действует на все новые сессии Claude (общая настройка Claude Code). Модель одного чата — в самом чате: «Модель»" },
+    ...d.models.map((m) => ({ label: m, icon: "chip", on: d.model === m, run: () => set(m) })),
+    ...(d.model ? [{ label: "Не задавать", icon: "x", sub: "убрать — модель выберет Claude Code", run: () => set("") }] : []),
+  ]);
+}
+// У поставщика кончились деньги (balance.py) — баннер в чате: пополнить, переключить этот чат, «Я пополнил».
+function moneyBar(s) {
+  const el = $("money"); if (!el) return;
+  const p = profileOf(s?.profile || "claude");
+  const was = el.hidden;
+  el.hidden = !s?.no_balance;
+  if (was !== el.hidden) padDock();                  // баннер в нижней панели — лента не уходит под него
+  if (el.hidden) return;
+  el.innerHTML = `<p style="margin:0 0 8px"><b>У поставщика ${esc(p?.title || "")} закончились деньги</b> — пополните или переключите этот чат на другого.</p>
+    <div class="money-act">${meta?.role === "owner" ? `<button class="btn" data-money="switch">${ic("swap")}Переключить этот чат</button>` : ""}
+    ${p?.billing_url ? `<button class="btn ghost" data-money="pay">${ic("ext")}Пополнить</button>` : ""}
+    ${meta?.role === "owner" ? `<button class="btn ghost" data-money="paid">${ic("check")}Я пополнил</button>` : ""}</div>`;
+  el.onclick = async (e) => {
+    const b = e.target.closest("[data-money]"); if (!b) return;
+    if (b.dataset.money === "switch") return switchProfile(s);
+    if (b.dataset.money === "pay") return openUrl(p.billing_url);
+    try { await api("/api/balance/clear", { profile: p.id }); toast("Снова предлагаю " + p.title + " — проверьте, что ответ пришёл", 4500); } catch (err) { toast(err.message, 4500); }
+  };
+}
 // Выбор модели — только если есть ключ хоть одного поставщика кроме Claude; иначе сразу Claude (ноль лишних шагов).
 // Недоступный для страны человека — в списке с пометкой; нажатие — отказ тем же текстом, что у сервера.
 function pickProfile(go, exclude) {
-  const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key) && !p.not_ready);
+  const ready = (meta.profiles || []).filter((p) => p.id !== exclude && (!p.needs_key || p.key) && !p.not_ready && !p.no_balance);
   if (!exclude && ready.length < 2 && profileOf("claude")?.allowed !== false) return go("claude");
   helpSheet("sheet.pick-model");
   sheet(exclude ? "Перезапустить с поставщиком" : "В какой модели работать?", [
     ...ready.map((p) => p.allowed === false ? { label: p.title, icon: "lock", sub: p.denied || DENY, run: () => toast(p.denied || DENY, 4500) }
       : { label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about, gapPick(p)].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) }),
     ...(meta.profiles || []).filter((p) => p.needs_key && (!p.key || p.not_ready) && p.allowed !== false).map((p) => ({ label: p.title, icon: "key", sub: p.key ? "нет адреса шлюза — настроить" : "нет ключа — добавить", run: () => profileForm(p) })),
+    ...(meta.profiles || []).filter((p) => p.no_balance && p.key && p.id !== exclude).map((p) => ({ label: p.title, icon: "coin", sub: "у поставщика закончились деньги — пополните; снова предложу через час", run: () => p.billing_url ? openUrl(p.billing_url) : toast("Пополните счёт у поставщика", 4000) })),
   ]);
 }
 async function startSession(i, profile) {
@@ -3187,18 +3228,19 @@ const ACTIONS = {
   commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
     label: clean(label), icon: "bolt", run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
   }))),
-  models: () => {
+  models: () => {                                   // модель и поставщик — только этого чата (задача 37)
     const s = cur(), p = profileOf(s?.profile || "claude"), own = p && p.needs_key;
+    const pick = (alias, name) => setModel(s, alias, name);
     const items = own
       ? [[p.main || p.default_main, "основная", "opus"], [p.fast || p.default_fast, "быстрая — рутина и субагенты", "haiku"]]
-          .map(([name, sub, alias]) => ({ label: name, icon: "chip", sub, run: () => act("/api/model", { name: alias }, "Модель: " + name) }))
-      : meta.models.map((m) => ({ label: m, icon: "chip", sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m],
-          run: async () => { await act("/api/model", { name: m }, "Модель: " + m); effortSheet(); } }));
+          .map(([name, sub, alias]) => ({ label: name, icon: "chip", sub, on: s?.model_own === alias, run: () => pick(alias, name) }))
+      : meta.models.map((m) => ({ label: m, icon: "chip", on: s?.model_own === m, sub: { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" }[m],
+          run: () => pick(m, m) }));
     helpSheet("sheet.model");
-    sheet(`Модель · ${p?.title || "Claude"}`, [
+    sheet(`Модель этого чата · ${p?.title || "Claude"}`, [
+      { info: true, icon: "help", label: "Только для этого чата", sub: "сессия перезапустится с выбранной моделью, разговор продолжится; другие сессии и чаты не меняются" + (meta.role === "owner" ? ". Для всех новых сессий — «Настройки» → «Модель по умолчанию»" : "") },
       ...items,
-      { label: "Открыть меню /model", icon: "grid", sub: "все варианты Claude Code", run: () => act("/api/model", { name: "" }) },
-      ...(meta.role === "owner" ? [{ label: "Сменить поставщика…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — сессия перезапустится", run: () => switchProfile(s) }] : [])]);
+      ...(meta.role === "owner" ? [{ label: "Сменить поставщика этого чата…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — только эта сессия, она перезапустится", run: () => switchProfile(s) }] : [])]);
   },
   effort: () => effortSheet(),
   switch: () => $("switchBtn").onclick(),
@@ -4434,6 +4476,7 @@ $("settingsBtn").onclick = () => {
     ...(meta?.role === "owner" ? [{ label: T("st.title"), icon: "chip", sub: T("st.sub"), run: providersView }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Модель по умолчанию", icon: "chip", sub: "для всех новых сессий Claude; модель одного чата — в самом чате", run: defaultModelSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
     { label: "Язык: " + (LANG === "en" ? "English" : "русский"), icon: "globe", sub: "простого режима и экрана входа — нажмите, чтобы сменить", run: () => setLang(LANG === "en" ? "ru" : "en") },
@@ -5551,6 +5594,7 @@ function demoApi(path, body) {
   if (params.has("spaces") && own && !S.some((x) => x.space))   // ?spaces — сессия демо-пространства (группа «Пространства»)
     S.push({ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false, channel: false,
              rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", space_title: "Демо для бухгалтерии", owner_here: null });
+  if (params.has("money")) S.forEach((x) => { if (x.id === "@4") x.no_balance = true; });   // ?money — у поставщика нет денег
   demoApi.lim ||= { session: 10, day: 25 };
   if (demoApi.pz === undefined) demoApi.pz = params.get("cost") === "pause" ? "ask" : "";
   if (path === "/api/cost/limits" && body) demoApi.lim = { session: +String(body.session).replace(",", ".") || null, day: +String(body.day).replace(",", ".") || null };
@@ -5609,6 +5653,8 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  R["/api/model"] = { id: body?.w || "@1", model: body?.name || "" };
+  R["/api/model/default"] = { model: body?.model ?? "haiku", models: ["opus", "sonnet", "haiku"] };
   // задача 38: что работает у поставщика (models.py CAPS) и автотест (selftest.py)
   { const C = "claude.ai (Google Drive, Notion, Gmail, Claude Docs…)", RM = "PushNotification, RemoteTrigger, DesignSync";
     const g = (ids) => ids.map((id) => ({ id, names: { connectors: C, remote: RM, claude_md: "CLAUDE.md", webfetch: "WebFetch", websearch: "WebSearch" }[id] || "" }));

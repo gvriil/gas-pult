@@ -464,5 +464,6 @@
  "st.check.tools": "tool list",
  "st.check.tool": "tool call",
  "st.check.webfetch": "reading a page",
- "st.err": "Error: {text}"
+ "st.err": "Error: {text}",
+ "err.balance": "The provider has run out of money — top up the account or switch this chat to another provider."
 }
