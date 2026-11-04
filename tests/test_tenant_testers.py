@@ -329,6 +329,32 @@ def test_owner_sees_spaces_group_and_works_there(world):
     assert call(w, "/api/active", {"w": wid}, who=OWNER)[0] == 400       # активная в боте — только своё окно
 
 
+def test_guest_without_telegram_sees_only_own_space(world):
+    """Гость по приглашению (задача 34): без Telegram, только именем — те же границы, что у тестировщика."""
+    from gas_pult import invites
+
+    w = world
+    inv = invites.new("demo")
+    req = urllib.request.Request(w["base"] + "/api/invite/enter",
+                                 json.dumps({"code": inv["short"], "name": "Гость"}).encode())
+    with urllib.request.urlopen(req) as r:
+        tok = r.headers["Set-Cookie"].split(";")[0].split("=", 1)[1]
+    uid = w["p"].auth.uid(tok)
+    assert people.is_guest(uid) and w["p"].people.tenant(uid) == "demo"
+    w["p"].people.accept(uid)
+    w["p"].people.set_country(uid, chosen="NL")
+    w["tok"]["guest"] = tok
+    code, d = call(w, "/api/new", {"i": 0}, who="guest")
+    assert code == 200 and d["id"].startswith("t:demo:@")
+    assert wait(lambda: [s["id"] for s in call(w, "/api/sessions", who="guest")[1]["sessions"]] == [d["id"]])
+    for wid in (w["owner_w"], w["other_w"]):
+        assert call(w, f"/api/screen?w={q(wid)}", who="guest")[0] == 404
+        assert call(w, "/api/send", {"w": wid, "text": "x"}, who="guest")[0] == 404
+    for path in ("/api/mcp", "/api/people", "/api/modules", "/api/providers", "/api/notify-done"):
+        assert call(w, path, who="guest")[1].get("code") == "space", path
+    assert call(w, "/api/meta", who="guest")[1]["projects"] == []
+
+
 def test_owner_revives_space_window_with_space_command(world, monkeypatch):
     """«Перезапустить» остановленную сессию пространства — командой пространства (tenants.command: свой PATH, профиль
     и ключ), а не командой владельца с его настройками; активной в боте она не становится."""
