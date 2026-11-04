@@ -13,7 +13,8 @@ TENANTS=$SRV/tenants
 SUDOERS=/etc/sudoers.d/gas-pult-tenants
 FSTAB=/etc/fstab
 BACKUP=$SRV/etc-backup
-GROUP_RO=pult-ro
+GROUP_RO=${PULT_GROUP_RO:-pult-ro}   # переменная — только для тестов (sudo её не пропустит)
+PROC=${PULT_PROC:-/proc}
 GROUP_TENANTS=pult-tenants
 VISUDO=$(command -v visudo || echo /usr/sbin/visudo)
 
@@ -99,7 +100,12 @@ cmd_install() {
     say "✓ $OWNER уже в $GROUP_RO"
   else
     run usermod -aG "$GROUP_RO" "$OWNER"
-    say "  перезапустите пульт, чтобы группа подхватилась: systemctl --user restart gas-pult gas-pult-webapp (от $OWNER)"
+  fi
+  if group_tool >/dev/null; then
+    say "  пульт получит группу сам: systemctl --user restart gas-pult gas-pult-webapp (от $OWNER; запуск через $(group_tool))"
+  else
+    say "  ! нет sg и newgrp с -c — без них пульт группу не получит (systemd --user запущен до неё):"
+    say "    sudo apt install util-linux-extra, затем systemctl --user restart gas-pult gas-pult-webapp (от $OWNER)"
   fi
 
   say "== 2. Папки $SRV"
@@ -201,6 +207,41 @@ cmd_uninstall() {
   say "убрать пространство: sudo bin/pult-tenant destroy <имя>; группы: sudo groupdel $GROUP_TENANTS; sudo groupdel $GROUP_RO."
 }
 
+group_tool() {  # чем пульт сменит группу без root: sg (shadow) или newgrp из util-linux (у него есть -c)
+  if command -v sg >/dev/null; then echo sg; return 0; fi
+  if command -v newgrp >/dev/null && newgrp --version </dev/null 2>&1 | grep -q util-linux; then echo newgrp; return 0; fi
+  return 1
+}
+
+pult_groups() {  # процессы пульта (gas_pult run / webapp) и есть ли у них группа GROUP_RO
+  local gid d cmd kind uid want n=0 bad=0
+  gid=$(getent group "$GROUP_RO" | cut -d: -f3)
+  [ -n "$gid" ] || return 0
+  want=""
+  [ -n "$OWNER" ] && want=$(id -u "$OWNER" 2>/dev/null || true)
+  for d in "$PROC"/[0-9]*; do
+    [ -r "$d/cmdline" ] && [ -r "$d/status" ] || continue
+    cmd=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null) || continue
+    case " $cmd" in
+      *" -m gas_pult webapp "*) kind=webapp ;;
+      *" -m gas_pult run "*|*" -m gas_pult ") kind=бот ;;
+      *) continue ;;
+    esac
+    uid=$(awk '/^Uid:/ {print $2}' "$d/status")
+    [ -z "$want" ] || [ "$uid" = "$want" ] || continue
+    n=$((n + 1))
+    if awk -v g="$gid" '/^Groups:/ {for (i = 2; i <= NF; i++) if ($i == g) f = 1}
+                        /^Gid:/ {if ($3 == g || $5 == g) f = 1} END {exit !f}' "$d/status"; then
+      say "✓ пульт ($kind, PID ${d##*/}): группа $GROUP_RO есть"
+    else
+      bad=$((bad + 1))
+      say "✗ у пульта нет группы $GROUP_RO ($kind, PID ${d##*/}) — systemctl --user restart gas-pult gas-pult-webapp (от владельца)"
+    fi
+  done
+  [ "$n" -gt 0 ] || say "процессов пульта не найдено"
+  [ "$bad" -eq 0 ]
+}
+
 cmd_status() {
   if [ -f "$TENANTS/.enabled" ]; then say "отметка: $(cat "$TENANTS/.enabled")"; else say "отметки нет — функция выключена"; fi
   if [ -e "$SUDOERS" ]; then say "правило sudo: $SUDOERS"; else say "правила sudo нет (или не видно без root)"; fi
@@ -208,6 +249,11 @@ cmd_status() {
     say "группа $GROUP_RO: $(getent group "$GROUP_RO" | cut -d: -f4)"
   else
     say "группы $GROUP_RO нет"
+  fi
+  if getent group "$GROUP_RO" >/dev/null; then
+    if group_tool >/dev/null; then say "обёртка группы: $(group_tool)"
+    else say "✗ нет sg и newgrp с -c — пульт не получит $GROUP_RO: sudo apt install util-linux-extra"; fi
+    pult_groups || true
   fi
   if grep -Eq '^[^#]*hidepid=' /proc/mounts; then say "/proc: hidepid включён"; else say "/proc: hidepid выключен"; fi
   if [ -n "$OWNER" ] && id -u "$OWNER" >/dev/null 2>&1; then

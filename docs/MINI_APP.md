@@ -142,6 +142,8 @@
    ```bash
    systemctl --user daemon-reload && systemctl --user enable --now gas-pult-caddy gas-pult-webapp
    ```
+   С демо-пространствами панели нужна группа `pult-ro` — `gas-pult webapp` получает её сам при запуске
+   (`sg`/`newgrp`, [TENANTS.md](TENANTS.md#шаг-1-настройка--один-раз)); юнит менять не нужно.
 6. **Проверка:** `curl -I https://pult.example.com:8443` с другой машины → `200`; в чате с ботом — кнопка «📱 Панель».
 
 ## Claude ещё не готов — мастер
