@@ -281,12 +281,103 @@ def test_bot_schedule_sends_prompt_or_opens_window(pult, tmp_path, monkeypatch):
     p.module_tick(datetime(2026, 11, 2, 8, 2))
     assert len(pasted) == 1                                                    # раз в день
     p.project_window = lambda path: None                                       # окна нет — открываем
+    p.folder_window = lambda path: None
     p.people.set_country(1, chosen="NL")
     monkeypatch.setattr(p.tmux, "new_window", lambda name, path, cmd, **kw: opened.append((name, path)) or "@8")
     monkeypatch.setattr(p.tmux, "run", lambda *a, **kw: "")
     p.module_tick(datetime(2026, 11, 3, 8, 0))
-    assert opened == [("morning-numbers-0800", str(folder))] and p.later[-1][0] == "@8"
+    # задача 39: имя окна — папка, без «-0800» (раньше каждый запуск давал новое окно с суффиксом)
+    assert opened == [("morning-numbers", str(folder))] and p.later[-1][0] == "@8"
     assert "открыл сессию по расписанию" in p.sent[-1][0]
+    # окно папки есть, Claude в нём остановлен — запускаем в нём же, нового окна нет
+    respawned = []
+    p.folder_window = lambda path: {"id": "@8", "name": "morning-numbers", "mark": "claude"}
+    monkeypatch.setattr(p.tmux, "respawn", lambda wid, path, cmd, mark="": respawned.append((wid, path)))
+    p.module_tick(datetime(2026, 11, 4, 8, 0))
+    assert respawned == [("@8", str(folder))] and len(opened) == 1 and p.later[-1][0] == "@8"
+
+
+# ---------- расписание: on / paused / off (задача 39) ----------
+def _space(tmp_path, mid="morning-numbers"):
+    root = tmp_path / "projects"
+    folder = modules.create(mid, root)
+    mark = json.loads((folder / modules.MARK).read_text())
+    mark["created"] = 0
+    (folder / modules.MARK).write_text(json.dumps(mark))
+    return root, folder
+
+
+def test_schedule_states_and_legacy_off(tmp_path):
+    root, folder = _space(tmp_path)
+    sch = modules.Schedule(tmp_path / "modules.json")
+    assert modules.mark_of(folder)["schedule"] == "on"
+    modules.set_schedule(folder, "paused")
+    assert sch.due([root], datetime(2026, 11, 2, 8, 0)) == []                   # на паузе — не открываем
+    modules.set_schedule(folder, "on")
+    assert len(sch.due([root], datetime(2026, 11, 3, 8, 0))) == 1
+    # прежний ручной способ: .gas-pult-module.off — читается как off
+    (folder / modules.MARK).rename(folder / modules.MARK_OFF)
+    assert modules.mark_of(folder)["schedule"] == "off"
+    assert sch.due([root], datetime(2026, 11, 4, 8, 0)) == []
+    modules.set_schedule(folder, "on")                                         # миграция: снова обычная отметка
+    assert (folder / modules.MARK).exists() and not (folder / modules.MARK_OFF).exists()
+    assert len(sch.due([root], datetime(2026, 11, 5, 8, 0))) == 1
+    with pytest.raises(ValueError):
+        modules.set_schedule(folder, "sometimes")
+    with pytest.raises(ValueError):
+        modules.set_schedule(tmp_path, "off")                                  # не пространство
+
+
+def test_schedule_text_and_next_run():
+    m = next(x for x in modules.catalog() if x["id"] == "morning-numbers")
+    assert modules.schedule_text(m).endswith("08:00")
+    nxt = modules.next_run(m, datetime(2026, 11, 2, 9, 0))
+    assert nxt is not None and nxt > datetime(2026, 11, 2, 9, 0) and nxt.strftime("%H:%M") == "08:00"
+    assert modules.next_run(m, datetime(2026, 11, 2, 7, 0)).date() == datetime(2026, 11, 2).date()
+
+
+def test_deleted_session_never_comes_back(panel, tmp_path, monkeypatch):
+    """«Удалить» сессию модуля: расписание выключено навсегда, папка — в корзину; по расписанию не возвращается,
+    даже если папку вернуть."""
+    root, folder = _space(tmp_path)
+    monkeypatch.setattr(panel, "close_ex", lambda w: {"result": "закрыто", "draft": ""})
+    w = {"id": "@5", "path": str(folder), "cmd": "claude", "name": "morning-numbers"}
+    with pytest.raises(ValueError):
+        panel.module_delete(w, "не то имя")
+    assert folder.exists()
+    d = panel.module_delete(w, "morning-numbers")
+    assert d["result"] == "удалено" and not folder.exists()
+    trashed = next((panel.cfg.data / "trash" / "modules").iterdir())
+    assert modules.mark_of(trashed)["schedule"] == "off"
+    sch = modules.Schedule(tmp_path / "modules.json")
+    for day in (2, 3, 4):
+        assert sch.due([root], datetime(2026, 11, day, 8, 0)) == []
+    trashed.rename(folder)                                                     # вернули папку — само не запустится
+    assert sch.due([root], datetime(2026, 11, 5, 8, 0)) == []
+    with pytest.raises(ValueError):
+        panel.module_delete({"id": "@6", "path": str(tmp_path), "cmd": "claude"}, tmp_path.name)   # не модуль
+
+
+def test_closed_with_pause_waits_until_enabled(server, tmp_path, monkeypatch):
+    """«Завершить» сессию модуля с «Приостановить» — по расписанию не возвращается, пока не включат."""
+    panel, base = server
+    root, folder = _space(tmp_path)
+    w = {"id": "@5", "path": str(folder), "cmd": "claude", "name": "morning-numbers"}
+    monkeypatch.setattr(panel, "window", lambda wid: w if wid == "@5" else None)
+    monkeypatch.setattr(panel.tmux, "window", lambda wid: w if wid == "@5" else None)
+    monkeypatch.setattr(panel, "close_ex", lambda w_: {"result": "закрыто", "draft": ""})
+    owner, member = panel.auth.issue(1), panel.auth.issue(2)
+    code, d = call(base, "/api/close", {"w": "@5", "schedule": "paused"}, owner)
+    assert code == 200 and d["result"] == "закрыто", d
+    sch = modules.Schedule(tmp_path / "modules.json")
+    for day in (2, 3):
+        assert sch.due([root], datetime(2026, 11, day, 8, 0)) == []
+    # переключатель на карточке: участник, не создавший пространство, — нельзя; владелец — включает
+    assert call(base, "/api/module/schedule", {"w": "@5", "state": "on"}, member)[0] == 400
+    code, d = call(base, "/api/module/schedule", {"w": "@5", "state": "on"}, owner)
+    assert code == 200 and d["state"] == "on" and d["next"] and "08:00" in d["text"]
+    assert len(sch.due([root], datetime(2026, 11, 4, 8, 0))) == 1
+    assert call(base, "/api/module/delete", {"w": "@5", "confirm": "morning-numbers"}, member)[0] == 403
 
 
 # ---------- «Новая папка»: в боте (🆕 → 📁) и в панели («Новая сессия» → «Новая папка») ----------
