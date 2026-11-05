@@ -36,6 +36,8 @@ from gas_pult.mcp import CONNECTORS, PRESETS
 from gas_pult.personas import SECTIONS
 
 MARK = ".gas-pult-module"                         # отметка пространства: из какого модуля, версия, кто создал
+MARK_OFF = ".gas-pult-module.off"                 # прежний ручной способ выключить расписание — читается как off
+SCHEDULE_STATES = ("on", "paused", "off")         # поле schedule в отметке: работает / на паузе / выключено навсегда
 ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")      # id модуля и имя папки: латиница, цифры, дефис
 AT = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 CATCH_UP = 3 * 3600                               # пульт был выключен в назначенное время — догоняем не позже 3 ч
@@ -409,11 +411,67 @@ def claude_md(m: dict) -> str:
 
 
 def mark_of(folder: Path) -> dict | None:
-    try:
-        d = json.loads((folder / MARK).read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) and d.get("id") else None
-    except (OSError, ValueError):
-        return None
+    """Отметка пространства. ``schedule``: on (по умолчанию) / paused / off; ``.gas-pult-module.off`` — off."""
+    for name, off in ((MARK, False), (MARK_OFF, True)):
+        try:
+            d = json.loads((folder / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and d.get("id"):
+            st = "off" if off else d.get("schedule")
+            return {**d, "schedule": st if st in SCHEDULE_STATES else "on"}
+    return None
+
+
+def set_schedule(folder: Path, state: str) -> dict:
+    """Расписание пространства: on / paused / off — в отметке (``.off`` переводится в обычную отметку)."""
+    if state not in SCHEDULE_STATES:
+        raise ValueError("расписание: on, paused или off")
+    mk = mark_of(folder)
+    if not mk:
+        raise ValueError("эта папка — не пространство из модуля")
+    mk["schedule"] = state
+    tmp = folder / f"{MARK}.tmp"
+    tmp.write_text(json.dumps(mk, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    tmp.replace(folder / MARK)
+    (folder / MARK_OFF).unlink(missing_ok=True)
+    return mk
+
+
+def schedule_text(m: dict) -> str:
+    """«по будням 10:00, 17:00» — расписание модуля одной строкой (пункты с одинаковыми днями — вместе)."""
+    groups: dict[str, list[str]] = {}
+    for it in m.get("schedule") or []:
+        if it.get("every"):
+            key, at = days_text(it["days"]), f"{it['at']}–{it['until']} каждые {it['every']} мин"
+        elif it.get("workday"):
+            key, at = f"{it['workday']}-й рабочий день месяца", it["at"]
+        else:
+            key, at = days_text(it["days"]), it["at"]
+        groups.setdefault(key, []).append(at)
+    return "; ".join(f"{k} {', '.join(v)}" for k, v in groups.items())
+
+
+def next_run(m: dict, now: datetime, cal=None) -> datetime | None:
+    """Ближайший запуск по расписанию модуля после ``now`` (в пределах 40 дней)."""
+    best = None
+    for it in m.get("schedule") or []:
+        hh, mm = int(it["at"][:2]), int(it["at"][3:])
+        for d in range(0, 40):
+            day = (now + timedelta(days=d)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if it.get("workday"):
+                cal = work_calendar() if cal is None else cal
+                if nth_workday(day.year, day.month, it["workday"], cal) != day.date():
+                    continue
+            elif day.isoweekday() not in it["days"]:
+                continue
+            if it.get("every") and d == 0 and it["at"] <= now.strftime("%H:%M") <= it["until"]:
+                day = now + timedelta(minutes=it["every"] - (now.minute % it["every"]))
+            elif day <= now:
+                continue
+            best = day if best is None or day < best else best
+            break
+    return best
 
 
 def workspaces(roots: list[Path]) -> list[tuple[Path, dict]]:
@@ -478,6 +536,8 @@ class Schedule:
         st, today, out = self.load(), now.strftime("%Y-%m-%d"), []
         by_id, cal = {m["id"]: m for m in catalog()}, None
         for folder, mk in workspaces(roots):
+            if mk.get("schedule", "on") != "on":       # на паузе или выключено — не открываем и не пишем
+                continue
             m = by_id.get(mk["id"])
             for item in (m or {}).get("schedule", []):
                 if item.get("every"):

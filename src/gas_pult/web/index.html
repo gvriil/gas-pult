@@ -202,6 +202,7 @@
   .cc-sig { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: calc(14px * var(--fz, 1)); }
   .cc-sig .i { flex: none; color: var(--text-secondary); margin-top: 1px; } .cc-sig b { font-weight: 600; }
   .cc-sig .hint { margin-top: 2px; } .cc-sig a { color: var(--accent-primary); }
+  .chip.sched { border: 0; cursor: pointer; } .chip.sched.off { opacity: .7; }
   .panel.money { margin: 0 0 8px; padding: 10px 12px; border-color: var(--status-danger); } .money-act { display: flex; flex-wrap: wrap; gap: 8px; } .money-act .btn { width: auto; flex: 1 1 160px; margin: 0; }
   .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
   /* «Запасные»: порядок поставщиков, на которые сессия переходит сама */
@@ -1949,7 +1950,7 @@ function card(s) {
       <div class="ctext"><div class="name">${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
     ${costBar(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
@@ -1959,6 +1960,51 @@ function card(s) {
 // Владелец видит окна пространств отдельной группой «Пространства»: читает, пишет, отвечает («Подключиться» —
 // тестировщик увидит «Владелец подключился»), ставит задачу новой сессией. Тестировщик видит только своё.
 let spacesInfo = null;                                // /api/spaces (владельцу): включено ли и какие есть
+// Расписание пространства из модуля (задача 39): «🗓 по будням 10:00, 17:00 · следующий: завтра 10:00» — переключатель.
+function schedWhen(ts) {
+  if (!ts) return "";
+  const d = new Date(ts * 1000), now = new Date(), day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86400000), hm = d.toTimeString().slice(0, 5);
+  return (diff === 0 ? "сегодня" : diff === 1 ? "завтра" : d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })) + " " + hm;
+}
+function schedLabel(sc) {
+  return sc.state === "on" ? (sc.next ? "следующий запуск: " + schedWhen(sc.next) : "по расписанию") : sc.state === "paused" ? "приостановлено" : "выключено";
+}
+function schedChip(s) {
+  const sc = s.schedule; if (!sc) return "";
+  return `<button class="chip sched${sc.state === "on" ? "" : " off"}" data-sched="${esc(s.id)}" title="${esc("Расписание: " + sc.text)}">${ic("cal")}${esc(schedLabel(sc))}</button>`;
+}
+function scheduleSheet(s, after) {
+  const sc = s.schedule; if (!sc) return;
+  const set = async (state) => {
+    try { const r = await api("/api/module/schedule", { w: s.id, state }); s.schedule = r; toast(state === "on" ? "Расписание включено: " + schedLabel(r) : state === "paused" ? "Расписание приостановлено — включите, когда нужно" : "Расписание выключено", 4500); refresh(); after?.(); }
+    catch (e) { toast(e.message, 5000); }
+  };
+  helpSheet("sheet.schedule");
+  sheet(`Расписание «${s.name}»`, [
+    { info: true, icon: "cal", label: sc.text, sub: sc.state === "on" ? schedLabel(sc) : sc.state === "paused" ? "приостановлено: агент не запускается, пока не включите" : "выключено: агент сам не запускается" },
+    { label: "Включено", icon: "play", on: sc.state === "on", sub: "агент запускается сам в это время", run: () => set("on") },
+    { label: "Приостановить", icon: "pause", on: sc.state === "paused", sub: "не запускать, пока не включу", run: () => set("paused") },
+    { label: "Выключить", icon: "x", on: sc.state === "off", sub: "сам больше не запускается; включить можно здесь же", run: () => set("off") },
+  ]);
+}
+// «Удалить» сессию модуля: расписание выключается навсегда, папка — в корзину пульта; второе подтверждение — именем папки.
+function moduleDelete(s) {
+  const name = (s.path || "").split("/").pop();
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.module-delete");
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Удалить «${esc(name)}»?</h3>
+    <p class="note" style="margin:4px 16px 8px">Сессия закроется, расписание агента выключится навсегда, папка с файлами уйдёт в корзину пульта (вернуть — перенести обратно). Чтобы удалить, введите имя папки: <b>${esc(name)}</b></p>
+    <div class="field" style="margin:0 16px"><input id="mdName" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn danger" id="mdOk" disabled>Удалить</button></div></div>`;
+  document.body.append(bg);
+  const inp = $("mdName"), ok = $("mdOk"); inp.focus();
+  inp.oninput = () => { ok.disabled = inp.value.trim() !== name; };
+  ok.onclick = () => busy(ok, "Удаляю…", async () => {
+    try { const r = await api("/api/module/delete", { w: s.id, confirm: inp.value.trim() }); bg.remove(); toast("Удалено, расписание выключено. Папка — в " + r.trash, 6000); if (s.id === current) back(); else refresh(); }
+    catch (e) { toast(e.message, 5000); }
+  });
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
 function spaceChips(s) {
   if (!s.space) return "";
   return (meta?.role === "owner" ? `<span class="chip space" title="Сессия демо-пространства">${ic("flask")}${esc(s.space_title || s.space)}</span>` : "")
@@ -2379,6 +2425,7 @@ $("sessionsView").addEventListener("click", (e) => {
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
+  const sc = e.target.closest("[data-sched]"); if (sc) { const s = sessions.find((x) => x.id === sc.dataset.sched); return s && scheduleSheet(s); }
   const c = e.target.closest(".card[data-id]"); if (c) openSession(c.dataset.id);
 });
 $("newBtn").onclick = () => newSession();
@@ -2492,7 +2539,9 @@ function sessionSheet(id) {
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role !== "viewer" ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
     ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
+    ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(s.space && meta?.role !== "viewer" ? [
       { label: T("ss.close.item"), sub: T("ss.close.sub"), icon: "power", run: () => ssClose(s) },
       { label: T("ss.del.item"), sub: T("ss.del.sub"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) },
@@ -2502,6 +2551,15 @@ function sessionSheet(id) {
 }
 function confirmClose(id) {
   const s = sessions.find((x) => x.id === id);
+  if (s?.schedule?.state === "on") {                // агент из модуля с расписанием: что с ним после закрытия
+    helpSheet("sheet.schedule");
+    return sheet(`Завершить «${s.name}»?`, [
+      { info: true, icon: "cal", label: `Расписание этого агента: ${s.schedule.text}`, sub: "сессия закроется, переписка сохранится. Что с расписанием?" },
+      { label: "Оставить", icon: "play", sub: schedLabel(s.schedule) + " — агент снова откроется сам", run: () => closeSession(id, "on") },
+      { label: "Приостановить", icon: "pause", sub: "не запускать, пока не включу", run: () => closeSession(id, "paused") },
+      { label: "Выключить", icon: "x", sub: "сам больше не запускается", run: () => closeSession(id, "off") },
+    ]);
+  }
   confirmDanger(`Завершить «${s?.name || "сессию"}»? Claude выйдет штатно, переписка сохранится.`, () => closeSession(id));
 }
 
@@ -3273,9 +3331,9 @@ function effortSheet() {
     ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
     .map(([v, label, sub]) => ({ label, sub, icon: "bolt", run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
 }
-async function closeSession(id = current) {
+async function closeSession(id = current, schedule = "") {
   try {
-    const d = await api("/api/close", { w: id }); toast(d.result === "закрыто" ? "Сессия завершена" : "Не завершена: " + d.result, 4500);
+    const d = await api("/api/close", { w: id, ...(schedule ? { schedule } : {}) }); toast(d.result === "закрыто" ? "Сессия завершена" : "Не завершена: " + d.result, 4500);
     if (d.result === "закрыто") { if (id === current) back(); else refresh(); }
     if (d.draft) draftSheet(d.draft);                 // неотправленный текст из поля ввода — не теряем молча
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
@@ -4076,7 +4134,7 @@ function moduleView(m) {
     <div class="section">Что будет в папке</div><div class="panel"><div class="conn">${[...m.files, ...(m.skills.length ? [".claude/skills/"] : [])].map((f) => `<span class="chip">${esc(f)}</span>`).join("")}</div>
       ${m.skills.length ? `<p class="note" style="margin:8px 0 0">Навыки: ${esc(m.skills.join(", "))}${m.uses?.length ? " · общие блоки: " + esc(m.uses.map((u) => u.title).join(", ")) : ""}</p>` : ""}</div>
     ${can && m.existing?.length ? `<div class="section">Уже есть</div><div class="panel">${m.existing.map((x) => `<button class="btn" data-mopen="${x.i ?? ""}" data-mw="${esc(x.open || "")}">${ic("folder")}Открыть «${esc(x.folder)}»</button>
-      <p class="note" style="margin:-2px 0 10px">${esc(x.path)}${x.changed && agoText(x.changed) ? " · изменено " + esc(agoText(x.changed, nowSec(), true)) : ""}${x.open ? " · сессия открыта" : ""}</p>`).join("")}</div>` : ""}
+      <p class="note" style="margin:-2px 0 10px">${esc(x.path)}${x.changed && agoText(x.changed) ? " · изменено " + esc(agoText(x.changed, nowSec(), true)) : ""}${x.open ? " · сессия открыта" : ""}${x.schedule ? " · расписание: " + esc(x.schedule.text) + " — " + esc(schedLabel(x.schedule)) : ""}</p>`).join("")}</div>` : ""}
     ${can ? `<div class="section">${m.existing?.length ? "Создать ещё одно" : "Создать пространство"}</div><div class="panel">
       <div class="field"><label for="modName">Имя папки</label><input id="modName" value="${esc(m.folder)}" autocapitalize="off" spellcheck="false" autocomplete="off">
         <div class="hint">Латиница, цифры, дефис. Папка появится в «${esc(modData?.root || "projects")}»; существующие не перезаписываются.</div></div>
@@ -5595,6 +5653,10 @@ function demoApi(path, body) {
     S.push({ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false, channel: false,
              rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", space_title: "Демо для бухгалтерии", owner_here: null });
   if (params.has("money")) S.forEach((x) => { if (x.id === "@4") x.no_balance = true; });   // ?money — у поставщика нет денег
+  demoApi.sch ||= { state: "on" };                    // расписание агента из модуля (@3 — «Ночная смена»)
+  if (path === "/api/module/schedule" && body?.state) demoApi.sch.state = body.state;
+  { const x = S.find((y) => y.id === "@3"); const tm = new Date(); tm.setDate(tm.getDate() + 1); tm.setHours(10, 0, 0, 0);
+    if (x) x.schedule = { state: demoApi.sch.state, text: "по будням 10:00, 17:00", next: demoApi.sch.state === "on" ? Math.floor(tm / 1000) : null }; }
   demoApi.lim ||= { session: 10, day: 25 };
   if (demoApi.pz === undefined) demoApi.pz = params.get("cost") === "pause" ? "ask" : "";
   if (path === "/api/cost/limits" && body) demoApi.lim = { session: +String(body.session).replace(",", ".") || null, day: +String(body.day).replace(",", ".") || null };
@@ -5653,6 +5715,8 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
+  R["/api/module/delete"] = { result: "удалено", trash: "~/.local/share/gas-pult/trash/modules/20261105-101500__gas-pult" };
   R["/api/model"] = { id: body?.w || "@1", model: body?.name || "" };
   R["/api/model/default"] = { model: body?.model ?? "haiku", models: ["opus", "sonnet", "haiku"] };
   // задача 38: что работает у поставщика (models.py CAPS) и автотест (selftest.py)

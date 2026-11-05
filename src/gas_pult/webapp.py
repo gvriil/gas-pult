@@ -25,13 +25,14 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
 import time
 import urllib.parse
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -160,6 +161,7 @@ class Panel:
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.model_cache: dict[tuple, tuple[str, str]] = {}  # (папка, папка Claude) → (ревизия, модель ответа)
         self.mod_sections: tuple[float, dict] = (0.0, {})    # модуль → разделы чата (sections_of)
+        self.mod_sched: tuple[float, dict] = (0.0, {})       # модуль → описание (schedule_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
@@ -235,6 +237,7 @@ class Panel:
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
                         "sections": self.sections_of(w["path"]),          # разделы чата бизнес-ролей; [] — во всех
+                        "schedule": self.schedule_of(w["path"]),          # расписание модуля: on/paused/off, следующий
                         **self.space_fields(w),                           # окно демо-пространства (spaces.py)
                         **self.money_of(w, lines),                        # у поставщика нет денег (balance.py)
                         "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
@@ -486,6 +489,52 @@ class Panel:
         if time.time() - self.mod_sections[0] > 60:
             self.mod_sections = (time.time(), {m["id"]: m["sections"] for m in modules.catalog()})
         return list(self.mod_sections[1].get(str(mk.get("id")), []))
+
+    def schedule_of(self, path: str, now: datetime | None = None) -> dict | None:
+        """Расписание пространства из модуля (задача 39): состояние on/paused/off, «по будням 10:00, 17:00» и
+        следующий запуск. Папка не из модуля или у модуля нет расписания — None."""
+        mk = modules.mark_of(Path(path))
+        if not mk:
+            return None
+        if time.time() - self.mod_sched[0] > 60:
+            self.mod_sched = (time.time(), {m["id"]: m for m in modules.catalog()})
+        m = self.mod_sched[1].get(str(mk.get("id")))
+        if not m or not m.get("schedule"):
+            return None
+        nxt = modules.next_run(m, now or datetime.now()) if mk["schedule"] == "on" else None
+        return {"state": mk["schedule"], "text": modules.schedule_text(m),
+                "next": int(nxt.timestamp()) if nxt else None}
+
+    def set_schedule(self, path: str, state: str, uid=None) -> dict:
+        """Переключатель «Расписание»: on / paused / off — владельцу и тому, кто создал пространство."""
+        mk = modules.mark_of(Path(path))
+        if not mk:
+            raise ValueError("эта папка — не пространство из модуля")
+        if uid is not None and not self.is_owner(uid) and str(mk.get("by")) != str(uid):
+            raise PermissionError("расписание меняет владелец или тот, кто создал пространство")
+        modules.set_schedule(Path(path), state)
+        return self.schedule_of(path) or {"state": state}
+
+    def module_delete(self, w: dict, confirm: str) -> dict:
+        """«Удалить» сессию модуля: расписание — выключено навсегда, окно закрыто, папка — в корзину пульта
+        (``<данные>/trash/modules/<время>__<папка>``; вернуть — перенести обратно)."""
+        folder = Path(w["path"])
+        if not modules.mark_of(folder):
+            raise ValueError("это не пространство из модуля — «Завершить сессию»")
+        if confirm != folder.name:
+            raise ValueError("для удаления введите имя папки точно")
+        modules.set_schedule(folder, "off")             # даже если папку вернут — само не запустится
+        if w.get("cmd") == "claude":
+            r = self.close_ex(w)
+            if r["result"] != "закрыто":
+                raise ValueError(r["result"])
+        elif self.tmux.window(w["id"]):
+            self.tmux.kill(w["id"])
+        trash = self.cfg.data / "trash" / "modules"
+        trash.mkdir(parents=True, exist_ok=True, mode=0o700)
+        dst = trash / f"{time.strftime('%Y%m%d-%H%M%S')}__{folder.name}"
+        shutil.move(str(folder), str(dst))
+        return {"result": "удалено", "trash": self.pult.short(str(dst))}
 
     def agent_of(self, path: str) -> str:
         """Название модуля, из которого создано пространство (простой режим зовёт агента так), иначе ""."""
@@ -1164,7 +1213,8 @@ class Panel:
             p = str(x["path"])
             w = self.pult.project_window(p)
             out.append({"folder": x["folder"], "path": self.pult.short(p), "changed": x["changed"],
-                        "i": dirs.index(p) if p in dirs else None, "open": w["id"] if w else None})
+                        "i": dirs.index(p) if p in dirs else None, "open": w["id"] if w else None,
+                        "schedule": self.schedule_of(p)})
         return out
 
     def module_create(self, mid: str, name: str, profile: str = "", person: int | None = None, uid=None,
@@ -1581,7 +1631,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
-              "/api/model/default", "/api/balance/clear",
+              "/api/model/default", "/api/balance/clear", "/api/module/delete",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
@@ -2429,6 +2479,13 @@ def handler(panel: Panel):
                         "ttl": webauth.LOGIN_TTL}
             if path == "/api/space/task":
                 return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
+            if path in ("/api/module/schedule", "/api/module/delete"):   # пространство из модуля (задача 39)
+                w = panel.tmux.window(str(b.get("w") or ""))
+                if not w:
+                    raise LookupError("окна уже нет")
+                if path == "/api/module/schedule":
+                    return panel.set_schedule(w["path"], str(b.get("state", "")), self.terms_uid())
+                return panel.module_delete(w, str(b.get("confirm", "")))
             w = self.win(b.get("w"))
             if path == "/api/space/connect":
                 return panel.owner_join(w)
@@ -2466,6 +2523,8 @@ def handler(panel: Panel):
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
             if path == "/api/close":
+                if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
+                    panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
                 return panel.close_ex(w)                   # {result, draft}: черновик не теряется молча
             if path == "/api/restart":
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())

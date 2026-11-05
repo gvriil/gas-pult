@@ -536,6 +536,11 @@ class Pult:
         return next((w for w in self.tmux.windows()
                      if w["cmd"] == "claude" and os.path.realpath(w["path"]) == real), None)
 
+    def folder_window(self, path: str) -> dict | None:
+        """Любое окно этой папки (в том числе с остановленным Claude) — для запуска по расписанию в нём же."""
+        real = os.path.realpath(path)
+        return next((w for w in self.tmux.windows() if os.path.realpath(w["path"]) == real), None)
+
     def claude_dir(self, uid) -> Path | None:
         """Папка Claude Code человека для новых окон; владелец — None (``~/.claude``)."""
         return people.claude_dir(self.cfg.data, uid, self.cfg.owners)
@@ -1159,6 +1164,14 @@ class Pult:
                 if w := self.project_window(str(folder)):
                     self.to_claude(w, item["prompt"])
                     continue
+                if w := self.folder_window(str(folder)):   # окно папки есть, Claude в нём остановлен — в нём же
+                    by = modules.mark_of(folder).get("by")
+                    home = self.claude_dir(by) if by is not None else None
+                    self.tmux.respawn(w["id"], str(folder), models.with_home(self.cfg.claude, home),
+                                      mark=w.get("mark") or "claude")
+                    self.send_later(w["id"], item["prompt"])
+                    self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{w['name']}» ({item['title']}).")
+                    continue
                 if not setup.installed(self.cfg.claude):
                     self.broadcast(f"🗓 {name}: {item['at']} — Claude Code не установлен, задание не отправлено.")
                     continue
@@ -1167,7 +1180,7 @@ class Pult:
                     self.broadcast(f"🗓 {name}: {item['at']} — {country.DENY}")
                     continue
                 home = self.claude_dir(by) if by is not None else None
-                wid = self.tmux.new_window(f"{folder.name}-{now.strftime('%H%M')}", str(folder),
+                wid = self.tmux.new_window(folder.name, str(folder),             # имя — папка, без «-ЧЧММ»
                                            models.with_home(self.cfg.claude, home), by=str(by) if home else "")
                 if not home:
                     self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(self.cfg.owners[0]))
