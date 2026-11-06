@@ -52,6 +52,7 @@ from gas_pult import (
     offer_report,
     offers,
     oidc,
+    passcheck,
     passkeys,
     personas,
     providers,
@@ -1539,12 +1540,22 @@ class Panel:
                              "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
         if c["danger"] and not confirmed:
             return {"confirm": True}
+        if self.pass_locked(c["cmd"]):
+            return {"locked": True, "error": PASS_LOCKED}
         code, secs, out = execute(c["cmd"], w["path"])
         tri, to = self.triage(w["path"], w["id"], c["cmd"], code, out)
         self.journal.collect([w], self.pult.cmds.kind)               # та же отметка — во вкладке «Команды»
         self.journal.mark_cmd(w["path"], c["cmd"], self.done(code, secs, out, "panel", tri, to), out)
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
                 **({"full": out[-FULL:]} if len(out) > TAIL else {}), "triage": tri, "triage_to": to}
+
+    @staticmethod
+    def pass_locked(cmd: str) -> bool:
+        """Команде нужен pass/gpg, а хранилище заблокировано — не запускать (passcheck.py)."""
+        return passcheck.needs(cmd) and passcheck.unlocked(fresh=True) is False
+
+    def pass_status(self, fresh: bool = False) -> dict:
+        return passcheck.status(self.pult.state(), self.pult.set_state, fresh)
 
     def triage(self, path: str, wid: str, cmd: str, code, out: str) -> tuple[str, str]:
         """Упала — в сессию на разбор (одну ошибку — один раз); вставка — под замком окна, как обычное сообщение."""
@@ -1577,6 +1588,8 @@ class Panel:
                              "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
         if c["danger"] and not confirmed:
             return {"confirm": True}
+        if self.pass_locked(c["cmd"]):
+            return {"locked": True, "error": PASS_LOCKED}
         self.journal.update(cid, running=utc_now())                  # другим устройствам — «выполняется»
         try:
             code, secs, out = execute(c["cmd"], c["path"])
@@ -1626,12 +1639,14 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 """
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
+PASS = ("/api/pass", "/api/pass/unlock", "/api/pass/type")   # хранилище паролей сервера (passcheck.py) — владельцу
+PASS_LOCKED = "Хранилище паролей заблокировано — команда не запущена. Разблокируйте и выполните снова."
 OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
-              "/api/model/default", "/api/balance/clear", "/api/module/delete",
+              "/api/model/default", "/api/balance/clear", "/api/module/delete", *PASS,
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
@@ -1992,6 +2007,8 @@ def handler(panel: Panel):
                                                      self.terms_uid()))
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
                 return panel.default_model()
+            if path == "/api/pass":                       # «Настройки» → «Сервер»: pass разблокирован до … / нет
+                return panel.pass_status(q.get("fresh") == "1")
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 st = tenants.status(check=True)
                 for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
@@ -2419,6 +2436,13 @@ def handler(panel: Panel):
                 return panel.new_in_space(slug, str(b.get("name", "")))
             if path == "/api/model/default":             # только явной настройкой — не из чата
                 return panel.default_model(str(b.get("model") or ""))
+            if path == "/api/pass/unlock":               # окно tmux с pass-unlock
+                return {"id": passcheck.open_window(panel.tmux)}
+            if path == "/api/pass/type":                 # пароль — в окно pass-unlock; из Telegram (Mini App) — нет
+                if self.headers.get("X-Telegram-Init-Data"):
+                    raise ValueError("пароль в Telegram не вводим — откройте панель в браузере или Termius")
+                passcheck.type_password(panel.tmux, str(b.get("w", "")), str(b.get("text", "")))
+                return {"ok": True}
             if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
                 st = panel.pult.state()
                 panel.pult.set_state(no_balance=balance.clear(st, str(b.get("profile", ""))))

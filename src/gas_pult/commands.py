@@ -120,6 +120,7 @@ class Commands:
         self.host, self.store = host, store
         self.on_start = on_start            # (команда, папка) — «выполняется» во вкладке «Команды»
         self.on_done = on_done              # (команда, папка, код, секунды, вывод) — отметить во вкладке «Команды»
+        self.guard = None                   # (команда) → текст отказа или "" — например, pass заблокирован (passcheck)
         self.sudo_ok = re.compile(r"^\s*sudo\s+(-n\s+)?(" + "|".join(f"(?:{p})" for p in sudo_allow) + ")"
                                   if sudo_allow else r"(?!)")
         base = ON_MAC_FOREIGN if platform == "darwin" else ON_LINUX_FOREIGN
@@ -180,6 +181,8 @@ class Commands:
             return send(f"⚠️ Команда меняет или удаляет данные:\n<pre>{html.escape(c['cmd'][:1500])}</pre>",
                         parse_mode="HTML",
                         reply_markup=kb([[("⚠️ Да, выполнить", f"runok:{cid}"), ("Отмена", "noop:")]]))
+        if self.guard and (why := self.guard(c["cmd"])):     # заранее: не запускать то, что упадёт или зависнет
+            return send(why, reply_markup=kb([[("🔓 Разблокировать", "pu:")]]))
         send(f"⏳ [{html.escape(c['win'])}] выполняю…", parse_mode="HTML")
         if self.on_start:
             try:

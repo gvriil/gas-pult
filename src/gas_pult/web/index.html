@@ -2134,6 +2134,51 @@ function budgetAdd(slug) {
     run: async () => { try { const b = await api("/api/space/budget/add", { space: slug, usd: Math.round(v * 100) / 100 }); toast(T("bud.add.done", { l: usd(b.left) }), 4000); await loadSpaces(); refresh(); } catch (e) { toast(e.message, 5000); } },
   })));
 }
+// ---------- pass / GPG (задача 40): заблокировано — не запускаем, а предлагаем разблокировать ----------
+// Пароль ключа вводится в окне pass-unlock: здесь — только в браузере (в Telegram — нет) или в терминале (Termius).
+function passLockedNote() {
+  return `<div class="result bad">${ic("lock")}<span>Хранилище паролей заблокировано — команда не запущена.
+    ${meta?.role === "owner" ? `<button class="btn sm" data-pass-unlock style="margin-top:8px;width:auto">${ic("key")}Разблокировать</button>` : "Попросите владельца разблокировать."}</span></div>`;
+}
+document.addEventListener("click", (e) => { if (e.target.closest("[data-pass-unlock]")) passUnlock(); });
+function passWhen(ts) { return new Date(ts * 1000).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }); }
+async function serverSheet() {
+  let p; try { p = await api("/api/pass?fresh=1"); } catch (e) { p = { state: "?" }; }
+  const line = p.state === "unlocked" ? (p.until ? "разблокирован до " + passWhen(p.until) : "разблокирован") + " (или до перезагрузки сервера)"
+    : p.state === "locked" ? "заблокирован — команды с pass и gpg не выполнятся" : p.state === "absent" ? "хранилища паролей на сервере нет" : "не удалось проверить";
+  helpSheet("settings.server");
+  sheet("Сервер", [
+    { info: true, icon: p.state === "locked" ? "lock" : "check", label: "pass: " + line, sub: "хранилище паролей (pass, GPG) на сервере пульта" },
+    ...(p.state === "locked" ? [{ label: "Разблокировать", icon: "key", sub: p.script ? "окно с pass-unlock: пароль ключа GPG — один раз" : "нет ~/.local/bin/pass-unlock", run: passUnlock }] : []),
+  ]);
+}
+async function passUnlock() {
+  let id; try { id = (await api("/api/pass/unlock", {})).id; } catch (e) { return toast(e.message, 5000); }
+  if (tg?.initData) {                                 // Mini App в Telegram: пароль здесь не вводим
+    helpSheet("settings.server");
+    return sheet("Разблокировать pass", [{ info: true, icon: "lock", label: "Окно «pass-unlock» открыто на сервере", sub: "Введите пароль в панели, открытой в браузере («Настройки» → «Сервер»), или в терминале (Termius). В Telegram пароль не вводим." }]);
+  }
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.server");
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Разблокировать pass</h3>
+    <p class="note" style="margin:4px 16px 8px">Пароль ключа GPG уйдёт прямо в окно «pass-unlock» на сервере и нигде не сохранится. Ключ будет разблокирован на срок из настроек gpg-agent (на этом сервере — 30 дней) или до перезагрузки.</p>
+    <div class="field" style="margin:0 16px"><input id="pwPass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="пароль ключа GPG"></div>
+    <p class="note" id="pwErr" style="margin:6px 16px 0"></p>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="pwOk">${ic("key")}Разблокировать</button></div></div>`;
+  document.body.append(bg);
+  const inp = $("pwPass"), ok = $("pwOk"); inp.focus();
+  const go = () => busy(ok, "Проверяю…", async () => {
+    try {
+      await api("/api/pass/type", { w: id, text: inp.value }); inp.value = "";
+      await new Promise((r) => setTimeout(r, 2500));
+      const p = await api("/api/pass?fresh=1");
+      if (p.state === "unlocked") { bg.remove(); toast("pass разблокирован" + (p.until ? " до " + passWhen(p.until) : ""), 5000); }
+      else { $("pwErr").textContent = "Пароль не подошёл — нажмите «Разблокировать» в «Сервер» ещё раз."; $("pwErr").style.color = "var(--status-danger)"; }
+    } catch (e) { $("pwErr").textContent = e.message; $("pwErr").style.color = "var(--status-danger)"; }
+  });
+  ok.onclick = go;
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); go(); } });
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) { inp.value = ""; bg.remove(); } });
+}
 // space-sessions:start — сессии демо-пространства (задача 32): своя папка; «Закрыть» — агент выходит, папка и разговор
 // остаются; «Продолжить» — тот же разговор; «Удалить» — в корзину пространства на N дней. Тексты — T(): и простой режим.
 const ssBody = (slug, b = {}) => (meta?.role === "owner" && slug ? { ...b, space: slug } : b);
@@ -2868,6 +2913,7 @@ $("content").addEventListener("click", (e) => {
     try {
       const r = await api("/api/run", { w: current, i: +b.dataset.run, sha: b.dataset.sha, confirmed });
       if (r.confirm) return ask();
+      if (r.locked) { outBox.innerHTML = passLockedNote(); return; }       // pass заблокирован — не запускали
       outBox.innerHTML = `<div class="result ${r.code === 0 ? "ok" : "bad"}"><div style="width:100%">${r.code === 0 ? "Готово" : "Ошибка"} · код ${esc(r.code)} · ${r.seconds} с${r.cut ? " · показан конец вывода" : ""}
         ${r.out ? `<pre class="out">${esc(r.out)}</pre><button class="btn sm ghost cpout" data-cpout>${ic("copy")}Копировать вывод${r.cut ? " целиком" : ""}</button>` : " · вывода нет"}</div></div>${triageNote(r.triage, r.triage_to)}`;
       outBox.fullOut = r.full || r.out;
@@ -2972,6 +3018,7 @@ $("commandsView").addEventListener("click", async (e) => {
       card.querySelector(".chips").innerHTML = cmdChip(c);
       const r = await api("/api/commands/run", { id: c.id, confirmed });
       if (r.confirm) { c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c); return ask(); }
+      if (r.locked) { c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c); card.querySelector(".out-wrap").innerHTML = passLockedNote(); return; }
       put(r.item); haptic("notificationOccurred", r.item.done.code === 0 ? "success" : "error");
     } catch (err) {
       c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c);
@@ -4534,6 +4581,7 @@ $("settingsBtn").onclick = () => {
     ...(meta?.role === "owner" ? [{ label: T("st.title"), icon: "chip", sub: T("st.sub"), run: providersView }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Сервер", icon: "term", sub: "хранилище паролей pass: разблокировано или нет", run: serverSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Модель по умолчанию", icon: "chip", sub: "для всех новых сессий Claude; модель одного чата — в самом чате", run: defaultModelSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
@@ -5715,6 +5763,10 @@ function demoApi(path, body) {
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
   R["/api/restart"] = { id: "@4" };
+  demoApi.pass ||= params.has("passlocked") ? "locked" : "unlocked";   // ?passlocked — хранилище паролей заблокировано
+  if (path === "/api/pass/type") demoApi.pass = "unlocked";
+  R["/api/pass"] = { state: demoApi.pass, until: demoApi.pass === "unlocked" ? Math.floor(Date.now() / 1000) + 29 * 86400 : null, script: true };
+  R["/api/pass/unlock"] = { id: "@9" }; R["/api/pass/type"] = { ok: true };
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
   R["/api/module/delete"] = { result: "удалено", trash: "~/.local/share/gas-pult/trash/modules/20261105-101500__gas-pult" };
   R["/api/model"] = { id: body?.w || "@1", model: body?.name || "" };
