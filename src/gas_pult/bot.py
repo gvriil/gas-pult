@@ -41,6 +41,7 @@ from gas_pult import (
     models,
     modules,
     offers,
+    passcheck,
     people,
     providers,
     qr,
@@ -172,6 +173,7 @@ class Pult:
         self.tmux = Tmux(cfg.session)
         self.cmds = Commands(cfg.host, cfg.data / "cmds.json", cfg.sudo_allow, cfg.foreign, on_done=self.after_run,
                              on_start=self.before_run)
+        self.cmds.guard = self.pass_guard                  # pass/gpg заблокирован — «Выполнить» не запускает
         self.journal = Journal(cfg.data / "commands-log.json")         # вкладка «Команды» панели
         self.task = re.compile(rf"^(?:/task\s+)?({cfg.task_pattern})$", re.I)
         self.state_file = cfg.data / "state.json"
@@ -1519,6 +1521,8 @@ class Pult:
             return                                         # участникам кнопки бота — только условия и страна
         if kind == "pp":                                   # владелец решает, пускать ли человека
             return self.grant(chat, arg)
+        if kind == "pu":                                   # 🔓 Разблокировать pass: окно pass-unlock (пароль не здесь)
+            return self.pass_unlock(chat)
         if kind == "bt":                                   # «➕ Добавить» к запасу пространства — на сколько
             return self.budget_offer(chat, arg)
         if kind == "ba":                                   # … пополнить на выбранную сумму
@@ -1868,6 +1872,36 @@ class Pult:
         if not tenants.enabled():
             return []
         return [t for s in tenants.slugs() if (t := tenants.load(s))]
+
+    # ---------- pass / GPG (passcheck.py, задача 40) ----------
+    PASS_LOCKED = ("🔒 Хранилище паролей (pass) заблокировано — команда не запущена, она бы упала или зависла на "
+                   "вопросе пароля. «Разблокировать» откроет окно с pass-unlock; пароль — в панели в браузере "
+                   "(«Настройки» → «Сервер») или в терминале (Termius), не в Telegram.")
+
+    def pass_guard(self, cmd: str) -> str:
+        """Перед «▶️ Выполнить»: команде нужен pass/gpg, а ключ не в кэше gpg-agent — не запускать."""
+        return self.PASS_LOCKED if passcheck.needs(cmd) and passcheck.unlocked(fresh=True) is False else ""
+
+    def pass_unlock(self, chat: int):
+        try:
+            wid = passcheck.open_window(self.tmux)
+        except (ValueError, RuntimeError, OSError) as e:
+            return self.send(chat, f"Не вышло: {e}")
+        self.send(chat, f"🔓 Окно «{passcheck.WINDOW}» ({wid}) открыто. Введите пароль ключа GPG там: в панели "
+                        f"в браузере — «Настройки» → «Сервер» → «Ввести пароль», или в Termius: tmux select-window "
+                        f"-t {wid}. "
+                        "В Telegram пароль не присылайте.")
+
+    def boot_check(self):
+        """После перезагрузки сервера (другой boot_id) — одно сообщение владельцу, если pass заблокирован."""
+        boot = passcheck.boot_id()
+        if not boot or self.state().get("boot_id") == boot:
+            return
+        self.set_state(boot_id=boot)
+        if passcheck.unlocked(fresh=True) is False:
+            self.broadcast("🔄 Сервер перезагрузился — хранилище паролей (pass) заблокировано: команды с pass и gpg "
+                           "не выполнятся. Разблокировать — кнопка ниже откроет окно; пароль — в панели в браузере или "
+                           "в Termius, не в Telegram.", reply_markup=kb([[("🔓 Разблокировать", "pu:")]]))
 
     def budget_offer(self, chat: int, slug: str):
         """Сколько добавить к запасу пространства: неделя нормы, две недели, $10."""
@@ -2240,6 +2274,7 @@ class Pult:
         threading.Thread(target=self.digest_loop, daemon=True).start()
         threading.Thread(target=self.selftest_loop, daemon=True).start()
         threading.Thread(target=self.modules_loop, daemon=True).start()
+        threading.Thread(target=self.boot_check, daemon=True).start()
         offset = None
         while True:
             try:
