@@ -1487,6 +1487,7 @@ function toast(text, ms = 2600) {
 async function api(path, body, raw, extra, signal) {
   if (DEMO && params.has("offline") && start.done) throw Object.assign(new Error("нет сети"), { net: true });
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
+  if (FOCUS && $("focusEnd")) throw new Error("Сессия завершена");   // ссылка погасла — опросы больше не шлём
   const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
@@ -2848,7 +2849,8 @@ async function refresh() {
     }
     if (view !== "session") return;
     const s = cur();
-    if (!s) { if (FOCUS) return focusEnd("Сессия завершена."); toast("Сессия завершена"); return back(); }
+    // фокус: сессию перезапустили (модель, поставщик) — окно новое, сервер отдаёт его; завершённая — 410 (focusEnd)
+    if (!s) { if (FOCUS) return sessions.length ? openSession(sessions[0].id) : focusEnd("Сессия завершена."); toast("Сессия завершена"); return back(); }
     paintSession(s); loadHint(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
