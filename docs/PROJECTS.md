@@ -436,6 +436,8 @@
 
 - PR 1 — `projects.py`, `projects.json` с миграцией, `GET /api/projects`, `GET /api/project`, поле `project` в
   `/api/sessions`.
+- PR 2 — окно ↔ свой журнал: `--session-id` и метка `@gas_pult_sid` у новых окон, `--resume` вместо `--continue`,
+  переезд метки после `/clear`; правило «одно окно на проект» пока не снято (снимает PR 3).
 
 ## 7. Открытые вопросы владельцу
 

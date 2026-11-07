@@ -90,9 +90,11 @@ class Tmux:
 
     def windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
-                       "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}")
-        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by"), line.split("\t"), strict=False))
-              for line in out.splitlines()]
+                       "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}\t"
+                       "#{@gas_pult_sid}")
+        # sid — id сессии Claude Code (``--session-id``): у окна свой журнал, а не «последний в папке»
+        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid"), line.split("\t"),
+                       strict=False)) for line in out.splitlines()]
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             # -ww: без него ps режет строку до 80 знаков, и длинный путь к Claude (npm: node …/cli.js) не узнаётся
             ps = subprocess.run(["ps", "-ww", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "args="],
@@ -160,7 +162,7 @@ class Tmux:
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
         subprocess.run(cmd, check=True)
 
-    def new_window(self, name: str, path: str, command: str, mark: str = "claude", by: str = "") -> str:
+    def new_window(self, name: str, path: str, command: str, mark: str = "claude", by: str = "", sid: str = "") -> str:
         """Новое окно с командой (Claude); после её выхода остаётся шелл. Возвращает id окна.
 
         ``mark`` (поставщик модели) пишется в опцию окна ``@gas_pult``: по ней видно, что окно — сессия пульта, даже
@@ -177,9 +179,18 @@ class Tmux:
         self.run("set-option", "-w", "-t", wid, "@gas_pult", mark or "claude")
         if by:
             self.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(by))
+        if sid:
+            self.set_sid(wid, sid)
         return wid
 
-    def respawn(self, wid: str, path: str, command: str, mark: str = "claude"):
+    def set_sid(self, wid: str, sid: str):
+        """Метка окна ``@gas_pult_sid`` — id сессии Claude Code, чей журнал читать; пусто — снять (старый способ)."""
+        if sid:
+            self.run("set-option", "-w", "-t", wid, "@gas_pult_sid", sid)
+        else:
+            self.run("set-option", "-w", "-u", "-t", wid, "@gas_pult_sid")
+
+    def respawn(self, wid: str, path: str, command: str, mark: str = "claude", sid: str | None = None):
         """Запустить Claude заново в том же окне (то же имя и id): оболочку — закрыть, команду — запустить."""
         shell = self.shell()
         r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path,
@@ -187,3 +198,5 @@ class Tmux:
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip() or "tmux respawn-window не сработал")
         self.run("set-option", "-w", "-t", wid, "@gas_pult", mark or "claude")
+        if sid is not None:                              # None — метку окна не трогаем
+            self.set_sid(wid, sid)

@@ -275,11 +275,13 @@ class Journal:
     def _collect(self, windows: list[dict], kind) -> bool:
         d, changed = self.load(), False
         for w in windows:
-            rev = transcripts.revision(w["path"], people.home_of(w))
-            if not rev or d["revs"].get(w["path"]) == rev:
+            sid = w.get("sid") or ""                     # окно со своим журналом (--session-id) — по нему
+            key = f"{w['path']}|{sid}" if sid else w["path"]
+            rev = transcripts.revision(w["path"], people.home_of(w), sid)
+            if not rev or d["revs"].get(key) == rev:
                 continue
-            d["revs"][w["path"]], changed = rev, True
-            items, _ = transcripts.history(w["path"], 80, home=people.home_of(w))
+            d["revs"][key], changed = rev, True
+            items, _ = transcripts.history(w["path"], 80, home=people.home_of(w), sid=sid)
             for m in items:
                 if m["role"] != "assistant":
                     continue

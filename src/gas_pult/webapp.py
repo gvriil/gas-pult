@@ -222,7 +222,8 @@ class Panel:
                             "channel": False, "profile": w["mark"] if w["mark"] in models.BY_ID else "claude",
                             "rev": "", "preview": "", "cost_paused": False, "cost": None,
                             "project": self.project_of(pd, w),
-                            **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w)))})
+                            "sid": w.get("sid") or "",
+                            **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or ""))})
                 continue
             if w["cmd"] != "claude":
                 continue
@@ -231,17 +232,20 @@ class Panel:
             lines = self.tmux.screen(w["id"], 40)
             scr = "\n".join(lines)
             home = self.pult.home_of(w)                       # папка Claude того, кто открыл окно
+            sid = self.follow_sid(w, wins, home)              # свой журнал окна (--session-id); "" — старое окно
             # когда менялась (ago.py): последний ход в журнале или смена экрана; ответ агента, ваше сообщение
-            when = ago.stamps(self.pult.acts.status(w["path"], home), self.pult.changes.look(w["id"], lines))
-            ctx, mdl, rev = CONTEXT.search(scr), MODEL_LINE.search(scr), transcripts.revision(w["path"], home)
+            when = ago.stamps(self.pult.acts.status(w["path"], home, sid), self.pult.changes.look(w["id"], lines))
+            ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
+            rev = transcripts.revision(w["path"], home, sid)
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "context": int(ctx.group(1)) if ctx else None,
                         # на чём работает сессия: строка статуса «🤖 …», иначе — модель последнего ответа в журнале
-                        "model": mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home),
+                        "model": mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid),
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": rev,                                       # изменился журнал → «новый ответ»
-                        "preview": self.preview(w["path"], rev, home),
+                        "preview": self.preview(w["path"], rev, home, sid),
+                        "sid": sid,                                       # id сессии Claude Code окна (добавлено)
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
@@ -720,7 +724,7 @@ class Panel:
         own_space = pool == "owner" and w.get("space")      # владелец видит расход пространств
         if pool is None or (self.pult.pool_of(w) != pool and not own_space):
             return None
-        s = self.pult.meter.session(w["path"], self.pult.home_of(w))
+        s = self.pult.meter.session(w["path"], self.pult.home_of(w), sid=w.get("sid") or "")
         if not s:
             return None
         lim = usage.limits(st)["session"] if pool == "owner" and not own_space else None
@@ -769,18 +773,34 @@ class Panel:
         self.pult.cost_watch(self.pult.state(), force=True)
         return self.cost_limits()
 
-    def model_of(self, path: str, rev: str, home=None) -> str:
+    def follow_sid(self, w: dict, wins: list[dict], home) -> str:
+        """Метка окна ``@gas_pult_sid`` с поправкой на ``/clear`` (новый журнал — новый id): окно — единственное в
+        папке, появился более новый ничей журнал — метка переезжает на него (``transcripts.follow``)."""
+        sid = transcripts.valid_sid(w.get("sid"))
+        if not sid:
+            return ""
+        real = os.path.realpath(w["path"])
+        mates = [x for x in wins if x["id"] != w["id"] and x.get("cmd") == "claude" and not x.get("space")
+                 and os.path.realpath(x.get("path", "")) == real and self.pult.home_of(x) == home]
+        if any(not transcripts.valid_sid(x.get("sid")) for x in mates):
+            return sid                                  # рядом старое окно без метки — его журнал не забираем
+        if nxt := transcripts.follow(w["path"], home, sid, {x["sid"] for x in mates}):
+            self.tmux.set_sid(w["id"], nxt)
+            w["sid"] = sid = nxt
+        return sid
+
+    def model_of(self, path: str, rev: str, home=None, sid: str = "") -> str:
         """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала."""
-        key = (path, str(home or ""))
+        key = (path, str(home or ""), sid)
         if self.model_cache.get(key, (None,))[0] != rev:      # (None,) — у нового окна журнала ещё нет (rev "")
-            self.model_cache[key] = (rev, transcripts.model_title(transcripts.last_model(path, home=home)))
+            self.model_cache[key] = (rev, transcripts.model_title(transcripts.last_model(path, home=home, sid=sid)))
         return self.model_cache[key][1]
 
-    def preview(self, path: str, rev: str, home=None) -> str:
+    def preview(self, path: str, rev: str, home=None, sid: str = "") -> str:
         """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""
-        key = f"{home}|{path}" if home else path
+        key = (f"{home}|{path}" if home else path) + (f"|{sid}" if sid else "")
         if self.previews.get(key, (None,))[0] != rev:
-            self.previews[key] = (rev, transcripts.preview(path, home=home))
+            self.previews[key] = (rev, transcripts.preview(path, home=home, sid=sid))
         return self.previews[key][1]
 
     # ---------- страна человека (country.py) ----------
@@ -1099,7 +1119,7 @@ class Panel:
         if not scr or now - scr[0] >= 2:
             scr = self.screens[wid] = (now, self.pult.screen_state(wid))
         home = self.pult.home_of(w)
-        return {**self.pult.activity(w, scr[1]), "rev": transcripts.revision(w["path"], home)}
+        return {**self.pult.activity(w, scr[1]), "rev": transcripts.revision(w["path"], home, w.get("sid") or "")}
 
     def slash(self, w: dict, cmd: str) -> list[str]:
         return self.pult.run_slash(w["id"], cmd)
@@ -1304,8 +1324,9 @@ class Panel:
         base = os.path.basename(path) if path != self.pult.home else "home"
         home = self.pult.claude_dir(person) if person is not None else None
         cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=home)
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd, mark=profile or "claude",
-                                   by=str(person) if home else "")
+        sid = str(uuid.uuid4())                         # свой журнал окна: --session-id и метка @gas_pult_sid
+        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, f"{cmd} --session-id {sid}",
+                                   mark=profile or "claude", by=str(person) if home else "", sid=sid)
         if not home:
             self.mark_by(wid, uid)
         self.pult.set_state(active=wid)
@@ -1472,7 +1493,8 @@ class Panel:
         cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w))  # нет ключа — тут
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
             cmd += f" --model {shlex.quote(own)}"
-        self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)   # @gas_pult_by окна остаётся
+        # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
+        self.tmux.respawn(wid, w["path"], cmd + transcripts.resume_args(w.get("sid")), mark=profile)
         return {"id": wid}
 
     def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None) -> dict:
@@ -1491,12 +1513,17 @@ class Panel:
         if model is None:                               # смена поставщика: модель этого чата — его по умолчанию;
             model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
         cmd += f" --model {shlex.quote(model)}" if model else ""
-        cmd += " --continue" if keep else ""
+        sid = transcripts.valid_sid(w.get("sid"))
+        if keep:                                        # свой журнал окна — тот же разговор (--resume), иначе последний
+            cmd += transcripts.resume_args(w.get("sid"))
+        else:                                           # чистый лист — новый журнал со своей меткой
+            sid = str(uuid.uuid4())
+            cmd += f" --session-id {sid}"
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
         wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude",
-                                   by=w.get("by", "") if home else "")
+                                   by=w.get("by", "") if home else "", sid=sid)
         if not home:                                    # окно владельца: метка прежняя, иначе — кто нажал
             self.mark_by(wid, w.get("by") or uid)
         own.pop(w["id"], None)
@@ -1689,10 +1716,10 @@ class Panel:
         return text
 
     def message(self, w: dict, i: int | None) -> str:
-        home = self.pult.home_of(w)
+        home, sid = self.pult.home_of(w), w.get("sid") or ""
         if i is None:
-            return transcripts.last_answer(w["path"], home)
-        items, _ = transcripts.history(w["path"], limit=1, before=i + 1, home=home)
+            return transcripts.last_answer(w["path"], home, sid)
+        items, _ = transcripts.history(w["path"], limit=1, before=i + 1, home=home, sid=sid)
         if not items or items[0]["i"] != i:
             raise ValueError("сообщение не найдено — обновите переписку")
         return items[0]["text"]
@@ -1725,7 +1752,7 @@ class Panel:
     # ---------- ▶️ команды из последнего ответа ----------
     def commands(self, w: dict) -> list[dict]:
         out = []
-        for i, cmd in enumerate(extract(transcripts.last_answer(w["path"], self.pult.home_of(w)))):
+        for i, cmd in enumerate(extract(transcripts.last_answer(w["path"], self.pult.home_of(w), w.get("sid") or ""))):
             kind = self.pult.cmds.kind(cmd)
             out.append({"i": i, "cmd": cmd, "kind": kind, "danger": bool(DANGER.search(cmd)),
                         "sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})
@@ -2305,7 +2332,7 @@ def handler(panel: Panel):
                 return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
             if path == "/api/last":
-                return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w))}
+                return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
                 return {"lines": lines[-40:], "auth": find_auth(lines)}
@@ -2322,10 +2349,11 @@ def handler(panel: Panel):
                                                  cloud=not self.space()))
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
-                rev = transcripts.revision(w["path"], home := panel.pult.home_of(w))
+                sid = w.get("sid") or ""                   # окно со своим журналом — его переписка
+                rev = transcripts.revision(w["path"], home := panel.pult.home_of(w), sid)
                 if before is None and q.get("rev") and q["rev"] == rev:
                     return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
-                items, more = transcripts.history(w["path"], 30, before, home=home)
+                items, more = transcripts.history(w["path"], 30, before, home=home, sid=sid)
                 for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
                     if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
                         it["human"] = h

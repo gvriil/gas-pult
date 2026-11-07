@@ -109,8 +109,9 @@ def panel(monkeypatch, tmp_path):
 def test_new_restart_revive_keep_who_opened(panel, monkeypatch, tmp_path):
     opened, respawned = [], []
     monkeypatch.setattr(webapp.setup, "installed", lambda *a, **k: True)   # в CI нет claude
-    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd, mark="claude", by="":
-                        opened.append((cmd, by)) or "@9")
+    # новое окно — со своим журналом (--session-id, задача 49): сверяем команду без него
+    monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd, mark="claude", by="", sid="":
+                        opened.append((cmd.split(" --session-id ")[0], by)) or "@9")
     home = tmp_path / "people" / str(MEMBER) / "claude"
     panel.new(0, "", person=MEMBER)
     assert opened[-1] == (f"CLAUDE_CONFIG_DIR={home} claude", str(MEMBER)) and home.is_dir()
@@ -121,7 +122,7 @@ def test_new_restart_revive_keep_who_opened(panel, monkeypatch, tmp_path):
     assert opened[-1] == (f"CLAUDE_CONFIG_DIR={home} claude --continue", str(MEMBER))
     w = {"id": "@3", "name": "a", "path": "/p/a", "mark": "claude", "stopped": True, "by": str(MEMBER)}
     monkeypatch.setattr(panel.tmux, "window", lambda wid: w)
-    monkeypatch.setattr(panel.tmux, "respawn", lambda wid, path, cmd, mark: respawned.append(cmd))
+    monkeypatch.setattr(panel.tmux, "respawn", lambda wid, path, cmd, mark, sid=None: respawned.append(cmd))
     panel.revive("@3")
     assert respawned == [f"CLAUDE_CONFIG_DIR={home} claude --continue"]
 
