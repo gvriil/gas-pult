@@ -58,7 +58,7 @@ from gas_pult import (
     usage,
     voice,
 )
-from gas_pult.commands import DANGER, TAIL, Commands, Journal, fail_key, triage_text
+from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
 from gas_pult.config import Config, write_private
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError, kb
@@ -1893,6 +1893,8 @@ class Pult:
         c = self.cmds.get(cid)
         if not c:
             return self.send(chat, "Эта команда уже забыта — попроси Claude прислать её снова.")
+        if in_space(c):
+            return self.send(chat, "🔒 " + SPACE_RUN[0].upper() + SPACE_RUN[1:] + ".")
         if DANGER.search(c["cmd"]) and not confirmed:
             return self.send(chat, "⚠️ Команда меняет или удаляет данные:\n<pre>"
                              + html.escape(c["cmd"][:1500]) + "</pre>", parse_mode="HTML",

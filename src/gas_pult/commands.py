@@ -30,6 +30,20 @@ from pathlib import Path
 
 from gas_pult import people, termwin, transcripts
 
+SPACE_RUN = ("команда из сессии пространства на сервере пульта не выполняется — её выполняет сам агент "
+             "пространства в своей песочнице")
+
+
+def in_space(d: dict) -> bool:
+    """Окно (или запись команды) пространства: «Выполнить» и терминал пульта для него закрыты — иначе команда из
+    ответа агента клиента пошла бы от пользователя пульта, вне песочницы пространства. Признак — ``space`` у окна
+    или папка (``path``/``cwd``) внутри корня пространств."""
+    from gas_pult import tenants  # лениво: tenants тяжелее и боту без пространств не нужен
+    if d.get("space"):
+        return True
+    p = str(d.get("path") or d.get("cwd") or "")
+    return bool(p) and (p.rstrip("/") + "/").startswith(str(tenants.root()).rstrip("/") + "/")
+
 FENCE = re.compile(r"```([\w+-]*)[ \t]*\n(.*?)```", re.S)
 SHELL = {"", "bash", "sh", "shell", "zsh", "console"}
 ON_LINUX_FOREIGN = [r"/Users/", r"\bbrew\b", r"\blaunchctl\b", r"\bpbcopy\b", r"\bosascript\b", r"\bcaffeinate\b",
@@ -156,7 +170,9 @@ class Commands:
             k = self.kind(cmd)
             head = f"[{html.escape(w['name'])}] команда {i}/{len(cmds)}"
             body = f'<pre><code class="language-bash">{html.escape(cmd)}</code></pre>'
-            if k == "foreign":
+            if in_space(w):                 # пространство: его команды выполняет его агент, не пульт
+                send(f"{head} · 🔒 команда пространства — выполняет агент пространства\n{body}", parse_mode="HTML")
+            elif k == "foreign":
                 send(f"{head} · 💻 для другой машины — нажми, чтобы скопировать\n{body}", parse_mode="HTML")
             elif k == "tty":                # нужен ввод: не выполнять вслепую — открыть в окне терминала
                 cid = uuid.uuid4().hex[:10]
@@ -180,6 +196,8 @@ class Commands:
         c = self._load().get(cid)
         if not c:
             return send("Эта команда уже забыта — попроси Claude прислать её снова.")
+        if in_space(c):
+            return send("🔒 " + SPACE_RUN[0].upper() + SPACE_RUN[1:] + ".")
         if c.get("tty") or self.kind(c["cmd"]) == "tty":     # нужен ввод — вслепую не запускаем
             return send("⌨️ Команде нужен ввод (пароль) — кнопкой «Выполнить» она упадёт или зависнет. "
                         "Откройте её в терминале.", reply_markup=kb([[("⌨️ Открыть в терминале", f"tw:{cid}")]]))
