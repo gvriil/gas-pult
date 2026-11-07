@@ -37,6 +37,7 @@ DEFAULT_SIZE = "2G"
 LIMITS = {"MemoryMax": "1G", "CPUQuota": "80%", "TasksMax": "128"}
 NOLOGIN = "/usr/sbin/nologin"
 GUARD_PYTHON = "/usr/bin/python3"                   # хук пространства: системный Python (venv владельца не виден)
+GITHUB = "github"                                       # pult-tenant key <имя> github — токен для repos.py
 
 
 class Layout:
@@ -527,12 +528,20 @@ def set_key(lay: Layout, s: Sys, slug: str, profile: str, key: str, base_url: st
     t = tenants.load(slug, lay.tenants)
     if not t:
         raise SystemExit(f"нет пространства {slug}")
-    tenants.check_profile(profile, t.get("jurisdiction", ""))     # «claude» сюда не попадёт: у него нет ключа
+    if profile != GITHUB:
+        tenants.check_profile(profile, t.get("jurisdiction", ""))     # «claude» сюда не попадёт: у него нет ключа
     key = key.strip()
     if not key or len(key) > 400 or any(c.isspace() for c in key):
         raise ValueError("ключ — одна строка без пробелов")
     p = tenants.paths(slug, lay.tenants)
     u = tenants.user_of(slug)
+    if profile == GITHUB:                         # токен GitHub пространства (repos.py): только в его secrets.json
+        try:
+            secrets = json.loads(p["secrets"].read_text()) if p["secrets"].exists() else {}
+        except ValueError:
+            secrets = {}
+        s.write(p["secrets"], json.dumps({**secrets, GITHUB: key}, indent=1) + "\n", 0o600, u, u)
+        return audit(s, p, "key", profile=GITHUB, tail=key[-4:])
     prof = models.BY_ID[profile]
     state = {}
     if prof.get("gateway"):
@@ -680,7 +689,8 @@ def parser() -> argparse.ArgumentParser:
     pg.add_argument("--yes", metavar="ИМЯ", help="подтверждение: имя пространства")
     k = sub.add_parser("key", help="ключ API профиля для пространства (ключ — со стандартного ввода)")
     k.add_argument("slug")
-    k.add_argument("profile", choices=[p["id"] for p in models.PROFILES if p.get("key")])
+    k.add_argument("profile", choices=[*(p["id"] for p in models.PROFILES if p.get("key")), GITHUB],
+                   help="профиль модели — или github: токен GitHub пространства (репозитории в сессиях)")
     k.add_argument("--base-url", default="", help="адрес шлюза (GigaChat, YandexGPT)")
     k.add_argument("--default", action="store_true", help="сделать профилем пространства по умолчанию")
     m = sub.add_parser("mcp", help="веб-поиск или Google Диск (rclone) для пространства (ключ — со стандартного ввода)")

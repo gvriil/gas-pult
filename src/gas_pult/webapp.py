@@ -59,6 +59,7 @@ from gas_pult import (
     projects,
     providers,
     qr,
+    repos,
     scenarios,
     selftest,
     setup,
@@ -228,6 +229,7 @@ class Panel:
                             "rev": "", "preview": "", "cost_paused": False, "cost": None,
                             "project": self.project_of(pd, w),
                             "sid": w.get("sid") or "",
+                            "repos": repos.public(repos.of(st, w["path"])),
                             **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or ""))})
                 continue
             if w["cmd"] != "claude":
@@ -261,6 +263,7 @@ class Panel:
                         **self.money_of(w, lines),                        # у поставщика нет денег (balance.py)
                         "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
                         "project": self.project_of(pd, w),                # проект окна (projects.py); "" — нет
+                        "repos": repos.public(repos.of(st, w["path"])),     # подключённые репозитории (задача 43)
                         **when})                                          # когда менялась (ago.py)
         return out
 
@@ -1488,6 +1491,7 @@ class Panel:
         cmd = models.command(self.cfg.claude, profile, st, home=home)
         if model:
             cmd += f" --model {shlex.quote(model)}"
+        cmd += repos.flags(st, path)                                 # подключённые к папке репозитории (задача 43)
         sid = transcripts.valid_sid(resume) or str(uuid.uuid4())     # свой журнал окна: --session-id или --resume
         cmd += f" --resume {sid}" if resume else f" --session-id {sid}"
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
@@ -1565,6 +1569,7 @@ class Panel:
         if folder not in {x["folder"] for x in space_sessions.listing(slug)}:
             raise LookupError("нет такой сессии")
         args = "--continue" if space_sessions.has_history(slug, path) else ""
+        args = (repos.flags(self.pult.state(), str(path)) + " " + args).strip()   # подключённые репозитории
         raw = tenants.new_window(slug, folder, str(path), args=args)
         draft = self.space_drafts().get(slug, {}).get(folder, "")
         if draft:
@@ -1650,7 +1655,7 @@ class Panel:
             t = tenants.load(w["space"])
             if not t:
                 raise ValueError("пространства уже нет")
-            profile, cmd = w["mark"] or "claude", tenants.command(t)
+            profile, cmd = w["mark"] or "claude", tenants.command(t) + repos.flags(self.pult.state(), w["path"])
             self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)
             return {"id": wid}
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
@@ -1659,6 +1664,7 @@ class Panel:
         self.need_claude()
         st = self.pult.state()
         cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w))  # нет ключа — тут
+        cmd += repos.flags(st, w["path"])                                    # подключённые репозитории (задача 43)
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
             cmd += f" --model {shlex.quote(own)}"
         # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
@@ -1680,6 +1686,7 @@ class Panel:
         same = profile == (w.get("profile") or w.get("mark") or "claude")
         if model is None:                               # смена поставщика: модель этого чата — его по умолчанию;
             model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
+        cmd += repos.flags(st, w["path"])                # подключённые репозитории — снова в сессии (задача 43)
         cmd += f" --model {shlex.quote(model)}" if model else ""
         sid = transcripts.valid_sid(w.get("sid"))
         if keep:                                        # свой журнал окна — тот же разговор (--resume), иначе последний
@@ -1703,6 +1710,46 @@ class Panel:
             upd["active"] = wid
         self.pult.set_state(**upd)
         return {"id": wid, **({"model": model} if model else {})}
+
+    # ---------- репозитории GitHub в сессии (задача 43, repos.py) ----------
+    def repo_list(self, w: dict) -> dict:
+        """Подключённые к сессии и что можно добавить: владельцу — его репозитории (gh), пространству — по его
+        токену. Нет токена у пространства — ``hint``: где взять и куда положить."""
+        out = {"added": repos.public(repos.of(self.pult.state(), w["path"])), "repos": [], "hint": None,
+               "error": "", "space": w.get("space") or ""}
+        try:
+            out["repos"] = repos.space_list(w["space"]) if w.get("space") else repos.owner_list()
+        except repos.NoToken as e:
+            out["hint"] = e.hint
+        except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+            out["error"] = str(e)
+        return out
+
+    def repo_add(self, w: dict, src: str) -> dict:
+        """Клон (или ``pull --ff-only``, если папка уже есть) и ``/add-dir`` в живую сессию; путь — в список сессии,
+        чтобы перезапуск и «Продолжить» передали его как ``--add-dir``."""
+        full, _ = repos.parse(src)
+        if w.get("space"):
+            path, act = repos.space_fetch(w["space"], full)
+        else:
+            path, act = repos.owner_fetch(full, self.pult.module_root())
+        if os.path.normpath(path) == os.path.normpath(w["path"]):
+            raise ValueError("это папка самой сессии — она и так в ней")
+        self.pult.set_state(**{repos.STATE: repos.added(self.pult.state(), w["path"], path)})
+        live = not w.get("stopped") and w.get("cmd", "claude") == "claude"
+        lines = self.slash(w, f"/add-dir {path}") if live else []
+        return {"full": full, "path": path, "action": act, "sent": live,
+                "dialog": bool(DIALOG.search("\n".join(lines))),
+                "added": repos.public(repos.of(self.pult.state(), w["path"]))}
+
+    def repo_remove(self, w: dict, path: str) -> dict:
+        """«Отключить»: только из списка сессии — при следующем перезапуске ``--add-dir`` его не будет.
+        Папку с репозиторием не трогаем."""
+        st = self.pult.state()
+        if path not in repos.of(st, w["path"]):
+            raise LookupError("этот репозиторий к сессии не подключён")
+        self.pult.set_state(**{repos.STATE: repos.removed(st, w["path"], path)})
+        return {"added": repos.public(repos.of(self.pult.state(), w["path"]))}
 
     def close(self, w: dict) -> str:
         return self.close_ex(w)["result"]
@@ -2100,6 +2147,8 @@ NOTIFY_DONE = "/api/notify-done"
 TOUR = "/api/tour"
 # До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
 COUNTRY_FREE = TERMS_FREE | {"/api/country"}
+# Репозитории GitHub в сессии (задача 43, repos.py): к своей сессии — владелец и тестировщик пространства.
+REPOS = ("/api/repos", "/api/repos/add", "/api/repos/remove")
 # Тестировщик демо-пространства (задача 31): только это — и только с окнами своего пространства (spaces.Routed.scope).
 # Остальное (папки и модули владельца, файлы, интеграции, ключи, люди, модели, расход владельца) — 403 code=space.
 SPACE_OK = TERMS_FREE | {
@@ -2107,7 +2156,7 @@ SPACE_OK = TERMS_FREE | {
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
     "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
     "/api/space/sessions", "/api/space/close", "/api/space/resume", "/api/space/delete", "/api/space/restore",
-    "/api/space/files", "/api/space/upload", "/api/space/download", STT_STREAM,
+    "/api/space/files", "/api/space/upload", "/api/space/download", STT_STREAM, *REPOS,
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
                                                             "/api/passkeys/add", "/api/passkeys/remove"),
 }
@@ -2120,10 +2169,10 @@ INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Нет: другие сессии, их создание и переключение, общие настройки пульта (ключи, люди, добавление интеграций).
 FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/ask", "/api/hint", "/api/cmds",
              "/api/tts", "/api/last", "/api/activity", "/api/space/files", "/api/space/download", "/api/mcp",
-             "/api/mcp/connected"}
+             "/api/mcp/connected", "/api/repos"}
 FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/run", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
-              "/api/effort", "/api/restart", "/api/mcp/finish"}
+              "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/mcp/connected"}   # без окна в запросе
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
@@ -2334,6 +2383,16 @@ def handler(panel: Panel):
                 raise ValueError("слишком большой запрос")
             return self.rfile.read(n)
 
+        def repo_win(self, q: dict) -> dict:
+            """Окно для репозиториев: остановленное — тоже (подключить к перезапуску). Сессии владельца — только ему:
+            клон идёт на сервер пульта; тестировщик — только в своём пространстве (``tmux.scope``)."""
+            w = panel.tmux.window(str(q.get("w") or ""))
+            if not w:
+                raise LookupError("окна уже нет")
+            if not w.get("space") and self.who()[1] != "owner":
+                raise ValueError("подключать репозитории к этой сессии может только владелец пульта")
+            return w
+
         def win(self, wid) -> dict:
             if not (w := panel.window(str(wid or ""))):
                 t = panel.tmux.window(str(wid or ""))
@@ -2516,6 +2575,8 @@ def handler(panel: Panel):
                 return ("application/octet-stream", data, {"Content-Disposition": disp})
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
+            if path == "/api/repos":                     # подключённые и что можно добавить (задача 43)
+                return panel.repo_list(self.repo_win(q))
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
@@ -3220,6 +3281,11 @@ def handler(panel: Panel):
                 if path == "/api/module/schedule":
                     return panel.set_schedule(w["path"], str(b.get("state", "")), self.terms_uid())
                 return panel.module_delete(w, str(b.get("confirm", "")))
+            if path in ("/api/repos/add", "/api/repos/remove"):   # задача 43: клон и /add-dir; «Отключить»
+                w = self.repo_win(b)
+                if path == "/api/repos/add":
+                    return panel.repo_add(w, str(b.get("repo", "")))
+                return panel.repo_remove(w, str(b.get("path", "")))
             w = self.win(b.get("w"))
             if path == "/api/space/connect":
                 return panel.owner_join(w)
