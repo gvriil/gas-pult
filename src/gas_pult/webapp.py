@@ -74,7 +74,7 @@ from gas_pult import (
     webauth,
 )
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
-from gas_pult.commands import DANGER, FULL, TAIL, execute, extract
+from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
@@ -1600,6 +1600,8 @@ class Panel:
         return out
 
     def run(self, w: dict, i: int, sha: str, confirmed: bool) -> dict:
+        if in_space(w):
+            raise PermissionError(SPACE_RUN)
         c = next((x for x in self.commands(w) if x["i"] == i and x["sha"] == sha), None)
         if not c:
             raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
@@ -1626,6 +1628,8 @@ class Panel:
         return {"id": termwin.open_window(self.tmux, cmd, path), "name": termwin.WINDOW}
 
     def term_run(self, w: dict, i: int, sha: str, confirmed: bool) -> dict:
+        if in_space(w):
+            raise PermissionError(SPACE_RUN)
         c = next((x for x in self.commands(w) if x["i"] == i and x["sha"] == sha), None)
         if not c:
             raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
@@ -1635,6 +1639,8 @@ class Panel:
         c = self.journal.get(cid)
         if not c:
             raise LookupError("команды уже нет в списке")
+        if in_space(c):
+            raise PermissionError(SPACE_RUN)
         return self.term_open(c["cmd"], c["kind"], c["danger"], c["path"], confirmed)
 
     def triage(self, path: str, wid: str, cmd: str, code, out: str) -> tuple[str, str]:
@@ -1663,6 +1669,8 @@ class Panel:
         c = self.journal.get(cid)
         if not c:
             raise LookupError("команды уже нет в списке")
+        if in_space(c):
+            raise PermissionError(SPACE_RUN)
         if c["kind"] != "local":
             raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
                              "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(c["kind"],
