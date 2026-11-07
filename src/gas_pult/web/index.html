@@ -5930,7 +5930,7 @@ async function loadDict(lang) {
 function T(k, v) { let s = DICT[k] ?? k; for (const x in v || {}) s = s.split("{" + x + "}").join(String(v[x])); return s; }
 const L = (k, ru) => ((SIM.on || (view === "login" && LANG === "en")) && DICT[k] ? T(k) : ru);   // общее: помощник, переходы
 const LL = (k, ru) => (LANG === "en" && DICT[k] ? T(k) : ru);                                   // первый экран
-const SIM = { sec: null, yes: {}, on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
+const SIM = { projects: [], sec: null, yes: {}, on: false, w: null, list: [], hist: [], rev: "", more: false, pending: [], act: null, skew: 0, ask: null, open2: false, tick: 0, busy: false, timer: null };
 // Инструмент Claude Code → обобщённое действие строки статуса (то же, что humanize.TOOLS — тест сверяет).
 const SIMPLE_TOOL = {"Read":"reads","Grep":"reads","Glob":"reads","LS":"reads","Edit":"edits","MultiEdit":"edits","Write":"writes","NotebookEdit":"edits","Bash":"acts","PowerShell":"acts","BashOutput":"acts","KillShell":"acts","Skill":"acts","WebSearch":"web","WebFetch":"web","Task":"helper","Agent":"helper","TodoWrite":"plans","TaskCreate":"plans","TaskUpdate":"plans","AskUserQuestion":"waiting","ExitPlanMode":"waiting"};
 const SIMPLE_PH = ["sent", "delivered", "started", "working", "thinking", "waiting", "done", "queued", "stuck", "idle"];
@@ -6002,7 +6002,10 @@ function sPaint() {                                   // постоянные с
   sHead();
 }
 // Имя агента: название модуля, из которого создано пространство (по-русски), иначе «Агент 2» — без имён папок.
+const sPj = () => SIM.projects.length > 0;              // простой режим по проектам: проект → чаты
+const sProjOf = (s) => SIM.projects.find((p) => p.id === s?.project);
 function sName(s) {
+  if (sPj() && s?.project) return s.title || T("pj.new");
   const i = SIM.list.indexOf(s), base = LANG === "ru" && s.agent ? s.agent : T("s.agent.n", { n: i + 1 });
   return LANG === "ru" && s.agent && SIM.list.filter((x) => x.agent === s.agent).length > 1 ? base + " " + (i + 1) : base;
 }
@@ -6010,9 +6013,10 @@ const sDot = (x) => (x.status === "dialog" ? '<i class="sdot s-approval"></i>' :
 const sChip = (on, attrs, label, extra = "") => `<button class="scn-opt${on ? " on" : ""}" type="button" ${attrs}${on ? ' aria-pressed="true"' : ""}>${extra}${esc(label)}</button>`;
 function sHead() {
   const s = SIM.list.find((x) => x.id === SIM.w);
-  $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T("s.agents"))}</b><small>${esc(s ? T("s.status." + (s.status in ST ? s.status : "idle")) + (s.owner_here ? " · " + T("s.owner_here") : "") : "")}</small></span>${SIM.list.length > 1 || canNew() ? ic("chevron", "s16") : ""}`;
-  $("sWho").setAttribute("aria-label", T("s.agents"));
-  const shown = SIM.list.filter((x) => sSecOk(x) || x.id === SIM.w);
+  const pj = sPj() ? sProjOf(s) : null;
+  $("sWho").innerHTML = `${ic("chat")}<span class="n"><b>${esc(s ? sName(s) : T(sPj() ? "pj.sheet" : "s.agents"))}</b><small>${esc((pj ? pj.name + " · " : "") + (s ? T("s.status." + (s.status in ST ? s.status : "idle")) + (s.owner_here ? " · " + T("s.owner_here") : "") : ""))}</small></span>${SIM.list.length > 1 || canNew() || sPj() ? ic("chevron", "s16") : ""}`;
+  $("sWho").setAttribute("aria-label", T(sPj() ? "pj.sheet" : "s.agents"));
+  const shown = SIM.list.filter((x) => (sSecOk(x) || x.id === SIM.w) && (!pj || x.project === pj.id));   // чипы — чаты этого проекта
   $("sAgents").hidden = shown.length < 2 && !SIM.sec;
   $("sAgents").innerHTML = $("sAgents").hidden ? "" : shown.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
   sSecs();
@@ -6063,7 +6067,9 @@ async function sYesGo(w, btn) {
   sYes();
 }
 async function sLoad(first) {
-  let d; try { d = await api("/api/sessions"); } catch (e) { return; }
+  // «Проекты» (задача 49): чаты — внутри проектов; у пространства пока по-старому — агенты
+  let d; try { d = await api(meta?.projects_ui ? "/api/projects" : "/api/sessions"); } catch (e) { return; }
+  SIM.projects = (d.projects || []).filter((x) => !x.archived);
   costInfo = d.cost || costInfo;                       // запас пространства (cost.budget) — в «Агенты»
   checkBuild(d);
   sessions = d.sessions || [];
@@ -6236,6 +6242,7 @@ function sDetails() {
     null, T("s.details.close"));
 }
 function sAgents() {
+  if (sPj()) return sProjects();
   const rows = SIM.list.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("");
   sSheet(hv("simple.agents"), T("s.agents"), `<p class="note">${esc(T("s.agents.hint"))}</p>${rows ? `<div class="scn-opts">${rows}</div>` : ""}
     ${canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}
@@ -6248,6 +6255,52 @@ function sAgents() {
       else if (b.dataset.ssclosed) { bg.remove(); ssClosed(); }
       else if (b.dataset.sffiles) { bg.remove(); sfFiles(SIM.w); }
     });
+}
+// Проекты и чаты (задача 49): проект → открытые чаты, «Новый чат», «Прошлые чаты» (перечитать и продолжить).
+function sProjects(pid) {
+  const cur = SIM.list.find((x) => x.id === SIM.w);
+  let pick = pid || cur?.project || SIM.projects[0]?.id, past = null;
+  const bg = sSheet(hv("simple.agents"), T("pj.sheet"), "", async (b) => {
+    if (b.dataset.pj) { pick = b.dataset.pj; past = null; haptic("selectionChanged"); return paint(); }
+    if (b.dataset.w) { bg.remove(); return sPick(b.dataset.w); }
+    if (b.dataset.pjnew) return busy(b, T("pj.new.wait"), async () => {
+      try { const r = await api("/api/project/session", { id: pick }); bg.remove(); toast(T("pj.new.done"), 3000); await sLoad(); sPick(r.id); }
+      catch (e) { toast(T("s.fail"), 3500); }
+    });
+    if (b.dataset.pjpast) return busy(b, T("s.loading"), async () => {
+      try { past = await api("/api/project/sessions?id=" + encodeURIComponent(pick)); paint(); } catch (e) { toast(T("s.fail"), 3500); }
+    });
+    if (b.dataset.past) { const c = past?.chats.find((x) => x.sid === b.dataset.past); if (c) sPast(pick, c, bg); return; }
+    if (b.dataset.snew) { bg.remove(); return sNewAgent(); }
+  });
+  const body = bg.querySelector(".s-body");
+  function paint() {
+    const p = SIM.projects.find((x) => x.id === pick), chats = SIM.list.filter((x) => x.project === pick);
+    body.innerHTML = `<p class="note">${esc(T("pj.hint"))}</p><p class="s-lbl">${esc(T("pj.projects"))}</p>
+      <div class="scn-opts">${SIM.projects.map((x) => sChip(x.id === pick, `data-pj="${esc(x.id)}"`, x.name, x.waiting ? '<i class="sdot s-approval"></i>' : "")).join("")}</div>`
+      + (p ? `<p class="s-lbl">${esc(T("pj.chats", { p: p.name }))}</p>`
+        + (chats.length ? `<div class="scn-opts">${chats.map((x) => sChip(x.id === SIM.w, `data-w="${esc(x.id)}"`, sName(x), sDot(x))).join("")}</div>` : `<p class="note">${esc(T("pj.none"))}</p>`)
+        + `<div class="scn-opts">${canNew() ? sChip(true, 'data-pjnew="1"', T("pj.new"), ic("plus")) : ""}${sChip(false, 'data-pjpast="1"', T("pj.past"), ic("folder"))}</div>`
+        + (past ? (past.chats.length ? `<div class="scn-opts">${past.chats.map((c) => sChip(false, `data-past="${esc(c.sid)}"`, c.title)).join("")}</div>` : `<p class="note">${esc(T("pj.past.none"))}</p>`)
+          + `<p class="note">${esc(T("pj.past.keep", { n: past.keep_days }))}</p>` : "") : "")
+      + (canNew() ? `<div class="scn-opts">${sChip(false, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : "");
+  }
+  paint();
+}
+async function sPast(pid, c, parent) {                // прошлый чат — только чтение; «Продолжить» откроет его снова
+  const bg = sSheet(hv("simple.past"), c.title || T("pj.past.title"), `<div class="chat s-past"><p class="note">${esc(T("s.loading"))}</p></div>`
+    + (canNew() && c.mine ? `<div class="scn-opts">${sChip(true, 'data-resume="1"', T("pj.resume"), ic("play"))}</div>` : ""), (b) => {
+    if (b.dataset.resume) return busy(b, T("pj.resume.wait"), async () => {
+      try { const r = await api("/api/project/resume", { id: pid, sid: c.sid }); bg.remove(); parent?.remove(); await sLoad(); sPick(r.id); }
+      catch (e) { toast(T("s.fail"), 3500); }
+    });
+  });
+  try {
+    const d = await api(`/api/project/history?id=${encodeURIComponent(pid)}&sid=${encodeURIComponent(c.sid)}`);
+    const box = bg.querySelector(".s-past");
+    box.innerHTML = d.items.map(sMsg).join("") || `<p class="note">${esc(T("pj.past.none"))}</p>`;
+    box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+  } catch (e) { bg.querySelector(".s-past").innerHTML = `<p class="note">${esc(T("s.fail"))}</p>`; }
 }
 async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш
   if (!canNew()) return;
@@ -6403,14 +6456,18 @@ function demoTty(key, path, body) {
     kind: w === "@9" ? "term" : w === "@5" ? "stopped" : "session", path: "/home/u/projects/demo" });
 }
 // Демо «Проектов»: проекты — папки сессий демо и ещё два без окон; завершённые чаты — с поиском и «Продолжить».
-function demoTitle(id) { return ({ "@1": "Тесты комнат и сверка П8", "@2": "Иконки для витрины", "@3": "Панель: тёмная тема", "@4": "Дайджест за неделю" })[id] || ""; }
+function demoTitle(id) {                              // простой режим на английском — без русских слов и в демо-данных
+  return (LANG === "en" ? { "@1": "Room tests and report check", "@2": "Icons for the storefront", "@3": "Panel: dark theme", "@4": "Weekly digest" }
+    : { "@1": "Тесты комнат и сверка П8", "@2": "Иконки для витрины", "@3": "Панель: тёмная тема", "@4": "Дайджест за неделю" })[id] || "";
+}
 function demoProjects(key, path, body, ses) {
   const q = new URLSearchParams(path.split("?")[1] || ""), t0 = demoApi.t0 || Math.floor(Date.now() / 1000), D = 86400;
   demoApi.pj ||= { hidden: {}, titles: {} };
-  const P = [["p-tgi", "tgi", "TGI-ассистент", "auto"], ["p-icon", "icon", "Иконки магазина", "module:wb-reviews"], ["p-gas-pult", "gas-pult", "gas-pult", "auto"],
-    ["p-shop-bot", "shop-bot", "Магазин-бот", "auto"], ["p-gastech-digest", "gastech-digest", "Дайджест", "auto"], ["p-books", "books", "Бухгалтерия", "module:acc-start"], ["p-home", "~", "Домашняя", "auto"]];
-  const DONE = { "p-tgi": [["Отчёт П8 за октябрь", 2 * 3600, 14], ["Комнаты: миграция базы", D + 5000, 31], ["Сверка по банку", 9 * D, 6]],
-    "p-books": [["Акт сверки за октябрь", D, 18], ["Описание платёжки", 4 * D, 4]], "p-icon": [["Цены конкурентов", 3 * D, 12]] };
+  const en = LANG === "en", L2 = (ru, eng) => (en ? eng : ru);
+  const P = [["p-tgi", "tgi", L2("Ассистент ТГИ", "Assistant"), "auto"], ["p-icon", "icon", L2("Иконки магазина", "Shop icons"), "module:wb-reviews"], ["p-gas-pult", "gas-pult", L2("Пульт", "Panel"), "auto"],
+    ["p-shop-bot", "shop-bot", L2("Магазин-бот", "Shop bot"), "auto"], ["p-gastech-digest", "gastech-digest", L2("Дайджест", "Digest"), "auto"], ["p-books", "books", L2("Бухгалтерия", "Accounting"), "module:acc-start"], ["p-home", "~", L2("Домашняя", "Home"), "auto"]];
+  const DONE = { "p-tgi": [[L2("Отчёт П8 за октябрь", "October report"), 2 * 3600, 14], [L2("Комнаты: миграция базы", "Rooms: database move"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]],
+    "p-books": [[L2("Акт сверки за октябрь", "October reconciliation"), D, 18], [L2("Описание платёжки", "Payment description"), 4 * D, 4]], "p-icon": [[L2("Цены конкурентов", "Competitor prices"), 3 * D, 12]] };
   const chats = (id) => (DONE[id] || []).map(([title, age, msgs], i) => ({ sid: `00000000-0000-4000-8000-${id.length}${String(i).padStart(11, "0")}`, title, mtime: t0 - age, msgs, mine: i !== 2 }))
     .map((c) => ({ ...c, title: demoApi.pj.titles[c.sid] || c.title })).filter((c) => !demoApi.pj.hidden[c.sid]);
   const list = P.map(([id, f, name, origin]) => {
@@ -6429,8 +6486,9 @@ function demoProjects(key, path, body, ses) {
     return Promise.resolve({ chats: all, more: false, before: null, cut: false, keep_days: 30, active: p.windows });
   }
   if (key === "/api/project/history") return Promise.resolve({ sid: q.get("sid"), title: chats(id).find((c) => c.sid === q.get("sid"))?.title || "", more: false, items: [
-    { i: 0, role: "user", text: "Собери акт сверки за октябрь по выписке из папки файлов", ts: "2026-11-06 10:02" },
-    { i: 1, role: "assistant", text: "Готово: **акт сверки** — расхождений два.\n\n| Дата | Сумма | Что |\n|---|---|---|\n| 12.10 | 14 200 ₽ | нет первички |\n| 27.10 | 3 150 ₽ | двойная оплата |", ts: "2026-11-06 10:05" }] });
+    { i: 0, role: "user", text: L2("Собери акт сверки за октябрь по выписке из папки файлов", "Prepare the October reconciliation from the statement in the files folder"), ts: "2026-11-06 10:02" },
+    { i: 1, role: "assistant", text: L2("Готово: **акт сверки** — расхождений два.\n\n| Дата | Сумма | Что |\n|---|---|---|\n| 12.10 | 14 200 ₽ | нет первички |\n| 27.10 | 3 150 ₽ | двойная оплата |",
+      "Done: **reconciliation** — two differences.\n\n| Date | Amount | What |\n|---|---|---|\n| 12.10 | 14,200 | no source document |\n| 27.10 | 3,150 | paid twice |"), ts: "2026-11-06 10:05" }] });
   if (key === "/api/project/chat") { if (body.hidden) demoApi.pj.hidden[body.sid] = 1; if (body.title) demoApi.pj.titles[body.sid] = body.title; return Promise.resolve({ project: id }); }
   if (key === "/api/project/session" || key === "/api/project/resume") return Promise.resolve({ id: p.sessions[0] || "@3", sid: body.sid || "", project: id });
   return Promise.reject(new Error("демо: нет такого запроса"));

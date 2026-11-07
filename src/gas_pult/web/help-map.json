@@ -2659,23 +2659,27 @@
     "go:simple.chat",
     "go:simple.new-agent"
    ],
-   "purpose": "Список ваших агентов: выберите, с кем говорить. Владелец и участник могут подключить нового.",
-   "purpose_en": "Your agents: choose who to talk to. The owner and members can connect a new one.",
+   "purpose": "Ваши проекты — папки с документами и правилами для агента — и разговоры в каждом: открытые и прошлые.",
+   "purpose_en": "Your projects — folders with documents and rules for the agent — and the conversations in each: open and past.",
    "roles": [
     "owner",
     "member",
     "viewer"
    ],
    "steps": [
-    "Нажмите агента — откроется разговор с ним.",
-    "«Подключить агента» — выбрать готового агента из каталога."
+    "Выберите проект, затем чат — откроется разговор.",
+    "«Новый чат» — ещё один разговор в этом проекте.",
+    "«Прошлые чаты» — перечитать и продолжить прежний разговор.",
+    "«Подключить агента» — новый проект из готового агента."
    ],
    "steps_en": [
-    "Tap an agent to open the conversation with it.",
-    "«Connect an agent» picks a ready-made agent from the catalog."
+    "Pick a project, then a chat — the conversation opens.",
+    "«New chat» starts another conversation in this project.",
+    "«Past chats» lets you reread and continue an earlier conversation.",
+    "«Connect an agent» creates a new project from a ready-made agent."
    ],
-   "title": "Мои агенты",
-   "title_en": "My agents",
+   "title": "Проекты и чаты",
+   "title_en": "Projects and chats",
    "where": "panel"
   },
   "simple.chat": {
@@ -2849,6 +2853,33 @@
    ],
    "title": "Подключить агента",
    "title_en": "Connect an agent",
+   "where": "panel"
+  },
+  "simple.past": {
+   "chips": [],
+   "faq": [],
+   "id": "simple.past",
+   "next": [
+    "go:simple.chat",
+    "go:simple.agents"
+   ],
+   "purpose": "Прежний разговор проекта — только чтение. «Продолжить этот чат» откроет его снова, и агент вспомнит всё сказанное.",
+   "purpose_en": "An earlier conversation in the project — read only. «Continue this chat» opens it again, and the agent remembers everything said.",
+   "roles": [
+    "owner",
+    "member",
+    "viewer"
+   ],
+   "steps": [
+    "Пролистайте разговор.",
+    "«Продолжить этот чат» — разговор откроется снова."
+   ],
+   "steps_en": [
+    "Scroll through the conversation.",
+    "«Continue this chat» opens the conversation again."
+   ],
+   "title": "Прошлый чат",
+   "title_en": "Past chat",
    "where": "panel"
   },
   "simple.settings": {
