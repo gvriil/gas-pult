@@ -29,13 +29,14 @@ import time
 from datetime import date
 from pathlib import Path
 
-from gas_pult import models, reviewers, tenants
+from gas_pult import models, reviewers, secrets_guard, tenants
 from gas_pult.tenants import GROUP_RO, GROUP_TENANTS, LAYOUT, LOGIN_WARNING
 
 SIZE = re.compile(r"^(\d{1,4})([MG])$")
 DEFAULT_SIZE = "2G"
 LIMITS = {"MemoryMax": "1G", "CPUQuota": "80%", "TasksMax": "128"}
 NOLOGIN = "/usr/sbin/nologin"
+GUARD_PYTHON = "/usr/bin/python3"                   # хук пространства: системный Python (venv владельца не виден)
 
 
 class Layout:
@@ -256,6 +257,30 @@ def backup_file(s: Sys, lay: Layout, f: Path) -> Path:
     return dst
 
 
+def guard(s: Sys, claude: Path, u: str, lay: Layout | None = None, python: str = GUARD_PYTHON):
+    """Скрытие секретов в папке Claude пространства: ``hooks/gas-pult-secrets.py`` и хуки в ``settings.json`` —
+    чужие хуки и настройки остаются; settings.json перед правкой — в бэкап (``etc-backup``). Идемпотентно."""
+    script = claude / "hooks" / secrets_guard.SCRIPT
+    s.mkdir(claude / "hooks", 0o755)                  # root: агент пространства скрипт хука не перепишет
+    s.write(script, Path(secrets_guard.__file__).read_text(encoding="utf-8"), 0o644)
+    sfile = claude / "settings.json"
+    try:
+        old = json.loads(sfile.read_text(encoding="utf-8") or "{}") if sfile.exists() else {}
+    except ValueError:
+        s.out(f"! {sfile}: не JSON — хуки скрытия секретов не поставлены, поправьте файл и повторите create")
+        return
+    if not isinstance(old, dict):
+        s.out(f"! {sfile}: не объект JSON — хуки скрытия секретов не поставлены")
+        return
+    new = secrets_guard.merge(old, secrets_guard.wanted_hooks(script, python))
+    if new == old and sfile.exists():
+        s.fix(sfile, 0o600, u, u)
+        return
+    if sfile.exists() and lay is not None:
+        backup_file(s, lay, sfile)
+    s.write(sfile, json.dumps(new, ensure_ascii=False, indent=2) + "\n", 0o600, u, u)
+
+
 def need_setup(lay: Layout, s: Sys):
     if not tenants.marker(lay.tenants):
         msg = "не сделана настройка: сначала sudo bin/pult-tenant-setup install (docs/TENANTS.md, шаг 1)"
@@ -338,6 +363,9 @@ def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, person
         "day_cap_x": cap or None}) + "\n", 0o640, "root", GROUP_RO)
     s.write(p["meta"], json.dumps({k: v for k, v in meta.items() if k not in ("slug", "budget_usd", "budget")},
                                   ensure_ascii=False, indent=1) + "\n", 0o644)
+    # 4б. скрытие секретов (secrets_guard): хуки в settings.json папки Claude, скрипт — копией в неё же
+    #     (домашнюю папку владельца пространство не видит — ProtectHome)
+    guard(s, p["claude"], u, lay)
     # 5. slice с лимитами, служба tmux пространства, таймер «журналы — группе пульта»
     un = lay.units(slug)
     s.write(un["slice"], slice_unit(slug), 0o644)

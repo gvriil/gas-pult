@@ -994,6 +994,123 @@
   }
 }
 </script>
+<!-- Секреты в поле ввода: правила — копия secrets_guard.RULES (хук Claude Code); тест сверяет, что они те же. -->
+<script type="application/json" id="secretRules">
+[
+ {
+  "id": "pem",
+  "label": "приватный ключ",
+  "re": "-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\\s\\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|$)",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "anthropic",
+  "label": "ключ Anthropic",
+  "re": "(?<![A-Za-z0-9_\\-])sk-ant-[A-Za-z0-9_\\-]{20,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "openrouter",
+  "label": "ключ OpenRouter",
+  "re": "(?<![A-Za-z0-9_\\-])sk-or-(?:v1-)?[A-Za-z0-9]{32,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "openai",
+  "label": "ключ OpenAI",
+  "re": "(?<![A-Za-z0-9_\\-])sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_\\-]{20,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "github",
+  "label": "токен GitHub",
+  "re": "(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "gitlab",
+  "label": "токен GitLab",
+  "re": "(?<![A-Za-z0-9_\\-])gl(?:pat|dt|rt|cbt|ptt|ft|imt|agent|oas)-[A-Za-z0-9_\\-]{20,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "telegram",
+  "label": "токен Telegram-бота",
+  "re": "(?<![A-Za-z0-9_])[0-9]{6,12}:AA[A-Za-z0-9_\\-]{30,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "aws",
+  "label": "ключ AWS",
+  "re": "(?<![A-Za-z0-9])(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}(?![A-Za-z0-9])",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "google",
+  "label": "ключ Google",
+  "re": "(?<![A-Za-z0-9_\\-])(?:AIza[A-Za-z0-9_\\-]{35}|GOCSPX-[A-Za-z0-9_\\-]{20,})",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "slack",
+  "label": "токен Slack",
+  "re": "(?<![A-Za-z0-9_\\-])(?:xox[abposre]-[A-Za-z0-9\\-]{10,}|https://hooks\\.slack\\.com/services/[A-Za-z0-9/_\\-]+)",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "stripe",
+  "label": "ключ Stripe",
+  "re": "(?<![A-Za-z0-9_])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "jwt",
+  "label": "токен JWT",
+  "re": "(?<![A-Za-z0-9_\\-])eyJ[A-Za-z0-9_\\-]{8,}\\.eyJ[A-Za-z0-9_\\-]{8,}\\.[A-Za-z0-9_\\-]{8,}",
+  "flags": "",
+  "g": 0
+ },
+ {
+  "id": "url",
+  "label": "пароль в адресе",
+  "re": "([a-z][a-z0-9+.\\-]*://[^\\s:/@'\\\"`]+:)([^\\s@/'\\\"`]+)(@)",
+  "flags": "i",
+  "g": 2
+ },
+ {
+  "id": "bearer",
+  "label": "токен в заголовке",
+  "re": "((?:authorization|bearer|token)[\\\"']?\\s*[:=]?\\s*[\\\"']?(?:bearer|token|basic)\\s+)([A-Za-z0-9._~+/\\-]{16,}=*)()",
+  "flags": "i",
+  "g": 2
+ },
+ {
+  "id": "assign_q",
+  "label": "значение секретной переменной",
+  "re": "((?:^|[^A-Za-z0-9_.\\-])[A-Za-z0-9_.\\-]*(?:[_.\\-](?:key|pass|pwd|credentials?)|apikey|token|secret|password|passwd)[0-9]*[\\\"']?\\s*(?::=|=>|=|:)\\s*[\\\"'])(?!\\$|<|\\[|\\*{3}|%|\\{|your[_\\-]|xxx|changeme|change[_\\-]me|example|placeholder|dummy|redacted|none(?![A-Za-z0-9_])|null(?![A-Za-z0-9_])|true(?![A-Za-z0-9_])|false(?![A-Za-z0-9_])|[0-9]+(?![^\\s\\\"'`,;]))([^\\s\\\"'`]{6,})([\\\"'])",
+  "flags": "i",
+  "g": 2
+ },
+ {
+  "id": "assign",
+  "label": "значение секретной переменной",
+  "re": "((?:^|[^A-Za-z0-9_.\\-])[A-Za-z0-9_.\\-]*(?:[_.\\-](?:key|pass|pwd|credentials?)|apikey|token|secret|password|passwd)[0-9]*\\s*(?::=|=|:)[ \\t]*)(?!\\$|<|\\[|\\*{3}|%|\\{|your[_\\-]|xxx|changeme|change[_\\-]me|example|placeholder|dummy|redacted|none(?![A-Za-z0-9_])|null(?![A-Za-z0-9_])|true(?![A-Za-z0-9_])|false(?![A-Za-z0-9_])|[0-9]+(?![^\\s\\\"'`,;]))(?![A-Za-z_.\\-]+(?![^\\s,;]))([^\\s\\\"'`,;()\\[\\]{}<>]{6,})(?![^\\s,;])()",
+  "flags": "i",
+  "g": 2
+ }
+]
+</script>
 <script>
 const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
@@ -3483,12 +3600,40 @@ addEventListener("touchend", (e) => {
   if (next) { haptic("selectionChanged"); openSession(next.id); }
 }, { passive: true });
 
+// ---------- секреты в поле ввода (secrets_guard.py) ----------
+// Ключ, токен или пароль в сообщении — спросить до отправки: модель не должна его видеть. Правила — #secretRules,
+// те же, что у хука Claude Code; тест прогоняет набор образцов через обе стороны.
+// secrets:begin
+const SECRET_RULES = JSON.parse(document.getElementById("secretRules").textContent)
+  .map((r) => ({ ...r, rx: new RegExp(r.re, "g" + r.flags) }));
+function redactSecrets(text) {
+  const found = [];
+  for (const r of SECRET_RULES) {
+    const mask = `[скрыт: ${r.label}]`;
+    const out = text.replace(r.rx, (...m) => r.g ? m[1] + mask + (m[3] || "") : mask);
+    if (out !== text) { if (!found.includes(r.label)) found.push(r.label); text = out; }
+  }
+  return { text, found };
+}
+// secrets:end
+let secretPass = null;                               // «Отправить как есть» — для этого текста больше не спрашивать
+function secretSheet(typed, s) {
+  helpSheet("sheet.secret");
+  sheet("Похоже на ключ: " + s.found.join(", "), [
+    { info: true, icon: "lock", label: "Модель не должна видеть ключи", sub: "Уберите его из сообщения, а сам ключ положите в «Интеграции» — там он хранится на сервере и модели не показывается." },
+    { label: "Убрать и отправить", icon: "check", sub: "вместо ключа уйдёт «[скрыт: …]»", run: () => { $("input").value = s.text; secretPass = null; sendText(); } },
+    { label: "Отправить как есть", icon: "warn", sub: "если это не ключ; в сессии с защитой пульта сообщение с ключом модель не получит", run: () => { secretPass = typed; sendText(); } },
+  ], "Отмена");
+}
+
 // ---------- ввод ----------
 async function sendText() {
   if (cur()?.status === "stopped") return toast("Сессия остановлена — сначала «Перезапустить»", 4000);
   if (files.some((f) => !f.path)) return toast("Подождите — файл ещё загружается");
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
+  if (typed && secretPass !== typed) { const s = redactSecrets(typed); if (s.found.length) return secretSheet(typed, s); }
+  secretPass = null;
   const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
   const p = { text, state: "sending", id: msgId(), w: current }; pending.push(p);
   $("input").value = ""; const sent = files; files = []; renderFiles(); grow();

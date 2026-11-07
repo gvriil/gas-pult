@@ -16,6 +16,7 @@
 | Папка | `/srv/pult/tenants/<slug>/` — точка монтирования своего образа ext4 `/srv/pult/images/<slug>.img` (по умолчанию 2 ГБ: это и есть лимит диска; `nodev,nosuid`) | 0710 `pult_t_<slug>:pult-ro` |
 | `home/` | домашняя папка (`HOME`) | 0700 |
 | `config/claude/` | `CLAUDE_CONFIG_DIR` пространства: вход, MCP, настройки | 0710, внутри — 0600 |
+| `config/claude/hooks/gas-pult-secrets.py` | скрытие секретов от модели (`secrets_guard.py`): хуки в `config/claude/settings.json`, ставит `pult-tenant create` | root, 0644 |
 | `config/claude/projects/` | журналы Claude Code: пульт читает расход и ответы | 2750 `…:pult-ro` |
 | `config/profiles/<id>.json` | настройки профиля модели с ключом (`claude --settings …`) | 0600 |
 | `run/tmux/default` | сокет своего сервера tmux | папка 0700 |

@@ -1,4 +1,4 @@
-"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|offer|email|last|version]``."""
+"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|offer|email|secrets|last|version]``."""
 
 from __future__ import annotations
 
@@ -388,6 +388,23 @@ def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
 
+def cmd_secrets(a):
+    """Хуки скрытия секретов (``secrets_guard``) в папке Claude Code: поставить, убрать, проверить."""
+    from gas_pult import secrets_guard
+
+    d = Path(a.config_dir or os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser()
+    if a.action == "status":
+        ok = secrets_guard.installed(d)
+        print(f"Скрытие секретов в {d}: {'стоит' if ok else 'не стоит — gas-pult secrets install'}")
+        raise SystemExit(0 if ok else 1)
+    try:
+        secrets_guard.install(d, python=a.python, remove=a.action == "uninstall")
+    except ValueError as e:
+        raise SystemExit(f"Ошибка: {e}") from None
+    if a.action == "install":
+        print("Новые сессии Claude Code в этой папке — со скрытием; открытые — после перезапуска.")
+
+
 def main(argv: list[str] | None = None):
     p = argparse.ArgumentParser(prog="gas-pult", description="Telegram-пульт для сессий Claude Code в tmux.")
     p.add_argument("-V", "--version", action="version", version=f"gas-pult {__version__}")
@@ -436,6 +453,11 @@ def main(argv: list[str] | None = None):
     s.add_argument("provider", nargs="?", help="secret — google или yandex")
     s.add_argument("--url", help="адрес панели снаружи (как у gas-pult webapp --url) — для адреса возврата")
     s.set_defaults(fn=cmd_oidc)
+    s = sub.add_parser("secrets", help="скрытие секретов от модели: install | uninstall | status [--config-dir …]")
+    s.add_argument("action", choices=["install", "uninstall", "status"], nargs="?", default="status")
+    s.add_argument("--config-dir", help="папка Claude Code (по умолчанию $CLAUDE_CONFIG_DIR или ~/.claude)")
+    s.add_argument("--python", help="чем запускать хук (по умолчанию — этот Python)")
+    s.set_defaults(fn=cmd_secrets)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

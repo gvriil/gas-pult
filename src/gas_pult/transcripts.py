@@ -9,6 +9,8 @@ import json
 import re
 from pathlib import Path
 
+from gas_pult import secrets_guard
+
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF"
                    "\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
@@ -125,6 +127,7 @@ class Tail:
 
 
 PASTED = re.compile(r"</?pasted_content[^>]*>")
+BLOCKED = "UserPromptSubmit operation blocked by hook"
 
 
 def revision(path: str, home: Path | None = None) -> str:
@@ -161,7 +164,15 @@ def history(path: str, limit: int = 30, before: int | None = None,
             ts = e.get("timestamp", "")[:16].replace("T", " ")
             kind = e.get("type")
             if kind == "queue-operation" and e.get("operation") == "enqueue" and str(e.get("content", "")).strip():
-                items.append({"role": "user", "text": PASTED.sub("", e["content"]).strip(), "ts": ts, "queued": "wait"})
+                text = secrets_guard.redact(PASTED.sub("", e["content"]).strip())[0]   # ключ в очереди — не показываем
+                items.append({"role": "user", "text": text, "ts": ts, "queued": "wait"})
+            elif kind == "system" and BLOCKED in str(e.get("content", "")):
+                # хук скрытия секретов остановил сообщение (secrets_guard): в чате — его пояснение, а не «в очереди»
+                why = str(e["content"]).split(BLOCKED, 1)[1].lstrip(" :\n")
+                w = next((x for x in reversed(items) if x.get("queued") == "wait"), None)
+                if w:
+                    items.remove(w)
+                items.append({"role": "assistant", "text": why, "ts": ts, "note": "blocked"})
             elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "queued_command":
                 text = PASTED.sub("", str(e["attachment"].get("prompt", ""))).strip()
                 q = next((x for x in reversed(items) if x.get("queued") == "wait" and x["text"] == text), None)
