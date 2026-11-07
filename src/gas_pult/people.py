@@ -49,12 +49,13 @@ from __future__ import annotations
 
 import json
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
 
 from gas_pult import country as geo
-from gas_pult import tenants
+from gas_pult import secrets_guard, tenants
 from gas_pult.config import data_dir, write_private
 from gas_pult.terms import VERSION as TERMS_VERSION
 
@@ -443,6 +444,10 @@ def claude_dir(data: Path, uid, owners) -> Path | None:
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     for x in (d, d.parent, d.parent.parent):
         x.chmod(0o700)
+    try:                                                # скрытие секретов — в каждой папке человека (secrets_guard)
+        secrets_guard.install(d, out=None)
+    except (OSError, ValueError) as e:
+        print(f"secrets_guard: {d}: {type(e).__name__}", file=sys.stderr, flush=True)
     return d
 
 

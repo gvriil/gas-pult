@@ -46,6 +46,7 @@ from gas_pult import (
     people,
     providers,
     qr,
+    secrets_guard,
     selftest,
     setup,
     space_budget,
@@ -385,7 +386,18 @@ class Pult:
         return activity.combine(j, self.sends.get(w["id"]), scr, sends=self.sends, wid=w["id"])
 
     def to_claude_live(self, chat: int, w: dict, text: str):
-        """Сообщение человека в окно и одно служебное сообщение «⏳ Отправлено», которое бот правит по фазам."""
+        """Сообщение человека в окно и одно служебное сообщение «⏳ Отправлено», которое бот правит по фазам.
+
+        Ключ, токен или пароль в сообщении — в окно уходит текст с заглушкой «[скрыт: тип]» (``secrets_guard``),
+        человеку — пояснение: модель значения не видела, ключ — в «Интеграции», сообщение в Telegram — удалить."""
+        text, found = secrets_guard.redact(text)
+        if found:
+            try:
+                self.send(chat, f"🔒 Убрал из сообщения: {', '.join(found)} — модель значения не увидит, в сессию ушла "
+                                "заглушка. Положите ключ в «Интеграции» панели пульта, а это сообщение удалите из "
+                                "Telegram: ключ остался в переписке.")
+            except TelegramError as e:
+                print("secrets:", e, flush=True)
         mid = None
         try:
             mid = self.send(chat, activity.line({"phase": "sent"})).get("message_id")
