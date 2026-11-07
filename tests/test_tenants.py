@@ -393,6 +393,25 @@ def test_key_writes_tenant_files_only(tmp_path, monkeypatch):
         tenant_admin.set_key(lay, s, "demo", "openrouter", "a b")
 
 
+def test_key_github_only_to_tenant_secrets(tmp_path, monkeypatch):
+    """Токен GitHub пространства (задача 43): только в его secrets.json, профиль и модель не меняются."""
+    fs = FakeSystem(monkeypatch)
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    s = tenant_admin.Sys(out=lambda *_: None, runner=fs.runner)
+    tenant_admin.create(lay, s, "demo")
+    tenant_admin.set_key(lay, s, "demo", "deepseek", "sk-test-1234\n", default=True)
+    fake = "github" + "_pat_" + "x" * 30                                    # заведомо поддельный
+    tenant_admin.set_key(lay, s, "demo", "github", fake + "\n")
+    p = tenants.paths("demo", lay.tenants)
+    assert json.loads(p["secrets"].read_text()) == {"deepseek": "sk-test-1234", "github": fake}
+    assert p["secrets"].stat().st_mode & 0o777 == 0o600
+    assert not (p["config_profiles"] / "github.json").exists()
+    assert tenants.load("demo", lay.tenants)["profile"] == "deepseek"
+    assert fake not in p["audit"].read_text()                              # в журнале — только 4 последних знака
+    assert "github" in tenant_admin.parser().parse_args(["key", "demo", "github"]).profile
+
+
 def test_key_ru_only_russian_with_gateway(tmp_path, monkeypatch):
     fs = FakeSystem(monkeypatch)
     lay = lay_of(tmp_path)

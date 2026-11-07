@@ -781,6 +781,14 @@
   .sheet.s-sheet .btn.wide:disabled { opacity: .45; } .sheet.s-sheet .btn.wide.danger { background: transparent; border: 1px solid var(--status-danger); color: var(--status-danger); } .sheet.s-sheet .field input { width: 100%; }
   .sheet.s-sheet .ss-row { padding: 10px 0; border-top: 1px solid var(--border-subtle); } .sheet.s-sheet .ss-row b { display: block; overflow-wrap: anywhere; }
   .sheet.s-sheet .ss-row small { display: block; color: var(--text-secondary); margin: 2px 0 6px; }
+  /* Репозитории сессии (задача 43): строка на карточке и список в шторке с поиском */
+  .repos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 18px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .repos .i { width: 15px; height: 15px; } .repos .rp { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 4px 2px 10px; border-radius: var(--radius-pill);
+    background: var(--bg-subtle); color: var(--text-primary); overflow-wrap: anywhere; }
+  .repos .rp button { border: 0; background: transparent; color: var(--accent-primary); font: inherit; font-size: calc(12px * var(--fz, 1)); padding: 4px 6px; min-height: 28px; cursor: pointer; }
+  .rp-list { max-height: 46vh; overflow-y: auto; margin: 0 0 6px; } .sheet .rp-pick { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; gap: 2px;
+    border: 0; border-top: 1px solid var(--border-subtle); background: transparent; color: var(--text-primary); padding: 10px 2px; min-height: 48px; cursor: pointer; overflow-wrap: anywhere; }
+  .sheet .rp-pick small { color: var(--text-secondary); } .sheet .rp-pick:disabled { opacity: .5; } .sheet .rp-pick b { font-weight: 600; }
   .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
   /* Пространство владельца: «Моё пространство» (его настоящий пульт) и «Демо и тесты» — разными цветами. Просмотр
      другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
@@ -1266,7 +1274,8 @@ function paintIcons() {
     ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
     .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
-    + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Интеграции</button>`;           // фокус: интеграции сессии
+    + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Интеграции</button>`            // фокус: интеграции сессии
+    + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`;        // фокус: репозитории сессии (задача 43)
 }
 
 // ---------- тема ----------
@@ -2150,7 +2159,7 @@ function card(s) {
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
-    ${costBar(s)}
+    ${costBar(s)}${reposLine(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
     ${s.status === "stopped" && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-revive="${esc(s.id)}">${ic("refresh", "s16")}Перезапустить — продолжить разговор</button>` : ""}</div>`;
 }
@@ -2877,6 +2886,7 @@ function sessionsClick(e) {
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
   const v = e.target.closest("[data-revive]"); if (v) return revive(v.dataset.revive, v);
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
+  const ro = e.target.closest("[data-roff]"); if (ro) return repoOff(ro.dataset.roffS, ro.dataset.roff, ro);
   const sc = e.target.closest("[data-sched]"); if (sc) { const s = sessions.find((x) => x.id === sc.dataset.sched); return s && scheduleSheet(s); }
   const c = e.target.closest(".card[data-id]"); if (c) openSession(c.dataset.id);
 }
@@ -3166,6 +3176,7 @@ function sessionSheet(id) {
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Фокус-ссылка", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
+    ...(canRepos(s) ? [{ label: "Репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этой сессии — без перезапуска", run: () => repoSheet(id) }] : []),
     ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
     ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
     ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
@@ -3936,6 +3947,7 @@ const ACTIONS = {
   },
   effort: () => effortSheet(),
   mcp: () => focusMcp(),
+  repos: () => repoSheet(current),
   switch: () => $("switchBtn").onclick(),
   active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
   refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
@@ -5466,6 +5478,67 @@ async function focusList() {
         async () => { try { await api("/api/focus/revoke", { id: x.id }); toast("Ссылка отозвана"); focusList(); } catch (e) { toast(e.message, 5000); } }) }))]
     : [{ info: true, icon: "qr", label: "Фокус-ссылок нет", sub: "выпустить — меню сессии → «Фокус-ссылка»" }]);
 }
+// ---------- репозитории GitHub в сессии (задача 43, repos.py) ----------
+// Клон (или pull, если папка уже есть) на сервере и /add-dir в живую сессию; при перезапуске — --add-dir.
+// «Отключить» убирает только из сессии: папка с репозиторием остаётся.
+const canRepos = (s) => !!s && meta?.role !== "viewer" && (meta?.role === "owner" || !!s.space);
+function reposLine(s) {
+  if (!s.repos?.length) return "";
+  const off = canRepos(s);
+  return `<div class="repos">${ic("folder")}${s.repos.map((r) => `<span class="rp" title="${esc(r.path)}">${esc(r.name)}${off ? `<button type="button" data-roff-s="${esc(s.id)}" data-roff="${esc(r.path)}" aria-label="Отключить ${esc(r.name)}">Отключить</button>` : ""}</span>`).join("")}</div>`;
+}
+async function repoOff(id, path, btn) {
+  const go = async () => {
+    try { await api("/api/repos/remove", { w: id, path }); toast("Отключено. Папка осталась на сервере; Claude перестанет её видеть после перезапуска сессии", 5000); await refresh(); }
+    catch (e) { toast(e.message, 5000); }
+  };
+  return btn ? busy(btn, "…", go) : go();
+}
+async function repoSheet(id) {
+  const s = sessions.find((x) => x.id === id); if (!s) return;
+  const bg = sSheet(hv("sheet.repos"), "Репозитории сессии", `<div data-rp-added></div>
+    <div class="field"><label for="rpQ">Добавить репозиторий</label><input id="rpQ" type="search" autocomplete="off" spellcheck="false" placeholder="Поиск или ссылка: github.com/владелец/имя"></div>
+    <div data-rp-note><p class="note">${ic("wait", "s16")} Загружаю список репозиториев…</p></div><div class="rp-list" data-rp-list></div>`, (b) => {
+    if (b.dataset.rpAdd) return repoAdd(id, b.dataset.rpAdd, b, bg);
+    if (b.dataset.rpOff) return repoOff(id, b.dataset.rpOff, b).then(() => paintAdded());
+    if (b.dataset.rpUrl) return openUrl(b.dataset.rpUrl);
+  });
+  let list = [];
+  const paintAdded = () => {
+    const a = sessions.find((x) => x.id === id)?.repos || [];
+    bg.querySelector("[data-rp-added]").innerHTML = a.length ? `<p class="note">Подключены к этой сессии — Claude видит их папки:</p>` + a.map((r) => `<div class="ss-row"><b>${esc(r.name)}</b><small>${esc(r.path)}</small>
+      <div class="scn-opts">${sChip(false, `data-rp-off="${esc(r.path)}"`, "Отключить", ic("x"))}</div></div>`).join("") + `<p class="note">«Отключить» убирает репозиторий только из сессии, папка остаётся.</p>` : "";
+  };
+  const paintList = () => {
+    const q = bg.querySelector("#rpQ").value.trim(), ql = q.toLowerCase(), have = new Set((sessions.find((x) => x.id === id)?.repos || []).map((r) => r.name.toLowerCase()));
+    const rows = list.filter((r) => !ql || r.full.toLowerCase().includes(ql) || (r.about || "").toLowerCase().includes(ql)).slice(0, 60);
+    const link = /github\.com[/:][^/\s]+\/[^/\s]+|^[\w.-]+\/[\w.-]+$/.test(q) && !rows.some((r) => r.full.toLowerCase() === ql);
+    bg.querySelector("[data-rp-list]").innerHTML = (link ? `<button class="rp-pick" type="button" data-rp-add="${esc(q)}"><b>${ic("plus", "s16")} Добавить по ссылке</b><small>${esc(q)}</small></button>` : "")
+      + rows.map((r) => `<button class="rp-pick" type="button" data-rp-add="${esc(r.full)}"${have.has(r.full.split("/")[1].toLowerCase()) ? " disabled" : ""}><b>${esc(r.full)}${r.private ? " · закрытый" : ""}</b>${r.about ? `<small>${esc(r.about)}</small>` : ""}</button>`).join("")
+      + (!rows.length && !link && list.length ? `<p class="note">Ничего не нашлось — вставьте ссылку на репозиторий.</p>` : "");
+  };
+  paintAdded();
+  bg.querySelector("#rpQ").addEventListener("input", paintList);
+  let d; try { d = await api("/api/repos?w=" + encodeURIComponent(id)); } catch (e) { d = { repos: [], error: e.message }; }
+  if (!bg.isConnected) return;
+  list = d.repos || [];
+  const h = d.hint;
+  bg.querySelector("[data-rp-note]").innerHTML = h ? `<div class="result bad">${ic("key")}<span><b>${esc(h.text)}</b></span></div><ol class="s-notes">${h.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+      <div class="scn-opts">${sChip(false, `data-rp-url="${esc(h.url)}"`, "Создать токен на GitHub", ic("ext"))}</div>`
+    : d.error ? `<p class="note">${esc(d.error)}</p>` : `<p class="note">${list.length ? "Выберите из списка или вставьте ссылку. Папка уже есть — вместо клона будет pull." : "Список пуст — вставьте ссылку на репозиторий."}</p>`;
+  paintList();
+}
+async function repoAdd(id, repo, btn, bg) {
+  await busy(btn, "Клонирую…", async () => {
+    try {
+      const d = await api("/api/repos/add", { w: id, repo });
+      bg.remove();
+      toast(`${d.full}: ${d.action === "pull" ? "папка уже была — обновлена (pull)" : "склонирован"}. ${d.sent ? "Claude получил /add-dir — папка уже в сессии" : "Подключится при перезапуске сессии"}`, 6000);
+      await refresh();
+      if (d.dialog && current === id) { toast("Claude спрашивает подтверждение — ответьте на экране", 5000); setTab("screen"); }
+    } catch (e) { toast(e.message, 6000); }
+  });
+}
 async function focusMcp() {                         // интеграции сессии: что подключено у Claude Code на сервере
   let d; try { d = await api("/api/mcp"); } catch (e) { return toast(e.message, 5000); }
   helpSheet("focus.mcp");
@@ -6031,6 +6104,7 @@ async function start() {
   if (params.get("term") && meta?.role === "owner") termSheet(params.get("term"));
   if (params.get("tty") && ttyOk()) ttyOpen(params.get("tty"));   // ?tty=@1 — живой терминал окна сразу (задача 50)   // из бота: «⌨️ Терминал в браузере»
   if (DEMO && params.has("modules")) { await modulesView(); if (params.get("modules")) moduleView(modData.modules.find((m) => m.id === params.get("modules"))); }
+  if (DEMO && params.has("repos")) { if (!sessions.length) await refresh(); repoSheet(params.get("repos") || "@3"); }   // ?repos[=@1|t:demo:@1&spaces] — репозитории сессии
   if (DEMO && params.get("conn")) { mcpData = await api("/api/mcp"); connectorView(mcpData.connectors.find((c) => c.id === params.get("conn"))); }
   if (DEMO && params.get("form")) { mcpData = await api("/api/mcp"); mcpForm(mcpData.presets.find((p) => p.id === params.get("form"))); }
   restoreDraft();                                     // черновик — после того, как открылась сессия
@@ -6709,6 +6783,24 @@ function demoProjects(key, path, body, ses) {
   if (key === "/api/project/session" || key === "/api/project/resume") return Promise.resolve({ id: p.sessions[0] || "@3", sid: body.sid || "", project: id });
   return Promise.reject(new Error("демо: нет такого запроса"));
 }
+function demoRepos(key, path, body) {             // задача 43: список, «добавить» (клон / pull), «отключить»
+  const rp = demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] }, w = body?.w || decodeURIComponent(path.split("w=")[1] || "");
+  if (key === "/api/repos/remove") { rp[w] = (rp[w] || []).filter((r) => r.path !== body.path); return Promise.resolve({ added: rp[w] }); }
+  if (key === "/api/repos/add") {
+    const m = String(body.repo).match(/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
+    if (!m) return Promise.reject(new Error("нужна ссылка на репозиторий GitHub (https://github.com/владелец/имя) или «владелец/имя»"));
+    const r = { path: (w.startsWith("t:") ? "/srv/pult/tenants/demo/home/projects/" : "/home/u/projects/") + m[2], name: m[2] };
+    rp[w] = [...(rp[w] || []).filter((x) => x.path !== r.path), r];
+    return new Promise((ok) => setTimeout(() => ok({ full: m[1] + "/" + m[2], path: r.path, action: m[2] === "gas-pult" ? "pull" : "clone", sent: true, dialog: false, added: rp[w] }), 900));
+  }
+  if (w.startsWith("t:")) return Promise.resolve({ added: rp[w] || [], repos: [], error: "", space: "demo", hint: { text: "У этого пространства нет токена GitHub — клонировать закрытые репозитории и показать их список нечем.",
+    steps: ["Создайте fine-grained токен на GitHub: доступ — только к нужным репозиториям, права Contents: Read (для пуша — Read and write), Metadata: Read.",
+      "Владелец пульта кладёт его в интеграции пространства: pult-tenant key demo github (токен — со стандартного ввода, ляжет в secrets.json пространства), — или подключает интеграцию GitHub в Claude Code этого пространства.",
+      "Открытый репозиторий можно добавить и без токена — вставьте ссылку."], url: "https://github.com/settings/personal-access-tokens/new" } });
+  return new Promise((ok) => setTimeout(() => ok({ added: rp[w] || [], hint: null, error: "", space: "", repos: [
+    { full: "gvriil/gas-pult", private: false, about: "Telegram-пульт и панель для сессий Claude Code" }, { full: "gvriil/gas-pult-docs", private: false, about: "Документация" },
+    { full: "gvriil/shop-bot", private: true, about: "Бот магазина" }, { full: "gvriil/gastech-digest", private: true, about: "" }] }), 400));
+}
 function demoApi(path, body) {
   // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
   const t0 = demoApi.t0 ||= Math.floor(Date.now() / 1000) - 8, H = 3600, D = 86400;
@@ -6755,7 +6847,7 @@ function demoApi(path, body) {
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
-    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, sessions: S.map((x) => ({ ...x, changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
+    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, sessions: S.map((x) => ({ ...x, repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
@@ -6913,6 +7005,7 @@ function demoApi(path, body) {
   R["/api/sessions"].sessions.forEach((x) => { if (!x.space) { x.project = "p-" + folder(x.path); x.title = demoTitle(x.id); } });
   if (key === "/api/projects" || key.startsWith("/api/project/") || key === "/api/project") return demoProjects(key, path, body, R["/api/sessions"]);
   if (key === "/api/help/ask") return demoHelp(body);
+  if (key.startsWith("/api/repos")) return demoRepos(key, path, body);
   if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
   if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [

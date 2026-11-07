@@ -74,6 +74,7 @@ src/gas_pult/
 ├── webauth.py      вход из браузера: через Telegram (TgLogins) и запасной код владельцу, cookie-сессии
 ├── emailcode.py    вход по коду на почту, второй фактор, письма-оповещения (SMTP_SSL, stdlib)
 ├── passkeys.py     вход по ключу (WebAuthn): необязательный пакет webauthn, импорт ленивый
+├── repos.py        репозитории GitHub в живой сессии: clone/pull, /add-dir, --add-dir при перезапуске (задача 43)
 ├── mcp.py          MCP-серверы Claude Code через `claude mcp`: коннекторы claude.ai, шаблоны PRESETS, свой сервер
 ├── providers.py    ключи API (secrets.json, 0600) и ElevenLabs: озвучка, распознавание, голоса
 ├── templates/

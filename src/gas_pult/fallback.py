@@ -29,7 +29,7 @@ import re
 import time
 from datetime import datetime
 
-from gas_pult import models, providers, transcripts
+from gas_pult import models, providers, repos, transcripts
 
 DEFAULT_CHAIN = ["claude"]
 KINDS = {"auth": "нет доступа", "rate": "лимит", "server": "сбой сервера", "timeout": "нет связи"}
@@ -266,7 +266,8 @@ class Switcher:
                    f", сессия «{w['name']}» ждёт"
             return self.tell(w, line, failed, "", kind, code)
         try:
-            cmd = models.command(self.base, nxt, st) + transcripts.resume_args(w.get("sid"))   # тот же разговор
+            cmd = (models.command(self.base, nxt, st) + repos.flags(st, w["path"])
+                   + transcripts.resume_args(w.get("sid")))   # тот же разговор и те же репозитории
             self.tmux.respawn(wid, w["path"], cmd, mark=nxt)
         except (ValueError, RuntimeError) as e:
             return self.tell(w, f"{head} — переключить сессию «{w['name']}» на {name(nxt)} не вышло: {e}",

@@ -115,6 +115,14 @@ def test_switch_respawns_with_continue_and_says_one_line(sw):
     assert sw.said == [line] and sw.logged[0]["from"] == "openrouter" and sw.logged[0]["to"] == "deepseek"
 
 
+def test_switch_keeps_added_repos(sw):
+    """Подключённые к сессии репозитории (задача 43) — и у запасного поставщика: ``--add-dir`` до ``--continue``."""
+    sw.st["add_dirs"] = {"/p/shop": ["/p/lib"]}
+    sw.seen("@1", entry("API Error: 429 rate_limit", 429, "rate_limit"))
+    sw.step(W, idle=True)
+    assert sw.tmux.calls[0][2].endswith(" --add-dir /p/lib --continue")
+
+
 def test_normal_turn_after_error_cancels(sw):
     sw.seen("@1", entry("API Error: Request timed out."))
     sw.seen("@1", {"type": "assistant", "message": {"content": [{"type": "text", "text": "ок"}]}})
