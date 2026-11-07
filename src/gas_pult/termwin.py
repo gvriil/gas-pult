@@ -139,16 +139,24 @@ def type_line(tmux, wid: str, text: str):
     if "\n" in text or "\r" in text:
         raise ValueError("одной строкой")
     if text:
-        buf = "gp-term-" + secrets.token_hex(6)           # не в аргументах команды (их видно в /proc) — через stdin
-        try:
-            tmux.run("load-buffer", "-b", buf, "-", input=text)
-            tmux.run("paste-buffer", "-d", "-b", buf, "-t", wid)  # -d: буфер удаляется сразу после вставки
-        finally:
-            try:
-                tmux.run("delete-buffer", "-b", buf)
-            except Exception:                              # уже удалён paste-buffer -d — так и должно быть
-                pass
+        paste(tmux, wid, text)
     tmux.run("send-keys", "-t", wid, "Enter")
+
+
+def paste(tmux, wid: str, text: str, bracket: bool = False):
+    """Текст — в окно через именованный буфер tmux: в буфер — из stdin (аргументы процессов видно в /proc), вставка
+    с ``-d`` удаляет буфер сразу, ``delete-buffer`` — на случай ошибки. ``bracket`` — вставка в скобках (``-p``):
+    многострочный текст не выполнится построчно. Окно пространства — через его сервер tmux (``resolve``)."""
+    tm, raw = resolve(tmux, wid)
+    buf = "gp-term-" + secrets.token_hex(6)
+    try:
+        tm.run("load-buffer", "-b", buf, "-", input=text)
+        tm.run("paste-buffer", "-d", *(("-p",) if bracket else ()), "-b", buf, "-t", raw)
+    finally:
+        try:
+            tm.run("delete-buffer", "-b", buf)
+        except Exception:                              # уже удалён paste-buffer -d — так и должно быть
+            pass
 
 
 def key(tmux, wid: str, k: str):
@@ -161,3 +169,106 @@ def key(tmux, wid: str, k: str):
 def close(tmux, wid: str):
     _ours(tmux, wid)
     tmux.run("kill-window", "-t", wid)
+
+
+# ---------- живой терминал в панели (задача 50): клавиши, вся история, поиск ----------
+# Окно сессии или gp-term: ввод текста и клавиш прямо в окно и история tmux целиком (с подгрузкой страницами).
+# Кто может — решает панель (webapp.py: режим разработчика, окна пространств и gp-term — только владельцу).
+# Ввод не пишется ни в какие логи; вывод истории — через маскировку секретов.
+TTY_KEYS = {"Up", "Down", "Left", "Right", "Escape", "Tab", "BTab", "Enter", "BSpace", "DC", "Home", "End",
+            "PPage", "NPage", "Space", "C-c", "C-d", "C-z", "C-l", "C-r", "C-a", "C-e", "C-u", "C-k", "C-w", "C-p",
+            "C-n", "C-o", "C-t", "C-b", "C-f", "C-g", "C-y", "M-Enter", "S-Tab"}
+OWNER_KEYS = {"C-z"}            # Ctrl+Z уводит Claude в фон, и окно становится командной строкой — только владельцу
+PAGE = 500                      # строк окна за один запрос «выше»
+MAX_ROWS = 20_000               # глубже — не отдаём: последние 20 тысяч строк истории окна
+LINE_MAX = 2000                 # длинная строка обрезается (склеенные -J переносы)
+TEXT_MAX = 8000                 # за один ввод
+CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")   # управляющие знаки из текста — не вводим (кроме \t и \n)
+INFO = "#{history_size}\t#{history_limit}\t#{pane_height}\t#{pane_start_time}\t#{pane_dead}\t#{alternate_on}"
+
+
+def resolve(tmux, wid: str):
+    """(tmux, номер окна в нём): окно пространства ``t:<slug>:@N`` — его сервер tmux и ``@N``
+    (``spaces.Routed``), иначе — как есть."""
+    target = getattr(tmux, "target", None)
+    t = target(wid) if callable(target) else tmux
+    own = getattr(t, "own", None)
+    if callable(own) and hasattr(t, "tm"):
+        return t.tm, own(wid)
+    return t, wid
+
+
+def mask(text: str) -> str:
+    """Секреты в выводе — как в «Выполнить» (``commands.mask``) и в сессиях (``secrets_guard.redact``)."""
+    from gas_pult import commands, secrets_guard
+    return commands.mask(secrets_guard.redact(text)[0])
+
+
+def tty_type(tmux, wid: str, text: str):
+    """Текст — в окно как есть (без Enter): через буфер tmux, не в аргументах. Многострочный — вставкой в скобках."""
+    text = CTRL.sub("", str(text or "").replace("\r\n", "\n").replace("\r", "\n"))
+    if not text:
+        raise ValueError("пустой ввод")
+    if len(text) > TEXT_MAX:
+        raise ValueError(f"за один раз — до {TEXT_MAX} знаков")
+    paste(tmux, wid, text, bracket="\n" in text)
+
+
+def tty_key(tmux, wid: str, k: str, owner: bool = True):
+    """Клавиша — только из белого списка имён tmux (``TTY_KEYS``); Ctrl+Z — только владельцу."""
+    if k not in TTY_KEYS or (k in OWNER_KEYS and not owner):
+        raise ValueError("такой клавиши нет")
+    tm, raw = resolve(tmux, wid)
+    tm.run("send-keys", "-t", raw, k)
+
+
+def _num(x, default=0) -> int:
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return default
+
+
+def _capture(tm, raw: str, a: int, b: int) -> list[str]:
+    """Строки окна с ``y = a`` по ``y = b`` включительно: переносы по ширине склеены, секреты замаскированы."""
+    out = tm.run("capture-pane", "-p", "-J", "-S", str(a), "-E", str(b), "-t", raw)
+    lines = [x.rstrip()[:LINE_MAX] for x in mask(out).split("\n")]
+    if out.endswith("\n") and lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def history(tmux, wid: str, start=None, end=None, everything: bool = False) -> dict:
+    """История окна в строках tmux: строка ``r`` (от 0 — самой старой в истории) — это ``y = r - history_size``.
+
+    Без параметров — последние ``PAGE`` строк (с видимым экраном); ``start`` — от этой строки до конца (живой хвост
+    после прокрутки вверх); ``end`` — страница выше этой строки (``everything`` — всё выше неё, для поиска);
+    только ``everything`` — вся доступная история. Глубже ``MAX_ROWS`` от конца не отдаём.
+
+    ``cut`` — сколько первых строк ответа уже ушло в историю (выше экрана) и больше не меняется; остальные — экран,
+    его панель перерисовывает целиком при каждом опросе."""
+    tm, raw = resolve(tmux, wid)
+    info = tm.run("display-message", "-p", "-t", raw, INFO).strip().split("\t")
+    if len(info) < 3 or not info[0].isdigit():
+        return {"alive": False, "lines": [], "start": 0, "end": 0, "total": 0}
+    hs, limit, height = _num(info[0]), _num(info[1]), _num(info[2])
+    total = hs + height
+    floor = max(0, total - MAX_ROWS)
+    if end is not None:
+        hi = min(max(_num(end), floor), total)
+        lo = floor if everything else max(floor, hi - PAGE)
+    elif everything:
+        lo, hi = floor, total
+    elif start is not None:
+        lo, hi = min(max(_num(start), floor), total), total
+    else:
+        lo, hi = max(floor, total - PAGE), total
+    old = _capture(tm, raw, lo - hs, min(hi, hs) - 1 - hs) if lo < min(hi, hs) else []
+    scr = _capture(tm, raw, max(lo, hs) - hs, hi - 1 - hs) if max(lo, hs) < hi else []
+    if hi == total:                                  # пустой низ экрана под курсором — не нужен
+        while scr and not scr[-1]:
+            scr.pop()
+    return {"alive": True, "lines": old + scr, "cut": len(old), "start": lo, "end": hi, "total": total,
+            "floor": floor, "history": hs, "limit": limit, "height": height,
+            "since": _num(info[3] if len(info) > 3 else 0), "dead": (info[4:5] or [""])[0] == "1",
+            "alt": (info[5:6] or [""])[0] == "1"}

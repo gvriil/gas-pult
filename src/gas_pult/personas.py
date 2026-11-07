@@ -98,7 +98,7 @@ SECTIONS = {"search": {"ru": "Поиск", "en": "Search"}, "analytics": {"ru": 
 
 # Какие запросы API относятся к возможности. Сервер не пускает к ним того, у кого возможности нет в *потолке*.
 CAP_PATHS = {
-    "cap.dev_terminal": ("/api/screen", "/api/hint"),
+    "cap.dev_terminal": ("/api/screen", "/api/hint", "/api/tty", "/api/tty/type", "/api/tty/key"),
     "cap.dev_models_mcp": ("/api/model", "/api/effort", "/api/mcp", "/api/mcp/add", "/api/mcp/remove",
                            "/api/mcp/login", "/api/mcp/finish", "/api/mcp/connected"),
     "cap.dev_sessions": ("/api/folder", "/api/rename", "/api/cmds", "/api/command"),

@@ -1076,6 +1076,32 @@ class Panel:
             os.replace(tmp, f)
         return {"model": d.get("model") or "", "models": list(self.cfg.models)}
 
+    def tty_window(self, wid: str, owner: bool, write: bool) -> dict:
+        """Окно для живого терминала (задача 50). Владельцу — любое окно его tmux, окно gp-term и окна пространств
+        (через их tmux). Участнику — только окна сессий пульта; писать — только пока в окне работает Claude
+        (остановленная сессия — командная строка сервера, она только владельцу)."""
+        w = self.tmux.window(str(wid or ""))
+        if not w:
+            raise LookupError("окна уже нет")
+        if owner:
+            return w
+        if w.get("space") or w.get("name") == termwin.WINDOW:
+            raise ValueError("это окно — только владельцу пульта")
+        if not (w.get("cmd") == "claude" or w.get("mark")):
+            raise ValueError("это не окно сессии пульта")
+        if write and (w.get("cmd") != "claude" or w.get("stopped")):
+            raise ValueError("Claude в этой сессии остановлен — в командную строку сервера вводит только владелец")
+        return w
+
+    @staticmethod
+    def tty_kind(w: dict) -> str:
+        """Что за окно — для подписи в панели: сессия, окно терминала gp-term, остановленная сессия, своё окно."""
+        if w.get("name") == termwin.WINDOW:
+            return "term"
+        if w.get("stopped"):
+            return "stopped"
+        return "session" if w.get("cmd") == "claude" or w.get("mark") else "shell"
+
     def key(self, w: dict, key: str) -> list[str]:
         if key not in {k for _, k in KEYS + PANEL_KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты
             raise ValueError("неизвестная клавиша")
@@ -1738,6 +1764,10 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
+# Живой терминал (задача 50): клавиши и текст прямо в окно, вся история tmux. Только в режиме разработчика (владелец
+# и участник с «Экраном терминала» не в простом режиме — ``H.dev_tty``); наблюдателю, пространству и фокусу — нет.
+TTY = ("/api/tty", "/api/tty/type", "/api/tty/key")
+MEMBER_ONLY |= set(TTY)
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 SELFTEST = "/api/selftest"               # автотест поставщиков (selftest.py): итог и «Проверить сейчас» — владельцу
 OWNER_ONLY |= {SELFTEST}
@@ -1959,7 +1989,22 @@ def handler(panel: Panel):
             if cap and cap not in personas.ceiling(personas.access(role), panel.team, uid):
                 self.json({"error": "этот раздел вам не открыл владелец пульта", "code": "cap", "cap": cap}, 403)
                 return False
+            if path in TTY and not self.dev_tty():
+                self.json({"error": "живой терминал — только в режиме разработчика", "code": "dev"}, 403)
+                return False
             return True
+
+        def dev_tty(self) -> bool:
+            """Живой терминал: владелец или участник, у которого в виде есть «Экран терминала» и не простой режим.
+            Фокус-ссылка сюда не доходит (``FOCUS_*``), тестировщик пространства — тоже (``SPACE_OK``)."""
+            if self.focused is not None or self.space():
+                return False
+            role = self.who()[1]
+            if role not in ("owner", "member"):
+                return False
+            tu = self.terms_uid()
+            v = panel.ui(tu, role)
+            return "cap.dev_terminal" in v["caps"] and not v["simple"] and not panel.prefs(tu, role)["simple"]
 
         def client_ip(self) -> str:
             """Адрес клиента. За обратным прокси на этой машине — из ``X-Forwarded-For`` (последний адрес: его дописал
@@ -2048,6 +2093,7 @@ def handler(panel: Panel):
                 return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
                         "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
                         "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
+                        "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
@@ -2122,6 +2168,11 @@ def handler(panel: Panel):
                 return panel.default_model()
             if path == "/api/term":                       # окно терминала панели: что на экране, живо ли
                 return termwin.screen(panel.tmux, q.get("id", ""))
+            if path == "/api/tty":                        # живой терминал: история окна страницами (задача 50)
+                w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False)
+                d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1")
+                return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
+                        "path": w.get("path", "")}
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 st = tenants.status(check=True)
                 for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
@@ -2638,6 +2689,16 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == "/api/term/close":
                 termwin.close(panel.tmux, str(b.get("id", "")))
+                return {"ok": True}
+            if path in ("/api/tty/type", "/api/tty/key"):   # живой терминал: текст и клавиши прямо в окно
+                owner = self.who()[1] == "owner"
+                w = panel.tty_window(str(b.get("w") or ""), owner, write=True)
+                if path == "/api/tty/key":
+                    termwin.tty_key(panel.tmux, w["id"], str(b.get("key", "")), owner)
+                    return {"ok": True}
+                if w.get("name") == termwin.WINDOW and self.headers.get("X-Telegram-Init-Data"):
+                    raise ValueError("в окно с паролем из Telegram не вводим — откройте панель в браузере")
+                termwin.tty_type(panel.tmux, w["id"], str(b.get("text", "")))
                 return {"ok": True}
             if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
                 st = panel.pult.state()
