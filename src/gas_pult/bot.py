@@ -5,6 +5,7 @@
 - Монитор: любой законченный ход Claude и любой диалог на экране (разрешения, /model, /mcp) приходят сами,
   с кнопками 🔊 ✅ ✏️ и 1/2/3/↑/↓.
 - Номер задачи (GAS-123) — новая сессия по задаче. Команды из ответа — отдельными сообщениями с ▶️.
+- «#ревью» в начале сообщения владельца — отчёт ревью файлом в inbox для разбора, не в окно (``review_inbox.py``).
 Пускает только владельцев из ``owners``; от остальных принимает лишь вход в панель «через Telegram»
 (``/start login_…`` и кнопки «Войти / Это не я») — остальное молча игнорирует.
 До согласия с условиями использования (``terms.py``) на любое действие бот отвечает текстом условий и кнопкой
@@ -46,6 +47,7 @@ from gas_pult import (
     people,
     providers,
     qr,
+    review_inbox,
     secrets_guard,
     selftest,
     setup,
@@ -196,6 +198,7 @@ class Pult:
         self.schedule = modules.Schedule(cfg.data / "modules.json")   # расписание пространств из модулей
         self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")     # демо предложений: токены от панели
         self.demo_seen: dict[int, list[float]] = {}                    # кто запускал демо — только в памяти, час
+        self.reviews = review_inbox.Collector(cfg.data / "inbox")      # «#ревью» владельца — файлом для разбора
         # поставщик модели не отвечает — окно само уходит на запасной (fallback.py), владельцам — одна строка
         # запасные — по странам человека, чьё окно (@gas_pult_by), иначе первого владельца
         self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
@@ -2164,6 +2167,9 @@ class Pult:
         if t.startswith("/start login_"):
             return self.login_request(m, t.removeprefix("/start login_").strip())
         uid = (m.get("from") or {}).get("id")
+        # заготовки Pult.__new__ в тестах — без reviews
+        if getattr(self, "reviews", None) and uid in self.cfg.owners and self.on_review(m, t):
+            return None
         if t in ("/start", "/menu") and uid not in self.cfg.owners and self.people.tenant(uid):
             return self.tester_start(chat, uid)
         if t == "/help" and uid not in self.cfg.owners and self.people.tenant(uid):
@@ -2242,6 +2248,40 @@ class Pult:
             return send("Пришли текст, голосовое или файл.")
         self.to_claude_live(chat, w, t)
         self.react(m, "👀")
+
+    def on_review(self, m: dict, t: str) -> bool:
+        """«#ревью» владельца (и продолжение длинной посылки) — файлом в inbox, не в сессию (review_inbox.py).
+        True — сообщение забрано. Текст отчёта в журнал службы не пишется."""
+        chat = m["chat"]["id"]
+        body = review_inbox.labeled(t)
+        if body is None:
+            if t.startswith(MENU_PREFIXES) or not self.reviews.wants(chat, m, t):
+                return False
+            body, file = self.review_attachment(m, t)
+            self.reviews.add(chat, m, body, file)
+            self.react(m, "✍")
+            return True
+        body, file = self.review_attachment(m, body)
+        self.reviews.start(chat, m, body, file)
+        self.send(chat, review_inbox.reply(self.reviews.now()))
+        return True
+
+    def review_attachment(self, m: dict, text: str) -> tuple[str, str]:
+        """Файл при «#ревью» (подпись документа или фото): скачать в inbox/review-att; текстовый (.md, .txt,
+        до 1 МБ) — дописать к тексту отчёта целиком. → (текст, путь вложения или «»)."""
+        f = (m.get("photo") or [None])[-1] or m.get("document")
+        if not f:
+            return text, ""
+        att = self.reviews.inbox / review_inbox.ATT_DIR
+        path = self.api.download(f["file_id"], att, f.get("file_name") or "photo.jpg")
+        os.chmod(path, 0o600)
+        mime = f.get("mime_type") or ""
+        if (mime.startswith("text/") or path.suffix.lower() in (".md", ".txt")) and path.stat().st_size <= 1 << 20:
+            try:
+                return "\n\n".join(x for x in (text, path.read_text(encoding="utf-8").strip()) if x), str(path)
+            except (OSError, UnicodeDecodeError):
+                pass
+        return text, str(path)
 
     def handle(self, u: dict):
         chat = (u.get("message") or u.get("callback_query", {}).get("message") or {}).get("chat", {}).get("id")
