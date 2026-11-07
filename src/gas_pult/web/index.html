@@ -100,6 +100,17 @@
   .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
   .chip.space { color: var(--text-secondary); background: var(--bg-subtle); }
   body:not(.tester) .tester-only { display: none; }
+  /* Фокус (задача 41): одна сессия — без списка, переключения, создания и общих настроек */
+  body:not(.focus) .focus-only { display: none; }
+  body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus #rail, body.focus #home, body.focus #homeBar,
+  body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
+  body.focus #menu [data-act=switch], body.focus #menu [data-act=active] { display: none !important; }
+  .focus-end { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: var(--bg-canvas); color: var(--text-primary); text-align: center; }
+  .focus-end .i { width: 40px; height: 40px; color: var(--text-secondary); }
+  .focus-end h2 { margin: 12px 0 8px; }
+  .focus-qr { display: block; width: 220px; height: 220px; margin: 8px auto; image-rendering: pixelated; background: #fff; border-radius: 8px; }
+  .focus-url { margin: 4px 16px 0; padding: 8px 10px; border-radius: 8px; background: var(--bg-surface); font: 12px/1.4 ui-monospace, monospace; word-break: break-all; }
   .space-h { display: flex; align-items: center; gap: 8px; margin: 18px 4px 8px; font-weight: 600; color: var(--text-secondary); }
   .space-h button { margin-left: auto; border: 0; cursor: pointer; }
   .manual { margin: 4px 0 8px; } .manual summary { cursor: pointer; padding: 6px 2px; }
@@ -987,6 +998,11 @@
 const tg = window.Telegram?.WebApp;
 const params = new URLSearchParams(location.search);
 const DEMO = params.has("demo");
+// Фокус (задача 41): ссылка «…/#focus=<токен>» — только чат одной сессии. Токен — после «#»: на сервер и в журналы он
+// не уходит; страница отдаёт его один раз (POST /api/focus/open) и убирает из адреса.
+const FOCUS_TOKEN = (/(?:^#|&)focus=([A-Za-z0-9_-]{24,64})/.exec(location.hash) || [])[1] || "";
+const FOCUS = !!FOCUS_TOKEN || params.has("focus");
+if (FOCUS_TOKEN) history.replaceState(null, "", location.pathname + (params.has("focus") ? location.search : (location.search ? location.search + "&" : "?") + "focus"));
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
              stopped: { label: "остановлена", cls: "s-stopped" } };      // Claude завершился, в окне — командная строка
@@ -999,7 +1015,7 @@ let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, curren
     lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false,
     termWrap = false, lastOk = Date.now(), openLogs = new Set();
 const wideMQ = matchMedia("(min-width: 1024px)");
-const split = () => wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
+const split = () => !FOCUS && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
 // Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
@@ -1079,7 +1095,8 @@ function paintIcons() {
   $("menu").innerHTML = `<button data-act="close" class="danger" data-owner>${ic("power")}Завершить</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"],
     ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "pin", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
     .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
-    + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`;      // тестировщик пространства
+    + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
+    + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Интеграции</button>`;           // фокус: интеграции сессии
 }
 
 // ---------- тема ----------
@@ -1291,12 +1308,13 @@ function toast(text, ms = 2600) {
 async function api(path, body, raw, extra, signal) {
   if (DEMO && params.has("offline") && start.done) throw Object.assign(new Error("нет сети"), { net: true });
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
-  const headers = { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
+  const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
   let r;
   try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined, signal }); }
   catch (e) { if (signal?.aborted) throw e; throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
+  if (FOCUS && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Сессия завершена"); }
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
@@ -1378,11 +1396,12 @@ function show(v) {
 // «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
 function syncBack() {
   const two = split();
-  const canBack = view === "mcpForm" || (view === "session" && !two) || (view === "home" && !two && homeView !== "sessions");
+  const canBack = !FOCUS && view === "mcpForm" || (view === "session" && !two) || (view === "home" && !two && homeView !== "sessions");
   $("backBtn").hidden = !canBack;
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
 }
 function back() {
+  if (FOCUS) return refresh();                      // в фокусе уходить некуда; сессию завершили — сервер ответит 410
   if (view === "home" && homeView !== "sessions") { setHome("sessions"); return scrollToY(0); }
   if (view === "mcpForm") { clearInterval(connTimer); const f = formBack; formBack = null; if (f) return f(); show("home"); return setHome("integrations"); }
   current = null; closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
@@ -1524,7 +1543,7 @@ const NOTICES = ["#updateBar", "#net", ".toast", ".tour-offer"];
 const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
 // position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
 // .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
-const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", "body.split #home", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar"];
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", "body.split #home", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end"];
 function notice(el) { $("notices").append(el); placeNotices(); return el; }
 function placeNotices() {
   const root = document.documentElement.style, H = document.body.clientHeight;
@@ -2212,6 +2231,7 @@ function ssClose(s, done) {                              // s: {id, name, space}
         }
         if (d.result !== "closed") return toast(T("ss.close.not"), 5000);
         toast(d.draft ? T("ss.close.draft") : T("ss.close.done"), 5000);
+        if (FOCUS) return focusEnd("Сессия завершена.");
         if (s.id === current) back(); else refresh();
         if (meta?.space) sLoad?.();
         done && done(d.folder);
@@ -2432,7 +2452,7 @@ async function refresh() {
     }
     if (view !== "session") return;
     const s = cur();
-    if (!s) { toast("Сессия завершена"); return back(); }
+    if (!s) { if (FOCUS) return focusEnd("Сессия завершена."); toast("Сессия завершена"); return back(); }
     paintSession(s); loadHint(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
@@ -2475,15 +2495,17 @@ $("sessionsView").addEventListener("click", (e) => {
 });
 $("newBtn").onclick = () => newSession();
 function newSession(profile) {
+  const f = focusNext; focusNext = false; focusWant = false;   // «В фокусе» — только для этой новой сессии
   if (meta?.space) return sheet(T("ss.menu"), [    // тестировщик: новая сессия (своя папка в пространстве) или закрытые
     { label: T("ss.new.title"), sub: T("ss.new.sub"), icon: "plus", run: () => ssNew() },
     { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed() }]);
   helpSheet("sheet.new-session");
-  sheet("Новая сессия — в какой папке?", [
-    { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => newFolder(profile) },
-    ...(profile ? [] : [{ label: "Из модуля", sub: "готовый агент под задачу: новая папка с правилами и навыками", icon: "puzzle", run: () => modulesView() }]),
+  sheet(f ? "Новая сессия в фокусе — в какой папке?" : "Новая сессия — в какой папке?", [
+    ...(meta?.role === "owner" && !f ? [{ label: "В фокусе", sub: "сразу фокус-ссылка: только эта сессия на другом устройстве", icon: "qr", run: () => { focusNext = true; newSession(profile); } }] : []),
+    { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => { focusWant = f; newFolder(profile); } },
+    ...(profile || f ? [] : [{ label: "Из модуля", sub: "готовый агент под задачу: новая папка с правилами и навыками", icon: "puzzle", run: () => modulesView() }]),
     ...meta.projects.map((label, i) => ({
-      label, icon: "file", run: () => profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)),
+      label, icon: "file", run: () => { focusWant = f; profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)); },
     }))]);
 }
 // «Новая папка» — своё поле ввода (prompt() в Telegram на iPhone ненадёжен); имя — как у 📁 в боте.
@@ -2506,7 +2528,7 @@ function newFolder(profile) {
     try {
       const d = await api("/api/folder", { name: inp.value.trim().toLowerCase(), profile: pid });
       if (d.exists) return taken(d.folder, d.i, d.open);
-      bg.remove(); haptic("notificationOccurred", "success"); await refresh(); openSession(d.id); toast("Папка " + d.folder + " создана");
+      bg.remove(); haptic("notificationOccurred", "success"); await refresh(); openSession(d.id); toast("Папка " + d.folder + " создана"); focusAfterNew(d.id);
     } catch (e) { bad(e.message); }
   };
   const save = () => {
@@ -2572,7 +2594,7 @@ function pickProfile(go, exclude) {
 async function startSession(i, profile) {
   toast(profile && profile !== "claude" ? `Запускаю Claude Code с ${profileOf(profile)?.title || profile}…` : "Запускаю Claude…", 3000);
   try {
-    const d = await api("/api/new", { i, profile }); await refresh(); openSession(d.id);
+    const d = await api("/api/new", { i, profile }); await refresh(); openSession(d.id); focusAfterNew(d.id);
     if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);
   } catch (err) { toast("Не вышло: " + err.message, 4500); }
 }
@@ -2583,7 +2605,8 @@ function sessionSheet(id) {
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "pin", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
-    ...(meta?.role !== "viewer" ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role === "owner" && !FOCUS ? [{ label: "Фокус-ссылка", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
     ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
     ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
     ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
@@ -3348,6 +3371,7 @@ const ACTIONS = {
       ...(meta.role === "owner" ? [{ label: "Сменить поставщика этого чата…", icon: "swap", sub: "Claude, OpenRouter, GLM, DeepSeek — только эта сессия, она перезапустится", run: () => switchProfile(s) }] : [])]);
   },
   effort: () => effortSheet(),
+  mcp: () => focusMcp(),
   switch: () => $("switchBtn").onclick(),
   active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
   refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
@@ -3381,7 +3405,7 @@ function effortSheet() {
 async function closeSession(id = current, schedule = "") {
   try {
     const d = await api("/api/close", { w: id, ...(schedule ? { schedule } : {}) }); toast(d.result === "закрыто" ? "Сессия завершена" : "Не завершена: " + d.result, 4500);
-    if (d.result === "закрыто") { if (id === current) back(); else refresh(); }
+    if (d.result === "закрыто") { if (FOCUS) return focusEnd("Сессия завершена."); if (id === current) back(); else refresh(); }
     if (d.draft) draftSheet(d.draft);                 // неотправленный текст из поля ввода — не теряем молча
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
@@ -3394,6 +3418,7 @@ function draftSheet(text) {
 }
 // Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
 function openSwitcher() {
+  if (FOCUS) return;                                // в фокусе — только эта сессия
   helpSheet("sheet.switcher");
   sheet("Сессии", [...[...sessions].sort(byChange).map((s) => ({
     label: s.name, sub: `${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
@@ -4581,6 +4606,7 @@ $("settingsBtn").onclick = () => {
     ...(meta?.role === "owner" ? [{ label: T("st.title"), icon: "chip", sub: T("st.sub"), run: providersView }] : []),
     ...(meta?.role === "owner" ? [{ label: "Люди", icon: "pin", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Фокус-ссылки", icon: "qr", sub: "какие сессии открыты по фокус-ссылке; отозвать", run: focusList }] : []),
     ...(meta?.role === "owner" ? [{ label: "Сервер", icon: "term", sub: "хранилище паролей pass: разблокировано или нет", run: serverSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Модель по умолчанию", icon: "chip", sub: "для всех новых сессий Claude; модель одного чата — в самом чате", run: defaultModelSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
@@ -4592,6 +4618,81 @@ $("settingsBtn").onclick = () => {
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),
   ]);
 };
+// ---------- фокус (задача 41): одна сессия на любом устройстве по ссылке ----------
+// Владелец: меню сессии → «Фокус-ссылка» (или «Новая сессия» → «В фокусе») — ссылка, QR, «Отправить себе в Telegram».
+// На устройстве по ссылке — только чат этой сессии и её настройки (модель, усилия, файлы, интеграции); ни списка
+// сессий, ни создания, ни общих настроек. «Завершить» закрывает сессию и гасит ссылку. Список и «Отозвать» —
+// «Настройки» → «Фокус-ссылки».
+let focusNext = false, focusWant = false;
+function focusAfterNew(id) { if (focusWant) { focusWant = false; focusLink(id); } }
+async function focusLink(id) {
+  let d; try { d = await api("/api/focus/new", { w: id, base: location.origin }); } catch (e) { return toast("Не вышло: " + e.message, 5000); }
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.focus");
+  const till = new Date(d.exp * 1000).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Фокус-ссылка: ${esc(d.name)}</h3>
+    <p class="note" style="margin:0 16px">Откройте на нужном устройстве — там будет только чат этой сессии с её настройками. Первое открытие привязывает устройство. Ссылка гаснет, когда сессию завершат, и не позже ${esc(till)}.</p>
+    <img class="focus-qr" id="focusQr" alt="QR-код фокус-ссылки"><div class="focus-url" id="focusUrl"></div>
+    <button data-fa="tg">${ic("send")}<span>Отправить себе в Telegram<small>бот пришлёт ссылку в ваш чат с ним</small></span></button>
+    <button data-fa="copy">${ic("copy")}<span>Скопировать ссылку</span></button>
+    <button data-fa="revoke" class="danger">${ic("x")}<span>Отозвать эту ссылку</span></button>
+    <button class="cancel" data-close>Готово</button></div>`;
+  bg.querySelector("#focusUrl").textContent = d.url;
+  document.body.append(bg);
+  const qrImg = bg.querySelector("#focusQr");      // QR — POST: адрес с токеном не попадает в журнал прокси
+  api("/api/focus/qr", { url: d.url }).then((b) => { if (b instanceof Blob) qrImg.src = URL.createObjectURL(b); else qrImg.remove(); }).catch(() => qrImg.remove());
+  bg.addEventListener("click", async (e) => {
+    if (e.target === bg || e.target.closest("[data-close]")) return bg.remove();
+    const b = e.target.closest("[data-fa]"); if (!b) return;
+    if (b.dataset.fa === "copy") return copyText(d.url, "Ссылка скопирована");
+    if (b.dataset.fa === "tg") return busy(b, "Отправляю…", async () => { try { await api("/api/focus/send", { url: d.url }); toast("Ссылка — в вашем чате с ботом"); } catch (err) { toast(err.message, 5000); } });
+    if (b.dataset.fa === "revoke") { try { await api("/api/focus/revoke", { id: d.id }); bg.remove(); toast("Ссылка отозвана"); } catch (err) { toast(err.message, 5000); } }
+  });
+}
+async function focusList() {
+  let d; try { d = await api("/api/focus/list"); } catch (e) { return toast(e.message, 5000); }
+  const when = (t) => new Date(t * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  helpSheet("settings.focus");
+  sheet("Фокус-ссылки", d.links.length ? [
+    { info: true, icon: "qr", label: "Действующие ссылки", sub: "нажмите, чтобы отозвать: устройство сразу потеряет доступ" },
+    ...d.links.map((x) => ({ label: x.name + (x.space ? " · " + x.space : ""), icon: "qr",
+      sub: (x.opened ? `открыта ${when(x.opened)} · ${x.device || "устройство"}` : "ещё не открыта") + ` · до ${when(x.exp)}`,
+      run: () => confirmDanger(`Отозвать фокус-ссылку на «${x.name}»? Устройство сразу потеряет доступ, сессия продолжит работать.`,
+        async () => { try { await api("/api/focus/revoke", { id: x.id }); toast("Ссылка отозвана"); focusList(); } catch (e) { toast(e.message, 5000); } }) }))]
+    : [{ info: true, icon: "qr", label: "Фокус-ссылок нет", sub: "выпустить — меню сессии → «Фокус-ссылка»" }]);
+}
+async function focusMcp() {                         // интеграции сессии: что подключено у Claude Code на сервере
+  let d; try { d = await api("/api/mcp"); } catch (e) { return toast(e.message, 5000); }
+  helpSheet("focus.mcp");
+  sheet("Интеграции этой сессии", [
+    { info: true, icon: "puzzle", label: "Подключено у Claude Code", sub: "работают в этой сессии; добавить или убрать — в полном пульте («Интеграции»)" },
+    ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
+    ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Интеграций нет" }])]);
+}
+function focusEnd(text) {
+  if ($("focusEnd")) return;
+  clearInterval(start.timer); start.timer = null;
+  document.querySelectorAll(".sheet-bg").forEach((b) => b.remove());
+  const done = !text || /^Сессия завершена/.test(text);
+  const d = document.createElement("div"); d.id = "focusEnd"; d.className = "focus-end"; d.setAttribute("role", "alert");
+  d.innerHTML = `<div>${ic(done ? "power" : "lock")}<h2 class="serif">${done ? "Сессия завершена" : "Ссылка не действует"}</h2>${done ? "" : `<p>${esc(text)}</p>`}<p class="note">Эту страницу можно закрыть.</p></div>`;
+  document.body.append(d);
+}
+async function focusStart() {
+  document.body.classList.add("focus");             // экран сессии — openSession, когда известна сессия
+  try {
+    if (FOCUS_TOKEN) await api("/api/focus/open", { token: FOCUS_TOKEN });   // первое открытие — привязка устройства
+    meta = await api("/api/meta"); BUILD = meta.build;
+  } catch (e) { return focusEnd(e.message); }
+  document.body.dataset.role = "owner";
+  $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
+  if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
+  await refresh();
+  if (!sessions.length) return focusEnd("Сессия завершена.");
+  await openSession(sessions[0].id);
+  start.done = true;
+  if (!start.timer) start.timer = setInterval(refresh, 3000);
+  keepAwake(); restoreDraft();
+}
 $("backBtn").onclick = back;
 $("target").onclick = () => { haptic("selectionChanged"); openSwitcher(); };   // «куда уйдёт» у поля ввода — сменить сессию
 
@@ -5679,7 +5780,7 @@ termWrap = store("termWrap") === "1";
 if (DEMO) $("demoBar").hidden = false;
 dictReady.then(paintLoginLang);
 dictReady.then(agoTick);                              // «изменена N назад» — тексты из словаря
-if (DEMO && params.get("view") === "login") showLogin(); else start();
+if (DEMO && params.get("view") === "login") showLogin(); else if (FOCUS) focusStart(); else start();
 
 // ---------- демо-данные (?demo): только для показа и скриншотов, сервер не трогается ----------
 function demoApi(path, body) {
@@ -5767,6 +5868,18 @@ function demoApi(path, body) {
   if (path === "/api/pass/type") demoApi.pass = "unlocked";
   R["/api/pass"] = { state: demoApi.pass, until: demoApi.pass === "unlocked" ? Math.floor(Date.now() / 1000) + 29 * 86400 : null, script: true };
   R["/api/pass/unlock"] = { id: "@9" }; R["/api/pass/type"] = { ok: true };
+  // фокус (задача 41): ?demo&focus — устройство по ссылке (одна сессия @1); &focus=gone — ссылка погасла
+  const FURL = location.origin + "/#focus=demo-token-demo-token-demo-token";
+  R["/api/focus/new"] = { url: FURL, id: "f1", exp: Math.floor(Date.now() / 1000) + 7 * 86400, name: S.find((y) => y.id === (body?.w || "@1"))?.name || "сессия" };
+  R["/api/focus/send"] = { ok: true }; R["/api/focus/revoke"] = { ok: true, links: [] }; R["/api/focus/open"] = { ok: true, name: "gas-pult" };
+  R["/api/focus/list"] = { links: [{ id: "f1", name: "gas-pult", space: null, created: Date.now() / 1000 - 3600, exp: Date.now() / 1000 + 6 * 86400, opened: Date.now() / 1000 - 3000, device: "iPhone · Safari" },
+    { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" }] };
+  if (FOCUS) {
+    if (params.get("focus") === "gone") { focusEnd("Сессия завершена."); return Promise.reject(new Error("Сессия завершена.")); }
+    R["/api/meta"] = { ...R["/api/meta"], focus: { id: "f1", name: "gas-pult", w: "@1" }, via: "focus", role: "owner", projects: [] };
+    R["/api/sessions"] = { ...R["/api/sessions"], sessions: R["/api/sessions"].sessions.filter((x) => x.id === "@1"), focus: true };
+    if (path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
+  }
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
   R["/api/module/delete"] = { result: "удалено", trash: "~/.local/share/gas-pult/trash/modules/20261105-101500__gas-pult" };
   R["/api/model"] = { id: body?.w || "@1", model: body?.name || "" };

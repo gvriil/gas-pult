@@ -119,7 +119,7 @@ def test_update_reloads_only_when_safe_and_keeps_draft():
     reload = SCRIPT[SCRIPT.index("function reloadPanel"):SCRIPT.index("\n}\n", SCRIPT.index("function reloadPanel"))]
     assert "saveDraft(); location.reload();" in reload
     assert 'addEventListener("pagehide", saveDraft)' in SCRIPT
-    assert SCRIPT.count("restoreDraft();") == 2          # полный и простой режим
+    assert SCRIPT.count("restoreDraft();") == 3          # полный, простой режим и фокус (задача 41)
     later = SCRIPT[SCRIPT.index('$("updLater").onclick'):].split("\n")[0]
     assert "UPD.later = true" in later and '$("updateBar").hidden = true' in later
     assert "position: fixed" not in next(body for sels, body in rules() if sels == [".upd"])

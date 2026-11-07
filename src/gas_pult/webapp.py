@@ -44,6 +44,7 @@ from gas_pult import (
     country,
     emailcode,
     fallback,
+    focus,
     helper,
     humanize,
     invites,
@@ -184,6 +185,7 @@ class Panel:
         self.budget_told: dict[str, str] = {}                        # пространство → день, когда сказали владельцу
         self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
+        self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -348,6 +350,71 @@ class Panel:
         if not rec or (not owner and rec.get("uid") != uid):
             raise LookupError("приглашения нет: истёк срок, оно использовано или отозвано")
         return qr.png_of(url)
+
+    FOCUS_BASE = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}$")
+
+    def focus_new(self, wid: str, by, base: str) -> dict:
+        """«Фокус-ссылка» из меню сессии (владелец): ссылка ``…/#focus=<токен>`` — токен показывается один раз."""
+        with self.tmux.all_spaces():
+            w = self.tmux.window(str(wid or ""))
+        if not w:
+            raise LookupError("окна уже нет")
+        base = (self.public_url or base or "").rstrip("/")
+        if not self.FOCUS_BASE.match(base):
+            raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
+        f = self.focus.new(w, by)
+        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": w["name"]}
+
+    def focus_token(self, url: str) -> dict:
+        """Действующая ссылка по адресу ``…/#focus=<токен>`` (для QR и «Отправить себе»)."""
+        m = re.match(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}/#focus=([A-Za-z0-9_-]{24,64})$", str(url or ""))
+        rec = self.focus.check_token(m.group(1)) if m else None
+        if not rec:
+            raise LookupError("фокус-ссылка не действует: сессия завершена, ссылку отозвали или вышел срок")
+        return rec
+
+    def focus_send(self, url: str, chat) -> dict:
+        """«Отправить себе в Telegram»: ссылка — сообщением в чат владельца с ботом (как в «Избранное»)."""
+        rec = self.focus_token(url)
+        if not chat or int(chat) < 0:
+            raise ValueError("не знаю ваш чат с ботом — войдите в панель через Telegram")
+        till = time.strftime("%d.%m %H:%M", time.localtime(rec["exp"]))
+        text = (f"🎯 Фокус-ссылка на сессию «{rec['name']}»\n\nОткройте на нужном устройстве — там будет только чат "
+                f"этой сессии, без остального пульта. Первое открытие привязывает устройство. Ссылка гаснет, когда "
+                f"сессию завершат, и не позже {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
+        self.pult.api("sendMessage", chat_id=int(chat), text=text, link_preview_options={"is_disabled": True},
+                      reply_markup={"inline_keyboard": [[{"text": "Открыть в браузере", "url": url}],
+                                                        [{"text": "Открыть в Telegram", "web_app": {"url": url}}]]})
+        return {"ok": True}
+
+    def focus_rec(self, cookie: str) -> dict:
+        """Запрос из фокуса: действующая ссылка этого устройства и живое окно её сессии; иначе ``focus.Gone``.
+        Окна нет (сессию завершили из панели или бота) — ссылка гаснет сразу."""
+        rec = self.focus.by_cookie(cookie)
+        with self.tmux.scope(rec.get("space")):
+            w = self.tmux.window(rec["w"])
+            if not w or w.get("path") != rec.get("path"):   # перезапустили из бота — то же окно папки (одно на проект)
+                w = next((x for x in self.tmux.windows() if x.get("path") == rec.get("path")
+                          and (x["cmd"] == "claude" or x.get("stopped"))), None)
+                if w:
+                    self.focus.move(rec["w"], w["id"])
+                    rec = {**rec, "w": w["id"]}
+        if not w:
+            self.focus.end(rec["id"])
+            raise focus.Gone("Сессия завершена.")
+        return rec
+
+    def focus_meta(self, rec: dict) -> dict:
+        """«meta» для фокуса: только то, что нужно одной сессии и её настройкам — без папок и имени сервера."""
+        voices = catalog.installed(self.personal(rec.get("by")))
+        return {"host": rec.get("name", ""), "tz": server_tz(), "projects": [],
+                "commands": [t for t, _ in self.pult.command_list()],                  # команды Claude этой сессии
+                "models": [] if rec.get("space") else self.cfg.models,                 # модель и поставщик этого чата
+                "profiles": [] if rec.get("space") else models.public(self.pult.state(), self.countries(rec.get("by"))),
+                "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
+                "voices": [{"id": v, "label": catalog.label(v)} for v in voices], "voice": self.voice(voices),
+                "focus": {"id": rec["id"], "name": rec.get("name", ""), "w": rec["w"], "space": rec.get("space"),
+                          "exp": rec.get("exp")}}
 
     def forget_person(self, uid: int):
         """Отключить человека: роль, сессии браузера и его ссылки для входа — сразу."""
@@ -1301,6 +1368,7 @@ class Panel:
         if not home:                                    # окно владельца: метка прежняя, иначе — кто нажал
             self.mark_by(wid, w.get("by") or uid)
         own.pop(w["id"], None)
+        self.focus.move(w["id"], wid)                   # фокус-ссылка — за той же сессией в новом окне
         if model:
             own[wid] = model                            # выбор — только этого чата: «Продолжить» и перезапуск — с ним
         upd = {"window_models": own}
@@ -1647,6 +1715,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *PASS,
+              "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
@@ -1693,6 +1762,17 @@ SPACE_OK = TERMS_FREE | {
 BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume"}
 # Лёгкий вход (задача 34): ссылка для входа на другое устройство, её QR и «Привязать Telegram» — свои у каждого.
 INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
+# Фокус (задача 41, focus.py): с cookie фокуса — только чат одной сессии; окно ``w`` в запросе — только её.
+# Настройки самой сессии — тоже здесь: модель, поставщик, усилия, файлы, интеграции (список и вход из её экрана).
+# Нет: другие сессии, их создание и переключение, общие настройки пульта (ключи, люди, добавление интеграций).
+FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/ask", "/api/hint", "/api/cmds",
+             "/api/tts", "/api/last", "/api/activity", "/api/space/files", "/api/space/download", "/api/mcp",
+             "/api/mcp/connected"}
+FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/run", "/api/revive", "/api/upload",
+              "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
+              "/api/effort", "/api/restart", "/api/mcp/finish"}
+FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
+              "/api/mcp/connected"}   # без окна в запросе
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
@@ -1734,6 +1814,9 @@ def handler(panel: Panel):
                  "connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'")
 
     class H(BaseHTTPRequestHandler):
+        focused: dict | None = None             # запрос из фокуса: ссылка (focus.py), уже проверенная
+        raw: bytes | None = None                # тело, прочитанное проверкой фокуса
+
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
 
@@ -1755,7 +1838,10 @@ def handler(panel: Panel):
             self.reply(code, json.dumps(data, ensure_ascii=False).encode())
 
         def who(self) -> tuple[str, str | None, int | None]:
-            """(откуда: «telegram» / «browser» / "", роль, Telegram ID). Роль — на каждый запрос, из people.json."""
+            """(откуда: «telegram» / «browser» / "", роль, Telegram ID). Роль — на каждый запрос, из people.json.
+            Запрос из фокуса — права того, кто выпустил ссылку, но только в пределах ``FOCUS_*`` и одного окна."""
+            if self.focused is not None:
+                return "focus", "owner", self.focused.get("by")
             user = verify(self.headers.get("X-Telegram-Init-Data", ""), panel.cfg.token)
             if user and (role := panel.people.role(user.get("id"))):
                 return "telegram", role, int(user["id"])
@@ -1820,6 +1906,9 @@ def handler(panel: Panel):
         def permit(self, path: str, method: str) -> bool:
             """Не вошёл — 401 (панель покажет вход); не принял условия — 403 code=terms; не хватает роли — 403."""
             role = self.who()[1]
+            if not role and self.focus_cookie():          # с фокус-ссылкой — только её сессия, остальное закрыто
+                self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
+                return False
             if not role:
                 self.json({"error": "нужен вход"}, 401)
                 return False
@@ -1870,6 +1959,8 @@ def handler(panel: Panel):
             return self.client_ip(), self.headers.get("User-Agent", "")
 
         def body(self) -> bytes:
+            if self.raw is not None:
+                return self.raw
             n = int(self.headers.get("Content-Length", 0))
             if n > MAX_BODY:
                 raise ValueError("слишком большой запрос")
@@ -1911,6 +2002,8 @@ def handler(panel: Panel):
                 return self.json(panel.login_methods())
             if m := OIDC_PATH.match(url.path):           # вход через Google / Яндекс ID: переходы браузера
                 return self.oidc_step(m.group(1), m.group(2), q)
+            if self.headers.get(focus.HEADER):           # страница в режиме фокуса — только cookie фокуса
+                return self.focus_call("GET", url.path, q)
             if not self.permit(url.path, "GET"):
                 return None
             with panel.tmux.scope(self.space()):
@@ -2005,6 +2098,8 @@ def handler(panel: Panel):
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] == "owner",
                                                      self.terms_uid()))
+            if path == "/api/focus/list":                 # «Настройки» → «Фокус-ссылки»: действующие, без токенов
+                return {"links": panel.focus.listing()}
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
                 return panel.default_model()
             if path == "/api/pass":                       # «Настройки» → «Сервер»: pass разблокирован до … / нет
@@ -2084,12 +2179,89 @@ def handler(panel: Panel):
                 return self.offer("POST", path)
             if path in ("/api/invite/check", "/api/invite/enter"):   # лёгкий вход: код или ссылка, без Telegram
                 return self.dispatch(lambda: self.invite_login(path))
+            if path == "/api/focus/open":                  # фокус-ссылка: первое открытие привязывает устройство
+                return self.dispatch(self.focus_open)
+            if self.headers.get(focus.HEADER):
+                q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query))
+                return self.focus_call("POST", path, q)
             if path in HELP_OPEN and not self.who()[1]:   # экран входа: подсказки только по нему
                 return self.dispatch(lambda: self.help_anon(path))
             if not path.startswith("/api/") or not self.permit(path, "POST"):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             with panel.tmux.scope(self.space()):
                 self.dispatch(lambda: self.post(path))
+
+        def focus_cookie(self) -> str:
+            for part in self.headers.get("Cookie", "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == focus.COOKIE:
+                    return v
+            return ""
+
+        def focus_open(self):
+            """Страница прочитала токен из «#focus=…» и отдала сюда: cookie устройства (первое открытие — привязка)."""
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            try:
+                value, rec = panel.focus.open(str((b if isinstance(b, dict) else {}).get("token") or ""),
+                                              self.focus_cookie(), webauth.device(self.client()[1]))
+            except focus.Gone as e:
+                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+            age = max(60, int(rec["exp"] - time.time()))
+            cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
+            return ("cookie", cookie, {"ok": True, "name": rec.get("name", "")})
+
+        def focus_call(self, method: str, path: str, q: dict):
+            """Запрос страницы в режиме фокуса: действующая ссылка этого устройства, путь из ``FOCUS_*``, окно — только
+            её. Ссылка погасла — 410 (страница покажет «Сессия завершена»), чужое — 403."""
+            try:
+                rec = panel.focus_rec(self.focus_cookie())
+            except focus.Gone as e:
+                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+            if path not in (FOCUS_GET if method == "GET" else FOCUS_POST):
+                return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
+            b: dict = {}
+            if method == "POST" and path not in ("/api/upload", "/api/stt", "/api/space/upload"):
+                try:
+                    self.raw = self.body()
+                    b = json.loads(self.raw or b"{}")
+                except ValueError as e:
+                    return self.json({"error": str(e) or "неверный запрос"}, 400)
+                if not isinstance(b, dict):
+                    return self.json({"error": "ожидался объект"}, 400)
+            w = (q if method == "GET" or path == "/api/space/upload" else b).get("w")
+            if path not in FOCUS_NO_W and str(w or "") != rec["w"]:
+                return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
+            self.focused = rec
+            try:
+                with panel.tmux.scope(rec.get("space")):
+                    return self.dispatch(lambda: self.focus_do(method, path, q, b, rec))
+            finally:                                      # соединение может жить дольше запроса — права не переносим
+                self.focused, self.raw = None, None
+
+        def focus_do(self, method: str, path: str, q: dict, b: dict, rec: dict):
+            if path == "/api/meta":
+                return {**panel.focus_meta(rec), "via": "focus", "role": "owner", "uid": None, "build": build}
+            if path == "/api/sessions":
+                ss = [s for s in panel.sessions(None) if s["id"] == rec["w"]]
+                return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
+                        "fallback": [], "focus": True}
+            if path == "/api/logout":                      # «Выйти» на устройстве: cookie фокуса стираем, ссылка живёт
+                gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
+                return ("cookie", gone, {"ok": True})
+            if path == "/api/close":                       # «Завершить» в фокусе: сессия закрывается, ссылка гаснет
+                w = self.win(rec["w"])
+                if b.get("schedule"):                      # агент модуля: оставить / приостановить / выключить
+                    panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
+                r = panel.close_ex(w)
+                if r["result"] == "закрыто":
+                    panel.focus.end_window(rec["w"])
+                return r
+            if path == "/api/space/close":
+                r = panel.space_close(rec["space"], rec["w"], b.get("force") is True)
+                if r.get("result") == "closed":
+                    panel.focus.end_window(rec["w"])
+                return r
+            return self.get(path, q) if method == "GET" else self.post(path)
 
         def help_anon(self, path: str):
             if not panel.help_anon.ok(self.client_ip()):
@@ -2451,7 +2623,10 @@ def handler(panel: Panel):
                 return panel.budget_add(tenants.check_slug(str(b.get("space", ""))), float(b.get("usd") or 0),
                                         self.terms_uid())
             if path == "/api/space/close":
-                return panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
+                r = panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
+                if r.get("result") == "closed":
+                    panel.focus.end_window(str(b.get("w", "")))
+                return r
             if path == "/api/space/resume":
                 return panel.space_resume(self.space_of(b), str(b.get("folder", "")))
             if path == "/api/space/delete":
@@ -2487,6 +2662,15 @@ def handler(panel: Panel):
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
+            if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
+                return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")))
+            if path == "/api/focus/send":                  # «Отправить себе в Telegram»
+                return panel.focus_send(str(b.get("url", "")), self.terms_uid())
+            if path == "/api/focus/qr":                    # QR — POST: адрес с токеном не попадает в журнал прокси
+                panel.focus_token(str(b.get("url", "")))
+                return ("image/png", qr.png_of(str(b["url"])))
+            if path == "/api/focus/revoke":
+                return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
             if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
                 inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), by=self.terms_uid())
                 return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": invites.TTL}
@@ -2549,7 +2733,10 @@ def handler(panel: Panel):
             if path == "/api/close":
                 if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
                     panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
-                return panel.close_ex(w)                   # {result, draft}: черновик не теряется молча
+                r = panel.close_ex(w)                      # {result, draft}: черновик не теряется молча
+                if r["result"] == "закрыто":
+                    panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
+                return r
             if path == "/api/restart":
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
             if path == "/api/run":
