@@ -56,7 +56,13 @@ def screen(page, w: int, theme: str, base: str, out: Path | None):
     page.wait_for_timeout(600)
     txt = page.inner_text("#integrationsView").lower()        # заголовки разделов — заглавными
     assert "для любой модели" in txt and "все поставщики" in txt and "через сайт claude" in txt
-    assert "веб-поиск tavily" in txt and "google диск" in txt
+    assert "веб-поиск" in txt and "google диск (rclone)" in txt
+
+    page.click("#integrationsView [data-p]:has-text('Веб-поиск')")       # свой поиск пульта: выбор сервиса
+    page.wait_for_timeout(400)
+    assert page.locator("#f_engine option").count() >= 2 and "Яндекс" in page.inner_text("#f_engine")
+    if out:
+        page.screenshot(path=str(out / f"websearch-{w}-{theme}.png"), full_page=True)
 
     go("conn=notion", "connector")
     assert "через сервер" in page.inner_text("#mcpForm")

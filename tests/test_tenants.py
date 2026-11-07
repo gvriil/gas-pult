@@ -501,3 +501,33 @@ def test_create_budget_period_and_legacy(tmp_path, monkeypatch):
     for bad in ({"period": 0}, {"day_cap": 0.5}, {"start": "вчера"}):
         with pytest.raises(ValueError):
             tenant_admin.create(lay, s, "demo", **bad)
+
+
+def test_mcp_base_integrations_in_tenant_folder(tmp_path, monkeypatch):
+    fs = FakeSystem(monkeypatch)
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    s = tenant_admin.Sys(out=lambda *_: None, runner=fs.runner)
+    tenant_admin.create(lay, s, "demo")
+    owner_cfg = tmp_path / "owner-cfg"
+    monkeypatch.setenv("GAS_PULT_CONFIG_DIR", str(owner_cfg))
+    key = "test" + "-search-" + "key123"
+    tenant_admin.set_mcp(lay, s, "demo", "websearch", key + "\n", engine="yandex", folder="b1gfolder01")
+    p = tenants.paths("demo", lay.tenants)
+    d = p["config"] / "mcp"
+    assert (d / "websearch.key").read_text().strip() == key and (d / "websearch.key").stat().st_mode & 0o777 == 0o600
+    assert (d / "base_mcp.py").read_text().startswith("#!/usr/bin/env python3")
+    rclone = tmp_path / "rclone"
+    rclone.write_text("#!/bin/sh\n")
+    token = json.dumps({"access_token": "x", "refresh_token": "y"})
+    tenant_admin.set_mcp(lay, s, "demo", "drive", token, rclone=str(rclone))
+    cfg = json.loads((p["claude"] / ".claude.json").read_text())
+    ws, dr = cfg["mcpServers"]["websearch"], cfg["mcpServers"]["drive"]
+    assert ws["args"] == [str(d / "base_mcp.py"), "search"] and key not in json.dumps(cfg)
+    assert ws["env"]["GAS_SEARCH_FOLDER"] == "b1gfolder01"
+    assert dr["env"]["RCLONE_CONFIG"] == str(d / "rclone.conf") and dr["env"]["GAS_DRIVE_RCLONE"] == str(d / "rclone")
+    assert "type = drive" in (d / "rclone.conf").read_text()
+    assert any("install" in c[0] for c in fs.cmds if c)                  # rclone — копией в пространство
+    assert not owner_cfg.exists()                                         # ключи владельца не тронуты
+    with pytest.raises(ValueError, match="каталога"):
+        tenant_admin.set_mcp(lay, s, "demo", "websearch", key, engine="yandex")

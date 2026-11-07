@@ -40,7 +40,10 @@ Claude Code сам по себе — MCP-клиент: MCP-серверы из `
      (Claude Code хранит его в своём хранилище ключей, не в `.claude.json`). Сервер Google 04.11.2026 отвечает на
      `initialize` без входа и требует OAuth `accounts.google.com` для инструментов; доступ к превью может быть закрыт
      для аккаунта или проекта — панель так и пишет;
-   - веб-поиск — удалённый сервер Tavily (`https://mcp.tavily.com/mcp/`, ключ в заголовке `Authorization`);
+   - веб-поиск и Google Диск — **свои серверы пульта** (`base_mcp.py`, stdio, только stdlib; задача 48): «Веб-поиск»
+     (Яндекс, Brave, Tavily, Exa — по ключу, ключ в файле 0600) и «Google Диск (rclone)» (свой `rclone.conf` у
+     каждого, пути — только в папке сессии); для пространств — `pult-tenant mcp`. Сравнение сервисов и проверка
+     на Claude, GLM и DeepSeek — `docs/PROVIDERS.md`. Шаблон удалённого Tavily убран: его заменяет «Веб-поиск»;
    - б) локальные stdio-серверы по ключу — **вторым шагом** (отдельный PR): Brave Search
      (`npx -y @brave/brave-search-mcp-server`, `BRAVE_API_KEY`), для России — Яндекс Search API, Google Диск через
      сервисный аккаунт (`npx -y @piotr-agier/google-drive-mcp`, `GOOGLE_APPLICATION_CREDENTIALS`) или rclone,

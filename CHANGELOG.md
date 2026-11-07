@@ -5,6 +5,16 @@
 ## [Не выпущено]
 
 ### Добавлено
+- **Базовые интеграции для любой модели: веб-поиск и Google Диск через rclone (задача 48, ADR-0002).** Свой
+  MCP-сервер пульта `base_mcp.py` (stdio, только стандартная библиотека). «Интеграции» → «Веб-поиск» — сервис на
+  выбор (Яндекс по умолчанию, Brave, Tavily, Exa; в форме — список и страница ключа выбранного сервиса), ключ — в
+  файл 0600 (`~/.config/gas-pult/integrations/`, у человека — `people/<id>/integrations/`), в `.claude.json` — только
+  путь. «Google Диск (rclone)» — `drive_list`, `drive_download`, `drive_upload`: вход — ответ `rclone authorize
+  "drive"` в панель, свой `rclone.conf` у каждого, пути — только внутри папки сессии (без `..` и ссылок наружу).
+  «Убрать» удаляет и ключ. Пространства — `sudo bin/pult-tenant mcp <slug> websearch|drive`. Проверка одной задачи
+  на Claude, GLM и DeepSeek — `python -m gas_pult.selftest base`; итог и сравнение сервисов поиска с ценами —
+  `docs/PROVIDERS.md`. Замена коннектора Google Диска для других поставщиков — теперь rclone. Шаблон удалённого
+  Tavily убран (Tavily — один из сервисов «Веб-поиска»). Тесты — `tests/test_base_mcp.py`.
 - **Секреты — не к модели (задача 44).** `secrets_guard.py` (только стандартная библиотека) и хуки Claude Code в
   `settings.json` папки Claude: `UserPromptSubmit` — сообщение с ключом не отправляется (Claude Code не даёт хуку
   заменить текст — только остановить; `suppressOriginalPrompt`), человек видит «Убрал ключ… положите его в

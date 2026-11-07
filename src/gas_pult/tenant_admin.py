@@ -596,6 +596,57 @@ def logout(lay: Layout, s: Sys, slug: str):
     s.out(f"Вход в Claude в {slug} выключен; профиль — {meta['profile']}.")
 
 
+def set_mcp(lay: Layout, s: Sys, slug: str, kind: str, secret: str, engine: str = "yandex", folder: str = "",
+            rclone: str = ""):
+    """Базовая интеграция пространства (задача 48): свой MCP-сервер пульта ``base_mcp.py`` — веб-поиск или Google Диск
+    через rclone. Всё — в папке пространства (``config/mcp``, владелец — пользователь пространства): копия сервера,
+    ключ или свой ``rclone.conf`` (0600), rclone — копией, если он лежит там, куда пространство не достаёт. Запись в
+    ``config/claude/.claude.json`` (``mcpServers``) — команда и пути, без ключа. Ключи владельца не используются."""
+    from gas_pult import mcp
+    slug = tenants.check_slug(slug)
+    if not tenants.load(slug, lay.tenants):
+        raise SystemExit(f"нет пространства {slug}")
+    p, u = tenants.paths(slug, lay.tenants), tenants.user_of(slug)
+    d = p["config"] / "mcp"
+    s.mkdir(d, 0o700, u, u)
+    s.write(d / "base_mcp.py", mcp.BASE_SERVER.read_text(encoding="utf-8"), 0o644, u, u)
+    secret = secret.strip()
+    if kind == "websearch":
+        if engine not in {e["v"] for e in mcp.SEARCH_ENGINES}:
+            raise ValueError(f"сервис поиска — один из: {', '.join(e['v'] for e in mcp.SEARCH_ENGINES)}")
+        if not secret or len(secret) > 400 or any(c.isspace() for c in secret):
+            raise ValueError("ключ — одна строка без пробелов")
+        env = {"GAS_SEARCH_ENGINE": engine, "GAS_SEARCH_KEY_FILE": str(d / "websearch.key")}
+        if engine == "yandex":
+            if not re.match(r"^[a-z0-9]{6,40}$", folder):
+                raise ValueError("для Яндекса нужен --folder: ID каталога Yandex Cloud")
+            env["GAS_SEARCH_FOLDER"] = folder
+        s.write(d / "websearch.key", secret + "\n", 0o600, u, u)
+    elif kind == "drive":
+        src = rclone or shutil.which("rclone") or ""
+        if not src or not Path(src).is_file():
+            raise ValueError("нет rclone: --rclone /путь/к/rclone")
+        exe = d / "rclone"
+        if Path(src).resolve() != exe:
+            s.run("install", "-o", u, "-g", u, "-m", "0755", src, exe)
+        conf = d / "rclone.conf"
+        s.write(conf, f"[gdrive]\ntype = drive\nscope = drive\ntoken = {mcp.rclone_token(secret)}\n", 0o600, u, u)
+        env = {"RCLONE_CONFIG": str(conf), "GAS_DRIVE_REMOTE": "gdrive", "GAS_DRIVE_RCLONE": str(exe)}
+    else:
+        raise ValueError("интеграция — websearch или drive")
+    cj = p["claude"] / ".claude.json"
+    try:
+        cfg = json.loads(cj.read_text()) if cj.exists() else {}
+    except ValueError:
+        cfg = {}
+    cfg.setdefault("mcpServers", {})[kind] = {"type": "stdio", "command": "/usr/bin/python3",
+                                              "args": [str(d / "base_mcp.py"), "search" if kind == "websearch"
+                                                       else "drive"], "env": env}
+    s.write(cj, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", 0o600, u, u)
+    audit(s, p, "mcp", kind=kind, engine=engine if kind == "websearch" else "")
+    s.out(f"Интеграция {kind} в {slug} подключена; открытые сессии пространства увидят её после перезапуска.")
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="pult-tenant", description="Демо-пространства gas-pult (запускать через sudo). "
                                  "Подробно — docs/TENANTS.md.")
@@ -632,6 +683,12 @@ def parser() -> argparse.ArgumentParser:
     k.add_argument("profile", choices=[p["id"] for p in models.PROFILES if p.get("key")])
     k.add_argument("--base-url", default="", help="адрес шлюза (GigaChat, YandexGPT)")
     k.add_argument("--default", action="store_true", help="сделать профилем пространства по умолчанию")
+    m = sub.add_parser("mcp", help="веб-поиск или Google Диск (rclone) для пространства (ключ — со стандартного ввода)")
+    m.add_argument("slug")
+    m.add_argument("kind", choices=["websearch", "drive"])
+    m.add_argument("--engine", default="yandex", help="сервис поиска: yandex, brave, tavily, exa")
+    m.add_argument("--folder", default="", help="ID каталога Yandex Cloud (для yandex)")
+    m.add_argument("--rclone", default="", help="путь к rclone (для drive; копируется в пространство)")
     lg = sub.add_parser("login", help="разрешить ручной вход в Claude — только для ваших тестов")
     lg.add_argument("slug")
     lg.add_argument("--yes", metavar="да")
@@ -668,6 +725,11 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "key":
             key = sys.stdin.readline() if not sys.stdin.isatty() else getpass.getpass("Ключ (не отображается): ")
             set_key(lay, s, a.slug, a.profile, key, a.base_url, a.default)
+        elif a.cmd == "mcp":
+            ask = "Ключ сервиса поиска (не отображается): " if a.kind == "websearch" else ""
+            secret = (sys.stdin.read() if not sys.stdin.isatty() else
+                      getpass.getpass(ask) if ask else input("Ответ rclone authorize \"drive\" (одной строкой): "))
+            set_mcp(lay, s, a.slug, a.kind, secret, a.engine, a.folder, a.rclone)
         elif a.cmd == "login":
             login(lay, s, a.slug, a.yes)
         elif a.cmd == "logout":

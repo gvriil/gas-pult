@@ -6,6 +6,9 @@
    «claude.ai <Сервис>» со статусом ✔. Ничего не копируется, ключей нет.
 2. **По ключу** (``PRESETS`` с полями): кнопка открывает страницу, где сервис выдаёт ключ, ключ — в одно поле.
 3. **Для продвинутых**: свой адрес или своя программа (``add-json -s user``).
+4. **Свои серверы пульта** (``type: builtin``, ``base_mcp.py``): веб-поиск и Google Диск через rclone — stdio, только
+   стандартная библиотека Python. Ключ или токен rclone — в файл 0600 (``secrets_dir``), в настройки Claude Code —
+   команда и путь к файлу, сам ключ туда не попадает.
 Пути 2 и 3 — MCP-серверы в папке Claude Code человека: Claude Code сам MCP-клиент, поэтому они работают на любом
 поставщике модели (GLM, DeepSeek, OpenRouter…). Коннекторы claude.ai — только в сессиях Claude: с чужим ключом
 Claude Code их выключает (ADR-0002, ``docs/PROVIDERS.md``). Поле ``providers``: «all» или «claude».
@@ -19,13 +22,18 @@ Claude Code их выключает (ADR-0002, ``docs/PROVIDERS.md``). Поле 
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+from gas_pult import config
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{1,40}$")
 LINE = re.compile(r"^(?P<name>.+?): (?P<target>.+) - (?P<mark>[✔✘⚠!])\s*(?P<state>.*)$")
@@ -54,9 +62,20 @@ CONNECTORS = [
      "example": "Опиши последний макет в Figma"},
 ]
 # Коннекторы claude.ai работают только в сессиях Claude (подписка); замена для других поставщиков — шаблон ``alt``.
-ALT = {"notion": "notion", "gdrive": "gdrive", "linear": "linear", "atlassian": "atlassian"}
+ALT = {"notion": "notion", "gdrive": "drive", "linear": "linear", "atlassian": "atlassian"}
 for _c in CONNECTORS:
     _c.update(providers="claude", alt=ALT.get(_c["id"], ""))
+
+# Свой поиск пульта (``base_mcp.py search``): сервис и страница, где взять ключ.
+SEARCH_ENGINES = [
+    {"v": "yandex", "t": "Яндекс — лучше по-русски, оплата в рублях",
+     "key_url": "https://console.yandex.cloud/folders"},
+    {"v": "brave", "t": "Brave — весь мир, дешевле всех", "key_url": "https://api-dashboard.search.brave.com/"},
+    {"v": "tavily", "t": "Tavily — 1000 запросов в месяц бесплатно",
+     "key_url": "https://app.tavily.com/home"},
+    {"v": "exa", "t": "Exa — поиск по смыслу", "key_url": "https://dashboard.exa.ai/api-keys"},
+]
+BASE_SERVER = Path(__file__).with_name("base_mcp.py")
 
 # Шаблоны: что это, куда подключаемся и какие поля спросить у человека (с подсказкой, где взять значение).
 PRESETS = [
@@ -105,13 +124,26 @@ PRESETS = [
                                                     "Claude Code на сервере."}],
      "after": "Вход через Google: «Войти» ниже. Сервер Google — в превью: доступ может быть закрыт для вашего "
               "аккаунта или проекта."},
-    {"id": "tavily", "title": "Веб-поиск Tavily", "about": "Поиск и чтение страниц — для поставщиков, у которых "
-     "нет своего веб-поиска (GLM и другие)", "key_url": "https://app.tavily.com/home", "type": "http",
-     "url": "https://mcp.tavily.com/mcp/",
-     "fields": [{"key": "token", "label": "API-ключ Tavily", "secret": True, "header": "Authorization",
-                 "format": "Bearer {}", "placeholder": "tvly-…",
-                 "hint": "app.tavily.com → API Keys. Бесплатно — 1000 запросов в месяц; запросы и найденное "
-                         "уходят в Tavily."}], "after": ""},
+    {"id": "websearch", "title": "Веб-поиск", "icon": "🔎", "about": "Поиск в интернете для любой модели — свой "
+     "сервер пульта: Яндекс, Brave, Tavily или Exa по вашему ключу", "type": "builtin", "server": "search",
+     "fields": [{"key": "engine", "label": "Сервис поиска", "options": SEARCH_ENGINES,
+                 "hint": "Для русского — Яндекс; для мира — Brave. Запросы и найденное уходят в выбранный сервис."},
+                {"key": "token", "label": "API-ключ", "secret": True, "placeholder": "ключ сервиса",
+                 "hint": "Кнопка выше открывает страницу ключей выбранного сервиса. Ключ хранится в файле 0600 на "
+                         "сервере; в настройки Claude Code попадает только путь к файлу."},
+                {"key": "folder", "label": "ID каталога Yandex Cloud", "optional": True, "placeholder": "b1g…",
+                 "hint": "Только для Яндекса: консоль Yandex Cloud → каталог → ID (рядом с названием). Сервисному "
+                         "аккаунту с ключом нужна роль search-api.webSearch.user."}],
+     "after": "Перезапустите открытые сессии — инструмент web_search появится у любой модели."},
+    {"id": "drive", "title": "Google Диск (rclone)", "icon": "🗂", "about": "Список, скачать в папку сессии, "
+     "загрузить из неё — через rclone на сервере, без коннекторов claude.ai и без проекта Google Cloud",
+     "type": "builtin", "server": "drive", "key_url": "https://rclone.org/remote_setup/",
+     "fields": [{"key": "token", "label": "Ответ rclone authorize", "secret": True, "multiline": True,
+                 "placeholder": "{\"access_token\":\"…\",\"refresh_token\":\"…\"}",
+                 "hint": "На компьютере с браузером установите rclone (rclone.org/downloads) и выполните "
+                         "rclone authorize \"drive\" — войдите в Google, вставьте сюда то, что rclone напечатает "
+                         "между ---> и <---End paste. Хранится в своём rclone.conf (0600) на сервере."}],
+     "after": "Перезапустите открытые сессии — появятся drive_list, drive_download, drive_upload."},
     {"id": "http", "title": "Свой сервер (адрес)", "about": "Любой MCP-сервер по адресу HTTPS", "type": "http",
      "url": "{url}",
      "fields": [{"key": "url", "label": "Адрес сервера", "placeholder": "https://mcp.example.com/mcp",
@@ -141,6 +173,75 @@ def _claude(*args: str, home: Path | None = None, env: dict | None = None) -> su
     except FileNotFoundError:                    # Claude Code не установлен: список пуст, добавление — понятной ошибкой
         return subprocess.CompletedProcess(["claude", "mcp", *args], 127, "",
                                            "Claude Code не установлен — сначала «Войти в Claude» в боте или панели")
+
+
+def secrets_dir(home: Path | None) -> Path:
+    """Ключи своих серверов пульта: у владельца — ``~/.config/gas-pult/integrations``, у человека — рядом с его папкой
+    Claude Code (``people/<id>/integrations``). Папка 0700, файлы 0600."""
+    d = (home.parent if home else config.config_dir()) / "integrations"
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    d.chmod(0o700)
+    return d
+
+
+def rclone_token(text: str) -> str:
+    """Токен из ответа ``rclone authorize "drive"``: JSON с access/refresh_token (как есть или между ---> и <---),
+    либо строка base64 с ним же. Возвращает JSON одной строкой."""
+    text = str(text or "").strip()
+    cands = []
+    if "{" in text and "}" in text:
+        cands.append(text[text.index("{"):text.rindex("}") + 1])
+    for blob in re.findall(r"[A-Za-z0-9+/=_-]{40,}", text):
+        try:
+            cands.append(base64.urlsafe_b64decode(blob + "=" * (-len(blob) % 4)).decode())
+        except (ValueError, UnicodeDecodeError):
+            pass
+    for c in cands:
+        try:
+            d = json.loads(c)
+        except ValueError:
+            continue
+        if isinstance(d, dict) and isinstance(d.get("token"), str):       # {"token": "{…}"} из base64 rclone
+            try:
+                d = json.loads(d["token"])
+            except ValueError:
+                continue
+        if isinstance(d, dict) and (d.get("refresh_token") or d.get("access_token")):
+            return json.dumps(d, separators=(",", ":"))
+    raise ValueError("не похоже на ответ rclone authorize: нужен текст с access_token и refresh_token")
+
+
+def rclone_bin() -> str:
+    return shutil.which("rclone") or next((str(x) for x in (Path.home() / ".local/bin/rclone",) if x.is_file()), "")
+
+
+def builtin(p: dict, name: str, vals: dict, home: Path | None) -> dict:
+    """Свой сервер пульта (``base_mcp.py``): ключ — в файл 0600, в настройки Claude Code — команда и пути."""
+    env: dict[str, str] = {}
+    d = secrets_dir(home)
+    if p["server"] == "search":
+        engine = vals.get("engine") or SEARCH_ENGINES[0]["v"]
+        if engine not in {e["v"] for e in SEARCH_ENGINES}:
+            raise ValueError("выберите сервис поиска из списка")
+        key = vals["token"]
+        if len(key) > 400 or any(c.isspace() for c in key):
+            raise ValueError("ключ — одна строка без пробелов")
+        if engine == "yandex":
+            if not re.match(r"^[a-z0-9]{6,40}$", vals.get("folder", "")):
+                raise ValueError("для Яндекса нужен ID каталога Yandex Cloud (b1g…)")
+            env["GAS_SEARCH_FOLDER"] = vals["folder"]
+        f = d / f"{name}.key"
+        config.write_private(f, key + "\n")
+        env |= {"GAS_SEARCH_ENGINE": engine, "GAS_SEARCH_KEY_FILE": str(f)}
+    else:
+        exe = rclone_bin()
+        if not exe:
+            raise ValueError("на сервере нет rclone: владелец ставит его один раз (rclone.org/install)")
+        f = d / f"{name}.rclone.conf"
+        config.write_private(f, f"[gdrive]\ntype = drive\nscope = drive\ntoken = {rclone_token(vals['token'])}\n")
+        env |= {"RCLONE_CONFIG": str(f), "GAS_DRIVE_REMOTE": "gdrive", "GAS_DRIVE_RCLONE": exe}
+    return {"type": "stdio", "command": sys.executable or "python3", "args": [str(BASE_SERVER), p["server"]],
+            "env": env}
 
 
 class Mcp:
@@ -181,7 +282,8 @@ class Mcp:
             raise ValueError("нет такого шаблона")
         if not NAME.match(name):
             raise ValueError("имя: латиница в нижнем регистре, цифры, - или _ (2–41 знак)")
-        vals = {f["key"]: str(values.get(f["key"], "")).strip() for f in p["fields"]}
+        vals = {f["key"]: str(values.get(f["key"], "")).strip() or (f["options"][0]["v"] if f.get("options") else "")
+                for f in p["fields"]}
         for f in p["fields"]:
             if not vals[f["key"]] and not f.get("optional"):
                 raise ValueError(f"заполните поле «{f['label']}»")
@@ -199,6 +301,8 @@ class Mcp:
                 if not re.match(r"^[\w.-]{4,200}$", oauth):
                     raise ValueError("ID клиента OAuth — без пробелов, как в консоли сервиса")
                 cfg["oauth"] = {"clientId": oauth}
+        elif p["type"] == "builtin":
+            cfg = builtin(p, name, vals, home)
         else:
             cmd = shlex.split(vals["command"])
             env = dict(line.split("=", 1) for line in vals.get("env", "").splitlines() if "=" in line)
@@ -223,4 +327,6 @@ class Mcp:
         self._store(home, (0, []))
         if r.returncode != 0:
             raise ValueError((r.stderr or r.stdout).strip() or "не удалось удалить")
+        for f in (f"{name}.key", f"{name}.rclone.conf"):        # ключ своего сервера пульта — вместе с ним
+            (secrets_dir(home) / f).unlink(missing_ok=True)
         return "удалён"
