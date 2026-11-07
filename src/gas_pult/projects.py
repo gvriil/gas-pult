@@ -1,0 +1,243 @@
+"""«Проекты» (задача 49, docs/PROJECTS.md): папка со своими инструкциями (``CLAUDE.md``), файлами, интеграциями и
+моделью по умолчанию; внутри — много сессий (чатов).
+
+Метаданные — ``<data>/projects.json`` (0600). Источник правды о сессиях — журналы Claude Code, а не этот файл: в нём
+только имена, настройки и переименования. Файла нет — пульт строит его сам из папок, окон и ``add_dirs``
+(миграция, раздел 2.5): идемпотентно (id — от ``realpath`` папки), ничего на диске не переносит и не удаляет.
+Откат — удалить ``projects.json``.
+
+Рабочие копии git worktree (``~/worktrees/*``) — не отдельные проекты, а доп. папки (``paths``) проекта основного
+репозитория (вопрос 1 раздела 7 — по рекомендации документа).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import threading
+import time
+from pathlib import Path
+
+from gas_pult import modules, transcripts
+from gas_pult.config import write_private
+
+VERSION = 1
+FILE = "projects.json"
+HOME_NAME = "Домашняя"
+TITLE_MAX = 60
+_lock = threading.Lock()
+
+
+def pid_of(real: str) -> str:
+    """Детерминированный id проекта по ``realpath`` папки: повторная миграция даёт те же id."""
+    return "p" + hashlib.sha1(real.encode("utf-8", "surrogatepass")).hexdigest()[:10]
+
+
+def tilde(path: str, home: str) -> str:
+    """Путь с ``~`` вместо домашней папки: в файле и ответах API — без личных путей."""
+    home = home.rstrip("/")
+    return "~" + path[len(home):] if path == home or path.startswith(home + "/") else path
+
+
+def untilde(path: str, home: str) -> str:
+    return home.rstrip("/") + path[1:] if path == "~" or path.startswith("~/") else path
+
+
+def main_repo(folder: str) -> str:
+    """Рабочая копия git worktree → папка основного репозитория (по файлу ``.git``: ``gitdir: …/.git/worktrees/x``);
+    обычная папка — ""."""
+    try:
+        text = (Path(folder) / ".git").read_text(encoding="utf-8", errors="replace").strip()
+    except (OSError, IsADirectoryError):
+        return ""
+    m = re.match(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?$", text)
+    return os.path.realpath(m.group(1)) if m else ""
+
+
+def empty() -> dict:
+    return {"v": VERSION, "projects": {}, "sessions": {}}
+
+
+class Store:
+    """``projects.json`` под замком. ``home`` — домашняя папка сервера (для ``~``), путь проекта хранится с ``~``."""
+
+    def __init__(self, file: Path, home: str):
+        self.file, self.home = file, home.rstrip("/") or "/"
+
+    def read(self) -> dict:
+        try:
+            d = json.loads(self.file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return empty()
+        if not isinstance(d, dict) or not isinstance(d.get("projects"), dict):
+            return empty()
+        d.setdefault("sessions", {})
+        return d
+
+    def write(self, d: dict):
+        write_private(self.file, json.dumps(d, ensure_ascii=False, indent=1) + "\n")
+
+    def real(self, p: dict) -> str:
+        return os.path.realpath(untilde(p["path"], self.home))
+
+    def exists(self) -> bool:
+        return self.file.exists()
+
+    # ---------- миграция и досоздание ----------
+    def sync(self, folders: list[str], windows: list[dict], add_dirs: dict | None = None) -> dict:
+        """Каждая папка из ``folders`` (домашняя и подпапки корней) и каждое окно Claude вне проектов → авто-проект;
+        рабочая копия worktree → доп. папка проекта основного репозитория; ``add_dirs`` (#123) → ``repos``.
+        Существующие проекты не меняются (имя, архив, настройки — как оставил человек). Пишем, только если что-то
+        добавилось. Возвращает данные."""
+        with _lock:
+            d = self.read()
+            before = json.dumps(d, sort_keys=True)
+            home_real = os.path.realpath(self.home)
+            later: list[str] = []
+            for f in folders:
+                if not os.path.isdir(f):
+                    continue
+                if main_repo(f):
+                    later.append(f)                     # worktree — после основных: основной может идти позже
+                else:
+                    self._add(d, f, home_real)
+            for w in windows:
+                if w.get("space") or not (w.get("cmd") == "claude" or w.get("mark")) or not w.get("path"):
+                    continue
+                if self.of_path(d, w["path"]) is None and os.path.isdir(w["path"]):
+                    if main_repo(w["path"]):
+                        later.append(w["path"])
+                    else:
+                        self._add(d, w["path"], home_real)
+            for f in later:
+                self._attach(d, f, home_real)
+            for key, dirs in (add_dirs or {}).items():
+                pid = self.of_path(d, key)
+                if pid and isinstance(dirs, list):
+                    p = d["projects"][pid]
+                    have = list(p.get("repos") or [])
+                    for x in dirs:
+                        if isinstance(x, str) and (t := tilde(x, self.home)) not in have:
+                            have.append(t)
+                    p["repos"] = have
+            d["v"] = VERSION
+            if json.dumps(d, sort_keys=True) != before or not self.file.exists():
+                self.write(d)
+            return d
+
+    def _add(self, d: dict, folder: str, home_real: str) -> str:
+        real = os.path.realpath(folder)
+        pid = pid_of(real)
+        if pid in d["projects"]:
+            return pid
+        mk = modules.mark_of(Path(real)) or {}
+        name = HOME_NAME if real == home_real else (str(mk.get("title") or "") or os.path.basename(real))
+        d["projects"][pid] = {
+            "id": pid, "name": name[:80], "path": tilde(real, self.home), "paths": [],
+            "owner": {"kind": "person", "uid": None}, "share": [],
+            "origin": f"module:{mk['id']}" if mk.get("id") else "auto",
+            "created": int(time.time()), "by": None, "profile": "", "model": "", "effort": "",
+            "integrations": [], "files": "files", "repos": [], "pinned": False, "archived": False}
+        return pid
+
+    def _attach(self, d: dict, folder: str, home_real: str):
+        """Рабочая копия → ``paths`` проекта основного репозитория; основного нет среди проектов — свой проект."""
+        real = os.path.realpath(folder)
+        main = main_repo(real)
+        owner = next((pid for pid, p in d["projects"].items() if self.real(p) == main), None)
+        if owner is None:
+            self._add(d, real, home_real)
+            return
+        mine = d["projects"].get(pid_of(real))
+        if mine and mine.get("origin") == "auto" and pid_of(real) != owner:
+            return                                       # уже отдельный проект (прошлая миграция) — не трогаем
+        p = d["projects"][owner]
+        t = tilde(real, self.home)
+        if t not in p.setdefault("paths", []):
+            p["paths"].append(t)
+
+    # ---------- окно → проект ----------
+    def of_path(self, d: dict, path: str) -> str | None:
+        """Проект папки: ``realpath`` внутри ``path`` или ``paths`` проекта — самое длинное совпадение. Домашняя папка —
+        только точное совпадение (иначе в неё попало бы всё)."""
+        if not path:
+            return None
+        real = os.path.realpath(path)
+        home_real = os.path.realpath(self.home)
+        best, n = None, -1
+        for pid, p in d["projects"].items():
+            for x in [p["path"], *(p.get("paths") or [])]:
+                r = os.path.realpath(untilde(x, self.home))
+                inside = real == r or (r != home_real and real.startswith(r.rstrip("/") + "/"))
+                if inside and len(r) > n:
+                    best, n = pid, len(r)
+        return best
+
+    def folders_of(self, p: dict) -> list[str]:
+        """Все папки проекта (главная и рабочие копии) — полными путями."""
+        return [untilde(x, self.home) for x in [p["path"], *(p.get("paths") or [])]]
+
+
+# ---------- сессии проекта из журналов Claude Code ----------
+_titles: dict[str, tuple[int, str]] = {}            # файл журнала → (mtime_ns, название)
+
+
+def session_files(folders: list[str], homes: list) -> list[Path]:
+    """Журналы всех папок проекта во всех папках Claude Code (владелец — None, участники — свои)."""
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for f in folders:
+        for h in homes:
+            for x in transcripts.transcripts(f, h):
+                if x not in seen:
+                    seen.add(x)
+                    out.append(x)
+    return out
+
+
+def title_of(f: Path, head: int = 262144) -> str:
+    """Название чата: запись ``summary`` Claude Code → первое настоящее сообщение человека (до 60 знаков).
+    Читается только начало файла; кэш — по времени изменения."""
+    try:
+        st = f.stat()
+    except OSError:
+        return ""
+    key = str(f)
+    if key in _titles and _titles[key][0] == st.st_mtime_ns:
+        return _titles[key][1]
+    summary, first = "", ""
+    try:
+        with open(f, "rb") as fh:
+            chunk = fh.read(head).decode("utf-8", "replace")
+    except OSError:
+        return ""
+    for line in chunk.splitlines():
+        if '"summary"' not in line and '"user"' not in line:
+            continue
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("type") == "summary" and e.get("summary"):
+            summary = str(e["summary"])
+        elif not first and e.get("type") == "user" and not e.get("isSidechain") and transcripts.is_real_prompt(e):
+            first = transcripts.PASTED.sub("", transcripts.text_of(e["message"]["content"]))
+    t = " ".join((summary or first).split())
+    t = t[:TITLE_MAX - 1].rstrip() + "…" if len(t) > TITLE_MAX else t
+    _titles[key] = (st.st_mtime_ns, t)
+    return t
+
+
+def stats(files: list[Path]) -> dict:
+    """Сколько чатов у проекта и когда последний (mtime), его журнал."""
+    last, lf = 0.0, None
+    for f in files:
+        try:
+            m = f.stat().st_mtime
+        except OSError:
+            continue
+        if m > last:
+            last, lf = m, f
+    return {"total": len(files), "last": int(last) if last else None, "last_file": lf}
