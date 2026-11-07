@@ -21,6 +21,8 @@ flowchart LR
   X <-- MCP --> S[внешние сервисы]
   B -. отдельный процесс .-> V[voice: Piper / Silero / Whisper]
   P -. отдельный процесс .-> V
+  B -. unix-сокет .-> R[gas-pult-asr: T-one, потоковое распознавание]
+  P -. unix-сокет .-> R
 ```
 
 Два процесса — **бот** (`gas-pult run`) и **панель** (`gas-pult webapp`) — над одним ядром и общими файлами в каталоге
@@ -32,7 +34,7 @@ flowchart LR
 
 ```
 src/gas_pult/
-├── cli.py          команды: run, init, doctor, voices, service, webapp, geoip, offer, last, version
+├── cli.py          команды: run, init, doctor, voices, service, asr, webapp, geoip, offer, last, version
 ├── config.py       config.toml + токен; каталоги (GAS_PULT_CONFIG_DIR / GAS_PULT_DATA_DIR)
 ├── bot.py          Pult: опрос Telegram, обработчики, монитор окон, расписание модулей, сводка, демо предложений
 ├── telegram.py     клиент Bot API на urllib (multipart, скачивание, маскирование токена)
@@ -84,8 +86,15 @@ src/gas_pult/
 │   ├── whatsnew.json  «Что нового» — показывается один раз после обновления
 │   ├── i18n/       ru.json, en.json — строки простого режима, первого экрана и пересказа вопросов (GET /i18n/…)
 │   └── help-map.json  карта помощника для демо (собирается из help/screens.toml: python -m gas_pult.helper)
+├── wsock.py        WebSocket на stdlib (RFC 6455, сторона сервера) — для /api/stt/stream
+├── asr/            потоковое распознавание речи (задача 46)
+│   ├── __init__.py клиент службы и протокол (кадры JSON и PCM по unix-сокету); нет службы — Unavailable
+│   ├── service.py  служба gas-pult-asr: модель в памяти, потоки распознавания (только stdlib, движок — снаружи)
+│   ├── tone.py     движок T-one (numpy + onnxruntime, только в venv службы): фразы по паузам, жадный декодер, 16→8 кГц
+│   ├── install.py  gas-pult asr install: venv, модель с проверкой sha256, юнит с MemoryMax=1G
+│   └── gas-pult-asr.service, requirements.txt  шаблон юнита и точные версии пакетов службы
 └── voice/
-    ├── __init__.py synth() / transcribe() — запускают рабочий процесс
+    ├── __init__.py synth() / transcribe() — запускают рабочий процесс; transcribe_any() — служба T-one, иначе whisper
     ├── __main__.py рабочий процесс: Piper, Silero, faster-whisper, ffmpeg
     ├── catalog.py  голоса, их подписи и установка моделей
     └── text.py     нарезка текста для синтеза
@@ -297,7 +306,9 @@ Python и `benefitCalc` в `index.html` — один расчёт, тест св
   выборе голоса его нет; Silero (некоммерческая лицензия) — только владельцу при `personal_voices = true`.
 - **Движок синтеза** — функция `<движок>_wav(voice, src, wav)` в `voice/__main__.py`, ветка в `tts()`,
   голоса в `catalog`. Тяжёлые импорты — внутри функции.
-- **Распознавание** — `stt()` в `voice/__main__.py`. Модель задаётся ключом `whisper_model`.
+- **Распознавание** — служба T-one (`asr/`); запасное — `stt()` в `voice/__main__.py`, модель задаётся ключом
+  `whisper_model`. Другой потоковый движок — класс с `stream(rate)` → `feed(pcm)` / `finish()` по образцу
+  `asr/tone.py` и строка в `asr/service.py`.
 - **Модуль-агент** — без кода: папка `templates/modules/<id>/` в пакете или `~/.config/gas-pult/modules/<id>/`
   (`module.toml`, `CLAUDE.md`, `skills/`, пример данных); общие блоки — `_common/<id>/`. Формат — [MODULES.md](MODULES.md).
 - **Роль «Примерочной»** — без кода: `templates/scenarios/<роль>.toml` (схема — [SCENARIOS.md](SCENARIOS.md)), затем
@@ -313,6 +324,12 @@ Python и `benefitCalc` в `index.html` — один расчёт, тест св
   это около 40 строк. Данные модулей, сценариев и предложений — TOML: `tomllib` есть в стандартной библиотеке, YAML нет.
 - **Голос в отдельном процессе.** torch и onnxruntime занимают сотни мегабайт и иногда падают. Процесс на каждый
   синтез добавляет 1–2 секунды, зато бот остаётся лёгким и живучим.
+- **Распознавание — постоянная служба `gas-pult-asr`** (задача 46, замер — `docs/metrics/asr-2026-11.md`). T-one
+  грузится один раз (≈ 0,55 ГБ), юнит ограничен `MemoryMax=1G` без свопа. Панель шлёт звук PCM 16 кГц по WebSocket
+  `/api/stt/stream`, сервер панели пересылает его в службу по unix-сокету и возвращает частичный текст; бот и
+  запасной `/api/stt` отдают службе готовую запись. Службы нет или сбой — прежний путь (ElevenLabs или whisper),
+  панель в этом случае отправляет ту же запись файлом WAV. Вход в WebSocket — первым сообщением (браузер не шлёт туда
+  заголовки), страница проверяется по `Origin`.
 - **Не патчить Claude Code.** Только транскрипты, экран и ввод. Это переживает обновления Claude Code.
 - **tmux в своей группе systemd** (`systemd-run --scope`). Перезапуск службы пульта не убивает окна с Claude.
 - **Опрос вместо долгих соединений** (строка статуса): в WebView Telegram опрос надёжнее, Caddy не трогаем.

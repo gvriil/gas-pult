@@ -40,6 +40,7 @@ from pathlib import Path
 
 from gas_pult import (
     ago,
+    asr,
     balance,
     country,
     emailcode,
@@ -73,6 +74,7 @@ from gas_pult import (
     usage,
     voice,
     webauth,
+    wsock,
 )
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space
@@ -93,6 +95,9 @@ MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка с�
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 STT_TIMEOUT = 85                                          # с; панель ждёт ответа 90 с
 STT_EMPTY = "Ничего не расслышал — попробуйте ещё раз"   # распознавание вернуло пустой текст
+STT_STREAM = "/api/stt/stream"                            # голос потоком: WebSocket → служба T-one (задача 46)
+STREAM_IDLE = 30                                          # с; панель молчит дольше (ни звука, ни «конец») — закрыть
+STREAM_MAX_S = 300                                        # одна диктовка — не длиннее 5 минут
 
 
 def verify(init_data: str, token: str, now: float | None = None) -> dict | None:
@@ -1867,8 +1872,8 @@ class Panel:
         path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{ext}"
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_bytes(data)
-        try:
-            text = (voice.transcribe(path, self.cfg.whisper_model, timeout=STT_TIMEOUT) or "").strip()
+        try:                                             # служба T-one, нет её — whisper (voice.transcribe_any)
+            text = (voice.transcribe_any(path, self.cfg.whisper_model, STT_TIMEOUT, self.cfg.data) or "").strip()
         except subprocess.TimeoutExpired:            # панель ждёт 90 с — сервер сдаётся чуть раньше и говорит почему
             raise RuntimeError(f"распознавание не уложилось в {STT_TIMEOUT} с — длинная запись или сервер занят") \
                 from None
@@ -1877,6 +1882,10 @@ class Panel:
         if not text:
             raise ValueError(STT_EMPTY)
         return text
+
+    def stt_stream(self, rate: int) -> asr.Stream:
+        """Поток в службу распознавания; её нет или занята — ``asr.Unavailable`` (панель уйдёт на ``/api/stt``)."""
+        return asr.Stream(rate, partials=True, path=asr.socket_path(self.cfg.data))
 
     def message(self, w: dict, i: int | None) -> str:
         home, sid = self.pult.home_of(w), w.get("sid") or ""
@@ -2098,7 +2107,7 @@ SPACE_OK = TERMS_FREE | {
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
     "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
     "/api/space/sessions", "/api/space/close", "/api/space/resume", "/api/space/delete", "/api/space/restore",
-    "/api/space/files", "/api/space/upload", "/api/space/download",
+    "/api/space/files", "/api/space/upload", "/api/space/download", STT_STREAM,
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
                                                             "/api/passkeys/add", "/api/passkeys/remove"),
 }
@@ -2355,6 +2364,8 @@ def handler(panel: Panel):
             if not url.path.startswith("/api/"):
                 return self.json({"error": "нет такой страницы"}, 404)
             q = dict(urllib.parse.parse_qsl(url.query))
+            if url.path == STT_STREAM:                   # WebSocket: вход — первым сообщением, не заголовком
+                return self.stt_stream()
             if url.path == "/api/login/tg":              # браузер ждёт подтверждения из Telegram (по своему rid)
                 return self.dispatch(lambda: self.tg_poll(q))
             if url.path == "/api/login/methods":         # экран входа: какие способы включены на этом пульте
@@ -2575,6 +2586,111 @@ def handler(panel: Panel):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             with panel.tmux.scope(self.space()):
                 self.dispatch(lambda: self.post(path))
+
+        def stt_stream(self):
+            """Голос потоком (задача 46): звук PCM 16 бит из панели → служба T-one → частичный текст обратно.
+            Браузер не умеет слать заголовки в WebSocket, поэтому вход — первым сообщением:
+            ``{"init": initData Telegram | "", "focus": true | false, "rate": 16000}``; cookie входа и фокуса приходят
+            сами. Права — как у ``/api/stt``. Дальше: двоичные кадры — звук, ``{"end": true}`` — итог,
+            ``{"cancel": true}`` — отмена. Ответы: ``{"ready"}``, ``{"partial"}``, ``{"final"}``, ``{"error", "code"}``.
+            Службы нет — ``code="asr_off"``: панель распознаёт ту же запись прежним ``/api/stt``."""
+            key = wsock.accept(self.headers)
+            if not key:
+                return self.json({"error": "нужен WebSocket"}, 400)
+            origin = self.headers.get("Origin", "")
+            if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host", ""):
+                return self.json({"error": "запрос не со страницы пульта"}, 403)    # чужой сайт с нашей cookie
+            self.close_connection = True
+            self.wfile.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                              f"Sec-WebSocket-Accept: {key}\r\n\r\n").encode())
+            self.connection.settimeout(STREAM_IDLE)
+            ws, st = wsock.Conn(self.rfile, self.wfile), None
+            try:
+                st = self.stt_stream_open(ws)
+                if st:
+                    self.stt_stream_pump(ws, st)
+            except wsock.ProtocolError as e:
+                ws.close(e.code, "ошибка протокола")
+            except (wsock.Closed, OSError, ValueError):
+                pass                                   # панель ушла или служба оборвалась — панель повторит /api/stt
+            finally:
+                if st:
+                    st.close()
+                ws.close()
+                self.focused = None
+
+        def stt_stream_open(self, ws: wsock.Conn) -> asr.Stream | None:
+            """Первое сообщение: вход и права; затем поток в службу. Отказ — сообщение с ``code`` и закрытие."""
+            op, msg = ws.recv()
+            b = json.loads(msg) if op == wsock.TEXT else None
+            if not isinstance(b, dict):
+                raise wsock.ProtocolError("первым — объект JSON")
+
+            def fail(error: str, code: str, close: int):
+                ws.send_text(json.dumps({"error": error, "code": code}, ensure_ascii=False))
+                ws.close(close, code)
+
+            if b.get("focus"):                             # фокус-ссылка: только её cookie, как у /api/stt в фокусе
+                try:
+                    self.focused = panel.focus_rec(self.focus_cookie())
+                except focus.Gone as e:
+                    return fail(str(e), "focus_gone", 4410)
+            else:
+                del self.headers["X-Telegram-Init-Data"]
+                if b.get("init"):
+                    self.headers["X-Telegram-Init-Data"] = str(b["init"])[:8192]
+                errs: list = []
+                self.json = lambda data, code=200: errs.append((code, data))   # отказ permit — не ответ HTTP
+                try:
+                    ok = self.permit(STT_STREAM, "POST")
+                finally:
+                    del self.json
+                if not ok:
+                    code, data = errs[0] if errs else (403, {})
+                    return fail(data.get("error") or "нет доступа", data.get("code") or str(code), 4000 + code)
+            try:
+                return panel.stt_stream(int(b.get("rate") or 16000))
+            except asr.Unavailable as e:
+                return fail(str(e), "asr_off", 4503)
+
+        def stt_stream_pump(self, ws: wsock.Conn, st: asr.Stream):
+            """Звук панели → служба; ответы службы → панели (свой поток). Итог — и соединение закрывается."""
+            ws.send_text('{"ready": true}')
+            done = threading.Event()
+
+            def back():
+                final = False
+                try:
+                    for ev in st.events(STREAM_MAX_S * 2):
+                        final = final or "final" in ev
+                        if "error" in ev:                  # любой отказ службы — панель распознает запись по-старому
+                            ev = {"error": ev["error"], "code": ev.get("code") or "asr_off"}
+                        ws.send_text(json.dumps(ev, ensure_ascii=False))
+                except (asr.Unavailable, OSError, ValueError, wsock.Closed):
+                    if not final:
+                        with contextlib.suppress(OSError, wsock.Closed):
+                            ws.send_text(json.dumps({"error": "служба распознавания оборвала поток", "code": "asr_off"},
+                                                    ensure_ascii=False))
+                finally:
+                    done.set()
+
+            threading.Thread(target=back, daemon=True, name="stt-stream").start()
+            got, cap = 0, STREAM_MAX_S * 16000 * 2
+            while not done.is_set():
+                op, msg = ws.recv()
+                if op == wsock.BINARY:
+                    got += len(msg)
+                    if got <= cap:
+                        st.audio(msg)
+                    continue
+                b = json.loads(msg)
+                if not isinstance(b, dict) or b.get("cancel"):
+                    break
+                if b.get("end"):
+                    st.end()
+                    done.wait(15)
+                    break
+            ws.close(1000)
 
         def focus_cookie(self) -> str:
             for part in self.headers.get("Cookie", "").split(";"):

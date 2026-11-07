@@ -1,7 +1,7 @@
-"""Голос пульта: синтез (Piper, Silero) и распознавание (faster-whisper).
+"""Голос пульта: синтез (Piper, Silero) и распознавание (служба T-one ``gas_pult.asr``, запасной — faster-whisper).
 
-Тяжёлые библиотеки грузятся только в отдельном процессе ``python -m gas_pult.voice`` —
-бот остаётся лёгким, а сбой синтеза не роняет пульт.
+Тяжёлые библиотеки грузятся только в отдельном процессе ``python -m gas_pult.voice`` или в службе
+``gas-pult-asr`` — бот остаётся лёгким, а сбой синтеза не роняет пульт.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from gas_pult import providers
+from gas_pult import asr, providers
 from gas_pult.voice.catalog import PREVIEW
 
 _preview_lock = threading.Lock()          # одно превью синтезируется за раз — без двойной работы при двойном нажатии
@@ -37,6 +37,17 @@ def transcribe(path: Path, model: str = "small", timeout: int = 300) -> str:
     if r.returncode != 0:
         raise RuntimeError((r.stderr.strip().splitlines() or ["распознавание не удалось"])[-1])
     return r.stdout.strip()
+
+
+def transcribe_any(path: Path, model: str = "small", timeout: int = 300, data: Path | None = None) -> str:
+    """Голосовое → текст: служба T-one (задача 46), если запущена, — за доли секунды; нет её или сбой — whisper,
+    как раньше. ``data`` — папка данных пульта (там сокет службы)."""
+    try:
+        return asr.transcribe(path, data, timeout=min(timeout, 120))
+    except asr.Unavailable as e:
+        if asr.socket_path(data).exists():             # служба есть, но не справилась — видно в журнале
+            print(f"распознавание T-one: {e} — запасной путь (whisper)", file=sys.stderr, flush=True)
+    return transcribe(path, model, timeout)
 
 
 def preview(cache: Path, name: str, ext: str = "mp3", el: tuple[str, str] | None = None) -> bytes:

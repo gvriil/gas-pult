@@ -1,0 +1,17 @@
+# Шаблон юнита службы распознавания (gas-pult asr install подставляет пути). Задача 46.
+[Unit]
+Description=gas-pult-asr — распознавание речи для пульта (T-one, CPU)
+After=default.target
+
+[Service]
+ExecStart={python} -m gas_pult.asr.service --socket {socket} --model {model} --threads {threads}
+Environment=PYTHONPATH={src}
+Environment=OMP_NUM_THREADS={threads}
+Restart=always
+RestartSec=5
+# Модель в памяти ≈ 0,6 ГБ. Больше 1 ГБ — служба падает и перезапускается, своп не трогает: пульт не страдает.
+MemoryMax=1G
+MemorySwapMax=0
+
+[Install]
+WantedBy=default.target
