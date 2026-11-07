@@ -7,6 +7,7 @@
 - ``CLAUDE.md`` — роль и правила агента; ``{{ключ}}`` заменяется значением из ``[settings]``;
 - ``skills/<имя>/SKILL.md`` — навыки Claude Code, копируются в ``.claude/skills/``;
 - ``settings.json`` — разрешения Claude Code для пространства, копируется в ``.claude/settings.json``;
+- слепые проверяющие (``reviewers.py``) — в каждое пространство: ``.claude/agents/`` и сторож в ``.claude/hooks/``;
 - всё остальное (``data/``, ``templates/``, ``PLAN.md``…) копируется в пространство как есть.
 
 Общие блоки — ``templates/modules/_common/<id>/`` (и ``<config>/modules/_common/<id>/``): ``block.toml`` (title, about),
@@ -31,6 +32,7 @@ from datetime import date, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 
+from gas_pult import reviewers
 from gas_pult.config import config_dir
 from gas_pult.mcp import CONNECTORS, PRESETS
 from gas_pult.personas import SECTIONS
@@ -280,7 +282,7 @@ def parse(folder: Path) -> dict:
         "data_sources": [_source(x, where) for x in sources],
         "demo": _demo(raw.get("demo", {}), where),
         "uses": [{"id": u, "title": known[u]["title"], "about": known[u]["about"]} for u in uses],
-        "settings": settings, "skills": skills,
+        "settings": settings, "skills": skills, "agents": reviewers.public(),
         "files": sorted(p.name + ("/" if p.is_dir() else "") for p in folder.iterdir() if p.name not in SKIP),
         "path": str(folder),
     }
@@ -368,6 +370,7 @@ def create(mid: str, root: Path, name: str = "", by: int | None = None, lang: st
             if sk.is_dir():
                 shutil.copytree(sk, dst / ".claude" / "skills", dirs_exist_ok=True,
                                 ignore=shutil.ignore_patterns("__pycache__", ".DS_Store"))
+        reviewers.install(dst / ".claude")              # слепые проверяющие — в каждом пространстве
         if (src / "settings.json").is_file():
             (dst / ".claude").mkdir(exist_ok=True)
             shutil.copy2(src / "settings.json", dst / ".claude" / "settings.json")
