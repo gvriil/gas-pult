@@ -176,14 +176,17 @@ def test_close_in_focus_ends_link(server):
     assert code == 410 and r["code"] == "focus_gone" and "Сессия завершена" in r["error"]
 
 
-def test_close_from_panel_or_window_gone_ends_link(server):
+def test_close_from_panel_or_window_gone_ends_link(server, monkeypatch):
     s = server
     _, _, c1 = open_link(s, "@1")
     _, _, c2 = open_link(s, "@2")
     code, d, _ = call(s["base"], "/api/close", {"w": "@1"}, owner(s))             # владелец завершил в пульте
     assert code == 200 and d["result"] == "закрыто"
     assert call(s["base"], "/api/sessions", None, c1, FX)[0] == 410
-    s["wins"].w.pop("@2")                                                          # закрыли из бота / окно пропало
+    s["wins"].w.pop("@2")                                                          # окно пропало (убили в tmux)
+    code, r, _ = call(s["base"], "/api/sessions", None, c2, FX)
+    assert code == 503 and r["code"] == "focus_wait"            # сначала — как при перезапуске: ссылка жива
+    monkeypatch.setattr(focus, "GRACE", 0)                       # окна нет дольше GRACE — сессия завершена
     code, r, _ = call(s["base"], "/api/sessions", None, c2, FX)
     assert code == 410 and "Сессия завершена" in r["error"]
     assert not s["p"].focus.listing()
@@ -196,6 +199,37 @@ def test_restart_keeps_link_on_same_folder(server):
     code, d, _ = call(s["base"], "/api/sessions", None, cookie, FX)
     assert code == 200 and [x["id"] for x in d["sessions"]] == ["@5"]
     assert call(s["base"], "/api/send", {"w": "@5", "text": "x"}, cookie, FX)[0] == 200
+
+
+def test_restart_gap_keeps_link(server):
+    """Перезапуск закрывает окно раньше, чем открывает новое (вживую — секунды): опрос страницы в этот промежуток
+    не гасит ссылку (было: 410 «Сессия завершена» посреди смены модели), а после — ссылка уже на новом окне."""
+    s = server
+    _, _, cookie = open_link(s)
+    w = s["wins"].w.pop("@1")                                                      # старое окно закрыто, нового нет
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 503 and r["code"] == "focus_wait"
+    assert call(s["base"], "/api/history?w=@1", None, cookie, FX)[0] == 503
+    assert s["p"].focus.listing()                                                  # ссылка жива
+    s["wins"].w["@6"] = {**w, "id": "@6"}                                          # новое окно той же папки
+    code, d, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and [x["id"] for x in d["sessions"]] == ["@6"]
+    assert not s["p"].focus_gap
+
+
+def test_gone_link_open_is_one_response(server):
+    """Погасшая ссылка — ровно один ответ 410 (было: 410, а следом в то же соединение — ещё «200 null»)."""
+    import socket
+    s = server
+    host, port = s["base"].removeprefix("http://").split(":")
+    body = json.dumps({"token": "x" * 40}).encode()
+    with socket.create_connection((host, int(port))) as c:
+        c.sendall(b"POST /api/focus/open HTTP/1.0\r\nContent-Type: application/json\r\nX-Gp-Focus: 1\r\n"
+                  b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+        raw = b""
+        while chunk := c.recv(65536):
+            raw += chunk
+    assert raw.startswith(b"HTTP/1.0 410") and raw.count(b"HTTP/1.") == 1, raw
 
 
 def test_owner_list_revoke_qr_and_send_to_telegram(server):
@@ -256,3 +290,19 @@ def test_e2e_focus_in_browser():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
     finally:
         srv.shutdown()
+
+
+def test_e2e_focus_live():
+    """Сценарий вживую (tests/e2e/focus_live.py): своя панель, свой tmux, два браузера; без Chrome/tmux — пропуск."""
+    import importlib.util
+    import shutil
+    from pathlib import Path
+
+    pytest.importorskip("playwright.sync_api")
+    if not (shutil.which("google-chrome") or shutil.which("chrome")) or not shutil.which("tmux"):
+        pytest.skip("нет Chrome или tmux для проверки вживую")
+    e2e = Path(__file__).resolve().parent / "e2e" / "focus_live.py"
+    spec = importlib.util.spec_from_file_location("focus_live", e2e)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert len(mod.run()) == 7

@@ -195,6 +195,7 @@ class Panel:
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
+        self.focus_gap: dict[str, float] = {}   # ссылка → с какого времени окна её сессии нет (перезапуск)
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -664,8 +665,16 @@ class Panel:
                     self.focus.move(rec["w"], w["id"])
                     rec = {**rec, "w": w["id"]}
         if not w:
+            # перезапуск (модель, поставщик — из фокуса, из панели или из бота) закрывает окно раньше, чем открывает
+            # новое: между ними окна нет. Гасим ссылку, только если окна нет дольше ``focus.GRACE``; «Завершить»
+            # гасит её сразу (``end_window``)
+            first = self.focus_gap.setdefault(rec["id"], time.time())
+            if time.time() - first < focus.GRACE:
+                raise focus.Wait("сессия перезапускается — подождите несколько секунд")
+            self.focus_gap.pop(rec["id"], None)
             self.focus.end(rec["id"])
             raise focus.Gone("Сессия завершена.")
+        self.focus_gap.pop(rec["id"], None)
         return rec
 
     def focus_meta(self, rec: dict) -> dict:
@@ -2761,13 +2770,11 @@ def handler(panel: Panel):
             return ""
 
         def focus_open(self):
-            """Страница прочитала токен из «#focus=…» и отдала сюда: cookie устройства (первое открытие — привязка)."""
+            """Страница прочитала токен из «#focus=…» и отдала сюда: cookie устройства (первое открытие — привязка).
+            Ссылка не действует — ``focus.Gone``: ответ 410 даёт ``dispatch`` (один ответ на запрос)."""
             b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
-            try:
-                value, rec = panel.focus.open(str((b if isinstance(b, dict) else {}).get("token") or ""),
-                                              self.focus_cookie(), webauth.device(self.client()[1]))
-            except focus.Gone as e:
-                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+            value, rec = panel.focus.open(str((b if isinstance(b, dict) else {}).get("token") or ""),
+                                          self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
             return ("cookie", cookie, {"ok": True, "name": rec.get("name", "")})
@@ -2779,6 +2786,8 @@ def handler(panel: Panel):
                 rec = panel.focus_rec(self.focus_cookie())
             except focus.Gone as e:
                 return self.json({"error": str(e), "code": "focus_gone"}, 410)
+            except focus.Wait as e:                      # сессию перезапускают — ссылка жива, страница повторит
+                return self.json({"error": str(e), "code": "focus_wait"}, 503)
             if path not in (FOCUS_GET if method == "GET" else FOCUS_POST):
                 return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
             b: dict = {}
@@ -3342,6 +3351,8 @@ def handler(panel: Panel):
                 out = fn()
             except KeyError:
                 return self.json({"error": "нет такого метода"}, 404)
+            except focus.Gone as e:                      # фокус-ссылка не действует: страница покажет почему
+                return self.json({"error": str(e), "code": "focus_gone"}, 410)
             except LookupError as e:
                 return self.json({"error": str(e)}, 404)
             except emailcode.LimitError as e:
