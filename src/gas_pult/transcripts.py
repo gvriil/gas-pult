@@ -44,6 +44,53 @@ def transcripts(path: str, home: Path | None = None) -> list[Path]:
     return sorted(project_dir(path, home).glob("*.jsonl"))
 
 
+SID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def valid_sid(sid) -> str:
+    """id сессии Claude Code (uuid, метка окна ``@gas_pult_sid``) — только такой вид; иначе ""."""
+    sid = str(sid or "").strip().lower()
+    return sid if SID.match(sid) else ""
+
+
+def resume_args(sid) -> str:
+    """Продолжить разговор окна: свой журнал — ``--resume <id>`` (тот же id: без ``--fork-session`` Claude Code его
+    не меняет); без метки — как раньше, ``--continue`` (последний разговор папки)."""
+    sid = valid_sid(sid)
+    return f" --resume {sid}" if sid else " --continue"
+
+
+def current(path: str, home: Path | None = None, sid: str = "") -> Path | None:
+    """Журнал сессии. С ``sid`` (окно запущено с ``--session-id``) — ровно ``<sid>.jsonl`` в папке журналов (или в
+    любой папке журналов этой папки Claude: окно могло сменить каталог); его ещё нет — None, а не чужой журнал.
+    Без ``sid`` (старые окна) — как раньше, последний журнал папки."""
+    if sid := valid_sid(sid):
+        f = project_dir(path, home) / f"{sid}.jsonl"
+        if f.exists():
+            return f
+        base = home / "projects" if home else CLAUDE_PROJECTS
+        return next(iter(base.glob(f"*/{sid}.jsonl")), None)
+    files = transcripts(path, home)
+    return max(files, key=lambda p: p.stat().st_mtime) if files else None
+
+
+def follow(path: str, home: Path | None, sid: str, taken: set[str]) -> str:
+    """``/clear`` в Claude Code начинает новый журнал с новым id. Окно с меткой ``sid`` — единственное в этой папке
+    (``taken`` — метки других окон папки; есть окно без метки — не вызывать): более новый журнал папки, ничей, —
+    продолжение этого окна. Возвращает id, на который перенести метку, иначе ""."""
+    sid = valid_sid(sid)
+    if not sid:
+        return ""
+    own = project_dir(path, home) / f"{sid}.jsonl"
+    try:
+        mine = own.stat().st_mtime
+    except OSError:
+        return ""                                   # своего журнала ещё нет (новая сессия до первого сообщения)
+    newer = [f for f in transcripts(path, home)
+             if f.stem != sid and f.stem not in taken and valid_sid(f.stem) and f.stat().st_mtime > mine]
+    return max(newer, key=lambda p: p.stat().st_mtime).stem if newer else ""
+
+
 def clean(md: str) -> str:
     """Markdown → текст для синтеза речи: код и разделители таблиц не читаются, ссылки — подписью."""
     md = re.sub(r"```.*?```", " Блок кода пропущен. ", md, flags=re.S)
@@ -130,18 +177,17 @@ PASTED = re.compile(r"</?pasted_content[^>]*>")
 BLOCKED = "UserPromptSubmit operation blocked by hook"
 
 
-def revision(path: str, home: Path | None = None) -> str:
-    """Отпечаток последнего транскрипта папки (файл, размер, время) — изменился ли журнал с прошлого раза."""
-    files = transcripts(path, home)
-    if not files:
+def revision(path: str, home: Path | None = None, sid: str = "") -> str:
+    """Отпечаток журнала сессии (файл, размер, время) — изменился ли журнал с прошлого раза; ``sid`` — ``current``."""
+    f = current(path, home, sid)
+    if not f:
         return ""
-    f = max(files, key=lambda p: p.stat().st_mtime)
     st = f.stat()
     return f"{f.stem[:8]}-{st.st_size}-{st.st_mtime_ns}"
 
 
 def history(path: str, limit: int = 30, before: int | None = None,
-            home: Path | None = None) -> tuple[list[dict], bool]:
+            home: Path | None = None, sid: str = "", file: Path | None = None) -> tuple[list[dict], bool]:
     """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
 
     Ответ Claude — весь текст хода до следующего запроса человека (как в чате), субагенты пропускаются.
@@ -149,11 +195,11 @@ def history(path: str, limit: int = 30, before: int | None = None,
     по ходу работы (``attachment: queued_command``): такие показываем сразу, с пометкой
     ``queued`` = "wait" (ещё в очереди) или "read" (прочитано по ходу работы).
     """
-    files = transcripts(path, home)
-    if not files:
+    f = file or current(path, home, sid)          # ``file`` — журнал завершённой сессии без окна («Проекты»)
+    if not f:
         return [], False
     items: list[dict] = []
-    with open(max(files, key=lambda p: p.stat().st_mtime), encoding="utf-8", errors="replace") as fh:
+    with open(f, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             try:
                 e = json.loads(line)
@@ -202,15 +248,15 @@ TOOLS = {"Bash": "команда", "Read": "читает", "Edit": "правит
          "Task": "поручил агенту", "Agent": "поручил агенту", "TodoWrite": "план"}
 
 
-def preview(path: str, tail: int = 262144, home: Path | None = None) -> str:
+def preview(path: str, tail: int = 262144, home: Path | None = None, sid: str = "") -> str:
     """Одна строка о том, что сейчас в сессии: последний ответ Claude, его действие или ваш запрос.
 
     Читается только хвост журнала (``tail`` байт) — дёшево даже при опросе раз в 3 секунды.
     """
-    files = transcripts(path, home)
-    if not files:
+    f = current(path, home, sid)
+    if not f:
         return ""
-    with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
+    with open(f, "rb") as fh:
         start = max(0, fh.seek(0, 2) - tail)
         fh.seek(start)
         lines = fh.read().decode("utf-8", "replace").splitlines()[1 if start else 0:]   # первая строка хвоста — обрывок
@@ -238,16 +284,16 @@ def preview(path: str, tail: int = 262144, home: Path | None = None) -> str:
     return ""
 
 
-def last_model(path: str, tail: int = 262144, home: Path | None = None) -> str:
+def last_model(path: str, tail: int = 262144, home: Path | None = None, sid: str = "") -> str:
     """На какой модели ответил Claude в последний раз — поле ``message.model`` в журнале (хвост ``tail`` байт).
 
     Запасной источник, когда в строке статуса Claude Code нет «🤖 …»: id как есть (claude-opus-5-5, glm-5.3…),
     подпись для людей — ``model_title``.
     """
-    files = transcripts(path, home)
-    if not files:
+    f = current(path, home, sid)
+    if not f:
         return ""
-    with open(max(files, key=lambda p: p.stat().st_mtime), "rb") as fh:
+    with open(f, "rb") as fh:
         start = max(0, fh.seek(0, 2) - tail)
         fh.seek(start)
         lines = fh.read().decode("utf-8", "replace").splitlines()[1 if start else 0:]
@@ -284,13 +330,13 @@ def _line(text: str, limit: int = 140) -> str:
     return ""
 
 
-def last_answer(path: str, home: Path | None = None) -> str:
-    """Последний полный ответ Claude в папке (для «💬 Последний ответ»)."""
-    files = transcripts(path, home)
-    if not files:
+def last_answer(path: str, home: Path | None = None, sid: str = "") -> str:
+    """Последний полный ответ Claude в сессии (для «💬 Последний ответ»); без ``sid`` — в последнем журнале папки."""
+    f = current(path, home, sid)
+    if not f:
         return ""
     entries = []
-    with open(max(files, key=lambda p: p.stat().st_mtime), encoding="utf-8") as fh:
+    with open(f, encoding="utf-8") as fh:
         for line in fh:
             try:
                 entries.append(json.loads(line))

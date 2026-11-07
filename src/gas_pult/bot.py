@@ -384,7 +384,7 @@ class Pult:
 
     def activity(self, w: dict, screen: dict | None = None) -> dict:
         """Статус окна: журнал (последний ход), запись об отправке и экран (``screen``; нет — читаем сами)."""
-        j = self.acts.status(w["path"], self.home_of(w))
+        j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "")
         scr = screen if screen is not None else self.screen_state(w["id"])
         return activity.combine(j, self.sends.get(w["id"]), scr, sends=self.sends, wid=w["id"])
 
@@ -538,7 +538,7 @@ class Pult:
 
     def stamps(self, w: dict) -> dict:
         """Когда сессия менялась (ago.py): последний ход в журнале или смена экрана, ответ агента, ваше сообщение."""
-        return ago.stamps(self.acts.status(w["path"], self.home_of(w)), self.changes.at(w["id"]))
+        return ago.stamps(self.acts.status(w["path"], self.home_of(w), w.get("sid") or ""), self.changes.at(w["id"]))
 
     def screen_msg(self, w: dict, title: str) -> tuple[str, dict]:
         return (f"[{w['name']}] {title}\n\n" + "\n".join(self.tmux.screen(w["id"])),
@@ -581,8 +581,9 @@ class Pult:
             return self.send(chat, country.DENY)
         try:
             home = self.claude_dir(chat)                # чат с ботом — личный: chat = Telegram ID того, кто открыл
-            wid = self.tmux.new_window(name, path, models.with_home(self.cfg.claude, home),
-                                       by=str(chat) if home else "")
+            sid = str(uuid.uuid4())                     # свой журнал окна (--session-id, метка @gas_pult_sid)
+            wid = self.tmux.new_window(name, path, models.with_home(self.cfg.claude, home) + f" --session-id {sid}",
+                                       by=str(chat) if home else "", sid=sid)
             if uid is not None and not home:            # окно владельца — тоже с меткой: запасные по его странам
                 self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(uid))
         except (RuntimeError, OSError) as e:
@@ -839,16 +840,24 @@ class Pult:
                 for w in ws:                            # (у человека со своей папкой Claude — свой каталог)
                     by_path.setdefault((w["path"], self.home_of(w)), []).append(w)
                 for (path, home), group in by_path.items():
-                    w = next((x for x in group if x["id"] == st.get("active")), group[0])
-                    quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
-                    files, texts = transcripts.transcripts(path, home), []
+                    # журнал окна со своей меткой (--session-id) — этому окну; остальные — окну без метки (старый
+                    # способ: активному из них или первому), а если таких нет — активному или первому в папке
+                    sids = {v: x for x in group if (v := transcripts.valid_sid(x.get("sid")))}
+                    legacy = [x for x in group if not transcripts.valid_sid(x.get("sid"))]
+                    pick = legacy or group
+                    w0 = next((x for x in pick if x["id"] == st.get("active")), pick[0])
+                    files, got = transcripts.transcripts(path, home), {}
                     tail.watch(f"{home}|{path}" if home else path, files)    # старое не пересылаем
                     for f in files:
+                        w = sids.get(f.stem, w0)
                         for e in tail.read(f):
                             self.fallback.seen(w["id"], e)      # ошибка API поставщика — ждём остановки окна
                             if text := turns.setdefault(f, transcripts.Turns()).feed(e):
-                                texts.append(text)
-                    if texts and not quiet:
+                                got.setdefault(w["id"], (w, []))[1].append(text)
+                    for w, texts in got.values():
+                        quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
+                        if quiet:
+                            continue
                         if len(texts) > self.BURST:            # пачка за 3 с — сбой, а не переписка
                             self.broadcast(f"[{w['name']}] пропущено ответов: {len(texts) - 1} — они в панели. "
                                            "Последний:")
@@ -893,7 +902,7 @@ class Pult:
         for w in ws if ws is not None else self.tmux.windows():
             if w["cmd"] != "claude" or self.pool_of(w) != "owner":
                 continue
-            s = self.meter.session(w["path"], None, today)
+            s = self.meter.session(w["path"], None, today, w.get("sid") or "")
             if s:
                 pub = usage.public(s["total"])
                 out.append({"w": w["id"], "name": w["name"], "sid": s["id"], "usd": pub["usd"],
@@ -1187,8 +1196,9 @@ class Pult:
                 if w := self.folder_window(str(folder)):   # окно папки есть, Claude в нём остановлен — в нём же
                     by = modules.mark_of(folder).get("by")
                     home = self.claude_dir(by) if by is not None else None
-                    self.tmux.respawn(w["id"], str(folder), models.with_home(self.cfg.claude, home),
-                                      mark=w.get("mark") or "claude")
+                    sid = str(uuid.uuid4())             # новый разговор — новый журнал со своей меткой
+                    self.tmux.respawn(w["id"], str(folder), models.with_home(self.cfg.claude, home) +
+                                      f" --session-id {sid}", mark=w.get("mark") or "claude", sid=sid)
                     self.send_later(w["id"], item["prompt"])
                     self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{w['name']}» ({item['title']}).")
                     continue
@@ -1200,8 +1210,10 @@ class Pult:
                     self.broadcast(f"🗓 {name}: {item['at']} — {country.DENY}")
                     continue
                 home = self.claude_dir(by) if by is not None else None
+                sid = str(uuid.uuid4())
                 wid = self.tmux.new_window(folder.name, str(folder),             # имя — папка, без «-ЧЧММ»
-                                           models.with_home(self.cfg.claude, home), by=str(by) if home else "")
+                                           models.with_home(self.cfg.claude, home) + f" --session-id {sid}",
+                                           by=str(by) if home else "", sid=sid)
                 if not home:
                     self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(self.cfg.owners[0]))
                 self.send_later(wid, item["prompt"])
@@ -1655,7 +1667,7 @@ class Pult:
         elif kind == "scr":
             self.send_screen(chat, w, "экран:")
         elif kind == "last":
-            text = transcripts.last_answer(w["path"], self.home_of(w))
+            text = transcripts.last_answer(w["path"], self.home_of(w), w.get("sid") or "")
             if not text:
                 return send("Ответов Claude в этой папке не нашёл.")
             send(text, reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))

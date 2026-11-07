@@ -262,12 +262,12 @@ class Journal:
             self.cache[str(f)] = (key, res)
         return res
 
-    def status(self, path: str, home: Path | None = None) -> dict:
-        """Статус последнего журнала папки ``path`` (у участника — в его папке Claude ``home``)."""
-        files = transcripts.transcripts(path, home)
-        if not files:
+    def status(self, path: str, home: Path | None = None, sid: str = "") -> dict:
+        """Статус журнала сессии: окно с ``sid`` — его журнал, иначе последний журнал папки ``path`` (у участника — в
+        его папке Claude ``home``)."""
+        f = transcripts.current(path, home, sid)
+        if not f:
             return parse([])
-        f = max(files, key=lambda p: p.stat().st_mtime)
         sub = None
         subs = sorted((f.with_suffix("") / "subagents").glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
         if subs and time.time() - subs[-1].stat().st_mtime < 120:   # помощник пишет сейчас — что он делает

@@ -319,15 +319,21 @@ class Meter:
         """Журнал сессии и её субагентов."""
         return [main, *sorted((main.parent / main.stem / "subagents").glob("*.jsonl"))]
 
-    def session(self, path: str, home: Path | None = None, today: str | None = None) -> dict | None:
-        """Расход текущей сессии папки (последний журнал + субагенты): итог, за сегодня, id сессии, модель."""
+    def session(self, path: str, home: Path | None = None, today: str | None = None, sid: str = "") -> dict | None:
+        """Расход сессии (журнал + субагенты): итог, за сегодня, id сессии, модель. ``sid`` — свой журнал окна
+        (``--session-id``); без него — последний журнал папки."""
         from gas_pult import transcripts
         d = self.projects(home) / re.sub(r"[^A-Za-z0-9]", "-", path)
         try:
-            files = sorted(d.glob("*.jsonl"))
-            if not files:
-                return None
-            main = max(files, key=lambda p: p.stat().st_mtime)
+            if sid := transcripts.valid_sid(sid):
+                main = d / f"{sid}.jsonl"
+                if not main.exists():
+                    return None
+            else:
+                files = sorted(d.glob("*.jsonl"))
+                if not files:
+                    return None
+                main = max(files, key=lambda p: p.stat().st_mtime)
         except OSError:
             return None
         today = today or date.today().isoformat()
