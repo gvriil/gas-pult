@@ -479,5 +479,15 @@
  "pj.past.keep": "Chats older than {n} days are deleted automatically.",
  "pj.past.title": "Past chat",
  "pj.resume": "Continue this chat",
- "pj.resume.wait": "Opening the chat…"
+ "pj.resume.wait": "Opening the chat…",
+ "mic.hold": "Voice: hold and speak — the text appears in the field",
+ "mic.stop": "Stop",
+ "mic.stop.title": "Stop recording, the text goes to the field",
+ "mic.send": "Stop and send right away",
+ "mic.cancel": "Cancel recording",
+ "mic.cancelled": "Recording cancelled",
+ "mic.empty": "Didn't catch anything — please try again",
+ "mic.denied": "No access to the microphone: {e}",
+ "mic.check": "Check the text and send it",
+ "mic.none": "The panel has no microphone here — dictate with the microphone key on the keyboard"
 }

@@ -2245,8 +2245,8 @@ class Pult:
         if v := (m.get("voice") or m.get("audio")):
             self.react(m, "✍")
             try:
-                text = voice.transcribe(self.api.download(v["file_id"], self.cfg.data / "inbox", "voice.ogg"),
-                                        self.cfg.whisper_model)
+                text = voice.transcribe_any(self.api.download(v["file_id"], self.cfg.data / "inbox", "voice.ogg"),
+                                            self.cfg.whisper_model, data=self.cfg.data)   # T-one, нет — whisper
             except (RuntimeError, OSError) as e:
                 return send(f"Не разобрал голосовое: {e}")
             if not text:

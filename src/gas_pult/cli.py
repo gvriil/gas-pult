@@ -1,4 +1,4 @@
-"""Командная строка: ``gas-pult [run|init|doctor|voices|service|webapp|geoip|offer|email|secrets|last|version]``."""
+"""Командная строка: ``gas-pult [run|init|doctor|voices|service|asr|webapp|geoip|offer|email|secrets|last|version]``."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -103,6 +104,9 @@ def cmd_doctor(_):
           'pip install "gas-pult[voice]" && gas-pult voices install irina (необязательно)')
     check("распознавание голосовых (faster-whisper)", catalog.has("faster_whisper"), 'pip install "gas-pult[voice]"')
     check("ffmpeg", catalog.has("imageio_ffmpeg") or shutil.which("ffmpeg"), "pip install imageio-ffmpeg")
+    from gas_pult import asr  # необязательная служба — на итог проверки не влияет
+    print(f"{'✓' if asr.status() else '·'} распознавание потоком (служба T-one)" +
+          ("" if asr.status() else " — не запущена, голос распознаёт whisper; gas-pult asr install --enable"))
     for name, good, hint in rogroup.checks():          # демо-пространства: у бота и панели должна быть pult-ro
         check(name, good, hint)
     sys.exit(0 if ok else 1)
@@ -189,6 +193,57 @@ WantedBy=default.target
                             capture_output=True, text=True).stdout
     if "Linger=yes" not in linger:
         print(f"  Чтобы пульт работал без входа в систему: sudo loginctl enable-linger {os.environ.get('USER', '')}")
+
+
+def cmd_asr(a):
+    """Служба распознавания речи T-one (задача 46): install | uninstall | status | check <файл>."""
+    from gas_pult import asr
+    from gas_pult.asr import install
+
+    if a.action == "install":
+        try:
+            return install.install(a.python, Path(a.model).expanduser() if a.model else None, a.enable)
+        except (OSError, ValueError, subprocess.CalledProcessError) as e:
+            raise SystemExit(f"Ошибка: {e}") from None
+    if a.action == "uninstall":
+        return install.uninstall()
+    st = asr.status()
+    if a.action == "status":
+        print(f"Служба распознавания: {st}" if st else
+              "Служба распознавания не запущена — пульт распознаёт whisper. Включить: gas-pult asr install --enable")
+        raise SystemExit(0 if st else 1)
+    if not a.file:
+        raise SystemExit("gas-pult asr check <файл со звуком> [--realtime]")
+    if not st:
+        raise SystemExit("служба распознавания не запущена")
+    try:
+        pcm = asr.decode(Path(a.file).expanduser(), 16000)
+    except asr.Unavailable as e:
+        raise SystemExit(f"Ошибка: {e}") from None
+    dur, step = len(pcm) / 32000, 3200                       # кусок 100 мс — как шлёт панель
+    with asr.Stream(16000, partials=True) as s:
+        t0, first, sent = time.perf_counter(), None, 0.0
+
+        def pump():
+            nonlocal sent
+            for i in range(0, len(pcm), step):
+                if a.realtime:                                # как живой микрофон: кусок — когда он «записан»
+                    time.sleep(max(0.0, t0 + (i + step) / 32000 - time.perf_counter()))
+                s.audio(pcm[i:i + step])
+            sent = time.perf_counter()
+            s.end()
+
+        threading.Thread(target=pump, daemon=True).start()
+        for ev in s.events(dur + 60):
+            if "partial" in ev and first is None and ev["partial"]:
+                first = time.perf_counter() - t0
+            if "final" in ev:
+                lag = time.perf_counter() - sent
+                print(f"длина {dur:.1f} с · первый текст {first if first is None else round(first, 2)} с от начала · "
+                      f"итог через {lag:.2f} с после конца записи (в службе {ev.get('lag_ms')} мс)")
+                return print(ev["final"])
+            if "error" in ev:
+                raise SystemExit(f"Ошибка: {ev['error']}")
 
 
 def cmd_webapp(a):
@@ -421,6 +476,14 @@ def main(argv: list[str] | None = None):
     s = sub.add_parser("service", help="фоновая служба: install | uninstall")
     s.add_argument("action", choices=["install", "uninstall"])
     s.set_defaults(fn=cmd_service)
+    s = sub.add_parser("asr", help="распознавание речи (T-one): install [--enable] | uninstall | status | check <файл>")
+    s.add_argument("action", choices=["install", "uninstall", "status", "check"], nargs="?", default="status")
+    s.add_argument("file", nargs="?", help="check — файл со звуком (ogg, wav, …)")
+    s.add_argument("--enable", action="store_true", help="install — сразу включить и запустить службу")
+    s.add_argument("--python", help="install — каким Python создать venv службы (по умолчанию этот)")
+    s.add_argument("--model", help="install — готовый model.onnx вместо скачивания (проверяется sha256)")
+    s.add_argument("--realtime", action="store_true", help="check — подавать звук в темпе речи, как микрофон")
+    s.set_defaults(fn=cmd_asr)
     s = sub.add_parser("webapp", help="Mini App: панель сессий в Telegram")
     s.add_argument("--port", type=int, default=8765)
     g = s.add_mutually_exclusive_group()

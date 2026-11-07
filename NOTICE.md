@@ -14,6 +14,8 @@ gas-pult не включает в репозиторий чужой код ил�
 | [Whisper](https://github.com/openai/whisper) (веса моделей) | распознавание голосовых | MIT |
 | [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) / FFmpeg | перекодирование аудио | BSD-2-Clause / LGPL-GPL |
 | [NumPy](https://numpy.org), [SciPy](https://scipy.org) | вычисления | BSD-3-Clause |
+| [T-one](https://huggingface.co/t-tech/T-one) (Т-Технологии, веса `model.onnx`) | потоковое распознавание речи, `gas-pult asr install` | Apache-2.0 |
+| [ONNX Runtime](https://onnxruntime.ai) | исполнение T-one | MIT |
 
 ## Взято с переработкой
 
@@ -22,6 +24,11 @@ gas-pult не включает в репозиторий чужой код ил�
 [claude-pipeline](https://github.com/SilantevBitcoin/claude-pipeline) (лицензия MIT, © 2026 автор claude-pipeline,
 полный текст лицензии — в его репозитории). Текст и логика переписаны: сторож пускает только в пути из задания,
 добавлен режим «как налоговая / как банк».
+
+Разбиение на фразы по паузам и жадный декодер службы распознавания (`src/gas_pult/asr/tone.py`) — переложение
+`tone/logprob_splitter.py` и `tone/decoder.py` из [voicekit-team/T-one](https://github.com/voicekit-team/T-one)
+(лицензия Apache-2.0, © T-Technologies) без зависимостей kenlm, pyctcdecode и huggingface_hub; числа и порядок шагов
+сохранены, понижение частоты 16 → 8 кГц добавлено.
 
 Claude и Claude Code — товарные знаки Anthropic, PBC. Telegram — товарный знак Telegram FZ-LLC.
 gas-pult не связан с этими компаниями.
