@@ -29,7 +29,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from gas_pult import models, tenants
+from gas_pult import models, reviewers, tenants
 from gas_pult.tenants import GROUP_RO, GROUP_TENANTS, LAYOUT, LOGIN_WARNING
 
 SIZE = re.compile(r"^(\d{1,4})([MG])$")
@@ -327,6 +327,7 @@ def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, person
         s.fix(p["secrets"], 0o600, u, u)
     if not p["audit"].exists():
         s.write(p["audit"], "", 0o640, "root", GROUP_RO)
+    install_agents(lay, s, slug)
     # бюджет — запас на период (space_budget.py): норма в день × дни; прежние значения — если не заданы заново
     bo = (old or {}).get("budget") or {}
     daily = float(budget) if budget is not None else bo.get("daily", tenants.DEFAULT_BUDGET)
@@ -356,6 +357,31 @@ def create(lay: Layout, s: Sys, slug: str, title=None, jurisdiction=None, person
     s.out(f"Готово: {slug}. Ключ модели — sudo bin/pult-tenant key {slug} {meta['profile']} (ключ — со стандартного "
           f"ввода). Проверка изоляции — sudo bin/pult-tenant check {slug} <другое>.")
     return meta
+
+
+def install_agents(lay: Layout, s: Sys, slug: str):
+    """Слепые проверяющие (``reviewers.py``) — в папку Claude Code пространства: ``agents/`` (папка — пользователя
+    пространства: свои агенты он может добавить) и сторож в ``hooks/`` (папка и файл — root: агент в пространстве
+    сторожа не перепишет). Повторный запуск ничего не меняет; обновлённые в пакете файлы — переписывает."""
+    p, u = tenants.paths(slug, lay.tenants), tenants.user_of(slug)
+    s.mkdir(p["claude"] / "agents", 0o700, u, u)
+    s.mkdir(p["claude"] / "hooks", 0o755)
+    for rel, text in reviewers.files().items():
+        if rel.startswith("hooks/"):
+            s.write(p["claude"] / rel, text, 0o755)
+        else:
+            s.write(p["claude"] / rel, text, 0o644, "root", u)
+
+
+def agents(lay: Layout, s: Sys, slugs: list[str]):
+    """``pult-tenant agents [slug…]`` — разложить слепых проверяющих в пространства (без имён — во все)."""
+    need_setup(lay, s)
+    for slug in slugs or tenants.slugs(lay.tenants):
+        slug = tenants.check_slug(slug)
+        if not tenants.load(slug, lay.tenants):
+            raise ValueError(f"нет пространства {slug}")
+        install_agents(lay, s, slug)
+        s.out(f"✓ {slug}: слепые проверяющие на месте ({', '.join(reviewers.AGENTS)})")
 
 
 def backup(lay: Layout, s: Sys, slug: str) -> Path:
@@ -563,6 +589,8 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--start", help="первый день периода ГГГГ-ММ-ДД (по умолчанию — прежний или сегодня)")
     c.add_argument("--size", default=DEFAULT_SIZE, help="диск пространства (по умолчанию 2G)")
     sub.add_parser("list", help="пространства, их состояние и корзина")
+    ag = sub.add_parser("agents", help="разложить слепых проверяющих в пространства (без имён — во все)")
+    ag.add_argument("slugs", nargs="*")
     b = sub.add_parser("backup", help="архив пространства в /srv/pult/backups")
     b.add_argument("slug")
     d = sub.add_parser("destroy", help="бэкап и перенос в корзину (не удаляет)")
@@ -601,6 +629,8 @@ def main(argv: list[str] | None = None) -> int:
                    a.day_cap, a.start)
         elif a.cmd == "list":
             listing(lay, s)
+        elif a.cmd == "agents":
+            agents(lay, s, a.slugs)
         elif a.cmd == "backup":
             backup(lay, s, a.slug)
         elif a.cmd == "destroy":

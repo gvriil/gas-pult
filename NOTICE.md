@@ -15,5 +15,13 @@ gas-pult не включает в репозиторий чужой код ил�
 | [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) / FFmpeg | перекодирование аудио | BSD-2-Clause / LGPL-GPL |
 | [NumPy](https://numpy.org), [SciPy](https://scipy.org) | вычисления | BSD-3-Clause |
 
+## Взято с переработкой
+
+Слепой проверяющий (`src/gas_pult/templates/agents/`: агенты `slepaya-proverka*`, сторож
+`slepaya_proverka_storozh.py`) — по мотивам `agents/slepoy.md` и `hooks/slepoy_guard.py` проекта
+[claude-pipeline](https://github.com/SilantevBitcoin/claude-pipeline) (лицензия MIT, © 2026 автор claude-pipeline,
+полный текст лицензии — в его репозитории). Текст и логика переписаны: сторож пускает только в пути из задания,
+добавлен режим «как налоговая / как банк».
+
 Claude и Claude Code — товарные знаки Anthropic, PBC. Telegram — товарный знак Telegram FZ-LLC.
 gas-pult не связан с этими компаниями.

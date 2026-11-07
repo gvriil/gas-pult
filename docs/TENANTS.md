@@ -129,11 +129,17 @@ remount,hidepid=off /proc`.
 1. `useradd --system --user-group --groups pult-tenants --shell /usr/sbin/nologin` (без пароля и домашней папки в `/home`).
 2. Образ: `fallocate -l 2G /srv/pult/images/demo.img`, `mkfs.ext4`.
 3. Бэкап `/etc/fstab`, строка `… /srv/pult/tenants/demo ext4 loop,nodev,nosuid,nofail 0 2`, `mount`.
-4. Папки и файлы с правами из таблицы выше; `tenant.json`, `budget.json`, пустой `secrets.json`.
+4. Папки и файлы с правами из таблицы выше; `tenant.json`, `budget.json`, пустой `secrets.json`; слепые проверяющие —
+   `config/claude/agents/slepaya-proverka*.md` и сторож `config/claude/hooks/slepaya_proverka_storozh.py` (папка
+   `hooks` и сторож — root: агент пространства их не перепишет; подробно — docs/MODULES.md, «Слепая проверка»).
 5. `pult_t_demo.slice`, `pult_t_demo.service`, `pult-share-demo.{service,timer}` в `/etc/systemd/system`,
    `systemctl enable --now`.
 
 Повторный `create` с другими параметрами — обновляет описание (название, юрисдикцию, вид, профиль, бюджет).
+
+Пространство создано раньше или пакет обновился — `sudo bin/pult-tenant agents demo` раскладывает только слепых
+проверяющих (без имени — во все пространства); совпадающие файлы не переписываются. Откат:
+`sudo rm /srv/pult/tenants/demo/config/claude/agents/slepaya-proverka*.md /srv/pult/tenants/demo/config/claude/hooks/slepaya_proverka_storozh.py`.
 
 Проверить: `sudo bin/pult-tenant list` (смонтирован, tmux `active`, занято на диске);
 `systemctl status pult_t_demo.service`; `systemctl show pult_t_demo.slice -p MemoryMax -p CPUQuotaPerSecUSec -p TasksMax`;
