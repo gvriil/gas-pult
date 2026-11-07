@@ -454,10 +454,12 @@ class Panel:
         today = date.today()
         first, _ = space_budget.period(cfg, today)
         home = tenants.paths(slug)["claude"]
-        seen = self.pult.meter.days(home, first.isoformat()) if home.is_dir() else {}
-        spent = space_budget.remember(slug, seen, first)
+        accs = self.pult.meter.days(home, first.isoformat(), detail=True) if home.is_dir() else {}
+        seen = {d: round(x["usd"], 4) for d, x in accs.items()}
+        spent = space_budget.remember(slug, seen, first)     # максимум записанного: прошлые дни не уменьшаются
         b = space_budget.state(cfg, spent, today, space_budget.extra(slug, first),
-                               estimate=(t.get("profile") or "") == "claude")
+                               estimate=(t.get("profile") or "") == "claude",
+                               source=usage.source(usage.merge(*accs.values())))
         b["text"] = space_budget.text(b)
         self.budget_cache[slug] = (time.time(), b)
         return b
@@ -644,7 +646,8 @@ class Panel:
         home = self.pool_home(pool)
         day = usage.empty() if home is False else self.pult.meter.day(home)
         out = {"pool": "owner" if pool == "owner" else "own", "today": usage.public(day),
-               "prices_checked": usage.PRICES_CHECKED, "prices_url": usage.PRICES_URL}
+               "prices_checked": usage.PRICES_CHECKED, "prices_url": usage.PRICES_URL,
+               "provider_prices_checked": models.PROVIDER_PRICES_CHECKED}
         if pool.startswith("space:"):                    # тестировщик: дневной бюджет его пространства
             out["budget"] = self.space_budget(pool.removeprefix("space:"))
         if pool == "owner":

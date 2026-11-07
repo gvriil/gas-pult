@@ -6,8 +6,15 @@
 с большими числами добавляем разницу). Файлы читаются по смещению, как ``transcripts.Tail``: каждые несколько
 секунд дочитываются только новые строки.
 
-Деньги — по прайсу API Anthropic (``PRICES``). У подписки Pro/Max счёта за токены нет — для неё это «сколько стоило
-бы по API». Модели не из прайса (GLM, DeepSeek, неизвестные id) — токены есть, цена неизвестна: не выдумываем.
+Деньги — по поставщику ответа (``provider_of``, задача 51): Claude Code чужих моделей не знает и считает их по
+тарифам Anthropic, поэтому его цене (``costUSD``) не верим и считаем сами, с источником цены (``cost_source``):
+- ``anthropic`` — модели Claude напрямую: прайс API Anthropic (``PRICES``). У подписки Pro/Max счёта за токены нет —
+  для неё это «сколько стоило бы по API»;
+- ``provider`` — OpenRouter (id модели «поставщик/модель», ``requestId`` «gen-…»): фактическое списание за каждый
+  ответ (``openrouter.Billing``, фоном); пока счёт не пришёл — ответ «ждёт цены» (``pending``);
+- ``estimate`` — Z.ai (glm-…) и DeepSeek (deepseek-…): токены × тариф поставщика (``models.PROVIDER_PRICES``),
+  в панели и боте — «оценка».
+Остальные модели (шлюзы GigaChat, YandexGPT, неизвестные id) — токены есть, цена неизвестна: не выдумываем.
 
 Пулы: «чужие учётки в общий пул не собираем». Пул — папка Claude Code (``people.home_of``): владелец — ``~/.claude``
 (в нём и окна, которые участник открыл на учётке владельца, — с пометкой, кто открыл), участник со своей папкой —
@@ -26,6 +33,8 @@ import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
+
+from gas_pult import models
 
 # Прайс API Anthropic, USD за 1 млн токенов: (ввод, вывод, чтение кэша). Запись кэша — от цены ввода:
 # 5 минут — ×1,25, 1 час — ×2. Быстрый режим (usage.speed = "fast") — ×2.
@@ -48,6 +57,20 @@ LONG: dict[str, tuple[int, tuple[float, float, float]]] = {"claude-haiku-5-5": (
 WRITE_5M, WRITE_1H, FAST = 1.25, 2.0, 2.0
 MODEL_ID = re.compile(r"claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:[.-](\d{1,2}))?(?!\d)")
 KINDS = ("in", "out", "cw", "cr")               # ввод, вывод, запись кэша, чтение кэша
+SOURCES = ("anthropic", "provider", "estimate", "wait")   # откуда цена ответа; «wait» — ждём счёт OpenRouter
+
+
+def provider_of(model: str, request_id: str = "") -> str:
+    """Чей ответ — по id модели из журнала: «openrouter» (id «поставщик/модель» или генерация «gen-…»), «zai»
+    (glm-…), «deepseek» (deepseek-…), «anthropic» (claude-…); иначе «» (шлюз, неизвестная модель)."""
+    m = (model or "").strip().lower()
+    if str(request_id or "").startswith("gen-") or "/" in m:
+        return "openrouter"
+    if m.startswith("glm"):
+        return "zai"
+    if m.startswith("deepseek"):
+        return "deepseek"
+    return "anthropic" if MODEL_ID.search(m) else ""
 
 
 def model_key(model: str) -> str:
@@ -89,35 +112,51 @@ def cost(model: str, u: dict) -> float | None:
 
 
 def empty() -> dict:
-    return {"in": 0, "out": 0, "cw": 0, "cr": 0, "usd": 0.0, "unpriced": 0}
+    return {"in": 0, "out": 0, "cw": 0, "cr": 0, "usd": 0.0, "unpriced": 0, **{f"n_{s}": 0 for s in SOURCES}}
 
 
-def add(acc: dict, t: dict, usd: float | None, sign: int = 1) -> dict:
-    """Прибавить токены и деньги; ответы без цены — счётчиком ``unpriced`` (их токены в сумме есть)."""
+def add(acc: dict, t: dict, usd: float | None, sign: int = 1, src: str = "") -> dict:
+    """Прибавить токены и деньги; ответы без цены — счётчиком ``unpriced`` (их токены в сумме есть). ``src`` —
+    источник цены ответа (``SOURCES``): счётчик ``n_<src>``."""
     for k in KINDS:
         acc[k] += sign * t.get(k, 0)
     if usd is None:
         acc["unpriced"] += sign
     else:
         acc["usd"] += sign * usd
+    if src:
+        acc[f"n_{src}"] = acc.get(f"n_{src}", 0) + sign
     return acc
 
 
 def merge(*xs: dict) -> dict:
     out = empty()
     for x in xs:
-        for k in (*KINDS, "unpriced"):
+        for k in (*KINDS, "unpriced", *(f"n_{s}" for s in SOURCES)):
             out[k] += x.get(k, 0)
         out["usd"] += x.get("usd", 0.0)
     return out
 
 
+def source(x: dict) -> str | None:
+    """Источник цены итога: есть хоть одна оценка — «estimate»; иначе счёт поставщика — «provider»; иначе прайс
+    Anthropic — «anthropic»; цен нет — None."""
+    if x.get("n_estimate"):
+        return "estimate"
+    if x.get("n_provider") or x.get("n_wait"):
+        return "provider"
+    return "anthropic" if x.get("n_anthropic") else None
+
+
 def public(x: dict) -> dict:
-    """Для панели: токены, деньги (None — цена неизвестна для всех ответов) и есть ли ответы без цены."""
+    """Для панели: токены, деньги (None — цена неизвестна для всех ответов) и есть ли ответы без цены. Добавлено
+    (задача 51): ``cost_source`` — откуда цена («anthropic» | «provider» | «estimate» | None), ``pending`` — сколько
+    ответов OpenRouter ещё ждут счёта."""
     total = sum(x[k] for k in KINDS)
     priced = x["usd"] > 0 or not x["unpriced"]
     return {"tokens": {k: x[k] for k in KINDS}, "total": total,
-            "usd": round(x["usd"], 4) if priced else None, "unknown": x["unpriced"] > 0}
+            "usd": round(x["usd"], 4) if priced else None, "unknown": x["unpriced"] > 0,
+            "cost_source": source(x), "pending": max(0, x.get("n_wait", 0))}
 
 
 def local_day(ts: str) -> str:
@@ -153,12 +192,54 @@ class Meter:
 
     DAY_EVERY = 10                                    # с: обход всех журналов пула за день — не чаще
 
-    def __init__(self, projects: Path | None = None):
+    def __init__(self, projects: Path | None = None, billing=None):
         self.root = projects                          # папка projects владельца (тесты — своя); None — ~/.claude
         self.files: dict[Path, File] = {}
         self.seen: dict[str, Path] = {}               # id сообщения → журнал, где его уже посчитали
         self.lock = threading.Lock()
         self._day: dict[str, tuple[float, str, dict]] = {}   # пул → (когда, день, итог)
+        self._billing = billing                       # счёт OpenRouter (openrouter.Billing); None — создать при нужде
+        self.waiting: dict[str, set[tuple[Path, str]]] = {}  # id генерации → (журнал, id сообщения), ждут цены
+
+    @property
+    def billing(self):
+        if self._billing is None:
+            from gas_pult import openrouter
+            self._billing = openrouter.Billing(on_cost=self.settle)
+        elif getattr(self._billing, "on_cost", 0) is None:
+            self._billing.on_cost = self.settle
+        return self._billing
+
+    def price(self, model: str, u: dict, t: dict, rid: str, ts: str) -> tuple[float | None, str]:
+        """Цена ответа и её источник (``SOURCES``; «» — цены нет). Цену Claude Code (costUSD) не берём."""
+        prov = provider_of(model, rid)
+        if prov == "anthropic":
+            usd = cost(model, {**u, "input_tokens": t["in"], "output_tokens": t["out"],
+                               "cache_creation_input_tokens": t["cw"], "cache_read_input_tokens": t["cr"]})
+            return usd, "anthropic" if usd is not None else ""
+        if prov == "openrouter":
+            src, usd = self.billing.lookup(rid)
+            return usd, src
+        if prov in models.PROVIDER_PRICES:
+            usd = models.estimate(prov, model, t, ts)
+            return usd, "estimate" if usd is not None else ""
+        return None, ""
+
+    def settle(self, gen: str, usd: float | None):
+        """Пришёл счёт OpenRouter за ответ (из фонового потока): «ждёт цены» → цена (или «цена неизвестна»)."""
+        with self.lock:
+            for f, mid in self.waiting.pop(gen, ()):
+                rec = self.files.get(f)
+                entry = rec.msgs.get(mid) if rec else None
+                if not entry or entry[3] != "wait":
+                    continue
+                day, t = entry[0], entry[1]
+                src = "provider" if usd is not None else ""
+                for acc in (rec.total, rec.days.setdefault(day, empty())):
+                    add(acc, {}, None, -1, "wait")
+                    add(acc, {}, usd, 1, src)
+                rec.msgs[mid] = (day, t, usd, src)
+            self._day.clear()
 
     def projects(self, home: Path | None) -> Path:
         if home:
@@ -204,27 +285,29 @@ class Meter:
         if mid and self.seen.get(mid, f) != f:                       # уже посчитан в другом журнале (продолжение)
             return
         t = tokens(u)
+        rid = str(e.get("requestId") or e.get("request_id") or "")
+        ts = str(e.get("timestamp") or "")
         old = rec.msgs.get(mid) if mid else None
         if old:                                                      # повтор строки: добавляем только рост
-            day, prev = old
+            day, prev, pusd, psrc = old
             if all(t[k] <= prev[k] for k in KINDS):
                 return
-            t = {k: max(t[k], prev[k]) for k in KINDS}
-            self.bump(rec, day, prev, model, u, -1)
+            t = {**t, **{k: max(t[k], prev[k]) for k in KINDS}}
+            add(rec.total, prev, pusd, -1, psrc)                     # убираем ровно то, что добавили в прошлый раз
+            add(rec.days.setdefault(day, empty()), prev, pusd, -1, psrc)
         else:
-            day = local_day(str(e.get("timestamp") or ""))
-        self.bump(rec, day, t, model, u, 1)
+            day = local_day(ts)
+        usd, src = self.price(model, u, t, rid, ts)
+        if src == "wait" and not mid:                               # не к чему привязать счёт — цена неизвестна
+            src = ""
+        add(rec.total, t, usd, 1, src)
+        add(rec.days.setdefault(day, empty()), t, usd, 1, src)
         if mid:
-            rec.msgs[mid] = (day, {k: t[k] for k in KINDS})
+            rec.msgs[mid] = (day, {k: t[k] for k in KINDS}, usd, src)
             self.seen[mid] = f
+            if src == "wait":
+                self.waiting.setdefault(rid, set()).add((f, mid))
         rec.model = model
-
-    @staticmethod
-    def bump(rec: File, day: str, t: dict, model: str, u: dict, sign: int):
-        usd = cost(model, {**u, "input_tokens": t["in"], "output_tokens": t["out"],
-                           "cache_creation_input_tokens": t["cw"], "cache_read_input_tokens": t["cr"]})
-        add(rec.total, t, usd, sign)
-        add(rec.days.setdefault(day, empty()), t, usd, sign)
 
     def forget(self, f: Path, rec: File):
         for mid in rec.msgs:
@@ -287,8 +370,9 @@ class Meter:
             return acc
 
 
-    def days(self, home: Path | None, since: str) -> dict[str, float]:
-        """Расход пула в USD по дням начиная с ``since`` («ГГГГ-ММ-ДД»): все журналы, изменённые с этого дня."""
+    def days(self, home: Path | None, since: str, detail: bool = False) -> dict:
+        """Расход пула в USD по дням начиная с ``since`` («ГГГГ-ММ-ДД»): все журналы, изменённые с этого дня.
+        ``detail`` — итоги дней целиком (токены, источник цены), а не только USD."""
         start = time.mktime(date.fromisoformat(since).timetuple())
         out: dict[str, dict] = {}
         with self.lock:
@@ -306,6 +390,8 @@ class Meter:
                             out[day] = merge(out.get(day, empty()), acc)
                 except OSError:
                     continue
+        if detail:
+            return out
         return {d: round(x["usd"], 4) for d, x in out.items()}
 
 
@@ -365,6 +451,8 @@ def watch(state: dict, sessions: list[dict], day_usd: float, today: str) -> tupl
             paused[s["w"]] = p                                      # уже спросили — не повторяем
             continue
         rec |= {"name": s.get("name", ""), "at": int(time.time()), "day": today, "state": "ask"}
+        if rec["kind"] == "session" and s.get("src") == "estimate":
+            rec["src"] = "estimate"                                 # Z.ai, DeepSeek: потрачено — оценка
         paused[s["w"]] = rec
         new.append({"w": s["w"], **rec})
     sids = {s["sid"] for s in sessions}
@@ -410,5 +498,6 @@ def decide(state: dict, wid: str, act: str, today: str) -> tuple[dict, dict]:
 def question(p: dict) -> str:
     """Текст вопроса владельцу о паузе."""
     what = "за сегодня по вашей учётке" if p["kind"] == "day" else "в этой сессии"
-    return (f"💰 Сессия «{p.get('name') or p.get('w', '')}» на паузе: {what} потрачено ${p['spent']:.2f} "
+    est = " по оценке" if p.get("src") == "estimate" else ""
+    return (f"💰 Сессия «{p.get('name') or p.get('w', '')}» на паузе: {what} потрачено{est} ${p['spent']:.2f} "
             f"(лимит ${p['limit']:.2f}). Продолжить?")

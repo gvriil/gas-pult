@@ -21,7 +21,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from gas_pult import bot, people, spaces, tenants, testers, webapp, webauth
+from gas_pult import bot, people, spaces, tenants, testers, usage, webapp, webauth
 from gas_pult.config import Config
 from gas_pult.tmux import Tmux
 
@@ -487,7 +487,10 @@ def test_space_budget_reserve_for_period(world, monkeypatch):
     today = date.today().isoformat()
     (w["root"] / "demo" / tenants.BUDGET).write_text(json.dumps({"daily_usd": 4, "period_days": 30, "start": today}))
     spent = {today: 9.0}                                                     # больше нормы — но в запасе $120
-    monkeypatch.setattr(w["p"].pult.meter, "days", lambda home, since: dict(spent))
+    # расход по дням — итоги дней (detail=True: токены и источник цены, задача 51); здесь — прайс Anthropic
+    monkeypatch.setattr(w["p"].pult.meter, "days", lambda home, since, detail=False:
+                        {d: usage.add(usage.empty(), {}, v, 1, "anthropic") for d, v in spent.items()} if detail
+                        else dict(spent))
     w["p"].budget_cache.clear()
     b = call(w, "/api/sessions")[1]["cost"]["budget"]
     assert b["reserve"] == 120 and b["today"] == 9 and b["left"] == 111 and not b["over"]

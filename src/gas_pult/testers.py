@@ -136,7 +136,8 @@ def report(ppl, meter, now: float | None = None, hours: int = 24) -> str:
                 block += [f"   • {x}" for x in dict.fromkeys(errors)][:5]
         if day and day.get("total"):
             usd = day.get("usd")
-            block.append(f"  Потрачено сегодня: {'$' + format(usd, '.2f') if usd is not None else 'цена ?'}"
+            est = " (оценка)" if day.get("cost_source") == "estimate" else ""
+            block.append(f"  Потрачено сегодня: {'$' + format(usd, '.2f') + est if usd is not None else 'цена ?'}"
                          f" · {day['total']} токенов")
         out += block
     return "\n".join(out)

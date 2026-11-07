@@ -148,6 +148,63 @@ for _p in PROFILES:
 BY_ID = {p["id"]: p for p in PROFILES}
 
 
+# Цены поставщиков для расхода сессий (usage.py, задача 51), USD за 1 млн токенов: (ввод, вывод, чтение кэша).
+# Claude Code чужих моделей не знает (``unrecognized_model``) и считает их по тарифам Anthropic — его цене не верим.
+# Z.ai и DeepSeek счёта по запросу не дают — цена = токены × тариф, в панели и боте с пометкой «оценка». OpenRouter —
+# фактическое списание по каждому ответу (openrouter.Billing), тариф здесь не нужен.
+# Запись кэша — по цене ввода: Z.ai хранение кэша не берёт («Limited-time Free»), у DeepSeek запись кэша — это
+# промах кэша (cache miss). Модель ищется по самому длинному совпадающему началу id: «glm-5.3-flashx» раньше «glm-5.3».
+# Z.ai — https://docs.z.ai/guides/overview/pricing, сверено 07.11.2026.
+# DeepSeek — https://api-docs.deepseek.com/quick_start/pricing, сверено 07.11.2026: цены часа пик (01:00–04:00 и
+# 06:00–10:00 UTC, пн–пт), в остальное время — вдвое ниже (``OFF_PEAK``); китайские праздники (весь день не пик) не
+# учитываем — в праздник оценка выше счёта. Старые имена deepseek-v4-flash, deepseek-chat… — по цене Flash.
+PROVIDER_PRICES_CHECKED = "2026-11-07"
+PROVIDER_PRICES_URL = {"zai": "https://docs.z.ai/guides/overview/pricing",
+                       "deepseek": "https://api-docs.deepseek.com/quick_start/pricing"}
+PROVIDER_PRICES: dict[str, dict[str, tuple[float, float, float]]] = {
+    "zai": {
+        "glm-5.3-flashx": (0.37, 1.25, 0.075), "glm-5.3-flash": (0.15, 0.50, 0.03), "glm-5.3": (1.4, 4.4, 0.26),
+        "glm-5.2": (1.4, 4.4, 0.26), "glm-5.1": (1.4, 4.4, 0.26), "glm-5": (1.0, 3.2, 0.2),
+        "glm-4.7-flashx": (0.07, 0.4, 0.01), "glm-4.7-flash": (0.0, 0.0, 0.0), "glm-4.7": (0.6, 2.2, 0.11),
+        "glm-4.6": (0.6, 2.2, 0.11), "glm-4.5-flash": (0.0, 0.0, 0.0), "glm-4.5-airx": (1.1, 4.5, 0.22),
+        "glm-4.5-air": (0.2, 1.1, 0.03), "glm-4.5-x": (2.2, 8.9, 0.45), "glm-4.5": (0.6, 2.2, 0.11),
+    },
+    "deepseek": {"deepseek-v4-pro": (1.32, 3.96, 0.044), "deepseek": (0.30, 1.20, 0.006)},   # «deepseek…» — Flash
+}
+DEEPSEEK_PEAK = ((1, 4), (6, 10))                 # часы UTC [с, до), понедельник–пятница
+OFF_PEAK = 0.5
+
+
+def provider_price(provider: str, model: str) -> tuple[float, float, float] | None:
+    """Тариф модели поставщика (ввод, вывод, чтение кэша за 1 млн) или None — модели нет в таблице."""
+    table = PROVIDER_PRICES.get(provider) or {}
+    m = (model or "").strip().lower().removesuffix("[1m]")
+    hit = max((k for k in table if m.startswith(k)), key=len, default=None)
+    return table[hit] if hit else None
+
+
+def peak(provider: str, ts: str) -> bool:
+    """Час пик поставщика по времени ответа (ISO, UTC). Время неизвестно — считаем пиком (оценка не ниже счёта)."""
+    if provider != "deepseek":
+        return True
+    from datetime import UTC, datetime
+    try:
+        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError:
+        return True
+    return t.weekday() < 5 and any(a <= t.hour < b for a, b in DEEPSEEK_PEAK)
+
+
+def estimate(provider: str, model: str, t: dict, ts: str = "") -> float | None:
+    """Оценка цены ответа в USD: токены {in, out, cw, cr} × тариф поставщика; тарифа нет — None."""
+    p = provider_price(provider, model)
+    if p is None:
+        return None
+    inp, out, read = p
+    x = 1.0 if peak(provider, ts) else OFF_PEAK
+    return x * ((t.get("in", 0) + t.get("cw", 0)) * inp + t.get("out", 0) * out + t.get("cr", 0) * read) / 1e6
+
+
 def gaps_of(p: dict) -> dict:
     """Для панели: что не работает (``limits``), под вопросом (``unsure``), работает (``works``) — [{id, names}] — и
     какими интеграциями заменить (``alt`` — id шаблонов «Интеграций»)."""

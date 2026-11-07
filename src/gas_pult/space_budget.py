@@ -13,7 +13,9 @@
   увиденного — расход удалённой в корзину сессии не «возвращается»), пополнения «+ добавить», отметки «сообщили на
   80% / 100%».
 
-Расход — по журналам Claude Code пространства в ценах API; на подписке это оценка (``estimate``).
+Расход — по журналам Claude Code пространства (usage.py): модели Claude — по ценам API (на подписке это оценка,
+``estimate``), OpenRouter — по счёту за каждый ответ, Z.ai и DeepSeek — оценка по токенам и тарифу поставщика
+(``source`` = «estimate»). Цену Claude Code (по тарифам Anthropic для чужих моделей) не берём.
 """
 
 from __future__ import annotations
@@ -62,8 +64,10 @@ def period(cfg: dict, today: date) -> tuple[date, date]:
     return first, first + timedelta(days=n - 1)
 
 
-def state(cfg: dict, spent: dict[str, float], today: date, extra: float = 0.0, estimate: bool = False) -> dict:
-    """Запас периода по расходу ``spent`` {«ГГГГ-ММ-ДД»: USD}. ``extra`` — пополнения этого периода."""
+def state(cfg: dict, spent: dict[str, float], today: date, extra: float = 0.0, estimate: bool = False,
+          source: str | None = None) -> dict:
+    """Запас периода по расходу ``spent`` {«ГГГГ-ММ-ДД»: USD}. ``extra`` — пополнения этого периода. ``source`` —
+    источник цены расхода (usage.source: «anthropic» | «provider» | «estimate» | None) — поле ``cost_source``."""
     first, last = period(cfg, today)
     reserve = round(cfg["daily"] * cfg["period_days"] + extra, 2)
     days = [first + timedelta(days=i) for i in range((today - first).days + 1)]
@@ -84,7 +88,7 @@ def state(cfg: dict, spent: dict[str, float], today: date, extra: float = 0.0, e
             "left": round(max(left, 0.0), 2), "day_cap": cap, "over": bool(reason), "reason": reason,
             "pct": round(used / reserve, 4) if reserve > 0 else 1.0, "pace": round(pace, 2),
             "enough_until": until.isoformat(), "enough_all": until >= last and left > 0, "estimate": estimate,
-            "extra": round(extra, 2)}
+            "extra": round(extra, 2), "cost_source": source}
 
 
 def text(b: dict, lang: str = "ru") -> str:
@@ -95,6 +99,10 @@ def text(b: dict, lang: str = "ru") -> str:
          f"при нынешнем темпе хватит {tail}")
     if b["day_cap"] is not None:
         s += f" · потолок дня ${b['day_cap']:.2f}"
+    if b.get("cost_source") == "estimate":
+        return s + " (оценка: токены × цены поставщика)"
+    if b.get("cost_source") == "provider" and not b["estimate"]:
+        return s + " (по счёту OpenRouter)"
     return s + (" (оценка по ценам за токены — работает на подписке)" if b["estimate"] else "")
 
 
