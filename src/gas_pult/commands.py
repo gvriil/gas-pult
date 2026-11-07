@@ -2,8 +2,9 @@
 
 - Блок ```bash / ```sh / ``` без языка = команда; блоки-промпты (проза) пропускаются.
 - Команды для другой машины (macOS-пути на Linux и наоборот, свои шаблоны из ``foreign``) — без кнопки.
-- Команды, которые спрашивают пароль (pass, gpg, ssh-add, read -s …), — без кнопки: у ▶️ нет терминала.
-- sudo — только из списка ``sudo_allow`` (и только если у пользователя настроен sudo без пароля).
+- Команды, которым нужен ввод (keepassxc-cli, sudo с паролем, ssh, passwd, read -s … — ``termwin.needs_input``), —
+  не «▶️ Выполнить», а «⌨️ Открыть в терминале»: у ▶️ нет терминала, команда открывается в окне терминала панели.
+- sudo без пароля — только из списка ``sudo_allow``; ``sudo -n`` вне списка — только вручную.
 - Опасное (rm -r, push --force, DROP, reboot …) — второе подтверждение.
 - Выполнение: ``bash -o pipefail -lc`` в папке окна (упавший ``curl … | bash`` не покажет «код 0»), без stdin,
   таймаут 10 минут; похожее на токены в выводе маскируется.
@@ -27,15 +28,13 @@ import time
 import uuid
 from pathlib import Path
 
-from gas_pult import people, transcripts
+from gas_pult import people, termwin, transcripts
 
 FENCE = re.compile(r"```([\w+-]*)[ \t]*\n(.*?)```", re.S)
 SHELL = {"", "bash", "sh", "shell", "zsh", "console"}
 ON_LINUX_FOREIGN = [r"/Users/", r"\bbrew\b", r"\blaunchctl\b", r"\bpbcopy\b", r"\bosascript\b", r"\bcaffeinate\b",
                     r"~/\.zshrc"]
 ON_MAC_FOREIGN = [r"\bapt(-get)?\s", r"\bsystemctl\b", r"\bjournalctl\b", r"/home/\w+"]
-TTY = re.compile(r"(^|[;&|(]\s*)(pass(\s+show)?\s|gpg\s+(--passwd|--edit-key|-d\b|--decrypt)|ssh-add\b|passwd\b|"
-                 r"su\s|keepassxc-cli\s|read\s+-\w*s)")   # спросит пароль — у кнопки ▶️ нет терминала
 DANGER = re.compile(r"\brm\s+-\w*[rf]|\bgit\s+(push\b.*(--force|\s-f\b)|reset\s+--hard|clean\s+-\w*f)|\bdrop\s+"
                     r"(table|schema|database)\b|\btruncate\b|\breboot\b|\bshutdown\b|\bmkfs|\bdd\s+if=|--apply\b|"
                     r"--write\b|--force\b|\bkill(all)?\b", re.I)
@@ -120,7 +119,6 @@ class Commands:
         self.host, self.store = host, store
         self.on_start = on_start            # (команда, папка) — «выполняется» во вкладке «Команды»
         self.on_done = on_done              # (команда, папка, код, секунды, вывод) — отметить во вкладке «Команды»
-        self.guard = None                   # (команда) → текст отказа или "" — например, pass заблокирован (passcheck)
         self.sudo_ok = re.compile(r"^\s*sudo\s+(-n\s+)?(" + "|".join(f"(?:{p})" for p in sudo_allow) + ")"
                                   if sudo_allow else r"(?!)")
         base = ON_MAC_FOREIGN if platform == "darwin" else ON_LINUX_FOREIGN
@@ -129,7 +127,7 @@ class Commands:
     def kind(self, cmd: str) -> str:
         if self.foreign.search(cmd):
             return "foreign"
-        if TTY.search(cmd):
+        if termwin.needs_input(cmd, self.sudo_ok.match):    # нужен ввод (пароль) — окно терминала панели
             return "tty"
         sudo = [line for line in cmd.splitlines() if re.search(r"(^|[;&|]\s*)sudo\s", line)]
         if any(not self.sudo_ok.match(line) for line in sudo):
@@ -160,9 +158,11 @@ class Commands:
             body = f'<pre><code class="language-bash">{html.escape(cmd)}</code></pre>'
             if k == "foreign":
                 send(f"{head} · 💻 для другой машины — нажми, чтобы скопировать\n{body}", parse_mode="HTML")
-            elif k == "tty":
-                send(f"{head} · ⌨️ спросит пароль — только в терминале, кнопкой не выполнится\n{body}",
-                     parse_mode="HTML")
+            elif k == "tty":                # нужен ввод: не выполнять вслепую — открыть в окне терминала
+                cid = uuid.uuid4().hex[:10]
+                d[cid] = {"cmd": cmd, "cwd": w["path"], "win": w["name"], "ts": time.time(), "tty": True}
+                send(f"{head} · ⌨️ нужен ввод (пароль) — кнопкой не выполнится, откроется в терминале\n{body}",
+                     parse_mode="HTML", reply_markup=kb([[("⌨️ Открыть в терминале", f"tw:{cid}")]]))
             elif k == "sudo":
                 send(f"{head} · 🔐 sudo вне разрешённого списка — только вручную\n{body}", parse_mode="HTML")
             else:
@@ -173,16 +173,20 @@ class Commands:
                      reply_markup=kb([[(f"▶️ Выполнить на {self.host}", f"run:{cid}")]]))
         self._save(d)
 
+    def get(self, cid: str) -> dict | None:
+        return self._load().get(cid)
+
     def run(self, cid: str, confirmed: bool, send, kb, send_file=None):
         c = self._load().get(cid)
         if not c:
             return send("Эта команда уже забыта — попроси Claude прислать её снова.")
+        if c.get("tty") or self.kind(c["cmd"]) == "tty":     # нужен ввод — вслепую не запускаем
+            return send("⌨️ Команде нужен ввод (пароль) — кнопкой «Выполнить» она упадёт или зависнет. "
+                        "Откройте её в терминале.", reply_markup=kb([[("⌨️ Открыть в терминале", f"tw:{cid}")]]))
         if DANGER.search(c["cmd"]) and not confirmed:
             return send(f"⚠️ Команда меняет или удаляет данные:\n<pre>{html.escape(c['cmd'][:1500])}</pre>",
                         parse_mode="HTML",
                         reply_markup=kb([[("⚠️ Да, выполнить", f"runok:{cid}"), ("Отмена", "noop:")]]))
-        if self.guard and (why := self.guard(c["cmd"])):     # заранее: не запускать то, что упадёт или зависнет
-            return send(why, reply_markup=kb([[("🔓 Разблокировать", "pu:")]]))
         send(f"⏳ [{html.escape(c['win'])}] выполняю…", parse_mode="HTML")
         if self.on_start:
             try:
