@@ -135,7 +135,7 @@ def test_new_session_in_project_second_window(server):
 
 
 def test_done_chats_list_search_and_history(server):
-    p, base, wins, pid, shop = server
+    p, base, _, pid, _ = server
     tok = p.auth.issue(1)
     code, d = call(base, f"/api/project/sessions?id={pid}", tok=tok)
     assert code == 200 and d["keep_days"] == 30
@@ -158,7 +158,7 @@ def test_done_chats_list_search_and_history(server):
 
 
 def test_legacy_window_hides_latest_journal(server):
-    p, base, wins, pid, shop = server
+    p, base, wins, pid, _ = server
     wins.wins[0]["sid"] = ""                                    # старое окно без метки — его журнал последний в папке
     p._proj = (0.0, {})
     sids = [c["sid"] for c in call(base, f"/api/project/sessions?id={pid}", tok=p.auth.issue(1))[1]["chats"]]
@@ -173,7 +173,7 @@ def test_resume_rename_hide(server):
     code, again = call(base, "/api/project/resume", {"id": pid, "sid": OLD}, tok)
     assert again == {"id": d["id"], "existing": True, "sid": OLD} and len(wins.opened) == 1   # уже открыт — его окно
     code, e = call(base, "/api/project/resume", {"id": pid, "sid": OTHER}, tok)
-    assert code == 400 and "другой учётке" in e["error"]                         # чат участника — не на учётке владельца
+    assert code == 400 and "другой учётке" in e["error"]  # чат участника — чужая учётка
     code, d = call(base, "/api/project/resume", {"id": pid, "sid": OTHER}, p.auth.issue(2))
     assert code == 200 and wins.opened[-1]["by"] == "2" and wins.opened[-1]["cmd"].endswith(f"--resume {OTHER}")
     assert call(base, "/api/project/chat", {"id": pid, "sid": NEW, "title": "  Тексты   карточек "}, tok)[1][
