@@ -246,6 +246,7 @@ class Panel:
                         "rev": rev,                                       # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev, home, sid),
                         "sid": sid,                                       # id сессии Claude Code окна (добавлено)
+                        "title": self.chat_title(pd, w["path"], home, sid),   # название чата («Проекты»)
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
@@ -269,6 +270,13 @@ class Panel:
             d = self.projects.sync(self.pult.projects(), wins, self.pult.state().get("add_dirs"))
             self._proj = (time.time(), d)
         return self._proj[1]
+
+    def chat_title(self, d: dict, path: str, home, sid: str) -> str:
+        """Название чата окна: своё (``projects.json``) → ``summary`` журнала → первое сообщение человека."""
+        if (own := ((d.get("sessions") or {}).get(sid) or {}).get("title")) if sid else None:
+            return str(own)
+        f = transcripts.current(path, home, sid)
+        return projects.title_of(f) if f else ""
 
     def project_of(self, d: dict, w: dict) -> str:
         """Проект окна: окно пространства — "" (проекты пространств — отдельным шагом)."""
@@ -321,6 +329,147 @@ class Panel:
             out.append(item)
         out.sort(key=lambda x: (not x["pinned"], not x["waiting"], -(x["last"] or 0), x["name"].lower()))
         return out
+
+    def project(self, pid: str) -> dict:
+        p = self.project_data()["projects"].get(str(pid or ""))
+        if not p:
+            raise LookupError("проекта нет — обновите список")
+        return p
+
+    def project_session(self, pid: str, profile: str = "", person: int | None = None, uid=None) -> dict:
+        """«Новая сессия в проекте»: ещё одно окно в главной папке проекта, даже если там уже работает чат — у каждого
+        свой журнал (``--session-id``). Поставщик и модель — по умолчанию проекта, если не выбраны."""
+        p = self.project(pid)
+        path = projects.untilde(p["path"], self.pult.home)
+        if not os.path.isdir(path):
+            raise ValueError("папки проекта нет на сервере")
+        profile = profile or p.get("profile") or ""
+        if uid is not None:
+            self.check(profile, uid)
+        out = self.open_in(path, profile, person, uid, model=p.get("model") or "")
+        return {**out, "project": p["id"]}
+
+    def project_files(self, p: dict) -> list[Path]:
+        return projects.session_files(self.projects.folders_of(p), self.claude_homes())
+
+    def chat_file(self, p: dict, sid: str) -> Path:
+        """Журнал чата проекта по id — только среди журналов этого проекта (id — uuid, путь не подставить)."""
+        sid = transcripts.valid_sid(sid)
+        f = next((f for f in self.project_files(p) if sid and f.stem == sid), None)
+        if not f:
+            raise LookupError("чата нет — Claude Code мог удалить старый журнал")
+        return f
+
+    def open_sids(self, p: dict) -> tuple[dict, set]:
+        """Окна проекта: id сессии → окно; журналы окон без метки (последний журнал их папки) — тоже заняты."""
+        d = self.project_data()
+        by_sid, legacy = {}, set()
+        for w in self.tmux.windows():
+            if w.get("space") or not (w.get("cmd") == "claude" or w.get("mark")):
+                continue
+            if self.projects.of_path(d, w.get("path", "")) != p["id"]:
+                continue
+            if sid := transcripts.valid_sid(w.get("sid")):
+                by_sid[sid] = w
+            elif f := transcripts.current(w["path"], self.pult.home_of(w)):
+                legacy.add(str(f))
+        return by_sid, legacy
+
+    def keep_days(self) -> int:
+        """Сколько дней Claude Code хранит журналы (``cleanupPeriodDays`` владельца, по умолчанию 30). Только читаем."""
+        with contextlib.suppress(OSError, ValueError, TypeError):
+            v = json.loads((Path.home() / ".claude" / "settings.json").read_text()).get("cleanupPeriodDays")
+            if isinstance(v, int) and v > 0:
+                return v
+        return 30
+
+    def my_claude(self, person: int | None) -> Path:
+        """Папка Claude Code того, кто спрашивает (не создаётся): владелец — ``~/.claude``."""
+        if person is None:
+            return transcripts.CLAUDE_PROJECTS.parent
+        return self.cfg.data / "people" / str(person) / "claude"
+
+    CHATS_PAGE = 20
+    SEARCH_FILES, SEARCH_SECS = 300, 2.0                 # поиск по тексту журналов — не дольше и не больше этого
+
+    def project_chats(self, pid: str, q: str = "", before: float | None = None, person: int | None = None) -> dict:
+        """Завершённые чаты проекта (журналы без окна): название, когда, сколько сообщений; новые сверху, страницами.
+        ``q`` — по названию, затем по тексту журналов (с лимитом файлов и времени)."""
+        p = self.project(pid)
+        meta = self.project_data().get("sessions") or {}
+        by_sid, legacy = self.open_sids(p)
+        mine = self.my_claude(person)
+        files = []
+        for f in self.project_files(p):
+            with contextlib.suppress(OSError):
+                files.append((f.stat().st_mtime, f))
+        files.sort(key=lambda x: -x[0])
+        q = " ".join(str(q or "").lower().split())
+        out, scanned, t0, cut = [], 0, time.time(), False
+        for mt, f in files:
+            if before is not None and mt >= before:
+                continue
+            if f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"):
+                continue
+            title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
+            if not title:
+                continue                                  # журнал без единого сообщения человека — не чат
+            if q and q not in title.lower():
+                if scanned >= self.SEARCH_FILES or time.time() - t0 > self.SEARCH_SECS:
+                    cut = True
+                    continue
+                scanned += 1
+                if not projects.contains(f, q):
+                    continue
+            own = f.parent.parent.parent == mine
+            out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": own})
+            if len(out) >= self.CHATS_PAGE:
+                break
+        more = bool(out) and len(out) >= self.CHATS_PAGE
+        return {"chats": out, "more": more, "before": out[-1]["mtime"] if more else None, "cut": cut,
+                "keep_days": self.keep_days(), "active": len(by_sid) + len(legacy)}
+
+    def project_history(self, pid: str, sid: str, before: int | None = None) -> dict:
+        """Переписка завершённого чата без окна — окно открывается только по «Продолжить»."""
+        p = self.project(pid)
+        f = self.chat_file(p, sid)
+        items, more = transcripts.history("", 30, before, file=f)
+        for it in items:
+            if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
+                it["human"] = h
+        meta = (self.project_data().get("sessions") or {}).get(f.stem) or {}
+        return {"items": items, "more": more, "title": meta.get("title") or projects.title_of(f), "sid": f.stem}
+
+    def project_resume(self, pid: str, sid: str, person: int | None = None, uid=None) -> dict:
+        """«Продолжить»: новое окно в папке чата с ``--resume <id>``; чат уже открыт — его окно. Продолжить можно
+        только свой чат (журнал в своей папке Claude Code): чужая учётка — не наша."""
+        p = self.project(pid)
+        f = self.chat_file(p, sid)
+        by_sid, _ = self.open_sids(p)
+        if w := by_sid.get(f.stem):
+            self.pult.set_state(active=w["id"])
+            return {"id": w["id"], "existing": True, "sid": f.stem}
+        mine = self.my_claude(person)
+        if f.parent.parent.parent != mine:
+            raise ValueError("этот чат вёлся на другой учётке Claude — продолжить его может только её хозяин")
+        folder = next((x for x in self.projects.folders_of(p)
+                       if transcripts.project_dir(x, None if person is None else mine).name == f.parent.name),
+                      projects.untilde(p["path"], self.pult.home))
+        profile = p.get("profile") or ""
+        if uid is not None:
+            self.check(profile, uid)
+        return {**self.open_in(folder, profile, person, uid, resume=f.stem, model=p.get("model") or ""),
+                "project": p["id"]}
+
+    def project_chat(self, pid: str, sid: str, title=None, hidden=None) -> dict:
+        """Переименовать или скрыть чат проекта — только в ``projects.json``; журнал Claude Code не меняется."""
+        p = self.project(pid)
+        f = self.chat_file(p, sid)
+        if title is not None:
+            title = " ".join(str(title).split())[:projects.TITLE_MAX]
+        rec = self.projects.set_chat(f.stem, p["id"], title=title, hidden=None if hidden is None else bool(hidden))
+        self._proj = (0.0, {})
+        return rec
 
     INSTR_MAX = 20000                                   # знаков CLAUDE.md в ответе: больше — обрезаем с пометкой
     FILES_MAX = 200
@@ -1320,17 +1469,31 @@ class Panel:
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
             self.pult.set_state(active=w["id"])
             return {"id": w["id"], "existing": w["name"]}
+        return {"id": self.open_in(path, profile, person, uid)["id"]}
+
+    def open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
+                model: str = "", name: str = "") -> dict:
+        """Новое окно с Claude в папке — без правила «одно окно на папку»: у окна свой журнал (``--session-id`` и
+        метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
+        этого чата (``window_models``), как у «Модель» в меню."""
         self.need_claude()
-        base = os.path.basename(path) if path != self.pult.home else "home"
+        base = name or (os.path.basename(path) if path != self.pult.home else "home")
         home = self.pult.claude_dir(person) if person is not None else None
-        cmd = models.command(self.cfg.claude, profile, self.pult.state(), home=home)
-        sid = str(uuid.uuid4())                         # свой журнал окна: --session-id и метка @gas_pult_sid
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, f"{cmd} --session-id {sid}",
+        st = self.pult.state()
+        cmd = models.command(self.cfg.claude, profile, st, home=home)
+        if model:
+            cmd += f" --model {shlex.quote(model)}"
+        sid = transcripts.valid_sid(resume) or str(uuid.uuid4())     # свой журнал окна: --session-id или --resume
+        cmd += f" --resume {sid}" if resume else f" --session-id {sid}"
+        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
                                    mark=profile or "claude", by=str(person) if home else "", sid=sid)
         if not home:
             self.mark_by(wid, uid)
-        self.pult.set_state(active=wid)
-        return {"id": wid}
+        upd: dict = {"active": wid}
+        if model:
+            upd["window_models"] = {**(st.get("window_models") or {}), wid: model}
+        self.pult.set_state(**upd)
+        return {"id": wid, "sid": sid}
 
     def new_in_space(self, slug: str, name: str = "") -> dict:
         """Новая сессия в демо-пространстве: своя папка ``home/projects/<имя>`` (``space_sessions.create``) и окно
@@ -2220,12 +2383,23 @@ def handler(panel: Panel):
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
+                pool = self.pool()
                 with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
-                    ss = panel.sessions(self.pool())
+                    ss = panel.sessions(pool)
+                # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
                 return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1"),
-                        "sessions": ss, "now": time.time()}
+                        "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
+                        "cost": panel.cost_summary(pool),
+                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
+                                     for x in fallback.recent(panel.pult.state())]}
             if path == "/api/project":
                 return panel.project_info(q.get("id", ""))
+            if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
+                before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
+                return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
+            if path == "/api/project/history":           # переписка завершённого чата — без окна
+                before = int(q["before"]) if q.get("before", "").isdigit() else None
+                return panel.project_history(q.get("id", ""), q.get("sid", ""), before)
             if path == "/api/meta":
                 kind, role, uid = self.who()
                 tu = self.terms_uid()
@@ -2234,6 +2408,7 @@ def handler(panel: Panel):
                         "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
                         "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
                         "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
+                        "projects_ui": not self.space(),              # «Проекты» (docs/PROJECTS.md): экран включён
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
@@ -2861,6 +3036,15 @@ def handler(panel: Panel):
                 return panel.space_restore(self.space_of(b), str(b.get("id", "")))
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
+            if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
+                return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
+                                             self.terms_uid())
+            if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
+                return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
+                                            self.terms_uid())
+            if path == "/api/project/chat":              # переименовать / скрыть чат проекта
+                return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
+                                          b.get("hidden"))
             if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
                 return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
                                         self.terms_uid())
