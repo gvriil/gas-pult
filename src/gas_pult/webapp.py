@@ -53,7 +53,6 @@ from gas_pult import (
     offer_report,
     offers,
     oidc,
-    passcheck,
     passkeys,
     personas,
     providers,
@@ -67,6 +66,7 @@ from gas_pult import (
     spaces,
     tenants,
     terms,
+    termwin,
     testers,
     transcripts,
     usage,
@@ -1605,11 +1605,10 @@ class Panel:
             raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
         if c["kind"] != "local":
             raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
-                             "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
+                             "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(c["kind"],
+                                                                                      "она для другой машины"))
         if c["danger"] and not confirmed:
             return {"confirm": True}
-        if self.pass_locked(c["cmd"]):
-            return {"locked": True, "error": PASS_LOCKED}
         code, secs, out = execute(c["cmd"], w["path"])
         tri, to = self.triage(w["path"], w["id"], c["cmd"], code, out)
         self.journal.collect([w], self.pult.cmds.kind)               # та же отметка — во вкладке «Команды»
@@ -1617,13 +1616,26 @@ class Panel:
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
                 **({"full": out[-FULL:]} if len(out) > TAIL else {}), "triage": tri, "triage_to": to}
 
-    @staticmethod
-    def pass_locked(cmd: str) -> bool:
-        """Команде нужен pass/gpg, а хранилище заблокировано — не запускать (passcheck.py)."""
-        return passcheck.needs(cmd) and passcheck.unlocked(fresh=True) is False
+    # ---------- команде нужен ввод — окно терминала панели (termwin.py, задача 47) ----------
+    def term_open(self, cmd: str, kind: str, danger: bool, path: str, confirmed: bool) -> dict:
+        """Команда — в новом окне ``gp-term`` (пароль вводят там). Для другой машины — нет."""
+        if kind == "foreign":
+            raise ValueError("команда для другой машины — скопируйте и выполните там")
+        if danger and not confirmed:
+            return {"confirm": True}
+        return {"id": termwin.open_window(self.tmux, cmd, path), "name": termwin.WINDOW}
 
-    def pass_status(self, fresh: bool = False) -> dict:
-        return passcheck.status(self.pult.state(), self.pult.set_state, fresh)
+    def term_run(self, w: dict, i: int, sha: str, confirmed: bool) -> dict:
+        c = next((x for x in self.commands(w) if x["i"] == i and x["sha"] == sha), None)
+        if not c:
+            raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
+        return self.term_open(c["cmd"], c["kind"], c["danger"], w["path"], confirmed)
+
+    def command_term(self, cid: str, confirmed: bool) -> dict:
+        c = self.journal.get(cid)
+        if not c:
+            raise LookupError("команды уже нет в списке")
+        return self.term_open(c["cmd"], c["kind"], c["danger"], c["path"], confirmed)
 
     def triage(self, path: str, wid: str, cmd: str, code, out: str) -> tuple[str, str]:
         """Упала — в сессию на разбор (одну ошибку — один раз); вставка — под замком окна, как обычное сообщение."""
@@ -1653,11 +1665,10 @@ class Panel:
             raise LookupError("команды уже нет в списке")
         if c["kind"] != "local":
             raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
-                             "tty": "она спросит пароль"}.get(c["kind"], "она для другой машины"))
+                             "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(c["kind"],
+                                                                                      "она для другой машины"))
         if c["danger"] and not confirmed:
             return {"confirm": True}
-        if self.pass_locked(c["cmd"]):
-            return {"locked": True, "error": PASS_LOCKED}
         self.journal.update(cid, running=utc_now())                  # другим устройствам — «выполняется»
         try:
             code, secs, out = execute(c["cmd"], c["path"])
@@ -1707,14 +1718,13 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 """
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
-PASS = ("/api/pass", "/api/pass/unlock", "/api/pass/type")   # хранилище паролей сервера (passcheck.py) — владельцу
-PASS_LOCKED = "Хранилище паролей заблокировано — команда не запущена. Разблокируйте и выполните снова."
+TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
 OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
-              "/api/model/default", "/api/balance/clear", "/api/module/delete", *PASS,
+              "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
@@ -2102,8 +2112,8 @@ def handler(panel: Panel):
                 return {"links": panel.focus.listing()}
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
                 return panel.default_model()
-            if path == "/api/pass":                       # «Настройки» → «Сервер»: pass разблокирован до … / нет
-                return panel.pass_status(q.get("fresh") == "1")
+            if path == "/api/term":                       # окно терминала панели: что на экране, живо ли
+                return termwin.screen(panel.tmux, q.get("id", ""))
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 st = tenants.status(check=True)
                 for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
@@ -2608,12 +2618,18 @@ def handler(panel: Panel):
                 return panel.new_in_space(slug, str(b.get("name", "")))
             if path == "/api/model/default":             # только явной настройкой — не из чата
                 return panel.default_model(str(b.get("model") or ""))
-            if path == "/api/pass/unlock":               # окно tmux с pass-unlock
-                return {"id": passcheck.open_window(panel.tmux)}
-            if path == "/api/pass/type":                 # пароль — в окно pass-unlock; из Telegram (Mini App) — нет
+            if path == "/api/commands/term":             # вкладка «Команды»: нужен ввод — в окне терминала
+                return panel.command_term(str(b.get("id", "")), bool(b.get("confirmed")))
+            if path == "/api/term/type":                 # строка (пароль) — в окно gp-term; из Mini App — нет
                 if self.headers.get("X-Telegram-Init-Data"):
                     raise ValueError("пароль в Telegram не вводим — откройте панель в браузере или Termius")
-                passcheck.type_password(panel.tmux, str(b.get("w", "")), str(b.get("text", "")))
+                termwin.type_line(panel.tmux, str(b.get("id", "")), str(b.get("text", "")))
+                return {"ok": True}
+            if path == "/api/term/key":                  # Ctrl+C, Ctrl+D, Enter
+                termwin.key(panel.tmux, str(b.get("id", "")), str(b.get("key", "")))
+                return {"ok": True}
+            if path == "/api/term/close":
+                termwin.close(panel.tmux, str(b.get("id", "")))
                 return {"ok": True}
             if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
                 st = panel.pult.state()
@@ -2741,6 +2757,8 @@ def handler(panel: Panel):
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
             if path == "/api/run":
                 return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
+            if path == "/api/run/term":                  # из ответа: нужен ввод — в окне терминала, не вслепую
+                return panel.term_run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError
 
         def dispatch(self, fn):

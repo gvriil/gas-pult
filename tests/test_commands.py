@@ -21,7 +21,8 @@ def test_kind(tmp_path):
     assert c.kind("ls ~/projects") == "local"
     assert c.kind("brew install jq") == "foreign"
     assert c.kind("sudo apt install -y jq") == "local"
-    assert c.kind("sudo rm -rf /") == "sudo"
+    assert c.kind("sudo rm -rf /") == "tty"           # sudo вне списка спросит пароль — в окно терминала (задача 47)
+    assert c.kind("sudo -n rm -rf /") == "sudo"       # без пароля и вне списка — только вручную
 
 
 def test_kind_on_mac_flips_foreign(tmp_path):
@@ -33,7 +34,8 @@ def test_kind_on_mac_flips_foreign(tmp_path):
 def test_custom_foreign_and_empty_sudo(tmp_path):
     c = cmds(tmp_path, sudo=[], foreign=[r"\bssh\s+prod\b"])
     assert c.kind("ssh prod uptime") == "foreign"
-    assert c.kind("sudo apt update") == "sudo"
+    assert c.kind("sudo apt update") == "tty"         # список пуст — sudo спросит пароль: окно терминала
+    assert c.kind("sudo -n apt update") == "sudo"
 
 
 def test_danger():
@@ -66,7 +68,7 @@ def test_execute_pipefail_reports_failure():
     assert code == 0 and "abcdef123456" not in out
 
 
-def test_password_commands_have_no_button(tmp_path):
+def test_password_commands_go_to_terminal(tmp_path):
     c = cmds(tmp_path)
     for cmd in ("pass show work/db >/dev/null", "gpg --passwd ABCD", "ssh-add ~/.ssh/id_ed25519",
                 "read -rsp 'Токен: ' T"):
