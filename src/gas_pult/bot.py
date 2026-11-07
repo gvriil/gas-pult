@@ -1198,7 +1198,8 @@ class Pult:
                     home = self.claude_dir(by) if by is not None else None
                     sid = str(uuid.uuid4())             # новый разговор — новый журнал со своей меткой
                     self.tmux.respawn(w["id"], str(folder), models.with_home(self.cfg.claude, home) +
-                                      f" --session-id {sid}", mark=w.get("mark") or "claude", sid=sid)
+                                      f" --session-id {sid}", mark=w.get("mark") or "claude")
+                    self.tmux.set_sid(w["id"], sid)
                     self.send_later(w["id"], item["prompt"])
                     self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{w['name']}» ({item['title']}).")
                     continue

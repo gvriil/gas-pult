@@ -190,7 +190,7 @@ def test_panel_ru_owner_sees_only_ru_and_sets_gateway(panel_srv, monkeypatch):
     monkeypatch.setattr(panel.tmux, "new_window", lambda name, path, cmd, **kw: got.append(cmd) or "@9")
     monkeypatch.setattr(panel, "mark_by", lambda *a: None)
     assert call("/api/new", {"i": 0, "profile": "gigachat"})["id"] == "@9"
-    assert got[0].endswith("profiles/gigachat.json")
+    assert got[0].split(" --session-id ")[0].endswith("profiles/gigachat.json")   # свой журнал окна (задача 49)
     with pytest.raises(urllib.error.HTTPError) as e:              # Claude для России — отказ по стране, как было
         call("/api/new", {"i": 0, "profile": "claude"})
     assert e.value.code in (400, 403) and models.DENY in json.load(e.value)["error"]
