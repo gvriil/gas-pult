@@ -1001,13 +1001,13 @@ actions = ["go:simple.settings"]
 [[screen]]
 id = "simple.agents"
 where = "panel"
-title = "Мои агенты"
-title_en = "My agents"
+title = "Проекты и чаты"
+title_en = "Projects and chats"
 roles = ["owner", "member", "viewer"]
-purpose = "Список ваших агентов: выберите, с кем говорить. Владелец и участник могут подключить нового."
-purpose_en = "Your agents: choose who to talk to. The owner and members can connect a new one."
-steps = ["Нажмите агента — откроется разговор с ним.", "«Подключить агента» — выбрать готового агента из каталога."]
-steps_en = ["Tap an agent to open the conversation with it.", "«Connect an agent» picks a ready-made agent from the catalog."]
+purpose = "Ваши проекты — папки с документами и правилами для агента — и разговоры в каждом: открытые и прошлые."
+purpose_en = "Your projects — folders with documents and rules for the agent — and the conversations in each: open and past."
+steps = ["Выберите проект, затем чат — откроется разговор.", "«Новый чат» — ещё один разговор в этом проекте.", "«Прошлые чаты» — перечитать и продолжить прежний разговор.", "«Подключить агента» — новый проект из готового агента."]
+steps_en = ["Pick a project, then a chat — the conversation opens.", "«New chat» starts another conversation in this project.", "«Past chats» lets you reread and continue an earlier conversation.", "«Connect an agent» creates a new project from a ready-made agent."]
 next = ["go:simple.chat", "go:simple.new-agent"]
 chips = ["s-which"]
 
@@ -1018,6 +1018,19 @@ a = "Его имя — вверху экрана. Чтобы перейти к �
 q_en = "Which agent is open now?"
 a_en = "Its name is at the top of the screen. To switch, tap the name or pick an agent here."
 actions = ["go:simple.agents"]
+
+[[screen]]
+id = "simple.past"
+where = "panel"
+title = "Прошлый чат"
+title_en = "Past chat"
+roles = ["owner", "member", "viewer"]
+purpose = "Прежний разговор проекта — только чтение. «Продолжить этот чат» откроет его снова, и агент вспомнит всё сказанное."
+purpose_en = "An earlier conversation in the project — read only. «Continue this chat» opens it again, and the agent remembers everything said."
+steps = ["Пролистайте разговор.", "«Продолжить этот чат» — разговор откроется снова."]
+steps_en = ["Scroll through the conversation.", "«Continue this chat» opens the conversation again."]
+next = ["go:simple.chat", "go:simple.agents"]
+chips = []
 
 [[screen]]
 id = "simple.new-agent"

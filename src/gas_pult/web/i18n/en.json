@@ -465,5 +465,19 @@
  "st.check.tool": "tool call",
  "st.check.webfetch": "reading a page",
  "st.err": "Error: {text}",
- "err.balance": "The provider has run out of money — top up the account or switch this chat to another provider."
+ "err.balance": "The provider has run out of money — top up the account or switch this chat to another provider.",
+ "pj.sheet": "Projects and chats",
+ "pj.hint": "A project is a folder with your documents and rules for the agent. Inside are your conversations with it.",
+ "pj.projects": "Projects",
+ "pj.chats": "Chats in «{p}»",
+ "pj.none": "No open chats — start a new one or continue a past one.",
+ "pj.new": "New chat",
+ "pj.new.wait": "Opening a new chat…",
+ "pj.new.done": "New chat is open — write to the agent",
+ "pj.past": "Past chats",
+ "pj.past.none": "No past chats.",
+ "pj.past.keep": "Chats older than {n} days are deleted automatically.",
+ "pj.past.title": "Past chat",
+ "pj.resume": "Continue this chat",
+ "pj.resume.wait": "Opening the chat…"
 }
