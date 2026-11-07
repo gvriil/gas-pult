@@ -55,6 +55,7 @@ from gas_pult import (
     oidc,
     passkeys,
     personas,
+    projects,
     providers,
     qr,
     scenarios,
@@ -186,6 +187,8 @@ class Panel:
         self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
+        self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
+        self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -207,7 +210,9 @@ class Panel:
         self.balance_watch()
         st = self.pult.state()
         act, out, paused = st.get("active"), [], st.get("cost_paused") or {}
-        for w in self.tmux.windows():
+        wins = self.tmux.windows()
+        pd = self.project_data(wins)
+        for w in wins:
             def branch(path=w["path"]) -> str:
                 return subprocess.run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
                                       capture_output=True, text=True).stdout.strip()
@@ -216,6 +221,7 @@ class Panel:
                             "status": "stopped", "context": None, "model": "", "active": w["id"] == act,
                             "channel": False, "profile": w["mark"] if w["mark"] in models.BY_ID else "claude",
                             "rev": "", "preview": "", "cost_paused": False, "cost": None,
+                            "project": self.project_of(pd, w),
                             **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w)))})
                 continue
             if w["cmd"] != "claude":
@@ -244,8 +250,105 @@ class Panel:
                         **self.space_fields(w),                           # окно демо-пространства (spaces.py)
                         **self.money_of(w, lines),                        # у поставщика нет денег (balance.py)
                         "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
+                        "project": self.project_of(pd, w),                # проект окна (projects.py); "" — нет
                         **when})                                          # когда менялась (ago.py)
         return out
+
+    # ---------- «Проекты» (projects.py, docs/PROJECTS.md) ----------
+    PROJECT_SYNC = 30                                   # с: как часто сверять проекты с папками и окнами
+
+    def project_data(self, wins: list[dict] | None = None, fresh: bool = False) -> dict:
+        """Проекты владельца и участников; сверка с папками и окнами (миграция, досоздание) — не чаще раза в 30 с."""
+        if fresh or time.time() - self._proj[0] > self.PROJECT_SYNC or not self._proj[1]:
+            if wins is None:
+                wins = self.tmux.windows()
+            d = self.projects.sync(self.pult.projects(), wins, self.pult.state().get("add_dirs"))
+            self._proj = (time.time(), d)
+        return self._proj[1]
+
+    def project_of(self, d: dict, w: dict) -> str:
+        """Проект окна: окно пространства — "" (проекты пространств — отдельным шагом)."""
+        return "" if w.get("space") else (self.projects.of_path(d, w.get("path", "")) or "")
+
+    def claude_homes(self) -> list:
+        """Папки Claude Code, где могут лежать журналы сессий проекта: владельца (None) и участников."""
+        out: list = [None]
+        base = self.cfg.data / "people"
+        with contextlib.suppress(OSError):
+            out += sorted(x / "claude" for x in base.iterdir() if (x / "claude" / "projects").is_dir())
+        return out
+
+    def project_public(self, p: dict) -> dict:
+        """Поля проекта для API (без личных путей: путь — с ``~``)."""
+        keys = ("id", "name", "path", "paths", "origin", "created", "profile", "model", "effort", "integrations",
+                "repos", "pinned", "archived", "share")
+        return {**{k: p.get(k) for k in keys}, "folder": os.path.basename(p["path"].rstrip("/")) or "~"}
+
+    def projects_list(self, ss: list[dict], q: str = "", archived: bool = False) -> list[dict]:
+        """Список проектов для главной: счётчики окон (ждут ответа / работают / всего), чатов в журналах, последняя
+        активность и название последнего чата. ``ss`` — готовые сессии: статусы не считаем заново."""
+        d = self.project_data()
+        homes = self.claude_homes()
+        by: dict[str, list[dict]] = {}
+        for x in ss:
+            if x.get("project"):
+                by.setdefault(x["project"], []).append(x)
+        q = " ".join(str(q or "").lower().split())
+        out = []
+        for pid, p in d["projects"].items():
+            mine = by.get(pid, [])
+            folders = self.projects.folders_of(p)
+            if not mine and not any(os.path.isdir(f) for f in folders):
+                continue                                  # папку удалили — проект не показываем (запись остаётся)
+            if bool(p.get("archived")) != archived:
+                continue
+            st = projects.stats(projects.session_files(folders, homes))
+            last = max([st["last"] or 0, *[int(x.get("changed") or 0) for x in mine]]) or None
+            item = {**self.project_public(p),
+                    "windows": len(mine),
+                    "waiting": sum(x["status"] == "dialog" for x in mine),
+                    "busy": sum(x["status"] == "busy" for x in mine),
+                    "chats": st["total"], "last": last,
+                    "last_title": projects.title_of(st["last_file"]) if st["last_file"] else "",
+                    "sessions": [x["id"] for x in mine]}
+            if q and not any(q in str(v).lower() for v in (item["name"], item["folder"], item["last_title"],
+                                                            *[x.get("name", "") for x in mine])):
+                continue
+            out.append(item)
+        out.sort(key=lambda x: (not x["pinned"], not x["waiting"], -(x["last"] or 0), x["name"].lower()))
+        return out
+
+    INSTR_MAX = 20000                                   # знаков CLAUDE.md в ответе: больше — обрезаем с пометкой
+    FILES_MAX = 200
+
+    def project_info(self, pid: str) -> dict:
+        """Проект: настройки, инструкции (``CLAUDE.md`` главной папки), файлы проекта, окна."""
+        d = self.project_data()
+        p = d["projects"].get(str(pid or ""))
+        if not p:
+            raise LookupError("проекта нет — обновите список")
+        root = Path(projects.untilde(p["path"], self.pult.home))
+        text, cut = "", False
+        with contextlib.suppress(OSError):
+            raw = (root / "CLAUDE.md").read_text(encoding="utf-8", errors="replace")
+            text, cut = raw[:self.INSTR_MAX], len(raw) > self.INSTR_MAX
+        files = []
+        fdir = root / (p.get("files") or "files")
+        with contextlib.suppress(OSError):
+            for f in sorted(fdir.iterdir(), key=lambda x: x.name.lower()):
+                if f.is_file() and not f.name.startswith("."):
+                    st = f.stat()
+                    files.append({"name": f.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+                if len(files) >= self.FILES_MAX:
+                    break
+        homes = self.claude_homes()
+        st = projects.stats(projects.session_files(self.projects.folders_of(p), homes))
+        wins = [w["id"] for w in self.tmux.windows() if not w.get("space") and (w.get("cmd") == "claude" or
+                                                                               w.get("mark"))
+                and self.projects.of_path(d, w.get("path", "")) == p["id"]]
+        return {**self.project_public(p), "instructions": text, "instructions_cut": cut,
+                "has_instructions": bool(text), "files": files, "files_dir": p.get("files") or "files",
+                "chats": st["total"], "last": st["last"], "windows": wins}
 
     OWNER_HERE = 15 * 60                                 # с: «Владелец подключился» видно тестировщику 15 минут
 
@@ -2089,6 +2192,13 @@ def handler(panel: Panel):
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
+            if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
+                with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
+                    ss = panel.sessions(self.pool())
+                return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1"),
+                        "sessions": ss, "now": time.time()}
+            if path == "/api/project":
+                return panel.project_info(q.get("id", ""))
             if path == "/api/meta":
                 kind, role, uid = self.who()
                 tu = self.terms_uid()

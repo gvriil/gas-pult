@@ -39,6 +39,7 @@ src/gas_pult/
 ├── channels.py     интерфейс канала связи Channel (Incoming, Button, Caps) и TelegramChannel поверх telegram.Api
 ├── tmux.py         окна, экран, bracketed paste, новые окна с Claude
 ├── transcripts.py  jsonl Claude Code: Turns (сборка хода до end_turn), Tail, last_answer, clean
+├── projects.py     «Проекты» (docs/PROJECTS.md): projects.json, миграция из папок и окон, окно → проект, чаты
 ├── activity.py     строка статуса: хвост jsonl + экран → «Читает файл X · 12 с»; фазы Отправлено/Доставлено/Взял
 ├── ago.py          «изменена N назад»: шкала «12 с назад → 5 мин → … → дата», формы числа ru/en, смена экрана окна
 ├── commands.py     блоки bash из ответа → кнопки ▶️, классификация, выполнение; Journal — вкладка «Команды»
