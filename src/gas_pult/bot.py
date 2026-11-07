@@ -893,7 +893,8 @@ class Pult:
             s = self.meter.session(w["path"], None, today)
             if s:
                 pub = usage.public(s["total"])
-                out.append({"w": w["id"], "name": w["name"], "sid": s["id"], "usd": pub["usd"]})
+                out.append({"w": w["id"], "name": w["name"], "sid": s["id"], "usd": pub["usd"],
+                            "src": pub["cost_source"]})
         return out
 
     def cost_watch(self, st: dict, force: bool = False):

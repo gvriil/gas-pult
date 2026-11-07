@@ -2697,13 +2697,16 @@ async function sfFiles(w) {
 let costInfo = null;                                  // итог дня, лимиты (владельцу) — d.cost из /api/sessions
 const usd = (x) => x == null ? "цена неизвестна" : "$" + (x >= 100 ? Math.round(x) : x.toFixed(2));
 const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n || 0);
+// откуда цена (usage.py, задача 51): прайс Anthropic, счёт OpenRouter или оценка по тарифу Z.ai / DeepSeek
+const costSrc = (c) => ({ estimate: "оценка: токены × цены поставщика (Z.ai, DeepSeek)", provider: "по счёту OpenRouter", anthropic: "по ценам API Anthropic" })[c?.cost_source] || "по ценам API";
+const estTag = (c) => c?.cost_source === "estimate" ? " · оценка" : "";
 const tokLine = (c) => `ввод ${tok(c.tokens.in)} · вывод ${tok(c.tokens.out)} · кэш: запись ${tok(c.tokens.cw)}, чтение ${tok(c.tokens.cr)}`;
 function costChip(s) {
   const c = s.cost;
   if (!c || !c.total) return "";
   const near = c.limit && c.usd != null && c.usd >= c.limit * 0.8;
-  const title = `Расход сессии по ценам API: ${tokLine(c)}${c.unknown ? " · часть ответов — модели без цены" : ""}${s.cost.by ? " · открыл(а) " + (c.by.name || c.by.id) : ""}`;
-  return `<span class="chip cost${near ? " warn" : ""}" title="${esc(title)}">${ic("coin")}${c.usd == null ? "цена ?" : usd(c.usd)} · ${tok(c.total)}${c.limit ? " из $" + c.limit : ""}${c.by ? " · " + esc(c.by.name || "участник") : ""}</span>`;
+  const title = `Расход сессии ${costSrc(c)}: ${tokLine(c)}${c.pending ? ` · ${c.pending} отв. ждут счёта OpenRouter` : c.unknown ? " · часть ответов — модели без цены" : ""}${s.cost.by ? " · открыл(а) " + (c.by.name || c.by.id) : ""}`;
+  return `<span class="chip cost${near ? " warn" : ""}" title="${esc(title)}">${ic("coin")}${c.usd == null ? "цена ?" : usd(c.usd) + estTag(c)} · ${tok(c.total)}${c.limit ? " из $" + c.limit : ""}${c.by ? " · " + esc(c.by.name || "участник") : ""}</span>`;
 }
 function costBar(s) {
   if (!s.cost_paused) return "";
@@ -2721,7 +2724,7 @@ function costSummary() {
   }
   if (!c?.today) return "";
   const lim = c.limits?.day, over = lim && c.today.usd != null && c.today.usd >= lim * 0.8;
-  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="Расход за сегодня по вашей учётке">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}</button>`;
+  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="Расход за сегодня по вашей учётке, ${esc(costSrc(c.today))}">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}${estTag(c.today)}</button>`;
 }
 async function costDecide(id, act, btn) {
   await busy(btn, act === "go" ? "Продолжаю…" : "…", async () => {
@@ -2742,11 +2745,11 @@ function costSheet() {
   helpSheet("settings.cost");
   sheet("Расход", [
     ...(c.budget ? [{ info: true, icon: "coin", label: c.budget.text, sub: T("bud.sub", { r: usd(c.budget.reserve), d: c.budget.period_days }) }] : []),
-    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.unknown ? " · часть ответов — модели без цены" : "") },
+    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)}${estTag(c.today)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.pending ? ` · ${c.today.pending} отв. ждут счёта OpenRouter` : c.today.unknown ? " · часть ответов — модели без цены" : "") },
     ...(own ? [{ info: true, icon: "pause", label: `Лимит на сессию: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
                { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
                { label: "Изменить лимиты", icon: "edit", run: limitsForm }] : []),
-    { info: true, icon: "help", label: "Как считаем", sub: `По журналам Claude Code и прайсу API Anthropic (сверено ${c.prices_checked}). С подпиской Pro/Max это оценка, а не счёт. Модели не из прайса (GLM, DeepSeek) — только токены. ${own ? "Сессии участников на их собственных учётках сюда не входят." : "Здесь — только ваша учётка Claude."}` },
+    { info: true, icon: "help", label: "Как считаем", sub: `По журналам Claude Code. Модели Claude — по прайсу API Anthropic (сверено ${c.prices_checked}); с подпиской Pro/Max это оценка, а не счёт. OpenRouter — по его счёту за каждый ответ (приходит через несколько секунд). GLM (Z.ai) и DeepSeek — оценка: токены × цены поставщика${c.provider_prices_checked ? " (сверено " + c.provider_prices_checked + ")" : ""}. Цену, которую показывает сам Claude Code для чужих моделей, не берём — он считает их по тарифам Anthropic. Шлюзы GigaChat и YandexGPT — только токены. ${own ? "Сессии участников на их собственных учётках сюда не входят." : "Здесь — только ваша учётка Claude."}` },
   ]);
 }
 async function limitsForm() {
@@ -2824,7 +2827,7 @@ function paintSession(s) {
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
   const ag = agoSpan(s, true);
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}${spaceChips(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""}</span>${split() ? ag : ""}`);
+  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}${spaceChips(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd) + (s.cost.cost_source === "estimate" ? " (оценка)" : "")) : ""}</span>${split() ? ag : ""}`);
   const cb = costBar(s); $("costPause").hidden = !cb; $("costPause").innerHTML = cb;     // пауза по расходу — над полем ввода
   $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`;
   $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
@@ -6221,11 +6224,11 @@ function demoApi(path, body) {
   if (demoApi.pz === undefined) demoApi.pz = params.get("cost") === "pause" ? "ask" : "";
   if (path === "/api/cost/limits" && body) demoApi.lim = { session: +String(body.session).replace(",", ".") || null, day: +String(body.day).replace(",", ".") || null };
   if (path === "/api/cost/decide") demoApi.pz = body.act === "stop" ? "stopped" : "";
-  const cst = (usdv, inp, out, cw, cr, extra = {}) => ({ tokens: { in: inp, out, cw, cr }, total: inp + out + cw + cr, usd: usdv, unknown: usdv == null, limit: demoApi.lim.session, ...extra });
+  const cst = (usdv, inp, out, cw, cr, extra = {}) => ({ tokens: { in: inp, out, cw, cr }, total: inp + out + cw + cr, usd: usdv, unknown: usdv == null, cost_source: usdv == null ? null : "anthropic", pending: 0, limit: demoApi.lim.session, ...extra });
   const pz = demoApi.pz && { kind: "session", spent: 10.42, limit: 10, state: demoApi.pz, name: "gas-pult", sid: "c3d4" };
   const COST = own ? { "@1": cst(4.31, 1200, 84000, 310000, 5200000), "@2": cst(0.87, 300, 21000, 90000, 1100000, { by: { id: 2, name: "Иван" } }),
                        "@3": cst(pz ? 10.42 : 3.18, 900, 61000, 240000, 4100000, { paused: pz || null }),
-                       "@4": cst(null, 2100, 48000, 0, 2250000) } : role === "member" ? { "@2": cst(0.87, 300, 21000, 90000, 1100000, { limit: null }) } : {};
+                       "@4": cst(0.31, 2100, 48000, 0, 2250000, { cost_source: "estimate" }) } : role === "member" ? { "@2": cst(0.87, 300, 21000, 90000, 1100000, { limit: null }) } : {};
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
@@ -6241,8 +6244,8 @@ function demoApi(path, body) {
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
     "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, sessions: S.map((x) => ({ ...x, changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
-      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: true }
-        : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false }, prices_checked: "2026-11-02",
+      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
+        : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
     "/api/cost/limits": { limits: demoApi.lim, paused: {}, prices_checked: "2026-11-02" },
     "/api/cost/decide": { result: demoApi.pz === "stopped" ? "⏹ «gas-pult» остаётся на паузе по расходу." : "▶️ «gas-pult»: пауза снята, лимит увеличен. Claude продолжает.", limits: demoApi.lim },

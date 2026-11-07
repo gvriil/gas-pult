@@ -12,12 +12,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
+
+from gas_pult import providers
 
 AUTH = "https://openrouter.ai/auth"
 EXCHANGE = "https://openrouter.ai/api/v1/auth/keys"
@@ -106,3 +110,179 @@ class OpenRouter:
         with self.lock:
             self.catalog = (time.time(), out)
         return out
+
+
+# ---------- фактическая цена ответов (задача 51) ----------
+# Claude Code пишет в журнал у ответа OpenRouter ``requestId`` = id генерации («gen-<unix-время>-…»; в потоке
+# ``claude -p`` — ``request_id``). По нему ``GET /api/v1/generation?id=…`` отдаёт ``total_cost`` — сколько списано
+# за этот ответ. Это точнее оценки по токенам (замер 07.11: у DeepSeek V4 Pro оценка втрое ниже счёта) и делится
+# по сессиям, в отличие от общего расхода ключа (``/api/v1/key``). Статистика появляется не сразу (несколько секунд —
+# 404), поэтому спрашиваем в фоне с повторами; ответ не меняется — кэш на диске (``openrouter-costs.json``, 0600).
+GENERATION = "https://openrouter.ai/api/v1/generation"
+GEN_ID = re.compile(r"^gen-(\d{9,11})-[A-Za-z0-9]{6,64}$")
+
+
+class NotYet(Exception):
+    """Генерация ещё не посчитана (404) — спросить позже."""
+
+
+class Billing:
+    """Цена ответов OpenRouter по id генерации: кэш (память + диск) и фоновая докачка, без блокировки читателя.
+
+    ``lookup(gen)`` — сразу из кэша: («provider», USD) или («wait», None) — поставлено в очередь, или («», None) —
+    узнать не вышло (сдались). Узнали — ``on_cost(gen, usd | None)`` из фонового потока."""
+
+    TIMEOUT = 10                 # с на запрос
+    BATCH = 20                   # запросов за проход
+    TRIES = 12                   # повторов до «не вышло» (~1,5 часа с ростом паузы)
+    KEEP_DAYS = 120              # дольше в кэше не храним (по времени в id генерации)
+
+    def __init__(self, path: Path | None = None, key=None, fetch=None, on_cost=None, autostart: bool = True):
+        self.path = path
+        self.key = key or (lambda: providers.load_keys().get("openrouter"))
+        self.fetch = fetch or self._fetch
+        self.on_cost = on_cost
+        self.autostart = autostart
+        self.known: dict[str, float | None] = {}
+        self.queue: dict[str, list[float]] = {}          # gen → [когда спросить, сколько раз спрашивали]
+        self.lock = threading.Lock()
+        self.thread: threading.Thread | None = None
+        self.mtime = -1.0
+        self.hold = 0.0                                  # ключ не подошёл — пауза до этого времени
+
+    def file(self) -> Path:
+        if self.path is None:
+            from gas_pult.config import data_dir
+            self.path = data_dir() / "openrouter-costs.json"
+        return self.path
+
+    def _load(self) -> list[str]:
+        """Подхватить кэш с диска (его пишет и другой процесс пульта); вернуть gen из очереди, что там нашлись."""
+        try:
+            m = self.file().stat().st_mtime
+            if m == self.mtime:
+                return []
+            d = json.loads(self.file().read_text())
+            self.mtime = m
+        except (OSError, ValueError):
+            return []
+        got = []
+        for g, v in (d if isinstance(d, dict) else {}).items():
+            if g not in self.known and (v is None or isinstance(v, (int, float))):
+                self.known[g] = v
+                if g in self.queue:
+                    got.append(g)
+                    del self.queue[g]
+        return got
+
+    def _save(self):
+        from gas_pult.config import write_private
+        edge = time.time() - self.KEEP_DAYS * 86400
+        keep = {g: v for g, v in self.known.items() if (m := GEN_ID.match(g)) and int(m.group(1)) >= edge}
+        try:
+            self.file().parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            write_private(self.file(), json.dumps(keep))
+            self.mtime = self.file().stat().st_mtime
+        except OSError:
+            pass
+
+    def lookup(self, gen: str) -> tuple[str, float | None]:
+        if not GEN_ID.match(gen or ""):
+            return "", None
+        with self.lock:
+            if gen not in self.known and not self.queue:
+                self._load()
+            if gen in self.known:
+                v = self.known[gen]
+                return ("provider", v) if v is not None else ("", None)
+            self.queue.setdefault(gen, [time.time() + 3, 0])     # статистика появляется через пару секунд
+            start = self.autostart and (self.thread is None or not self.thread.is_alive())
+            if start:
+                self.thread = threading.Thread(target=self._run, name="openrouter-billing", daemon=True)
+        if start:
+            self.thread.start()
+        return "wait", None
+
+    def _run(self):
+        while True:
+            with self.lock:
+                if not self.queue:
+                    self.thread = None
+                    return
+            self.step()
+            time.sleep(2)
+
+    def step(self, now: float | None = None) -> dict[str, float | None]:
+        """Один проход очереди: до BATCH запросов, чьё время пришло. Возвращает узнанное {gen: usd | None}."""
+        now = time.time() if now is None else now
+        with self.lock:
+            done: dict[str, float | None] = {g: self.known[g] for g in self._load()}
+            due = [g for g, (at, _) in self.queue.items() if at <= now][:self.BATCH]
+        key = self.key() if due and now >= self.hold else None
+        if due and not key:                               # ключа нет или не подошёл — ждём, повторы не тратим
+            with self.lock:
+                for g in due:
+                    if g in self.queue:
+                        self.queue[g][0] = now + 300
+            due = []
+        fetched = False
+        for g in due:
+            try:
+                usd: float | None = self.fetch(g, key)
+            except NotYet:
+                with self.lock:
+                    q = self.queue.get(g)
+                    if q is not None:
+                        q[1] += 1
+                        if q[1] < self.TRIES:
+                            q[0] = now + min(600, 5 * 2 ** q[1])
+                            continue
+                usd = None                                # так и не появилась — «не вышло»
+            except PermissionError:
+                self.hold = now + 600
+                with self.lock:
+                    for x in due:
+                        if x in self.queue:
+                            self.queue[x][0] = self.hold
+                break
+            except (OSError, ValueError):                 # сеть, таймаут, странный ответ — позже, как «ещё нет»
+                with self.lock:
+                    if (q := self.queue.get(g)) is not None:
+                        q[1] += 1
+                        if q[1] < self.TRIES:
+                            q[0] = now + min(600, 5 * 2 ** q[1])
+                            continue
+                usd = None
+            with self.lock:
+                self.known[g] = usd
+                self.queue.pop(g, None)
+            done[g] = usd
+            fetched = True
+        if fetched:
+            with self.lock:
+                self._save()
+        for g, usd in done.items():
+            if self.on_cost:
+                self.on_cost(g, usd)
+        return done
+
+    def _fetch(self, gen: str, key: str) -> float:
+        """Цена одной генерации; ключ — только в заголовке (в ошибки и журналы не попадает)."""
+        req = urllib.request.Request(GENERATION + "?" + urllib.parse.urlencode({"id": gen}),
+                                     headers={"Authorization": f"Bearer {key}", "Accept": "application/json",
+                                              "User-Agent": "gas-pult"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.TIMEOUT) as r:
+                d = json.load(r).get("data") or {}
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise NotYet from None
+            if e.code in (401, 403):
+                raise PermissionError(e.code) from None
+            raise OSError(f"OpenRouter: ошибка {e.code}") from None
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise OSError("OpenRouter недоступен") from e
+        v = d.get("total_cost")
+        if not isinstance(v, (int, float)):
+            raise NotYet
+        return float(v)

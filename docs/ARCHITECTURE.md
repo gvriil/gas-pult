@@ -54,7 +54,7 @@ src/gas_pult/
 ├── selftest.py     автотест поставщиков раз в сутки: claude -p — CLAUDE.md, инструменты, Read, WebFetch
 ├── openrouter.py   вход в OpenRouter (OAuth PKCE), ключ и каталог моделей
 ├── fallback.py     запасные: отказ поставщика в журнале → следующий по цепочке с учётом стран и ключей
-├── usage.py        расход: токены и USD по журналам (прайс API Anthropic), пулы по учёткам, лимиты и пауза
+├── usage.py        расход: токены и USD по журналам (прайс Anthropic, счёт OpenRouter, оценка Z.ai/DeepSeek), пулы по учёткам, лимиты и пауза
 ├── tenants.py      демо-пространства: список, включено ли, окна через sudo -u … tmux -S (docs/TENANTS.md)
 ├── rogroup.py      группа pult-ro у бота и панели: sg / newgrp при запуске, проверка в doctor (docs/TENANTS.md)
 ├── tenant_admin.py bin/pult-tenant владельца: create, list, backup, destroy, purge, key, login (через sudo)
@@ -185,7 +185,10 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 ### Расход и лимиты (usage.py)
 
 Токены четырёх видов и USD по журналам Claude Code (включая субагентов), по сессии окна и за сегодня; цены — таблица
-`PRICES` с датой сверки (прайс API Anthropic; модели не из прайса — «цена неизвестна»). **Пул — папка Claude Code**:
+`PRICES` с датой сверки (прайс API Anthropic). Чужие модели — по поставщику ответа (задача 51; цену Claude Code для
+них не берём — он считает их по тарифам Anthropic): OpenRouter — счёт за каждый ответ (`openrouter.Billing`,
+`/api/v1/generation` по `requestId` «gen-…», в фоне, кэш `openrouter-costs.json`), Z.ai и DeepSeek — оценка по токенам
+и тарифу `models.PROVIDER_PRICES`; источник — поле `cost_source`. Шлюзы и незнакомые модели — «цена неизвестна». **Пул — папка Claude Code**:
 учётка владельца — один пул, участник со своей папкой — свой; чужие учётки в общий пул не собираются. Лимиты на
 сессию и на день — `cost_limits` в state.json, задаёт только владелец (`/api/cost/limits`). Превышение: Esc, если
 Claude работает, окно в `cost_paused` (текст туда не отправляется), владельцу один вопрос «Продолжить, +лимит /
