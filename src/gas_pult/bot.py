@@ -37,6 +37,7 @@ from gas_pult import (
     digest,
     emailcode,
     fallback,
+    focus,
     invites,
     models,
     modules,
@@ -624,6 +625,7 @@ class Pult:
         if r["result"] == "busy":
             return self.send(chat, f"«{w['name']}»: Claude не вышел за {self.QUIT_WAIT:.0f} с (возможно, занят). "
                                    "Посмотри 📺 Экран." + tail)
+        focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])   # фокус-ссылки этой сессии гаснут
         self.send(chat, f"«{w['name']}» завершена." + tail)
 
     # ---------- голос ----------
