@@ -166,6 +166,18 @@
   .section { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin: 18px 4px 8px; }
   .note { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 4px 4px 12px; }
   .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
+  /* «Проекты» (задача 49): поиск, карточка проекта, экран проекта, переписка завершённого чата */
+  .psearch { margin: 0 0 10px; } .psearch input { -webkit-appearance: none; appearance: none; }
+  .projc .row > .i, .dchat .row > .i { width: 20px; height: 20px; color: var(--text-secondary); flex: none; }
+  .projc .cfoot { margin-left: 30px; } .projc .chip.space .i { width: 13px; height: 13px; }
+  body:not(.split) .phead, body:not(.split) .ptitle { display: none; }     /* телефон: «‹ Назад» и имя — в шапке */
+  .phead { margin: 0 0 6px; } .phead .chip { border: 0; cursor: pointer; } .phead .chip .i { width: 14px; height: 14px; }
+  .ptitle { font-size: calc(22px * var(--fz, 1)); margin: 2px 4px 2px; overflow-wrap: anywhere; }
+  .pinfo { margin: 0 4px 12px; overflow-wrap: anywhere; } .pinfo .ppath { color: var(--text-muted); }
+  #projChips .chip { border: 0; cursor: pointer; } #projChats > .btn { width: 100%; margin: 4px 0 8px; }
+  .chatv { display: flex; flex-direction: column; } .chatv h3 { overflow-wrap: anywhere; }
+  .chatv-list { overflow-y: auto; padding: 4px 14px 8px; flex: 1; min-height: 120px; }
+  .chatv-list .msg { margin: 0 0 10px; }
   .homebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
              background: linear-gradient(to top, var(--bg-canvas) 70%, transparent); }
   #home { padding-bottom: 76px; }
@@ -916,9 +928,10 @@
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
     <div class="rail" id="rail" data-tour="rail" role="group" aria-label="Сессии"></div>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
+    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
+    <div id="projectsView" hidden></div>
     <div id="commandsView" hidden></div>
     <div id="integrationsView" hidden></div>
   </section>
@@ -1549,12 +1562,13 @@ function show(v) {
 // «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
 function syncBack() {
   const two = split();
-  const canBack = !FOCUS && view === "mcpForm" || (view === "session" && !two) || (view === "home" && !two && homeView !== "sessions");
+  const canBack = !FOCUS && view === "mcpForm" || (view === "session" && !two) || (view === "home" && !two && (homeView !== "sessions" || (projMode() && !!proj)));
   $("backBtn").hidden = !canBack;
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
 }
 function back() {
   if (FOCUS) return refresh();                      // в фокусе уходить некуда; сессию завершили — сервер ответит 410
+  if (view === "home" && homeView === "sessions" && projMode() && proj) return closeProject();   // проект → все проекты
   if (view === "home" && homeView !== "sessions") { setHome("sessions"); return scrollToY(0); }
   if (view === "mcpForm") { clearInterval(connTimer); const f = formBack; formBack = null; if (f) return f(); show("home"); return setHome("integrations"); }
   current = null; closeMenu(); files = []; renderFiles(); show("home"); setHome("sessions");
@@ -2008,23 +2022,31 @@ $("enter").onclick = (e) => busy(e.target, "Проверяю…", async () => {
 
 // ---------- главная: статус всех сессий за 3 секунды ----------
 function setHome(v) {
+  if (v === "projects") { setMode("projects"); v = "sessions"; }   // «Проекты» — главная (docs/PROJECTS.md, вопрос 8)
   homeView = v;
-  document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
-  $("sessionsView").hidden = v !== "sessions"; $("integrationsView").hidden = v !== "integrations";
+  const pm = v === "sessions" && projMode(), inProj = pm && !!proj;
+  $("projSegBtn").hidden = !projOn();
+  document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === (pm ? "projects" : v)));
+  $("sessionsView").hidden = v !== "sessions" || pm; $("projectsView").hidden = !pm; $("integrationsView").hidden = v !== "integrations";
+  $("newBtn").innerHTML = ic("newsess") + (inProj ? "Новая сессия в проекте" : "Новая сессия");
   renderSetup();
   $("commandsView").hidden = v !== "commands";
   $("homeBar").hidden = !((view === "home" || split()) && v === "sessions");
   const two = split();
   if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
-    const sub = v !== "sessions" && !two;
-    $("title").textContent = sub ? { commands: "Команды", integrations: "Интеграции" }[v] : "Пульт";
+    const sub = (v !== "sessions" || inProj) && !two;
+    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : "Пульт";
     $("title").classList.toggle("brand-text", !sub);
     $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
   }
   syncBack();
   if (v === "integrations") loadMcp(); else if (v === "commands") loadCommands(); else refresh();
 }
-$("homeSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) setHome(b.dataset.v); };
+$("homeSeg").onclick = (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.v === "sessions" && projOn()) setMode("sessions");   // «Сессии» — плоский список окон, как раньше
+  setHome(b.dataset.v);
+};
 
 const seenKey = (s) => "seen:" + s.id + ":" + s.path;
 function isNew(s) {                                   // журнал изменился с тех пор, как вы последний раз открывали сессию
@@ -2783,7 +2805,9 @@ function fallbackNotices(list) {
 }
 async function refresh() {
   try {
-    const d = await api("/api/sessions");
+    const pv = projMode() && (!$("home").hidden || split());   // главная «Проекты» — тот же опрос, ответ шире
+    const d = await api(pv ? "/api/projects" : "/api/sessions");
+    if (pv) projData = d;
     await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
     sessions = d.sessions; costInfo = d.cost || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
@@ -2795,13 +2819,17 @@ async function refresh() {
     renderRail();
     if (!$("home").hidden) {
       const n = (k) => sessions.filter((s) => s.status === k).length;
-      if (homeView === "sessions") {
+      if (homeView === "sessions" && !projMode()) {
         const sorted = [...sessions].sort(byChange);             // ждущие ответа (и пауза по расходу) — сверху
         const mine = (x) => meta?.role === "owner" && x.space;     // владельцу окна пространств — своей группой ниже
         $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
             + sorted.filter((x) => !mine(x)).map(card).join("") : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry();
+      }
+      if (homeView === "sessions" && projMode()) {
+        if (!projData) { projData = await api("/api/projects"); }
+        renderProjects();
       }
       if (homeView === "commands") loadCommands(true);
     }
@@ -2834,7 +2862,7 @@ function paintSession(s) {
   paintWorking(s);
   paintGaps(s);                                     // что недоступно у поставщика сессии (задача 38)
 }
-$("sessionsView").addEventListener("click", (e) => {
+function sessionsClick(e) {
   if (costClick(e)) return;
   if (e.target.closest("[data-cost-sum]")) return costSheet();
   if (e.target.closest("[data-space-task]")) return spaceTaskForm();
@@ -2847,8 +2875,180 @@ $("sessionsView").addEventListener("click", (e) => {
   const k = e.target.closest("[data-more-s]"); if (k) return sessionSheet(k.dataset.moreS);
   const sc = e.target.closest("[data-sched]"); if (sc) { const s = sessions.find((x) => x.id === sc.dataset.sched); return s && scheduleSheet(s); }
   const c = e.target.closest(".card[data-id]"); if (c) openSession(c.dataset.id);
+}
+$("sessionsView").addEventListener("click", sessionsClick);
+$("newBtn").onclick = () => projMode() && proj ? projectNew() : newSession();
+// ---------- «Проекты» (задача 49, docs/PROJECTS.md): главная — проекты, внутри — их чаты ----------
+// Проект — папка со своими инструкциями (CLAUDE.md) и файлами; внутри — много чатов: активные (окна) и завершённые
+// (журналы Claude Code без окна, «Продолжить» — --resume). Плоский список окон — вкладка «Сессии», как раньше.
+let homeMode = store("homeMode") || (DEMO && !params.has("proj") ? "sessions" : "projects");
+let projData = null, proj = null, projInfo = null, projTab = "active", projQ = "", projListQ = "", projFilter = "all";
+let projDone = null, projDoneQ = null;                // завершённые чаты открытого проекта и поиск, по которому загружены
+const projOn = () => !!meta?.projects_ui && !meta?.space && !FOCUS;
+const projMode = () => projOn() && homeMode === "projects";
+const projOf = (id) => projData?.projects?.find((p) => p.id === id);
+function setMode(m) { homeMode = m; store("homeMode", m); if (m !== "projects") proj = null; }
+const chatWord = (n) => { const f = agoPlural(n); return n + " " + (f === "one" ? "чат" : f === "few" ? "чата" : "чатов"); };
+const msgWord = (n) => { const f = agoPlural(n); return n + " " + (f === "one" ? "сообщение" : f === "few" ? "сообщения" : "сообщений"); };
+const agoAt = (ts) => ts ? `<span class="ago" data-ago="${esc(ts)}">${esc(agoLabel({ ago: ts }, nowSec()))}</span>` : "";
+function projCard(p) {
+  const wait = p.waiting ? `<span class="chip s-approval"><span class="sdot s-approval"></span>${p.waiting} ждут ответа</span>` : "";
+  const busy = p.busy ? `<span class="chip s-running">${p.busy} работают</span>` : "";
+  return `<div class="card projc${p.waiting ? " s-approval" : ""}" data-proj="${esc(p.id)}" role="button" tabindex="0" aria-label="${esc(p.name)}">
+    <div class="row">${ic(p.origin?.startsWith("module:") ? "puzzle" : "folder")}<div class="ctext"><div class="name">${esc(p.name)}</div>
+      <div class="meta">${p.last_title ? "«" + esc(p.last_title) + "»" : "нет чатов"}</div></div>${agoAt(p.last)}</div>
+    <div class="cfoot">${wait}${busy}<span class="chip">${esc(chatWord(p.chats))}</span>${p.windows ? `<span class="chip">окон: ${p.windows}</span>` : ""}
+      <span class="chip space" title="папка проекта">${ic("folder")}${esc(p.folder)}${p.paths?.length ? " +" + p.paths.length : ""}</span></div></div>`;
+}
+function projMatch(p, q) {
+  if (!q) return true;
+  const ss = sessions.filter((s) => s.project === p.id);
+  return [p.name, p.folder, p.last_title, ...ss.map((s) => s.title), ...ss.map((s) => s.name)].some((x) => String(x || "").toLowerCase().includes(q));
+}
+function renderProjects() {                           // список проектов или открытый проект — в #projectsView
+  const box = $("projectsView");
+  if (proj && !projOf(proj) && projData) proj = null;  // проект пропал (папку удалили) — к списку
+  if (proj) return renderProject();
+  if (box.dataset.mode !== "list") {                   // поиск и фильтр — один раз: перерисовка раз в 3 с не сбивает ввод
+    box.dataset.mode = "list";
+    box.innerHTML = `<div class="field psearch"><input id="projQ" type="search" placeholder="Поиск по проектам и чатам" autocomplete="off" value="${esc(projListQ)}"></div>
+      <div class="summary" id="projChips"></div><div id="projList"></div>`;
+    $("projQ").oninput = (e) => { projListQ = e.target.value; renderProjects(); };
+  }
+  const all = projData?.projects || [], q = projListQ.trim().toLowerCase();
+  const waiting = all.filter((p) => p.waiting).length;
+  $("projChips").innerHTML = `<button class="chip${projFilter === "all" ? " accent" : ""}" data-pf="all">Все <b>${all.length}</b></button>`
+    + `<button class="chip${projFilter === "wait" ? " accent" : " s-approval"}" data-pf="wait">Ждут ответа <b>${waiting}</b></button>${costSummary()}`;
+  const list = all.filter((p) => (projFilter !== "wait" || p.waiting) && projMatch(p, q));
+  const mine = (x) => meta?.role === "owner" && x.space;
+  $("projList").innerHTML = notifyCard() + (list.length ? list.map(projCard).join("")
+    : `<div class="empty">${all.length ? "Ничего не нашлось" : "Проектов пока нет — нажмите «Новая сессия»: папка станет проектом."}</div>`)
+    + spacesGroup([...sessions].sort(byChange).filter(mine));
+}
+async function openProject(id, t) {
+  proj = id; projTab = t || "active"; projQ = ""; projDone = null; projDoneQ = null; projInfo = null;
+  $("projectsView").dataset.mode = "";
+  setHome("sessions"); scrollToY(0);
+  try { projInfo = await api("/api/project?id=" + encodeURIComponent(id)); if (proj === id) renderProject(); } catch (e) { toast(e.message, 4000); }
+  if (projTab === "done") loadDone();
+}
+function closeProject() { proj = null; $("projectsView").dataset.mode = ""; setHome("sessions"); scrollToY(0); }
+function renderProject() {
+  const box = $("projectsView"), p = projOf(proj); if (!p) return;
+  if (box.dataset.mode !== "proj:" + proj) {
+    box.dataset.mode = "proj:" + proj;
+    box.innerHTML = `<div class="phead"><button class="chip" data-pback>${ic("back")}Все проекты</button></div>
+      <h2 class="serif ptitle" id="projName"></h2><div class="note pinfo" id="projInfo"></div>
+      <div class="field psearch"><input id="projSearch" type="search" placeholder="Поиск в чатах проекта" autocomplete="off"></div>
+      <div class="seg" id="projSeg"><button data-pt="active"></button><button data-pt="done"></button></div>
+      <div id="projChats"></div>`;
+    $("projSearch").oninput = (e) => { projQ = e.target.value; if (projTab === "done") { clearTimeout(renderProject.t); renderProject.t = setTimeout(loadDone, 400); } renderProject(); };
+  }
+  $("projName").textContent = p.name;
+  if (view === "home" && !split()) $("title").textContent = p.name;
+  const inf = projInfo && projInfo.id === proj ? projInfo : null;
+  const first = inf?.instructions?.split("\n").map((x) => x.replace(/^[#>*\-\s]+/, "").trim()).find(Boolean) || "";
+  $("projInfo").innerHTML = inf ? `<span>${first ? "Инструкции: «" + esc(first.slice(0, 80)) + "»" : "Инструкций нет (CLAUDE.md)"}</span> · <span>Файлы: ${inf.files.length}</span> · <span class="ppath">${esc(p.path)}</span>` : "";
+  const act = sessions.filter((s) => s.project === proj).sort(byChange), q = projQ.trim().toLowerCase();
+  const doneN = projDone && projDoneQ === "" ? projDone.chats.length + (projDone.more ? "+" : "") : p.chats - act.filter((s) => s.sid).length;
+  $("projSeg").innerHTML = `<button data-pt="active" class="${projTab === "active" ? "on" : ""}">Активные ${act.length}</button><button data-pt="done" class="${projTab === "done" ? "on" : ""}">Завершённые ${Math.max(0, +doneN || 0) || doneN || 0}</button>`;
+  if (projTab === "active") {
+    const shown = act.filter((s) => !q || [s.title, s.name, s.preview].some((x) => String(x || "").toLowerCase().includes(q)));
+    $("projChats").innerHTML = shown.length ? shown.map((s) => card({ ...s, name: s.title || s.name })).join("")
+      : `<div class="empty">${act.length ? "Ничего не нашлось" : "Активных чатов нет — «Новая сессия в проекте» внизу или «Завершённые»."}</div>`;
+    return;
+  }
+  const d = projDone;
+  if (!d) { $("projChats").innerHTML = '<div class="empty">Загружаю…</div>'; return; }
+  const note = `<div class="note">Чаты старше ${d.keep_days} дней Claude Code удаляет сам — в списке их не будет.${d.cut ? " Поиск по тексту — не по всем чатам: уточните запрос." : ""}</div>`;
+  $("projChats").innerHTML = (d.chats.length ? d.chats.map((c) => `<div class="card dchat" data-chat="${esc(c.sid)}" role="button" tabindex="0" aria-label="${esc(c.title)}">
+      <div class="row">${ic("chat")}<div class="ctext"><div class="name">${esc(c.title)}</div><div class="meta">${esc(msgWord(c.msgs))}${c.mine ? "" : " · другая учётка"}</div></div>${agoAt(c.mtime)}
+        <button class="kebab" data-chat-more="${esc(c.sid)}" aria-label="Действия с чатом">${ic("more")}</button></div>
+      ${c.mine && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-resume="${esc(c.sid)}">${ic("play", "s16")}Продолжить</button>` : ""}</div>`).join("")
+    : `<div class="empty">${projQ ? "Ничего не нашлось" : "Завершённых чатов нет."}</div>`)
+    + (d.more ? '<button class="btn quiet" data-done-more>Показать ещё</button>' : "") + note;
+}
+async function loadDone(more) {
+  const id = proj, q = projQ.trim();
+  try {
+    const d = await api(`/api/project/sessions?id=${encodeURIComponent(id)}&q=${encodeURIComponent(q)}${more && projDone?.before ? "&before=" + projDone.before : ""}`);
+    if (proj !== id || projQ.trim() !== q) return;
+    projDone = more && projDone ? { ...d, chats: [...projDone.chats, ...d.chats] } : d; projDoneQ = q;
+    renderProject();
+  } catch (e) { toast(e.message, 4000); }
+}
+async function projectNew() {
+  const p = projOf(proj); if (!p) return;
+  toast("Запускаю новый чат в «" + p.name + "»…", 3000);
+  try { const d = await api("/api/project/session", { id: p.id }); await refresh(); openSession(d.id); focusAfterNew(d.id); }
+  catch (e) { toast("Не вышло: " + e.message, 4500); }
+}
+async function projectResume(sid, btn) {
+  const p = projOf(proj); if (!p) return;
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+  if (btn) btn.disabled = true;
+  toast("Продолжаю чат…", 3000);
+  try { const d = await api("/api/project/resume", { id: p.id, sid }); projDone = null; await refresh(); openSession(d.id); if (projTab === "done") loadDone(); }
+  catch (e) { toast("Не вышло: " + e.message, 5000); }
+  finally { if (btn) btn.disabled = false; }
+}
+async function chatView(sid) {                         // переписка завершённого чата — без окна, внизу «Продолжить»
+  const p = projOf(proj), c = projDone?.chats.find((x) => x.sid === sid); if (!p) return;
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.project-chat");
+  bg.innerHTML = `<div class="sheet chatv" role="dialog"><h3></h3><div class="chatv-list chat"><div class="empty">Загружаю…</div></div>
+    <div class="row2">${c?.mine && meta?.role !== "viewer" ? `<button class="btn ghost" data-close>Закрыть</button><button class="btn" data-go-resume>Продолжить этот чат</button>` : '<button class="btn ghost" data-close>Закрыть</button>'}</div></div>`;
+  bg.querySelector("h3").textContent = c?.title || "Чат";
+  document.body.append(bg);
+  bg.addEventListener("click", (e) => {
+    if (e.target === bg || e.target.closest("[data-close]")) bg.remove();
+    if (e.target.closest("[data-go-resume]")) projectResume(sid, e.target.closest("[data-go-resume]"));
+  });
+  try {
+    const d = await api(`/api/project/history?id=${encodeURIComponent(p.id)}&sid=${encodeURIComponent(sid)}`);
+    const list = bg.querySelector(".chatv-list");
+    list.innerHTML = (d.more ? '<div class="note">Показаны последние сообщения.</div>' : "") + (d.items.length ? d.items.map((m) => m.role === "user"
+      ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`
+      : m.human ? `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`
+      : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text || ""))}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
+    list.scrollTop = list.scrollHeight;
+  } catch (e) { bg.querySelector(".chatv-list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+function chatSheet(sid) {
+  const p = projOf(proj), c = projDone?.chats.find((x) => x.sid === sid); if (!p || !c) return;
+  const set = async (b, ok) => { try { await api("/api/project/chat", { id: p.id, sid, ...b }); toast(ok); loadDone(); } catch (e) { toast(e.message, 4000); } };
+  helpSheet("sheet.project-chat-menu");
+  sheet(c.title, [
+    { label: "Открыть переписку", icon: "chat", run: () => chatView(sid) },
+    ...(c.mine && meta?.role !== "viewer" ? [{ label: "Продолжить", sub: "новое окно с этим разговором", icon: "play", run: () => projectResume(sid) }] : []),
+    ...(meta?.role !== "viewer" ? [
+      { label: "Переименовать", icon: "edit", run: () => chatRename(c, (t) => set({ title: t }, "Теперь: " + t)) },
+      { label: "Скрыть", sub: "из списка; журнал Claude Code остаётся", icon: "x", run: () => set({ hidden: true }, "Чат скрыт") }] : []),
+  ]);
+}
+function chatRename(c, done) {                        // своё поле: prompt() в Telegram на iPhone ненадёжен
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.rename");
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Переименовать чат</h3>
+    <div class="field" style="margin:4px 16px 0"><input id="chatName" maxlength="60" autocomplete="off" value="${esc(c.title)}"></div>
+    <p class="note" style="margin:6px 16px 0">До 60 знаков. Журнал Claude Code не меняется — название хранит пульт.</p>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="chatOk">Сохранить</button></div></div>`;
+  document.body.append(bg);
+  const inp = $("chatName"); inp.focus(); inp.select();
+  const save = () => { const t = inp.value.trim().replace(/\s+/g, " "); if (!t) return; bg.remove(); done(t); };
+  $("chatOk").onclick = save;
+  inp.onkeydown = (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") bg.remove(); };
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
+$("projectsView").addEventListener("click", (e) => {
+  if (e.target.closest("[data-pback]")) return closeProject();
+  const pf = e.target.closest("[data-pf]"); if (pf) { projFilter = pf.dataset.pf; return renderProjects(); }
+  const pc = e.target.closest(".card[data-proj]"); if (pc) return openProject(pc.dataset.proj);
+  const pt = e.target.closest("[data-pt]"); if (pt) { projTab = pt.dataset.pt; if (projTab === "done" && (!projDone || projDoneQ !== projQ.trim())) loadDone(); return renderProject(); }
+  if (e.target.closest("[data-done-more]")) return loadDone(true);
+  const rs = e.target.closest("[data-resume]"); if (rs) return projectResume(rs.dataset.resume, rs);
+  const cm = e.target.closest("[data-chat-more]"); if (cm) return chatSheet(cm.dataset.chatMore);
+  const ch = e.target.closest(".card[data-chat]"); if (ch) return chatView(ch.dataset.chat);
+  sessionsClick(e);                                    // карточки окон и группа «Пространства» — как на «Сессиях»
 });
-$("newBtn").onclick = () => newSession();
 function newSession(profile) {
   const f = focusNext; focusNext = false; focusWant = false;   // «В фокусе» — только для этой новой сессии
   if (meta?.space) return sheet(T("ss.menu"), [    // тестировщик: новая сессия (своя папка в пространстве) или закрытые
@@ -5252,6 +5452,7 @@ function helpViewId() {
   if (view === "mcpForm") return formHelp || hv("modules");
   if (view === "session") return !$("menu").hidden ? hv("session.menu") : tab === "screen" ? hv("session.screen") : hv("session.chat");
   if (homeView === "sessions" && setupData && !setupData.ready) return hv("setup");
+  if (homeView === "sessions" && projMode()) return proj ? hv("home.project") : hv("home.projects");
   return { commands: hv("home.commands"), integrations: hv("home.integrations") }[homeView] || hv("home.sessions");
 }
 const helpVisible = (b) => b.offsetParent !== null && !b.closest("[hidden]");
@@ -5271,7 +5472,7 @@ function goSession(t) {
   return openSession(id, t).then(() => true);
 }
 const HELP_GO = {                                      // действие карты → экран панели (все id — из screens.toml)
-  "go:sessions": () => goHome("sessions"),
+  "go:sessions": () => { if (projOn()) setMode("sessions"); goHome("sessions"); },
   "go:new-session": () => { goHome("sessions"); newSession(); },
   "go:new-folder": () => newFolder(),
   "go:modules": () => modulesView(),
@@ -5586,6 +5787,10 @@ async function start() {
     if (pick) await openSession(pick.id);
   }
   if (params.has("cmds")) setHome("commands");            // ?cmds — сразу вкладка «Команды»
+  if (DEMO && params.get("project") && projOn()) {        // ?demo&home&proj&project=p-books&ptab=done&pchat=<id> — «Проекты»
+    await refresh(); await openProject(params.get("project"), params.get("ptab") || "active");
+    if (params.get("pchat")) { await loadDone(); chatView(params.get("pchat") === "1" ? projDone?.chats[0]?.sid : params.get("pchat")); }
+  }
   if (DEMO && params.get("open")) {
     await refresh(); await openSession(params.get("open"));
     if (params.get("menu")) $("menuBtn").click();
@@ -6197,6 +6402,39 @@ function demoTty(key, path, body) {
     limit: 50000, height: H, since: 0, w, name: w === "@9" ? "gp-term" : (demoApi.names?.[w] || { "@1": "tgi-0904", "@2": "icon-1146", "@3": "gas-pult", "@4": "digest-0716", "@5": "shop-bot" }[w] || w),
     kind: w === "@9" ? "term" : w === "@5" ? "stopped" : "session", path: "/home/u/projects/demo" });
 }
+// Демо «Проектов»: проекты — папки сессий демо и ещё два без окон; завершённые чаты — с поиском и «Продолжить».
+function demoTitle(id) { return ({ "@1": "Тесты комнат и сверка П8", "@2": "Иконки для витрины", "@3": "Панель: тёмная тема", "@4": "Дайджест за неделю" })[id] || ""; }
+function demoProjects(key, path, body, ses) {
+  const q = new URLSearchParams(path.split("?")[1] || ""), t0 = demoApi.t0 || Math.floor(Date.now() / 1000), D = 86400;
+  demoApi.pj ||= { hidden: {}, titles: {} };
+  const P = [["p-tgi", "tgi", "TGI-ассистент", "auto"], ["p-icon", "icon", "Иконки магазина", "module:wb-reviews"], ["p-gas-pult", "gas-pult", "gas-pult", "auto"],
+    ["p-shop-bot", "shop-bot", "Магазин-бот", "auto"], ["p-gastech-digest", "gastech-digest", "Дайджест", "auto"], ["p-books", "books", "Бухгалтерия", "module:acc-start"], ["p-home", "~", "Домашняя", "auto"]];
+  const DONE = { "p-tgi": [["Отчёт П8 за октябрь", 2 * 3600, 14], ["Комнаты: миграция базы", D + 5000, 31], ["Сверка по банку", 9 * D, 6]],
+    "p-books": [["Акт сверки за октябрь", D, 18], ["Описание платёжки", 4 * D, 4]], "p-icon": [["Цены конкурентов", 3 * D, 12]] };
+  const chats = (id) => (DONE[id] || []).map(([title, age, msgs], i) => ({ sid: `00000000-0000-4000-8000-${id.length}${String(i).padStart(11, "0")}`, title, mtime: t0 - age, msgs, mine: i !== 2 }))
+    .map((c) => ({ ...c, title: demoApi.pj.titles[c.sid] || c.title })).filter((c) => !demoApi.pj.hidden[c.sid]);
+  const list = P.map(([id, f, name, origin]) => {
+    const mine = ses.sessions.filter((x) => x.project === id), ch = chats(id);
+    const last = Math.max(0, ...mine.map((x) => x.changed || 0), ...ch.map((c) => c.mtime)) || null;
+    return { id, name, folder: f, path: f === "~" ? "~" : "~/projects/" + f, paths: id === "p-gas-pult" ? ["~/worktrees/gas-pult-fix"] : [], origin, pinned: false, archived: false,
+      windows: mine.length, waiting: mine.filter((x) => x.status === "dialog").length, busy: mine.filter((x) => x.status === "busy").length,
+      chats: ch.length + mine.length, last, last_title: mine.sort((a, b) => (b.changed || 0) - (a.changed || 0))[0]?.title || ch[0]?.title || "", sessions: mine.map((x) => x.id) };
+  }).sort((a, b) => (b.waiting ? 1 : 0) - (a.waiting ? 1 : 0) || (b.last || 0) - (a.last || 0));
+  if (key === "/api/projects") return Promise.resolve({ ...ses, projects: list });
+  const id = q.get("id") || body?.id, p = list.find((x) => x.id === id);
+  if (!p) return Promise.reject(new Error("проекта нет — обновите список"));
+  if (key === "/api/project") return Promise.resolve({ ...p, instructions: id === "p-books" ? "# Бухгалтерия\nОтвечай коротко. Суммы — в рублях, даты — ДД.ММ.ГГГГ." : "", files: id === "p-books" ? [{ name: "выписка-октябрь.xlsx", size: 48213, mtime: t0 - D }] : [], windows: p.sessions });
+  if (key === "/api/project/sessions") {
+    const s = (q.get("q") || "").toLowerCase(), all = chats(id).filter((c) => !s || c.title.toLowerCase().includes(s));
+    return Promise.resolve({ chats: all, more: false, before: null, cut: false, keep_days: 30, active: p.windows });
+  }
+  if (key === "/api/project/history") return Promise.resolve({ sid: q.get("sid"), title: chats(id).find((c) => c.sid === q.get("sid"))?.title || "", more: false, items: [
+    { i: 0, role: "user", text: "Собери акт сверки за октябрь по выписке из папки файлов", ts: "2026-11-06 10:02" },
+    { i: 1, role: "assistant", text: "Готово: **акт сверки** — расхождений два.\n\n| Дата | Сумма | Что |\n|---|---|---|\n| 12.10 | 14 200 ₽ | нет первички |\n| 27.10 | 3 150 ₽ | двойная оплата |", ts: "2026-11-06 10:05" }] });
+  if (key === "/api/project/chat") { if (body.hidden) demoApi.pj.hidden[body.sid] = 1; if (body.title) demoApi.pj.titles[body.sid] = body.title; return Promise.resolve({ project: id }); }
+  if (key === "/api/project/session" || key === "/api/project/resume") return Promise.resolve({ id: p.sessions[0] || "@3", sid: body.sid || "", project: id });
+  return Promise.reject(new Error("демо: нет такого запроса"));
+}
 function demoApi(path, body) {
   // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
   const t0 = demoApi.t0 ||= Math.floor(Date.now() / 1000) - 8, H = 3600, D = 86400;
@@ -6397,6 +6635,9 @@ function demoApi(path, body) {
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" },
     { i: 3, cmd: "keepassxc-cli show -s ~/vault/demo.kdbx Сервисы/почта", kind: "tty", danger: false, sha: "d" }] };
   const key = path.split("?")[0];
+  R["/api/meta"].projects_ui = !params.has("tester");  // «Проекты» (задача 49): окна — по проектам-папкам
+  R["/api/sessions"].sessions.forEach((x) => { if (!x.space) { x.project = "p-" + folder(x.path); x.title = demoTitle(x.id); } });
+  if (key === "/api/projects" || key.startsWith("/api/project/") || key === "/api/project") return demoProjects(key, path, body, R["/api/sessions"]);
   if (key === "/api/help/ask") return demoHelp(body);
   if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;

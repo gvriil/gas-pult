@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -175,13 +176,29 @@ class Store:
                     best, n = pid, len(r)
         return best
 
+    def set_chat(self, sid: str, pid: str, title=None, hidden=None) -> dict:
+        """Своё название и «скрыт» у чата (``sessions``) — единственное, что пульт хранит о сессии сверх журнала."""
+        with _lock:
+            d = self.read()
+            rec = dict(d["sessions"].get(sid) or {})
+            rec["project"] = pid
+            if title is not None:
+                rec["title"] = title
+                if not title:
+                    rec.pop("title")
+            if hidden is not None:
+                rec["hidden"] = hidden
+            d["sessions"][sid] = rec
+            self.write(d)
+            return rec
+
     def folders_of(self, p: dict) -> list[str]:
         """Все папки проекта (главная и рабочие копии) — полными путями."""
         return [untilde(x, self.home) for x in [p["path"], *(p.get("paths") or [])]]
 
 
 # ---------- сессии проекта из журналов Claude Code ----------
-_titles: dict[str, tuple[int, str]] = {}            # файл журнала → (mtime_ns, название)
+_titles: dict[str, tuple[int, int, str]] = {}       # файл журнала → (mtime_ns, размер, название)
 
 
 def session_files(folders: list[str], homes: list) -> list[Path]:
@@ -205,8 +222,9 @@ def title_of(f: Path, head: int = 262144) -> str:
     except OSError:
         return ""
     key = str(f)
-    if key in _titles and _titles[key][0] == st.st_mtime_ns:
-        return _titles[key][1]
+    old = _titles.get(key)
+    if old and (old[0] == st.st_mtime_ns or (old[2] and st.st_size >= old[1])):
+        return old[2]                               # журнал только дописывается — начало, а с ним название, то же
     summary, first = "", ""
     try:
         with open(f, "rb") as fh:
@@ -226,8 +244,53 @@ def title_of(f: Path, head: int = 262144) -> str:
             first = transcripts.PASTED.sub("", transcripts.text_of(e["message"]["content"]))
     t = " ".join((summary or first).split())
     t = t[:TITLE_MAX - 1].rstrip() + "…" if len(t) > TITLE_MAX else t
-    _titles[key] = (st.st_mtime_ns, t)
+    if len(_titles) > 5000:
+        _titles.clear()
+    _titles[key] = (st.st_mtime_ns, st.st_size, t)
     return t
+
+
+_prompts: dict[str, tuple[int, int]] = {}            # файл → (mtime_ns, сколько сообщений человека)
+
+
+def prompts(f: Path) -> int:
+    """Сколько настоящих сообщений человека в журнале (кэш по времени изменения)."""
+    try:
+        st = f.stat()
+    except OSError:
+        return 0
+    key = str(f)
+    if key in _prompts and _prompts[key][0] == st.st_mtime_ns:
+        return _prompts[key][1]
+    n = 0
+    with contextlib.suppress(OSError), open(f, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if '"user"' not in line or '"isSidechain":true' in line.replace(" ", ""):
+                continue
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            n += e.get("type") == "user" and transcripts.is_real_prompt(e)
+    if len(_prompts) > 5000:
+        _prompts.clear()
+    _prompts[key] = (st.st_mtime_ns, n)
+    return n
+
+
+def contains(f: Path, q: str, limit: int = 32 * 1024 * 1024) -> bool:
+    """Есть ли ``q`` (уже в нижнем регистре) в тексте журнала — грубо, по строкам JSON; большие файлы — до ``limit``."""
+    q = q.lower()
+    try:
+        with open(f, "rb") as fh:
+            data = fh.read(limit)
+    except OSError:
+        return False
+    text = data.decode("utf-8", "replace").lower()
+    if q in text:
+        return True
+    esc = json.dumps(q, ensure_ascii=True)[1:-1]     # кириллица в журнале бывает экранирована (\u0441…)
+    return esc != q and esc in text
 
 
 def stats(files: list[Path]) -> dict:
