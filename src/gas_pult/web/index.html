@@ -4262,7 +4262,7 @@ async function startLogin(name, btn) {
 function mcpForm(p) {
   show("mcpForm"); formHelp = hv("form.preset"); $("title").textContent = p.title; setSub("<span>подключение</span>");
   const fields = p.fields.map((f) => `<div class="field"><label for="f_${f.key}">${esc(f.label)}${f.optional ? ' <span class="opt">— необязательно</span>' : ""}</label>
-      <div class="inp">${f.multiline ? `<textarea id="f_${f.key}" rows="3" placeholder="${esc(f.placeholder || "")}"></textarea>`
+      <div class="inp">${f.options ? `<select id="f_${f.key}">${f.options.map((o) => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join("")}</select>` : f.multiline ? `<textarea id="f_${f.key}" rows="3" placeholder="${esc(f.placeholder || "")}"></textarea>`
         : `<input id="f_${f.key}" type="${f.secret ? "password" : "text"}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(f.placeholder || "")}">`}
       ${f.secret && !f.multiline ? `<button class="icon" type="button" data-eye="f_${f.key}" aria-label="Показать">${ic("eye")}</button>` : ""}</div>
       ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`).join("");
@@ -4271,7 +4271,7 @@ function mcpForm(p) {
       ${p.id === "http" || p.id === "stdio" ? `<div class="field"><label for="f__name">Короткое название (латиницей)</label><input id="f__name" placeholder="например: crm" autocapitalize="off" spellcheck="false">
         <div class="hint">Как инструмент будет называться у Claude. Это не логин — логин и пароль здесь не нужны.</div></div>` : `<input id="f__name" type="hidden" value="${esc(p.id)}">`}
       ${!p.fields.length ? `<div class="result ok">${ic("check")}<span>Ключ не нужен. Нажмите «Подключить», затем «Войти».</span></div>` : ""}
-      ${p.key_url ? `<button class="btn ghost" id="keyPage" type="button">${ic("ext")}Открыть страницу, где взять ключ</button>` : ""}
+      ${p.key_url || p.fields.some((f) => f.options?.some((o) => o.key_url)) ? `<button class="btn ghost" id="keyPage" type="button">${ic("ext")}Открыть страницу, где взять ключ</button>` : ""}
       ${fields}
       ${p.after ? `<div class="result wait"><span>После подключения: ${esc(clean(p.after))}</span></div>` : ""}
       <button class="btn" id="mcpAdd">Подключить</button>
@@ -4279,6 +4279,8 @@ function mcpForm(p) {
       <p class="note">Ключи сохраняются только на вашем сервере и в панели больше не показываются.</p></div>`;
   $("mcpForm").querySelectorAll("[data-eye]").forEach((b) => b.onclick = () => { const i = $(b.dataset.eye); i.type = i.type === "password" ? "text" : "password"; });
   $("keyPage")?.addEventListener("click", () => {
+    const opt = p.fields.filter((f) => f.options).map((f) => f.options.find((o) => o.v === $("f_" + f.key).value)).find((o) => o?.key_url);
+    if (opt) return openUrl(opt.key_url);                // ключ выбранного сервиса (веб-поиск: Яндекс, Brave…)
     const base = ($("f_base")?.value || "").trim().replace(/\/$/, "");
     if (p.key_url.includes("{base}") && !base) return toast("Сначала впишите адрес " + p.title + " — поле ниже", 4000);
     const url = p.key_url.replace("{base}", base);
@@ -6051,9 +6053,9 @@ function demoApi(path, body) {
   // задача 38: что работает у поставщика (models.py CAPS) и автотест (selftest.py)
   { const C = "claude.ai (Google Drive, Notion, Gmail, Claude Docs…)", RM = "PushNotification, RemoteTrigger, DesignSync";
     const g = (ids) => ids.map((id) => ({ id, names: { connectors: C, remote: RM, claude_md: "CLAUDE.md", webfetch: "WebFetch", websearch: "WebSearch" }[id] || "" }));
-    const W = ["claude_md", "files", "mcp", "webfetch"], ALT = "Notion, Google Диск, Веб-поиск Tavily";
+    const W = ["claude_md", "files", "mcp", "webfetch"], ALT = "Notion, Google Диск (rclone), Веб-поиск";
     const CAPS = { claude: [[], [], [...W, "websearch", "connectors", "images"], ""], openrouter: [["connectors", "remote"], ["websearch"], [...W, "images"], ALT],
-      zai: [["connectors", "remote", "websearch", "images"], [], W, ALT], deepseek: [["connectors", "remote", "images"], [], [...W, "websearch"], "Notion, Google Диск"],
+      zai: [["connectors", "remote", "websearch", "images"], [], W, ALT], deepseek: [["connectors", "remote", "images"], [], [...W, "websearch"], "Notion, Google Диск (rclone)"],
       gigachat: [["connectors", "remote", "websearch"], ["images", "tools"], W, ALT], yandexgpt: [["connectors", "remote", "websearch"], ["images", "tools"], W, ALT] };
     for (const p of R["/api/meta"].profiles) { const c = CAPS[p.id]; if (c) Object.assign(p, { limits: g(c[0]), unsure: g(c[1]), works: g(c[2]), alt_names: c[3] }); }
     const m = R["/api/mcp"];
@@ -6062,9 +6064,13 @@ function demoApi(path, body) {
       { id: "gdrive", title: "Google Диск", about: "Найти, прочитать, создать файлы на Диске — официальный сервер Google (превью)", key_url: "https://console.cloud.google.com/auth/clients", providers: "all", after: "",
         fields: [{ key: "client_id", label: "ID клиента OAuth", placeholder: "123….apps.googleusercontent.com", hint: "Google Cloud → Google Auth Platform → Clients → тип «Desktop app»." },
                  { key: "client_secret", label: "Секрет клиента", secret: true, placeholder: "GOCSPX-…", hint: "Там же, в созданном клиенте." }] },
-      { id: "tavily", title: "Веб-поиск Tavily", about: "Поиск и чтение страниц — для поставщиков, у которых нет своего веб-поиска (GLM и другие)", key_url: "https://app.tavily.com/home", providers: "all", after: "",
-        fields: [{ key: "token", label: "API-ключ Tavily", secret: true, placeholder: "tvly-…", hint: "app.tavily.com → API Keys." }] });
-    const ALTC = { notion: "notion", gdrive: "gdrive" };
+      { id: "websearch", title: "Веб-поиск", about: "Поиск в интернете для любой модели — свой сервер пульта: Яндекс, Brave, Tavily или Exa по вашему ключу", providers: "all", after: "",
+        fields: [{ key: "engine", label: "Сервис поиска", options: [{ v: "yandex", t: "Яндекс — лучше по-русски, оплата в рублях", key_url: "https://console.yandex.cloud/folders" },
+          { v: "brave", t: "Brave — весь мир, дешевле всех", key_url: "https://api-dashboard.search.brave.com/" }], hint: "Для русского — Яндекс; для мира — Brave." },
+          { key: "token", label: "API-ключ", secret: true, placeholder: "ключ сервиса" }, { key: "folder", label: "ID каталога Yandex Cloud", optional: true, placeholder: "b1g…" }] },
+      { id: "drive", title: "Google Диск (rclone)", about: "Список, скачать в папку сессии, загрузить из неё — через rclone на сервере, без коннекторов claude.ai", key_url: "https://rclone.org/remote_setup/", providers: "all", after: "",
+        fields: [{ key: "token", label: "Ответ rclone authorize", secret: true, multiline: true, placeholder: "{\"access_token\":\"…\"}", hint: "На компьютере с браузером: rclone authorize \"drive\"." }] });
+    const ALTC = { notion: "notion", gdrive: "drive" };
     for (const c of m.connectors) Object.assign(c, { providers: "claude", alt: ALTC[c.id] || "" });
     const ok = { memory: true, tools: true, tool: true, webfetch: true };
     demoApi.st ||= { running: false };

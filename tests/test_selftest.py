@@ -32,10 +32,10 @@ def test_caps_fields_added_to_public(dirs):
     assert pub["claude"]["limits"] == [] and {"connectors", "websearch"} <= {g["id"] for g in pub["claude"]["works"]}
     zai = pub["zai"]
     assert [g["id"] for g in zai["limits"]] == ["connectors", "remote", "websearch", "images"]
-    assert "claude.ai" in zai["limits"][0]["names"] and zai["alt"] == ["notion", "gdrive", "tavily"]
-    assert zai["alt_names"] == "Notion, Google Диск, Веб-поиск Tavily"
+    assert "claude.ai" in zai["limits"][0]["names"] and zai["alt"] == ["notion", "drive", "websearch"]
+    assert zai["alt_names"] == "Notion, Google Диск (rclone), Веб-поиск"
     ds = pub["deepseek"]                                    # DeepSeek сам поддерживает веб-поиск Claude Code
-    assert "websearch" in {g["id"] for g in ds["works"]} and "tavily" not in ds["alt"]
+    assert "websearch" in {g["id"] for g in ds["works"]} and "websearch" not in ds["alt"]
     assert "websearch" in {g["id"] for g in pub["openrouter"]["unsure"]}
     for p in pub.values():                                  # старые поля на месте — API только дополнен
         assert {"id", "title", "needs_key", "key", "main", "fast", "not_ready"} <= p.keys()
@@ -83,15 +83,12 @@ def test_gdrive_oauth_client_secret_not_in_args(monkeypatch):
         mcp.Mcp().add("gdrive", "gdrive", {"client_id": "bad id", "client_secret": "x"})
 
 
-def test_tavily_and_atlassian(monkeypatch):
+def test_atlassian(monkeypatch):
     f = Fake()
     monkeypatch.setattr(mcp, "_claude", f)
-    mcp.Mcp().add("tavily", "tavily", {"token": "tvly-K"})
     mcp.Mcp().add("atlassian", "atlassian", {})
     adds = [(json.loads(a[2]), e) for a, e in f.calls if a[0] == "add-json"]
-    assert adds[0] == ({"type": "http", "url": "https://mcp.tavily.com/mcp/",
-                        "headers": {"Authorization": "Bearer tvly-K"}}, None)
-    assert adds[1] == ({"type": "http", "url": "https://mcp.atlassian.com/v1/mcp"}, None)
+    assert adds[0] == ({"type": "http", "url": "https://mcp.atlassian.com/v1/mcp"}, None)
 
 
 def test_claude_helper_passes_env_only_when_given(monkeypatch):
@@ -276,3 +273,27 @@ def test_ui_wiring():
         assert f"work.{g}" in ru, g
     for c in selftest.CHECKS:
         assert f"st.check.{c}" in ru
+
+
+# ---------- базовые интеграции на любой модели (задача 48) ----------
+def test_run_base_uses_own_servers_and_judges_by_files(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_run(cmd, input, cwd, **kw):
+        seen["cmd"] = cmd
+        seen["cfg"] = json.loads(Path(cmd[cmd.index("--mcp-config") + 1]).read_text())
+        out = [{"type": "system", "subtype": "init", "tools": ["Read", "mcp__search__web_search"]},
+               {"type": "assistant", "message": {"content": [
+                   {"type": "tool_use", "id": "1", "name": "mcp__search__web_search", "input": {}},
+                   {"type": "tool_use", "id": "2", "name": "mcp__drive__drive_list", "input": {}}]}},
+               {"type": "result", "subtype": "success", "result": "DOWNLOADED: -", "total_cost_usd": 0.01}]
+        return subprocess.CompletedProcess(cmd, 0, "\n".join(json.dumps(e) for e in out), "")
+
+    monkeypatch.setattr(selftest.models, "command", lambda base, profile, state: "claude")
+    r = selftest.run_base("zai", {}, run=fake_run, rclone="/bin/true")
+    assert r["checks"] == {"search": True, "summary": False, "list": True, "download": False}
+    cmd, cfg = seen["cmd"], seen["cfg"]
+    assert "--strict-mcp-config" in cmd and "--no-session-persistence" in cmd
+    srv = cfg["mcpServers"]
+    assert srv["search"]["args"][1] == "search" and srv["search"]["env"]["GAS_SEARCH_BASE"].startswith("http://127.")
+    assert srv["drive"]["env"]["GAS_DRIVE_RCLONE"] == "/bin/true" and r["cost"] == 0.01

@@ -142,7 +142,7 @@ CAPS = {
                   "works": ["claude_md", "files", "mcp", "webfetch"]},
 }
 # Замена тому, что не работает: MCP-серверы из «Интеграций» (mcp.PRESETS) — они не зависят от поставщика (ADR-0002).
-ALT = {"connectors": ["notion", "gdrive"], "websearch": ["tavily"]}
+ALT = {"connectors": ["notion", "drive"], "websearch": ["websearch"]}
 for _p in PROFILES:
     _p.update(CAPS[_p["id"]])
 BY_ID = {p["id"]: p for p in PROFILES}
