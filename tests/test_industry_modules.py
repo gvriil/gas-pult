@@ -196,9 +196,12 @@ def test_every_schedule_due_once_per_slot(tmp_path):
     assert sch.due([root], datetime(2026, 11, 2, 9, 49)) == []
     assert sch.due([root], datetime(2026, 11, 2, 20, 5)) == []                    # после окна
     assert len(sch.due([root], datetime(2026, 11, 3, 8, 1))) == 1                 # новый день
-    q = modules.create("uk-emergency", root)                      # создано сейчас — ждём следующий отрезок
-    now = datetime.now()
-    assert all(f != q for f, _, _ in sch.due([root], now))
+    q = modules.create("uk-emergency", root)          # создано внутри отрезка — ждём следующий отрезок
+    mk = json.loads((q / modules.MARK).read_text())
+    mk["created"] = int(datetime(2026, 11, 4, 12, 3).timestamp())   # часы — не настоящие: тест не зависит от того,
+    (q / modules.MARK).write_text(json.dumps(mk))                     # попал ли запуск на границу 10-минутного отрезка
+    assert all(f != q for f, _, _ in sch.due([root], datetime(2026, 11, 4, 12, 5)))
+    assert any(f == q for f, _, _ in sch.due([root], datetime(2026, 11, 4, 12, 10)))   # следующий отрезок — пора
 
 
 # ---------- бот ----------
