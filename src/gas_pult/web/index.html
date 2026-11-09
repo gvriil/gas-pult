@@ -314,6 +314,23 @@
                        border-radius: var(--radius-pill); padding: 5px 9px; font-size: calc(13px * var(--fz, 1)); }
   .chat .acts button:active { background: var(--bg-subtle); }
   .chat .acts [data-say] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — выбор голоса */
+  /* «Копировать» у сообщения (внизу справа) и у блока кода (справа сверху), как в ChatGPT. У вашего сообщения на ПК —
+     при наведении, на телефоне видна всегда, но приглушённо. После нажатия — галочка «Скопировано» на 1,5 с. */
+  .chat .macts { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 2px 0 0; min-height: 28px; }
+  .chat .macts .when { margin: 0 2px; }
+  .mcopy, .ccopy { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: none; min-width: 30px; height: 30px; min-height: 0;
+                   padding: 0 7px; border: 0; background: transparent; color: var(--text-muted); border-radius: var(--radius-pill); cursor: pointer;
+                   font-size: calc(12px * var(--fz, 1)); white-space: nowrap; }
+  .mcopy:active, .ccopy:active { background: var(--bg-subtle); }
+  .mcopy:focus-visible, .ccopy:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+  .mcopy.done, .ccopy.done, .chat .acts button.done { color: var(--status-success); }
+  @media (hover: hover) { .chat .me .mcopy { opacity: 0; transition: opacity .15s ease; }
+    .chat .me:hover .mcopy, .chat .me:focus-within .mcopy, .chat .me .mcopy.done { opacity: 1; }
+    .mcopy:hover, .ccopy:hover { color: var(--text-primary); background: var(--bg-subtle); } }
+  .codebox { position: relative; margin: 8px 0; } .codebox > pre { margin: 0; padding-right: 44px; }
+  .codebox .ccopy { position: absolute; top: 4px; right: 4px; height: 28px; border-radius: var(--radius-sm); background: var(--bg-surface);
+                    box-shadow: 0 0 0 1px var(--border-subtle); color: var(--text-secondary); }
+  .log summary .ccopy { margin-left: auto; height: 26px; }
   /* Голос: карточки. Нажатие на карточку — сразу выбрать (галочка), ▶ — послушать короткую фразу (кеш на сервере) */
   .vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 2px 0 8px; }
   .vcard { display: flex; align-items: center; gap: 2px; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); padding: 0 6px 0 0; }
@@ -1395,21 +1412,57 @@ function applyTheme() {
 }
 // Копировать: navigator.clipboard, а где его нет или он отказал (старый iOS, WebView Telegram) — выделение текста
 // в скрытом поле и execCommand("copy"); не вышло и так — шторка с выделенным текстом, скопировать рукой.
-async function copyText(text, what = "Скопировано") {
-  try { await navigator.clipboard.writeText(text); return toast(what); } catch (e) {}
+// quiet — без всплывашки: кнопка сама покажет «Скопировано» (copyBtn). → true, если текст в буфере.
+async function copyText(text, what = "Скопировано", quiet = false) {
+  const done = () => { if (!quiet) toast(what); return true; };
+  try { await navigator.clipboard.writeText(text); return done(); } catch (e) {}
   const t = document.createElement("textarea");
   t.value = text; t.readOnly = true; t.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
   document.body.append(t); t.focus(); t.select(); t.setSelectionRange(0, text.length);
   let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
   t.remove();
-  if (ok) return toast(what);
+  if (ok) return done();
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.copy");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Скопируйте вручную</h3><div class="field"><textarea rows="8" readonly></textarea></div>
     <div class="row2"><button class="btn">Готово</button></div></div>`;
   const ta = bg.querySelector("textarea"); ta.value = text;
   bg.onclick = (e) => { if (e.target === bg || e.target.closest("button")) bg.remove(); };
   document.body.append(bg); ta.focus(); ta.setSelectionRange(0, text.length);
+  return false;
 }
+// Кнопки «Копировать» в переписке (полный и простой режим, переписка завершённого чата). Разметка — строкой, чтобы
+// morph сравнивал её как есть; блоки кода получают кнопку дообработкой новых узлов (codeCopy) — как ссылки (linkify).
+const copyLbl = () => LT("link.copy", "Копировать");
+const mCopyBtn = () => `<button type="button" class="mcopy" data-mcopy="1" aria-label="${esc(LT("copy.msg", "Копировать сообщение"))}" title="${esc(copyLbl())}">${ic("copy", "s16")}</button>`;
+const cCopyBtn = () => `<button type="button" class="ccopy" data-cpcode="1" aria-label="${esc(LT("copy.code", "Копировать код"))}" title="${esc(LT("copy.code", "Копировать код"))}">${ic("copy", "s16")}</button>`;
+function codeCopy(root) {                            // pre в разметке ответа → обёртка с кнопкой справа сверху
+  root.querySelectorAll(".md pre").forEach((pre) => {
+    if (pre.closest(".log, .codebox")) return;
+    const w = document.createElement("div"); w.className = "codebox";
+    pre.replaceWith(w); w.append(pre); w.insertAdjacentHTML("beforeend", cCopyBtn());
+  });
+}
+function copiedFlash(b) {                            // «Скопировано» на 1,5 с: значок — галочка, у кнопки с подписью — и текст
+  clearTimeout(b.__ct); if (b.__html == null) b.__html = b.innerHTML;
+  b.innerHTML = ic("check", "s16") + `<span>${esc(LT("copy.done", "Скопировано"))}</span>`; b.classList.add("done");
+  b.__ct = setTimeout(() => { b.innerHTML = b.__html; b.__html = null; b.classList.remove("done"); }, 1500);
+}
+function msgText(el) {                               // исходный текст сообщения (markdown как есть, без разметки)
+  const k = el.dataset.key || "", src = el.closest("#sFeed") ? SIM.hist : el.closest(".chatv-list")?.__items || hist;
+  if (k.startsWith("p:")) return pending.find((p) => "p:" + p.id === k)?.text;
+  if (k.startsWith("sp:")) return SIM.pending[+k.slice(3)]?.text;
+  if (el.dataset.n != null) return src[+el.dataset.n]?.text;
+  return src.find((m) => m.i === +el.dataset.i)?.text ?? el.querySelector(".bubble")?.innerText;
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-mcopy], [data-cpcode]"); if (!b) return;
+  e.preventDefault();                                // кнопка в заголовке свёрнутого блока — не раскрывать его
+  let text = "";
+  if (b.dataset.mcopy) { const m = b.closest(".msg"); text = (m && msgText(m)) || ""; }
+  else text = (b.closest(".codebox, .log")?.querySelector("pre")?.textContent || "").replace(/\n$/, "");
+  if (!text) return;
+  if (await copyText(text, LT("copy.done", "Скопировано"), true)) { copiedFlash(b); haptic("notificationOccurred", "success"); }
+});
 // link:start — ссылки в переписке (задача 33). Только http(s); элементы — через DOM (textContent/href), сырого
 // HTML нет. Блоки кода, свёрнутые логи и готовые ссылки не трогаем. Хвост «.», «,», «!», «?»… и лишняя «)» — не адрес.
 const LINK_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
@@ -3581,10 +3634,12 @@ async function chatView(sid) {                         // переписка з�
   try {
     const d = await api(`/api/project/history?id=${encodeURIComponent(p.id)}&sid=${encodeURIComponent(sid)}`);
     const list = bg.querySelector(".chatv-list");
-    list.innerHTML = (d.more ? '<div class="note">Показаны последние сообщения.</div>' : "") + (d.items.length ? d.items.map((m) => m.role === "user"
-      ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`
+    list.__items = d.items;                            // для «Копировать» — исходный текст по номеру (data-n)
+    list.innerHTML = (d.more ? '<div class="note">Показаны последние сообщения.</div>' : "") + (d.items.length ? d.items.map((m, n) => m.role === "user"
+      ? `<div class="msg me" data-n="${n}"><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`
       : m.human ? `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`
-      : `<div class="msg ai"><div class="bubble md">${md(m.text)}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
+      : `<div class="msg ai" data-n="${n}"><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
+    codeCopy(list);
     list.scrollTop = list.scrollHeight;
   } catch (e) { bg.querySelector(".chatv-list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
@@ -3972,7 +4027,7 @@ const TECH = /^\s*(\$ |# |❯ |Last login|WARNING:|\*\* |COMMAND\s+PID|(tcp|udp)
 const plural = (n, f) => f[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
 function logBlock(key, label, text, hint) {
   const n = text.split("\n").length;
-  return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em></summary><pre>${esc(text)}</pre></details>`;
+  return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em>${cCopyBtn()}</summary><pre>${esc(text)}</pre></details>`;
 }
 function userMsg(m) {                               // вставленный вывод терминала — свёрнут, ваш текст — открыт
   const lines = m.text.split("\n"), k = lines.findIndex((l) => TECH.test(l));
@@ -4110,14 +4165,14 @@ function renderChat(toBottom) {
   const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
   const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
-    ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
+    ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${mCopyBtn()}</div></div>`
     : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
-        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span></div>${voiceRow(m)}</div>`).join("")
+        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
         fail: "не отправлено — " + esc(p.err || ""),
-        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div></div>`).join("")
+        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div><div class="macts">${mCopyBtn()}</div></div>`).join("")
     + (lastAi == null ? "" : `<div class="cmds" data-key="cmds:${lastAi}"></div>`)       // команды из последнего ответа (renderCmds)
     + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   voiceUi();
@@ -4128,9 +4183,10 @@ function renderChat(toBottom) {
   msgs.filter((el) => el.classList.contains("ai")).forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
     if (n <= 15) return;
-    const key = el.querySelector("[data-copy]")?.dataset.copy + ":p" + j, t = document.createElement("div");
+    const key = el.dataset.i + ":p" + j, t = document.createElement("div");
     t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
   }));
+  msgs.forEach(codeCopy);                                  // короткие блоки кода — с кнопкой «Копировать» справа сверху
   if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
   paintAct();
   if (toBottom && !params.has("noscroll")) stickBottom();   // с конца, как в ChatGPT/Claude
@@ -4158,10 +4214,6 @@ $("content").addEventListener("click", async (e) => {
     scrollToY(SC.scrollHeight - y);
   });
   if (b.dataset.say) return say(true, b, +b.dataset.say);              // один режим — ответ целиком
-  if (b.dataset.copy) {
-    const m = hist.find((x) => x.i === +b.dataset.copy);
-    copyText(m.text);
-  }
 });
 
 // ---------- команды из последнего ответа: сервер берёт их сам, браузер шлёт номер и отпечаток ----------
@@ -7164,9 +7216,9 @@ async function sOlder(btn) {
 }
 function sMsg(m) {
   const k = m.i != null ? ` data-i="${m.i}"` : "";
-  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${esc(m.text)}</div></div>`;
+  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
   if (m.human) return `<div class="msg ai"${k}><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
-  return `<div class="msg ai"${k}><div class="bubble md">${md(m.text)}</div></div>`;
+  return `<div class="msg ai"${k}><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
 }
 function sRender(toBottom) {
   const box = $("sFeed");
@@ -7176,12 +7228,13 @@ function sRender(toBottom) {
   }
   const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='sp:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));
-  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div></div>`).join("");
+  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("");
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
   if (had) fresh.forEach((el) => el.classList.contains("msg") && !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
   fresh.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));       // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
+  fresh.forEach(codeCopy);
   sAct();
   if (toBottom && !params.has("noscroll")) sBottom();
 }
