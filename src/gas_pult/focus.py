@@ -5,6 +5,9 @@
 отдаёт токен запросом ``POST /api/focus/open`` — **первое открытие привязывает устройство**: сервер выдаёт cookie
 ``gp_focus`` (HttpOnly, Secure, SameSite=Strict), и дальше ссылка работает только на этом устройстве.
 
+Ссылка на проект (``proj``, меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новая сессия в проекте» и
+завершённые чаты — и ничего вне проекта. Закрытие отдельной сессии такую ссылку не гасит.
+
 Что можно с cookie фокуса — только чат одной сессии (``webapp.FOCUS_GET``/``FOCUS_POST``, окно ``w`` — только своё);
 всё остальное API отвечает 403. Ссылка гаснет, когда: сессию завершили (из фокуса, из панели, из бота — окно пропало),
 владелец нажал «Отозвать» («Настройки» → «Фокус-ссылки»), вышел срок (по умолчанию 7 дней). На сервере — только
@@ -61,12 +64,14 @@ class Focus:
     def live(rec: dict, now: float | None = None) -> bool:
         return rec.get("state") == "active" and (time.time() if now is None else now) < rec.get("exp", 0)
 
-    def new(self, w: dict, by: int | None, ttl: int = TTL) -> dict:
-        """Новая ссылка на окно ``w`` (из ``tmux.window``): {token, id, exp}. Токен показывается один раз."""
+    def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None) -> dict:
+        """Новая ссылка на окно ``w`` (из ``tmux.window``): {token, id, exp}. Токен показывается один раз.
+        ``proj`` — ссылка на весь проект: ``w`` — {id: "", path, name} проекта, окна у ссылки нет."""
         token, rid, now = secrets.token_urlsafe(32), secrets.token_hex(6), time.time()
         with self.lock:
             d = {k: v for k, v in self._load().items() if self.live(v, now) or now - v.get("ended", now) < KEEP}
             d[rid] = {"h": _h(token), "w": w["id"], "path": w.get("path", ""), "name": w.get("name", ""),
+                      **({"proj": proj} if proj else {}),
                       "space": w.get("space") or None, "by": by, "created": int(now), "exp": int(now + ttl),
                       "dev": None, "device": "", "opened": None, "state": "active"}
             self._save(d)
@@ -123,7 +128,7 @@ class Focus:
     @staticmethod
     def why(rec: dict) -> str:
         if rec.get("state") == "closed":
-            return "Сессия завершена."
+            return "Проект удалён." if rec.get("proj") else "Сессия завершена."
         if rec.get("state") == "revoked":
             return "Владелец отозвал эту фокус-ссылку."
         return "Срок фокус-ссылки вышел — попросите новую."
@@ -143,7 +148,7 @@ class Focus:
         with self.lock:
             d, n = self._load(), 0
             for rec in d.values():
-                if rec.get("w") == wid and self.live(rec):
+                if wid and rec.get("w") == wid and not rec.get("proj") and self.live(rec):
                     rec.update(state="closed", ended=int(time.time()))
                     n += 1
             if n:
@@ -155,7 +160,7 @@ class Focus:
         with self.lock:
             d, n = self._load(), 0
             for rec in d.values():
-                if rec.get("w") == old and self.live(rec):
+                if old and rec.get("w") == old and not rec.get("proj") and self.live(rec):
                     rec["w"] = new
                     n += 1
             if n:
@@ -168,7 +173,8 @@ class Focus:
     def listing(self) -> list[dict]:
         """Действующие ссылки для «Настройки» → «Фокус-ссылки»: без токенов и секретов."""
         now = time.time()
-        out = [{"id": k, "name": v.get("name", ""), "space": v.get("space"), "created": v.get("created"),
+        out = [{"id": k, "name": v.get("name", ""), "space": v.get("space"), "proj": v.get("proj"),
+                "created": v.get("created"),
                 "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", "")}
                for k, v in self._load().items() if self.live(v, now)]
         return sorted(out, key=lambda x: -(x["created"] or 0))

@@ -103,6 +103,18 @@
   body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus #rail, body.focus #home, body.focus #homeBar,
   body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
   body.focus #menu [data-act=switch], body.focus #menu [data-act=active] { display: none !important; }
+  /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
+  body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
+  body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
+  body.focus-empty #dock, body.focus-empty #tabsBar, body.focus-empty #mini { display: none !important; }
+  .focus-exp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0 16px 8px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+  .focus-exp span { display: inline-flex; align-items: center; gap: 6px; }
+  .focus-exp button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px; border-radius: var(--radius-pill);
+                      border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer; max-width: 100%; }
+  .focus-exp button b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .focus-exp.soon span { color: var(--status-approval); font-weight: 600; padding: 4px 10px; border-radius: var(--radius-pill); background: var(--status-approval-bg); }
+  .focus-proj-empty { text-align: center; padding: 32px 16px; }
+  .focus-proj-empty .btn { margin: 8px auto 0; max-width: 320px; }
   .focus-end { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px;
     background: var(--bg-canvas); color: var(--text-primary); text-align: center; }
   .focus-end .i { width: 40px; height: 40px; color: var(--text-secondary); }
@@ -922,6 +934,7 @@
     <button class="hpill" id="helpBtn" data-tour="help" aria-label="Подсказать: что делать на этом экране"></button>
     <button class="icon" id="settingsBtn" data-tour="settings" aria-label="Настройки"></button>
   </div>
+  <div class="focus-exp" id="focusExp" hidden role="status"></div>
   <div class="tabsbar" id="tabsBar" data-tour="tabs" hidden><div class="seg" id="tabs"><button data-tab="chat" class="on"></button><button data-tab="screen"></button></div></div>
 </header>
 
@@ -1639,7 +1652,8 @@ function navItems(row) {
     const p = projOf(row.dataset.np); if (!p) return [];
     return [...(canPin() ? [{ label: p.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!p.pinned, run: () => pinSet({ project: p.id }, !p.pinned, p.name) }] : []),
       ...(meta?.role !== "viewer" ? [{ label: "Новый чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
-      { label: "Открыть проект", icon: "folder", run: () => navProject(p.id) }];
+      { label: "Открыть проект", icon: "folder", run: () => navProject(p.id) },
+      ...(meta?.role === "owner" && !FOCUS ? [{ label: "Фокус-ссылка на проект", icon: "qr", run: () => focusLink(null, p.id) }] : [])];
   }
   const s = sessions.find((x) => x.id === row.dataset.nw); if (!s) return [];
   const name = s.title || s.name;
@@ -3125,7 +3139,7 @@ function ssClose(s, done) {                              // s: {id, name, space}
         }
         if (d.result !== "closed") return toast(T("ss.close.not"), 5000);
         toast(d.draft ? T("ss.close.draft") : T("ss.close.done"), 5000);
-        if (FOCUS) return focusEnd("Сессия завершена.");
+        if (FOCUS) return focusGone();
         if (s.id === current) back(); else refresh();
         if (meta?.space) sLoad?.();
         done && done(d.folder);
@@ -3357,7 +3371,8 @@ async function refresh() {
     if (view !== "session" || DRAFT) return;            // новый чат до первой отправки — сессии ещё нет
     const s = cur();
     // фокус: сессию перезапустили (модель, поставщик) — окно новое, сервер отдаёт его; завершённая — 410 (focusEnd)
-    if (!s) { if (FOCUS) return sessions.length ? openSession(sessions[0].id) : focusEnd("Сессия завершена."); toast("Сессия завершена"); return back(); }
+    if (FOCUS) focusExp();                              // срок входа — раз в опрос (минуты меняются)
+    if (!s) { if (FOCUS_PROJ()) return current ? focusGone() : focusEmpty(); if (FOCUS) return sessions.length ? openSession(sessions[0].id) : focusEnd("Сессия завершена."); toast("Сессия завершена"); return back(); }
     paintSession(s); loadHint(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
@@ -3757,6 +3772,7 @@ function confirmClose(id) {
 // ---------- сессия ----------
 // Не «open»: функция верхнего уровня стала бы window.open и ломала внешние ссылки в браузере.
 async function openSession(id, startTab) {
+  document.body.classList.remove("focus-empty");
   current = id; termAll = false; store("last", id); hint = ""; show("session"); liveAct = null; actTick = 0;
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
@@ -4607,7 +4623,7 @@ function effortSheet() {
 async function closeSession(id = current, schedule = "") {
   try {
     const d = await api("/api/close", { w: id, ...(schedule ? { schedule } : {}) }); toast(d.result === "закрыто" ? "Сессия завершена" : "Не завершена: " + d.result, 4500);
-    if (d.result === "закрыто") { if (FOCUS) return focusEnd("Сессия завершена."); if (id === current) back(); else refresh(); }
+    if (d.result === "закрыто") { if (FOCUS) return focusGone(); if (id === current) back(); else refresh(); }
     if (d.draft) draftSheet(d.draft);                 // неотправленный текст из поля ввода — не теряем молча
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
@@ -4620,7 +4636,7 @@ function draftSheet(text) {
 }
 // Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
 function openSwitcher() {
-  if (FOCUS) return;                                // в фокусе — только эта сессия
+  if (FOCUS) return FOCUS_PROJ() ? focusProjSheet() : undefined;   // фокус на сессию — только она; на проект — его сессии
   helpSheet("sheet.switcher");
   sheet("Сессии", [...pinFirst([...sessions].sort(byChange)).map((s) => ({
     label: s.name, sub: `${s.pinned ? "закреплена · " : ""}${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
@@ -6075,12 +6091,13 @@ $("settingsBtn").onclick = () => {
 // «Настройки» → «Фокус-ссылки».
 let focusNext = false, focusWant = false;
 function focusAfterNew(id) { if (focusWant) { focusWant = false; focusLink(id); } }
-async function focusLink(id) {
-  let d; try { d = await api("/api/focus/new", { w: id, base: location.origin }); } catch (e) { return toast("Не вышло: " + e.message, 5000); }
+async function focusLink(id, proj) {                 // proj — ссылка на весь проект (меню проекта)
+  let d; try { d = await api("/api/focus/new", proj ? { proj, base: location.origin } : { w: id, base: location.origin }); } catch (e) { return toast("Не вышло: " + e.message, 5000); }
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.focus");
   const till = new Date(d.exp * 1000).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Фокус-ссылка: ${esc(d.name)}</h3>
-    <p class="note" style="margin:0 16px">Откройте на нужном устройстве — там будет только чат этой сессии с её настройками. Первое открытие привязывает устройство. Ссылка гаснет, когда сессию завершат, и не позже ${esc(till)}.</p>
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Фокус-ссылка${proj ? " на проект" : ""}: ${esc(d.name)}</h3>
+    <p class="note" style="margin:0 16px">${proj ? `Откройте на нужном устройстве — там будут все сессии этого проекта, новая сессия в нём и завершённые чаты; другие проекты не видны. Первое открытие привязывает устройство. Ссылка действует до ${esc(till)}.`
+      : `Откройте на нужном устройстве — там будет только чат этой сессии с её настройками. Первое открытие привязывает устройство. Ссылка гаснет, когда сессию завершат, и не позже ${esc(till)}.`}</p>
     <img class="focus-qr" id="focusQr" alt="QR-код фокус-ссылки"><div class="focus-url" id="focusUrl"></div>
     <button data-fa="tg">${ic("send")}<span>Отправить себе в Telegram<small>бот пришлёт ссылку в ваш чат с ним</small></span></button>
     <button data-fa="copy">${ic("copy")}<span>Скопировать ссылку</span></button>
@@ -6104,7 +6121,7 @@ async function focusList() {
   helpSheet("settings.focus");
   sheet("Фокус-ссылки", d.links.length ? [
     { info: true, icon: "qr", label: "Действующие ссылки", sub: "нажмите, чтобы отозвать: устройство сразу потеряет доступ" },
-    ...d.links.map((x) => ({ label: x.name + (x.space ? " · " + x.space : ""), icon: "qr",
+    ...d.links.map((x) => ({ label: (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.proj ? "folder" : "qr",
       sub: (x.opened ? `открыта ${when(x.opened)} · ${x.device || "устройство"}` : "ещё не открыта") + ` · до ${when(x.exp)}`,
       run: () => confirmDanger(`Отозвать фокус-ссылку на «${x.name}»? Устройство сразу потеряет доступ, сессия продолжит работать.`,
         async () => { try { await api("/api/focus/revoke", { id: x.id }); toast("Ссылка отозвана"); focusList(); } catch (e) { toast(e.message, 5000); } }) }))]
@@ -6179,6 +6196,58 @@ async function focusMcp() {                         // интеграции се
     ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
     ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Интеграций нет" }])]);
 }
+// Фокус на проект (меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новая сессия в проекте», завершённые
+// чаты — и ничего вне проекта (сервер отвечает 403). Под шапкой — имя проекта (шторка сессий) и срок входа.
+const FOCUS_PROJ = () => FOCUS && !!meta?.focus?.proj;
+function focusExp() {                               // «вход действует до ДД.ММ (через N дн.)»; за 2 дня — заметно
+  const el = $("focusExp"), f = meta?.focus;
+  if (!FOCUS || !f?.exp) { if (!el.hidden) el.hidden = true; return; }
+  const left = f.exp * 1000 - Date.now(), days = Math.max(0, Math.ceil(left / 864e5)), d = new Date(f.exp * 1000);
+  const date = String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0");
+  const soon = left <= 2 * 864e5, n = days + " " + plural(days, ["день", "дня", "дней"]);
+  const text = !soon ? `Вход действует до ${date} (через ${days} дн.)` : days < 1 ? `Вход истекает сегодня — попросите новую ссылку` : `Перезайти через ${n} — вход до ${date}`;
+  const h = (FOCUS_PROJ() ? `<button type="button" data-fproj aria-label="Сессии проекта «${esc(f.name)}»">${ic("folder", "s16")}<b>${esc(f.name)}</b>${ic("chev", "s16")}</button>` : "")
+    + `<span title="Ссылка действует до ${esc(new Date(f.exp * 1000).toLocaleString("ru-RU"))}">${ic(soon ? "warn" : "lock", "s16")}${esc(text)}</span>`;
+  const cls = "focus-exp" + (soon ? " soon" : "");
+  if (el.className !== cls) el.className = cls;
+  if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
+  if (el.hidden) el.hidden = false;
+}
+$("focusExp").addEventListener("click", (e) => { if (e.target.closest("[data-fproj]")) focusProjSheet(); });
+const byLast = (a, b) => lastMsg(b) - lastMsg(a);
+function focusProjSheet() {
+  const f = meta.focus, list = [...sessions].sort(byLast);
+  helpSheet("sheet.focus-proj");
+  sheet(`Проект «${f.name}»`, [
+    ...list.map((x) => ({ label: x.title && x.title !== x.name ? `${x.name} · ${x.title}` : x.name, dot: (ST[x.status] || ST.idle).cls, on: x.id === current,
+      sub: (ST[x.status] || ST.idle).label + (isNew(x) ? " · новый ответ" : "") + (lastMsg(x) ? " · " + agoText(lastMsg(x)) : ""), run: () => openSession(x.id) })),
+    ...(list.length ? [] : [{ info: true, icon: "chat", label: "Открытых сессий нет", sub: "начните новую или продолжите завершённую" }]),
+    { label: "Новая сессия в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
+    { label: "Завершённые чаты", icon: "file", sub: "продолжить разговор, который закрыли", run: () => focusProjDone() }]);
+}
+async function focusProjNew(btn) {
+  const go = async () => { try { const d = await api("/api/project/session", { id: meta.focus.proj }); await refresh(); await openSession(d.id); } catch (e) { toast("Не вышло: " + e.message, 4500); } };
+  return btn ? busy(btn, "Запускаю…", go) : go();
+}
+async function focusProjDone() {
+  let d; try { d = await api("/api/project/sessions?id=" + encodeURIComponent(meta.focus.proj)); } catch (e) { return toast(e.message, 4500); }
+  helpSheet("sheet.focus-proj");
+  sheet("Завершённые чаты", d.chats.length ? d.chats.map((c) => ({ label: c.title || "Без названия", icon: "chat", sub: `${c.msgs} ${plural(c.msgs, ["сообщение", "сообщения", "сообщений"])}${c.last || c.mtime ? " · " + agoText(c.last || c.mtime) : ""} · продолжить`,
+    run: async () => { try { const r = await api("/api/project/resume", { id: meta.focus.proj, sid: c.sid }); await refresh(); openSession(r.id); } catch (e) { toast("Не вышло: " + e.message, 4500); } } }))
+    : [{ info: true, icon: "chat", label: "Завершённых чатов нет" }]);
+}
+function focusGone() {                              // сессию завершили: ссылка на сессию гаснет, на проект — живёт
+  if (!FOCUS_PROJ()) return focusEnd("Сессия завершена.");
+  current = null; return refresh().then(() => { const n = [...sessions].sort(byLast)[0]; return n ? openSession(n.id) : focusEmpty(); });
+}
+function focusEmpty() {                             // в проекте нет открытых сессий: новая или завершённая
+  current = null; document.body.classList.add("focus-empty"); show("session");
+  setText($("title"), meta.focus.name); setSub("<span>проект · открытых сессий нет</span>");
+  const h = `<div class="panel focus-proj-empty" data-key="fempty">${ic("folder")}<h2 class="serif">Проект «${esc(meta.focus.name)}»</h2><p class="note">Открытых сессий нет — начните новую или продолжите завершённую.</p>
+    <button class="btn" type="button" data-fnew>${ic("plus", "s16")}Новая сессия в проекте</button><button class="btn ghost" type="button" data-fdone>${ic("file", "s16")}Завершённые чаты</button></div>`;
+  if (!$("content").querySelector("[data-key=fempty]")) $("content").innerHTML = h;
+}
+$("content").addEventListener("click", (e) => { const b = e.target.closest("[data-fnew], [data-fdone]"); if (!b || !FOCUS_PROJ()) return; b.dataset.fnew != null ? focusProjNew(b) : focusProjDone(); });
 function focusEnd(text) {
   if ($("focusEnd")) return;
   start.poll = null;
@@ -6197,9 +6266,11 @@ async function focusStart() {
   document.body.dataset.role = "owner";
   $("keys").innerHTML = meta.keys.map((k) => `<button data-key="${esc(k.key)}"${k.key === "C-c" ? ' class="ctrlc" aria-label="Прервать команду: Ctrl+C"' : ""}>${esc(k.label)}</button>`).join("");
   if (!meta.voices.length) document.querySelectorAll("#menu [data-act^=say]").forEach((b) => (b.hidden = true));
+  document.body.classList.toggle("focus-proj", FOCUS_PROJ()); focusExp();
   await refresh();
-  if (!sessions.length) return focusEnd("Сессия завершена.");
-  await openSession(sessions[0].id);
+  if (FOCUS_PROJ()) { const n = [...sessions].sort(byLast)[0]; if (n) await openSession(n.id); else focusEmpty(); }
+  else if (!sessions.length) return focusEnd("Сессия завершена.");
+  else await openSession(sessions[0].id);
   start.done = true; afterPaint(mdLoad);
   start.poll ||= refresh;                            // опрос — общий секундный тик (tick, pollDue)
   keepAwake(); restoreDraft();
@@ -7574,9 +7645,13 @@ function demoApi(path, body) {
     { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" }] };
   if (FOCUS) {
     if (params.get("focus") === "gone") { focusEnd("Сессия завершена."); return Promise.reject(new Error("Сессия завершена.")); }
-    R["/api/meta"] = { ...R["/api/meta"], focus: { id: "f1", name: "gas-pult", w: "@1" }, via: "focus", role: "owner", projects: [] };
-    R["/api/sessions"] = { ...R["/api/sessions"], sessions: R["/api/sessions"].sessions.filter((x) => x.id === "@1"), focus: true };
-    if (path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
+    // &focus=proj — ссылка на проект сессии @1 (все его окна); &fexp=1 — до конца срока сутки (предупреждение)
+    const fp = params.get("focus") === "proj", pw = "p-" + folder(R["/api/sessions"].sessions.find((x) => x.id === "@1")?.path || "");
+    const fexp = Math.floor(Date.now() / 1000) + (params.has("fexp") ? +params.get("fexp") || 1 : 7) * 86400 - 600;
+    R["/api/meta"] = { ...R["/api/meta"], focus: { id: "f1", name: fp ? pw.slice(2) : "gas-pult", w: fp ? "" : "@1", exp: fexp, proj: fp ? pw : null }, via: "focus", role: "owner", projects: [] };
+    if (fp && path === "/api/close") (demoApi.gone ||= {})[body.w] = 1;
+    R["/api/sessions"] = { ...R["/api/sessions"], sessions: R["/api/sessions"].sessions.filter((x) => fp ? "p-" + folder(x.path) === pw && !demoApi.gone?.[x.id] : x.id === "@1"), focus: true };
+    if (!fp && path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};

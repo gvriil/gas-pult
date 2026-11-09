@@ -797,17 +797,39 @@ class Panel:
 
     FOCUS_BASE = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}$")
 
-    def focus_new(self, wid: str, by, base: str) -> dict:
-        """«Фокус-ссылка» из меню сессии (владелец): ссылка ``…/#focus=<токен>`` — токен показывается один раз."""
-        with self.tmux.all_spaces():
-            w = self.tmux.window(str(wid or ""))
-        if not w:
-            raise LookupError("окна уже нет")
+    def focus_new(self, wid: str, by, base: str, proj: str = "") -> dict:
+        """«Фокус-ссылка» из меню сессии (владелец): ссылка ``…/#focus=<токен>`` — токен показывается один раз.
+        ``proj`` — «Фокус-ссылка на проект» из меню проекта: все его сессии, окна у ссылки нет."""
+        if proj:
+            p = self.project(proj)
+            w = {"id": "", "path": p["path"], "name": p["name"]}
+        else:
+            with self.tmux.all_spaces():
+                w = self.tmux.window(str(wid or ""))
+            if not w:
+                raise LookupError("окна уже нет")
         base = (self.public_url or base or "").rstrip("/")
         if not self.FOCUS_BASE.match(base):
             raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
-        f = self.focus.new(w, by)
-        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": w["name"]}
+        f = self.focus.new(w, by, proj=proj or None)
+        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": w["name"],
+                "proj": proj or None}
+
+    def focus_sessions(self, rec: dict) -> list[dict]:
+        """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""
+        if rec.get("proj"):
+            return [s for s in self.sessions(None) if s.get("project") == rec["proj"] and not s.get("space")]
+        return [s for s in self.sessions(None) if s["id"] == rec["w"]]
+
+    def focus_owns(self, rec: dict, wid: str) -> bool:
+        """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта."""
+        if not rec.get("proj"):
+            return bool(wid) and wid == rec["w"]
+        if not wid:
+            return False
+        with self.tmux.all_spaces():
+            w = self.tmux.window(wid)
+        return bool(w) and not w.get("space") and self.project_of(self.project_data(), w) == rec["proj"]
 
     def focus_token(self, url: str) -> dict:
         """Действующая ссылка по адресу ``…/#focus=<токен>`` (для QR и «Отправить себе»)."""
@@ -823,9 +845,14 @@ class Panel:
         if not chat or int(chat) < 0:
             raise ValueError("не знаю ваш чат с ботом — войдите в панель через Telegram")
         till = time.strftime("%d.%m %H:%M", time.localtime(rec["exp"]))
-        text = (f"🎯 Фокус-ссылка на сессию «{rec['name']}»\n\nОткройте на нужном устройстве — там будет только чат "
-                f"этой сессии, без остального пульта. Первое открытие привязывает устройство. Ссылка гаснет, когда "
-                f"сессию завершат, и не позже {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
+        if rec.get("proj"):
+            text = (f"🎯 Фокус-ссылка на проект «{rec['name']}»\n\nОткройте на нужном устройстве — там будут все "
+                    f"сессии этого проекта и новая сессия в нём, без остального пульта. Первое открытие привязывает "
+                    f"устройство. Ссылка действует до {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
+        else:
+            text = (f"🎯 Фокус-ссылка на сессию «{rec['name']}»\n\nОткройте на нужном устройстве — там будет только "
+                    f"чат этой сессии, без остального пульта. Первое открытие привязывает устройство. Ссылка гаснет, "
+                    f"когда сессию завершат, и не позже {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
         self.pult.api("sendMessage", chat_id=int(chat), text=text, link_preview_options={"is_disabled": True},
                       reply_markup={"inline_keyboard": [[{"text": "Открыть в браузере", "url": url}],
                                                         [{"text": "Открыть в Telegram", "web_app": {"url": url}}]]})
@@ -835,6 +862,11 @@ class Panel:
         """Запрос из фокуса: действующая ссылка этого устройства и живое окно её сессии; иначе ``focus.Gone``.
         Окна нет (сессию завершили из панели или бота) — ссылка гаснет сразу."""
         rec = self.focus.by_cookie(cookie)
+        if rec.get("proj"):                                  # ссылка на проект: живёт, пока есть проект и срок
+            if rec["proj"] not in self.project_data()["projects"]:
+                self.focus.end(rec["id"])
+                raise focus.Gone("Проект удалён.")
+            return rec
         with self.tmux.scope(rec.get("space")):
             w = self.tmux.window(rec["w"])
             if not w or w.get("path") != rec.get("path"):   # перезапустили из бота — то же окно папки (одно на проект)
@@ -866,7 +898,7 @@ class Panel:
                 "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices], "voice": self.voice(voices),
                 "focus": {"id": rec["id"], "name": rec.get("name", ""), "w": rec["w"], "space": rec.get("space"),
-                          "exp": rec.get("exp")}}
+                          "exp": rec.get("exp"), "proj": rec.get("proj")}}   # proj — ссылка на проект (добавлено)
 
     def forget_person(self, uid: int):
         """Отключить человека: роль, сессии браузера и его ссылки для входа — сразу."""
@@ -2407,6 +2439,10 @@ FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/run"
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/mcp/connected"}   # без окна в запросе
+# Фокус на проект (ссылка с ``proj``): весь проект — его окна, «Новая сессия в проекте», завершённые чаты; ``id``
+# проекта в запросе — только её. Ссылке на одну сессию эти пути закрыты (403), как раньше.
+FOCUS_PROJ_GET = {"/api/project", "/api/project/sessions", "/api/project/history"}
+FOCUS_PROJ_POST = {"/api/project/session", "/api/project/resume"}
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
@@ -3025,7 +3061,9 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "code": "focus_gone"}, 410)
             except focus.Wait as e:                      # сессию перезапускают — ссылка жива, страница повторит
                 return self.json({"error": str(e), "code": "focus_wait"}, 503)
-            if path not in (FOCUS_GET if method == "GET" else FOCUS_POST):
+            proj_path = path in (FOCUS_PROJ_GET if method == "GET" else FOCUS_PROJ_POST)
+            allowed = bool(rec.get("proj")) if proj_path else path in (FOCUS_GET if method == "GET" else FOCUS_POST)
+            if not allowed:
                 return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
             b: dict = {}
             if method == "POST" and path not in ("/api/upload", "/api/stt", "/api/space/upload"):
@@ -3036,8 +3074,12 @@ def handler(panel: Panel):
                     return self.json({"error": str(e) or "неверный запрос"}, 400)
                 if not isinstance(b, dict):
                     return self.json({"error": "ожидался объект"}, 400)
-            w = (q if method == "GET" or path == "/api/space/upload" else b).get("w")
-            if path not in FOCUS_NO_W and str(w or "") != rec["w"]:
+            src = q if method == "GET" or path == "/api/space/upload" else b
+            if proj_path:
+                if str(src.get("id") or "") != rec["proj"]:
+                    return self.json({"error": "по фокус-ссылке доступен только её проект", "code": "focus_scope"},
+                                     403)
+            elif path not in FOCUS_NO_W and not panel.focus_owns(rec, str(src.get("w") or "")):
                 return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
             self.focused = rec
             try:
@@ -3050,19 +3092,20 @@ def handler(panel: Panel):
             if path == "/api/meta":
                 return {**panel.focus_meta(rec), "via": "focus", "role": "owner", "uid": None, "build": build}
             if path == "/api/sessions":
-                ss = [s for s in panel.sessions(None) if s["id"] == rec["w"]]
+                ss = panel.focus_sessions(rec)
                 return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
                         "fallback": [], "focus": True}
             if path == "/api/logout":                      # «Выйти» на устройстве: cookie фокуса стираем, ссылка живёт
                 gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
                 return ("cookie", gone, {"ok": True})
             if path == "/api/close":                       # «Завершить» в фокусе: сессия закрывается, ссылка гаснет
-                w = panel.session_window(rec["w"])
+                wid = str(b.get("w") or "") if rec.get("proj") else rec["w"]   # у проекта — окно из запроса (проверено)
+                w = panel.session_window(wid)
                 if b.get("schedule"):                      # агент модуля: оставить / приостановить / выключить
                     panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
                 r = panel.close_ex(w)
                 if r["result"] == "закрыто":
-                    panel.focus.end_window(rec["w"])
+                    panel.focus.end_window(wid)            # ссылку на проект это не гасит (focus.end_window)
                 return r
             if path == "/api/space/close":
                 r = panel.space_close(rec["space"], rec["w"], b.get("force") is True)
@@ -3513,7 +3556,8 @@ def handler(panel: Panel):
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
             if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
-                return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")))
+                return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
+                                       str(b.get("proj") or ""))
             if path == "/api/focus/send":                  # «Отправить себе в Telegram»
                 return panel.focus_send(str(b.get("url", "")), self.terms_uid())
             if path == "/api/focus/qr":                    # QR — POST: адрес с токеном не попадает в журнал прокси

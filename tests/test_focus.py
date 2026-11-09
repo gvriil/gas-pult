@@ -307,3 +307,126 @@ def test_e2e_focus_live():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert len(mod.run()) == 7
+
+
+# ---------- фокус на проект: все его сессии, новая сессия в нём, остальное — 403 ----------
+def proj_server(s, monkeypatch):
+    """Два проекта: «shop» (окна @1 и новые) и «other» (окно @2); проект окна — по папке."""
+    p, wins = s["p"], s["wins"]
+    data = {"projects": {"p-shop": {"id": "p-shop", "name": "Магазин", "path": "/srv/shop"},
+                         "p-other": {"id": "p-other", "name": "Другое", "path": "/srv/other"}}, "sessions": {}}
+    monkeypatch.setattr(p, "project_data", lambda wins=None: data)
+    of = {"/srv/shop": "p-shop", "/srv/other": "p-other"}
+    monkeypatch.setattr(p, "project_of", lambda d, w: of.get(w.get("path"), ""))
+    monkeypatch.setattr(p, "sessions", lambda pool=None, who=None: [
+        {"id": w["id"], "name": w["name"], "project": of.get(w["path"], "")} for w in wins.windows()])
+    made = []
+
+    def project_session(pid, profile="", person=None, uid=None):
+        wid = f"@{len(wins.w) + 1}"
+        wins.w[wid] = {"id": wid, "name": "shop-2", "path": data["projects"][pid]["path"], "cmd": "claude"}
+        made.append((pid, wid))
+        return {"id": wid, "project": pid}
+    monkeypatch.setattr(p, "project_session", project_session)
+    monkeypatch.setattr(p, "project_info", lambda pid, who="owner": {"id": pid, "name": data["projects"][pid]["name"]})
+    monkeypatch.setattr(p, "project_chats", lambda pid, q="", before=None, person=None: {"chats": [], "more": False})
+    return data, made
+
+
+def proj_link(s, pid="p-shop"):
+    code, d, _ = call(s["base"], "/api/focus/new", {"base": s["base"], "proj": pid}, owner(s))
+    assert code == 200 and d["proj"] == pid and d["name"] == "Магазин", d
+    code, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1]}, "", FX)
+    assert code == 200
+    return d, setc.split(";")[0]
+
+
+def test_project_link_sees_its_project_only(server, monkeypatch):
+    s = server
+    data, made = proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    code, m, _ = call(s["base"], "/api/meta", None, cookie, FX)
+    assert code == 200 and m["focus"]["proj"] == "p-shop" and m["focus"]["exp"] == d["exp"] and m["focus"]["w"] == ""
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert [x["id"] for x in r["sessions"]] == ["@1"]                                 # только окна проекта
+    assert call(s["base"], "/api/project?id=p-shop", None, cookie, FX)[0] == 200
+    assert call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)[0] == 200   # завершённые чаты
+    # новая сессия в проекте — и она сразу доступна
+    code, r, _ = call(s["base"], "/api/project/session", {"id": "p-shop"}, cookie, FX)
+    assert code == 200 and made == [("p-shop", r["id"])]
+    assert call(s["base"], "/api/send", {"w": r["id"], "text": "привет"}, cookie, FX)[0] == 200
+    code, ss, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert sorted(x["id"] for x in ss["sessions"]) == ["@1", r["id"]]
+    # чужой проект и его окно — 403; общий список проектов, люди, новая папка — 403
+    for path, body in (("/api/project?id=p-other", None), ("/api/project/sessions?id=p-other", None),
+                       ("/api/project/session", {"id": "p-other"}),
+                       ("/api/project/resume", {"id": "p-other", "sid": "x"}),
+                       ("/api/send", {"w": "@2", "text": "x"}), ("/api/history?w=@2", None), ("/api/projects", None),
+                       ("/api/people", None), ("/api/new", {"i": 0}), ("/api/focus/list", None),
+                       ("/api/project/chat", {"id": "p-shop", "sid": "x", "hidden": True})):
+        code, r2, _ = call(s["base"], path, body, cookie, FX)
+        assert code == 403 and r2.get("code") == "focus_scope", (path, code, r2)
+    assert made == [("p-shop", r["id"])]                                            # в чужом проекте ничего не создано
+    # «Завершить» одно окно проекта — ссылка на проект живёт
+    code, c, _ = call(s["base"], "/api/close", {"w": "@1"}, cookie, FX)
+    assert code == 200 and c["result"] == "закрыто" and s["closed"] == ["@1"]
+    code, ss, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and [x["id"] for x in ss["sessions"]] == [r["id"]]
+    assert call(s["base"], "/api/close", {"w": "@2"}, cookie, FX)[0] == 403          # окно другого проекта — нет
+    # проект удалили из списка — ссылка гаснет
+    data["projects"].pop("p-shop")
+    code, r3, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 410 and "Проект" in r3["error"]
+
+
+def test_session_link_cannot_open_project(server, monkeypatch):
+    """Старая ссылка на одну сессию — как раньше: проект и другие окна проекта закрыты."""
+    s = server
+    proj_server(s, monkeypatch)
+    s["wins"].w["@3"] = {"id": "@3", "name": "shop-3", "path": "/srv/shop", "cmd": "claude"}
+    _, _, cookie = open_link(s)
+    for path, body in (("/api/project?id=p-shop", None), ("/api/project/session", {"id": "p-shop"}),
+                       ("/api/send", {"w": "@3", "text": "x"})):
+        code, r, _ = call(s["base"], path, body, cookie, FX)
+        assert code == 403 and r["code"] == "focus_scope", (path, code, r)
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert [x["id"] for x in r["sessions"]] == ["@1"]
+    code, m, _ = call(s["base"], "/api/meta", None, cookie, FX)
+    assert m["focus"]["proj"] is None and m["focus"]["w"] == "@1"
+
+
+def test_project_link_owner_only_and_unknown_project(server, monkeypatch):
+    s = server
+    proj_server(s, monkeypatch)
+    assert call(s["base"], "/api/focus/new", {"base": s["base"], "proj": "p-nope"}, owner(s))[0] == 404
+    _, cookie = proj_link(s)
+    assert call(s["base"], "/api/focus/new", {"base": s["base"], "proj": "p-shop"}, cookie, FX)[0] == 403
+    links = call(s["base"], "/api/focus/list", None, owner(s))[1]["links"]
+    assert links[0]["proj"] == "p-shop" and links[0]["name"] == "Магазин"
+
+
+def test_store_project_link_survives_window_end(tmp_path):
+    f = focus.Focus(tmp_path / "focus.json")
+    link = f.new({"id": "", "path": "/srv/shop", "name": "Магазин"}, 1, proj="p-shop")
+    cookie, rec = f.open(link["token"], "")
+    assert rec["proj"] == "p-shop" and rec["w"] == ""
+    assert f.end_window("") == 0 and f.move("", "@9") == 0
+    assert f.by_cookie(cookie)["proj"] == "p-shop"
+
+
+def test_e2e_focus_project_live():
+    """Фокус на проект вживую (tests/e2e/focus_project_live.py); без Chrome/tmux — пропуск."""
+    import importlib.util
+    import shutil
+    import sys
+    from pathlib import Path
+
+    pytest.importorskip("playwright.sync_api")
+    if not (shutil.which("google-chrome") or shutil.which("chrome")) or not shutil.which("tmux"):
+        pytest.skip("нет Chrome или tmux для проверки вживую")
+    e2e = Path(__file__).resolve().parent / "e2e" / "focus_project_live.py"
+    sys.path.insert(0, str(e2e.parent))
+    spec = importlib.util.spec_from_file_location("focus_project_live", e2e)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert len(mod.run()) == 6

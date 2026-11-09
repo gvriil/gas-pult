@@ -55,6 +55,8 @@ d = os.path.join(os.environ["HOME"], ".claude", "projects", re.sub(r"[^A-Za-z0-9
 os.makedirs(d, exist_ok=True)
 old = sorted((os.path.join(d, f) for f in os.listdir(d) if f.endswith(".jsonl")), key=os.path.getmtime)
 log = old[-1] if "--continue" in args and old else os.path.join(d, uuid.uuid4().hex + ".jsonl")
+if "--session-id" in args:                       # свой журнал окна, как у настоящего (``open_in``)
+    log = os.path.join(d, args[args.index("--session-id") + 1] + ".jsonl")
 def put(kind, content):
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     with open(log, "a") as f:
