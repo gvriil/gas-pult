@@ -192,6 +192,27 @@ class Store:
             self.write(d)
             return rec
 
+    def set_pin(self, on: bool, pid: str = "", key: str = "") -> int:
+        """«Закрепить» / «Открепить»: проект — поле ``pinned`` (время закрепления или ``False``), сессия или чат —
+        ``pins[key]`` (``sid:<id сессии>`` или ``path:<папка с ~>`` у старого окна без метки). Время закрепления —
+        порядок в группе «Закреплённые». Возвращает время закрепления или 0."""
+        ts = int(time.time()) if on else 0
+        with _lock:
+            d = self.read()
+            if pid:
+                p = d["projects"].get(pid)
+                if not p:
+                    raise LookupError("проекта нет — обновите список")
+                p["pinned"] = ts or False
+            else:
+                pins = d.setdefault("pins", {})
+                if ts:
+                    pins[key] = ts
+                else:
+                    pins.pop(key, None)
+            self.write(d)
+            return ts
+
     def folders_of(self, p: dict) -> list[str]:
         """Все папки проекта (главная и рабочие копии) — полными путями."""
         return [untilde(x, self.home) for x in [p["path"], *(p.get("paths") or [])]]

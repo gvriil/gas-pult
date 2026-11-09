@@ -257,6 +257,7 @@ class Panel:
                             "rev": "", "preview": "", "cost_paused": False, "cost": None,
                             "project": self.project_of(pd, w),
                             "sid": w.get("sid") or "",
+                            "pinned": self.pinned_of(pd, w, w.get("sid") or ""),   # закреплена: время (добавлено)
                             "repos": repos.public(repos.of(st, w["path"])),
                             **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or ""))})
                 continue
@@ -292,6 +293,7 @@ class Panel:
                         "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
                         "project": self.project_of(pd, w),                # проект окна (projects.py); "" — нет
                         "repos": repos.public(repos.of(st, w["path"])),     # подключённые репозитории (задача 43)
+                        "pinned": self.pinned_of(pd, w, sid),             # закреплена: время закрепления, 0 — нет
                         **when})                                          # когда менялась (ago.py)
         return out
 
@@ -330,7 +332,8 @@ class Panel:
         """Поля проекта для API (без личных путей: путь — с ``~``)."""
         keys = ("id", "name", "path", "paths", "origin", "created", "profile", "model", "effort", "integrations",
                 "repos", "pinned", "archived", "share")
-        return {**{k: p.get(k) for k in keys}, "folder": os.path.basename(p["path"].rstrip("/")) or "~"}
+        return {**{k: p.get(k) for k in keys}, "folder": os.path.basename(p["path"].rstrip("/")) or "~",
+                "pinned": bool(p.get("pinned")), "pinned_at": int(p.get("pinned") or 0)}   # когда закреплён (добавлено)
 
     def projects_list(self, ss: list[dict], q: str = "", archived: bool = False) -> list[dict]:
         """Список проектов для главной: счётчики окон (ждут ответа / работают / всего), чатов в журналах, последняя
@@ -365,7 +368,9 @@ class Panel:
                                                             *[x.get("name", "") for x in mine])):
                 continue
             out.append(item)
-        out.sort(key=lambda x: (not x["pinned"], not x["waiting"], -(x["last"] or 0), x["name"].lower()))
+        # закреплённые — сверху, последний закреплённый первым; остальные — как раньше
+        out.sort(key=lambda x: (not x["pinned"], -x["pinned_at"], not x["waiting"], -(x["last"] or 0),
+                                x["name"].lower()))
         return out
 
     def project(self, pid: str) -> dict:
@@ -386,6 +391,34 @@ class Panel:
             self.check(profile, uid)
         out = self.open_in(path, profile, person, uid, model=p.get("model") or "")
         return {**out, "project": p["id"]}
+
+    # ---------- «Закрепить» проект, сессию и чат (projects.json: pinned у проекта, pins у сессий) ----------
+    def pin_key(self, w: dict, sid: str = "") -> str:
+        """Ключ закрепления окна: id сессии Claude Code (переживает перезапуск с продолжением и «Продолжить»);
+        старое окно без метки — его папка."""
+        if sid := transcripts.valid_sid(sid or w.get("sid")):
+            return "sid:" + sid
+        return "path:" + projects.tilde(os.path.realpath(w.get("path") or ""), self.pult.home)
+
+    def pinned_of(self, d: dict, w: dict, sid: str = "") -> int:
+        return int((d.get("pins") or {}).get(self.pin_key(w, sid)) or 0)
+
+    def pin(self, on: bool, project: str = "", wid: str = "", pid: str = "", sid: str = "") -> dict:
+        """«Закрепить» / «Открепить»: проект (``project``), окно сессии (``wid``) или завершённый чат (``pid`` +
+        ``sid``). Хранится на сервере — одинаково на телефоне и в браузере."""
+        if project:
+            self.project(project)
+            ts = self.projects.set_pin(on, pid=project)
+        elif wid:
+            w = self.tmux.window(wid)
+            if not w or w.get("space") or not (w.get("cmd") == "claude" or w.get("stopped")):
+                raise LookupError("окна уже нет")
+            ts = self.projects.set_pin(on, key=self.pin_key(w))
+        else:
+            f = self.chat_file(self.project(pid), sid)
+            ts = self.projects.set_pin(on, key="sid:" + f.stem)
+        self._proj = (0.0, {})
+        return {"pinned": ts}
 
     def project_files(self, p: dict) -> list[Path]:
         return projects.session_files(self.projects.folders_of(p), self.claude_homes())
@@ -443,11 +476,19 @@ class Panel:
                 files.append((f.stat().st_mtime, f))
         files.sort(key=lambda x: -x[0])
         q = " ".join(str(q or "").lower().split())
+        pins = self.project_data().get("pins") or {}
+        files = [(mt, f) for mt, f in files
+                 if not (f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"))]
+        top = []                                          # закреплённые — сверху первой страницы, не по времени
+        for mt, f in files if before is None else []:
+            if pin := int(pins.get("sid:" + f.stem) or 0):
+                title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
+                if title and (not q or q in title.lower()):
+                    top.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f),
+                                "mine": f.parent.parent.parent == mine, "pinned": pin})
         out, scanned, t0, cut = [], 0, time.time(), False
         for mt, f in files:
-            if before is not None and mt >= before:
-                continue
-            if f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"):
+            if pins.get("sid:" + f.stem) or (before is not None and mt >= before):
                 continue
             title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
             if not title:
@@ -460,11 +501,13 @@ class Panel:
                 if not projects.contains(f, q):
                     continue
             own = f.parent.parent.parent == mine
-            out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": own})
+            out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": own,
+                        "pinned": 0})
             if len(out) >= self.CHATS_PAGE:
                 break
         more = bool(out) and len(out) >= self.CHATS_PAGE
-        return {"chats": out, "more": more, "before": out[-1]["mtime"] if more else None, "cut": cut,
+        top.sort(key=lambda x: -x["pinned"])
+        return {"chats": top + out, "more": more, "before": out[-1]["mtime"] if more else None, "cut": cut,
                 "keep_days": self.keep_days(), "active": len(by_sid) + len(legacy)}
 
     def project_history(self, pid: str, sid: str, before: int | None = None) -> dict:
@@ -3355,6 +3398,9 @@ def handler(panel: Panel):
             if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
                 return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
                                             self.terms_uid())
+            if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
+                return panel.pin(b.get("on", True) is not False, str(b.get("project") or ""), str(b.get("w") or ""),
+                                 str(b.get("id") or ""), str(b.get("sid") or ""))
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
