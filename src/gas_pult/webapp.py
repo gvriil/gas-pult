@@ -84,6 +84,7 @@ from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError
+from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
 
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
@@ -226,6 +227,18 @@ class Panel:
         w = self.tmux.window(wid)
         return w if w and w["cmd"] == "claude" else None
 
+    BRANCH_TTL = 10                                     # с: ветка git окна — не на каждый опрос списка
+
+    def branch_of(self, path: str) -> str:
+        """Ветка git папки окна; запоминается на 10 с (список сессий опрашивается раз в 3 с на каждое окно)."""
+        now, cache = time.monotonic(), self.__dict__.setdefault("_branches", {})
+        if (hit := cache.get(path)) and now - hit[0] < self.BRANCH_TTL:
+            return hit[1]
+        b = subprocess.run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
+                           capture_output=True, text=True).stdout.strip()
+        cache[path] = (now, b)
+        return b
+
     def sessions(self, pool: str | None = "owner") -> list[dict]:
         """``pool`` — чей расход показывать на карточках (``cost``): «owner» или ID участника; None — ничей."""
         self.balance_watch()
@@ -235,8 +248,7 @@ class Panel:
         pd = self.project_data(wins)
         for w in wins:
             def branch(path=w["path"]) -> str:
-                return subprocess.run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
-                                      capture_output=True, text=True).stdout.strip()
+                return self.branch_of(path)
             if w.get("stopped"):                     # Claude завершился, в окне оболочка — «остановлена»
                 out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                             "status": "stopped", "context": None, "model": "", "active": w["id"] == act,
@@ -3420,7 +3432,11 @@ def set_menu(api: Api, owners: list[int], url: str):
             print(f"menu: {chat}: {e}", flush=True)
 
 
+WINDOWS_TTL = 2.0                                   # с: см. Tmux.ttl
+
+
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
+    Tmux.ttl = WINDOWS_TTL                          # список окон — общий на цикл опроса браузера (tmux.py)
     panel = Panel(cfg)
     panel.owner_space_fix()                         # вид владельца — его выбор, не чужой (см. owner_space_fix)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list()               # кнопка «📱 Панель»; гостям без

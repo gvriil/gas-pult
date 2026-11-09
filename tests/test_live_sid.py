@@ -42,7 +42,7 @@ def test_windows_take_sid_from_process(monkeypatch, tmp_path):
     t = tmux.Tmux("main")
     line = "\t".join(["@1", "1", "штаб", "node", "/p", "/dev/pts/9", "", "", ""])     # старое окно без метки
     monkeypatch.setattr(t, "run", lambda *a: line)
-    ps = subprocess.CompletedProcess([], 0, "  100 -bash\n  101 claude\n", "")
+    ps = subprocess.CompletedProcess([], 0, "pts/9  100 -bash\npts/9  101 claude\n", "")
     monkeypatch.setattr(tmux.subprocess, "run", lambda *a, **k: ps)
     monkeypatch.setattr(tmux, "live_sid", lambda pid, proc="/proc": A if str(pid) == "101" else "")
     w = t.windows()[0]
