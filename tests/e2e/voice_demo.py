@@ -2,7 +2,10 @@
 
     python tests/e2e/voice_demo.py http://127.0.0.1:8797/?demo [папка-для-скриншотов]
 
-Телефон 390×844, полный режим, сессия открыта (``?demo&open=@1``), «Кратко» у последнего ответа (в демо — 40 с тона).
+Телефон 390×844, полный режим, сессия открыта (``?demo&open=@1``), «Прослушать» у последнего ответа
+(в демо — 40 с тона).
+У ответа одна кнопка озвучки — «Прослушать» (без «Кратко»/«Целиком»); скорость 1× → 1,25× → 1,5× → 2× → 1× кнопкой
+в плеере, применяется к звуку и запоминается (после перезагрузки — та же).
 Кнопки «−15 с», пауза, «+15 с» и ✕ — не меньше 44×44; время «0:10 / 0:40»; −15 на 0:10 даёт 0:00; +15 у конца — конец;
 полоса тянется пальцем; Media Session: seekbackward/seekforward/seekto есть, previoustrack/nexttrack не заданы;
 место переживает перезагрузку панели (▶ продолжает оттуда же); мини-плеер не перекрывает поле ввода. Консоль чистая.
@@ -41,7 +44,14 @@ def run(base: str, shots: str = ""):
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.add_init_script(SPY)
             pg.goto(f"{base}{sep}open=@1&theme={theme}")
-            pg.evaluate("localStorage.removeItem('voicePos')")
+            pg.evaluate("localStorage.removeItem('voicePos'); localStorage.removeItem('voiceRate')")
+            pg.reload()
+            pg.wait_for_selector(".msg.ai [data-say]", timeout=8000)
+            # Одна кнопка озвучки у каждого ответа.
+            assert pg.locator("[data-sayfull]").count() == 0, "осталась кнопка «Целиком»"
+            for a in pg.locator(".msg.ai .acts").all():
+                assert a.locator("[data-say]").count() == 1 and "Прослушать" in a.locator("[data-say]").inner_text()
+            assert "Кратко" not in pg.locator("#content").inner_text()
             pg.locator("[data-say]").last.click()
             pg.wait_for_selector("[data-voice].play", timeout=8000)
             pg.wait_for_function("player().duration > 30", timeout=8000)
@@ -49,7 +59,7 @@ def run(base: str, shots: str = ""):
 
             # Крупные кнопки рядом с паузой.
             for sel in ('[data-voice] [data-vseek="-15"]', "[data-voice] [data-vtoggle]",
-                        '[data-voice] [data-vseek="15"]', "[data-voice] [data-vstop]"):
+                        '[data-voice] [data-vseek="15"]', "[data-voice] [data-vstop]", "[data-voice] [data-vrate]"):
                 b = pg.locator(sel).bounding_box()
                 assert b and b["width"] >= 44 and b["height"] >= 44, f"{sel}: {b} меньше 44 px"
             assert pg.locator("[data-voice] .bar").bounding_box()["height"] >= 44, "полосу трудно попасть пальцем"
@@ -91,6 +101,16 @@ def run(base: str, shots: str = ""):
             pg.evaluate("__ms.seekto({ action: 'seekto', seekTime: 12 })")
             assert abs(pg.evaluate("player().currentTime") - 12) < 0.05
 
+            # Скорость: по кругу, сразу в звуке, запоминается.
+            assert pg.text_content("[data-voice] [data-vrate]").strip() == "1×"
+            seen = []
+            for want in (1.25, 1.5, 2, 1, 1.25):
+                pg.click("[data-voice] [data-vrate]")
+                seen.append(pg.text_content("[data-voice] [data-vrate]").strip())
+                assert pg.evaluate("player().playbackRate") == want, (want, pg.evaluate("player().playbackRate"))
+            assert seen == ["1,25×", "1,5×", "2×", "1×", "1,25×"], seen
+            assert pg.evaluate("localStorage.getItem('voiceRate')") == "1.25"
+
             # Мини-плеер (перешли в другую сессию) — над нижней панелью, поле ввода не закрывает.
             pg.evaluate("openSession('@2')")
             pg.wait_for_selector("#mini:not([hidden])", timeout=8000)
@@ -120,6 +140,8 @@ def run(base: str, shots: str = ""):
             pg.locator(v).first.locator("[data-vtoggle]").click()
             pg.wait_for_selector("#mini.play, [data-voice].play", timeout=8000)
             t = pg.evaluate("player().currentTime")
+            assert pg.evaluate("player().playbackRate") == 1.25, "скорость не запомнилась после перезагрузки"
+            assert pg.locator(v).first.locator("[data-vrate]").text_content().strip() == "1,25×"
             assert 20.5 <= t < 24, f"после перезагрузки начали с {t}, а не с 0:21"
             # ✕ — место забыто.
             pg.locator(v).first.locator("[data-vstop]").click()

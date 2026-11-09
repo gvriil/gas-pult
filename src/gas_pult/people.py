@@ -65,6 +65,7 @@ RANK = {"viewer": 1, "member": 2, "owner": 3}
 TITLES = {"owner": "владелец", "member": "участник", "viewer": "наблюдатель"}
 LANGS = ("ru", "en")
 PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
+RATES = (1.0, 1.25, 1.5, 2.0)                      # скорость озвучки в панели
 TOURS = ("business", "dev")                 # тур для бизнеса и для разработчика
 TOUR_STATES = ("done", "dismissed")
 GUEST_FLOOR = -(10 ** 15)                   # гости — от −2·10¹⁵ до −10¹⁵: ни с Telegram ID, ни с группами не совпадут
@@ -284,35 +285,39 @@ class People:
         try:
             uid = int(uid)
         except (TypeError, ValueError):
-            return {**PREFS, "saved": False}
+            return {**PREFS, "rate": 1.0, "saved": False}
         p = None if uid in self.owners else self._load().get(str(uid))
         rec = (p or {}).get("prefs") if p else self._load_side(self.prefs_store).get(str(uid))
         rec = rec if isinstance(rec, dict) else {}
         return {"simple": rec.get("simple") is True, "lang": rec.get("lang") if rec.get("lang") in LANGS else "ru",
-                "saved": bool(rec)}
+                "rate": rec.get("rate") if rec.get("rate") in RATES else 1.0, "saved": bool(rec)}
 
-    def set_prefs(self, uid: int, simple=None, lang=None) -> dict:
-        """Поменять настройки: ``None`` — оставить как было. Язык — только ru или en."""
+    def set_prefs(self, uid: int, simple=None, lang=None, rate=None) -> dict:
+        """Поменять настройки: ``None`` — оставить как было. Язык — только ru или en; скорость озвучки — из RATES."""
         if lang is not None and lang not in LANGS:
             raise ValueError("язык — ru или en")
+        if rate is not None and rate not in RATES:
+            raise ValueError("скорость — 1, 1.25, 1.5 или 2")
         uid = int(uid)
         with self.lock:
             d = self._load()
             mine = uid not in self.owners and str(uid) in d
             side = {} if mine else self._load_side(self.prefs_store)
             old = dict((d[str(uid)].get("prefs") if mine else side.get(str(uid))) or {})
-            rec = {**PREFS, **{k: v for k, v in old.items() if k in PREFS}}
+            rec = {**PREFS, **{k: v for k, v in old.items() if k in PREFS or k == "rate"}}
             if simple is not None:
                 rec["simple"] = bool(simple)
             if lang is not None:
                 rec["lang"] = lang
+            if rate is not None:
+                rec["rate"] = float(rate)
             if mine:
                 d[str(uid)]["prefs"] = rec
                 self._save(d)
             else:
                 side[str(uid)] = rec
                 write_private(self.prefs_store, json.dumps(side))
-        return {**rec, "saved": True}
+        return {**rec, "rate": rec.get("rate", 1.0), "saved": True}
 
     def tour(self, uid) -> dict:
         """Отметки тура человека: ``{business, dev, at}``; чего нет — None."""

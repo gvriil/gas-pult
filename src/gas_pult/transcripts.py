@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from gas_pult import secrets_guard
+from gas_pult import secrets_guard, speech
 
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF"
@@ -136,12 +136,11 @@ def follow(path: str, home: Path | None, sid: str, taken: set[str]) -> str:
 
 
 def clean(md: str) -> str:
-    """Markdown → текст для синтеза речи: код и разделители таблиц не читаются, ссылки — подписью."""
+    """Markdown → текст для синтеза речи: код и разделители таблиц не читаются, ссылки — подписью или «ссылка»."""
     md = re.sub(r"```.*?```", " Блок кода пропущен. ", md, flags=re.S)
     md = re.sub(r"^\s*\|?[\s:|-]+\|[\s:|-]*$", "", md, flags=re.M)
     md = md.replace("|", ", ")
-    md = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", md)
-    md = re.sub(r"https?://\S+", " ссылка ", md)
+    md = speech.links(md)                       # ссылки — «ссылка», пути — по имени файла
     md = re.sub(r"[`*_#>\\]", "", md)
     md = EMOJI.sub("", md)                      # эмодзи и стрелки синтез читает словами («треугольник вправо»)
     md = re.sub(r"[ \t]+", " ", md)
