@@ -119,8 +119,9 @@ def test_both_modes_linkify_bubbles():
     full = SCRIPT[SCRIPT.index("function renderChat("):SCRIPT.index("\n}\n", SCRIPT.index("function renderChat("))]
     simple = SCRIPT[SCRIPT.index("function sRender("):SCRIPT.index("\n}\n", SCRIPT.index("function sRender("))]
     for body in (full, simple):
-        assert 'box.querySelectorAll(".msg .bubble").forEach(linkify);' in body
-        assert body.index("forEach(linkify)") > body.index("box.innerHTML")
+        # точечное обновление (план UX, пункт 1): ссылки — у новых и изменившихся сообщений, после morph
+        assert 'querySelectorAll(".bubble").forEach(linkify)' in body
+        assert body.index("forEach(linkify)") > body.index("morph(box")
 
 
 def test_telegram_open_and_menu():
