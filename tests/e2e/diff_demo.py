@@ -55,6 +55,10 @@ def run(base: str, shots: str | None = None):
                 pg.goto(f"{base}{sep}open=@1&theme={th}&noscroll")
                 pg.clock.run_for(3000)
                 pg.wait_for_selector("#content .msg")
+                # разметка ответов приходит после первого показа (#152) и один раз перерисовывает ответы — ждём её,
+                # иначе «старые сообщения пересозданы» зависит от того, успел ли CDN
+                pg.wait_for_function("() => mdReady()", timeout=15000)
+                pg.clock.run_for(500)
 
                 # 1. та же переписка — ни одного изменения в ленте
                 pg.evaluate("() => { window.__old = [...document.querySelectorAll('#content .msg')]; }")
