@@ -120,9 +120,21 @@
    		}
    	}
    	reverse_proxy 127.0.0.1:8765
+   	header -Server
+   	# «?» — только если панель не поставила свой заголовок (у страницы предложения CSP строже)
+   	header ?Content-Security-Policy "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; base-uri 'self'; object-src 'none'"
+   	# header Strict-Transport-Security "max-age=31536000"
    }
    ```
    Если снаружи открыт порт `443`, адрес можно писать без `:8443` (`https://pult.example.com`).
+
+   **Заголовки безопасности.** `frame-ancestors` разрешает открывать панель во фрейме только ей самой и Telegram Web
+   (`web.telegram.org/k`, `/a` — там Mini App живёт во фрейме; в приложениях Telegram на телефоне и компьютере —
+   отдельное окно, фрейма нет). `X-Frame-Options` не ставьте: он не умеет список доменов, `DENY` и `SAMEORIGIN`
+   ломают Mini App в Telegram Web, а современные браузеры при `frame-ancestors` его всё равно не читают. Полный CSP
+   со `script-src` не задаём: в странице встроенные скрипты и стили. HSTS (`Strict-Transport-Security`) включайте,
+   только если панель на `443`: он действует на все порты имени, и если `443` занят другим (например, VPN),
+   браузер, однажды открывший панель, поведёт адрес без порта на `https://…:443` — ошибка, которую не обойти.
 5. **Службы** (запуск после перезагрузки). `~/.config/systemd/user/gas-pult-caddy.service`:
    ```ini
    [Service]
