@@ -2,7 +2,8 @@
 
     python tests/e2e/viewer_poll.py http://127.0.0.1:8797/?demo
 
-Панель открыта и её касаются — список сессий раз в 3 с. Вкладка скрыта — ни одного опроса (каждый опрос на сервере —
+Панель открыта и её касаются: идёт работа (сессия работает) — список сессий раз в 3 с; все стоят — раз в 10 с.
+Вкладка скрыта — ни одного опроса (каждый опрос на сервере —
 список окон tmux, у демо-пространств ещё и sudo). 10 минут без касаний — раз в 30 с, без плашки «нет связи». Касание —
 сразу свежий список и обычный темп. Консоль без ошибок.
 """
@@ -13,6 +14,18 @@ COUNT = """() => {                                  // считаем запро
   window.__calls = [];
   const orig = demoApi;
   demoApi = (path, body) => { window.__calls.push(path.split("?")[0]); return orig(path, body); };
+}"""
+CALM = """(on) => {                                // демо: все сессии свободны — работы нет
+  window.__calm = on;
+  if (window.__calmWrapped) return;
+  window.__calmWrapped = true;
+  const orig = demoApi;
+  demoApi = async (path, body) => {
+    const d = await orig(path, body);
+    const idle = (x) => ({ ...x, status: x.status === "busy" ? "idle" : x.status });
+    if (window.__calm && d && Array.isArray(d.sessions)) d.sessions = d.sessions.map(idle);
+    return d;
+  };
 }"""
 HIDE = """(on) => {
   Object.defineProperty(document, "hidden", { configurable: true, get: () => on });
@@ -67,6 +80,15 @@ def run(base: str):
         assert pg.evaluate("() => window.__calls").count("/api/sessions") + \
             pg.evaluate("() => window.__calls").count("/api/projects") >= 1, "касание — список сразу"
         assert polls(30_000) >= 8, "после касания — снова раз в 3 с"
+
+        pg.evaluate(CALM, True)                         # работы нет — раз в 10 с
+        pg.clock.run_for(12_000)
+        calm = polls(60_000)
+        assert 5 <= calm <= 7, f"работы нет — раз в 10 с, а было {calm} за минуту"
+        assert pg.evaluate("() => document.getElementById('net').hidden"), "опрос раз в 10 с — не «нет связи»"
+        pg.evaluate(CALM, False)
+        pg.clock.run_for(12_000)
+        assert polls(30_000) >= 8, "сессия снова работает — раз в 3 с"
         br.close()
     assert not errs, f"ошибки в консоли: {errs}"
     print("ok: опрос только для зрителя")
