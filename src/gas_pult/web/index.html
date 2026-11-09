@@ -2208,11 +2208,11 @@ for (const ev of ["pointerup", "pointercancel"]) $("home").addEventListener(ev, 
 $("home").addEventListener("pointermove", (e) => { if (cardHold && Math.hypot(e.clientX - cardHold.x, e.clientY - cardHold.y) > 10) cardUnhold(); });
 $("home").addEventListener("contextmenu", (e) => { if (e.target.closest(".card[data-id], .card[data-proj], .card[data-chat]") && !e.target.closest("a")) { e.preventDefault(); cardUnhold(); cardMenu(e.target); } });
 $("home").addEventListener("click", (e) => { if (cardSwallow && e.target.closest(".card")) { cardSwallow = false; e.stopPropagation(); e.preventDefault(); } }, true);   // отпустили после меню — карточку не открываем
-function card(s) {
-  const st = ST[s.status], old = isStale(s);
+function card(s, chat) {                              // chat — в проекте: второй строкой название чата
+  const st = ST[s.status], old = isStale(s), sub = chat && s.title && s.title !== s.name ? `<div class="meta ctitle">«${esc(s.title)}»</div>` : "";
   return `<div class="card ${st.cls}${s.active ? " active" : ""}${old ? " stale" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
-      <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div><div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
+      <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div>${sub}<div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
@@ -2970,7 +2970,7 @@ function projCard(p) {
   const busy = p.busy ? `<span class="chip s-running">${p.busy} работают</span>` : "";
   return `<div class="card projc${p.waiting ? " s-approval" : ""}" data-proj="${esc(p.id)}" role="button" tabindex="0" aria-label="${esc(p.name)}">
     <div class="row">${ic(p.origin?.startsWith("module:") ? "puzzle" : "folder")}<div class="ctext"><div class="name">${pinMark(p)}${esc(p.name)}</div>
-      <div class="meta">${p.last_title ? "«" + esc(p.last_title) + "»" : "нет чатов"}</div></div>${agoAt(p.last)}
+      <div class="meta">${p.last_window ? esc(p.last_window) + (p.last_title ? " · «" + esc(p.last_title) + "»" : "") : p.last_title ? "«" + esc(p.last_title) + "»" : "нет чатов"}</div></div>${agoAt(p.last)}
       <button class="kebab" data-proj-more="${esc(p.id)}" aria-label="Действия с проектом">${ic("more")}</button></div>
     <div class="cfoot">${wait}${busy}<span class="chip">${esc(chatWord(p.chats))}</span>${p.windows ? `<span class="chip">окон: ${p.windows}</span>` : ""}
       <span class="chip space" title="папка проекта">${ic("folder")}${esc(p.folder)}${p.paths?.length ? " +" + p.paths.length : ""}</span></div></div>`;
@@ -2978,7 +2978,7 @@ function projCard(p) {
 function projMatch(p, q) {
   if (!q) return true;
   const ss = sessions.filter((s) => s.project === p.id);
-  return [p.name, p.folder, p.last_title, ...ss.map((s) => s.title), ...ss.map((s) => s.name)].some((x) => String(x || "").toLowerCase().includes(q));
+  return [p.name, p.folder, p.last_title, p.last_window, ...ss.map((s) => s.title), ...ss.map((s) => s.name)].some((x) => String(x || "").toLowerCase().includes(q));
 }
 function renderProjects() {                           // список проектов или открытый проект — в #projectsView
   const box = $("projectsView");
@@ -3029,7 +3029,7 @@ function renderProject() {
   $("projSeg").innerHTML = `<button data-pt="active" class="${projTab === "active" ? "on" : ""}">Активные ${act.length}</button><button data-pt="done" class="${projTab === "done" ? "on" : ""}">Завершённые ${Math.max(0, +doneN || 0) || doneN || 0}</button>`;
   if (projTab === "active") {
     const shown = act.filter((s) => !q || [s.title, s.name, s.preview].some((x) => String(x || "").toLowerCase().includes(q)));
-    $("projChats").innerHTML = shown.length ? pinGroups(shown, (s) => card({ ...s, name: s.title || s.name }))
+    $("projChats").innerHTML = shown.length ? pinGroups(shown, (s) => card(s, true))
       : `<div class="empty">${act.length ? "Ничего не нашлось" : "Активных чатов нет — «Новая сессия в проекте» внизу или «Завершённые»."}</div>`;
     return;
   }
@@ -3037,7 +3037,7 @@ function renderProject() {
   if (!d) { $("projChats").innerHTML = '<div class="empty">Загружаю…</div>'; return; }
   const note = `<div class="note">Чаты старше ${d.keep_days} дней Claude Code удаляет сам — в списке их не будет.${d.cut ? " Поиск по тексту — не по всем чатам: уточните запрос." : ""}</div>`;
   $("projChats").innerHTML = (d.chats.length ? pinGroups(d.chats, (c) => `<div class="card dchat" data-chat="${esc(c.sid)}" role="button" tabindex="0" aria-label="${esc(c.title)}">
-      <div class="row">${ic("chat")}<div class="ctext"><div class="name">${pinMark(c)}${esc(c.title)}</div><div class="meta">${esc(msgWord(c.msgs))}${c.mine ? "" : " · другая учётка"}</div></div>${agoAt(c.mtime)}
+      <div class="row">${ic("chat")}<div class="ctext"><div class="name">${pinMark(c)}${esc(c.title)}</div><div class="meta">${esc(msgWord(c.msgs))}${c.mine ? "" : " · другая учётка"}</div></div>${agoAt(c.last || c.mtime)}
         <button class="kebab" data-chat-more="${esc(c.sid)}" aria-label="Действия с чатом">${ic("more")}</button></div>
       ${c.mine && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-resume="${esc(c.sid)}">${ic("play", "s16")}Продолжить</button>` : ""}</div>`)
     : `<div class="empty">${projQ ? "Ничего не нашлось" : "Завершённых чатов нет."}</div>`)

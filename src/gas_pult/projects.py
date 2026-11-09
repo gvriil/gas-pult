@@ -19,6 +19,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from gas_pult import modules, transcripts
@@ -247,48 +248,136 @@ _titles: dict[str, tuple[int, int, str]] = {}       # файл журнала �
 
 
 def session_files(folders: list[str], homes: list) -> list[Path]:
-    """Журналы всех папок проекта во всех папках Claude Code (владелец — None, участники — свои)."""
+    """Журналы всех папок проекта во всех папках Claude Code (владелец — None, участники — свои). Запуски
+    ``claude -p`` (плановые задания, ``entrypoint`` = ``sdk-cli``) — не чаты проекта: их не показываем."""
     out: list[Path] = []
     seen: set[Path] = set()
     for f in folders:
         for h in homes:
             for x in transcripts.transcripts(f, h):
-                if x not in seen:
+                if x not in seen and not transcripts.is_batch(x):
                     seen.add(x)
                     out.append(x)
     return out
 
 
+def said(e: dict) -> bool:
+    """Настоящее сообщение переписки: запрос человека или ответ Claude с текстом — не служебная запись
+    (``ai-title``, ``mode``, ``queue-operation``…), не субагент, не ответ-заглушка Claude Code (``<synthetic>``)."""
+    if e.get("isSidechain"):
+        return False
+    if e.get("type") == "user":
+        return transcripts.is_real_prompt(e)
+    if e.get("type") == "assistant":
+        msg = e.get("message") or {}
+        return bool(transcripts.text_of(msg.get("content")).strip()) and not str(msg.get("model") or "").startswith("<")
+    return False
+
+
+def epoch(ts) -> int:
+    """``2026-11-09T16:06:00.123Z`` → секунды; не разобрать — 0."""
+    try:
+        return int(datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
+
+
+_tails: dict[str, tuple[int, int, dict]] = {}       # файл → (mtime_ns, размер, {last, ai})
+
+
+def tail_info(f: Path, step: int = 262144, limit: int = 8 * 1024 * 1024, enough: int = 1024 * 1024) -> dict:
+    """С конца журнала: когда было последнее настоящее сообщение (``last``, секунды) и последнее название, которое
+    дал чату Claude Code (запись ``ai-title``, ``ai``). Время изменения файла для порядка не годится: «Продолжить»,
+    смена режима или закрытие окна дописывают служебные записи — и старый чат прыгал наверх «только что».
+    Читается не больше ``limit`` байт с конца; не нашли сообщения в них — время изменения файла (``cut``); сообщение
+    нашлось, а названия нет и в ``enough`` байт — дальше не ищем (название — из начала файла).
+    Кэш — по времени изменения и размеру."""
+    try:
+        st = f.stat()
+    except OSError:
+        return {"last": 0, "ai": "", "cut": False}
+    key = str(f)
+    old = _tails.get(key)
+    if old and old[0] == st.st_mtime_ns and old[1] == st.st_size:
+        return old[2]
+    last, ai, pos, buf, read = 0, "", st.st_size, b"", 0
+    try:
+        with open(f, "rb") as fh:
+            while pos > 0 and read < limit and not (last and (ai or read >= enough)):
+                start = max(0, pos - step)
+                fh.seek(start)
+                buf = fh.read(pos - start) + buf
+                read += pos - start
+                pos = start
+                lines = buf.split(b"\n")
+                buf, lines = (lines[0], lines[1:]) if pos > 0 else (b"", lines)   # первая строка куска — обрывок
+                for raw in reversed(lines):
+                    if not ai and b'"ai-title"' in raw:
+                        with contextlib.suppress(ValueError):
+                            e = json.loads(raw)
+                            if e.get("type") == "ai-title":
+                                ai = " ".join(str(e.get("aiTitle") or "").split())
+                    elif not last and (b'"user"' in raw or b'"assistant"' in raw):
+                        try:
+                            e = json.loads(raw)
+                        except ValueError:
+                            continue
+                        if said(e):
+                            last = epoch(e.get("timestamp"))
+                    if last and ai:
+                        break
+    except OSError:
+        return {"last": 0, "ai": "", "cut": False}
+    cut = not last and pos > 0
+    out = {"last": last or (int(st.st_mtime) if cut else 0), "ai": ai, "cut": cut}
+    if len(_tails) > 5000:
+        _tails.clear()
+    _tails[key] = (st.st_mtime_ns, st.st_size, out)
+    return out
+
+
+def last_said(f: Path) -> int:
+    """Когда в чате было последнее настоящее сообщение (секунды); сообщений нет — 0."""
+    return tail_info(f)["last"]
+
+
 def title_of(f: Path, head: int = 262144) -> str:
-    """Название чата: запись ``summary`` Claude Code → первое настоящее сообщение человека (до 60 знаков).
-    Читается только начало файла; кэш — по времени изменения."""
+    """Название чата: последнее название от Claude Code (``ai-title``, как в его списке ``/resume``) → запись
+    ``summary`` → первое настоящее сообщение человека (до 60 знаков). Начало файла кэшируется по размеру: журнал
+    только дописывается; название Claude Code — с конца (``tail_info``)."""
     try:
         st = f.stat()
     except OSError:
         return ""
+    t = tail_info(f)["ai"] or _head_title(f, st, head)
+    return t[:TITLE_MAX - 1].rstrip() + "…" if len(t) > TITLE_MAX else t
+
+
+def _head_title(f: Path, st, head: int) -> str:
     key = str(f)
     old = _titles.get(key)
     if old and (old[0] == st.st_mtime_ns or (old[2] and st.st_size >= old[1])):
         return old[2]                               # журнал только дописывается — начало, а с ним название, то же
-    summary, first = "", ""
+    summary, first, ai = "", "", ""
     try:
         with open(f, "rb") as fh:
             chunk = fh.read(head).decode("utf-8", "replace")
     except OSError:
         return ""
     for line in chunk.splitlines():
-        if '"summary"' not in line and '"user"' not in line:
+        if '"summary"' not in line and '"user"' not in line and '"ai-title"' not in line:
             continue
         try:
             e = json.loads(line)
         except ValueError:
             continue
-        if e.get("type") == "summary" and e.get("summary"):
+        if e.get("type") == "ai-title" and e.get("aiTitle"):
+            ai = str(e["aiTitle"])
+        elif e.get("type") == "summary" and e.get("summary"):
             summary = str(e["summary"])
         elif not first and e.get("type") == "user" and not e.get("isSidechain") and transcripts.is_real_prompt(e):
             first = transcripts.PASTED.sub("", transcripts.text_of(e["message"]["content"]))
-    t = " ".join((summary or first).split())
-    t = t[:TITLE_MAX - 1].rstrip() + "…" if len(t) > TITLE_MAX else t
+    t = " ".join((ai or summary or first).split())
     if len(_titles) > 5000:
         _titles.clear()
     _titles[key] = (st.st_mtime_ns, st.st_size, t)
@@ -339,13 +428,15 @@ def contains(f: Path, q: str, limit: int = 32 * 1024 * 1024) -> bool:
 
 
 def stats(files: list[Path]) -> dict:
-    """Сколько чатов у проекта и когда последний (mtime), его журнал."""
-    last, lf = 0.0, None
+    """Сколько чатов у проекта, когда в последнем было настоящее сообщение (не время изменения файла) и его журнал.
+    Равное время — у кого файл новее."""
+    best, lf = (0, 0), None
     for f in files:
         try:
             m = f.stat().st_mtime
         except OSError:
             continue
-        if m > last:
-            last, lf = m, f
-    return {"total": len(files), "last": int(last) if last else None, "last_file": lf}
+        k = (last_said(f), m)
+        if k[0] and k > best:
+            best, lf = k, f
+    return {"total": len(files), "last": best[0] or None, "last_file": lf}

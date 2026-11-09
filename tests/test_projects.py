@@ -110,6 +110,47 @@ def test_title_summary_then_first_prompt(tmp_path):
     assert projects.title_of(tmp_path / "нет.jsonl") == ""
 
 
+def test_title_ai_title_last_wins_and_tail(tmp_path):
+    """Название от Claude Code (``ai-title``) важнее первого сообщения и summary; берётся последнее — с конца файла,
+    даже если начало журнала не влезает в чтение головы."""
+    f = tmp_path / "b.jsonl"
+    filler = [{"type": "assistant", "message": {"content": [{"type": "text", "text": "x" * 1000}]}}] * 400
+    jsonl(f, [user("Да"), {"type": "ai-title", "aiTitle": "Первое название"}, *filler,
+              {"type": "ai-title", "aiTitle": "Keep  alive в tmux"}, {"type": "mode", "mode": "default"}])
+    assert projects.title_of(f, head=4096) == "Keep alive в tmux"
+    assert projects.tail_info(f, step=4096, limit=8192)["ai"] == "Keep alive в tmux"
+
+
+def test_last_said_skips_service_records(tmp_path):
+    f = tmp_path / "c.jsonl"
+    jsonl(f, [{**user("вопрос"), "timestamp": "2026-11-08T16:00:00.000Z"},
+              {"type": "assistant", "timestamp": "2026-11-08T16:00:30.000Z",
+               "message": {"content": [{"type": "text", "text": "ответ"}]}},
+              {"type": "assistant", "timestamp": "2026-11-09T15:00:00.000Z",
+               "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "No response requested."}]}},
+              {**user("<task-notification>агент закончил</task-notification>"), "timestamp": "2026-11-09T16:00:00Z"},
+              {"type": "user", "timestamp": "2026-11-09T16:01:00Z",
+               "message": {"content": [{"type": "tool_result", "content": "ok"}]}},
+              {"type": "permission-mode", "timestamp": "2026-11-09T16:25:00Z"},
+              {"type": "ai-title", "aiTitle": "Разбор"}])
+    assert projects.last_said(f) == projects.epoch("2026-11-08T16:00:30Z")
+    g = tmp_path / "d.jsonl"
+    jsonl(g, [{"type": "mode"}])
+    assert projects.last_said(g) == 0
+
+
+def test_batch_runs_are_not_chats(tmp_path):
+    base = tmp_path / ".claude"
+    folder = str(tmp_path / "w")
+    d = transcripts.project_dir(folder, base)
+    d.mkdir(parents=True)
+    jsonl(d / "a.jsonl", [{"type": "queue-operation", "operation": "enqueue", "content": "задача"},
+                          {**user("задача"), "entrypoint": "sdk-cli"}])
+    jsonl(d / "b.jsonl", [{**user("привет"), "entrypoint": "cli"}])
+    jsonl(d / "c.jsonl", [{"type": "mode"}])                    # ещё пустой — пока не запуск
+    assert [x.name for x in projects.session_files([folder], [base])] == ["b.jsonl", "c.jsonl"]
+
+
 # ---------- API ----------
 class Wins:
     session = "main"

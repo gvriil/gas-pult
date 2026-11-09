@@ -70,8 +70,38 @@ def current(path: str, home: Path | None = None, sid: str = "") -> Path | None:
             return f
         base = home / "projects" if home else CLAUDE_PROJECTS
         return next(iter(base.glob(f"*/{sid}.jsonl")), None)
-    files = transcripts(path, home)
+    files = [f for f in transcripts(path, home) if not is_batch(f)]     # плановый ``claude -p`` — не окно
     return max(files, key=lambda p: p.stat().st_mtime) if files else None
+
+
+_batch: dict[str, bool] = {}                          # файл → запуск ``claude -p`` (точка входа не меняется)
+BATCH = ("sdk-cli", "sdk-py", "sdk-ts")
+
+
+def is_batch(f: Path, head: int = 65536) -> bool:
+    """Журнал запуска ``claude -p`` / SDK (плановое задание без человека): ``entrypoint`` первой записи, где он есть.
+    Журнал без такой записи (ещё пустой) — не запуск: решим, когда появится."""
+    key = str(f)
+    if key in _batch:
+        return _batch[key]
+    try:
+        with open(f, "rb") as fh:
+            chunk = fh.read(head).decode("utf-8", "replace")
+    except OSError:
+        return False
+    for line in chunk.splitlines():
+        if '"entrypoint"' not in line:
+            continue
+        try:
+            ep = json.loads(line).get("entrypoint")
+        except ValueError:
+            continue
+        if ep:
+            if len(_batch) > 5000:
+                _batch.clear()
+            _batch[key] = ep in BATCH
+            return _batch[key]
+    return False
 
 
 def follow(path: str, home: Path | None, sid: str, taken: set[str]) -> str:
@@ -86,8 +116,9 @@ def follow(path: str, home: Path | None, sid: str, taken: set[str]) -> str:
         mine = own.stat().st_mtime
     except OSError:
         return ""                                   # своего журнала ещё нет (новая сессия до первого сообщения)
-    newer = [f for f in transcripts(path, home)
-             if f.stem != sid and f.stem not in taken and valid_sid(f.stem) and f.stat().st_mtime > mine]
+    newer = [f for f in transcripts(path, home)                 # плановый ``claude -p`` в той же папке — не /clear
+             if f.stem != sid and f.stem not in taken and valid_sid(f.stem) and f.stat().st_mtime > mine
+             and not is_batch(f)]
     return max(newer, key=lambda p: p.stat().st_mtime).stem if newer else ""
 
 

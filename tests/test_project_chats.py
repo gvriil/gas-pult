@@ -29,11 +29,18 @@ def ai(text):
             "timestamp": "2026-11-07T10:00:05Z"}
 
 
-def put(d, sid, entries, age):
+def iso(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(t))
+
+
+def put(d, sid, entries, age, said=None):
+    """Журнал чата: сообщения — ``said`` секунд назад (по умолчанию — как время файла ``age``)."""
     d.mkdir(parents=True, exist_ok=True)
     f = d / f"{sid}.jsonl"
-    f.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries), encoding="utf-8")
     t = time.time() - age
+    at = iso(time.time() - (age if said is None else said))
+    f.write_text("".join(json.dumps({**e, "timestamp": at} if "timestamp" in e else e, ensure_ascii=False) + "\n"
+                         for e in entries), encoding="utf-8")
     os.utime(f, (t, t))
     return f
 
@@ -192,3 +199,35 @@ def test_projects_superset_of_sessions(server):
     p, base, *_ = server
     d = call(base, "/api/projects", tok=p.auth.issue(1))[1]
     assert {"projects", "sessions", "host", "build", "cost", "fallback", "now"} <= set(d)
+
+
+# ---------- порядок и названия (ревью 09.11, п. 2): по последнему сообщению, ai-title, без claude -p ----------
+def test_done_order_by_last_message_not_mtime(server):
+    """Закрытый или продолженный чат дописывает служебные записи — время файла «только что», но в списке он
+    остаётся на месте своего последнего сообщения; запуски ``claude -p`` (sdk-cli) — не чаты проекта."""
+    p, base, wins, pid, shop = server
+    d = transcripts.project_dir(str(shop))
+    stale = str(uuid.UUID(int=21))
+    put(d, stale, [user("Старый разговор"), ai("ответ"), {"type": "permission-mode", "permissionMode": "default"},
+                   {"type": "ai-title", "aiTitle": "Разбор старого"}], 10, said=5 * 86400)
+    batch = str(uuid.UUID(int=22))
+    put(d, batch, [{**user("плановая задача"), "entrypoint": "sdk-cli"}, {**ai("сделал"), "entrypoint": "sdk-cli"}], 2)
+    tok = p.auth.issue(1)
+    chats = call(base, f"/api/project/sessions?id={pid}", tok=tok)[1]["chats"]
+    assert [c["sid"] for c in chats] == [NEW, OTHER, OLD, stale]               # старый — внизу, хоть файл и свежий
+    assert chats[-1]["title"] == "Разбор старого"                              # название от Claude Code
+    assert chats[-1]["last"] < chats[-1]["mtime"] - 4 * 86400                  # время в списке — сообщения
+    assert batch not in json.dumps(chats)
+    assert wins.windows()[0]["sid"] == OPEN                                    # новее журнала окна, но не его /clear
+    pr = next(x for x in call(base, "/api/projects", tok=tok)[1]["projects"] if x["id"] == pid)
+    assert pr["chats"] == 6                                                    # без запуска claude -p
+    assert pr["last_title"] == "Открытый чат" and pr["last_window"] == "shop-1"   # последний — открыт в окне
+
+
+def test_window_title_from_ai_title(server):
+    p, base, _, _, shop = server
+    d = transcripts.project_dir(str(shop))
+    put(d, OPEN, [user("Да"), ai("работаю"), {"type": "ai-title", "aiTitle": "Keep alive в tmux"}], 5)
+    ss = {x["id"]: x for x in call(base, "/api/sessions", tok=p.auth.issue(1))[1]["sessions"]}
+    assert ss["@1"]["name"] == "shop-1" and ss["@1"]["title"] == "Keep alive в tmux"
+
