@@ -3,7 +3,7 @@
     python tests/e2e/diff_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
 
 Перерисовка без изменений не трогает DOM; новый ответ — один новый узел с анимацией появления, остальные сообщения —
-те же узлы (прокрутка, раскрытые логи, выделение не сбиваются); изменившееся сообщение заменяется без анимации (.upd).
+те же узлы (прокрутка, раскрытые логи, выделение не сбиваются); изменившееся сообщение заменяется без анимации (.mupd).
 Список сессий: опрос раз в 3 с не пересоздаёт карточки. 390 и 1366, светлая и тёмная; консоль без ошибок.
 """
 
@@ -81,8 +81,11 @@ def run(base: str, shots: str | None = None):
                 rep = pg.evaluate("() => __old.filter((n) => !n.isConnected).map((n) => +n.dataset.i)")
                 assert rep == [pg.evaluate("() => __ci")], f"{w} {th}: заменены лишние сообщения: {rep}"
                 upd = pg.evaluate("() => document.querySelector(`#content .msg[data-i='${__ci}']`).className")
-                assert "upd" in upd, \
-                    "заменённое сообщение — без анимации (.upd)"
+                assert "mupd" in upd, \
+                    "заменённое сообщение — без анимации (.mupd)"
+                disp = pg.evaluate("() => getComputedStyle(document.querySelector(`#content .msg[data-i='${__ci}']`))"
+                                   ".display")
+                assert disp == "block", f"{w} {th}: заменённое сообщение получило чужие стили (display: {disp})"
                 if shots:
                     pg.screenshot(path=f"{shots}/diff-chat-{w}-{th}.png")
 

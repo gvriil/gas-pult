@@ -6,8 +6,6 @@
 <meta name="color-scheme" content="light dark">
 <title>gas-pult · пульт</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
   /* ===== Дизайн-система: тёплая бумага + терракота; статусы семантические (свободна ≠ зелёный) ===== */
   /* ===== Палитра в духе Gemini (Material 3): белый и #F0F4F9, синий акцент; статусы — по смыслу ===== */
@@ -249,7 +247,7 @@
   .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
   .net button { border: 0; background: var(--bg-surface); border-radius: var(--radius-pill); padding: 7px 12px; font-weight: 600; font-size: calc(13px * var(--fz, 1)); display: inline-flex; gap: 6px; align-items: center; flex: none; }
   .chat .msg { margin: 0 0 14px; animation: fade .2s ease; }
-  .upd { animation: none !important; }               /* заменён при точечном обновлении — не «появляется» заново */
+  .mupd { animation: none !important; }              /* заменён при точечном обновлении — не «появляется» заново; не .upd: это плашка «новая версия» */
   .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
   .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
   .chat .me .bubble { background: var(--bg-subtle); border-radius: 22px 22px 6px 22px; max-width: 85%; white-space: pre-wrap; }
@@ -2155,7 +2153,7 @@ function restoreDraft() {
 // Опрос раз в 3–10 с не перерисовывает то, что не изменилось. setHTML: та же разметка — DOM не трогаем. morph: список
 // и лента по ключам (data-id, data-i, data-proj, data-key, id) — изменившийся элемент заменяется, новые вставляются,
 // пропавшие удаляются, остальное стоит на месте (прокрутка, раскрытые логи, фокус). Анимация появления — только у новых;
-// заменённые — с классом .upd (без анимации). Текст «изменена N назад» в сравнение не входит — его ведёт agoTick.
+// заменённые — с классом .mupd (без анимации). Текст «изменена N назад» в сравнение не входит — его ведёт agoTick.
 const AGO_TXT = /(<span class="ago"[^>]*>)[^<]*/g;
 function setHTML(el, html) {
   const key = html.replace(AGO_TXT, "$1");
@@ -2174,13 +2172,32 @@ function morph(box, html) {                           // → новые узлы
     const k = base + "~" + (seen[base] = (seen[base] || 0) + 1), src = n.outerHTML.replace(AGO_TXT, "$1"), was = old.get(k);
     if (was && was.__s === src) return was;
     n.__k = k; n.__s = src; fresh.push(n);
-    if (was) n.classList.add("upd");
+    if (was) n.classList.add("mupd");
     return n;
   });
   const keep = new Set(next);
   for (const n of [...box.childNodes]) if (!keep.has(n)) n.remove();
   next.forEach((n, i) => { if (box.children[i] !== n) box.insertBefore(n, box.children[i] || null); });
   return fresh;
+}
+// ---------- разметка ответов (план UX, пункт 10) ----------
+// marked и DOMPurify (~60 КБ) больше не держат первый показ: грузятся после него (mdLoad), а до загрузки ответ виден
+// простым текстом с переносами строк. Пришли — лента и простой режим перерисовываются (точечно: меняются только ответы).
+const MD_LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js", "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"];
+const mdReady = () => !!(window.marked && window.DOMPurify);
+function md(t) {
+  if (mdReady()) return DOMPurify.sanitize(marked.parse(t || ""));
+  mdLoad();
+  return (t || "").split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
+}
+const afterPaint = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 2500 }) : setTimeout(f, 400));
+function mdLoad() {
+  return mdLoad.p ||= Promise.all(MD_LIBS.map((src) => new Promise((ok, no) => {
+    const el = document.createElement("script"); el.src = src; el.async = false; el.onload = ok; el.onerror = no; document.head.append(el);
+  }))).then(() => {
+    if (view === "session" && tab === "chat" && hist.length) renderChat(false);
+    if (SIM.on && SIM.hist.length) sRender();
+  }, () => { mdLoad.p = null; });                   // нет сети к CDN — попробуем при следующем ответе
 }
 function setSub(html) { setHTML($("subtitle"), html); }
 
@@ -3475,7 +3492,7 @@ async function chatView(sid) {                         // переписка з�
     list.innerHTML = (d.more ? '<div class="note">Показаны последние сообщения.</div>' : "") + (d.items.length ? d.items.map((m) => m.role === "user"
       ? `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`
       : m.human ? `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`
-      : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text || ""))}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
+      : `<div class="msg ai"><div class="bubble md">${md(m.text)}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
     list.scrollTop = list.scrollHeight;
   } catch (e) { bg.querySelector(".chatv-list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
@@ -3983,7 +4000,7 @@ function renderChat(toBottom) {
   const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
   const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
-    : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
+    : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
@@ -6122,7 +6139,7 @@ async function focusStart() {
   await refresh();
   if (!sessions.length) return focusEnd("Сессия завершена.");
   await openSession(sessions[0].id);
-  start.done = true;
+  start.done = true; afterPaint(mdLoad);
   start.poll ||= refresh;                            // опрос — общий секундный тик (tick, pollDue)
   keepAwake(); restoreDraft();
 }
@@ -6613,7 +6630,7 @@ async function start() {
   }
   store("seenAny", "1");
   start.poll ||= () => tourOn || refresh();          // общий секундный тик (tick, pollDue); во время тура экран не перерисовываем
-  start.done = true;
+  start.done = true; afterPaint(mdLoad);
   setTimeout(tourOffer, 1200);
   keepAwake();
   let resume = null;
@@ -6763,10 +6780,15 @@ async function previewAs(id) {
 // списка сессий, команд и ключей здесь нет. Выбор — овальными чипами (.scn-opt), цифры вводить не нужно.
 const LANGS = ["ru", "en"];
 let LANG = LANGS.includes(params.get("lang")) ? params.get("lang") : LANGS.includes(store("lang")) ? store("lang") : "ru";
-let DICT = {};
-let dictReady = loadDict(LANG);
+// Словарь (план UX, пункт 10): прошлый — из localStorage сразу, список не ждёт сети; свежий — в фоне.
+let DICT = (() => { try { return JSON.parse(localStorage.getItem("dict:" + LANG) || "{}"); } catch (e) { return {}; } })();
+let dictReady = Object.keys(DICT).length ? Promise.resolve() : loadDict(LANG);
+if (Object.keys(DICT).length) loadDict(LANG);
 async function loadDict(lang) {
-  try { const r = await fetch("i18n/" + lang + ".json", { cache: "no-store" }); if (r.ok && lang === LANG) DICT = await r.json(); }
+  try {
+    const r = await fetch("i18n/" + lang + ".json", { cache: "no-store" });
+    if (r.ok && lang === LANG) { const t = await r.text(); DICT = JSON.parse(t); store("dict:" + lang, t); }
+  }
   catch (e) { /* без словаря — русские строки полного режима; простой режим покажет ключи до следующей попытки */ }
   document.documentElement.lang = LANG;
 }
@@ -6823,7 +6845,7 @@ async function simpleStart() {
   try { tg?.BackButton.hide(); } catch (e) {}
   await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
-  start.done = true;
+  start.done = true; afterPaint(mdLoad);
   keepAwake();
   goFromLink();
 }
@@ -6959,7 +6981,7 @@ function sMsg(m) {
   const k = m.i != null ? ` data-i="${m.i}"` : "";
   if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${esc(m.text)}</div></div>`;
   if (m.human) return `<div class="msg ai"${k}><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
-  return `<div class="msg ai"${k}><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text || ""))}</div></div>`;
+  return `<div class="msg ai"${k}><div class="bubble md">${md(m.text)}</div></div>`;
 }
 function sRender(toBottom) {
   const box = $("sFeed");
