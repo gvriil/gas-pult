@@ -283,6 +283,18 @@ def cmd_geoip(a):
         print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
 
 
+def cmd_usage(a):
+    """Отчёт по функциям панели сейчас: файл ``usage-ГГГГ-ММ.md`` в данных пульта и текст в консоль. В Telegram
+    его шлёт бот сам, 1-го числа."""
+    from gas_pult import features
+
+    data = config.data_dir()
+    r = features.report(features.Uses(data / "features.json"))
+    path = features.write(data, r)
+    print(features.markdown(r))
+    print(f"Сохранено: {path}")
+
+
 def invite_qr(link: str, hint: str) -> Path:
     """PNG с QR ссылки — в данных пульта (папка 0700, файл 0600): показать с экрана или распечатать."""
     from gas_pult import qr
@@ -521,6 +533,9 @@ def main(argv: list[str] | None = None):
     s.add_argument("--config-dir", help="папка Claude Code (по умолчанию $CLAUDE_CONFIG_DIR или ~/.claude)")
     s.add_argument("--python", help="чем запускать хук (по умолчанию — этот Python)")
     s.set_defaults(fn=cmd_secrets)
+    s = sub.add_parser("usage", help="функции панели: report — что не открывали 30 дней и что в ходу (файл и текст)")
+    s.add_argument("action", choices=["report"], nargs="?", default="report")
+    s.set_defaults(fn=cmd_usage)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)
