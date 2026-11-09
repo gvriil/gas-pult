@@ -360,7 +360,9 @@ class Pult:
         try:
             with self.hold(w["id"]):
                 self.ready_for_text(w["id"])
-                self.tmux.paste(w["id"], text)
+                if self.tmux.paste(w["id"], text) is False:      # Enter не прошёл и после повторов
+                    raise NotReady("текст остался в поле ввода сессии и не отправлен — откройте «Экран» и нажмите "
+                                   "Enter или отправьте ещё раз")
         except Exception:
             if sends:
                 sends.failed(w["id"])
