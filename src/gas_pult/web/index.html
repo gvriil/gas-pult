@@ -1857,7 +1857,7 @@ const loginMsg = (ok, text) => { $("loginResult").innerHTML = `<div class="resul
 // Условия использования: при первом входе и после смены версии. До «Принимаю» панель не показывает остальное.
 async function showTerms() {
   if (view === "terms") return;
-  clearInterval(start.timer); start.timer = null;                 // фоновые запросы — после согласия
+  start.poll = null;                 // фоновые запросы — после согласия
   show("terms"); $("title").textContent = "Пульт"; setSub("<span>условия использования</span>");
   let d; try { d = await api("/api/terms"); } catch (e) { $("termsBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   $("termsBox").innerHTML = `<h2 class="serif">${esc(d.title)}</h2><p class="ver">Версия от ${esc(d.version.split("-").reverse().join("."))} · прочитайте перед началом работы</p>
@@ -1882,7 +1882,7 @@ function ipMark(c) {                              // отметка страны
 }
 async function showCountry(change) {
   if (view === "country" && !change) return;
-  clearInterval(start.timer); start.timer = null;
+  start.poll = null;
   show("country"); $("title").textContent = "Пульт"; setSub("<span>ваша страна</span>");
   let d; try { d = await api("/api/country"); } catch (e) { $("countryBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   const bot = d.bot ? `https://t.me/${encodeURIComponent(d.bot)}?start=phone` : "";
@@ -2085,7 +2085,8 @@ function ctxMeter(s) {
 }
 // ---------- «изменена N назад» (ago.py — те же правила и словари ago.*; тест сверяет обе реализации) ----------
 // Шкала: до 5 с — «только что», дальше секунды, минуты, часы, «вчера» (до двух суток), дни, недели, месяцы, дата.
-// Текст обновляется на месте (agoTick): раз в секунду, пока что-то изменилось меньше минуты назад, иначе раз в 30 с.
+// Текст обновляется на месте (agoTick из общего секундного тика): раз в секунду, пока что-то изменилось меньше минуты
+// назад, иначе раз в 30 с.
 const AGO_STEPS = [[5, "now"], [60, "s"], [3600, "min"], [86400, "h"], [172800, "yesterday"], [604800, "d"], [2592000, "w"], [31536000, "mo"]];
 const AGO_UNIT = {"s": 1, "min": 60, "h": 3600, "d": 86400, "w": 604800, "mo": 2592000};
 const AGO_STALE = 604800;
@@ -2138,7 +2139,7 @@ function agoSpan(s, head = false) {                    // шапка на шир
   return `<span class="ago"${d} title="${esc(agoTip(x))}">${esc(agoLabel(x, nowSec()))}</span>`;
 }
 function agoTick() {
-  clearTimeout(agoTick.t);
+  agoTick.at = Date.now();
   const now = nowSec(); let fast = false;
   for (const el of document.querySelectorAll(".ago[data-ago]")) {
     if (now - +el.dataset.ago < 60) fast = true;
@@ -2149,7 +2150,7 @@ function agoTick() {
   for (const el of document.querySelectorAll(".chip.stale")) {     // карточка могла нарисоваться до словаря
     if (el.textContent !== T("ago.stale")) { el.textContent = T("ago.stale"); el.title = T("ago.stale.tip"); }
   }
-  agoTick.t = setTimeout(agoTick, fast ? 1000 : 30000);
+  agoTick.fast = fast;
 }
 // Тап (на телефоне подсказки нет) — точное время всплывающим сообщением; карточку при этом не открываем.
 document.addEventListener("click", (e) => {
@@ -2775,7 +2776,7 @@ async function sfFiles(w) {
     if (!done.length) return;
     bg.remove(); toast(T("sf.up.done", { n: done.join(", ") }), 4000);
     const inp = meta?.space && SIM.on ? $("sInput") : $("input");          // сказать агенту — одним касанием «Отправить»
-    if (inp) { inp.value = (inp.value ? inp.value + "\n" : "") + T("sf.msg", { n: done.join(", ") }); fitLines(inp); inp.focus(); }
+    if (inp) { inp.value = (inp.value ? inp.value + "\n" : "") + T("sf.msg", { n: done.join(", ") }); fitLines(inp); sync(); inp.focus(); }
   };
 }
 // space-files:end
@@ -3372,20 +3373,40 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { la
 // Опрос — только для зрителя. Вкладка скрыта — не опрашиваем совсем (каждый опрос — список окон tmux на сервере,
 // у демо-пространств ещё и sudo). Панель открыта, но 10 минут никто её не касался — раз в 30 с, а не раз в 3 с.
 // Касание, клавиша, прокрутка — сразу свежие данные и обычный темп.
-const IDLE_MS = 10 * 60 * 1000, IDLE_POLL_MS = 30000;
+// Темп: идёт работа (какая-то сессия работает, ваше сообщение ещё в пути) — раз в 3 с; всё стоит — раз в 10 с.
+const IDLE_MS = 10 * 60 * 1000, IDLE_POLL_MS = 30000, WORK_POLL_MS = 3000, CALM_POLL_MS = 10000;
 const idle = () => Date.now() - lastTouch > IDLE_MS;
-function pollDue() { return !document.hidden && (!idle() || Date.now() - lastPoll >= IDLE_POLL_MS); }
+const working = () => pending.length > 0 || sessions.some((s) => s.status === "busy");
+const pollGap = () => idle() ? IDLE_POLL_MS : working() ? WORK_POLL_MS : CALM_POLL_MS;
+function pollDue() { return !document.hidden && Date.now() - lastPoll >= pollGap() - 250; }
 ["pointerdown", "keydown", "wheel", "touchstart", "scroll"].forEach((ev) => addEventListener(ev, () => {
   const woke = idle(); lastTouch = Date.now();
   if (woke && start.done && !document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); }
 }, { passive: true, capture: true }));
-// Честный индикатор: 15 секунд без ответа сервера — янтарная плашка с «Переподключить».
-setInterval(() => {
-  if (document.hidden || view === "login" || idle()) return;   // без зрителя опрос редкий — это не обрыв связи
-  const sec = Math.round((Date.now() - lastOk) / 1000), bad = sec >= 15;
-  $("net").hidden = !bad; $("live").classList.toggle("stale", bad);
-  if (bad) { $("netText").textContent = `Нет связи с сервером · ${sec} с`; $("live").querySelector("span").textContent = `нет связи · ${sec} с`; }
-}, 1000);
+// Честный индикатор: 15 секунд без ответа сервера — янтарная плашка с «Переподключить». Без работы опрос раз в 10 с,
+// поэтому порог — два пропущенных опроса, но не меньше 15 с.
+function netTick() {
+  if (view === "login" || idle()) return;            // без зрителя опрос редкий — это не обрыв связи
+  const sec = Math.round((Date.now() - lastOk) / 1000), bad = sec >= Math.max(15, pollGap() * 2 / 1000 + 2);
+  if ($("net").hidden !== !bad) $("net").hidden = !bad;
+  $("live").classList.toggle("stale", bad);
+  if (bad) {
+    const t = `Нет связи с сервером · ${sec} с`, l = `нет связи · ${sec} с`, sp = $("live").querySelector("span");
+    if ($("netText").textContent !== t) $("netText").textContent = t;
+    if (sp.textContent !== l) sp.textContent = l;
+  }
+}
+// Один секундный тик на всю панель (вместо пяти таймеров): опрос списка по темпу (pollDue), связь, таймер хода,
+// «изменена N назад», строка статуса простого режима. Скрытая вкладка — ничего не делает.
+function tick() {
+  if (document.hidden) return;
+  if (start.poll && pollDue()) start.poll();
+  netTick();
+  if (view === "session") paintActTimer();
+  if (SIM.on) sAct();
+  if (agoTick.fast || Date.now() - (agoTick.at || 0) >= 30000) agoTick();
+}
+setInterval(tick, 1000);
 $("netRetry").onclick = (e) => busy(e.currentTarget, "Подключаюсь…", async () => {
   await refresh(); if (view === "session") await loadContent();
   if (Date.now() - lastOk < 3000) { $("net").hidden = true; $("live").classList.remove("stale"); markFresh(); toast("Связь есть"); }
@@ -3503,7 +3524,6 @@ async function pollAct(force) {
   finally { actBusy = false; }
 }
 setInterval(pollAct, 1500);
-setInterval(paintActTimer, 1000);
 $("content").addEventListener("click", async (e) => {
   const x = e.target.closest("[data-actx]");
   if (x) {
@@ -4519,7 +4539,7 @@ async function voiceStart(where) {
 }
 function voiceShow(s) {
   s.inp.value = [s.base, s.partial].filter(Boolean).join(" ");
-  fitLines(s.inp); s.inp.scrollTop = s.inp.scrollHeight;
+  fitLines(s.inp); s.inp.scrollTop = s.inp.scrollHeight; sync();   // «Отправить» — по тексту в поле (без опроса раз в 0,7 с)
 }
 // Строка записи под полем: поле видно — в нём растёт текст; ✕ — отменить, «Стоп» — текст в поле, ➤ — отправить.
 function voiceBar(s) {
@@ -4573,14 +4593,14 @@ function voiceDone(s, text) {
 function voiceFallback(s) {
   if (s.done) return; s.done = true;
   if (s.ws) { s.ws.onclose = null; try { s.ws.close(); } catch (_) {} }
-  voiceEnd(s); s.inp.value = s.base; micBarClose();
+  voiceEnd(s); s.inp.value = s.base; micBarClose(); sync();
   if (!s.pcm.length) return toast(LT("mic.empty", "Ничего не расслышал — попробуйте ещё раз"), 3500);
   sttRun(wavBlob(s.pcm, STT_RATE), s.sendNow, s.where);
 }
 function voiceCancel(s) {
   if (s.done) return; s.done = true;
   if (s.ws) { s.ws.onclose = null; try { if (s.ready) s.ws.send('{"cancel": true}'); s.ws.close(); } catch (_) {} }
-  voiceEnd(s); s.inp.value = s.base; micBarClose(); fitLines(s.inp);
+  voiceEnd(s); s.inp.value = s.base; micBarClose(); fitLines(s.inp); sync();
   toast(LT("mic.cancelled", "Запись отменена"));
 }
 // Демо (?demo): подмена службы распознавания — те же сообщения, что у /api/stt/stream: слово на каждые 0,4 с звука.
@@ -4613,7 +4633,6 @@ for (const [id, where] of [["mic", MIC_FULL], ["sMic", MIC_SIMPLE]]) {
   $(id).oncontextmenu = (e) => e.preventDefault();   // долгое нажатие — не меню браузера
 }
 for (const ev of ["keyup", "change", "paste", "compositionend", "focus", "blur"]) $("input").addEventListener(ev, () => setTimeout(grow, 0));
-setInterval(() => { if (!$("dock").hidden) sync(); }, 700);
 
 // ---------- интеграции ----------
 let prov = null;
@@ -5655,7 +5674,7 @@ async function focusMcp() {                         // интеграции се
 }
 function focusEnd(text) {
   if ($("focusEnd")) return;
-  clearInterval(start.timer); start.timer = null;
+  start.poll = null;
   document.querySelectorAll(".sheet-bg").forEach((b) => b.remove());
   const done = !text || /^Сессия завершена/.test(text);
   const d = document.createElement("div"); d.id = "focusEnd"; d.className = "focus-end"; d.setAttribute("role", "alert");
@@ -5675,7 +5694,7 @@ async function focusStart() {
   if (!sessions.length) return focusEnd("Сессия завершена.");
   await openSession(sessions[0].id);
   start.done = true;
-  if (!start.timer) start.timer = setInterval(() => pollDue() && refresh(), 3000);
+  start.poll ||= refresh;                            // опрос — общий секундный тик (tick, pollDue)
   keepAwake(); restoreDraft();
 }
 $("backBtn").onclick = back;
@@ -6164,7 +6183,7 @@ async function start() {
     if (store("seenAny")) { helpSheet("whatsnew"); sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно"); }
   }
   store("seenAny", "1");
-  if (!start.timer) start.timer = setInterval(() => tourOn || !pollDue() || refresh(), 3000);   // во время тура экран не перерисовываем; без зрителя — реже (pollDue)
+  start.poll ||= () => tourOn || refresh();          // общий секундный тик (tick, pollDue); во время тура экран не перерисовываем
   start.done = true;
   setTimeout(tourOffer, 1200);
   keepAwake();
@@ -6231,7 +6250,7 @@ const personaTitle = (id) => UI?.catalog?.personas.find((p) => p.id === id)?.tit
 async function showPersona(change) {                  // первый вход — 5 карточек; из настроек — «Сменить роль целиком»
   await dictReady;
   if (SIM.on) simpleHide();
-  clearInterval(start.timer); start.timer = null;
+  start.poll = null;
   show("persona"); $("title").textContent = T("login.brand"); setSub(`<span>${esc(T("persona.sub.short"))}</span>`);
   const list = UI?.catalog?.personas || [];
   $("personaBox").innerHTML = `<h2 class="serif">${esc(T("persona.title"))}</h2><p class="ver">${esc(T(change ? "persona.change.sub" : "persona.sub"))}</p>
@@ -6306,7 +6325,7 @@ async function previewAs(id) {
   fit(); addEventListener("resize", fit);
   $("previewBack").onclick = () => location.reload();
   $("spaces").hidden = true;
-  if (UI.simple) { clearInterval(start.timer); start.timer = null; await simpleStart(); }
+  if (UI.simple) { start.poll = null; await simpleStart(); }
 }
 
 // ---------- простой режим (docs/SIMPLE-MODE.md): один разговор с агентом, без английских слов и техники ----------
@@ -6375,7 +6394,6 @@ async function simpleStart() {
   try { tg?.BackButton.hide(); } catch (e) {}
   await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
-  if (!sAct.timer) sAct.timer = setInterval(sAct, 1000);
   start.done = true;
   keepAwake();
   goFromLink();
