@@ -211,6 +211,7 @@ class Panel:
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
+        self._trash_at = 0.0                                          # когда фоновый цикл чистил корзину чатов
         self.focus_gap: dict[str, float] = {}   # ссылка → с какого времени окна её сессии нет (перезапуск)
 
     def setup_status(self, fresh: bool = False) -> dict:
@@ -617,6 +618,7 @@ class Panel:
     def chat_trash_list(self) -> dict:
         """Корзина чатов и скрытые чаты (их журнал на месте) — для «Корзина» в панели."""
         d = self.project_data()
+        chat_trash.purge(self.cfg.data)                 # старше 30 дней — в списке не показываем, стираем сразу
         items = chat_trash.listing(self.cfg.data)
         gone = {x["sid"] for x in items}
         hidden = []
@@ -628,7 +630,22 @@ class Panel:
                     hidden.append({"sid": sid, "project": p["id"], "project_name": p["name"],
                                    "title": str(rec.get("title") or "") or projects.title_of(f)})
         names = {pid: p["name"] for pid, p in d["projects"].items()}
-        return {"trash": [{**x, "project_name": names.get(x["project"], "")} for x in items], "hidden": hidden}
+        return {"trash": [{**x, "project_name": names.get(x["project"], "")} for x in items], "hidden": hidden,
+                "keep_days": chat_trash.KEEP_DAYS, "warn_days": chat_trash.WARN_DAYS}   # добавлено
+
+    TRASH_EVERY = 3600                                  # с: как часто фоновый цикл чистит корзину чатов
+
+    def trash_tick(self, now: float | None = None) -> list[str]:
+        """Из фонового цикла панели (раз в минуту): не чаще раза в час — окончательно удалить из корзины чатов
+        записи старше ``chat_trash.KEEP_DAYS``. Первый вызов после запуска — сразу."""
+        now = time.time() if now is None else now
+        if now - self._trash_at < self.TRASH_EVERY:
+            return []
+        self._trash_at = now
+        gone = chat_trash.purge(self.cfg.data, now)
+        if gone:
+            print(f"корзина чатов: удалено окончательно {len(gone)} (старше {chat_trash.KEEP_DAYS} дн.)", flush=True)
+        return gone
 
     def chat_restore(self, tid: str) -> dict:
         """«Вернуть» из корзины: журнал — на место, чат снова в «Завершённых» своего проекта."""
@@ -3607,6 +3624,10 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
         while True:
             time.sleep(60)
             panel.offer_demos.sweep()
+            try:
+                panel.trash_tick()                         # корзина чатов: старше 30 дней — раз в час окончательно
+            except Exception as e:                         # цикл не падает из-за корзины
+                print("корзина чатов:", e, flush=True)
     threading.Thread(target=sweep, daemon=True).start()
     proc = None
     if use_tunnel:
