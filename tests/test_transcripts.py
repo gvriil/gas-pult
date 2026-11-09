@@ -107,6 +107,64 @@ def test_history_shows_queued_messages(tmp_path, monkeypatch):
         [("сделай", None), ("а ещё вот", "read"), ("и это", "wait")]
 
 
+def test_history_no_service_bubbles_and_queue_settles(tmp_path, monkeypatch):
+    """Ревью 09.11, п. 3: уведомления агентов и задач, письма других сессий, сводка после /compact — не пузыри
+    человека; ``dequeue`` и ``remove`` закрывают «в очереди» — вечных «в очереди» нет."""
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    d = t.project_dir("/home/u/j")
+    d.mkdir(parents=True)
+    note = "<task-notification><task-id>x1</task-id><status>completed</status></task-notification>"
+    letter = "<agent-message from=\"other\">готово</agent-message>"
+
+    def q(op, content=None):
+        return {"type": "queue-operation", "operation": op, **({"content": content} if content is not None else {})}
+
+    def att(prompt, mode="prompt"):
+        return {"type": "attachment", "attachment": {"type": "queued_command", "prompt": prompt, "commandMode": mode}}
+
+    def u(text, **kw):
+        return {"type": "user", "message": {"content": text}, **kw}
+
+    def a(text):
+        return {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}
+
+    rows = [u("сделай отчёт"), a("делаю"),
+            q("enqueue", letter), q("enqueue", note), q("dequeue"), u("Another Claude session …", isMeta=True),
+            a("принял письмо"),                                                  # письмо — не пузырь человека
+            q("dequeue"), u(note), a("агент закончил"),                          # уведомление взято ходом
+            q("enqueue", "и ещё таблицу"), q("dequeue"), u("и ещё таблицу"), a("таблица"),   # очередь → обычный ход
+            q("enqueue", "добавь итог"), q("remove", "добавь итог"), att("добавь итог"), a("итог добавлен"),
+            q("enqueue", note), q("remove", note), att(note, "task-notification"), a("второй агент тоже"),
+            q("enqueue", "/loop 10m проверь"), q("dequeue"), u("<command-message>loop</command-message>"),
+            u("служебный текст навыка", isMeta=True), a("проверил"),
+            u("<artifact-content-authored-by-others/>\nсводка", isCompactSummary=True),
+            u("This session is being continued from a previous conversation…", isCompactSummary=True),
+            q("enqueue", "последний вопрос")]
+    (d / "s.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows))
+    items, _ = t.history("/home/u/j")
+    assert [(x["role"], x["text"], x.get("queued")) for x in items] == [
+        ("user", "сделай отчёт", None), ("assistant", "делаю", None),
+        ("assistant", "принял письмо", None),                                    # после вставки — свой пузырь
+        ("assistant", "агент закончил", None),
+        ("user", "и ещё таблицу", None), ("assistant", "таблица", None),
+        ("user", "добавь итог", "read"), ("assistant", "итог добавлен", None),
+        ("assistant", "второй агент тоже", None),
+        ("assistant", "проверил", None),
+        ("user", "последний вопрос", "wait")]                                    # ещё правда в очереди
+    assert not any("<" in x["text"] for x in items)
+
+
+def test_service_texts_are_not_prompts():
+    for text in ("<task-notification>x</task-notification>", "<agent-message>x</agent-message>",
+                 "<system-reminder>x</system-reminder>", "<command-name>/clear</command-name>",
+                 "<local-command-stdout>ok</local-command-stdout>", "<bash-input>ls</bash-input>",
+                 "<artifact-content-authored-by-others/>\nx", "  <some-new-tag>x</some-new-tag>"):
+        assert t.is_service(text) and not t.is_real_prompt({"message": {"content": text}}), text
+    for text in ("привет", "<pasted_content id=\"1\">x</pasted_content>", "<b>жирный</b> текст", "a <x-y> b"):
+        assert not t.is_service(text) and t.is_real_prompt({"message": {"content": text}}), text
+    assert not t.is_real_prompt({"message": {"content": "сводка"}, "isCompactSummary": True})
+
+
 def test_revision_changes_when_transcript_grows(tmp_path, monkeypatch):
     monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
     d = t.project_dir("/home/u/r")
