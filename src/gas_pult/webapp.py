@@ -1339,6 +1339,25 @@ class Panel:
             self.pult.api("sendMessage", chat_id=chat, text=text)
         return rid
 
+    def confirm_start(self, token: str, uid: int, ip: str, ua: str) -> dict:
+        """Код подтверждения команд для сессии браузера (``CONFIRM``). Канал: почта, если человек включил второй
+        фактор (не тот же Telegram, что и вход), иначе — сообщение бота в его Telegram (вход кодом — владельцам)."""
+        rid, code = self.auth.confirm_start(token)
+        who = (self.cfg.owners or [None])[0] if uid == webauth.LEGACY else uid
+        where = f"{ip or '?'} · {webauth.device(ua)}"
+        if who is not None and self.email.wants_second(who):
+            addr = self.people.email(who)["address"]
+            subject, text = emailcode.code_text(code, f"подтверждения команд на сервере (вход: {where})")
+            self.email.deliver(addr, subject, text)
+            emailcode.log("confirm_sent", uid=who, ip=ip)
+            return {"id": rid, "via": "email", "to": emailcode.mask(addr), "ttl": webauth.CONFIRM_TTL}
+        text = (f"🔐 Подтверждение команд на сервере\n\nКод: {code}\n\nДействует 10 минут. Вход: {where}.\n"
+                "Новый вход в панель просит выполнять команды и писать в терминал. Если это не вы — не вводите код: "
+                "без него с этого входа команды не выполнятся.")
+        for chat in (self.cfg.owners if uid == webauth.LEGACY else [uid]):
+            self.pult.api("sendMessage", chat_id=chat, text=text)
+        return {"id": rid, "via": "telegram", "to": "Telegram", "ttl": webauth.CONFIRM_TTL}
+
     # ---------- предложения (offers.py): страница /offer/<код> без входа ----------
     def offer_country_ok(self, cc: str) -> bool:
         """Есть ли для страны хоть один поставщик моделей (с учётом страны сервера) — как при выборе страны."""
@@ -2317,6 +2336,13 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
+# Подтверждение кодом (аудит 09.11): сессия браузера моложе суток (``webauth.CONFIRM_FRESH``) выполняет команды на
+# сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
+# «Подтвердите кодом» и повторит запрос. Mini App в Telegram — доверенное устройство (код ушёл бы в тот же Telegram);
+# фокус-ссылка — права и окно задал владелец, код ей прийти некуда.
+CONFIRM = {"/api/run", "/api/run/term", "/api/commands/run", "/api/commands/term", "/api/term/type", "/api/term/key",
+           "/api/tty/type", "/api/tty/key"}
+CONFIRM_API = ("/api/confirm/start", "/api/confirm/verify")
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 # Живой терминал (задача 50): клавиши и текст прямо в окно, вся история tmux. Только в режиме разработчика (владелец
@@ -2554,6 +2580,11 @@ def handler(panel: Panel):
                 return False
             if path in TTY and not self.dev_tty():
                 self.json({"error": "живой терминал — только в режиме разработчика", "code": "dev"}, 403)
+                return False
+            if method == "POST" and path in CONFIRM and self.via() == "browser" and \
+                    panel.auth.needs_confirm(self.session()):
+                self.json({"error": "новый вход: подтвердите кодом, что команды выполняете вы", "code": "confirm",
+                           "confirm": "code"}, 403)
                 return False
             return True
 
@@ -3336,6 +3367,13 @@ def handler(panel: Panel):
             if path == "/api/help/feedback":
                 return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")),
                                              self.who()[1])
+            if path in CONFIRM_API:                       # подтверждение кодом — только сессии браузера
+                if self.via() != "browser":
+                    raise ValueError("подтверждение кодом — для входа из браузера")
+                if path == "/api/confirm/start":
+                    return panel.confirm_start(self.session(), self.who()[2], *self.client())
+                panel.auth.confirm_verify(self.session(), str(b.get("id", "")), str(b.get("code", "")))
+                return {"ok": True}
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
             if path == "/api/commands/mark":

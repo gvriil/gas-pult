@@ -161,7 +161,10 @@ def server(monkeypatch, tmp_path):
     monkeypatch.setattr(p, "window", lambda wid: {"id": wid, "path": str(tmp_path), "cmd": "claude", "name": "a"})
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(p))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield p, f"http://127.0.0.1:{srv.server_address[1]}", p.auth.issue(1)
+    tok = p.auth.issue(1)
+    rid, code = p.auth.confirm_start(tok)          # сессия подтверждена кодом (test_confirm_code.py)
+    p.auth.confirm_verify(tok, rid, code)
+    yield p, f"http://127.0.0.1:{srv.server_address[1]}", tok
     srv.shutdown()
 
 
