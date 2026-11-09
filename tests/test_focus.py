@@ -78,7 +78,8 @@ def server(monkeypatch):
     wins = Wins()
     monkeypatch.setattr(p, "tmux", wins)
     monkeypatch.setattr(p, "window", lambda wid: wins.window(wid))
-    monkeypatch.setattr(p, "sessions", lambda pool=None: [{"id": w["id"], "name": w["name"]} for w in wins.windows()])
+    monkeypatch.setattr(p, "sessions",
+                        lambda pool=None, who=None: [{"id": w["id"], "name": w["name"]} for w in wins.windows()])
     sent, closed, tg = [], [], []
     monkeypatch.setattr(p, "send", lambda w, text, mid="": sent.append((w["id"], text)) or False)
     monkeypatch.setattr(p, "check", lambda profile, uid: None)
