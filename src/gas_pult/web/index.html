@@ -1398,11 +1398,16 @@ document.addEventListener("click", (e) => {
   if (linkHeld) { linkHeld = false; e.preventDefault(); return; }   // долгое нажатие уже открыло меню
   if (openLink(a.href)) e.preventDefault();
 });
-// Время в журналах — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code). Показываем в часовом поясе сервера
-// (meta.tz, например Europe/Amsterdam) — одинаково на любом телефоне; пояс неизвестен — время телефона.
+// Время в журналах — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code). Показываем в часовом поясе зрителя
+// (телефона или компьютера) — как строка статуса и как в ChatGPT/Claude: сегодня — «ЧЧ:ММ», вчера — «вчера ЧЧ:ММ»,
+// раньше — «ДД.ММ ЧЧ:ММ». Раньше было время сервера: у сообщения «16:47», а у статуса рядом «18:47» — путало.
 const localTs = (t) => {
   const d = new Date(String(t).replace(" ", "T") + ":00Z"); if (isNaN(d)) return t;
-  try { return d.toLocaleString("sv-SE", meta?.tz ? { timeZone: meta.tz } : {}).slice(0, 16); } catch (e) { return d.toLocaleString("sv-SE").slice(0, 16); }
+  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => x.toLocaleDateString("sv-SE"), now = new Date(), y = new Date(now - 864e5);
+  if (day(d) === day(now)) return hm;
+  if (day(d) === day(y)) return "вчера " + hm;
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) }) + " " + hm;
 };
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
@@ -3336,8 +3341,10 @@ async function loadContent() {
     $("keys").hidden = tab !== "screen";                    // клавиши — на «Экране»; в переписке вопрос — карточкой
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
+      const opened = !hist.length || $("content").className !== "chat" || journalOf(histRev) !== journalOf(h.rev);
       histRev = h.rev || ""; markFresh();
-      if (!hist.length || grew || $("content").className !== "chat") { hist = h.items; histMore = h.more; renderChat(true); }   // вернулись с «Экрана» — показать переписку
+      if (opened) { hist = h.items; histMore = h.more; renderChat(true); }   // открыли (или вернулись с «Экрана») — с конца
+      else if (grew) mergeChat(h);   // переписка уже на экране: дорисовать, ранние сообщения и место чтения — не трогать
     } else renderTerm(scr.lines);
     padDock();
   } catch (e) {
@@ -3360,14 +3367,41 @@ async function liveChat() {                         // каждые 3 с: мен
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
     markFresh();
     if (h.same) return;
-    const atBottom = atEnd(220);
-    const first = h.items[0]?.i ?? Infinity;
-    hist = [...hist.filter((m) => m.i < first), ...h.items]; histRev = h.rev || "";
-    if (!hist.some((m) => m.i < first)) histMore = h.more;
-    renderChat(atBottom);
-    if (!atBottom) $("toBottom").classList.add("new");
+    if (journalOf(histRev) !== journalOf(h.rev)) { histRev = h.rev || ""; hist = h.items; histMore = h.more; return renderChat(true); }
+    histRev = h.rev || "";
+    mergeChat(h);
   } catch (e) { /* связь показывает индикатор: нет ответа сервера 15 с — янтарная плашка */ }
 }
+// rev журнала — «<8 знаков id сессии>-<размер>-<время>» (transcripts.revision): другой id — другой разговор (окно
+// сменило журнал: /clear, /resume, или раньше панель брала «последний журнал папки»). Склеивать два разговора по
+// номерам сообщений нельзя — переписка заново, с конца.
+const journalOf = (rev) => String(rev || "").split("-")[0];
+function mergeChat(h) {   // свежий хвост переписки — к тому, что уже на экране; читатель остаётся на своём месте
+  const atBottom = atEnd(220), first = h.items[0]?.i ?? Infinity;
+  // якорь — сообщение, которое сейчас читают (первое видимое), и его отступ от верха экрана; после перерисовки — туда же
+  const ms = [...$("content").querySelectorAll(".msg")], top = SC.getBoundingClientRect?.().top || 0;
+  const k = ms.findIndex((el) => el.getBoundingClientRect().bottom > top + 1), anchor = k >= 0 ? hist[k]?.i : null;
+  const off = k >= 0 ? ms[k].getBoundingClientRect().top : 0;
+  hist = [...hist.filter((m) => m.i < first), ...h.items];
+  if (!hist.some((m) => m.i < first)) histMore = h.more;
+  renderChat(atBottom);
+  if (atBottom) return;
+  const j = hist.findIndex((m) => m.i === anchor), el = j >= 0 ? $("content").querySelectorAll(".msg")[j] : null;
+  if (el) SC.scrollTop += el.getBoundingClientRect().top - off;
+  autoUntil = Date.now() + 300;
+  $("toBottom").classList.add("new");
+}
+// «Прилипнуть к низу»: после открытия лента ещё растёт — команды под ответом (renderCmds), строка статуса, поле ввода
+// (padDock), таблицы, шрифты. Одна прокрутка в rAF попадала не в конец. Пока человек сам не тронул ленту (палец,
+// колесо, клавиши) — 4 с держим низ при каждом изменении размера.
+let stick = 0;
+const stickRO = typeof ResizeObserver === "function" ? new ResizeObserver(() => { if (Date.now() < stick) SC.scrollTop = SC.scrollHeight; }) : null;
+function stickBottom() {
+  stick = Date.now() + 4000; SC.scrollTop = SC.scrollHeight;
+  requestAnimationFrame(() => { if (Date.now() < stick) SC.scrollTop = SC.scrollHeight; });
+  if (stickRO) { stickRO.disconnect(); stickRO.observe($("content")); $("dock") && stickRO.observe($("dock")); }
+}
+["wheel", "touchmove", "keydown"].forEach((ev) => addEventListener(ev, (e) => { if (ev !== "keydown" || /^(Arrow|Page|Home|End)/.test(e.key)) stick = 0; }, { passive: true, capture: true }));
 function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").innerHTML = '<span class="lw">обновлено </span>' + new Date().toLocaleTimeString("ru-RU"); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
 // Опрос — только для зрителя. Вкладка скрыта — не опрашиваем совсем (каждый опрос — список окон tmux на сервере,
@@ -3576,7 +3610,7 @@ function renderChat(toBottom) {
   if (hist.at(-1)?.role === "assistant") renderCmds();
   box.insertAdjacentHTML("beforeend", '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   paintAct();
-  if (toBottom && !params.has("noscroll")) requestAnimationFrame(() => scrollToY(SC.scrollHeight));
+  if (toBottom && !params.has("noscroll")) stickBottom();   // с конца, как в ChatGPT/Claude
 }
 $("content").addEventListener("click", (e) => { const v = e.target.closest("[data-revive]"); if (v) revive(v.dataset.revive, v); });
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
@@ -6509,8 +6543,11 @@ async function sHist(toBottom) {
   try {
     const d = await api(`/api/history?w=${encodeURIComponent(w)}${SIM.rev ? "&rev=" + encodeURIComponent(SIM.rev) : ""}`);
     if (w !== SIM.w || d.same) return;
-    const end = sAtEnd();
-    SIM.hist = d.items || []; SIM.more = !!d.more; SIM.rev = d.rev || "";
+    const end = sAtEnd(), items = d.items || [], first = items[0]?.i ?? Infinity;
+    const same = SIM.rev && journalOf(SIM.rev) === journalOf(d.rev);   // тот же разговор — ранние сообщения не теряем
+    SIM.hist = same ? [...SIM.hist.filter((m) => m.i < first), ...items] : items;
+    if (!same || !SIM.hist.some((m) => m.i < first)) SIM.more = !!d.more;
+    SIM.rev = d.rev || "";
     const norm = (t) => t.replace(/\s+/g, " ").trim();
     SIM.pending = SIM.pending.filter((p) => !SIM.hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));
     sRender(toBottom || end);
@@ -7183,7 +7220,7 @@ function demoApi(path, body) {
     return new Promise((ok) => setTimeout(() => ok({ ok: true }), 700));
   }
   if (key === "/api/activity") {                     // демо: фазы по времени после отправки; без отправки — по сессии
-    const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: String(demoApi.h.length), spinner: "", action: "", tool: "" };
+    const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: "demo0000-" + demoApi.h.length, spinner: "", action: "", tool: "" };
     if (r && r.w === w) {
       const t = (Date.now() - r.t) / 1000, at = r.t / 1000;
       const P = r.stuck ? [[0, "delivered", "Доставлено в сессию"], [4, "stuck", "Не видно реакции — показать экран?", { action: "screen" }]]
@@ -7200,11 +7237,11 @@ function demoApi(path, body) {
   }
   if (key === "/api/history" && new URLSearchParams(path.split("?")[1]).get("before")) {   // раньше — по номеру сообщения
     const xs = demoApi.h.filter((m) => m.i < +new URLSearchParams(path.split("?")[1]).get("before"));
-    return Promise.resolve({ more: xs.length > 30, rev: String(demoApi.h.length), items: xs.slice(-30) });
+    return Promise.resolve({ more: xs.length > 30, rev: "demo0000-" + demoApi.h.length, items: xs.slice(-30) });
   }
   if (key.startsWith("/api/tty")) return demoTty(key, path, body);
-  if (key === "/api/history") return Promise.resolve({ more: true, rev: String(demoApi.h.length), items: demoApi.h.slice(-30),
-    ...(new URLSearchParams(path.split("?")[1]).get("rev") === String(demoApi.h.length) ? { same: true } : {}) });
+  if (key === "/api/history") return Promise.resolve({ more: true, rev: "demo0000-" + demoApi.h.length, items: demoApi.h.slice(-30),
+    ...(new URLSearchParams(path.split("?")[1]).get("rev") === "demo0000-" + demoApi.h.length ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
     if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;
     if (body.go) return Promise.resolve({ lines: screen.splice(0, screen.length, "● Bash(npm run build)", "  ⎿  готово", "", "❯ ") && screen });
