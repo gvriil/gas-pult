@@ -1,5 +1,6 @@
 """«Закрепить» проект, сессию и завершённый чат: группа наверху, порядок — по времени закрепления, хранится в
-``projects.json`` (одинаково на телефоне и в браузере) и переживает перезапуск окна (по id сессии Claude Code).
+``projects.json`` → ``pins[кто]`` — свои у каждого человека (одинаково на телефоне и в браузере) и переживает
+перезапуск окна (по id сессии Claude Code). Прежние общие закрепления переходят владельцу.
 Без живого tmux и Claude: окна подменены (``Wins`` из test_project_chats), журналы — во временной папке."""
 
 import itertools
@@ -34,13 +35,14 @@ def test_pin_project_order_and_storage(server, monkeypatch, tmp_path):
     ps = call(base, "/api/projects", tok=tok)[1]["projects"]
     assert [x["id"] for x in ps[:2]] == [pid, blog]                       # последний закреплённый — первым
     assert ps[0]["pinned"] is True and ps[0]["pinned_at"] == 2000         # pinned — как было (да/нет), время — новое
-    assert json.loads((p.cfg.data / "projects.json").read_text())["projects"][blog]["pinned"] == 1000
+    assert json.loads((p.cfg.data / "projects.json").read_text())["pins"]["owner"]["projects"][blog] == 1000
     assert call(base, "/api/pin", {"project": pid, "on": False}, tok)[1] == {"pinned": 0}
     ps = call(base, "/api/projects", tok=tok)[1]["projects"]
     assert ps[0]["id"] == blog and not next(x for x in ps if x["id"] == pid)["pinned"]
     assert call(base, "/api/pin", {"project": "pnone"}, tok)[0] == 404
     assert call(base, "/api/pin", {"project": blog, "on": False}, p.auth.issue(3))[0] == 403   # наблюдатель — нет
     assert call(base, "/api/pin", {"project": blog, "on": False}, p.auth.issue(2))[0] == 200   # участник — да
+    assert next(x for x in call(base, "/api/projects", tok=tok)[1]["projects"] if x["id"] == blog)["pinned"]  # у себя
 
 
 def test_pin_window_survives_restart_and_reaches_done_chat(server):
@@ -53,7 +55,7 @@ def test_pin_window_survives_restart_and_reaches_done_chat(server):
     ss = {x["id"]: x for x in call(base, "/api/sessions", tok=tok)[1]["sessions"]}
     assert ss["@1"]["pinned"] == d["pinned"] and ss["@2"]["pinned"] == 0
     data = json.loads((p.cfg.data / "projects.json").read_text())
-    assert data["pins"] == {"sid:" + OPEN: d["pinned"]}
+    assert data["pins"] == {"owner": {"chats": {"sid:" + OPEN: d["pinned"]}}}
     # перезапуск окна с продолжением: новое окно, тот же id сессии — закрепление на месте
     wins.wins[0] = {**wins.wins[0], "id": "@7"}
     assert {x["id"]: x for x in call(base, "/api/sessions", tok=tok)[1]["sessions"]}["@7"]["pinned"] == d["pinned"]
@@ -63,7 +65,7 @@ def test_pin_window_survives_restart_and_reaches_done_chat(server):
     assert {x["id"]: x for x in p2.sessions()}["@7"]["pinned"] == d["pinned"]
     assert call(base, "/api/pin", {"w": "@2"}, tok)[0] == 200
     key = "path:" + projects.tilde(os.path.realpath(shop), p.pult.home)
-    assert key in json.loads((p.cfg.data / "projects.json").read_text())["pins"]
+    assert key in json.loads((p.cfg.data / "projects.json").read_text())["pins"]["owner"]["chats"]
     # окна закрыли — закреплённый чат сверху «Завершённых», несмотря на возраст
     del wins.wins[:]
     p._proj = (0.0, {})
@@ -91,3 +93,61 @@ def test_pin_done_chat_on_top_of_first_page_only(server):
     assert call(base, "/api/pin", {"id": pid, "sid": OLD, "on": False}, tok)[1] == {"pinned": 0}
     p.CHATS_PAGE = 20
     assert call(base, f"/api/project/sessions?id={pid}", tok=tok)[1]["chats"][-1]["sid"] == OLD
+
+
+def test_pins_are_per_person(server):
+    """Закрепил владелец — участник не видит, и наоборот (проект, окно, завершённый чат)."""
+    p, base, _wins, pid, _shop = server
+    own, mem = p.auth.issue(1), p.auth.issue(2)
+
+    def projs(tok):
+        return {x["id"]: x for x in call(base, "/api/projects", tok=tok)[1]["projects"]}
+
+    def wins_of(tok):
+        return {x["id"]: x["pinned"] for x in call(base, "/api/sessions", tok=tok)[1]["sessions"]}
+
+    def chats(tok):
+        return {c["sid"]: c["pinned"] for c in call(base, f"/api/project/sessions?id={pid}", tok=tok)[1]["chats"]}
+
+    assert call(base, "/api/pin", {"project": pid}, own)[0] == 200
+    assert call(base, "/api/pin", {"w": "@1"}, own)[0] == 200
+    assert call(base, "/api/pin", {"id": pid, "sid": OLD}, own)[0] == 200
+    assert projs(own)[pid]["pinned"] and projs(own)[pid]["pinned_at"] > 0
+    assert call(base, f"/api/project?id={pid}", tok=own)[1]["pinned"] is True
+    assert wins_of(own).get("@1") and chats(own)[OLD]
+    # участник — ничего из этого не закреплено
+    assert projs(mem)[pid]["pinned"] is False and projs(mem)[pid]["pinned_at"] == 0
+    assert call(base, f"/api/project?id={pid}", tok=mem)[1]["pinned"] is False
+    assert not any(wins_of(mem).values())
+    assert not any(chats(mem).values())
+    # наоборот: участник закрепил NEW и снял проект у себя — у владельца без изменений
+    assert call(base, "/api/pin", {"id": pid, "sid": NEW}, mem)[0] == 200
+    assert call(base, "/api/pin", {"project": pid, "on": False}, mem)[0] == 200
+    assert chats(mem)[NEW] and not chats(own)[NEW] and chats(own)[OLD] and not chats(mem)[OLD]
+    assert projs(own)[pid]["pinned"]
+    data = json.loads((p.cfg.data / "projects.json").read_text())["pins"]
+    assert set(data) == {"owner", "2"} and list(data["2"]["chats"]) == ["sid:" + NEW]
+
+
+def test_shared_pins_migrate_to_owner(server):
+    """Общие закрепления прежнего вида (``pinned`` у проекта, плоские ``pins``) — владельцу, участнику — нет."""
+    p, base, _wins, pid, _shop = server
+    p.project_data(fresh=True)
+    f = p.cfg.data / "projects.json"
+    d = json.loads(f.read_text())
+    d["projects"][pid]["pinned"] = 1500
+    d["pins"] = {"sid:" + OLD: 1600}
+    f.write_text(json.dumps(d))
+    p._proj = (0.0, {})
+    own, mem = p.auth.issue(1), p.auth.issue(2)
+    pr = next(x for x in call(base, "/api/projects", tok=own)[1]["projects"] if x["id"] == pid)
+    assert pr["pinned"] is True and pr["pinned_at"] == 1500
+    ch = {c["sid"]: c["pinned"] for c in call(base, f"/api/project/sessions?id={pid}", tok=own)[1]["chats"]}
+    assert ch[OLD] == 1600
+    assert not next(x for x in call(base, "/api/projects", tok=mem)[1]["projects"] if x["id"] == pid)["pinned"]
+    # первая запись сохраняет новый вид; повторное чтение ничего не дублирует
+    assert call(base, "/api/pin", {"id": pid, "sid": NEW}, own)[0] == 200
+    d = json.loads(f.read_text())
+    assert d["projects"][pid]["pinned"] is False
+    assert d["pins"]["owner"]["projects"] == {pid: 1500}
+    assert set(d["pins"]["owner"]["chats"]) == {"sid:" + OLD, "sid:" + NEW} and set(d["pins"]) == {"owner"}

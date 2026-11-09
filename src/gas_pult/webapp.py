@@ -240,8 +240,9 @@ class Panel:
         cache[path] = (now, b)
         return b
 
-    def sessions(self, pool: str | None = "owner") -> list[dict]:
-        """``pool`` — чей расход показывать на карточках (``cost``): «owner» или ID участника; None — ничей."""
+    def sessions(self, pool: str | None = "owner", who: str | None = "owner") -> list[dict]:
+        """``pool`` — чей расход показывать на карточках (``cost``): «owner» или ID участника; None — ничей.
+        ``who`` — чьи закрепления (``pinned``): «owner» или Telegram ID человека (``H.pinner``)."""
         self.balance_watch()
         st = self.pult.state()
         act, out, paused = st.get("active"), [], st.get("cost_paused") or {}
@@ -257,7 +258,7 @@ class Panel:
                             "rev": "", "preview": "", "cost_paused": False, "cost": None,
                             "project": self.project_of(pd, w),
                             "sid": w.get("sid") or "",
-                            "pinned": self.pinned_of(pd, w, w.get("sid") or ""),   # закреплена: время (добавлено)
+                            "pinned": self.pinned_of(pd, w, w.get("sid") or "", who),   # закреплена: время (добавлено)
                             "repos": repos.public(repos.of(st, w["path"])),
                             **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or ""))})
                 continue
@@ -293,7 +294,7 @@ class Panel:
                         "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
                         "project": self.project_of(pd, w),                # проект окна (projects.py); "" — нет
                         "repos": repos.public(repos.of(st, w["path"])),     # подключённые репозитории (задача 43)
-                        "pinned": self.pinned_of(pd, w, sid),             # закреплена: время закрепления, 0 — нет
+                        "pinned": self.pinned_of(pd, w, sid, who),             # закреплена: время закрепления, 0 — нет
                         **when})                                          # когда менялась (ago.py)
         return out
 
@@ -328,14 +329,16 @@ class Panel:
             out += sorted(x / "claude" for x in base.iterdir() if (x / "claude" / "projects").is_dir())
         return out
 
-    def project_public(self, p: dict) -> dict:
-        """Поля проекта для API (без личных путей: путь — с ``~``)."""
+    def project_public(self, p: dict, who: str | None = "owner") -> dict:
+        """Поля проекта для API (без личных путей: путь — с ``~``). ``pinned`` — закреплён ли у ``who``."""
+        at = int(projects.pins_of(self.project_data(), who)[0].get(p["id"]) or 0)
         keys = ("id", "name", "path", "paths", "origin", "created", "profile", "model", "effort", "integrations",
                 "repos", "pinned", "archived", "share")
         return {**{k: p.get(k) for k in keys}, "folder": os.path.basename(p["path"].rstrip("/")) or "~",
-                "pinned": bool(p.get("pinned")), "pinned_at": int(p.get("pinned") or 0)}   # когда закреплён (добавлено)
+                "pinned": bool(at), "pinned_at": at}           # закреплён этим человеком и когда (добавлено)
 
-    def projects_list(self, ss: list[dict], q: str = "", archived: bool = False) -> list[dict]:
+    def projects_list(self, ss: list[dict], q: str = "", archived: bool = False,
+                      who: str | None = "owner") -> list[dict]:
         """Список проектов для главной: счётчики окон (ждут ответа / работают / всего), чатов в журналах, последняя
         активность и название последнего чата. ``ss`` — готовые сессии: статусы не считаем заново."""
         d = self.project_data()
@@ -357,7 +360,7 @@ class Panel:
             st = projects.stats([f for f in projects.session_files(folders, homes)     # скрытые и удалённые — не в счёт
                                  if not (meta.get(f.stem) or {}).get("hidden")])
             last = max([st["last"] or 0, *[int(x.get("changed") or 0) for x in mine]]) or None
-            item = {**self.project_public(p),
+            item = {**self.project_public(p, who),
                     "windows": len(mine),
                     "waiting": sum(x["status"] == "dialog" for x in mine),
                     "busy": sum(x["status"] == "busy" for x in mine),
@@ -392,7 +395,7 @@ class Panel:
         out = self.open_in(path, profile, person, uid, model=p.get("model") or "")
         return {**out, "project": p["id"]}
 
-    # ---------- «Закрепить» проект, сессию и чат (projects.json: pinned у проекта, pins у сессий) ----------
+    # ---------- «Закрепить» проект, сессию и чат — свои у каждого человека (projects.json → pins[кто]) ----------
     def pin_key(self, w: dict, sid: str = "") -> str:
         """Ключ закрепления окна: id сессии Claude Code (переживает перезапуск с продолжением и «Продолжить»);
         старое окно без метки — его папка."""
@@ -400,23 +403,23 @@ class Panel:
             return "sid:" + sid
         return "path:" + projects.tilde(os.path.realpath(w.get("path") or ""), self.pult.home)
 
-    def pinned_of(self, d: dict, w: dict, sid: str = "") -> int:
-        return int((d.get("pins") or {}).get(self.pin_key(w, sid)) or 0)
+    def pinned_of(self, d: dict, w: dict, sid: str = "", who: str | None = "owner") -> int:
+        return int(projects.pins_of(d, who)[1].get(self.pin_key(w, sid)) or 0)
 
-    def pin(self, on: bool, project: str = "", wid: str = "", pid: str = "", sid: str = "") -> dict:
+    def pin(self, who: str, on: bool, project: str = "", wid: str = "", pid: str = "", sid: str = "") -> dict:
         """«Закрепить» / «Открепить»: проект (``project``), окно сессии (``wid``) или завершённый чат (``pid`` +
-        ``sid``). Хранится на сервере — одинаково на телефоне и в браузере."""
+        ``sid``). Свои у каждого человека (``who``); хранится на сервере — одинаково на телефоне и в браузере."""
         if project:
             self.project(project)
-            ts = self.projects.set_pin(on, pid=project)
+            ts = self.projects.set_pin(who, on, pid=project)
         elif wid:
             w = self.tmux.window(wid)
             if not w or w.get("space") or not (w.get("cmd") == "claude" or w.get("stopped")):
                 raise LookupError("окна уже нет")
-            ts = self.projects.set_pin(on, key=self.pin_key(w))
+            ts = self.projects.set_pin(who, on, key=self.pin_key(w))
         else:
             f = self.chat_file(self.project(pid), sid)
-            ts = self.projects.set_pin(on, key="sid:" + f.stem)
+            ts = self.projects.set_pin(who, on, key="sid:" + f.stem)
         self._proj = (0.0, {})
         return {"pinned": ts}
 
@@ -465,8 +468,10 @@ class Panel:
 
     def project_chats(self, pid: str, q: str = "", before: float | None = None, person: int | None = None) -> dict:
         """Завершённые чаты проекта (журналы без окна): название, когда, сколько сообщений; новые сверху, страницами.
-        ``q`` — по названию, затем по тексту журналов (с лимитом файлов и времени)."""
+        ``q`` — по названию, затем по тексту журналов (с лимитом файлов и времени). Закрепления — свои у ``person``
+        (None — владельца)."""
         p = self.project(pid)
+        who = "owner" if person is None else str(person)
         meta = self.project_data().get("sessions") or {}
         by_sid, legacy = self.open_sids(p)
         mine = self.my_claude(person)
@@ -476,7 +481,7 @@ class Panel:
                 files.append((f.stat().st_mtime, f))
         files.sort(key=lambda x: -x[0])
         q = " ".join(str(q or "").lower().split())
-        pins = self.project_data().get("pins") or {}
+        pins = projects.pins_of(self.project_data(), who)[1]
         files = [(mt, f) for mt, f in files
                  if not (f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"))]
         top = []                                          # закреплённые — сверху первой страницы, не по времени
@@ -635,7 +640,7 @@ class Panel:
     INSTR_MAX = 20000                                   # знаков CLAUDE.md в ответе: больше — обрезаем с пометкой
     FILES_MAX = 200
 
-    def project_info(self, pid: str) -> dict:
+    def project_info(self, pid: str, who: str | None = "owner") -> dict:
         """Проект: настройки, инструкции (``CLAUDE.md`` главной папки), файлы проекта, окна."""
         d = self.project_data()
         p = d["projects"].get(str(pid or ""))
@@ -660,7 +665,7 @@ class Panel:
         wins = [w["id"] for w in self.tmux.windows() if not w.get("space") and (w.get("cmd") == "claude" or
                                                                                w.get("mark"))
                 and self.projects.of_path(d, w.get("path", "")) == p["id"]]
-        return {**self.project_public(p), "instructions": text, "instructions_cut": cut,
+        return {**self.project_public(p, who), "instructions": text, "instructions_cut": cut,
                 "has_instructions": bool(text), "files": files, "files_dir": p.get("files") or "files",
                 "chats": st["total"], "last": st["last"], "windows": wins}
 
@@ -2438,6 +2443,12 @@ def handler(panel: Panel):
             _, role, uid = self.who()
             return None if role == "owner" or uid is None else uid
 
+        def pinner(self) -> str:
+            """Чьи закрепления: владелец (и фокус-ссылка — права выпустившего её владельца) — «owner», остальные —
+            свой Telegram ID."""
+            uid = self.person()
+            return "owner" if uid is None else str(uid)
+
         def pool(self) -> str | None:
             """Чей расход видит вошедший: владелец — «owner», участник — свой ID, наблюдатель — ничей,
             тестировщик — его пространство."""
@@ -2620,10 +2631,11 @@ def handler(panel: Panel):
                 pool = self.pool()
                 if self.space():                          # тестировщик: без имени сервера и событий владельца
                     sp = panel.space_info(self.terms_uid()) or {}
-                    return {"sessions": panel.sessions(pool), "host": sp.get("title", ""), "build": build,
+                    return {"sessions": panel.sessions(pool, self.pinner()), "host": sp.get("title", ""),
+                            "build": build,
                             "now": time.time(), "cost": panel.cost_summary(pool), "fallback": [], "space": sp}
                 with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
-                    ss = panel.sessions(pool)                 # владелец: и окна пространств (группа «Пространства»)
+                    ss = panel.sessions(pool, self.pinner())  # владелец: и окна пространств (группа «Пространства»)
                 return {"sessions": ss, "host": panel.cfg.host, "build": build,
                         "now": time.time(),                                   # часы сервера: «N назад» без сдвига
                         "cost": panel.cost_summary(pool),
@@ -2632,15 +2644,15 @@ def handler(panel: Panel):
             if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
                 pool = self.pool()
                 with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
-                    ss = panel.sessions(pool)
+                    ss = panel.sessions(pool, self.pinner())
                 # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
-                return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1"),
+                return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
                         "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/project":
-                return panel.project_info(q.get("id", ""))
+                return panel.project_info(q.get("id", ""), self.pinner())
             if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
                 before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
@@ -3399,8 +3411,8 @@ def handler(panel: Panel):
                 return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
                                             self.terms_uid())
             if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
-                return panel.pin(b.get("on", True) is not False, str(b.get("project") or ""), str(b.get("w") or ""),
-                                 str(b.get("id") or ""), str(b.get("sid") or ""))
+                return panel.pin(self.pinner(), b.get("on", True) is not False, str(b.get("project") or ""),
+                                 str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))

@@ -153,7 +153,8 @@ def run(shots: str = ""):
             pc.reload()
             pc.wait_for_function(f"sessions.some((s) => s.id === '{new}' && s.pinned)", timeout=15000)
             data = json.loads((root / "data" / "projects.json").read_text())
-            assert any(p.get("pinned") for p in data["projects"].values()) and data.get("pins"), data
+            mine = data.get("pins", {}).get("owner", {})          # закрепления — свои у каждого: здесь владельца
+            assert mine.get("projects") and mine.get("chats"), data
             log("(г) после перезапуска панели закрепления на месте")
 
             # (д) «Открепить» на телефоне

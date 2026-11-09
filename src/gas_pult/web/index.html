@@ -2168,7 +2168,7 @@ function pinGroups(list, draw) {
   return `<div class="pin-h">${ic("pin")}<span>Закреплённые</span></div>` + top.map(draw).join("")
     + (rest.length ? `<div class="pin-h"><span>Остальные</span></div>` + rest.map(draw).join("") : "");
 }
-const pinItem = (x, body, name) => ({ label: x.pinned ? "Открепить" : "Закрепить", icon: "pin", sub: x.pinned ? "убрать из закреплённых" : "наверху списка — на телефоне и в браузере", run: () => pinSet(body, !x.pinned, name) });
+const pinItem = (x, body, name) => ({ label: x.pinned ? "Открепить" : "Закрепить", icon: "pin", sub: x.pinned ? "убрать из закреплённых" : "наверху вашего списка — на телефоне и в браузере", run: () => pinSet(body, !x.pinned, name) });
 async function pinSet(body, on, name) {
   try {
     await api("/api/pin", { ...body, on }); toast((on ? "Закреплено: " : "Откреплено: ") + (name || ""), 2500);

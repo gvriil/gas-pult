@@ -326,7 +326,8 @@ def server(panel, monkeypatch):
     wins = Wins()
     monkeypatch.setattr(p, "tmux", wins)
     monkeypatch.setattr(p, "window", lambda wid: wins.window(wid))
-    monkeypatch.setattr(p, "sessions", lambda pool=None: [{"id": w["id"], "name": w["name"]} for w in wins.windows()])
+    monkeypatch.setattr(p, "sessions",
+                        lambda pool=None, who=None: [{"id": w["id"], "name": w["name"]} for w in wins.windows()])
     monkeypatch.setattr(repos, "owner_list", lambda: [{"full": "acme/shop", "private": False, "about": ""}])
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(p))
     threading.Thread(target=srv.serve_forever, daemon=True).start()

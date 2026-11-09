@@ -61,6 +61,31 @@ def empty() -> dict:
     return {"v": VERSION, "projects": {}, "sessions": {}}
 
 
+def pins_of(d: dict, who: str | None) -> tuple[dict, dict]:
+    """Закрепления человека: (проекты ``{pid: время}``, сессии и чаты ``{ключ: время}``). ``who`` None — пусто."""
+    mine = ((d.get("pins") or {}).get(str(who)) or {}) if who else {}
+    return mine.get("projects") or {}, mine.get("chats") or {}
+
+
+def _migrate_pins(d: dict):
+    """Прежние общие закрепления (``pinned`` у проекта, плоские ``pins`` ``{ключ: время}``) — в закрепления владельца.
+    Идемпотентно; на диск попадает со следующей записью."""
+    pins = d.get("pins") if isinstance(d.get("pins"), dict) else {}
+    flat = {k: v for k, v in pins.items() if not isinstance(v, dict)}
+    olds = {pid: p["pinned"] for pid, p in d["projects"].items() if isinstance(p, dict) and p.get("pinned")}
+    if not flat and not olds:
+        return
+    pins = {k: v for k, v in pins.items() if isinstance(v, dict)}
+    owner = pins.setdefault("owner", {})
+    for k, v in flat.items():
+        if isinstance(v, int) and v > 0:
+            owner.setdefault("chats", {}).setdefault(k, v)
+    for pid, v in olds.items():
+        owner.setdefault("projects", {}).setdefault(pid, v if isinstance(v, int) and v > 1 else 1)
+        d["projects"][pid]["pinned"] = False
+    d["pins"] = pins
+
+
 class Store:
     """``projects.json`` под замком. ``home`` — домашняя папка сервера (для ``~``), путь проекта хранится с ``~``."""
 
@@ -75,6 +100,7 @@ class Store:
         if not isinstance(d, dict) or not isinstance(d.get("projects"), dict):
             return empty()
         d.setdefault("sessions", {})
+        _migrate_pins(d)
         return d
 
     def write(self, d: dict):
@@ -192,24 +218,22 @@ class Store:
             self.write(d)
             return rec
 
-    def set_pin(self, on: bool, pid: str = "", key: str = "") -> int:
-        """«Закрепить» / «Открепить»: проект — поле ``pinned`` (время закрепления или ``False``), сессия или чат —
-        ``pins[key]`` (``sid:<id сессии>`` или ``path:<папка с ~>`` у старого окна без метки). Время закрепления —
-        порядок в группе «Закреплённые». Возвращает время закрепления или 0."""
+    def set_pin(self, who: str, on: bool, pid: str = "", key: str = "") -> int:
+        """«Закрепить» / «Открепить» — свои у каждого человека (``who``: «owner» или Telegram ID участника):
+        ``pins[who]["projects"][pid]`` или ``pins[who]["chats"][key]`` (``sid:<id сессии>`` или ``path:<папка с ~>``
+        у старого окна без метки). Значение — время закрепления: порядок в группе «Закреплённые». Возвращает его
+        или 0."""
         ts = int(time.time()) if on else 0
         with _lock:
             d = self.read()
-            if pid:
-                p = d["projects"].get(pid)
-                if not p:
-                    raise LookupError("проекта нет — обновите список")
-                p["pinned"] = ts or False
+            if pid and pid not in d["projects"]:
+                raise LookupError("проекта нет — обновите список")
+            mine = d.setdefault("pins", {}).setdefault(str(who), {})
+            box = mine.setdefault("projects" if pid else "chats", {})
+            if ts:
+                box[pid or key] = ts
             else:
-                pins = d.setdefault("pins", {})
-                if ts:
-                    pins[key] = ts
-                else:
-                    pins.pop(key, None)
+                box.pop(pid or key, None)
             self.write(d)
             return ts
 
