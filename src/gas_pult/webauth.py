@@ -9,6 +9,10 @@
 
 Сессия — cookie на 30 дней (HttpOnly, Secure, SameSite=Strict) с Telegram ID человека; роль проверяется на каждый
 запрос (``people.py``). На сервере хранятся только SHA-256 от кодов, номеров ожидания и сессий.
+
+**Подтверждение кодом** (аудит 09.11): сессии моложе ``CONFIRM_FRESH`` выполнять команды на сервере и писать в
+терминал (``webapp.CONFIRM``) не могут, пока человек не введёт код (``confirm_start`` / ``confirm_verify``); после
+этого сессия помечена «подтверждена» до конца её срока. Код живёт ``CONFIRM_TTL``, 5 попыток, привязан к сессии.
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ SESSION_TTL = 30 * 86400
 COOKIE = "gp_session"
 LOGIN_TTL = 300
 LEGACY = -1                              # сессия по коду владельцу (до входа через Telegram): права владельца
+CONFIRM_FRESH = 24 * 3600                # сессия моложе суток — команды на сервере только после кода
+CONFIRM_TTL = 600
 
 
 def _h(s: str) -> str:
@@ -41,6 +47,7 @@ class Auth:
         self.store, self.lock = store, threading.Lock()
         self.codes: dict[str, dict] = {}         # id запроса → {hash, exp, tries}
         self.starts: list[float] = []
+        self.cstarts: list[float] = []          # коды подтверждения — свой счётчик: не мешают входу кодом
 
     def _load(self) -> dict:
         try:
@@ -64,20 +71,58 @@ class Auth:
             self.codes[rid] = {"hash": _h(code), "exp": now + CODE_TTL, "tries": 0}
         return rid, code
 
+    def _take(self, rid: str, code: str, sess: str | None = None):
+        """Проверить код запроса ``rid`` (под замком): верный — запрос гасится, иначе ValueError с остатком попыток.
+        ``sess`` — код подтверждения годится только той сессии, для которой его запросили."""
+        c = self.codes.get(rid)
+        if not c or c["exp"] < time.time() or c.get("sess") != sess:
+            raise ValueError("код устарел — запросите новый")
+        c["tries"] += 1
+        if c["tries"] > CODE_TRIES:
+            self.codes.pop(rid, None)
+            raise ValueError("слишком много попыток — запросите новый код")
+        if not hmac.compare_digest(c["hash"], _h(str(code).strip())):
+            raise ValueError(f"неверный код, осталось попыток: {CODE_TRIES - c['tries']}")
+        self.codes.pop(rid, None)
+
     def verify(self, rid: str, code: str, ua: str = "") -> str:
         """Верный код → новая сессия (её значение — в cookie браузера)."""
         with self.lock:
-            c = self.codes.get(rid)
-            if not c or c["exp"] < time.time():
-                raise ValueError("код устарел — запросите новый")
-            c["tries"] += 1
-            if c["tries"] > CODE_TRIES:
-                self.codes.pop(rid, None)
-                raise ValueError("слишком много попыток — запросите новый код")
-            if not hmac.compare_digest(c["hash"], _h(code.strip())):
-                raise ValueError(f"неверный код, осталось попыток: {CODE_TRIES - c['tries']}")
-            self.codes.pop(rid, None)
+            self._take(rid, code)
         return self.issue(LEGACY, ua)
+
+    def needs_confirm(self, token: str, fresh: int = CONFIRM_FRESH) -> bool:
+        """Сессии нужен код перед командами на сервере: она моложе ``fresh`` и ещё не подтверждена. Сессии без
+        отметки времени (выданы до неё) считаются старыми."""
+        s = self._load().get(_h(token)) if token else None
+        if not s or s.get("confirmed") or not s.get("created"):
+            return False
+        return time.time() - s["created"] < fresh
+
+    def confirm_start(self, token: str) -> tuple[str, str]:
+        """Код подтверждения для сессии ``token``: (id запроса — браузеру, код — человеку). Лимит — как у входа."""
+        if self.uid(token) is None:
+            raise ValueError("нужен вход")
+        now = time.time()
+        with self.lock:
+            self.cstarts = [t for t in self.cstarts if now - t < START_LIMIT[1]]
+            if len(self.cstarts) >= START_LIMIT[0]:
+                raise ValueError("слишком много запросов кода — подождите 10 минут")
+            self.cstarts.append(now)
+            self.codes = {k: v for k, v in self.codes.items() if v["exp"] > now}
+            rid, code = secrets.token_urlsafe(16), f"{secrets.randbelow(10**6):06d}"
+            self.codes[rid] = {"hash": _h(code), "exp": now + CONFIRM_TTL, "tries": 0, "sess": _h(token)}
+        return rid, code
+
+    def confirm_verify(self, token: str, rid: str, code: str):
+        """Верный код → сессия подтверждена до конца своего срока."""
+        with self.lock:
+            self._take(str(rid), code, _h(token))
+            d = self._load()
+            if (s := d.get(_h(token))) is None or s["exp"] < time.time():
+                raise ValueError("сессия истекла — войдите снова")
+            s["confirmed"] = time.time()
+            self._save(d)
 
     def issue(self, uid: int, ua: str = "") -> str:
         """Новая сессия человека ``uid`` (её значение — в cookie браузера)."""

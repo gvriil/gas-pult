@@ -153,6 +153,14 @@ def server(monkeypatch):
     srv.shutdown()
 
 
+def confirmed(p, uid):
+    """Сессия, уже подтверждённая кодом (test_confirm_code.py): эти тесты — про терминал, не про подтверждение."""
+    t = p.auth.issue(uid)
+    rid, code = p.auth.confirm_start(t)
+    p.auth.confirm_verify(t, rid, code)
+    return t
+
+
 def call(base, path, body=None, tok="", headers=None):
     h = {"Content-Type": "application/json", "Cookie": f"{webauth.COOKIE}={tok}" if tok else "", **(headers or {})}
     req = urllib.request.Request(base + path, json.dumps(body).encode() if body is not None else None, h)
@@ -165,7 +173,7 @@ def call(base, path, body=None, tok="", headers=None):
 
 def test_owner_reads_types_and_keys_everywhere(server):
     p, base, wins = server
-    tok = p.auth.issue(1)
+    tok = confirmed(p, 1)
     assert call(base, "/api/meta", tok=tok)[1]["tty"] is True
     code, d = call(base, "/api/tty?w=%401", tok=tok)
     assert code == 200 and d["kind"] == "session" and d["total"] == 120 and d["lines"][-1] == "строка 119"
@@ -182,7 +190,7 @@ def test_owner_reads_types_and_keys_everywhere(server):
 
 def test_member_only_running_sessions(server):
     p, base, _ = server
-    tok = p.auth.issue(2)
+    tok = confirmed(p, 2)
     assert call(base, "/api/meta", tok=tok)[1]["tty"] is True                  # вид разработчика по умолчанию
     assert call(base, "/api/tty?w=%401", tok=tok)[0] == 200
     assert call(base, "/api/tty/type", {"w": "@1", "text": "привет"}, tok)[0] == 200
