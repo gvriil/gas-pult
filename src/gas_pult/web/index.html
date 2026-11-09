@@ -865,6 +865,18 @@
   .nav-bg { position: fixed; inset: 0; z-index: 29; background: rgba(17,17,16,.42); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
   body.nav-open .nav-bg, body.nav-drag .nav-bg { pointer-events: auto; } body.nav-open .nav-bg { opacity: 1; }
   body.nav-drag .nav, body.nav-drag .nav-bg { transition: none; }
+  /* Переходы экранов (план UX, пункт 7), телефон: сессия въезжает справа за 200 мс; свайп от левого края в сессии —
+     назад, экран идёт за пальцем, под ним — главная. Только transform; при «уменьшить движение» — без анимации. */
+  @keyframes slidein { from { transform: translateX(100%); } to { transform: none; } }
+  #session.slide-in, .dock.slide-in { animation: slidein .2s cubic-bezier(.2, .8, .2, 1); }
+  body.back-drag #home[hidden] { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; top: var(--under-top, 0px);
+    overflow: hidden; padding: 4px 12px 0; z-index: 0; pointer-events: none; }
+  body.back-drag #session { position: relative; z-index: 1; } body.back-drag:not(.back-anim) .dock { transition: none; }
+  body.back-drag #session, body.back-drag .dock { background: var(--bg-canvas); will-change: transform;
+    box-shadow: -10px 0 24px rgba(0,0,0,.12); }
+  body.back-drag #session { min-height: calc(var(--app-h, 100vh) - var(--under-top, 0px)); }
+  body.back-anim #session, body.back-anim .dock { transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
+  @media (prefers-reduced-motion: reduce) { body.back-anim #session, body.back-anim .dock { transition: none; } }
   body:not(.has-nav) .nav, body:not(.has-nav) .nav-bg, body.split .nav-bg { display: none; }
   body.split .nav { width: var(--side); transform: none; z-index: 4; box-shadow: none; padding-top: 8px; }
   body.split.side-mini .nav { display: none; }
@@ -1828,7 +1840,8 @@ function navEnd() {
 addEventListener("touchstart", (e) => {
   if (navDrag || !document.body.classList.contains("has-nav") || split() || e.touches.length !== 1 || document.querySelector(".sheet-bg, .pop")) return;
   const t = e.touches[0];
-  if (NAV.open ? !e.target.closest?.("#nav, #navBg") : t.clientX > 24) return;
+  // в сессии край экрана — «назад» (backDrag); панель там — по ☰
+  if (NAV.open ? !e.target.closest?.("#nav, #navBg") : t.clientX > 24 || view === "session") return;
   navDrag = { x: t.clientX, y: t.clientY, w: $("nav").offsetWidth || 300, live: false, open: NAV.open, dx: 0, px: 0, pt: e.timeStamp, v: 0, raf: 0 };
   addEventListener("touchmove", navMove, { passive: false }); addEventListener("touchend", navEnd); addEventListener("touchcancel", navEnd);
 }, { passive: true });
@@ -2043,6 +2056,7 @@ function confirmDanger(text, go) {
 
 // ---------- навигация ----------
 function show(v) {
+  const was = view;
   view = v; if (v !== "mcpForm") formBack = null;
   for (const id of ["login", "terms", "country", "persona", "home", "session", "mcpForm"]) $(id).hidden = id !== v;
   const gate = ["login", "terms", "country", "persona"].includes(v);   // вход, условия, страна, роль — без списка и меню
@@ -2064,7 +2078,52 @@ function show(v) {
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
   setBars(true); scrollToY(0);
+  // телефон: сессия въезжает справа — когда её открыл человек (не при запуске панели сразу в последнюю сессию)
+  if (v === "session" && was && was !== "session" && !two && !backDrag && navigator.userActivation?.hasBeenActive !== false) slideIn();
 }
+function slideIn() {
+  for (const el of [$("session"), $("dock")]) {
+    el.classList.remove("slide-in"); void el.offsetWidth; el.classList.add("slide-in");
+    el.addEventListener("animationend", () => el.classList.remove("slide-in"), { once: true });
+  }
+}
+// Свайп от левого края в сессии (телефон) — «назад»: экран идёт за пальцем, под ним главная; отпустили дальше трети
+// или быстро — уезжает вправо и открывается главная, иначе возвращается. Панель чатов в сессии — по ☰ (navDrag
+// от края работает на главной). Кадр — requestAnimationFrame, только transform.
+let backDrag = null;
+const backEls = () => [$("session"), $("dock")];
+function backMove(e) {
+  const d = backDrag; if (!d) return;
+  const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+  if (!d.live) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    if (Math.abs(dy) > Math.abs(dx) || dx < 0) return backEnd();
+    d.live = true; swipe = null;
+    document.documentElement.style.setProperty("--under-top", Math.max(0, $("top").getBoundingClientRect().bottom) + "px");
+    document.body.classList.add("back-drag");
+  }
+  e.preventDefault(); d.dx = Math.max(0, dx); d.v = (dx - d.px) / Math.max(1, e.timeStamp - d.pt); d.px = dx; d.pt = e.timeStamp;
+  if (!d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; backEls().forEach((el) => (el.style.transform = `translateX(${d.dx}px)`)); });
+}
+function backEnd() {
+  const d = backDrag; backDrag = null;
+  removeEventListener("touchmove", backMove); removeEventListener("touchend", backEnd); removeEventListener("touchcancel", backEnd);
+  if (!d?.live) return;
+  cancelAnimationFrame(d.raf);
+  const go = d.dx > d.w / 3 || d.v > 0.4, b = document.body.classList;
+  b.add("back-anim"); backEls().forEach((el) => (el.style.transform = go ? `translateX(${d.w}px)` : ""));
+  const done = () => {
+    b.remove("back-anim", "back-drag"); backEls().forEach((el) => (el.style.transform = ""));
+    if (go && view === "session") { haptic("selectionChanged"); back(); }
+  };
+  matchMedia("(prefers-reduced-motion: reduce)").matches ? done() : setTimeout(done, 210);
+}
+addEventListener("touchstart", (e) => {
+  if (backDrag || navDrag || view !== "session" || split() || FOCUS || e.touches.length !== 1 || NAV.open || document.querySelector(".sheet-bg, .pop")) return;
+  const t = e.touches[0]; if (t.clientX > 24) return;
+  backDrag = { x: t.clientX, y: t.clientY, w: innerWidth, live: false, dx: 0, px: 0, pt: e.timeStamp, v: 0, raf: 0 };
+  addEventListener("touchmove", backMove, { passive: false }); addEventListener("touchend", backEnd); addEventListener("touchcancel", backEnd);
+}, { passive: true });
 // «‹ Назад» слева в шапке — на любом вложенном экране: сессия (телефон), форма подключения, вкладки главной
 // «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
 function syncBack() {
@@ -2218,7 +2277,8 @@ const NOTICES = ["#updateBar", "#net", ".toast", ".tour-offer"];
 const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
 // position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
 // .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
-const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end"];
+// body.back-drag #home — главная под сессией только на время свайпа «назад» (план UX, пункт 7).
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]"];
 function notice(el) { $("notices").append(el); placeNotices(); return el; }
 function placeNotices() {
   const root = document.documentElement.style, H = document.body.clientHeight;
@@ -4773,7 +4833,7 @@ function renameSession(s) {
 $("switchBtn").onclick = openSwitcher;
 $("title").onclick = () => { if (view === "session" && !split()) openSwitcher(); };
 $("screenBtn").onclick = () => setTab(tab === "chat" ? "screen" : "chat");
-// Жесты (телефон, в сессии): по шапке влево-вправо — соседняя сессия. От левого края — панель чатов (navDrag).
+// Жесты (телефон, в сессии): по шапке влево-вправо — соседняя сессия. От левого края — назад (backDrag); панель чатов — ☰.
 let swipe = null;
 addEventListener("touchstart", (e) => {
   swipe = null;
