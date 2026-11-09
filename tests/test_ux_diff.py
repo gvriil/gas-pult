@@ -22,7 +22,7 @@ def test_lists_use_morph():
     assert 'class="msg ai" data-i="${m.i}"' in html and 'class="msg me" data-i="${m.i}"' in html
     for el in ("title", "target", "rail"):
         assert f'setHTML($("{el}")' in html, el
-    assert ".upd { animation: none !important; }" in html
+    assert ".mupd { animation: none !important; }" in html
 
 
 def test_e2e_diff_demo():
