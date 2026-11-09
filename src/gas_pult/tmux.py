@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -9,8 +10,32 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from gas_pult.models import profile_of
+
+UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def live_sid(pid: int | str, proc: str = "/proc") -> str:
+    """id сессии, которую ведёт работающий процесс Claude Code: он сам пишет ``<папка Claude>/sessions/<pid>.json``
+    с ``sessionId`` (и меняет его после ``/clear`` и ``/resume``). Папка Claude — из окружения процесса
+    (``CLAUDE_CONFIG_DIR``, иначе ``$HOME/.claude``). Это точнее метки окна и «последнего журнала папки»: рядом в той
+    же папке пишут другие окна и плановые запуски — их журнал оказывался «свежее», и окно показывало чужую переписку.
+    Не прочитать (чужой пользователь, процесс завершился, старый Claude Code) — ""."""
+    try:
+        raw = Path(f"{proc}/{int(pid)}/environ").read_bytes().decode(errors="replace")
+        env = dict(x.split("=", 1) for x in raw.split("\0") if "=" in x)
+    except (OSError, ValueError):
+        return ""
+    base = env.get("CLAUDE_CONFIG_DIR") or (env.get("HOME", "") and os.path.join(env["HOME"], ".claude"))
+    if not base:
+        return ""
+    try:
+        sid = str(json.loads((Path(base) / "sessions" / f"{int(pid)}.json").read_text()).get("sessionId") or "")
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return sid if UUID.match(sid) else ""
 
 
 def is_claude(argv: list[str]) -> bool:
@@ -97,9 +122,14 @@ class Tmux:
                        strict=False)) for line in out.splitlines()]
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             # -ww: без него ps режет строку до 80 знаков, и длинный путь к Claude (npm: node …/cli.js) не узнаётся
-            ps = subprocess.run(["ps", "-ww", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "args="],
+            ps = subprocess.run(["ps", "-ww", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "pid=,args="],
                                 capture_output=True, text=True)
-            claude = [p for p in (line.split() for line in ps.stdout.splitlines() if line.strip()) if is_claude(p)]
+            procs = [p for p in (line.split() for line in ps.stdout.splitlines() if line.strip()) if len(p) > 1]
+            claude = [p[1:] for p in procs if is_claude(p[1:])]
+            # журнал окна — по самому процессу Claude (sessions/<pid>.json), а не по метке или «последнему в папке»
+            live = next((sid for p in procs if is_claude(p[1:]) and (sid := live_sid(p[0]))), "")
+            if live:
+                w["tag"], w["sid"], w["live"] = w.get("sid", ""), live, True
             if claude:
                 w["cmd"] = "claude"
             w["profile"] = profile_of(claude[0]) if claude else ""   # у какого поставщика модели (models.py)

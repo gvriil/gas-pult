@@ -945,6 +945,10 @@ class Panel:
         sid = transcripts.valid_sid(w.get("sid"))
         if not sid:
             return ""
+        if w.get("live"):                               # id взят у самого процесса Claude — догадки не нужны
+            if w.get("tag") != sid and not w.get("space"):
+                self.tmux.set_sid(w["id"], sid)         # метка — вслед за процессом: переживёт его завершение
+            return sid
         real = os.path.realpath(w["path"])
         mates = [x for x in wins if x["id"] != w["id"] and x.get("cmd") == "claude" and not x.get("space")
                  and os.path.realpath(x.get("path", "")) == real and self.pult.home_of(x) == home]
