@@ -96,6 +96,7 @@ MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка с�
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 STT_TIMEOUT = 85                                          # с; панель ждёт ответа 90 с
 STT_EMPTY = "Ничего не расслышал — попробуйте ещё раз"   # распознавание вернуло пустой текст
+EL_PAUSE = 600                                            # ElevenLabs отказал — столько секунд к нему не ходим
 STT_STREAM = "/api/stt/stream"                            # голос потоком: WebSocket → служба T-one (задача 46)
 STREAM_IDLE = 30                                          # с; панель молчит дольше (ни звука, ни «конец») — закрыть
 STREAM_MAX_S = 300                                        # одна диктовка — не длиннее 5 минут
@@ -138,12 +139,25 @@ def find_auth(lines: list[str]) -> dict | None:
 
 
 def brief(text: str, limit: int = 700) -> str:
-    """«Кратко» для озвучки: первые абзацы до ~700 знаков — в наших ответах там вывод."""
+    """«Кратко» для озвучки: первые абзацы до ~700 знаков — в наших ответах там вывод.
+
+    Сюда приходит текст после ``transcripts.clean``: пустые строки там уже схлопнуты в один перенос, поэтому делим
+    по любому переносу. Раньше делили по пустой строке — весь ответ был одним «абзацем», и «кратко» звучало целиком.
+    Первый абзац длиннее лимита режем по концу предложения (нет его — по пробелу)."""
     out = ""
-    for para in re.split(r"\n\s*\n", text.strip()):
-        if out and len(out) + len(para) > limit:
+    for para in re.split(r"\n+", text.strip()):
+        if not (para := para.strip()):
+            continue
+        if out and len(out) + len(para) + 1 > limit:
             break
-        out += para + "\n\n"
+        if len(para) > limit:                        # сюда попадаем только с пустым out
+            end = max(para.rfind(c, 0, limit) for c in ".!?…")
+            if end < limit // 3:
+                sp = para.rfind(" ", 0, limit)
+                end = (sp if sp > 0 else limit) - 1
+            out = para[:end + 1]
+            break
+        out += para + "\n"
     return out.strip()
 
 
@@ -1893,10 +1907,18 @@ class Panel:
         self.pult.set_state(**upd)
 
     def voice_fallback(self, what: str, e: Exception):
-        """ElevenLabs отказал — работаем локально и сообщаем: журнал службы и ``fallback`` в /api/providers."""
+        """ElevenLabs отказал — работаем локально и сообщаем: журнал службы и ``fallback`` в /api/providers.
+        Отказ сервиса (лимит, ключ, сеть) запоминаем на ``EL_PAUSE`` с: каждая следующая запись не ждёт ответа
+        ElevenLabs (до ``providers.TIMEOUT`` = 2 мин при зависшей сети), а сразу идёт локально."""
         note = f"ElevenLabs недоступен ({what}): {e} — переключился на локальный голос"
         print(note, file=sys.stderr, flush=True)
         self.last_fallback = (time.time(), note)
+        if isinstance(e, providers.ProviderError):
+            self.el_pause_until = time.time() + EL_PAUSE
+
+    def el_ok(self) -> bool:
+        """ElevenLabs не отказывал последние ``EL_PAUSE`` с (см. ``voice_fallback``)."""
+        return time.time() >= getattr(self, "el_pause_until", 0.0)
 
     def fallback_info(self, uid=None) -> dict:
         """Запасные для панели: цепочка поставщиков, страны, кто годится, последние переключения, голос (#53)."""
@@ -1917,7 +1939,7 @@ class Panel:
         if not data:
             raise ValueError(STT_EMPTY)
         ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
-        if cloud and self.voice_settings()["stt"] == "elevenlabs":
+        if cloud and self.voice_settings()["stt"] == "elevenlabs" and self.el_ok():
             try:
                 text = (providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}") or "").strip()
                 if not text:
@@ -1958,7 +1980,7 @@ class Panel:
         if not text:
             raise ValueError("нечего озвучивать")
         vs = self.voice_settings()
-        if cloud and vs["tts"] == "elevenlabs":
+        if cloud and vs["tts"] == "elevenlabs" and self.el_ok():
             voice_id = vs["el_voice"] or next(iter(self.el_voices()), {}).get("id")
             if not voice_id:
                 raise ValueError("в аккаунте ElevenLabs нет голосов")

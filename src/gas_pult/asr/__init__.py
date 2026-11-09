@@ -14,12 +14,16 @@ PCM 16 бит little-endian моно. Клиент: ``{"op": "start", "rate": 16
 
 from __future__ import annotations
 
+import array
+import itertools
 import json
 import os
 import shutil
 import socket
 import struct
 import subprocess
+import sys
+import threading
 from pathlib import Path
 
 from gas_pult import config
@@ -30,6 +34,9 @@ HDR = struct.Struct(">cI")
 MAX_FRAME = 1 << 20                        # кусок звука — десятки КБ; больше 1 МБ — ошибка протокола
 RATES = (8000, 16000, 48000)               # частоты, которые служба понижает до 8 кГц сама
 CHUNK = 32000                              # по столько байт файл уходит в службу (1 с при 16 кГц)
+PARALLEL = 2                               # готовую запись — в столько потоков службы сразу (из её 3; один — панели)
+PART_MIN_S = 8.0                           # кусок готовой записи не короче, с
+QUIET_S = 0.3                              # разрез — посреди самого тихого окна такой длины, с
 
 
 class Unavailable(RuntimeError):
@@ -146,22 +153,90 @@ class Stream:
         self.close()
 
 
-def transcribe_pcm(pcm: bytes, rate: int = 16000, path: Path | None = None, timeout: float = 60) -> str:
-    """Готовая запись целиком → текст (бот, запасной ``/api/stt``)."""
+def _whole(st: Stream, pcm: bytes, timeout: float) -> str:
+    """Открытый поток: вся запись → итог."""
+    st.sock.settimeout(timeout)
+    for i in range(0, len(pcm), CHUNK):
+        st.audio(pcm[i:i + CHUNK])
+    st.end()
+    for ev in st.events(timeout):
+        if "error" in ev:
+            raise Unavailable(str(ev["error"]))
+        if "final" in ev:
+            return str(ev["final"]).strip()
+    return ""
+
+
+def cuts(pcm: bytes, rate: int = 16000, parts: int = PARALLEL) -> list[int]:
+    """Где резать готовую запись на ``parts`` кусков для одновременного распознавания (смещения в байтах): самое тихое
+    окно ``QUIET_S`` возле каждой равной доли (± четверть доли). Порог тишины не задаём — шум у записей разный, а
+    самое тихое место между словами есть всегда. Кусок не короче ``PART_MIN_S``; коротко — пустой список."""
+    n = len(pcm) // 2
+    parts = min(parts, int(n / rate // PART_MIN_S))
+    if parts < 2:
+        return []
+    x = array.array("h", pcm[: n * 2])
+    if sys.byteorder == "big":
+        x.byteswap()
+    win, step, part = int(QUIET_S * rate), rate // 10, n // parts
+    out: list[int] = []
+    for k in range(1, parts):
+        lo = max(k * part - part // 4, (out[-1] if out else 0) + int(PART_MIN_S * rate) - win // 2)
+        hi = min(k * part + part // 4, n - int(PART_MIN_S * rate) - win // 2)
+        if lo > hi:
+            continue
+        best = min(range(lo, hi + 1, step), key=lambda i: sum(map(abs, x[i:i + win])))
+        out.append(best + win // 2)
+    return [i * 2 for i in out]
+
+
+def transcribe_pcm(pcm: bytes, rate: int = 16000, path: Path | None = None, timeout: float = 60,
+                   parts: int = PARALLEL) -> str:
+    """Готовая запись целиком → текст (бот, запасной ``/api/stt``).
+
+    Служба считает в темпе ~0,2 с на секунду записи, а готовый файл приходит сразу целиком — ждать пришлось бы всё
+    это время после конца записи. Поэтому длинную запись режем в тихих местах (``cuts``) и шлём куски в ``parts``
+    потоков службы одновременно; запись короткая или свободного потока нет — одним потоком, как раньше."""
+    edges = [0, *cuts(pcm, rate, parts), len(pcm)]
+    segs = [pcm[a:b] for a, b in itertools.pairwise(edges)]
+    streams: list[Stream] = []
     try:
-        with Stream(rate, partials=False, path=path) as st:
-            st.sock.settimeout(timeout)
-            for i in range(0, len(pcm), CHUNK):
-                st.audio(pcm[i:i + CHUNK])
-            st.end()
-            for ev in st.events(timeout):
-                if "error" in ev:
-                    raise Unavailable(str(ev["error"]))
-                if "final" in ev:
-                    return str(ev["final"]).strip()
+        for _ in segs:
+            try:
+                streams.append(Stream(rate, partials=False, path=path))
+            except Unavailable:
+                if not streams:
+                    raise
+                break                                 # служба занята другим — оставшееся одним потоком
+        if len(streams) < len(segs):
+            for st in streams[1:]:
+                st.close()
+            streams, segs = streams[:1], [pcm]
+        if len(segs) == 1:
+            return _whole(streams[0], pcm, timeout)
+        out: list[str | BaseException] = [""] * len(segs)
+
+        def run(i: int):
+            try:
+                out[i] = _whole(streams[i], segs[i], timeout)
+            except (Unavailable, OSError, ValueError) as e:
+                out[i] = e
+
+        threads = [threading.Thread(target=run, args=(i,), daemon=True) for i in range(1, len(segs))]
+        for t in threads:
+            t.start()
+        run(0)
+        for t in threads:
+            t.join(timeout + 5)
+        for r in out:
+            if isinstance(r, BaseException):
+                raise Unavailable(f"служба распознавания: {r}")
+        return " ".join(r for r in out if r)
     except OSError as e:                      # оборвалось посреди записи — тоже запасной путь
         raise Unavailable(f"служба распознавания: {e}") from None
-    return ""
+    finally:
+        for st in streams:
+            st.close()
 
 
 def ffmpeg() -> str | None:
