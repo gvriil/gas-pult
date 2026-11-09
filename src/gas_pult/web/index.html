@@ -3130,8 +3130,9 @@ async function chatTrash() {                         // «Корзина чат�
   const when = (ts) => ts ? new Date(ts * 1000).toLocaleString(LANG === "en" ? "en-GB" : "ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
   helpSheet("sheet.chat-trash");
   sheet("Корзина чатов", [
-    { info: true, icon: "help", label: "Удалённые чаты лежат в корзине пульта", sub: "сама она ничего не стирает; «Вернуть» — переписка снова в проекте" },
-    ...(d.trash.length ? [{ head: "Удалённые" }, ...d.trash.map((x) => ({ label: x.title || "Без названия", icon: "chat", sub: [x.project_name, "удалён " + when(x.at), "нажмите — вернуть"].filter(Boolean).join(" · "), run: () => chatRestore(x.id) }))] : [{ info: true, icon: "trash", label: "Удалённых нет" }]),
+    { info: true, icon: "help", label: "Удалённые чаты лежат в корзине пульта", sub: `через ${d.keep_days || 30} дней удаляются окончательно; «Вернуть» — переписка снова в проекте` },
+    ...(d.trash.length ? [{ head: "Удалённые" }, ...d.trash.map((x) => ({ label: x.title || "Без названия", icon: x.warn ? "warn" : "chat", danger: !!x.warn,
+      sub: [x.warn ? (x.days_left > 0 ? `удалится через ${x.days_left} дн.` : "удалится сегодня") : "", x.project_name, "удалён " + when(x.at), x.warn ? "нажмите — «Вернуть»" : "нажмите — вернуть"].filter(Boolean).join(" · "), run: () => chatRestore(x.id) }))] : [{ info: true, icon: "trash", label: "Удалённых нет" }]),
     ...(d.hidden.length ? [{ head: "Скрытые" }, ...d.hidden.map((x) => ({ label: x.title || "Без названия", icon: "chat", sub: [x.project_name, "нажмите — показать в списке"].filter(Boolean).join(" · "),
       run: () => api("/api/project/chat", { id: x.project, sid: x.sid, hidden: false }).then(() => { toast("Чат снова в списке"); projDone = null; if (proj && projTab === "done") loadDone(); }, (e) => toast(e.message, 4000)) }))] : []),
   ]);
@@ -6971,7 +6972,9 @@ async function demoChat(key, body, ses) {
     return { id: t.id, sid: t.sid, title: t.title, project: t.project, at: t.at };
   }
   const hidden = Object.keys(pj.hidden).filter((sid) => !tr.some((x) => x.sid === sid)).map((sid) => ({ sid, project: "p-tgi", project_name: name("p-tgi"), title: "Скрытый чат" }));
-  return { trash: tr.map((x) => ({ id: x.id, sid: x.sid, title: x.title, project: x.project, project_name: name(x.project), at: x.at })), hidden };
+  const left = (x) => Math.max(0, Math.ceil((x.at + 30 * 86400 - now) / 86400));   // как chat_trash.public: 30 дней, предупреждение за 3
+  if (!tr.demoOld && params.has("trash")) { tr.demoOld = 1; tr.push({ id: "t-old", sid: "00000000-0000-4000-9000-000000000099", title: "Сверка за сентябрь", project: "p-books", at: now - 28 * 86400 }); }   // ?trash — запись, которой осталось 2 дня
+  return { trash: tr.map((x) => ({ id: x.id, sid: x.sid, title: x.title, project: x.project, project_name: name(x.project), at: x.at, purge_at: x.at + 30 * 86400, days_left: left(x), warn: left(x) <= 3 })), hidden, keep_days: 30, warn_days: 3 };
 }
 function demoRepos(key, path, body) {             // задача 43: список, «добавить» (клон / pull), «отключить»
   const rp = demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] }, w = body?.w || decodeURIComponent(path.split("w=")[1] || "");

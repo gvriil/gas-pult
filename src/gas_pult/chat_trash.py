@@ -3,8 +3,9 @@
 
 Корзина — ``<данные>/trash/chats/<время>__<id сессии>/`` (0700): сам журнал ``<id>.jsonl``, папка ``<id>/`` рядом
 с ним (у Claude Code там журналы субагентов и вывод инструментов) и ``meta.json`` — откуда взят, название, проект.
-Сама корзина ничего не удаляет: безвозвратно стереть — только руками, ``rm -r`` её папки. Пути в ответах API нет —
-только id корзины, название и время."""
+Запись старше ``KEEP_DAYS`` (30 дней) удаляется окончательно — вместе с журналом и папкой субагентов: ``purge``
+раз в час из фонового цикла панели и перед показом корзины. За ``WARN_DAYS`` (3 дня) список предупреждает
+(``days_left``). Пути в ответах API нет — только id корзины, название и время."""
 
 from __future__ import annotations
 
@@ -18,6 +19,9 @@ from pathlib import Path
 
 from gas_pult import transcripts
 
+KEEP_DAYS = 30                                                  # дней в корзине до окончательного удаления
+WARN_DAYS = 3                                                   # за столько дней список предупреждает
+DAY = 86400
 TID = re.compile(r"^\d{8}-\d{6}__[0-9a-f-]{36}(-\d+)?$")       # id в корзине: время и id сессии
 
 
@@ -48,9 +52,14 @@ def put(data: Path, f: Path, title: str = "", project: str = "") -> dict:
     return public(dst.name, rec)
 
 
-def public(tid: str, rec: dict) -> dict:
+def public(tid: str, rec: dict, now: float | None = None) -> dict:
+    """Запись для API. ``purge_at`` — когда удалится окончательно; ``days_left`` — сколько дней осталось (вверх,
+    не меньше 0); ``warn`` — осталось не больше ``WARN_DAYS``."""
+    at = int(rec.get("at") or 0)
+    purge_at = at + KEEP_DAYS * DAY
+    left = max(0, -(-(purge_at - int(time.time() if now is None else now)) // DAY))     # ceil
     return {"id": tid, "sid": rec.get("sid", ""), "title": rec.get("title", ""), "project": rec.get("project", ""),
-            "at": rec.get("at")}
+            "at": rec.get("at"), "purge_at": purge_at, "days_left": left, "warn": left <= WARN_DAYS}
 
 
 def _meta(d: Path) -> dict | None:
@@ -61,13 +70,23 @@ def _meta(d: Path) -> dict | None:
     return None
 
 
-def listing(data: Path) -> list[dict]:
+def _at(d: Path, rec: dict) -> int:
+    """Когда удалён: ``at`` из ``meta.json``; нет — время папки."""
+    with contextlib.suppress(TypeError, ValueError):
+        if at := int(rec.get("at") or 0):
+            return at
+    with contextlib.suppress(OSError):
+        return int(d.stat().st_mtime)
+    return 0
+
+
+def listing(data: Path, now: float | None = None) -> list[dict]:
     """Что в корзине — новые сверху."""
     out = []
     with contextlib.suppress(OSError):
         for d in base(data).iterdir():
             if d.is_dir() and (rec := _meta(d)):
-                out.append(public(d.name, rec))
+                out.append(public(d.name, {**rec, "at": _at(d, rec)}, now))
     out.sort(key=lambda x: -(x["at"] or 0))
     return out
 
@@ -93,3 +112,23 @@ def restore(data: Path, tid: str) -> dict:
     with contextlib.suppress(OSError):
         os.rmdir(d)
     return public(tid, rec)
+
+
+def purge(data: Path, now: float | None = None) -> list[str]:
+    """Окончательно удалить записи старше ``KEEP_DAYS``: журнал, папку субагентов и ``meta.json``. Только папки
+    корзины с id нашего вида и ``meta.json``; ссылки внутри не разыменовываются (``shutil.rmtree``). Возвращает id
+    удалённых."""
+    now = time.time() if now is None else now
+    gone = []
+    with contextlib.suppress(OSError):
+        for d in base(data).iterdir():
+            if d.is_symlink() or not d.is_dir() or not TID.match(d.name) or not (rec := _meta(d)):
+                continue
+            if now - _at(d, rec) >= KEEP_DAYS * DAY:
+                try:
+                    shutil.rmtree(d)
+                except OSError as e:
+                    print("корзина чатов:", d.name, e, flush=True)
+                    continue
+                gone.append(d.name)
+    return gone
