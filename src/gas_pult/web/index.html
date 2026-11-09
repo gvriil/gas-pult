@@ -3835,7 +3835,7 @@ async function say(full, btn, msg) {
   stopPlayer(true); voice = { w, name, msg, full, state: "prep" }; renderChat(false); voiceUi();
   try {
     const blob = DEMO ? demoTone() : await api(`/api/tts?w=${encodeURIComponent(w)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
-    if (!voice || voice.w !== w || voice.msg !== msg) return;            // пока готовили — остановили или начали другое
+    if (!voice || voice.w !== w || voice.msg !== msg || voice.full !== full) return;   // пока готовили — остановили, начали другое или сменили режим
     await voiceLoad(blob, full, name, saved?.t);
   } catch (e) { voice = null; voiceUi(); toast("Озвучка: " + e.message, 4500); }
 }
