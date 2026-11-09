@@ -286,7 +286,7 @@
   .chat .acts button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--text-secondary);
                        border-radius: var(--radius-pill); padding: 5px 9px; font-size: calc(13px * var(--fz, 1)); }
   .chat .acts button:active { background: var(--bg-subtle); }
-  .chat .acts [data-say], .chat .acts [data-sayfull] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — выбор голоса */
+  .chat .acts [data-say] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — выбор голоса */
   /* Голос: карточки. Нажатие на карточку — сразу выбрать (галочка), ▶ — послушать короткую фразу (кеш на сервере) */
   .vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 2px 0 8px; }
   .vcard { display: flex; align-items: center; gap: 2px; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); padding: 0 6px 0 0; }
@@ -443,6 +443,7 @@
   .voice .vb:active { background: var(--border-subtle); }
   .voice .vb .i { width: 26px; height: 26px; }
   .voice .vb.play { color: var(--accent-primary); }
+  .voice .vb.rate { min-width: 48px; padding: 0 6px; font-weight: 600; font-size: calc(13px * var(--fz, 1)); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
   .voice .vb.play .i { width: 30px; height: 30px; }
   /* Полоса — отдельной строкой во всю ширину; высота касания 44 px, сама линия 4 px, кружок — куда тянуть. */
   .voice .bar { order: 10; flex: 1 0 100%; position: relative; box-sizing: content-box; height: 4px; padding: 20px 0; margin: -12px 0 -8px; background-clip: content-box;
@@ -459,7 +460,7 @@
   @keyframes vprep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
   .mini { position: fixed; z-index: 15; left: 50%; transform: translateX(-50%); bottom: calc(var(--mini-b, 16px) + env(safe-area-inset-bottom));
           width: min(360px, calc(100% - 32px)); margin: 0; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
-  .mini .name { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);
+  .mini .name { flex: 1 1 0; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);
                 border: 0; background: none; font: inherit; text-align: left; cursor: pointer; padding: 4px; }
   .recbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--status-danger); border-radius: 22px;
             padding: 4px 4px 4px 12px; background: color-mix(in srgb, var(--status-danger) 7%, var(--bg-surface)); height: 44px; }
@@ -1346,7 +1347,7 @@ function paintIcons() {
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
-  $("menu").innerHTML = `<button data-act="close" class="danger" data-owner>${ic("power")}Завершить</button>` + [["say", "vol", "Кратко"], ["sayfull", "volfull", "Целиком"],
+  $("menu").innerHTML = `<button data-act="close" class="danger" data-owner>${ic("power")}Завершить</button>` + [["say", "vol", "Прослушать"],
     ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "place", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
     .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
@@ -4044,7 +4045,7 @@ function renderChat(toBottom) {
   const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
     : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
-        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span></div>${voiceRow(m)}</div>`).join("")
+        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
@@ -4070,26 +4071,25 @@ $("content").addEventListener("click", (e) => { const v = e.target.closest("[dat
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
   const k = e.target.dataset?.log; if (k) e.target.open ? openLogs.add(k) : openLogs.delete(k);
 }, true);
-// Долгое нажатие (~0,5 с) на «Кратко»/«Целиком» — шторка выбора голоса; сдвиг пальца отменяет; обычное — озвучка.
+// Долгое нажатие (~0,5 с) на «Прослушать» — шторка выбора голоса; сдвиг пальца отменяет; обычное — озвучка.
 let sayHold = null, sayHeld = false;
 $("content").addEventListener("pointerdown", (e) => {
-  sayHeld = false; const b = e.target.closest("[data-say], [data-sayfull]"); if (!b) return;
+  sayHeld = false; const b = e.target.closest("[data-say]"); if (!b) return;
   sayHold = { x: e.clientX, y: e.clientY, t: setTimeout(() => { sayHold = null; sayHeld = true; haptic("impactOccurred", "medium"); openVoiceSheet(); }, 500) };
 });
 const sayUnhold = () => { if (sayHold) clearTimeout(sayHold.t); sayHold = null; };
 $("content").addEventListener("pointerup", sayUnhold); $("content").addEventListener("pointercancel", sayUnhold);
 $("content").addEventListener("pointermove", (e) => { if (sayHold && Math.hypot(e.clientX - sayHold.x, e.clientY - sayHold.y) > 10) sayUnhold(); });
-$("content").addEventListener("contextmenu", (e) => { if (e.target.closest("[data-say], [data-sayfull]")) e.preventDefault(); });
+$("content").addEventListener("contextmenu", (e) => { if (e.target.closest("[data-say]")) e.preventDefault(); });
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  if ((b.dataset.say || b.dataset.sayfull) && sayHeld) { sayHeld = false; return; }   // долгое нажатие уже открыло шторку
+  if (b.dataset.say && sayHeld) { sayHeld = false; return; }   // долгое нажатие уже открыло шторку
   if (b.id === "older") return busy(b, "Загружаю…", async () => {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&before=${hist[0].i}`);
     const y = SC.scrollHeight - SC.scrollTop; hist = [...h.items, ...hist]; histMore = h.more; renderChat(false);
     scrollToY(SC.scrollHeight - y);
   });
-  if (b.dataset.say) return say(false, b, +b.dataset.say);
-  if (b.dataset.sayfull) return say(true, b, +b.dataset.sayfull);
+  if (b.dataset.say) return say(true, b, +b.dataset.say);              // один режим — ответ целиком
   if (b.dataset.copy) {
     const m = hist.find((x) => x.i === +b.dataset.copy);
     copyText(m.text);
@@ -4357,8 +4357,17 @@ async function act(path, body, okText) {
 
 // ---------- озвучка ----------
 // Плеер один на всю панель: играет при переходах по меню и между сессиями, останавливается только кнопкой ✕.
-// Состояние — на том сообщении, где нажали «Кратко»/«Целиком»; на других экранах — мини-плеер (тап — к сообщению).
+// Состояние — на том сообщении, где нажали «Прослушать»; на других экранах — мини-плеер (тап — к сообщению).
 const player = () => $("player");
+// Скорость: 1× → 1,25× → 1,5× → 2× по кругу; выбор — в настройках человека на сервере, localStorage — кэш.
+const RATES = [1, 1.25, 1.5, 2];
+const rateLabel = (r) => String(r).replace(".", ",") + "×";
+function voiceRate() { const r = +((FOCUS || DEMO ? store("voiceRate") : meta?.prefs?.rate) || store("voiceRate") || 1); return RATES.includes(r) ? r : 1; }
+function setVoiceRate(r) {
+  store("voiceRate", String(r)); if (meta?.prefs) meta.prefs.rate = r;
+  player().playbackRate = r; voiceUi(); mediaPos();
+  if (meta && !FOCUS && !DEMO) api("/api/prefs", { rate: r }).catch(() => {});   // не вышло — останется в кэше браузера
+}
 // seek:start — чистые функции перемотки (их же считает тест): −15 с у начала — 0:00, +15 с у конца — конец.
 const SEEK = 15;
 const mmss = (t) => (isFinite(t) ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}` : "");
@@ -4377,6 +4386,7 @@ function voiceInner(mini) {
       : `<button class="vb" data-vseek="-${SEEK}" aria-label="Назад на ${SEEK} секунд">${ic("rew15")}</button>
          <button class="vb play" data-vtoggle aria-label="${voice.state === "play" ? "Пауза" : "Играть"}">${ic(voice.state === "play" ? "pause" : "play")}</button>
          <button class="vb" data-vseek="${SEEK}" aria-label="Вперёд на ${SEEK} секунд">${ic("fwd15")}</button>
+         <button class="vb rate" data-vrate aria-label="Скорость ${rateLabel(voiceRate())}, нажмите — быстрее">${rateLabel(voiceRate())}</button>
          <span class="t">${clock(t, dur)}</span>
          <span class="bar" role="slider" tabindex="0" aria-label="Перемотка" aria-valuemin="0" aria-valuemax="${Math.round(dur || 0)}" aria-valuenow="${Math.round(t || 0)}" aria-valuetext="${clock(t, dur)}"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></span>`)
     + `<button class="vb" data-vstop aria-label="Остановить">${ic("x", "s16")}</button>`;
@@ -4454,7 +4464,8 @@ async function say(full, btn, msg) {
 async function voiceLoad(blob, full, name, from) {
   const p = player(); if (p.src) URL.revokeObjectURL(p.src);
   p.src = URL.createObjectURL(blob);
-  mediaSession(full ? "Ответ Claude целиком" : "Ответ Claude кратко", name);
+  p.playbackRate = p.defaultPlaybackRate = voiceRate();
+  mediaSession(full ? "Ответ Claude" : "Ответ Claude кратко", name);
   if (from > 1) {                                   // в прошлый раз остановились здесь — продолжаем
     await new Promise((r) => { if (p.readyState >= 1) r(); else p.addEventListener("loadedmetadata", r, { once: true }); });
     if (from < p.duration - 1) { p.currentTime = from; toast("Продолжаю с " + mmss(from)); }
@@ -4499,9 +4510,10 @@ document.addEventListener("keydown", (e) => {     // полоса с клави�
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); seekBy(e.key === "ArrowLeft" ? -SEEK : SEEK); }
 });
 document.addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-vtoggle], [data-vstop], [data-vgo], [data-vseek]"); if (!b || !voice) return;
+  const b = e.target.closest("[data-vtoggle], [data-vstop], [data-vgo], [data-vseek], [data-vrate]"); if (!b || !voice) return;
   if (b.dataset.vstop != null) return stopPlayer();
   if (b.dataset.vseek != null) { haptic("selectionChanged"); return seekBy(+b.dataset.vseek); }
+  if (b.dataset.vrate != null) { haptic("selectionChanged"); return setVoiceRate(RATES[(RATES.indexOf(voiceRate()) + 1) % RATES.length]); }
   if (b.dataset.vtoggle != null) {
     if (voice.at != null && !player().src) return voiceResume();      // после перезагрузки: озвучку готовим заново
     return player().paused ? player().play() : player().pause();
@@ -4541,8 +4553,7 @@ $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o
 
 const ACTIONS = {
   sos: () => callHelp(current),
-  say: (b) => say(false, b),
-  sayfull: (b) => say(true, b),
+  say: (b) => say(true, b),
   commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
     label: clean(label), icon: "bolt", run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
   }))),
@@ -5377,7 +5388,7 @@ function elVoiceSheet() {                           // голос внутри E
     try { await api("/api/providers", { el_voice: v.id }); prov.el_voice = v.id; vcards = await api("/api/voice/cards"); paintVoiceGrids(); toast("Голос: " + v.name); }
     catch (err) { toast(err.message, 4500); } } })));
 }
-async function openVoiceSheet() {                   // долгое нажатие на «Кратко»/«Целиком»: те же карточки шторкой
+async function openVoiceSheet() {                   // долгое нажатие на «Прослушать»: те же карточки шторкой
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.voice");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Голос озвучки</h3><div data-vgrid>${voiceGrid()}</div><p class="note vnote"></p><button class="cancel" data-close>Закрыть</button></div>`;
   const close = () => { bg.remove(); if (vPlaying) stopPreview(); };
@@ -5397,7 +5408,7 @@ function renderVoice() {
       <div class="field"><label>Озвучка ответов</label>
         <div data-vgrid>${voiceGrid()}</div>
         ${vcards?.current === "elevenlabs" && prov.el_voices.length > 1 ? `<button class="btn ghost" id="elOther">${ic("vol", "s16")}Другой голос ElevenLabs</button>` : ""}
-        <div class="hint">Нажмите на голос — он сразу станет голосом озвучки; круглая кнопка справа — послушать. На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs.${vcards?.cards.some((c) => c.demo) ? " «Демо» — голоса с некоммерческой лицензией, только для показа." : ""} Быстрый путь — долгое нажатие на «Кратко» или «Целиком» у ответа.</div></div>
+        <div class="hint">Нажмите на голос — он сразу станет голосом озвучки; круглая кнопка справа — послушать. На сервере — бесплатно и приватно. ElevenLabs — живее, платно; текст ответа уходит в ElevenLabs.${vcards?.cards.some((c) => c.demo) ? " «Демо» — голоса с некоммерческой лицензией, только для показа." : ""} Быстрый путь — долгое нажатие на «Прослушать» у ответа.</div></div>
       <div class="field" style="margin:0"><label>Распознавание голосовых</label>${seg("stt", prov.stt, [["local", "На сервере · whisper"], ["elevenlabs", "ElevenLabs Scribe"]])}
         <div class="hint">ElevenLabs точнее на терминах и именах; запись голоса уходит в ElevenLabs.</div></div>
     </div>
@@ -6013,7 +6024,7 @@ function legend() {
     { info: true, vis: chip("accent", "вручную"), label: "Сделано вручную", sub: "вы отметили, что выполнили сами — команда остаётся в списке" },
     { head: "Кнопки" },
     { info: true, icon: "menu", label: "Меню действий", sub: "озвучить, команды Claude, модель, активная сессия, обновить, завершить" },
-    { info: true, icon: "vol", label: "Кратко / Целиком", sub: "озвучить ответ голосом — коротко или полностью" },
+    { info: true, icon: "vol", label: "Прослушать", sub: "озвучить ответ голосом; скорость 1×–2× — кнопкой в плеере" },
     { info: true, icon: "bolt", label: "Команды Claude", sub: "/compact, /clear, /status и другие — кнопками" },
     { info: true, icon: "chip", label: "Модель", sub: "в какой модели работает сессия" },
     { info: true, icon: "place", label: "Активная", sub: "ответы в чате бота — от этой сессии" },

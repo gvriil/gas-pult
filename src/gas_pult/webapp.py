@@ -68,6 +68,7 @@ from gas_pult import (
     space_files,
     space_sessions,
     spaces,
+    speech,
     tenants,
     terms,
     termwin,
@@ -2166,11 +2167,13 @@ class Panel:
 
     def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False, cloud: bool = True) -> bytes:
         text = transcripts.clean(self.message(w, msg))
-        text = (text if full else brief(text))[:3500]
+        text = (text if full else brief(text))[:3500]   # «кратко» (full=0) — для старых панелей; новая шлёт full=1
         if not text:
             raise ValueError("нечего озвучивать")
         vs = self.voice_settings()
-        if cloud and vs["tts"] == "elevenlabs" and self.el_ok():
+        el = cloud and vs["tts"] == "elevenlabs" and self.el_ok()
+        text = speech.speakable(text, latin_ok=el)      # числа словами; латиница — ElevenLabs читает сам
+        if el:
             voice_id = vs["el_voice"] or next(iter(self.el_voices()), {}).get("id")
             if not voice_id:
                 raise ValueError("в аккаунте ElevenLabs нет голосов")
@@ -3318,8 +3321,11 @@ def handler(panel: Panel):
                     want = b.get("simple") is True
                     if want != (cur in personas.SIMPLE):
                         panel.set_ui(uid, role, {"persona": "business_owner" if want else "developer"})
+                rate = b.get("rate")
+                if rate is not None and (isinstance(rate, bool) or not isinstance(rate, int | float)):
+                    raise ValueError("скорость — 1, 1.25, 1.5 или 2")
                 p = panel.people.set_prefs(uid, None if b.get("simple") is None else b.get("simple") is True,
-                                           None if lang is None else str(lang))
+                                           None if lang is None else str(lang), None if rate is None else float(rate))
                 return {**p, "simple": panel.prefs(uid, role)["simple"]}
             if path == PERSONA:
                 return panel.set_ui(self.terms_uid(), self.who()[1], b if isinstance(b, dict) else {})

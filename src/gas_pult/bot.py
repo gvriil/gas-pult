@@ -52,6 +52,7 @@ from gas_pult import (
     selftest,
     setup,
     space_budget,
+    speech,
     tenants,
     terms,
     termwin,
@@ -648,7 +649,7 @@ class Pult:
 
     # ---------- голос ----------
     def say(self, chat: int, text: str):
-        clean = transcripts.clean(text)[:3500]      # ~3–4 минуты речи; код и таблицы пропущены
+        clean = speech.speakable(transcripts.clean(text)[:3500])   # ~3–4 минуты речи; числа и латиница — словами
         if not clean:
             return
         v, have = self.state()["voice"], catalog.installed(self.cfg.personal_voices)   # бот — только владельцам

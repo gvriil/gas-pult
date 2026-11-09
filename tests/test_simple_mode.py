@@ -134,18 +134,19 @@ def test_full_mode_untouched_without_flag():
     assert INDEX.count("return simpleStart()") == 1
     assert "if (simplePrefs(meta).simple) return simpleStart();" in INDEX
     assert re.search(r'body\.simple-on #scroller', INDEX)    # полный экран прячется только классом простого
-    assert People(Path("/nonexistent/people.json"), [1]).prefs(1) == {"simple": False, "lang": "ru", "saved": False}
+    assert People(Path("/nonexistent/people.json"), [1]).prefs(1) == {"simple": False, "lang": "ru", "rate": 1.0,
+                                                                      "saved": False}
 
 
 # ---------- настройки человека ----------
 def test_prefs_per_person(tmp_path):
     p = People(tmp_path / "people.json", [1])
-    assert p.prefs(1) == {"simple": False, "lang": "ru", "saved": False}
-    assert p.set_prefs(1, simple=True) == {"simple": True, "lang": "ru", "saved": True}
+    assert p.prefs(1) == {"simple": False, "lang": "ru", "rate": 1.0, "saved": False}
+    assert p.set_prefs(1, simple=True) == {"simple": True, "lang": "ru", "rate": 1.0, "saved": True}
     assert (tmp_path / "prefs.json").stat().st_mode & 0o777 == 0o600               # владелец — рядом, 0600
     p.add(2, "member", "Иван")
     p.set_prefs(2, lang="en")
-    assert p.prefs(2) == {"simple": False, "lang": "en", "saved": True} and p.prefs(1)["simple"] is True
+    assert p.prefs(2) == {"simple": False, "lang": "en", "rate": 1.0, "saved": True} and p.prefs(1)["simple"] is True
     assert json.loads((tmp_path / "people.json").read_text())["2"]["prefs"]["lang"] == "en"
     p.add(2, "viewer", "Иван")                                # смена роли настройки не сбрасывает
     assert p.prefs(2)["lang"] == "en"
@@ -189,9 +190,9 @@ def test_prefs_api(server):
     panel, base, _ = server
     owner, member, viewer = panel.auth.issue(1), panel.auth.issue(2), panel.auth.issue(3)
     st, d = call(base, "/api/meta", token=member)
-    assert st == 200 and d["prefs"] == {"simple": False, "lang": "ru", "saved": False}   # по умолчанию — как раньше
+    assert st == 200 and d["prefs"] == {"simple": False, "lang": "ru", "rate": 1.0, "saved": False}   # как раньше
     assert call(base, "/api/prefs", {"simple": True, "lang": "en"}, member) == (
-        200, {"simple": True, "lang": "en", "saved": True})
+        200, {"simple": True, "lang": "en", "rate": 1.0, "saved": True})
     assert call(base, "/api/prefs", {"simple": True}, viewer)[0] == 200                     # и наблюдателю — своё
     assert call(base, "/api/meta", token=owner)[1]["prefs"]["simple"] is False             # у каждого своё
     assert call(base, "/api/prefs", token=member)[1]["lang"] == "en"
