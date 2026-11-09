@@ -249,6 +249,7 @@
   .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
   .net button { border: 0; background: var(--bg-surface); border-radius: var(--radius-pill); padding: 7px 12px; font-weight: 600; font-size: calc(13px * var(--fz, 1)); display: inline-flex; gap: 6px; align-items: center; flex: none; }
   .chat .msg { margin: 0 0 14px; animation: fade .2s ease; }
+  .upd { animation: none !important; }               /* заменён при точечном обновлении — не «появляется» заново */
   .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
   .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
   .chat .me .bubble { background: var(--bg-subtle); border-radius: 22px 22px 6px 22px; max-width: 85%; white-space: pre-wrap; }
@@ -1514,11 +1515,11 @@ const initial = (n) => (String(n).match(/[\p{L}\p{N}]/u)?.[0] || "?").toUpperCas
 function renderRail() {
   if (!split() || !sideMini) return;
   const sorted = pinFirst([...sessions].sort(byChange));
-  $("rail").innerHTML = sorted.map((s) => {
+  setHTML($("rail"), sorted.map((s) => {
     const st = ST[s.status], prov = provName(s), nw = isNew(s);
     const tip = `${s.name} — ${st.label}${prov ? " · " + prov : ""}${nw ? " · новый ответ" : ""}`;
     return `<button class="rb ${st.cls}${s.id === current ? " on" : ""}${nw ? " new" : ""}" data-id="${esc(s.id)}" title="${esc(tip)}" aria-label="${esc(tip)}"${s.id === current ? ' aria-current="true"' : ""}>${esc(initial(s.name))}<i class="sdot"></i></button>`;
-  }).join("") + (meta?.role === "viewer" ? "" : `<hr><button class="rb rnew" id="railNew" title="Новая сессия" aria-label="Новая сессия">${ic("plus")}</button>`);
+  }).join("") + (meta?.role === "viewer" ? "" : `<hr><button class="rb rnew" id="railNew" title="Новая сессия" aria-label="Новая сессия">${ic("plus")}</button>`));
 }
 $("rail").addEventListener("click", (e) => {
   if (e.target.closest("#railNew")) return newSession();
@@ -1921,7 +1922,7 @@ function show(v) {
   const two = split() && !["terms", "country", "persona"].includes(v);  // одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
   if (DRAFT && (v !== "session" || current)) { DRAFT = null; paintDraft(); }   // ушли из нового чата
-  applyWide(); renderRail();
+  applyWide(); renderRail(); queueMicrotask(agoTick);   // «N назад» на открывшемся экране — сразу свежие
   $("pick").hidden = true;                           // компьютер: без открытой сессии — главная в основной колонке
   $("dock").hidden = v !== "session";
   $("homeBar").hidden = !(v === "home" && !gate && homeView === "sessions");
@@ -2150,7 +2151,38 @@ function restoreDraft() {
   if (d.files?.length && !files.length) { files = d.files; renderFiles(); }
   if (d.sInput && !$("sInput").value.trim()) { $("sInput").value = d.sInput; sGrow(); }
 }
-function setSub(html) { $("subtitle").innerHTML = html; }
+// ---------- точечное обновление (план UX, пункт 1) ----------
+// Опрос раз в 3–10 с не перерисовывает то, что не изменилось. setHTML: та же разметка — DOM не трогаем. morph: список
+// и лента по ключам (data-id, data-i, data-proj, data-key, id) — изменившийся элемент заменяется, новые вставляются,
+// пропавшие удаляются, остальное стоит на месте (прокрутка, раскрытые логи, фокус). Анимация появления — только у новых;
+// заменённые — с классом .upd (без анимации). Текст «изменена N назад» в сравнение не входит — его ведёт agoTick.
+const AGO_TXT = /(<span class="ago"[^>]*>)[^<]*/g;
+function setHTML(el, html) {
+  const key = html.replace(AGO_TXT, "$1");
+  if (el.__h === key && el.firstChild === el.__f) return false;
+  el.innerHTML = html; el.__h = key; el.__f = el.firstChild;
+  return true;
+}
+function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
+function setHidden(el, on) { if (el.hidden !== on) el.hidden = on; }
+function morph(box, html) {                           // → новые узлы (вставленные и заменённые) — для дообработки
+  const t = document.createElement("template"); t.innerHTML = html;
+  const old = new Map(), fresh = [], seen = {};
+  for (const n of box.children) if (n.__k) old.set(n.__k, n);
+  const next = [...t.content.children].map((n) => {
+    const d = n.dataset, base = d.id ?? d.i ?? d.proj ?? d.chat ?? d.key ?? (n.id ? "#" + n.id : n.tagName + "." + n.className);
+    const k = base + "~" + (seen[base] = (seen[base] || 0) + 1), src = n.outerHTML.replace(AGO_TXT, "$1"), was = old.get(k);
+    if (was && was.__s === src) return was;
+    n.__k = k; n.__s = src; fresh.push(n);
+    if (was) n.classList.add("upd");
+    return n;
+  });
+  const keep = new Set(next);
+  for (const n of [...box.childNodes]) if (!keep.has(n)) n.remove();
+  next.forEach((n, i) => { if (box.children[i] !== n) box.insertBefore(n, box.children[i] || null); });
+  return fresh;
+}
+function setSub(html) { setHTML($("subtitle"), html); }
 
 // ---------- вход ----------
 function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck(); }
@@ -2502,6 +2534,7 @@ function agoTick() {
   agoTick.at = Date.now();
   const now = nowSec(); let fast = false;
   for (const el of document.querySelectorAll(".ago[data-ago]")) {
+    if (el.closest("[hidden]")) continue;              // скрытый экран (главная под сессией на телефоне) — не трогаем
     if (now - +el.dataset.ago < 60) fast = true;
     const tx = agoLabel(el.dataset, now), tip = agoTip(el.dataset);
     if (el.textContent !== tx) el.textContent = tx;     // только текст: без перерисовки карточки и мигания
@@ -3249,10 +3282,10 @@ async function refresh() {
       if (homeView === "sessions" && !projMode()) {
         const sorted = [...sessions].sort(byChange);             // ждущие ответа (и пауза по расходу) — сверху
         const mine = (x) => meta?.role === "owner" && x.space;     // владельцу окна пространств — своей группой ниже
-        $("sessionsView").innerHTML = notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
+        morph($("sessionsView"), notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
-            + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry();
+            + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
       }
       if (homeView === "sessions" && projMode()) {
         if (!projData) { projData = await api("/api/projects"); }
@@ -3275,18 +3308,19 @@ async function refresh() {
 function paintSession(s) {
   moneyBar(s);
   const st = ST[s.status];
-  if (split()) $("title").textContent = s.name;
+  if (split()) setText($("title"), s.name);
   else {                                            // телефон: имя ▾ — шторка сессий; точка — что-то ждёт в другой сессии
     const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
-    $("title").innerHTML = `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`;
+    setHTML($("title"), `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`);
   }
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
   const ag = agoSpan(s, true);
   setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}${spaceChips(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd) + (s.cost.cost_source === "estimate" ? " (оценка)" : "")) : ""}</span>${split() ? ag : ""}`);
-  const cb = costBar(s); $("costPause").hidden = !cb; $("costPause").innerHTML = cb;     // пауза по расходу — над полем ввода
-  $("target").innerHTML = `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`;
-  $("input").placeholder = hint || "Сообщение для " + s.name + "…";    // куда уйдёт — видно в поле; подсказка Claude — вместо
+  const cb = costBar(s); setHidden($("costPause"), !cb); setHTML($("costPause"), cb);     // пауза по расходу — над полем ввода
+  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`);
+  const ph = hint || "Сообщение для " + s.name + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
+  if ($("input").placeholder !== ph) $("input").placeholder = ph;
   paintWorking(s);
   paintGaps(s);                                     // что недоступно у поставщика сессии (задача 38)
 }
@@ -3348,13 +3382,13 @@ function renderProjects() {                           // список проек
   }
   const all = projData?.projects || [], q = projListQ.trim().toLowerCase();
   const waiting = all.filter((p) => p.waiting).length;
-  $("projChips").innerHTML = `<button class="chip${projFilter === "all" ? " accent" : ""}" data-pf="all">Все <b>${all.length}</b></button>`
-    + `<button class="chip${projFilter === "wait" ? " accent" : " s-approval"}" data-pf="wait">Ждут ответа <b>${waiting}</b></button>${costSummary()}`;
+  setHTML($("projChips"), `<button class="chip${projFilter === "all" ? " accent" : ""}" data-pf="all">Все <b>${all.length}</b></button>`
+    + `<button class="chip${projFilter === "wait" ? " accent" : " s-approval"}" data-pf="wait">Ждут ответа <b>${waiting}</b></button>${costSummary()}`);
   const list = all.filter((p) => (projFilter !== "wait" || p.waiting) && projMatch(p, q));
   const mine = (x) => meta?.role === "owner" && x.space;
-  $("projList").innerHTML = notifyCard() + (list.length ? pinGroups(list, projCard)
+  morph($("projList"), notifyCard() + (list.length ? pinGroups(list, projCard)
     : `<div class="empty">${all.length ? "Ничего не нашлось" : "Проектов пока нет — нажмите «Новая сессия»: папка станет проектом."}</div>`)
-    + spacesGroup([...sessions].sort(byChange).filter(mine));
+    + spacesGroup([...sessions].sort(byChange).filter(mine)));
 }
 async function openProject(id, t) {
   proj = id; projTab = t || "active"; projQ = ""; projDone = null; projDoneQ = null; projInfo = null;
@@ -3379,26 +3413,26 @@ function renderProject() {
   if (view === "home" && !split()) $("title").textContent = p.name;
   const inf = projInfo && projInfo.id === proj ? projInfo : null;
   const first = inf?.instructions?.split("\n").map((x) => x.replace(/^[#>*\-\s]+/, "").trim()).find(Boolean) || "";
-  $("projInfo").innerHTML = inf ? `<span>${first ? "Инструкции: «" + esc(first.slice(0, 80)) + "»" : "Инструкций нет (CLAUDE.md)"}</span> · <span>Файлы: ${inf.files.length}</span> · <span class="ppath">${esc(p.path)}</span>` : "";
+  setHTML($("projInfo"), inf ? `<span>${first ? "Инструкции: «" + esc(first.slice(0, 80)) + "»" : "Инструкций нет (CLAUDE.md)"}</span> · <span>Файлы: ${inf.files.length}</span> · <span class="ppath">${esc(p.path)}</span>` : "");
   const act = sessions.filter((s) => s.project === proj).sort(byChange), q = projQ.trim().toLowerCase();
   const doneN = projDone && projDoneQ === "" ? projDone.chats.length + (projDone.more ? "+" : "") : p.chats - act.filter((s) => s.sid).length;
-  $("projSeg").innerHTML = `<button data-pt="active" class="${projTab === "active" ? "on" : ""}">Активные ${act.length}</button><button data-pt="done" class="${projTab === "done" ? "on" : ""}">Завершённые ${Math.max(0, +doneN || 0) || doneN || 0}</button>`;
+  setHTML($("projSeg"), `<button data-pt="active" class="${projTab === "active" ? "on" : ""}">Активные ${act.length}</button><button data-pt="done" class="${projTab === "done" ? "on" : ""}">Завершённые ${Math.max(0, +doneN || 0) || doneN || 0}</button>`);
   if (projTab === "active") {
     const shown = act.filter((s) => !q || [s.title, s.name, s.preview].some((x) => String(x || "").toLowerCase().includes(q)));
-    $("projChats").innerHTML = shown.length ? pinGroups(shown, (s) => card(s, true))
-      : `<div class="empty">${act.length ? "Ничего не нашлось" : "Активных чатов нет — «Новая сессия в проекте» внизу или «Завершённые»."}</div>`;
+    morph($("projChats"), shown.length ? pinGroups(shown, (s) => card(s, true))
+      : `<div class="empty">${act.length ? "Ничего не нашлось" : "Активных чатов нет — «Новая сессия в проекте» внизу или «Завершённые»."}</div>`);
     return;
   }
   const d = projDone;
-  if (!d) { $("projChats").innerHTML = '<div class="empty">Загружаю…</div>'; return; }
+  if (!d) { morph($("projChats"), '<div class="empty">Загружаю…</div>'); return; }
   const note = `<div class="note">Чаты старше ${d.keep_days} дней Claude Code удаляет сам — в списке их не будет.${d.cut ? " Поиск по тексту — не по всем чатам: уточните запрос." : ""}</div>`;
-  $("projChats").innerHTML = (d.chats.length ? pinGroups(d.chats, (c) => `<div class="card dchat" data-chat="${esc(c.sid)}" role="button" tabindex="0" aria-label="${esc(c.title)}">
+  morph($("projChats"), (d.chats.length ? pinGroups(d.chats, (c) => `<div class="card dchat" data-chat="${esc(c.sid)}" role="button" tabindex="0" aria-label="${esc(c.title)}">
       <div class="row">${ic("chat")}<div class="ctext"><div class="name">${pinMark(c)}${esc(c.title)}</div><div class="meta">${esc(msgWord(c.msgs))}${c.mine ? "" : " · другая учётка"}</div></div>${agoAt(c.last || c.mtime)}
         <button class="kebab" data-chat-more="${esc(c.sid)}" aria-label="Действия с чатом">${ic("more")}</button></div>
       ${c.mine && meta?.role !== "viewer" ? `<button class="btn quiet sm reply" data-resume="${esc(c.sid)}">${ic("play", "s16")}Продолжить</button>` : ""}</div>`)
     : `<div class="empty">${projQ ? "Ничего не нашлось" : "Завершённых чатов нет."}</div>`)
     + (d.more ? '<button class="btn quiet" data-done-more>Показать ещё</button>' : "") + note
-    + (meta?.role === "owner" ? `<button class="btn quiet" data-chat-trash>${ic("trash", "s16")}Корзина и скрытые чаты</button>` : "");
+    + (meta?.role === "owner" ? `<button class="btn quiet" data-chat-trash>${ic("trash", "s16")}Корзина и скрытые чаты</button>` : ""));
 }
 async function loadDone(more) {
   const id = proj, q = projQ.trim();
@@ -3589,13 +3623,13 @@ function moneyBar(s) {
   const el = $("money"); if (!el) return;
   const p = profileOf(s?.profile || "claude");
   const was = el.hidden;
-  el.hidden = !s?.no_balance;
+  setHidden(el, !s?.no_balance);
   if (was !== el.hidden) padDock();                  // баннер в нижней панели — лента не уходит под него
   if (el.hidden) return;
-  el.innerHTML = `<p style="margin:0 0 8px"><b>У поставщика ${esc(p?.title || "")} закончились деньги</b> — пополните или переключите этот чат на другого.</p>
+  setHTML(el, `<p style="margin:0 0 8px"><b>У поставщика ${esc(p?.title || "")} закончились деньги</b> — пополните или переключите этот чат на другого.</p>
     <div class="money-act">${meta?.role === "owner" ? `<button class="btn" data-money="switch">${ic("swap")}Переключить этот чат</button>` : ""}
     ${p?.billing_url ? `<button class="btn ghost" data-money="pay">${ic("ext")}Пополнить</button>` : ""}
-    ${meta?.role === "owner" ? `<button class="btn ghost" data-money="paid">${ic("check")}Я пополнил</button>` : ""}</div>`;
+    ${meta?.role === "owner" ? `<button class="btn ghost" data-money="paid">${ic("check")}Я пополнил</button>` : ""}</div>`);
   el.onclick = async (e) => {
     const b = e.target.closest("[data-money]"); if (!b) return;
     if (b.dataset.money === "switch") return switchProfile(s);
@@ -3940,32 +3974,35 @@ $("content").addEventListener("click", async (e) => {
   else setTab("screen");
 });
 function renderChat(toBottom) {
-  const box = $("content"); box.className = "chat";
-  if (!hist.length && !pending.length) { box.innerHTML = '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'; return; }
+  const box = $("content"); if (box.className !== "chat") box.className = "chat";
+  if (!hist.length && !pending.length) { morph(box, '<div class="panel"><div class="empty">Сообщений пока нет — напишите Claude внизу.</div></div>'); return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
   pending = pending.filter((p) => !hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
-  box.innerHTML = (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
-    ? `<div class="msg me">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
-    : `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
+  const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
+  const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
+    ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
+    : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text))}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Кратко</button><button data-sayfull="${m.i}">${ic("volfull", "s16")}Целиком</button>` : ""}<button data-copy="${m.i}">${ic("copy", "s16")}Копировать</button><span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span></div>${voiceRow(m)}</div>`).join("")
-    + pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
+    + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
         fail: "не отправлено — " + esc(p.err || ""),
-        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div></div>`).join("");
+        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div></div>`).join("")
+    + (lastAi == null ? "" : `<div class="cmds" data-key="cmds:${lastAi}"></div>`)       // команды из последнего ответа (renderCmds)
+    + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   voiceUi();
-  box.querySelectorAll(".msg .bubble").forEach(linkify);
-  box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
-  box.querySelectorAll(".msg.ai").forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
+  const msgs = fresh.filter((el) => el.classList.contains("msg"));   // дообработка — только новых и изменившихся
+  msgs.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));
+  msgs.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
+  msgs.filter((el) => el.classList.contains("ai")).forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
     if (n <= 15) return;
     const key = el.querySelector("[data-copy]")?.dataset.copy + ":p" + j, t = document.createElement("div");
     t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
   }));
-  if (hist.at(-1)?.role === "assistant") renderCmds();
-  box.insertAdjacentHTML("beforeend", '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
+  if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
   paintAct();
   if (toBottom && !params.has("noscroll")) stickBottom();   // с конца, как в ChatGPT/Claude
 }
@@ -4000,10 +4037,12 @@ $("content").addEventListener("click", async (e) => {
 });
 
 // ---------- команды из последнего ответа: сервер берёт их сам, браузер шлёт номер и отпечаток ----------
-async function renderCmds() {
+async function renderCmds() {                          // в место .cmds под последним ответом (renderChat)
+  let slot = $("content").querySelector(".cmds");
+  if (!slot) { slot = document.createElement("div"); slot.className = "cmds"; const row = $("act"); row ? row.before(slot) : $("content").append(slot); }
   const d = await api("/api/cmds?w=" + encodeURIComponent(current)).catch(() => null);
-  if (!d?.cmds?.length || tab !== "chat") return;
-  const box = document.createElement("div");
+  if (!d?.cmds?.length || tab !== "chat" || !slot.isConnected) return;
+  const box = slot;
   box.innerHTML = `<div class="section">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd">
     <pre>${esc(c.cmd)}</pre>${c.kind === "local" && meta?.role === "owner"
       ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(d.host)}</button>`
@@ -4013,7 +4052,6 @@ async function renderCmds() {
           tty: ic("key", "s16") + "нужен ввод (пароль) — выполняет владелец в терминале панели" }[c.kind] || ic("monitor", "s16") + "команда для другой машины — скопируйте и выполните там"}</div>`}
     <div class="cmdacts"><button class="btn sm ghost" data-cpcmd>${ic("copy")}Копировать</button></div>
     <div class="out-wrap"></div></div>`).join("");
-  const row = $("act"); row ? row.before(box) : $("content").append(box);     // строка статуса — всегда последней
 }
 $("content").addEventListener("click", (e) => {
   if (e.target.closest("[data-cpcmd]")) return copyText(e.target.closest(".cmd").querySelector("pre").textContent, "Команда скопирована");
@@ -6918,9 +6956,10 @@ async function sOlder(btn) {
   });
 }
 function sMsg(m) {
-  if (m.role === "user") return `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`;
-  if (m.human) return `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
-  return `<div class="msg ai"><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text || ""))}</div></div>`;
+  const k = m.i != null ? ` data-i="${m.i}"` : "";
+  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${esc(m.text)}</div></div>`;
+  if (m.human) return `<div class="msg ai"${k}><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
+  return `<div class="msg ai"${k}><div class="bubble md">${DOMPurify.sanitize(marked.parse(m.text || ""))}</div></div>`;
 }
 function sRender(toBottom) {
   const box = $("sFeed");
@@ -6928,11 +6967,11 @@ function sRender(toBottom) {
     box.innerHTML = `<div class="s-empty"><p>${esc(T(canNew() ? "s.none" : "s.none.viewer"))}</p>${canNew() ? `<div class="scn-opts">${sChip(true, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}</div>`;
     return sAct();
   }
-  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p) => `<div class="msg me"><div class="bubble">${esc(p.text)}</div></div>`).join("");
-  box.innerHTML = (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
-    + (items || `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>`);
-  box.querySelectorAll(".msg .bubble").forEach(linkify);
-  box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div></div>`).join("");
+  const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
+    + (items || `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>`));
+  fresh.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));       // дообработка — только новых
+  fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   sAct();
   if (toBottom && !params.has("noscroll")) sBottom();
 }
