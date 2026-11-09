@@ -16,11 +16,13 @@ COMPOSING = """(sel) => {
   t.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true, cancelable: true }));
 }"""
 
-GROW = """(sel) => {
+# высота поля меняется раз за кадр (fitLines, план UX, пункт 8) — после каждого ввода ждём кадр
+GROW = """async (sel) => {
   const t = document.querySelector(sel), lh = parseFloat(getComputedStyle(t).lineHeight);
-  const set = (n) => { t.value = Array.from({ length: n }, (_, i) => "строка " + (i + 1)).join("\\n");
-    t.dispatchEvent(new Event("input", { bubbles: true })); return t.getBoundingClientRect().height; };
-  const one = set(1), three = set(3), ten = set(10), over = getComputedStyle(t).overflowY;
+  const frame = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+  const set = async (n) => { t.value = Array.from({ length: n }, (_, i) => "строка " + (i + 1)).join("\\n");
+    t.dispatchEvent(new Event("input", { bubbles: true })); await frame(); return t.getBoundingClientRect().height; };
+  const one = await set(1), three = await set(3), ten = await set(10), over = getComputedStyle(t).overflowY;
   t.value = ""; t.dispatchEvent(new Event("input", { bubbles: true }));
   return { lh, one, three, ten, over };
 }"""

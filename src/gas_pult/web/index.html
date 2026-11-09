@@ -315,7 +315,7 @@
   .log summary b { color: var(--text-primary); font-weight: 600; flex: none; } .log summary em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .log pre { margin: 0; padding: 10px 12px; background: var(--bg-terminal); color: #E8E6DE; overflow-x: auto; white-space: pre; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; animation: fade .2s ease; }
   .md .log pre { border-radius: 0; }
-  .tobottom { position: fixed; right: 14px; z-index: 7; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-surface);
+  .tobottom { position: fixed; right: 14px; bottom: 12px; transform: translateY(calc(-1 * var(--tb, 0px))); z-index: 7; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-surface);
               border: 1px solid var(--border-subtle); box-shadow: 0 4px 16px rgba(0,0,0,.14); color: var(--text-primary); animation: fade .15s ease; }
   .tobottom.new::after { content: ""; position: absolute; top: 3px; right: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-surface); }
   .md { font-size: calc(15px * var(--fz, 1)); } .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
@@ -405,7 +405,7 @@
           padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78%; overflow-y: auto; overscroll-behavior: contain; }
   .kb .dock { padding-bottom: 8px; }                    /* клавиатура открыта — полоса «домой» не нужна */
   .dock { transition: transform .2s ease; } .dock.hide { transform: translateY(calc(100% + 8px)); }
-  .tobottom { transition: bottom .2s ease; }
+  .tobottom { transition: transform .2s ease; }       /* над полем ввода — сдвиг transform, без пересчёта раскладки */
   .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
   .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
   .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; overflow-y: hidden; }
@@ -1976,7 +1976,7 @@ function hideDock(on) {
   if (d.classList.contains("hide") === on) return;
   d.classList.toggle("hide", on);
   const h = on ? 0 : d.offsetHeight;                   // кнопка «к последнему» и мини-плеер — следом за панелью
-  $("toBottom").style.bottom = (h + 12) + "px"; document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
+  const root = document.documentElement.style; root.setProperty("--tb", h + "px"); root.setProperty("--mini-b", (h + 12) + "px");
   placeNotices();
 }
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
@@ -4491,7 +4491,8 @@ function demoTone(sec = 40) {                       // демо: 40 с тихо�
   return new Blob([b], { type: "audio/wav" });
 }
 function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHeight, shown = $("dock").classList.contains("hide") ? 0 : h;
-  $("session").style.paddingBottom = (h + 16) + "px"; $("toBottom").style.bottom = (shown + 12) + "px"; placeMini(); }); }
+  const pb = (h + 16) + "px"; if ($("session").style.paddingBottom !== pb) $("session").style.paddingBottom = pb;
+  document.documentElement.style.setProperty("--tb", shown + "px"); placeMini(); }); }
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
@@ -4744,11 +4745,17 @@ function onEnter(t, send, grown) {
 }
 // Поле растёт со строками до ~6, дальше — прокрутка внутри.
 const MAX_LINES = 6;
+// Измерение — раз в кадр (requestAnimationFrame): ввод, вставка и диктовка не перестраивают раскладку на каждое событие.
 function fitLines(t) {
-  const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 22;
-  const max = Math.round(lh * MAX_LINES + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom));
-  t.style.height = "auto"; const h = t.scrollHeight;
-  t.style.height = Math.min(h, max) + "px"; t.style.overflowY = h > max ? "auto" : "hidden";
+  if (t.__fit) return;
+  t.__fit = requestAnimationFrame(() => {
+    t.__fit = 0;
+    const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 22;
+    const max = Math.round(lh * MAX_LINES + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom));
+    t.style.height = "auto"; const h = t.scrollHeight;
+    t.style.height = Math.min(h, max) + "px"; t.style.overflowY = h > max ? "auto" : "hidden";
+    if (t.__end) { t.__end = false; t.scrollTop = t.scrollHeight; }
+  });
 }
 onEnter($("input"), () => sendText(), () => grow());
 // ---------- микрофон: запись → «Распознаю…» → текст в поле ----------
@@ -4985,7 +4992,7 @@ async function voiceStart(where) {
 }
 function voiceShow(s) {
   s.inp.value = [s.base, s.partial].filter(Boolean).join(" ");
-  fitLines(s.inp); s.inp.scrollTop = s.inp.scrollHeight; sync();   // «Отправить» — по тексту в поле (без опроса раз в 0,7 с)
+  s.inp.__end = true; fitLines(s.inp); sync();   // «Отправить» — по тексту в поле (без опроса раз в 0,7 с)
 }
 // Строка записи под полем: поле видно — в нём растёт текст; ✕ — отменить, «Стоп» — текст в поле, ➤ — отправить.
 function voiceBar(s) {
