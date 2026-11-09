@@ -176,6 +176,17 @@
   .section { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin: 18px 4px 8px; }
   .note { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 4px 4px 12px; }
   .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
+  /* Скелетоны (план UX, пункт 3): серые заглушки в размер карточки и сообщения вместо «Загружаю…» — данные встают
+     на то же место, экран не прыгает. Мерцание — только opacity; при prefers-reduced-motion анимации нет (правило выше). */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .skel { pointer-events: none; cursor: default; box-shadow: none; }
+  .skel i { display: block; height: 12px; border-radius: 6px; background: var(--bg-subtle); animation: pulse 1.6s ease-in-out infinite; }
+  .skel .sk-name { width: 55%; height: 14px; margin: 3px 0 9px; } .skel .sk-meta { width: 38%; }
+  .skel .sk-chip { width: 84px; height: 22px; border-radius: 11px; }
+  .skel .sdot { background: var(--bg-subtle); }
+  .nav-skel { padding: 10px 12px; } .nav-skel i { margin: 0 0 16px; }
+  .msg.skel .bubble { width: 62%; height: 42px; background: var(--bg-subtle); animation: pulse 1.6s ease-in-out infinite; }
+  .msg.skel.ai i { margin: 0 0 10px; } .msg.skel.ai i:last-child { width: 46%; }
   /* «Проекты» (задача 49): поиск, карточка проекта, экран проекта, переписка завершённого чата */
   .psearch { margin: 0 0 10px; } .psearch input { -webkit-appearance: none; appearance: none; }
   .projc .row > .i, .dchat .row > .i { width: 20px; height: 20px; color: var(--text-secondary); flex: none; }
@@ -1869,6 +1880,7 @@ const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/commands/run",
 async function api(path, body, raw, extra, signal) {
   if (DEMO && params.has("offline") && start.done) throw Object.assign(new Error("нет сети"), { net: true });
   if (DEMO && params.has("confirm") && !demoApi.confirmed && CONFIRM_PATHS.has(path)) { await confirmCode(); return api(path, body, raw, extra, signal); }
+  if (DEMO && params.get("slow") && (!start.done || path.startsWith("/api/history"))) await new Promise((ok) => setTimeout(ok, +params.get("slow")));   // ?demo&slow=1500 — медленная сеть: загрузка и переписка (скелетоны)
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
   if (FOCUS && $("focusEnd")) throw new Error("Сессия завершена");   // ссылка погасла — опросы больше не шлём
   const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
@@ -2237,6 +2249,18 @@ function morph(box, html) {                           // → новые узлы
   for (const n of [...box.childNodes]) if (!keep.has(n)) n.remove();
   next.forEach((n, i) => { if (box.children[i] !== n) box.insertBefore(n, box.children[i] || null); });
   return fresh;
+}
+// Скелетоны (план UX, пункт 3): заглушки в размер карточки и сообщения; ключ data-key — morph заменит их данными.
+function skelCards(n = 3) {
+  return Array.from({ length: n }, (_, i) => `<div class="card skel" data-key="skel:${i}" aria-hidden="true"><div class="row"><span class="sdot"></span>
+    <div class="ctext"><i class="sk-name"></i><i class="sk-meta"></i></div></div><div class="cfoot"><i class="sk-chip"></i></div></div>`).join("")
+    + '<span class="sr-only" data-key="skel:sr" role="status">Загружаю…</span>';
+}
+function skelMsgs() {
+  const ai = (w) => `<div class="msg ai skel" data-key="skel:a${w}" aria-hidden="true">${w.map((x) => `<i style="width:${x}%"></i>`).join("")}</div>`;
+  return `<div class="msg me skel" data-key="skel:u1" aria-hidden="true"><div class="bubble"></div></div>${ai([92, 84, 60])}`
+    + `<div class="msg me skel" data-key="skel:u2" aria-hidden="true"><div class="bubble" style="width:40%"></div></div>${ai([88, 70])}`
+    + '<span class="sr-only" data-key="skel:sr" role="status">Загружаю…</span>';
 }
 // ---------- разметка ответов (план UX, пункт 10) ----------
 // marked и DOMPurify (~60 КБ) больше не держат первый показ: грузятся после него (mdLoad), а до загрузки ответ виден
@@ -3416,6 +3440,9 @@ function sessionsClick(e) {
   const c = e.target.closest(".card[data-id]"); if (c) openSession(c.dataset.id);
 }
 $("sessionsView").addEventListener("click", sessionsClick);
+// До первого ответа сервера — скелетоны (план UX, пункт 3); первая отрисовка (morph / innerHTML) их заменит.
+morph($("sessionsView"), skelCards(3)); $("projectsView").innerHTML = skelCards(3);
+$("navList").innerHTML = `<div class="skel nav-skel" aria-hidden="true">${[70, 52, 64, 45].map((w) => `<i style="width:${w}%"></i>`).join("")}</div>`;
 $("newBtn").onclick = () => navOn() && projOn() && meta?.role !== "viewer" ? newChat(projMode() && proj ? proj : undefined)   // как ✎ в панели чатов
   : projMode() && proj ? projectNew() : newSession();
 // ---------- «Проекты» (задача 49, docs/PROJECTS.md): главная — проекты, внутри — их чаты ----------
@@ -3500,7 +3527,7 @@ function renderProject() {
     return;
   }
   const d = projDone;
-  if (!d) { morph($("projChats"), '<div class="empty">Загружаю…</div>'); return; }
+  if (!d) { morph($("projChats"), skelCards(2)); return; }
   const note = `<div class="note">Чаты старше ${d.keep_days} дней Claude Code удаляет сам — в списке их не будет.${d.cut ? " Поиск по тексту — не по всем чатам: уточните запрос." : ""}</div>`;
   morph($("projChats"), (d.chats.length ? pinGroups(d.chats, (c) => `<div class="card dchat" data-chat="${esc(c.sid)}" role="button" tabindex="0" aria-label="${esc(c.title)}">
       <div class="row">${ic("chat")}<div class="ctext"><div class="name">${pinMark(c)}${esc(c.title)}</div><div class="meta">${esc(msgWord(c.msgs))}${c.mine ? "" : " · другая учётка"}</div></div>${agoAt(c.last || c.mtime)}
@@ -3537,7 +3564,7 @@ async function projectResume(sid, btn) {
 async function chatView(sid) {                         // переписка завершённого чата — без окна, внизу «Продолжить»
   const p = projOf(proj), c = projDone?.chats.find((x) => x.sid === sid); if (!p) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.project-chat");
-  bg.innerHTML = `<div class="sheet chatv" role="dialog"><h3></h3><div class="chatv-list chat"><div class="empty">Загружаю…</div></div>
+  bg.innerHTML = `<div class="sheet chatv" role="dialog"><h3></h3><div class="chatv-list chat">${skelMsgs()}</div>
     <div class="row2">${c?.mine && meta?.role !== "viewer" ? `<button class="btn ghost" data-close>Закрыть</button><button class="btn" data-go-resume>Продолжить этот чат</button>` : '<button class="btn ghost" data-close>Закрыть</button>'}</div></div>`;
   bg.querySelector("h3").textContent = c?.title || "Чат";
   document.body.append(bg);
@@ -3777,7 +3804,7 @@ async function openSession(id, startTab) {
   if (!cur()) await refresh();
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
-  $("content").innerHTML = '<div class="empty">загружаю…</div>'; setAsk("");
+  $("content").className = "chat"; $("content").innerHTML = skelMsgs(); setAsk("");
   hist = []; setTab(startTab || "chat"); refresh(); haptic("selectionChanged"); padDock();
   if (matchMedia("(pointer: fine)").matches) setTimeout(() => $("input").focus(), 300);   // на компьютере — сразу печатать
 }
@@ -3816,7 +3843,7 @@ async function loadContent() {
     } else renderTerm(scr.lines);
     padDock();
   } catch (e) {
-    if (e.net && $("content").firstElementChild && !$("content").querySelector(".empty")) return;   // при обрыве — оставляем то, что видно
+    if (e.net && $("content").firstElementChild && !$("content").querySelector(".empty, .skel")) return;   // при обрыве — оставляем то, что видно
     $("content").className = ""; $("content").innerHTML = `<div class="panel"><div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div></div>`; }
 }
 // Экран — контрастный терминал: последние строки, остальное по кнопке.
@@ -7092,6 +7119,7 @@ async function sHist(toBottom) {
   try {
     const d = await api(`/api/history?w=${encodeURIComponent(w)}${SIM.rev ? "&rev=" + encodeURIComponent(SIM.rev) : ""}`);
     if (w !== SIM.w || d.same) return;
+    SIM.got = w;                                       // ответ пришёл — пустая лента значит «сообщений нет», не «грузится»
     const end = sAtEnd(), items = d.items || [], first = items[0]?.i ?? Infinity;
     const same = SIM.rev && journalOf(SIM.rev) === journalOf(d.rev);   // тот же разговор — ранние сообщения не теряем
     SIM.hist = same ? [...SIM.hist.filter((m) => m.i < first), ...items] : items;
@@ -7123,7 +7151,7 @@ function sRender(toBottom) {
   }
   const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div></div>`).join("");
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
-    + (items || `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>`));
+    + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
   fresh.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));       // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   sAct();
