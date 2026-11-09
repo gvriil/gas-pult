@@ -46,6 +46,7 @@ from gas_pult import (
     country,
     emailcode,
     fallback,
+    features,
     focus,
     helper,
     humanize,
@@ -210,6 +211,7 @@ class Panel:
         self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
+        self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
         self._trash_at = 0.0                                          # когда фоновый цикл чистил корзину чатов
@@ -2415,7 +2417,8 @@ COUNTRY_FREE = TERMS_FREE | {"/api/country"}
 REPOS = ("/api/repos", "/api/repos/add", "/api/repos/remove")
 # Тестировщик демо-пространства (задача 31): только это — и только с окнами своего пространства (spaces.Routed.scope).
 # Остальное (папки и модули владельца, файлы, интеграции, ключи, люди, модели, расход владельца) — 403 code=space.
-SPACE_OK = TERMS_FREE | {
+USES = "/api/uses"                      # панель отмечает открытые экраны и листы (features.py): только id, без людей
+SPACE_OK = TERMS_FREE | {USES,
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
     "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
@@ -2436,9 +2439,9 @@ FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/
              "/api/mcp/connected", "/api/repos"}
 FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/run", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
-              "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove"}
+              "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
-              "/api/mcp/connected"}   # без окна в запросе
+              "/api/mcp/connected", "/api/uses"}   # без окна в запросе
 # Фокус на проект (ссылка с ``proj``): весь проект — его окна, «Новая сессия в проекте», завершённые чаты; ``id``
 # проекта в запросе — только её. Ссылке на одну сессию эти пути закрыты (403), как раньше.
 FOCUS_PROJ_GET = {"/api/project", "/api/project/sessions", "/api/project/history"}
@@ -2605,7 +2608,7 @@ def handler(panel: Panel):
                 except ValueError as e:
                     self.json({"error": str(e), "code": "budget"}, 403)
                     return False
-            free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA,
+            free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN)   # и наблюдателю
             need = ("owner" if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
@@ -3355,6 +3358,8 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
+                return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои
                 lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
                 if b.get("simple") is True and panel.is_owner(uid):

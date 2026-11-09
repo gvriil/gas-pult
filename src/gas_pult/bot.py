@@ -39,6 +39,7 @@ from gas_pult import (
     digest,
     emailcode,
     fallback,
+    features,
     focus,
     invites,
     models,
@@ -985,6 +986,13 @@ class Pult:
         text, kbd = digest.render(items)
         return self.send(chat, text, reply_markup=kbd) if chat else self.broadcast(text, reply_markup=kbd)
 
+    def send_features(self, now: datetime):
+        """Раз в месяц: что в панели не открывали 30 дней и что в ходу — владельцам и файлом usage-ГГГГ-ММ.md."""
+        r = features.report(features.Uses(self.cfg.data / "features.json"), now.timestamp(),
+                            month=features.previous(now))
+        path = features.write(self.cfg.data, r)
+        self.broadcast(features.telegram(r, path))
+
     def digest_loop(self):
         while True:
             try:
@@ -993,6 +1001,9 @@ class Pult:
                     self.digest.mark_sent(now.strftime("%Y-%m-%d"))      # сначала отметка — не слать дважды
                     self.send_digest()
                     self.send_testers()                          # и сводка по тестировщикам (п. 8 задачи 31)
+                if features.due(self.cfg.data, now):             # 1-го числа — отчёт по функциям панели
+                    features.mark_sent(self.cfg.data, now)
+                    self.send_features(now)
             except Exception as e:
                 print("digest:", self.api.redact(e), flush=True)
             time.sleep(60)
