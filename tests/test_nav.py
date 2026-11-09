@@ -36,7 +36,8 @@ def test_row_menu_is_popover_and_pin_first():
 
 
 def test_delete_waits_for_undo_and_new_chat_waits_for_send():
-    d = fn("navDelete")
+    d = fn("chatDelete")                                                 # navDelete — через chatDelete (пункт 9)
+    assert "chatDelete(" in fn("navDelete")
     assert "undoBar(" in d and "/api/chat/delete" in d
     assert d.index("undoBar(") < d.index("/api/chat/delete"), "запрос — только после «Отменить» не нажали"
     assert "/api/project/session" not in fn("newChat") and "/api/new" not in fn("newChat")
