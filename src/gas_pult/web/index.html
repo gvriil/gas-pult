@@ -1191,7 +1191,8 @@ let voice = null;                                   // озвучка: { w, name
 let hint = "";                                       // подсказка Claude Code для пустого поля ввода
 let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, current = null, tab = "chat", files = [], hist = [], histMore = false,
     lastStatus = null, rec = null, view = "home", homeView = "sessions", loginId = null, mcpData = null, termAll = false,
-    termWrap = false, lastOk = Date.now(), openLogs = new Set();
+    termWrap = false, lastOk = Date.now(), openLogs = new Set(),
+    lastTouch = Date.now(), lastPoll = 0;      // зритель: последнее касание и последний опрос (pollDue)
 const wideMQ = matchMedia("(min-width: 1024px)");
 const split = () => !FOCUS && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
@@ -2818,6 +2819,7 @@ function fallbackNotices(list) {
   try { localStorage.setItem("fbSeen", String(fresh.at(-1).ts)); } catch (e) { /* не страшно */ }
 }
 async function refresh() {
+  lastPoll = Date.now();
   try {
     const pv = projMode() && (!$("home").hidden || split());   // главная «Проекты» — тот же опрос, ответ шире
     const d = await api(pv ? "/api/projects" : "/api/sessions");
@@ -3276,9 +3278,19 @@ async function liveChat() {                         // каждые 3 с: мен
 }
 function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").innerHTML = '<span class="lw">обновлено </span>' + new Date().toLocaleTimeString("ru-RU"); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
+// Опрос — только для зрителя. Вкладка скрыта — не опрашиваем совсем (каждый опрос — список окон tmux на сервере,
+// у демо-пространств ещё и sudo). Панель открыта, но 10 минут никто её не касался — раз в 30 с, а не раз в 3 с.
+// Касание, клавиша, прокрутка — сразу свежие данные и обычный темп.
+const IDLE_MS = 10 * 60 * 1000, IDLE_POLL_MS = 30000;
+const idle = () => Date.now() - lastTouch > IDLE_MS;
+function pollDue() { return !document.hidden && (!idle() || Date.now() - lastPoll >= IDLE_POLL_MS); }
+["pointerdown", "keydown", "wheel", "touchstart", "scroll"].forEach((ev) => addEventListener(ev, () => {
+  const woke = idle(); lastTouch = Date.now();
+  if (woke && start.done && !document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); }
+}, { passive: true, capture: true }));
 // Честный индикатор: 15 секунд без ответа сервера — янтарная плашка с «Переподключить».
 setInterval(() => {
-  if (document.hidden || view === "login") return;
+  if (document.hidden || view === "login" || idle()) return;   // без зрителя опрос редкий — это не обрыв связи
   const sec = Math.round((Date.now() - lastOk) / 1000), bad = sec >= 15;
   $("net").hidden = !bad; $("live").classList.toggle("stale", bad);
   if (bad) { $("netText").textContent = `Нет связи с сервером · ${sec} с`; $("live").querySelector("span").textContent = `нет связи · ${sec} с`; }
@@ -3384,7 +3396,7 @@ function paintActTimer() {                           // раз в секунду
   paintEsc();
 }
 async function pollAct(force) {
-  if (!current || view !== "session" || tab !== "chat" || document.hidden || actBusy || cur()?.status === "stopped") return;
+  if (!current || view !== "session" || tab !== "chat" || document.hidden || idle() || actBusy || cur()?.status === "stopped") return;
   const st = actState(), hot = !st || ["sent", "delivered", "started", "working", "thinking", "queued"].includes(st.phase) || pending.length;
   if (!force && !hot && actTick++ % 3) return;                        // ничего не идёт — реже
   actBusy = true;
@@ -5571,7 +5583,7 @@ async function focusStart() {
   if (!sessions.length) return focusEnd("Сессия завершена.");
   await openSession(sessions[0].id);
   start.done = true;
-  if (!start.timer) start.timer = setInterval(refresh, 3000);
+  if (!start.timer) start.timer = setInterval(() => pollDue() && refresh(), 3000);
   keepAwake(); restoreDraft();
 }
 $("backBtn").onclick = back;
@@ -6060,7 +6072,7 @@ async function start() {
     if (store("seenAny")) { helpSheet("whatsnew"); sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно"); }
   }
   store("seenAny", "1");
-  if (!start.timer) start.timer = setInterval(() => tourOn || refresh(), 3000);   // во время тура экран не перерисовываем
+  if (!start.timer) start.timer = setInterval(() => tourOn || !pollDue() || refresh(), 3000);   // во время тура экран не перерисовываем; без зрителя — реже (pollDue)
   start.done = true;
   setTimeout(tourOffer, 1200);
   keepAwake();

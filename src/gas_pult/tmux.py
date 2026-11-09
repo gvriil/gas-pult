@@ -9,8 +9,10 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import ClassVar
 
 from gas_pult.models import profile_of
 
@@ -94,6 +96,22 @@ def window_name(name: str) -> str:
     return name
 
 
+def tty_procs(ttys: list[str]) -> dict[str, list[list[str]]]:
+    """Процессы терминалов окон одним вызовом ``ps``: {``pts/3``: [[pid, *argv], …]}. Раньше ``ps`` запускался на каждое
+    окно, а каждый ``ps`` читает все процессы машины: 13 окон — около секунды процессора на один список окон."""
+    names = sorted({t.removeprefix("/dev/") for t in ttys if t})
+    if not names:
+        return {}
+    # -ww: без него ps режет строку до 80 знаков, и длинный путь к Claude (npm: node …/cli.js) не узнаётся
+    ps = subprocess.run(["ps", "-ww", "-t", ",".join(names), "-o", "tty=,pid=,args="], capture_output=True,
+                        text=True)
+    out: dict[str, list[list[str]]] = {}
+    for line in ps.stdout.splitlines():
+        if len(parts := line.split()) >= 3:
+            out.setdefault(parts[0], []).append(parts[1:])
+    return out
+
+
 class Tmux:
     def __init__(self, session: str, socket: str = "", user: str = "", home: str = "", tmux: str = "tmux"):
         """``socket`` (или ``GAS_PULT_TMUX_SOCKET``) — свой сервер tmux по пути сокета (``tmux -S``): тесты и проверки
@@ -110,24 +128,59 @@ class Tmux:
                 raise ValueError("у пространства должен быть свой сокет tmux")
             self.tmux = ["sudo", "-n", "-u", user, tmux, "-S", socket]
 
+    # Сколько секунд список окон можно отдавать из памяти (0 — всегда заново, как раньше). Панель ставит 2 с: за
+    # один цикл опроса браузера (сессии, подсказка, история, строка статуса) список нужен 3–4 раза, а у пространства
+    # каждый вызов — ``sudo`` (и запись в системный журнал). Любая команда, кроме чтения, забывает запомненное.
+    ttl = 0.0
+    READ_ONLY: ClassVar = frozenset({"list-windows", "capture-pane", "has-session", "show-options",
+                                     "display-message", "-V"})
+    # общее для всех Tmux одного сервера: tenants.tmux_of создаёт новый объект на каждый вызов
+    _WINS: ClassVar[dict[tuple, tuple[float, list[dict]]]] = {}
+    _FORGOT: ClassVar[dict[tuple, float]] = {}            # когда список последний раз устарел
+    _WINS_LOCK: ClassVar = threading.Lock()
+
+    def _key(self) -> tuple:
+        return (*self.tmux, self.session)
+
+    def forget(self):
+        """Список окон изменился (новое окно, имя, метка) — следующий ``windows()`` читает заново."""
+        with self._WINS_LOCK:
+            self._WINS.pop(self._key(), None)
+            self._FORGOT[self._key()] = time.monotonic()
+
     def run(self, *args: str, input: str | None = None) -> str:
-        return subprocess.run([*self.tmux, *args], capture_output=True, text=True, input=input).stdout
+        if not args or args[0] in self.READ_ONLY:
+            return subprocess.run([*self.tmux, *args], capture_output=True, text=True, input=input).stdout
+        self.forget()
+        try:
+            return subprocess.run([*self.tmux, *args], capture_output=True, text=True, input=input).stdout
+        finally:
+            self.forget()                     # и после: соседний запрос мог запомнить список во время команды
 
     def windows(self) -> list[dict]:
+        if self.ttl and (c := self._WINS.get(self._key())) and time.monotonic() - c[0] < self.ttl:
+            return [dict(w) for w in c[1]]
+        t0 = time.monotonic()
+        ws = self._windows()
+        if self.ttl:
+            with self._WINS_LOCK:                 # пока читали, окна менялись — не запоминаем
+                if self._FORGOT.get(self._key(), -1.0) < t0:
+                    self._WINS[self._key()] = (t0, [dict(w) for w in ws])
+        return ws
+
+    def _windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
                        "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}\t"
                        "#{@gas_pult_sid}")
         # sid — id сессии Claude Code (``--session-id``): у окна свой журнал, а не «последний в папке»
         ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid"), line.split("\t"),
                        strict=False)) for line in out.splitlines()]
+        procs = tty_procs([w.get("tty", "") for w in ws])
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
-            # -ww: без него ps режет строку до 80 знаков, и длинный путь к Claude (npm: node …/cli.js) не узнаётся
-            ps = subprocess.run(["ps", "-ww", "-t", w.get("tty", "").removeprefix("/dev/"), "-o", "pid=,args="],
-                                capture_output=True, text=True)
-            procs = [p for p in (line.split() for line in ps.stdout.splitlines() if line.strip()) if len(p) > 1]
-            claude = [p[1:] for p in procs if is_claude(p[1:])]
+            procs_w = procs.get(w.get("tty", "").removeprefix("/dev/"), [])        # [[pid, argv…], …]
+            claude = [p[1:] for p in procs_w if is_claude(p[1:])]
             # журнал окна — по самому процессу Claude (sessions/<pid>.json), а не по метке или «последнему в папке»
-            live = next((sid for p in procs if is_claude(p[1:]) and (sid := live_sid(p[0]))), "")
+            live = next((sid for p in procs_w if is_claude(p[1:]) and (sid := live_sid(p[0]))), "")
             if live:
                 w["tag"], w["sid"], w["live"] = w.get("sid", ""), live, True
             if claude:
@@ -149,7 +202,9 @@ class Tmux:
     def rename(self, wid: str, name: str) -> str:
         """Переименовать окно. Снимок claude-restore берёт имя из tmux — новое имя переживёт перезапуск."""
         name = window_name(name)
+        self.forget()
         r = subprocess.run([*self.tmux, "rename-window", "-t", wid, name], capture_output=True, text=True)
+        self.forget()
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip() or "tmux rename-window не сработал")
         return name
@@ -200,9 +255,11 @@ class Tmux:
         открывшего окно со своей папкой Claude Code (``@gas_pult_by``); пусто — окно владельца."""
         self.ensure_session()
         shell = self.shell()
+        self.forget()
         r = subprocess.run([*self.tmux, "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
                             "-n", name, "-c", path, f"{command}; exec {shlex.quote(shell)}"],
                            capture_output=True, text=True)
+        self.forget()
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip() or "tmux new-window не сработал")
         wid = r.stdout.split()[0]
@@ -223,8 +280,10 @@ class Tmux:
     def respawn(self, wid: str, path: str, command: str, mark: str = "claude", sid: str | None = None):
         """Запустить Claude заново в том же окне (то же имя и id): оболочку — закрыть, команду — запустить."""
         shell = self.shell()
+        self.forget()
         r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path,
                             f"{command}; exec {shlex.quote(shell)}"], capture_output=True, text=True)
+        self.forget()
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip() or "tmux respawn-window не сработал")
         self.run("set-option", "-w", "-t", wid, "@gas_pult", mark or "claude")
