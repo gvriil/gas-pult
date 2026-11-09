@@ -24,15 +24,28 @@ def text_of(content) -> str:
     return ""
 
 
+# Служебные вставки Claude Code в начале «сообщения человека»: вывод ! команды и /команды, напоминания, уведомления
+# фоновых агентов и задач, письма другой сессии (``<agent-message>``), пометки к сводке после /compact. И вообще любой
+# тег через дефис в самом начале (``<что-то-служебное>``) — человек так сообщения не начинает; ``<pasted_content>``
+# (вставка текста) — не служебная.
+SERVICE = re.compile(r"\s*<(bash-|local-command|command-|system-reminder|task-notification|agent-message"
+                     r"|artifact-content|[a-z]+(?:-[a-z]+)+[\s/>])")
+
+
+def is_service(text: str) -> bool:
+    """Текст — служебная вставка Claude Code, а не слова человека."""
+    return bool(SERVICE.match(str(text or "")))
+
+
 def is_real_prompt(entry: dict) -> bool:
-    """Настоящий запрос пользователя, а не tool_result, ! команда или служебная вставка."""
+    """Настоящий запрос пользователя, а не tool_result, ! команда, служебная вставка или сводка после /compact."""
     c = entry.get("message", {}).get("content")
     if isinstance(c, list) and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c):
         return False
     t = text_of(c).strip()
-    if not t or entry.get("isMeta"):
+    if not t or entry.get("isMeta") or entry.get("isCompactSummary"):
         return False
-    return not re.match(r"<(bash-|local-command|command-|system-reminder|task-notification)", t)
+    return not is_service(t)
 
 
 def project_dir(path: str, home: Path | None = None) -> Path:
@@ -222,14 +235,20 @@ def history(path: str, limit: int = 30, before: int | None = None,
     """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
 
     Ответ Claude — весь текст хода до следующего запроса человека (как в чате), субагенты пропускаются.
-    Сообщение, отправленное, пока Claude занят, Claude Code ставит в очередь (``queue-operation``) и отдаёт
-    по ходу работы (``attachment: queued_command``): такие показываем сразу, с пометкой
-    ``queued`` = "wait" (ещё в очереди) или "read" (прочитано по ходу работы).
+    Сообщение, отправленное, пока Claude занят, Claude Code ставит в очередь (``queue-operation``: ``enqueue``) и
+    либо отдаёт по ходу работы (``remove`` + ``attachment: queued_command``) — показываем с пометкой ``queued`` =
+    "read" (прочитано по ходу работы), — либо берёт следующим ходом (``dequeue``, затем обычная запись ``user``) —
+    тогда это обычное сообщение. Пока ни того ни другого — ``queued`` = "wait" (ещё в очереди). Очередь — по порядку:
+    ``dequeue`` без текста берёт самое старое. Уведомления фоновых агентов и задач, письма других сессий и прочие
+    служебные вставки (``is_service``) идут той же очередью, но сообщениями человека не показываются.
     """
     f = file or current(path, home, sid)          # ``file`` — журнал завершённой сессии без окна («Проекты»)
     if not f:
         return [], False
     items: list[dict] = []
+    queue: list[tuple[str, dict | None]] = []       # очередь Claude Code: (текст как в журнале, пузырь или None)
+    seen: set[int] = set()                          # пузыри очереди, к которым уже пришла запись ``queued_command``
+    cut = False                                     # была служебная вставка — следующий ответ Claude отдельным пузырём
     with open(f, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             try:
@@ -240,9 +259,27 @@ def history(path: str, limit: int = 30, before: int | None = None,
                 continue
             ts = e.get("timestamp", "")[:16].replace("T", " ")
             kind = e.get("type")
-            if kind == "queue-operation" and e.get("operation") == "enqueue" and str(e.get("content", "")).strip():
-                text = secrets_guard.redact(PASTED.sub("", e["content"]).strip())[0]   # ключ в очереди — не показываем
-                items.append({"role": "user", "text": text, "ts": ts, "queued": "wait"})
+            if kind == "queue-operation":
+                op, raw = e.get("operation"), str(e.get("content") or "")
+                if op == "enqueue":
+                    it = None
+                    if raw.strip() and not is_service(raw):
+                        text = secrets_guard.redact(PASTED.sub("", raw).strip())[0]   # ключ в очереди — не показываем
+                        it = {"role": "user", "text": text, "ts": ts, "queued": "wait"}
+                        items.append(it)
+                    queue.append((raw, it))
+                elif op == "dequeue" and queue:
+                    # взят следующим ходом: дальше будет обычная запись ``user`` (или /команда, или блок хука)
+                    _, it = queue.pop(0)
+                    if it is not None and it.get("queued") == "wait" and it in items:
+                        items.remove(it)
+                    cut = cut or it is None
+                elif op == "remove":
+                    k = next((n for n, (r, _) in enumerate(queue) if r == raw), None)
+                    if k is not None:
+                        _, it = queue.pop(k)
+                        if it is not None and it.get("queued") == "wait":
+                            it["queued"] = "read"   # отдан по ходу работы (absorbed_mid_turn)
             elif kind == "system" and BLOCKED in str(e.get("content", "")):
                 # хук скрытия секретов остановил сообщение (secrets_guard): в чате — его пояснение, а не «в очереди»
                 why = str(e["content"]).split(BLOCKED, 1)[1].lstrip(" :\n")
@@ -251,22 +288,34 @@ def history(path: str, limit: int = 30, before: int | None = None,
                     items.remove(w)
                 items.append({"role": "assistant", "text": why, "ts": ts, "note": "blocked"})
             elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "queued_command":
-                text = PASTED.sub("", str(e["attachment"].get("prompt", ""))).strip()
-                q = next((x for x in reversed(items) if x.get("queued") == "wait" and x["text"] == text), None)
+                a = e["attachment"]
+                raw = str(a.get("prompt", ""))
+                if a.get("commandMode", "prompt") != "prompt" or is_service(raw):
+                    cut = True                      # уведомление агента или задачи — не сообщение человека
+                    continue
+                text = PASTED.sub("", raw).strip()
+                q = next((x for x in reversed(items) if x.get("queued") in ("wait", "read") and id(x) not in seen
+                          and x["text"] == text), None)
                 if q:
                     q["queued"] = "read"
+                    seen.add(id(q))
                 elif text:
                     items.append({"role": "user", "text": text, "ts": ts, "queued": "read"})
+                    seen.add(id(items[-1]))
             elif kind == "user" and is_real_prompt(e):
                 text = PASTED.sub("", text_of(e["message"]["content"])).strip()
                 # очередь, которую Claude взял обычным ходом, — не дублируем
                 items = [x for x in items if not (x.get("queued") == "wait" and x["text"] == text)]
                 items.append({"role": "user", "text": text, "ts": ts})
+            elif kind == "user" and not e.get("isMeta") and (e.get("isCompactSummary") or is_service(
+                    text_of((e.get("message") or {}).get("content")).strip())):
+                cut = True                          # ответ на уведомление агента — не продолжение прежнего ответа
             elif e.get("type") == "assistant" and (t := text_of((e.get("message") or {}).get("content")).strip()):
-                if items and items[-1]["role"] == "assistant":
+                if items and items[-1]["role"] == "assistant" and not cut:
                     items[-1]["text"] += "\n\n" + t
                 else:
                     items.append({"role": "assistant", "text": t, "ts": ts})
+                cut = False
     for i, it in enumerate(items):
         it["i"] = i
     end = len(items) if before is None else max(0, min(before, len(items)))
