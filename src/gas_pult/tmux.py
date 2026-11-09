@@ -88,6 +88,16 @@ def prompt_draft(lines: list[str]) -> str:
     return ""
 
 
+def is_ours(draft: str, text: str) -> bool:
+    """Черновик в поле ввода — это наш вставленный текст: свёрнутая вставка Claude Code («[Pasted text #1 …]») или
+    начало текста (пробелы и переносы не считаем). Чужой черновик (человек печатает в окне сам) — не трогаем."""
+    if re.search(r"\[Pasted text #\d+", draft):
+        return True
+    a, b = (re.sub(r"\s+", "", x) for x in (draft, text))
+    n = min(len(a), len(b), 40)
+    return n > 0 and a[:n] == b[:n]
+
+
 def window_name(name: str) -> str:
     """Имя сессии (окна tmux): 1–40 знаков, без «:» и «.» — в tmux это разделители цели (сессия:окно.панель)."""
     name = " ".join(str(name).split())
@@ -217,12 +227,28 @@ class Tmux:
         out = self.run("capture-pane", "-p", "-J", "-t", wid)
         return [line.rstrip() for line in out.splitlines() if line.strip()][-n:]
 
-    def paste(self, wid: str, text: str):
-        """Bracketed paste: многострочный текст не отправится раньше времени; Enter — отдельно."""
+    SUBMIT_TRIES = (1.0, 2.0, 3.5)      # с после вставки: проверить, ушёл ли текст; не ушёл — Enter ещё раз
+
+    def paste(self, wid: str, text: str, sleep=time.sleep) -> bool:
+        """Bracketed paste: многострочный текст не отправится раньше времени; Enter — отдельно. Под нагрузкой Claude
+        Code ещё разбирает длинную вставку («[Pasted text #1 +N lines]»), когда приходит Enter, — и Enter теряется:
+        текст остаётся в поле ввода неотправленным, а пульт пишет «Доставлено». Поэтому после Enter смотрим поле ввода
+        (``draft``): там всё ещё наш текст — Enter ещё раз (до трёх). Ушёл — True; так и висит — False."""
         self.run("load-buffer", "-b", "gas-pult", "-", input=text)
         self.run("paste-buffer", "-p", "-d", "-b", "gas-pult", "-t", wid)
-        time.sleep(0.5)
+        sleep(0.5)
         self.keys(wid, "Enter")
+        waited = 0.0
+        for at in self.SUBMIT_TRIES:
+            sleep(at - waited)
+            waited = at
+            left = self.draft(wid)
+            if not left or not is_ours(left, text):
+                return True
+            self.keys(wid, "Enter")
+        sleep(0.8)
+        left = self.draft(wid)
+        return not left or not is_ours(left, text)
 
     def type(self, wid: str, text: str):
         self.run("send-keys", "-t", wid, "-l", text)
