@@ -269,7 +269,11 @@
          border-radius: var(--radius-md); padding: 6px 6px 6px 12px; font-size: calc(14px * var(--fz, 1)); box-shadow: var(--shadow-lg); animation: fade .2s ease; }
   .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
   .net button { border: 0; background: var(--bg-surface); border-radius: var(--radius-pill); padding: 7px 12px; font-weight: 600; font-size: calc(13px * var(--fz, 1)); display: inline-flex; gap: 6px; align-items: center; flex: none; }
-  .chat .msg { margin: 0 0 14px; animation: fade .2s ease; }
+  .chat .msg { margin: 0 0 14px; }
+  /* Появление нового сообщения (план UX, пункт 6): только у новых — morph отличает новые узлы от прежних и
+     заменённых (.mupd); первая отрисовка ленты — без анимации. transform + opacity, 150 мс. */
+  .chat .msg.enter { animation: msgin .15s ease-out; }
+  @keyframes msgin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .mupd { animation: none !important; }              /* заменён при точечном обновлении — не «появляется» заново; не .upd: это плашка «новая версия» */
   .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
   .chat .me { display: flex; flex-direction: column; align-items: flex-end; }
@@ -623,6 +627,8 @@
   body.split .tabsbar .seg { max-width: 860px; margin: 0 auto; }
   body.split .dock { left: var(--side); } body.split .homebar { left: var(--side); } body.split .homebar .btn { max-width: 836px; margin: 0 auto !important; } body.split .notices { left: var(--side); }
   body.split #session, body.split #mcpForm, body.split .dock > * { max-width: 860px; margin-left: auto; margin-right: auto; }
+  /* Лента на компьютере (план UX, пункт 6): колонка ~760 px по центру, поле ввода — той же ширины. */
+  body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 760px; }
   .sidebtn, .grip, .rail { display: none; }
   body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
   body.split .sidebtn { display: grid; }
@@ -4101,6 +4107,8 @@ function renderChat(toBottom) {
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
+  const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
+  box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
   const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="when">${esc(localTs(m.ts))}</div></div>`
     : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
@@ -4114,6 +4122,7 @@ function renderChat(toBottom) {
     + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   voiceUi();
   const msgs = fresh.filter((el) => el.classList.contains("msg"));   // дообработка — только новых и изменившихся
+  if (had) msgs.forEach((el) => !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
   msgs.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));
   msgs.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   msgs.filter((el) => el.classList.contains("ai")).forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
@@ -7165,9 +7174,12 @@ function sRender(toBottom) {
     box.innerHTML = `<div class="s-empty"><p>${esc(T(canNew() ? "s.none" : "s.none.viewer"))}</p>${canNew() ? `<div class="scn-opts">${sChip(true, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}</div>`;
     return sAct();
   }
+  const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='sp:']");
+  box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));
   const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div></div>`).join("");
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
+  if (had) fresh.forEach((el) => el.classList.contains("msg") && !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
   fresh.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));       // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   sAct();
