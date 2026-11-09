@@ -895,6 +895,15 @@
   .nav-q input:focus { outline: none; border-color: var(--border-focus); }
   .nav-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px 12px; }
   .nav-sec { margin: 14px 10px 4px; font-size: calc(12px * var(--fz, 1)); font-weight: 600; color: var(--text-muted); }
+  .nav-sec.has-add { display: flex; align-items: center; margin-right: 2px; } .nav-sec.has-add span { flex: 1; }
+  .nav-add { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
+             display: grid; place-items: center; cursor: pointer; flex: none; }
+  .nav-add .i { width: 16px; height: 16px; }
+  .nav-add:hover, .nav-add:focus-visible { background: color-mix(in srgb, var(--text-primary) 7%, transparent); color: var(--text-primary); outline: none; }
+  .np-models { display: flex; flex-wrap: wrap; gap: 6px; }
+  .np-models button, .sheet .np-models button { width: auto; min-height: 36px; flex: none; display: inline-flex; align-items: center; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-primary); border-radius: var(--radius-pill);
+                      padding: 7px 12px; font: inherit; font-size: calc(14px * var(--fz, 1)); cursor: pointer; }
+  .np-models button[aria-pressed="true"] { border-color: var(--accent-primary); background: var(--accent-soft); color: var(--accent-primary); font-weight: 600; }
   .nrow { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 4px 4px 4px 10px; border-radius: var(--radius-sm);
           color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .nrow:hover, .nrow:focus-visible, .nrow.menu-on { background: color-mix(in srgb, var(--text-primary) 7%, transparent); outline: none; }
@@ -1670,7 +1679,9 @@ function renderNav() {
   const groups = projs.filter((p) => !p.pinned).map(pv).join("");
   const recent = ss.filter((x) => !x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a));
   const cmds = q ? palCmds().filter((c) => hit(c.label + " " + (c.kw || ""))) : [];   // палитра: при поиске — и команды
-  const h = (pins ? sec("Закреплённые") + pins : "") + (groups ? sec("Проекты") + groups : "")
+  const canNewP = projOn() && meta?.role !== "viewer" && !q;           // «+» — «Новый проект» (и когда проектов ещё нет)
+  const secP = `<div class="nav-sec has-add" role="presentation"><span>Проекты</span><button type="button" class="nav-add" data-nnewp aria-label="Новый проект" title="Новый проект">${ic("plus")}</button></div>`;
+  const h = (pins ? sec("Закреплённые") + pins : "") + (groups ? (canNewP ? secP : sec("Проекты")) + groups : canNewP ? secP : "")
     + (recent.length || !cmds.length ? sec("Недавние") : "")
     + (recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
     + (cmds.length ? sec("Команды") + cmds.map((c) => `<div class="nrow cmd" data-ncmd="${c.id}" role="listitem" tabindex="0">${ic(c.icon, "ncmd")}<span class="nm">${esc(c.label)}</span></div>`).join("") : "");
@@ -1788,6 +1799,7 @@ function undoBar(text, undo, commit, ms = 5000) {
 }
 $("navList").addEventListener("click", (e) => {
   if (NAV.held) { NAV.held = false; return; }          // долгое нажатие уже открыло меню
+  if (e.target.closest("[data-nnewp]")) return newProject();
   const row = e.target.closest(".nrow"); if (!row) return;
   if (e.target.closest("[data-nmore]")) return popMenu(e.target.closest("[data-nmore]"), navItems(row));
   if (e.target.closest("[data-npin]")) {
@@ -3846,6 +3858,55 @@ function newFolder(profile) {
   $("nfOk").onclick = save;
   inp.onkeydown = (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") bg.remove(); };
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+}
+// «Новый проект» (панель чатов → «Проекты» → «+»): название (кириллица можно) → имя папки латиницей, как у «Новой
+// папки»; папка — в первом корне проектов, с git; инструкции — в CLAUDE.md; модель по умолчанию — для чатов проекта.
+// Окно не запускаем: сразу пустой «Новый чат» в этом проекте, сессия — при первой отправке (newChat).
+const NP_LAT = Object.fromEntries([..."абвгдеёжзийклмнопрстуфхцчшщъыьэюя"].map((c, i) => [c, ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r", "s", "t",
+  "u", "f", "kh", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"][i]]));
+const npFolder = (name) => {                          // как projects.folder_of на сервере
+  const x = [...(name || "").trim().toLowerCase()].map((c) => NP_LAT[c] ?? c).join("").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 41).replace(/-+$/, "");
+  return /^[a-z0-9][a-z0-9-]{1,40}$/.test(x) ? x : "";
+};
+function newProject() {
+  closePop(); navOpen(false);
+  if (meta?.role === "viewer") return;
+  const root = projData?.new_root || "~/projects", models = meta?.models || [];
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.new-project");
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-labelledby="npTitle"><h3 id="npTitle">Новый проект</h3><div style="padding:4px 16px 0">
+    <div class="field"><label for="npName">Название</label><input id="npName" maxlength="80" autocomplete="off" placeholder="например, Магазин книг"></div>
+    <div class="field"><label for="npFolder">Папка <span class="opt">· в ${esc(root)}</span></label><input id="npFolder" maxlength="41" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="из названия">
+      <p class="note" style="margin:4px 2px 0">Латиница в нижнем регистре, цифры, дефис. Сразу с git.</p></div>
+    <div class="field"><label for="npInstr">Инструкции <span class="opt">· необязательно, в CLAUDE.md</span></label><textarea id="npInstr" rows="3" placeholder="Как работать в этом проекте: тон, правила, что важно"></textarea></div>
+    ${models.length ? `<div class="field"><label>Модель по умолчанию</label><div class="np-models" role="group" aria-label="Модель по умолчанию">${["", ...models].map((m) => `<button type="button" data-npm="${esc(m)}" aria-pressed="${m === "" ? "true" : "false"}">${esc(m || "Как у пульта")}</button>`).join("")}</div></div>` : ""}
+    <p class="note" id="npErr" role="alert" style="margin:0 2px;color:var(--status-danger)" hidden></p></div>
+    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="npOk">Создать</button></div></div>`;
+  document.body.append(bg);
+  const name = $("npName"), folder = $("npFolder"); let own = false, model = "";
+  name.focus();
+  name.oninput = () => { if (!own) folder.value = npFolder(name.value); };
+  folder.oninput = () => { own = !!folder.value.trim(); };
+  const bad = (t) => { $("npErr").textContent = t; $("npErr").hidden = false; };
+  const save = () => busy($("npOk"), "Создаю…", async () => {
+    const n = name.value.trim(), f = folder.value.trim().toLowerCase() || npFolder(n);
+    if (!n) { name.focus(); return bad("Назовите проект."); }
+    if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(f)) { folder.focus(); return bad("Имя папки: латиница в нижнем регистре, цифры, дефис (2–41 знак)."); }
+    try {
+      const d = await api("/api/project/new", { name: n, folder: f, instructions: $("npInstr").value, model });
+      bg.remove(); haptic("notificationOccurred", "success");
+      projData = await api("/api/projects").catch(() => projData);
+      if (!projOf(d.id)) (projData ||= { projects: [] }).projects = [...(projData.projects || []), { id: d.id, name: d.name, folder: d.folder, path: d.path, origin: "new", chats: 0 }];
+      NAV.exp.add(d.id); store("lastProj", d.id);
+      newChat(d.id); toast(`Проект «${d.name}» создан — напишите первое сообщение`, 3500);
+    } catch (e) { bad(e.message); }
+  });
+  $("npOk").onclick = save;
+  bg.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); save(); } if (e.key === "Escape") bg.remove(); });
+  bg.addEventListener("click", (e) => {
+    const m = e.target.closest("[data-npm]");
+    if (m) { model = m.dataset.npm; bg.querySelectorAll("[data-npm]").forEach((x) => x.setAttribute("aria-pressed", String(x === m))); return; }
+    if (e.target === bg || e.target.closest("[data-close]")) bg.remove();
+  });
 }
 // Модель этого чата: окно перезапускается с --model у того же поставщика (разговор продолжается); другие не трогаем.
 async function setModel(s, alias, name) {
@@ -7662,6 +7723,15 @@ function demoProjects(key, path, body, ses) {
     ["p-shop-bot", "shop-bot", L2("Магазин-бот", "Shop bot"), "auto"], ["p-gastech-digest", "gastech-digest", L2("Дайджест", "Digest"), "auto"], ["p-books", "books", L2("Бухгалтерия", "Accounting"), "module:acc-start"], ["p-home", "~", L2("Домашняя", "Home"), "auto"]];
   const DONE = { "p-tgi": [[L2("Отчёт П8 за октябрь", "October report"), 2 * 3600, 14], [L2("Комнаты: миграция базы", "Rooms: database move"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]],
     "p-books": [[L2("Акт сверки за октябрь", "October reconciliation"), D, 18], [L2("Описание платёжки", "Payment description"), 4 * D, 4]], "p-icon": [[L2("Цены конкурентов", "Competitor prices"), 3 * D, 12]] };
+  P.push(...(demoApi.pj.newp || []));                // «Новый проект» в демо — в памяти страницы
+  if (key === "/api/project/new") {
+    const f = String(body?.folder || "").trim().toLowerCase() || npFolder(body?.name);
+    if (!String(body?.name || "").trim()) return Promise.reject(new Error("назовите проект"));
+    if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(f)) return Promise.reject(new Error("имя папки: латиница в нижнем регистре, цифры, дефис (2–41 знак), без «/» и «..»"));
+    if (P.some((x) => x[1] === f)) return Promise.reject(new Error(`папка «${f}» уже есть в ~/projects — выберите другое название или имя папки`));
+    const id = "p-new-" + f; (demoApi.pj.newp ||= []).push([id, f, body.name.trim(), "new"]);
+    return Promise.resolve({ id, name: body.name.trim(), folder: f, path: "~/projects/" + f });
+  }
   const chats = (id) => (DONE[id] || []).map(([title, age, msgs], i) => ({ sid: `00000000-0000-4000-8000-${id.length}${String(i).padStart(11, "0")}`, title, mtime: t0 - age, msgs, mine: i !== 2 }))
     .concat(demoApi.pj.extra?.[id] || []).map((c) => ({ ...c, title: demoApi.pj.titles[c.sid] || c.title, pinned: demoApi.pins?.["c:" + c.sid] || 0 })).filter((c) => !demoApi.pj.hidden[c.sid])
     .sort((a, b) => (b.pinned || 0) - (a.pinned || 0));
@@ -7672,7 +7742,7 @@ function demoProjects(key, path, body, ses) {
       windows: mine.length, waiting: mine.filter((x) => x.status === "dialog").length, busy: mine.filter((x) => x.status === "busy").length,
       chats: ch.length + mine.length, last, last_title: mine.sort((a, b) => (b.changed || 0) - (a.changed || 0))[0]?.title || ch[0]?.title || "", sessions: mine.map((x) => x.id) };
   }).sort((a, b) => b.pinned_at - a.pinned_at || (b.waiting ? 1 : 0) - (a.waiting ? 1 : 0) || (b.last || 0) - (a.last || 0));
-  if (key === "/api/projects") return Promise.resolve({ ...ses, projects: list });
+  if (key === "/api/projects") return Promise.resolve({ ...ses, projects: list, new_root: "~/projects" });
   const id = q.get("id") || body?.id, p = list.find((x) => x.id === id);
   if (!p) return Promise.reject(new Error("проекта нет — обновите список"));
   if (key === "/api/project") return Promise.resolve({ ...p, instructions: id === "p-books" ? "# Бухгалтерия\nОтвечай коротко. Суммы — в рублях, даты — ДД.ММ.ГГГГ." : "", files: id === "p-books" ? [{ name: "выписка-октябрь.xlsx", size: 48213, mtime: t0 - D }] : [], windows: p.sessions });

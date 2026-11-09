@@ -167,7 +167,8 @@ def test_tester_works_in_own_window(world):
 @pytest.mark.parametrize("path,body", [
     ("/api/mcp", None), ("/api/modules", None), ("/api/people", None), ("/api/providers", None),
     ("/api/setup/status", None), ("/api/commands", None), ("/api/fallback", None), ("/api/team", None),
-    ("/api/folder", {"name": "x"}), ("/api/modules/create", {"id": "night-shift", "name": "x"}),
+    ("/api/folder", {"name": "x"}), ("/api/project/new", {"name": "x"}),
+    ("/api/modules/create", {"id": "night-shift", "name": "x"}),
     ("/api/upload", {}), ("/api/active", {"w": "@1"}), ("/api/model", {"w": "@1", "name": "x"}),
     ("/api/mcp/add", {"preset": "github"}), ("/api/keys", {"provider": "openrouter", "key": "x"}),
     ("/api/revive", {"w": "@1"}), ("/api/restart", {"w": "@1"}),

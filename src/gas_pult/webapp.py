@@ -403,6 +403,39 @@ class Panel:
         out = self.open_in(path, profile, person, uid, model=p.get("model") or "")
         return {**out, "project": p["id"]}
 
+    INSTR_MAX = 20000
+
+    def project_new(self, name: str, folder: str = "", instructions: str = "", profile: str = "", model: str = "",
+                    person: int | None = None) -> dict:
+        """«Новый проект» (панель чатов → «Проекты» → «+»): папка в первом корне проектов с ``git init`` — как «Новая
+        папка» (``Pult.make_folder``), ``CLAUDE.md`` из инструкций, запись в ``projects.json`` с поставщиком и моделью
+        по умолчанию. Окно не открываем: чат запустится при первой отправке (``/api/project/session``). Папка уже
+        есть — отказ, на диске ничего не трогаем."""
+        name = " ".join(str(name or "").split())[:projects.NAME_MAX]
+        if not name:
+            raise ValueError("назовите проект")
+        folder = str(folder or "").strip().lower() or projects.folder_of(name)
+        if not projects.FOLDER_OK.match(folder):
+            raise ValueError("имя папки: латиница в нижнем регистре, цифры, дефис (2–41 знак), без «/» и «..»")
+        if profile and profile not in models.BY_ID:
+            raise ValueError("такого поставщика нет")
+        if model and model not in self.cfg.models:
+            raise ValueError("такой модели нет в настройках (models)")
+        instructions = str(instructions or "").strip()
+        if len(instructions) > self.INSTR_MAX:
+            raise ValueError(f"инструкции длиннее {self.INSTR_MAX} знаков — сократите")
+        root = self.pult.module_root()
+        try:
+            path = self.pult.make_folder(folder)
+        except FileExistsError:
+            raise ValueError(f"папка «{folder}» уже есть в {projects.tilde(str(root), self.pult.home)} — выберите "
+                             "другое название или имя папки") from None
+        if instructions:
+            (path / "CLAUDE.md").write_text(instructions + "\n", encoding="utf-8")
+        pid = self.projects.create(str(path), name, by=person, profile=profile, model=model)
+        self._proj = (0.0, {})
+        return {"id": pid, "name": name, "folder": path.name, "path": projects.tilde(str(path), self.pult.home)}
+
     # ---------- «Закрепить» проект, сессию и чат — свои у каждого человека (projects.json → pins[кто]) ----------
     def pin_key(self, w: dict, sid: str = "") -> str:
         """Ключ закрепления окна: id сессии Claude Code (переживает перезапуск с продолжением и «Продолжить»);
@@ -2742,6 +2775,7 @@ def handler(panel: Panel):
                 # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
                 return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
                         "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
+                        "new_root": projects.tilde(str(panel.pult.module_root()), panel.pult.home),   # «Новый проект»
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
@@ -3533,6 +3567,10 @@ def handler(panel: Panel):
                 return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
             if path == "/api/chat/restore":               # «Вернуть» из корзины
                 return panel.chat_restore(str(b.get("id") or ""))
+            if path == "/api/project/new":                # «Новый проект»: папка, CLAUDE.md, запись; чат — при отправке
+                return panel.project_new(str(b.get("name") or ""), str(b.get("folder") or ""),
+                                         str(b.get("instructions") or ""), str(b.get("profile") or ""),
+                                         str(b.get("model") or ""), self.person())
             if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
                 return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
                                         self.terms_uid())
