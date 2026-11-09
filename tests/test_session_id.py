@@ -73,6 +73,17 @@ def test_follow_after_clear(two):
     assert transcripts.follow("/p/shop", None, C, set()) == ""          # своего ещё нет — ждём первого сообщения
 
 
+def test_batch_run_is_not_clear(two):
+    """Плановый ``claude -p`` (``entrypoint`` = ``sdk-cli``) в той же папке — новее журнала окна, но не его /clear:
+    метка не переезжает, и окно без метки его не показывает (ревью 09.11, п. 5)."""
+    f = put(two, C, "плана", time.time())
+    f.write_text("".join(json.dumps({**json.loads(x), "entrypoint": "sdk-cli"}) + "\n"
+                         for x in f.read_text().splitlines()))
+    assert transcripts.is_batch(f)
+    assert transcripts.follow("/p/shop", None, B, set()) == ""
+    assert transcripts.current("/p/shop").stem == B
+
+
 def test_usage_by_session(two, monkeypatch):
     m = usage.Meter(transcripts.CLAUDE_PROJECTS)
     assert m.session("/p/shop", sid=A)["id"] == A

@@ -361,12 +361,16 @@ class Panel:
             st = projects.stats([f for f in projects.session_files(folders, homes)     # скрытые и удалённые — не в счёт
                                  if not (meta.get(f.stem) or {}).get("hidden")])
             last = max([st["last"] or 0, *[int(x.get("changed") or 0) for x in mine]]) or None
+            lf = st["last_file"]
+            win = next((x for x in mine if lf and x.get("sid") == lf.stem), None)
             item = {**self.project_public(p, who),
                     "windows": len(mine),
                     "waiting": sum(x["status"] == "dialog" for x in mine),
                     "busy": sum(x["status"] == "busy" for x in mine),
                     "chats": st["total"], "last": last,
-                    "last_title": projects.title_of(st["last_file"]) if st["last_file"] else "",
+                    "last_title": (str((meta.get(lf.stem) or {}).get("title") or "") or projects.title_of(lf))
+                    if lf else "",
+                    "last_window": (win or {}).get("name", ""),   # последний чат открыт в окне — его имя (добавлено)
                     "sessions": [x["id"] for x in mine]}
             if q and not any(q in str(v).lower() for v in (item["name"], item["folder"], item["last_title"],
                                                             *[x.get("name", "") for x in mine])):
@@ -476,25 +480,25 @@ class Panel:
         meta = self.project_data().get("sessions") or {}
         by_sid, legacy = self.open_sids(p)
         mine = self.my_claude(person)
-        files = []
+        files = []                                       # (когда последнее сообщение, время файла, журнал)
         for f in self.project_files(p):
             with contextlib.suppress(OSError):
-                files.append((f.stat().st_mtime, f))
-        files.sort(key=lambda x: -x[0])
+                files.append((projects.last_said(f), f.stat().st_mtime, f))
+        files.sort(key=lambda x: (-x[0], -x[1]))         # по последнему сообщению: служебные записи — не «только что»
         q = " ".join(str(q or "").lower().split())
         pins = projects.pins_of(self.project_data(), who)[1]
-        files = [(mt, f) for mt, f in files
+        files = [(at, mt, f) for at, mt, f in files
                  if not (f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"))]
         top = []                                          # закреплённые — сверху первой страницы, не по времени
-        for mt, f in files if before is None else []:
+        for at, mt, f in files if before is None else []:
             if pin := int(pins.get("sid:" + f.stem) or 0):
                 title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
                 if title and (not q or q in title.lower()):
-                    top.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f),
-                                "mine": f.parent.parent.parent == mine, "pinned": pin})
+                    top.append({"sid": f.stem, "title": title, "mtime": int(mt), "last": at or int(mt),
+                                "msgs": projects.prompts(f), "mine": f.parent.parent.parent == mine, "pinned": pin})
         out, scanned, t0, cut = [], 0, time.time(), False
-        for mt, f in files:
-            if pins.get("sid:" + f.stem) or (before is not None and mt >= before):
+        for at, mt, f in files:
+            if pins.get("sid:" + f.stem) or (before is not None and (at or int(mt)) >= before):
                 continue
             title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
             if not title:
@@ -508,12 +512,12 @@ class Panel:
                     continue
             own = f.parent.parent.parent == mine
             out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": own,
-                        "pinned": 0})
+                        "pinned": 0, "last": at or int(mt)})    # last — время последнего сообщения (добавлено)
             if len(out) >= self.CHATS_PAGE:
                 break
         more = bool(out) and len(out) >= self.CHATS_PAGE
         top.sort(key=lambda x: -x["pinned"])
-        return {"chats": top + out, "more": more, "before": out[-1]["mtime"] if more else None, "cut": cut,
+        return {"chats": top + out, "more": more, "before": out[-1]["last"] if more else None, "cut": cut,
                 "keep_days": self.keep_days(), "active": len(by_sid) + len(legacy)}
 
     def project_history(self, pid: str, sid: str, before: int | None = None) -> dict:
