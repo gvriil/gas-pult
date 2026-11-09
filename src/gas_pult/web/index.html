@@ -7636,7 +7636,7 @@ function demoApi(path, body) {
   if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
-    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 213.139.11.111\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh nl-hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
+    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
   if (key === "/api/send") {                         // демо: вставка ~0,7 с, потом фазы строки статуса и ответ (&act=stuck — реакции нет)
@@ -7689,7 +7689,7 @@ function demoApi(path, body) {
       { id: "k2", win: "icon-1146", ts: "2026-11-01 09:05", about: "Пересобрать проект с нуля", cmd: "rm -rf dist && npm run build", kind: "local", danger: true, done: null },
       { id: "k3", win: "gas-pult", ts: "2026-11-01 08:40", about: "перезапуск панели после обновления", cmd: "# перезапуск панели после обновления\nsystemctl --user restart gas-pult-webapp", kind: "local", danger: false,
         done: { code: 0, seconds: 1, at: "2026-11-01 08:42", by: "panel", out: "" } },
-      { id: "k4", win: "gas-pult", ts: "2026-11-01 08:31", about: "Проверить правила DNAT на гипервизоре", cmd: "ssh nl-hv 'iptables -t nat -S PREROUTING'", kind: "foreign", danger: false, done: null, manual: { at: "2026-11-01 08:36" } },
+      { id: "k4", win: "gas-pult", ts: "2026-11-01 08:31", about: "Проверить правила DNAT на гипервизоре", cmd: "ssh hv 'iptables -t nat -S PREROUTING'", kind: "foreign", danger: false, done: null, manual: { at: "2026-11-01 08:36" } },
       { id: "k5", win: "digest-0716", ts: "2026-10-31 22:10", about: "", cmd: "git status --short", kind: "local", danger: false,
         done: { code: 128, seconds: 0, at: "2026-10-31 22:11", by: "panel", out: "…\nfatal: not a git repository (or any of the parent directories): .git", cut: true, triage: "sent", triage_to: "digest-0716" } }];
     if (path.includes("/output")) return Promise.resolve({ out: Array.from({ length: 300 }, (_, k) => `строка вывода ${k + 1}`).join("\n") + "\nfatal: not a git repository (or any of the parent directories): .git" });

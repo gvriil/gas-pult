@@ -89,11 +89,12 @@
    - `443` (или любой свободный, например `8443`) → `сервер:8443` — сама панель;
    - `80` → `сервер:8080` — нужен только Let's Encrypt для выдачи сертификата.
 
-   Пример для Linux-гипервизора с iptables (сначала бэкап `iptables-save > ~/iptables.bak`):
+   Пример для Linux-гипервизора с iptables (сначала бэкап `iptables-save > ~/iptables.bak`); `<ВМ>` — внутренний
+   адрес сервера с пультом в сети гипервизора, `eth0` — внешний интерфейс гипервизора:
    ```bash
-   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 8443 -j DNAT --to-destination 192.168.122.102:8443
-   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80   -j DNAT --to-destination 192.168.122.102:8080
-   iptables -I FORWARD 1 -d 192.168.122.102 -p tcp -m multiport --dports 8443,8080 -j ACCEPT
+   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 8443 -j DNAT --to-destination <ВМ>:8443
+   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80   -j DNAT --to-destination <ВМ>:8080
+   iptables -I FORWARD 1 -d <ВМ> -p tcp -m multiport --dports 8443,8080 -j ACCEPT
    ```
    и сохранить так, как на вашей системе (CentOS: `iptables-save > /etc/sysconfig/iptables`; Debian/Ubuntu: `netfilter-persistent save`).
 3. **Файрвол сервера** (если включён ufw):
