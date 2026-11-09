@@ -42,6 +42,7 @@ from gas_pult import (
     ago,
     asr,
     balance,
+    chat_trash,
     country,
     emailcode,
     fallback,
@@ -335,6 +336,7 @@ class Panel:
         """Список проектов для главной: счётчики окон (ждут ответа / работают / всего), чатов в журналах, последняя
         активность и название последнего чата. ``ss`` — готовые сессии: статусы не считаем заново."""
         d = self.project_data()
+        meta = d.get("sessions") or {}
         homes = self.claude_homes()
         by: dict[str, list[dict]] = {}
         for x in ss:
@@ -349,7 +351,8 @@ class Panel:
                 continue                                  # папку удалили — проект не показываем (запись остаётся)
             if bool(p.get("archived")) != archived:
                 continue
-            st = projects.stats(projects.session_files(folders, homes))
+            st = projects.stats([f for f in projects.session_files(folders, homes)     # скрытые и удалённые — не в счёт
+                                 if not (meta.get(f.stem) or {}).get("hidden")])
             last = max([st["last"] or 0, *[int(x.get("changed") or 0) for x in mine]]) or None
             item = {**self.project_public(p),
                     "windows": len(mine),
@@ -503,6 +506,86 @@ class Panel:
         if title is not None:
             title = " ".join(str(title).split())[:projects.TITLE_MAX]
         rec = self.projects.set_chat(f.stem, p["id"], title=title, hidden=None if hidden is None else bool(hidden))
+        self._proj = (0.0, {})
+        return rec
+
+    # ---------- «Удалить» сессию или чат: окно закрыто, журнал — в корзину пульта (chat_trash.py) ----------
+    def session_window(self, wid: str) -> dict:
+        """Окно сессии пульта для «Завершить»/«Удалить»: с Claude или остановленное (Claude вышел, осталась
+        оболочка). Остальные окна tmux владельца (просто терминалы) не трогаем."""
+        w = self.tmux.window(str(wid or ""))
+        if not w or not (w.get("cmd") == "claude" or w.get("stopped")):
+            raise LookupError("окна уже нет")
+        return w
+
+    def window_journal(self, w: dict) -> Path | None:
+        """Журнал окна: по метке ``@gas_pult_sid``; старое окно без метки — последний журнал папки, но только если
+        других окон Claude в этой папке нет (иначе можно унести чужой разговор)."""
+        home = self.pult.home_of(w)
+        if sid := transcripts.valid_sid(w.get("sid")):
+            return transcripts.current(w["path"], home, sid)
+        real = os.path.realpath(w["path"])
+        if any(x["id"] != w["id"] and (x.get("cmd") == "claude" or x.get("stopped"))
+               and os.path.realpath(x.get("path", "")) == real for x in self.tmux.windows()):
+            return None
+        return transcripts.current(w["path"], home)
+
+    def chat_delete(self, wid: str = "", pid: str = "", sid: str = "") -> dict:
+        """«Удалить»: окно сессии (``wid``) или завершённый чат проекта (``pid`` + ``sid``). Окно закрывается (Claude
+        выходит штатно; не вышел за 20 с — окно закрываем, разговор уже в журнале), журнал — в корзину пульта, чат
+        помечается скрытым в ``projects.json``: после обновления и перезапуска не возвращается. «Вернуть» —
+        ``chat_restore``. Фоновые задачи в окне — не удаляем: решить в самом окне."""
+        d = self.project_data(fresh=True)
+        f: Path | None = None
+        w = self.session_window(wid) if wid else None
+        if w is None:
+            p = self.project(pid)
+            f = self.chat_file(p, sid)
+            w = self.open_sids(p)[0].get(f.stem)            # чат ещё открыт в окне — закрыть и его
+        else:
+            f = self.window_journal(w)
+        draft = ""
+        if w:
+            if w.get("cmd") == "claude":
+                r = self.pult.quit_ex(w)
+                draft = r["draft"]
+                if r["result"] == "background":
+                    raise ValueError("не удалил: у сессии есть фоновые задачи — решите в самом окне")
+                if r["result"] == "busy" and self.tmux.window(w["id"]):
+                    self.tmux.kill(w["id"])
+            else:
+                self.tmux.kill(w["id"])
+            self.focus.end_window(w["id"])                  # фокус-ссылки этой сессии гаснут
+        out = {"result": "удалено", "closed": bool(w), "draft": draft, "trash": None}
+        if f and f.is_file():
+            pid = (w and self.project_of(d, w)) or pid
+            meta = (d.get("sessions") or {}).get(f.stem) or {}
+            title = str(meta.get("title") or "") or projects.title_of(f) or (w or {}).get("name", "")
+            out["trash"] = chat_trash.put(self.cfg.data, f, title, pid)
+            self.projects.set_chat(f.stem, pid, hidden=True)
+            self._proj = (0.0, {})
+        return out
+
+    def chat_trash_list(self) -> dict:
+        """Корзина чатов и скрытые чаты (их журнал на месте) — для «Корзина» в панели."""
+        d = self.project_data()
+        items = chat_trash.listing(self.cfg.data)
+        gone = {x["sid"] for x in items}
+        hidden = []
+        for sid, rec in (d.get("sessions") or {}).items():
+            if rec.get("hidden") and sid not in gone and rec.get("project") in d["projects"]:
+                p = d["projects"][rec["project"]]
+                with contextlib.suppress(LookupError):
+                    f = self.chat_file(p, sid)
+                    hidden.append({"sid": sid, "project": p["id"], "project_name": p["name"],
+                                   "title": str(rec.get("title") or "") or projects.title_of(f)})
+        names = {pid: p["name"] for pid, p in d["projects"].items()}
+        return {"trash": [{**x, "project_name": names.get(x["project"], "")} for x in items], "hidden": hidden}
+
+    def chat_restore(self, tid: str) -> dict:
+        """«Вернуть» из корзины: журнал — на место, чат снова в «Завершённых» своего проекта."""
+        rec = chat_trash.restore(self.cfg.data, tid)
+        self.projects.set_chat(rec["sid"], rec["project"], hidden=False)
         self._proj = (0.0, {})
         return rec
 
@@ -1795,6 +1878,9 @@ class Panel:
 
     def close_ex(self, w: dict) -> dict:
         """Завершить сессию: текст итога и неотправленный черновик из поля ввода (если был) — панель его покажет."""
+        if w.get("stopped"):                            # остановленная: Claude уже вышел — окно с оболочкой закрыть
+            self.tmux.kill(w["id"])
+            return {"result": "закрыто", "draft": ""}
         r = self.pult.quit_ex(w)
         text = {"background": "не закрыл: у сессии есть фоновые задачи — решите в самом окне",
                 "busy": "Claude не вышел за 20 с (возможно, занят) — посмотрите экран"}.get(r["result"], "закрыто")
@@ -2158,6 +2244,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
+              "/api/chat/delete", "/api/chat/restore", "/api/chat/trash",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
@@ -2514,6 +2601,8 @@ def handler(panel: Panel):
             if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
                 before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
+            if path == "/api/chat/trash":                # корзина чатов и скрытые чаты
+                return panel.chat_trash_list()
             if path == "/api/project/history":           # переписка завершённого чата — без окна
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 return panel.project_history(q.get("id", ""), q.get("sid", ""), before)
@@ -2858,7 +2947,7 @@ def handler(panel: Panel):
                 gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
                 return ("cookie", gone, {"ok": True})
             if path == "/api/close":                       # «Завершить» в фокусе: сессия закрывается, ссылка гаснет
-                w = self.win(rec["w"])
+                w = panel.session_window(rec["w"])
                 if b.get("schedule"):                      # агент модуля: оставить / приостановить / выключить
                     panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
                 r = panel.close_ex(w)
@@ -3269,6 +3358,10 @@ def handler(panel: Panel):
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
+            if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
+                return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
+            if path == "/api/chat/restore":               # «Вернуть» из корзины
+                return panel.chat_restore(str(b.get("id") or ""))
             if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
                 return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
                                         self.terms_uid())
@@ -3333,6 +3426,14 @@ def handler(panel: Panel):
                 if path == "/api/repos/add":
                     return panel.repo_add(w, str(b.get("repo", "")))
                 return panel.repo_remove(w, str(b.get("path", "")))
+            if path == "/api/close":                       # и остановленную: окно с оболочкой просто закрыть
+                w = panel.session_window(b.get("w"))
+                if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
+                    panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
+                r = panel.close_ex(w)                      # {result, draft}: черновик не теряется молча
+                if r["result"] == "закрыто":
+                    panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
+                return r
             w = self.win(b.get("w"))
             if path == "/api/space/connect":
                 return panel.owner_join(w)
@@ -3369,13 +3470,6 @@ def handler(panel: Panel):
                 return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
-            if path == "/api/close":
-                if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
-                    panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
-                r = panel.close_ex(w)                      # {result, draft}: черновик не теряется молча
-                if r["result"] == "закрыто":
-                    panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
-                return r
             if path == "/api/restart":
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
             if path == "/api/run":
