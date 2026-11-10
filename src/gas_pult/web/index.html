@@ -20,6 +20,9 @@
     --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
     --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
+    /* Значки проектов в узкой полосе: фон и буквы (контраст ≥ 4,5:1 в обеих темах) */
+    --pj1-bg: #D3E3FD; --pj1-fg: #0842A0; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #E9DDFF; --pj3-fg: #4A2C8A;
+    --pj4-bg: #FFDDB8; --pj4-fg: #7A4100; --pj5-bg: #FFD8E4; --pj5-fg: #8C1D48; --pj6-bg: #C2E8E7; --pj6-fg: #00504F;
   }
   :root[data-theme="dark"] {
     --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
@@ -30,6 +33,8 @@
     --status-success: #6DD58C; --status-danger: #F2B8B5; --status-stopped: #EE675C;
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
     --qr-bg: #FFFFFF;
+    --pj1-bg: #1B2B48; --pj1-fg: #A8C7FA; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #34245A; --pj3-fg: #D0BCFF;
+    --pj4-bg: #4A2C00; --pj4-fg: #FFB870; --pj5-bg: #4A1730; --pj5-fg: #FFB0CB; --pj6-bg: #003D3C; --pj6-fg: #80D5D2;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   /* Каркас приложения, как в Telegram и ChatGPT: документ не прокручивается — прокручивается только лента (#scroller).
@@ -639,7 +644,7 @@
   /* Широкий экран: слева — панель чатов #nav шириной --side-w (тянется за край, 200–480 px), свёрнутая — скрыта
      (☰ в шапке возвращает). Главная (#home: карточки, проекты, команды) — в основной колонке, как страница.
      Шрифт панели — --fz (Cmd/Ctrl + «+»/«−»/«0»): размеры текста в CSS умножаются на него. На телефоне не задаются. */
-  body.split { --side: var(--side-w, 280px); } body.split.side-mini { --side: 0px; }
+  body.split { --side: var(--side-w, 280px); } body.split.side-mini { --side: 0px; } body.split.side-mini.has-nav { --side: 60px; }
   body.split #home { max-width: 860px; margin: 0 auto; }
   body.split .top, body.split main, body.split .demo { margin-left: var(--side); }
   body.split .tabsbar .seg { max-width: 860px; margin: 0 auto; }
@@ -656,15 +661,32 @@
   .grip:hover::after, .grip:focus-visible::after, body.resizing .grip::after { background: var(--accent-primary); }
   .grip:focus-visible { outline: none; }
   body.resizing { cursor: col-resize; user-select: none; -webkit-user-select: none; }
-  .rail .rb { position: relative; width: 40px; height: 40px; border: 0; padding: 0; border-radius: 50%; background: var(--bg-subtle); color: var(--text-primary);
+  /* Узкая полоса (свёрнутая панель чатов, только ПК): ⇥ раскрыть, ✎ новый чат, ⌕ поиск, проекты квадратами, ⚙ внизу */
+  body.split.side-mini.has-nav .rail { display: flex; flex-direction: column; align-items: center; gap: 6px; position: fixed; top: 0; bottom: 0; left: 0; width: 60px;
+    z-index: 4; padding: 8px 0; background: var(--bg-subtle); border-right: 1px solid var(--border-subtle); overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  .rail .rb { position: relative; width: 40px; height: 40px; min-height: 0; border: 0; padding: 0; border-radius: 50%; background: var(--bg-canvas); color: var(--text-primary);
               display: grid; place-items: center; font-weight: 600; font-size: calc(15px * var(--fz, 1)); flex: none; }
   .rail .rb:hover { box-shadow: 0 0 0 2px var(--border-subtle); }
+  .rail .rb:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
   .rail .rb.on { background: var(--accent-soft); color: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-primary); }
   .rail .rb.s-stopped { color: var(--text-muted); }
-  .rail .rb .sdot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border: 2px solid var(--bg-canvas); }
-  .rail .rb.new::before { content: ""; position: absolute; right: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-canvas); }
+  .rail .rb .sdot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border: 2px solid var(--bg-subtle); }
+  .rail .rb.new::before { content: ""; position: absolute; right: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-subtle); }
+  .rail .rt { background: transparent; color: var(--text-secondary); border-radius: var(--radius-sm); }
+  .rail .rt:hover { background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-primary); box-shadow: none; }
+  .rail .rt.on { color: var(--accent-primary); box-shadow: none; background: var(--accent-soft); }
   .rail .rnew { background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-secondary); margin-top: 4px; }
-  .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; }
+  .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; flex: none; }
+  .rail .rgap { flex: 1 0 4px; }
+  .rail .pj { border-radius: 10px; background: var(--pj1-bg); color: var(--pj1-fg); font-size: calc(13px * var(--fz, 1)); letter-spacing: .02em; }
+  .rail .pj.c2 { background: var(--pj2-bg); color: var(--pj2-fg); } .rail .pj.c3 { background: var(--pj3-bg); color: var(--pj3-fg); }
+  .rail .pj.c4 { background: var(--pj4-bg); color: var(--pj4-fg); } .rail .pj.c5 { background: var(--pj5-bg); color: var(--pj5-fg); }
+  .rail .pj.c6 { background: var(--pj6-bg); color: var(--pj6-fg); }
+  .rail .pj.on { box-shadow: 0 0 0 2px var(--bg-subtle), 0 0 0 4px var(--accent-primary); }
+  .rail .pj .cnt { position: absolute; right: -5px; bottom: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--radius-pill);
+                   background: var(--bg-canvas); color: var(--text-primary); border: 1px solid var(--border-subtle); font-size: 11px; line-height: 16px; font-weight: 600; }
+  .rail .pj .pdot { position: absolute; right: -3px; top: -3px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bg-subtle); background: var(--accent-primary); }
+  .rail .pj .pdot.wait { background: var(--status-approval); }
   /* ===== Зона уведомлений (задача 26): тосты, «Есть новая версия», «Нет связи», предложение тура — только здесь.
      Под шапкой (её нет — под вырезом экрана) и не ниже верха нижней панели: --nz-top и --nz-max считает placeNotices()
      из шапки, дока и visualViewport (клавиатура). Не влезло — обрезается, но поле ввода и кнопки не закрывает.
@@ -978,6 +1000,7 @@
   <div class="nav-list" id="navList" role="list"></div>
 </aside>
 <div class="nav-bg" id="navBg"></div>
+<nav class="rail" id="rail" data-tour="rail" aria-label="Свёрнутая панель чатов: проекты"></nav>
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
@@ -1080,7 +1103,6 @@
   <section id="persona" hidden><div class="panel terms" id="personaBox"></div></section>
 
   <section id="home" hidden>
-    <div class="rail" id="rail" data-tour="rail" role="group" aria-label="Сессии"></div>
     <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
@@ -1168,7 +1190,7 @@
     "title": "для бизнеса",
     "steps": [
       {"target": "sessions", "screen": "home", "title": "Ваши агенты", "text": "Сколько агентов работает и ждёт вас; ниже — карточка на каждого. Зелёная точка — работает, жёлтая — ждёт вашего ответа, серая — свободен. Нажмите карточку — откроется переписка."},
-      {"target": "rail", "screen": "home", "title": "Агенты в колонку", "text": "Список свёрнут в колонку значков: цвет точки — что с агентом. Развернуть — кнопкой над ней."},
+      {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — колонкой значков: цифра — сколько агентов работает, жёлтая точка — кто-то ждёт ответа. Нажмите значок — чаты проекта; развернуть панель — кнопкой сверху."},
       {"target": "new", "screen": "home", "title": "Новый агент", "text": "«Новая сессия» → «Из модуля» — готовый агент под задачу: правила и навыки уже настроены, нужно только имя папки."},
       {"target": "try", "screen": "home", "title": "Примерить на себя", "text": "День с агентом в вашей роли и польза в цифрах — до того, как что-то создавать и платить."},
       {"target": "cost", "screen": "home", "title": "Расход", "text": "Сколько стоила работа агентов сегодня. Нажмите — подробности по агентам и лимиты, чтобы не выйти за бюджет."},
@@ -1181,7 +1203,7 @@
     "steps": [
       {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, интеграции", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
       {"target": "sessions", "screen": "home", "title": "Сессии", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
-      {"target": "rail", "screen": "home", "title": "Свёрнутый список", "text": "Сессии — колонкой значков, точка — статус. Развернуть — кнопкой над ней; ширину списка можно потянуть."},
+      {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — квадратами: цифра — активные чаты, точка — ждёт ответа или новое. Нажатие — чаты проекта; сверху — развернуть, новый чат, поиск."},
       {"target": "new", "screen": "home", "title": "Новая сессия", "text": "В папке проекта; «Новая папка» — пустой проект с git init; «Из модуля» — агент с готовыми правилами и навыками."},
       {"target": "cost", "screen": "home", "title": "Расход и лимиты", "text": "Токены и деньги за день. Лимит на сессию и на день — «Настройки» → «Расход и лимиты»: дошли — сессия встанет на паузу."},
       {"target": "commands", "screen": "home", "title": "Команды", "text": "Команды из ответов всех сессий. «Выполнить» запускает на сервере пульта; опасные — с подтверждением."},
@@ -1616,20 +1638,71 @@ function setFont(px) {
   fontPx = v; store("fontPx", v === FONT.def ? "" : String(v)); applyWide();
   toast(`Шрифт панели: ${v} px${v === FONT.def ? " (по умолчанию)" : ""}`, 1400);
 }
-// Полоса значков (свёрнутый список): кружок с первой буквой, точка статуса, имя — в подсказке.
+// Узкая полоса (свёрнутая панель чатов на ПК, решение владельца — проекты): ⇥ раскрыть, ✎ новый чат, ⌕ поиск, затем
+// проекты квадратами — инициалы, цвет (--pjN), цифра — активные чаты, точка — «ждёт ответа» (жёлтая) или «новое»;
+// нажатие — список чатов проекта у самого значка; текущий — обводка; закреплённые — сверху. Внизу ⚙. Проектов нет
+// (пространство, проекты выключены) — сессии кружками, как раньше. Телефон и фокус — без полосы (navOn, split).
 const initial = (n) => (String(n).match(/[\p{L}\p{N}]/u)?.[0] || "?").toUpperCase();
+function initials(n) {                                // «gas-pult» → «GP», «Книги» → «КН»
+  const w = String(n).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || "?").slice(0, 2)).toUpperCase();
+}
+function pjColor(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.codePointAt(0)) >>> 0; return 1 + (h % 6); }
+function railProjects() {
+  const ps = (projData?.projects || []).filter((p) => !p.archived);
+  return [...ps.filter((p) => p.pinned).sort((a, b) => (b.pinned_at || 0) - (a.pinned_at || 0)), ...ps.filter((p) => !p.pinned)];
+}
+const railTool = (id, icon, tip, extra = "") => `<button class="rb rt" type="button" id="${id}" title="${esc(tip)}" aria-label="${esc(tip)}"${extra}>${ic(icon)}</button>`;
 function renderRail() {
-  if (!split() || !sideMini) return;
-  const sorted = pinFirst([...sessions].sort(byChange));
-  setHTML($("rail"), sorted.map((s) => {
-    const st = ST[s.status], prov = provName(s), nw = isNew(s);
-    const tip = `${s.name} — ${st.label}${prov ? " · " + prov : ""}${nw ? " · новый ответ" : ""}`;
-    return `<button class="rb ${st.cls}${s.id === current ? " on" : ""}${nw ? " new" : ""}" data-id="${esc(s.id)}" title="${esc(tip)}" aria-label="${esc(tip)}"${s.id === current ? ' aria-current="true"' : ""}>${esc(initial(s.name))}<i class="sdot"></i></button>`;
-  }).join("") + (meta?.role === "viewer" ? "" : `<hr><button class="rb rnew" id="railNew" title="Новая сессия" aria-label="Новая сессия">${ic("plus")}</button>`));
+  if (!split() || !sideMini || !navOn()) return;
+  const rw = meta?.role !== "viewer", cur = sessions.find((x) => x.id === current);
+  const head = railTool("railOpen", "sideopen", "Развернуть панель чатов", ' aria-expanded="false"')
+    + (rw ? railTool("railNew", "compose", "Новый чат") : "") + railTool("railSearch", "search", "Поиск (Ctrl+K)") + "<hr>";
+  let body;
+  if (projOn() && projData) {
+    body = railProjects().map((p) => {
+      const list = sessions.filter((x) => x.project === p.id), wait = list.filter((x) => x.status === "dialog").length || p.waiting || 0;
+      const nw = !wait && list.some(isNew), on = !!cur && cur.project === p.id && view === "session";
+      const tip = `${p.name}${p.pinned ? " · закреплён" : ""} — ${list.length ? "активных чатов: " + list.length : "нет активных чатов"}${wait ? " · ждёт ответа" : nw ? " · новый ответ" : ""}`;
+      return `<button class="rb pj c${pjColor(p.id)}${on ? " on" : ""}" type="button" data-rp="${esc(p.id)}" title="${esc(tip)}" aria-label="${esc(tip)}" aria-haspopup="menu" aria-expanded="false"${on ? ' aria-current="true"' : ""}>`
+        + `${esc(initials(p.name))}${list.length ? `<span class="cnt" aria-hidden="true">${list.length}</span>` : ""}${wait || nw ? `<i class="pdot${wait ? " wait" : ""}" aria-hidden="true"></i>` : ""}</button>`;
+    }).join("");
+  } else {
+    body = pinFirst([...sessions].sort(byChange)).map((s) => {
+      const st = ST[s.status] || ST.idle, prov = provName(s), nw = isNew(s);
+      const tip = `${s.name} — ${st.label}${prov ? " · " + prov : ""}${nw ? " · новый ответ" : ""}`;
+      return `<button class="rb ${st.cls}${s.id === current ? " on" : ""}${nw ? " new" : ""}" type="button" data-id="${esc(s.id)}" title="${esc(tip)}" aria-label="${esc(tip)}"${s.id === current ? ' aria-current="true"' : ""}>${esc(initial(s.name))}<i class="sdot"></i></button>`;
+    }).join("");
+  }
+  const f = $("rail").contains(document.activeElement) ? document.activeElement : null;   // опрос перерисовал — фокус на месте
+  const key = f && (f.id ? "#" + f.id : f.dataset.rp ? `[data-rp="${CSS.escape(f.dataset.rp)}"]` : f.dataset.id ? `[data-id="${CSS.escape(f.dataset.id)}"]` : "");
+  if (setHTML($("rail"), head + body + `<span class="rgap"></span>` + railTool("railSettings", "settings", "Настройки")) !== false && key) $("rail").querySelector(key)?.focus();
+}
+function railProject(btn) {                           // чаты проекта — меню у значка, справа от полосы
+  const p = projOf(btn.dataset.rp); if (!p) return;
+  const list = sessions.filter((x) => x.project === p.id).sort((a, b) => lastMsg(b) - lastMsg(a));
+  popMenu(btn, [
+    ...list.map((x) => ({ label: (x.title || x.name) + (x.status === "dialog" ? " · ждёт ответа" : isNew(x) ? " · новое" : ""), icon: "chat", on: x.id === current, run: () => openSession(x.id) })),
+    ...(list.length ? [{ sep: true }] : []),
+    ...(meta?.role !== "viewer" ? [{ label: "Начать чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
+    { label: p.chats ? `Все чаты проекта · ${p.chats}` : "Открыть проект", icon: "folder", run: () => navProject(p.id) },
+  ], { right: true });
 }
 $("rail").addEventListener("click", (e) => {
-  if (e.target.closest("#railNew")) return newSession();
-  const b = e.target.closest(".rb[data-id]"); if (b) openSession(b.dataset.id);
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.id === "railOpen") return setMini(false);
+  if (t.id === "railNew") return newChat();
+  if (t.id === "railSearch") return navSearch(true);
+  if (t.id === "railSettings") return go("go:settings");
+  if (t.dataset.rp) return railProject(t);
+  if (t.dataset.id) openSession(t.dataset.id);
+});
+$("rail").addEventListener("keydown", (e) => {          // стрелки — по значкам полосы, Home/End — к краям
+  const bs = [...$("rail").querySelectorAll("button")], k = bs.indexOf(document.activeElement);
+  if (k < 0) return;
+  const to = { ArrowDown: k + 1, ArrowUp: k - 1, Home: 0, End: bs.length - 1 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault(); bs[(to + bs.length) % bs.length].focus();
 });
 $("sideBtn").onclick = () => setMini(!sideMini);
 // ---------- панель чатов (как в ChatGPT / Claude.ai) ----------
@@ -1665,8 +1738,8 @@ function renderNav() {
   const on = navOn();
   document.body.classList.toggle("has-nav", on);
   const two = split();
-  setHidden($("navBtn"), !on || (two ? !sideMini : view !== "home" && view !== "session"));
-  setHidden($("composeBtn"), !on || meta?.role === "viewer" || (two ? !sideMini : view !== "home"));
+  setHidden($("navBtn"), !on || two || (view !== "home" && view !== "session"));          // на ПК — ⇥ и ✎ в полосе
+  setHidden($("composeBtn"), !on || meta?.role === "viewer" || two || view !== "home");
   setHidden($("navCloseBtn"), two); syncBack(); $("nav").inert = !on || (!two && !NAV.open) || (two && sideMini);
   if (!on) { if (NAV.open) navOpen(false); return; }
   const q = NAV.q.trim().toLowerCase(), hit = (t) => !q || String(t || "").toLowerCase().includes(q);
@@ -1686,6 +1759,7 @@ function renderNav() {
     + (recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
     + (cmds.length ? sec("Команды") + cmds.map((c) => `<div class="nrow cmd" data-ncmd="${c.id}" role="listitem" tabindex="0">${ic(c.icon, "ncmd")}<span class="nm">${esc(c.label)}</span></div>`).join("") : "");
   if (NAV.html !== h) { NAV.html = h; $("navList").innerHTML = h; }   // опрос раз в 3–10 с — DOM только при изменении
+  renderRail();
 }
 // Палитра команд (план UX, пункт 5): Ctrl+K / ⌘K — тот же поиск панели чатов (#149), только в выдаче, кроме чатов и
 // проектов, — действия. Переходы — через HELP_GO (те же, что у «Перейти» в справке), без отдельного окна.
@@ -1744,7 +1818,7 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
 function closePop() { document.querySelectorAll(".pop").forEach((x) => { x.anchor?.classList.remove("menu-on"); x.btn?.setAttribute("aria-expanded", "false"); x.remove(); }); }
-function popMenu(anchor, items) {
+function popMenu(anchor, items, opt = {}) {
   const had = [...document.querySelectorAll(".pop")].some((x) => x.btn === anchor || x.anchor === anchor);
   closePop(); if (had) return;
   const box = document.createElement("div"); box.className = "pop"; box.setAttribute("role", "menu"); box.anchor = anchor;
@@ -1753,8 +1827,10 @@ function popMenu(anchor, items) {
   const row = anchor.closest(".nrow") || anchor; row.classList.add("menu-on"); box.anchor = row;
   if (anchor.hasAttribute("aria-haspopup")) { anchor.setAttribute("aria-expanded", "true"); box.btn = anchor; }
   const r = anchor.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight;
-  const left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w + (anchor.classList.contains("nrow") ? 0 : 4)));
-  const top = r.bottom + 4 + h <= innerHeight - 8 ? r.bottom + 4 : Math.max(8, r.top - h - 4);
+  const left = opt.right ? Math.min(innerWidth - w - 8, r.right + 14)
+    : Math.max(8, Math.min(innerWidth - w - 8, r.right - w + (anchor.classList.contains("nrow") ? 0 : 4)));
+  const top = opt.right ? Math.max(8, Math.min(innerHeight - h - 8, r.top))
+    : r.bottom + 4 + h <= innerHeight - 8 ? r.bottom + 4 : Math.max(8, r.top - h - 4);
   box.style.left = left + "px"; box.style.top = top + "px";
   box.onclick = (e) => { const b = e.target.closest("button[data-i]"); if (!b) return; closePop(); items[+b.dataset.i].run(); };
   box.onkeydown = (e) => {
@@ -1764,7 +1840,7 @@ function popMenu(anchor, items) {
   };
   if (matchMedia("(pointer: fine)").matches || anchor.matches(":focus-visible")) box.querySelector("button")?.focus();
 }
-addEventListener("pointerdown", (e) => { if (!e.target.closest(".pop, [data-nmore], #navMoreBtn, [data-dfold], [data-dmodel]")) closePop(); }, true);
+addEventListener("pointerdown", (e) => { if (!e.target.closest(".pop, [data-nmore], [data-rp], #navMoreBtn, [data-dfold], [data-dmodel]")) closePop(); }, true);
 $("navList").addEventListener("scroll", closePop, { passive: true });
 addEventListener("resize", closePop);
 function navItems(row) {
@@ -2314,7 +2390,7 @@ const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
 // position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
 // .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
 // body.back-drag #home — главная под сессией только на время свайпа «назад» (план UX, пункт 7).
-const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]"];
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", "body.split.side-mini.has-nav .rail", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]"];
 function notice(el) { $("notices").append(el); placeNotices(); return el; }
 function placeNotices() {
   const root = document.documentElement.style, H = document.body.clientHeight;
