@@ -58,6 +58,22 @@ def main_repo(folder: str) -> str:
     return os.path.realpath(m.group(1)) if m else ""
 
 
+# «Новый проект»: имя человека (латиница или кириллица) → имя папки по правилу «Новой папки» (``bot.NAME_OK``):
+# латиница в нижнем регистре, цифры, дефис, 2–41 знак; «/», «..» и прочее — дефисами, по краям — без них.
+FOLDER_OK = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
+NAME_MAX = 80
+_LAT = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+                ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r", "s", "t",
+                 "u", "f", "kh", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"], strict=True))
+
+
+def folder_of(name: str) -> str:
+    """Имя папки для проекта «name»: «Магазин книг» → ``magazin-knig``, «../x» → ``x``. Не вышло 2 знаков — ""."""
+    s = "".join(_LAT.get(ch, ch) for ch in (name or "").strip().lower())
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")[:41].strip("-")
+    return s if FOLDER_OK.match(s) else ""
+
+
 def empty() -> dict:
     return {"v": VERSION, "projects": {}, "sessions": {}}
 
@@ -154,6 +170,21 @@ class Store:
             if json.dumps(d, sort_keys=True) != before or not self.file.exists():
                 self.write(d)
             return d
+
+    def create(self, folder: str, name: str, by: int | None = None, profile: str = "", model: str = "") -> str:
+        """«Новый проект»: запись для только что созданной папки — имя человека, кто создал, поставщик и модель по
+        умолчанию (пусто — как у пульта). Проект с этой папкой уже есть — его id, запись не трогаем."""
+        with _lock:
+            d = self.read()
+            real = os.path.realpath(folder)
+            pid = pid_of(real)
+            if pid not in d["projects"]:
+                self._add(d, real, os.path.realpath(self.home))
+                d["projects"][pid].update({"name": (name.strip() or os.path.basename(real))[:NAME_MAX],
+                                           "origin": "new", "by": by, "profile": profile, "model": model})
+                d["v"] = VERSION
+                self.write(d)
+            return pid
 
     def _add(self, d: dict, folder: str, home_real: str) -> str:
         real = os.path.realpath(folder)
