@@ -904,6 +904,7 @@
   .nrow .tm { flex: none; font-size: calc(12px * var(--fz, 1)); color: var(--text-muted); padding-right: 6px; }
   .nrow .sdot { flex: none; }
   .nrow .nchev { flex: none; width: 16px; height: 16px; color: var(--text-muted); transition: transform .15s ease; }
+  .nrow .ncmd { flex: none; width: 16px; height: 16px; color: var(--text-secondary); }   /* команда палитры (Ctrl+K) */
   .nrow[aria-expanded="true"] .nchev { transform: rotate(90deg); }
   .nrow.sub { padding-left: 28px; } .nrow.all .nm { color: var(--text-secondary); }
   .nrow .nb { display: none; width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
@@ -964,7 +965,7 @@
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
     <button class="icon" id="navCloseBtn" type="button" aria-label="Закрыть"></button></div>
   <button class="nav-new" id="navNew" type="button"></button>
-  <div class="nav-q" id="navQBox" hidden><input id="navQ" type="search" placeholder="Поиск по чатам и проектам" autocomplete="off" aria-label="Поиск по чатам и проектам"></div>
+  <div class="nav-q" id="navQBox" hidden><input id="navQ" type="search" placeholder="Чаты, проекты, команды…" autocomplete="off" aria-label="Поиск по чатам, проектам и командам (Ctrl+K)"></div>
   <div class="nav-list" id="navList" role="list"></div>
 </aside>
 <div class="nav-bg" id="navBg"></div>
@@ -1668,9 +1669,32 @@ function renderNav() {
   const pins = projs.filter((p) => p.pinned).map(pv).join("") + ss.filter((x) => x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a)).map((x) => navRow(x)).join("");
   const groups = projs.filter((p) => !p.pinned).map(pv).join("");
   const recent = ss.filter((x) => !x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a));
-  const h = (pins ? sec("Закреплённые") + pins : "") + (groups ? sec("Проекты") + groups : "") + sec("Недавние")
-    + (recent.length ? recent.map((x) => navRow(x)).join("") : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`);
+  const cmds = q ? palCmds().filter((c) => hit(c.label + " " + (c.kw || ""))) : [];   // палитра: при поиске — и команды
+  const h = (pins ? sec("Закреплённые") + pins : "") + (groups ? sec("Проекты") + groups : "")
+    + (recent.length || !cmds.length ? sec("Недавние") : "")
+    + (recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
+    + (cmds.length ? sec("Команды") + cmds.map((c) => `<div class="nrow cmd" data-ncmd="${c.id}" role="listitem" tabindex="0">${ic(c.icon, "ncmd")}<span class="nm">${esc(c.label)}</span></div>`).join("") : "");
   if (NAV.html !== h) { NAV.html = h; $("navList").innerHTML = h; }   // опрос раз в 3–10 с — DOM только при изменении
+}
+// Палитра команд (план UX, пункт 5): Ctrl+K / ⌘K — тот же поиск панели чатов (#149), только в выдаче, кроме чатов и
+// проектов, — действия. Переходы — через HELP_GO (те же, что у «Перейти» в справке), без отдельного окна.
+function palCmds() {
+  const rw = meta?.role !== "viewer", own = meta?.role === "owner";
+  return [
+    rw && { id: "new", label: "Начать новый чат", icon: "compose", kw: "сессия создать", run: () => newChat() },
+    rw && { id: "folder", label: "Создать папку", icon: "plus", kw: "проект новая", run: () => go("go:new-folder") },
+    rw && !meta?.space && { id: "modules", label: "Создать из модуля", icon: "puzzle", kw: "агент модули", run: () => go("go:modules") },
+    { id: "home", label: "Открыть главную: сессии", icon: "chat", kw: "список", run: () => go("go:sessions") },
+    { id: "commands", label: "Открыть команды из ответов", icon: "term", kw: "код блоки", run: () => go("go:commands") },
+    rw && { id: "integrations", label: "Открыть интеграции", icon: "puzzle", kw: "модели голос подключения mcp", run: () => go("go:integrations") },
+    view === "session" && current && { id: "screen", label: "Показать экран терминала", icon: "monitor", kw: "tmux", run: () => go("go:session.screen") },
+    view === "session" && current && { id: "chat", label: "Показать переписку", icon: "chat", run: () => go("go:session.chat") },
+    { id: "settings", label: "Открыть настройки", icon: "settings", kw: "тема шрифт язык", run: () => go("go:settings") },
+    own && { id: "cost", label: "Показать расход", icon: "coin", kw: "деньги бюджет лимит", run: () => go("go:settings.cost") },
+    own && { id: "trash", label: "Открыть корзину чатов", icon: "trash", kw: "удалённые вернуть", run: () => chatTrash() },
+    { id: "legend", label: "Показать обозначения", icon: "eye", kw: "значки цвета", run: () => go("go:settings.legend") },
+    { id: "help", label: "Открыть подсказки", icon: "help", kw: "справка помощь", run: () => $("helpBtn").click() },
+  ].filter(Boolean);
 }
 function navOpen(on) {
   if (split() || !document.body.classList.contains("has-nav")) on = false;
@@ -1689,7 +1713,7 @@ function navSearch(on = true) {
 $("navQ").oninput = (e) => { NAV.q = e.target.value; renderNav(); };
 $("navQ").onkeydown = (e) => {
   if (e.key === "Escape") { e.preventDefault(); navSearch(false); }
-  if (e.key === "Enter") { e.preventDefault(); $("navList").querySelector("[data-nw]")?.click(); }
+  if (e.key === "Enter") { e.preventDefault(); ($("navList").querySelector("[data-nw]") || $("navList").querySelector("[data-ncmd]"))?.click(); }
   if (e.key === "ArrowDown") { e.preventDefault(); $("navList").querySelector(".nrow")?.focus(); }
 };
 $("navSearchBtn").onclick = () => navSearch($("navQBox").hidden);
@@ -1770,6 +1794,7 @@ $("navList").addEventListener("click", (e) => {
     const p = row.dataset.np && projOf(row.dataset.np), s = sessions.find((x) => x.id === row.dataset.nw);
     return p ? pinSet({ project: p.id }, !p.pinned, p.name) : s && pinSet({ w: s.id }, !s.pinned, s.title || s.name);
   }
+  if (row.dataset.ncmd) { const c = palCmds().find((x) => x.id === row.dataset.ncmd); navSearch(false); navOpen(false); return c?.run(); }
   if (row.dataset.nall) return navProject(row.dataset.nall);
   if (row.dataset.np) {
     const id = row.dataset.np; NAV.exp.has(id) ? NAV.exp.delete(id) : NAV.exp.add(id);
@@ -1839,7 +1864,7 @@ addEventListener("touchstart", (e) => {
   navDrag = { x: t.clientX, y: t.clientY, w: $("nav").offsetWidth || 300, live: false, open: NAV.open, dx: 0, px: 0, pt: e.timeStamp, v: 0, raf: 0 };
   addEventListener("touchmove", navMove, { passive: false }); addEventListener("touchend", navEnd); addEventListener("touchcancel", navEnd);
 }, { passive: true });
-// Ctrl+K / ⌘K — поиск по чатам и проектам; Esc — закрыть меню и панель
+// Ctrl+K / ⌘K — палитра: поиск по чатам, проектам и командам (palCmds); Esc — закрыть меню и панель
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === "KeyK" || e.key.toLowerCase() === "k") && document.body.classList.contains("has-nav")) { e.preventDefault(); navSearch(true); }
   else if (e.key === "Escape" && document.querySelector(".pop")) closePop();
