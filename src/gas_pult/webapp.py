@@ -51,6 +51,7 @@ from gas_pult import (
     helper,
     humanize,
     invites,
+    logins,
     models,
     modules,
     offer_report,
@@ -1696,6 +1697,34 @@ class Panel:
         self.tmux.keys(w["id"], "Escape")
         raise ValueError("Claude Code не показал ссылку входа — откройте сессию и проверьте «Экран»")
 
+    def login_check(self, w: dict, kind: str, home=None) -> dict:
+        """«Готово — проверить» в шторке «Нужен вход»: claude — ``claude auth status``, gh — ``gh auth status``,
+        mcp — ``claude mcp list`` (сервис с ✔); всё — и экран окна: запрос входа с него ушёл."""
+        login = logins.detect(self.tmux.screen(w["id"], 60))
+        if kind == "claude":
+            au = setup.auth(setup.installed(self.cfg.claude) or setup.executable(self.cfg.claude))
+            ok = au["logged_in"] is True
+            text = "вход в Claude выполнен" if ok else "вход в Claude ещё не выполнен"
+        elif kind == "gh":
+            exe = shutil.which("gh")
+            if not exe:
+                return {"ok": False, "text": "GitHub CLI (gh) на сервере не найден", "login": login}
+            try:
+                r = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, timeout=15)
+                ok = r.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+            text = "вход в GitHub выполнен" if ok else "gh auth status: вход не выполнен"
+        elif kind == "mcp":
+            svc = (login or {}).get("service", "")
+            bad = [x for x in self.mcp.list(fresh=True, home=home) if not x["ok"]]
+            ok = not login and not any(svc and x["name"] == svc for x in bad)
+            text = "вход в сервис выполнен" if ok else "сервис ещё ждёт входа — откройте ссылку и завершите вход"
+        else:
+            ok = not login
+            text = "запроса входа на экране больше нет" if ok else "окно всё ещё просит войти"
+        return {"ok": ok, "text": text, "login": None if ok else login}
+
     def mcp_finish(self, w: dict, url: str, name: str, home=None) -> str:
         """Адрес страницы после входа (http://localhost…/callback?code=…) → в поле «URL >» Claude Code."""
         if self.pult.home_of(w) != home:
@@ -2405,7 +2434,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/chat/delete", "/api/chat/restore", "/api/chat/trash",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
-              "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel"}
+              "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
+              "/api/login/code", "/api/login/check"}          # шторка «Нужен вход» (logins.py) — только владельцу
 # Подтверждение кодом (аудит 09.11): сессия браузера моложе суток (``webauth.CONFIRM_FRESH``) выполняет команды на
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
 # «Подтвердите кодом» и повторит запрос. Mini App в Telegram — доверенное устройство (код ушёл бы в тот же Telegram);
@@ -2709,6 +2739,12 @@ def handler(panel: Panel):
                 raise ValueError("подключать репозитории к этой сессии может только владелец пульта")
             return w
 
+        def login_of(self, w: dict, lines: list[str]) -> dict | None:
+            """«Нужен вход» на экране окна (logins.py) — только владельцу: не фокус, не пространство, не участник."""
+            if self.focused is not None or self.who()[1] != "owner" or in_space(w):
+                return None
+            return logins.detect(lines)
+
         def win(self, wid) -> dict:
             if not (w := panel.window(str(wid or ""))):
                 t = panel.tmux.window(str(wid or ""))
@@ -2877,7 +2913,7 @@ def handler(panel: Panel):
                 w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False)
                 d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1")
                 return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
-                        "path": w.get("path", "")}
+                        "path": w.get("path", ""), "login": self.login_of(w, d.get("lines") or [])}   # низ — экран
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
                 st = tenants.status(check=True)
                 for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
@@ -2902,7 +2938,7 @@ def handler(panel: Panel):
                 return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
-                return {"lines": lines[-40:], "auth": find_auth(lines)}
+                return {"lines": lines[-40:], "auth": find_auth(lines), "login": self.login_of(w, lines)}
             if path == "/api/ask":                        # простой режим: вопрос Claude простыми словами и чипы
                 return {"ask": humanize.parse(panel.tmux.screen(w["id"], 60))}
             if path == "/api/hint":
@@ -3502,6 +3538,14 @@ def handler(panel: Panel):
                 r = panel.login.send_code(str(b.get("code", "")))
                 panel._setup = (0, {})
                 return r
+            if path == "/api/login/code":                   # шторка «Нужен вход»: код или адрес — в окно, одной строкой
+                w = self.win(b.get("w"))
+                if in_space(w):
+                    raise PermissionError("окно пространства — вход только из него самого")
+                panel.tmux.paste(w["id"], logins.clean_code(b.get("code")))   # код в журналы не пишем
+                return {"ok": True}
+            if path == "/api/login/check":
+                return panel.login_check(self.win(b.get("w")), str(b.get("kind") or ""), self.home())
             if path == "/api/setup/cancel":
                 panel.login.cancel()
                 return {"ok": True}

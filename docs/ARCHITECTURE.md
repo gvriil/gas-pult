@@ -70,6 +70,7 @@ src/gas_pult/
 ├── help/
 │   └── screens.toml карта экранов помощника: реальные экраны, переходы go:…, чипы (тест сверяет с index.html)
 ├── setup.py        мастер без Claude: status() (установлен, вход, ключи), вход claude auth login в окне tmux
+├── logins.py       «Нужен вход» на экране окна: detect() — ссылка, одноразовый код, что окно ждёт (claude/mcp/gh/device)
 ├── webapp.py       панель: HTTP-сервер на стандартной библиотеке, JSON API, страница предложения
 ├── webauth.py      вход из браузера: через Telegram (TgLogins) и запасной код владельцу, cookie-сессии
 ├── emailcode.py    вход по коду на почту, второй фактор, письма-оповещения (SMTP_SSL, stdlib)
@@ -152,6 +153,7 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 | `webauth.py` | Вход из браузера: через Telegram (ссылка `t.me/<бот>?start=login_…`, браузер опрашивает по своему `rid`) и запасной код владельцу; cookie-сессия, хранятся только хеши |
 | `passkeys.py` | Вход по ключу (Face ID, passkey): регистрация из настроек и вход, одноразовые вызовы на сервере, лимит по IP, `sign_count`; проверка подписей — extra `webauthn`, без него или без `[passkeys]` выключено ([AUTH.md](AUTH.md)) |
 | `emailcode.py` | Вход по коду на почту (6 цифр, 10 мин, 5 попыток, только HMAC; лимиты 1/мин и 5/ч), привязка адреса кодом, второй фактор после Telegram, `notify_email`; SMTP — `[email]` в config.toml, выключено без настроек ([AUTH.md](AUTH.md)) |
+| `logins.py` | Шторка «Нужен вход» (только владельцу): `detect(lines)` → `{kind: claude\|mcp\|gh\|device\|url, service, url, code, wants}` по низу экрана при паре «ссылка + слово входа»; поле `login` в `/api/screen` и `/api/tty`; `POST /api/login/code` — одна строка ≤ 512 в окно (`tmux.paste`), `POST /api/login/check` — `claude auth status` / `gh auth status` / `claude mcp list` |
 | `setup.py` | Мастер первого запуска: `status()` (`claude --version`, `claude auth status --json`, ключи), `Login` — `claude auth login` в окне `<сессия>-setup` с меткой `login`, ссылка с экрана, код в окно; `/api/setup/*` |
 | `mcp.py` | MCP-серверы Claude Code через `claude mcp`: список, коннекторы claude.ai, шаблоны `PRESETS`, добавление, удаление — в папке Claude того, кто подключает |
 | `providers.py` | Ключи API (`secrets.json`, 0600) и ElevenLabs: озвучка, распознавание, голоса |
