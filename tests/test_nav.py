@@ -68,3 +68,17 @@ def test_e2e_nav_demo():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
     finally:
         srv.shutdown()
+
+
+def test_rail_is_beside_nav_with_projects():
+    """Узкая полоса (свёрнутая панель на ПК): рядом с #nav, не внутри главной; проекты, инструменты, стрелки."""
+    home = PAGE[PAGE.index('<section id="home"'):PAGE.index("</section>", PAGE.index('<section id="home"'))]
+    assert 'id="rail"' not in home
+    assert PAGE.index('id="navBg"') < PAGE.index('id="rail"') < PAGE.index('id="scroller"')
+    assert "body.split.side-mini.has-nav { --side: 60px; }" in PAGE
+    rail = fn("renderRail")
+    for x in ("railOpen", "railNew", "railSearch", "railSettings", "railProjects()", "data-rp"):
+        assert x in rail, x
+    assert "pinned" in fn("railProjects")
+    for n in range(1, 7):
+        assert PAGE.count(f"--pj{n}-bg:") == 2 and PAGE.count(f"--pj{n}-fg:") == 2, n     # светлая и тёмная тема
