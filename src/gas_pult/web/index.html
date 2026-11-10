@@ -396,6 +396,8 @@
   /* ссылки в переписке (задача 33): длинный адрес переносится в любом месте и не раздвигает ленту; долгое нажатие — наше меню */
   .chat .bubble a.clink { color: var(--accent-primary); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; word-break: break-word;
                           -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  /* ссылки в коде: в тёмном «Терминал»/«Код» — цветом текста с подчёркиванием (акцент на тёмном фоне не читается) */
+  .chat .log pre a.clink { color: inherit; text-decoration: underline; text-underline-offset: 2px; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   .sheet button small.url { overflow-wrap: anywhere; word-break: break-all; }
   .md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--border-subtle); color: var(--text-secondary); }
 
@@ -1525,8 +1527,15 @@ document.addEventListener("click", async (e) => {
   if (await copyText(text, LT("copy.done", "Скопировано"), true)) { copiedFlash(b); haptic("notificationOccurred", "success"); }
 });
 // link:start — ссылки в переписке (задача 33). Только http(s); элементы — через DOM (textContent/href), сырого
-// HTML нет. Блоки кода, свёрнутые логи и готовые ссылки не трогаем. Хвост «.», «,», «!», «?»… и лишняя «)» — не адрес.
-const LINK_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
+// HTML нет. Хвост «.», «,», «!», «?»… и лишняя «)» — не адрес. Адрес без схемы (pult.example.su/x, claude.ai/…) —
+// домен с известной зоной, ссылка на https://; file.py, 1.2.3, v2.0 и почта — не адреса (зоны py/md/sh/rs нет в списке,
+// перед доменом не «@», «.», «/»). Ссылки — и внутри `кода` и блоков кода: текст кода тот же (textContent не меняется),
+// «Копировать» блока даёт чистый текст. Регулярка без просмотра назад — старый Safari её не знает; часть домена —
+// до 63 знаков (как в DNS): длинное «слово» без точек не разбирается квадратично.
+const LINK_TLD = "ru|su|com|net|org|io|ai|dev|app|me|co|рф|info|biz|xyz|tech|pro|site|online|cloud|page|tv|eu|de|uk|us|kz|by|ua|uz|gg|fm|club|shop|store|space|link|news|blog|team|tools|chat";
+const LINK_RE = new RegExp("\\bhttps?:\\/\\/[^\\s<>\"'`]+|(?:[\\p{L}\\p{N}][\\p{L}\\p{N}-]{0,62}\\.)+(?:" + LINK_TLD
+  + ")(?![\\p{L}\\p{N}_-]|\\.[\\p{L}\\p{N}])(?::\\d{1,5})?(?:[/?#][^\\s<>\"'`]*)?", "giu");
+const LINK_BEFORE = /[\p{L}\p{N}_@.\/\\-]/u;          // «a@mail.ru», «x/site.com», «a.b.site.com» с середины — не адрес
 function safeUrl(u) {                                // адрес для href или "" — javascript:, data:, mailto: и прочее не проходят
   try { const x = new URL(String(u)); return (x.protocol === "http:" || x.protocol === "https:") && x.hostname ? x.href : ""; }
   catch (e) { return ""; }
@@ -1539,10 +1548,14 @@ function trimUrl(u) {
     else return u;
   }
 }
-function linkParts(text) {                           // "см. https://a.b/c." → ["см. ", { url: "https://a.b/c", href }, "."]
+// code — текст из кода: там «self.app», «req.me» — не адреса; адрес без схемы — только с путём, портом или поддоменом
+function linkParts(text, code) {                     // "см. https://a.b/c." → ["см. ", { url: "https://a.b/c", href }, "."]
   const s = String(text ?? ""), out = []; let last = 0;
   for (const m of s.matchAll(LINK_RE)) {
-    const u = trimUrl(m[0]), href = safeUrl(u);
+    const bare = !/^https?:/i.test(m[0]);
+    if (bare && m.index && LINK_BEFORE.test(s[m.index - 1])) continue;
+    const u = trimUrl(m[0]), href = safeUrl(bare ? "https://" + u : u);
+    if (bare && code && !/[/:]|\..*\./.test(u)) continue;
     if (!href) continue;
     if (m.index > last) out.push(s.slice(last, m.index));
     out.push({ url: u, href }); last = m.index + u.length;
@@ -1556,11 +1569,11 @@ function linkify(root) {
     const href = a.closest("pre, code") ? "" : safeUrl(a.getAttribute("href") || "");
     if (href) linkEl(a, href); else a.replaceWith(...a.childNodes);
   });
-  const skip = (n) => n.parentElement?.closest("a, pre, code, details, button, textarea");
+  const skip = (n) => n.parentElement?.closest("a, summary, button, textarea");   // код и логи — тоже со ссылками
   const nodes = [], walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  while (walk.nextNode()) if (!skip(walk.currentNode) && /https?:\/\//i.test(walk.currentNode.data)) nodes.push(walk.currentNode);
+  while (walk.nextNode()) if (!skip(walk.currentNode) && walk.currentNode.data.includes(".")) nodes.push(walk.currentNode);
   for (const t of nodes) {
-    const parts = linkParts(t.data); if (!parts.some((p) => typeof p !== "string")) continue;
+    const parts = linkParts(t.data, !!t.parentElement?.closest("pre, code")); if (!parts.some((p) => typeof p !== "string")) continue;
     const frag = document.createDocumentFragment();
     for (const p of parts) {
       if (typeof p === "string") { frag.append(document.createTextNode(p)); continue; }
@@ -3828,6 +3841,7 @@ async function chatView(sid) {                         // переписка з�
       ? `<div class="msg me" data-n="${n}"><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`
       : m.human ? `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`
       : `<div class="msg ai" data-n="${n}"><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
+    list.querySelectorAll(".bubble").forEach(linkify);   // ссылки — и в завершённом чате
     codeCopy(list);
     list.scrollTop = list.scrollHeight;
   } catch (e) { bg.querySelector(".chatv-list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -4414,7 +4428,6 @@ function renderChat(toBottom) {
   voiceUi();
   const msgs = fresh.filter((el) => el.classList.contains("msg"));   // дообработка — только новых и изменившихся
   if (had) msgs.forEach((el) => !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
-  msgs.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));
   msgs.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   msgs.filter((el) => el.classList.contains("ai")).forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
@@ -4422,6 +4435,7 @@ function renderChat(toBottom) {
     const key = el.dataset.i + ":p" + j, t = document.createElement("div");
     t.innerHTML = logBlock(key, "Код", text, text.split("\n")[0].trim().slice(0, 50)); pre.replaceWith(t.firstElementChild);
   }));
+  msgs.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // и в свёрнутом коде, и в «Терминал»
   msgs.forEach(codeCopy);                                  // короткие блоки кода — с кнопкой «Копировать» справа сверху
   if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
   paintAct();
@@ -7530,7 +7544,7 @@ function sRender(toBottom) {
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
   if (had) fresh.forEach((el) => el.classList.contains("msg") && !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
-  fresh.forEach((el) => el.querySelectorAll(".bubble").forEach(linkify));       // дообработка — только новых
+  fresh.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   fresh.forEach(codeCopy);
   sAct();
@@ -7707,7 +7721,9 @@ async function sPast(pid, c, parent) {                // прошлый чат �
     const d = await api(`/api/project/history?id=${encodeURIComponent(pid)}&sid=${encodeURIComponent(c.sid)}`);
     const box = bg.querySelector(".s-past");
     box.innerHTML = d.items.map(sMsg).join("") || `<p class="note">${esc(T("pj.past.none"))}</p>`;
+    box.querySelectorAll(".bubble").forEach(linkify);    // ссылки — и в завершённом чате простого режима
     box.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); });
+    codeCopy(box);
   } catch (e) { bg.querySelector(".s-past").innerHTML = `<p class="note">${esc(T("s.fail"))}</p>`; }
 }
 async function sNewAgent() {                          // отрасль → агент → «Подключить»: пространство из модуля, язык ответов — наш

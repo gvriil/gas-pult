@@ -58,6 +58,7 @@ from gas_pult import (
     terms,
     termwin,
     testers,
+    tglinks,
     transcripts,
     usage,
     voice,
@@ -231,6 +232,19 @@ class Pult:
                 self.skipped += 1
             raise
         return r or {}
+
+    def send_answer(self, chat: int, head: str, text: str, **kw) -> dict:
+        """Ответ Claude — HTML (tglinks): адреса нажимаемые и в `коде`, и без схемы; под блоком кода — «Ссылки: …».
+        Куски по 4000 с целыми тегами, кнопки — под последним. Telegram не разобрал разметку — тот же ответ текстом."""
+        chunks, r = tglinks.messages(text, head), {}
+        try:
+            for i, c in enumerate(chunks):
+                r = self.send(chat, c, parse_mode="HTML", **(kw if i == len(chunks) - 1 else {}))
+        except TelegramError as e:
+            if e.retry_after or "parse" not in e.description.lower() or i:
+                raise
+            return self.send(chat, f"{head}\n{text}", **kw)
+        return r
 
     def after_pause(self):
         """Пауза 429 кончилась — одно сообщение вместо пропущенных."""
@@ -801,7 +815,7 @@ class Pult:
         rows, msgs = [[("🔊", f"say:{n}"), ("✅ Да", f"yes:{w['id']}"), ("✏️ Ответить", f"act:{w['id']}")]], {}
         for chat in self.cfg.owners:
             try:
-                msgs[chat] = self.send(chat, f"[{w['name']}]\n{text}", reply_markup=kb(rows)).get("message_id")
+                msgs[chat] = self.send_answer(chat, f"[{w['name']}]", text, reply_markup=kb(rows)).get("message_id")
             except TelegramError as e:
                 print("send:", e, flush=True)
         self.hint_wait[w["id"]] = {"t": time.time(), "msgs": msgs, "rows": rows}
