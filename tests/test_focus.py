@@ -158,6 +158,27 @@ def test_focus_sees_only_its_session(server):
     assert s["sent"] == [("@1", "привет")]
 
 
+RUN_PATHS = (("/api/run", {"w": "@1", "i": 0, "sha": "x"}), ("/api/run/term", {"w": "@1", "i": 0, "sha": "x"}),
+             ("/api/commands/run", {"id": "x"}), ("/api/commands/term", {"id": "x"}),
+             ("/api/term/type", {"w": "@1", "text": "ls"}), ("/api/tty/type", {"w": "@1", "text": "ls"}))
+
+
+def test_focus_never_runs_commands_on_server(server, monkeypatch):
+    """Решение владельца 10.11: «Выполнить» из фокуса убрано — ни по ссылке на сессию, ни на проект, даже в своём."""
+    assert not (webapp.FOCUS_POST | webapp.FOCUS_PROJ_POST) & (webapp.CONFIRM | set(webapp.TERM))
+    s = server
+    ran = []
+    monkeypatch.setattr(s["p"], "run", lambda *a, **k: ran.append(a) or {})
+    _, _, cookie = open_link(s)
+    proj_server(s, monkeypatch)
+    _, pcookie = proj_link(s)
+    for c in (cookie, pcookie):
+        for path, body in RUN_PATHS:
+            code, r, _ = call(s["base"], path, body, c, FX)
+            assert code == 403 and r["code"] == "focus_scope", (path, code, r)
+    assert ran == []
+
+
 def test_owner_cookie_does_not_widen_focus(server):
     s = server
     _, _, cookie = open_link(s)

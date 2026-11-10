@@ -78,6 +78,10 @@ while True:
         print(f"Set effort level to {text.split()[-1]}")
         continue
     put("user", text)
+    if text == "покажи команду":                 # ответ с командой — панель покажет «Команды из ответа»
+        put("assistant", [{"type": "text", "text": "Выполните:\n```bash\nls -la\n```"}])
+        print("Выполните: ls -la")
+        continue
     put("assistant", [{"type": "text", "text": f"Ответ ({model}): {text}"}])
     print(f"Ответ ({model}): {text}")
 '''
@@ -158,6 +162,18 @@ def start(root: Path, port: int) -> tuple[subprocess.Popen, dict]:
 FETCH = """async ([path, body]) => { const r = await fetch(path, { method: body ? "POST" : "GET",
   headers: { "X-Gp-Focus": "1", "Content-Type": "application/json" }, credentials: "same-origin",
   body: body ? JSON.stringify(body) : undefined }); return [r.status, await r.json().catch(() => ({}))]; }"""
+
+
+def no_run(pa):
+    """Решение владельца 10.11: в фокусе у команды из ответа нет «Выполнить» и «Открыть в терминале» — только
+    «Копировать»; сервер на /api/run по фокус-ссылке отвечает 403 focus_scope."""
+    pa.fill("#input", "покажи команду")
+    pa.click("#send")
+    pa.wait_for_selector(".cmds .cmd pre:has-text('ls -la')", timeout=20000)
+    assert pa.locator(".cmds [data-run], .cmds [data-term]").count() == 0, "в фокусе есть «Выполнить»"
+    assert pa.locator(".cmds button", has_text="Выполнить").count() == 0
+    assert pa.locator(".cmds [data-cpcmd]").count() >= 1, "нет «Копировать» у команды"
+    assert "не выполняются" in pa.inner_text(".cmds .cmd .hint")
 
 
 def run(shots: str = ""):
@@ -244,7 +260,9 @@ def run(shots: str = ""):
                                ("/api/focus/new", {"w": shop, "base": base}),
                                ("/api/keys", {"provider": "x", "key": "y"}),
                                ("/api/rename", {"w": shop, "name": "x"}), ("/api/active", {"w": shop}),
-                               ("/api/mcp/add", {"preset": "http"}), ("/api/tty", None), ("/api/term", None)):
+                               ("/api/mcp/add", {"preset": "http"}), ("/api/tty", None), ("/api/term", None),
+                               ("/api/run", {"w": shop, "i": 0, "sha": "x"}),
+                               ("/api/run/term", {"w": shop, "i": 0, "sha": "x"})):
                 code, d = pa.evaluate(FETCH, [path, body])
                 assert code == 403 and d.get("code") == "focus_scope", (path, code, d)
             code, d = pa.evaluate(FETCH, ["/api/sessions", None])
@@ -260,6 +278,7 @@ def run(shots: str = ""):
             pa.fill("#input", "привет из фокуса")
             pa.click("#send")
             pa.wait_for_selector("text=Ответ (default): привет из фокуса", timeout=20000)
+            no_run(pa)
             pa.set_input_files("#fFile", files=[{"name": "заметка.txt", "mimeType": "text/plain", "buffer": b"e2e"}])
             pa.wait_for_timeout(1500)
             pa.fill("#input", "посмотри файл")

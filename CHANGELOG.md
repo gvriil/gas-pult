@@ -26,6 +26,10 @@
   `gas-pult usage report`. Проверка — `tests/test_features.py` (время подменяется).
 
 ### Безопасность
+- **«Выполнить» убрано из фокус-ссылок** (решение владельца). По ссылке на сессию и на проект команды на сервере
+  пульта не выполняются: `/api/run` больше нет в `FOCUS_POST` — сервер отвечает `403 focus_scope`; у команды из ответа
+  вместо «Выполнить» — подсказка и «Копировать». Проверка — `tests/test_focus.py`, `tests/e2e/focus_live.py`,
+  `tests/e2e/focus_project_live.py`.
 - **Заголовки Caddy (аудит 09.11).** В образце `Caddyfile` (`docs/MINI_APP.md`) — CSP `frame-ancestors` (панель во
   фрейме — только сама и Telegram Web), `base-uri 'self'`, `object-src 'none'`; через `?`, чтобы не затирать более
   строгий CSP страницы предложения. `X-Frame-Options` не ставится — сломал бы Mini App в Telegram Web; HSTS — только

@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from focus_live import FETCH, free_port, start
+from focus_live import FETCH, free_port, no_run, start
 
 
 def run(shots: str = ""):
@@ -107,7 +107,9 @@ def run(shots: str = ""):
                                ("/api/project/session", {"id": oid}), (f"/api/history?w={other}", None),
                                ("/api/send", {"w": other, "text": "чужое"}), ("/api/projects", None),
                                ("/api/people", None), ("/api/new", {"i": 0}), ("/api/focus/list", None),
-                               ("/api/focus/new", {"proj": pid, "base": base})):
+                               ("/api/focus/new", {"proj": pid, "base": base}),
+                               ("/api/run", {"w": shop, "i": 0, "sha": "x"}),
+                               ("/api/run/term", {"w": shop, "i": 0, "sha": "x"})):
                 code, d = pa.evaluate(FETCH, [path, body])
                 assert code == 403 and d.get("code") == "focus_scope", (path, code, d)
             assert pa.evaluate(FETCH, [f"/api/project?id={pid}", None])[0] == 200
@@ -134,6 +136,7 @@ def run(shots: str = ""):
             pa.fill("#input", "привет в новой сессии")
             pa.click("#send")
             pa.wait_for_selector("text=Ответ (default): привет в новой сессии", timeout=30000)
+            no_run(pa)                                # в фокусе на проект — тоже без «Выполнить»
             code, d = pa.evaluate(FETCH, ["/api/sessions", None])
             assert sorted(x["id"] for x in d["sessions"]) == sorted([shop, fresh]) and \
                 all(x["project"] == pid for x in d["sessions"]), d
