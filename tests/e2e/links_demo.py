@@ -140,7 +140,8 @@ def run(base: str):
                 assert "плохая" in ai_text and "данные" in ai_text and "почта" in ai_text, f"{where}: подпись пропала"
                 pg.wait_for_timeout(150)
                 # Нажатие на ссылку в блоке кода — openLink (перехвачен), а не выделение или копирование.
-                pg.evaluate("() => { window.__clicked = []; window.openLink = (h) => (window.__clicked.push(h), true); }")
+                pg.evaluate("() => { window.__clicked = [];"
+                            " window.openLink = (h) => (window.__clicked.push(h), true); }")
                 ca = pg.locator(sel + ' .msg.ai .codebox pre a.clink[href="https://code.example/block"]')
                 ca.scroll_into_view_if_needed()
                 ca.click()
