@@ -1063,7 +1063,8 @@ class Panel:
         while time.time() < end:
             if w := self.window(wid):
                 try:
-                    self.pult.to_claude(w, text)
+                    with self.pult.via("panel"):
+                        self.pult.to_claude(w, text)
                     return True
                 except Exception as e:                    # не готов ещё — пробуем, пока не выйдет время
                     why = str(e)
@@ -2484,7 +2485,7 @@ USES = "/api/uses"                      # панель отмечает откр
 SPACE_OK = TERMS_FREE | {USES,
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
-    "/api/send", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
+    "/api/send", "/api/resend", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
     "/api/space/sessions", "/api/space/close", "/api/space/resume", "/api/space/delete", "/api/space/restore",
     "/api/space/files", "/api/space/upload", "/api/space/download", STT_STREAM, *REPOS,
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
@@ -2501,7 +2502,7 @@ INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/ask", "/api/hint", "/api/cmds",
              "/api/tts", "/api/last", "/api/activity", "/api/space/files", "/api/space/download", "/api/mcp",
              "/api/mcp/connected", "/api/repos"}
-FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/revive", "/api/upload",
+FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/command", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
@@ -3575,6 +3576,7 @@ def handler(panel: Panel):
                 if w.get("name") == termwin.WINDOW and self.headers.get("X-Telegram-Init-Data"):
                     raise ValueError("в окно с паролем из Telegram не вводим — откройте панель в браузере")
                 termwin.tty_type(panel.tmux, w["id"], str(b.get("text", "")))
+                panel.pult.deliv.record(w["id"], "tty", str(b.get("text", "")), res="typed")   # без Enter, без текста
                 return {"ok": True}
             if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
                 st = panel.pult.state()
@@ -3704,7 +3706,10 @@ def handler(panel: Panel):
                 text = str(b.get("text", "")).strip()
                 if not text:
                     raise ValueError("пустое сообщение")
-                return {"ok": True, "dup": panel.send(w, text, str(b.get("id", ""))[:64])}
+                with panel.pult.via("focus" if self.focused is not None else "panel"):
+                    return {"ok": True, "dup": panel.send(w, text, str(b.get("id", ""))[:64])}
+            if path == "/api/resend":                     # «Отправить» у строки «Не отправлено» — Enter после проверки
+                return {"result": panel.pult.push_enter(w["id"], str(b.get("sha", ""))[:12])}
             if path == "/api/rename":
                 return {"name": panel.tmux.rename(w["id"], str(b.get("name", "")))}
             if path == "/api/active" and w.get("space"):

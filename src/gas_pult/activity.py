@@ -32,12 +32,20 @@ from gas_pult import transcripts
 TAIL = 262144                     # байт хвоста журнала: последнего хода хватает с запасом
 NO_REACTION = 20                  # с после «Доставлено» без нового хода — честно сказать почему
 KEEP = 900                        # с: запись об отправке живёт 15 минут
+UNSENT_KEEP = 6 * 3600            # «Не отправлено» — пока текст висит в поле ввода, но не дольше 6 ч
+
+
+def _expired(rec: dict, now: float) -> bool:
+    if rec.get("unsent_at"):
+        return now - rec["unsent_at"] > UNSENT_KEEP
+    return now - rec["sent_at"] > KEEP
 STALE = 15                        # с: журнал говорит «ход идёт», а экран — «свободно» дольше этого — ход прерван
 
 TEXTS = {"sent": "Отправлено", "delivered": "Доставлено в сессию", "started": "Взял в работу",
          "thinking": "Думает…", "waiting": "Ждёт вашего ответа", "done": "Готово", "idle": "",
          "queued": "Занят предыдущей задачей — в очереди",
-         "stuck": "Не видно реакции — показать экран?"}
+         "stuck": "Не видно реакции — показать экран?",
+         "unsent": "Не отправлено — текст в поле ввода"}
 ACTIVE = {"sent", "delivered", "started", "working", "thinking", "queued"}     # ход идёт или вот-вот начнётся
 
 # ---------- маскировка: в строке статуса не должно быть секретов ----------
@@ -303,7 +311,7 @@ class Sends:
     def sent(self, wid: str, text: str) -> dict:
         now = self.clock()
         with self.lock:
-            for k in [k for k, v in self.items.items() if now - v["sent_at"] > KEEP]:
+            for k in [k for k, v in self.items.items() if _expired(v, now)]:
                 del self.items[k]
             rec = {"sent_at": now, "hash": fingerprint(text), "delivered_at": None}
             self.items[wid] = rec
@@ -313,6 +321,16 @@ class Sends:
         with self.lock:
             if rec := self.items.get(wid):
                 rec["delivered_at"] = self.clock()
+                rec.pop("unsent_at", None)
+
+    def unsent(self, wid: str):
+        """Перепроверка или сторож: текст висит в поле ввода неотправленным — строка статуса «Не отправлено»."""
+        with self.lock:
+            if rec := self.items.get(wid):
+                rec["unsent_at"] = self.clock()
+            else:
+                self.items[wid] = {"sent_at": self.clock(), "hash": "", "delivered_at": None,
+                                   "unsent_at": self.clock()}
 
     def failed(self, wid: str):
         with self.lock:
@@ -321,7 +339,7 @@ class Sends:
     def get(self, wid: str) -> dict | None:
         with self.lock:
             rec = self.items.get(wid)
-            if rec and self.clock() - rec["sent_at"] > KEEP:
+            if rec and _expired(rec, self.clock()):
                 self.items.pop(wid, None)
                 return None
             return dict(rec) if rec else None
@@ -351,6 +369,9 @@ def combine(journal: dict, rec: dict | None = None, screen: dict | None = None,
             if sends is not None and wid:
                 sends.taken(wid)
             rec = None
+        elif rec.get("unsent_at"):                 # перепроверка: наш текст висит в поле ввода (bot.Pult.recheck)
+            res |= {"phase": "unsent", "text": TEXTS["unsent"], "tool": "", "since": rec["unsent_at"],
+                    "action": "enter"}
         elif not rec.get("delivered_at"):
             res |= {"phase": "sent", "text": TEXTS["sent"], "tool": "", "since": sent}
         elif journal.get("enq", 0) >= sent - 2 and journal.get("queued", 0) > 0:     # Claude Code поставил в очередь
@@ -389,7 +410,7 @@ def elapsed(sec: float) -> str:
 
 
 ICON = {"sent": "⏳", "delivered": "📨", "started": "✅", "working": "⚙️", "thinking": "💭", "queued": "🕓",
-        "stuck": "⚠️", "waiting": "⏸", "done": "✅", "idle": "✅"}
+        "stuck": "⚠️", "unsent": "⚠️", "waiting": "⏸", "done": "✅", "idle": "✅"}
 
 
 def line(st: dict, now: float | None = None, started: bool = False) -> str:

@@ -36,6 +36,7 @@ from gas_pult import (
     activity,
     ago,
     country,
+    deliveries,
     digest,
     emailcode,
     fallback,
@@ -67,7 +68,8 @@ from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_k
 from gas_pult.config import Config, write_private
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError, kb
-from gas_pult.tmux import Tmux
+from gas_pult.tmux import Tmux, prompt_draft
+from gas_pult.tmux import is_ours as tmux_is_ours
 from gas_pult.voice import catalog
 from gas_pult.webauth import Auth, TgLogins
 
@@ -82,6 +84,11 @@ BUSY = re.compile(r"esc to interrupt", re.I)
 QUESTION = re.compile(r"^\s*Do you (want|trust)|^\s*" + HINT + r"Enter to (confirm|select)", re.M)
 PANEL = re.compile(r"^\s*" + HINT + r"Esc to (cancel|close|exit|go back)|Settings\s+Status\s+Config", re.I | re.M)
 PROMPT = re.compile(r"^\s*❯(?!\s*\d\.)", re.M)
+
+
+def free(scr: str) -> bool:
+    """Окно свободно для Enter: не идёт ход (нет «esc to interrupt»), нет вопроса, меню или диалога."""
+    return not (BUSY.search(scr) or DIALOG.search(scr) or QUESTION.search(scr) or PANEL.search(scr))
 
 
 # Строка статуса и таймеры меняются каждые секунды — в отпечаток меню их не берём, иначе «изменение» без конца.
@@ -211,6 +218,8 @@ class Pult:
         self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
         self.meter = usage.Meter()                         # расход сессий по журналам (usage.py)
         self.sends = activity.Sends()                      # что и когда отправили в окно — фазы до хода (activity.py)
+        self.deliv = deliveries.Log(cfg.data / "sends.jsonl")   # журнал доставок без текста (deliveries.py)
+        self.drafts: dict[str, tuple[str, float]] = {}     # сторож черновиков: окно → (отпечаток, с какого времени)
         self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
         self.changes = ago.Screens()                       # когда менялся экран окна — «изменена N назад» (ago.py)
         self.following: dict[tuple, tuple] = {}            # (чат, окно) → (метка, id служебного сообщения статуса)
@@ -364,19 +373,43 @@ class Pult:
             fcntl.flock(f, fcntl.LOCK_EX)
             yield
 
-    def to_claude(self, w: dict, text: str) -> bool:
+    source = threading.local()  # откуда текст (``via``): panel, focus, scheduler… — для журнала доставок
+
+    @contextmanager
+    def via(self, src: str):
+        """Источник следующих ``to_claude`` этого потока — без нового параметра у всех вызовов."""
+        old = getattr(self.source, "v", "")
+        self.source.v = src
+        try:
+            yield
+        finally:
+            self.source.v = old
+
+    def to_claude(self, w: dict, text: str, src: str = "") -> bool:
+        """Текст в окно (вставка и Enter) — одно для бота, панели, фокус-ссылок и расписания. ``src`` — откуда
+        (panel, focus, bot, scheduler…; пусто — бот, если действует человек из Telegram, иначе «pult»): пишется в журнал
+        доставок ``sends.jsonl`` вместе с итогом вставки. После удачной вставки — перепроверка в фоне (``recheck``)."""
         uid = getattr(self.actor, "uid", None)             # из бота — человек; из панели и монитора — проверено там
+        src = src or getattr(self.source, "v", "") or ("bot" if uid is not None else "pult")
         if uid is not None and not models.allowed(w.get("profile") or "claude", self.countries(uid)):
             raise Denied(country.DENY)
         if self.cost_paused(w["id"]):                       # пауза по расходу — пока владелец не решит
             raise NotReady("сессия на паузе по расходу — продолжить может владелец (кнопка в боте или в панели)")
         sends = getattr(self, "sends", None)               # строка статуса: «Отправлено» → «Доставлено» (activity.py)
+        deliv = getattr(self, "deliv", None)
         if sends:
             sends.sent(w["id"], text)
         try:
             with self.hold(w["id"]):
                 self.ready_for_text(w["id"])
-                if self.tmux.paste(w["id"], text) is False:      # Enter не прошёл и после повторов
+                last = getattr(self.tmux, "last_paste", None)
+                if last is not None:
+                    last.r = None
+                ok = self.tmux.paste(w["id"], text) is not False
+                r = dict(getattr(last, "r", None) or {"ok": ok, "result": "sent" if ok else "stuck"})
+                if deliv:
+                    deliv.record(w["id"], src, text, res=r["result"], after=r.get("after"))
+                if not r["ok"]:                                  # Enter не прошёл и после повторов
                     raise NotReady("текст остался в поле ввода сессии и не отправлен — откройте «Экран» и нажмите "
                                    "Enter или отправьте ещё раз")
         except Exception:
@@ -385,7 +418,118 @@ class Pult:
             raise
         if sends:
             sends.delivered(w["id"])
+        if deliv and self.RECHECK:
+            threading.Thread(target=self.recheck_safe, args=(w, text, src), daemon=True).start()
         return True                                         # вставка прошла — «Доставлено в сессию»
+
+    # ---------- перепроверка доставки: текст не остался в поле ввода? ----------
+    RECHECK = (3.0, 10.0, 30.0)        # с после доставки; пусто — не перепроверять
+    DRAFT_WAIT = 120.0                 # с: столько наш текст висит в поле ввода, прежде чем сторож монитора скажет
+    DRAFT_WITHIN = 3600.0              # сторож узнаёт доставки пульта за последний час
+
+    def recheck_safe(self, w: dict, text: str, src: str = ""):
+        try:
+            self.recheck(w, text, src)
+        except Exception as e:                              # фоновая перепроверка не должна ронять процесс
+            print("recheck:", e, flush=True)
+
+    def recheck(self, w: dict, text: str, src: str = "", sleep=time.sleep) -> str:
+        """Через 3, 10 и 30 с после доставки смотрим поле ввода окна. Там наш текст, а окно свободно (не идёт ход, нет
+        вопроса или меню) — Enter ещё раз и запись «redelivered». Висит и через 30 с — «не отправлено»: строка статуса
+        и одно сообщение владельцу с кнопкой «Отправить». В занятое окно и в диалог Enter вслепую не жмём.
+        Итог: «gone» — ушёл, «unsent» — висит, «gone-window» — окна нет."""
+        waited = 0.0
+        last = len(self.RECHECK) - 1
+        for i, at in enumerate(self.RECHECK):
+            sleep(at - waited)
+            waited = at
+            try:
+                left = self.tmux.draft(w["id"], dim=True)
+                scr = "\n".join(self.tmux.screen(w["id"], 15))
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                return "gone-window"
+            if not left or not tmux_is_ours(left, text):
+                return "gone"
+            if not free(scr):
+                continue                                    # ход идёт или открыт вопрос — подождать
+            if i == last:
+                break
+            with self.hold(w["id"]):
+                self.tmux.keys(w["id"], "Enter")
+            self.deliv.record(w["id"], src, text, res="redelivered", step=int(at))
+        self.unsent(w, text, src)
+        return "unsent"
+
+    def unsent(self, w: dict, text: str, src: str = "", why: str = "") -> bool:
+        """Наш текст висит в поле ввода: «не отправлено» в строке статуса и одна строка владельцу с кнопкой
+        «Отправить» (жмёт Enter после проверки). Об одном тексте в одном окне говорим один раз."""
+        h = deliveries.sha(text)
+        if self.deliv.notified(w["id"], h):
+            return False
+        self.deliv.record(w["id"], src, text, res="unsent", why=why or None)
+        if sends := getattr(self, "sends", None):
+            sends.unsent(w["id"])
+        try:
+            self.broadcast(f"⚠️ «{w.get('name') or w['id']}»: сообщение не отправлено — висит в поле ввода "
+                           f"({len(text)} знаков).", reply_markup=kb([[("⏎ Отправить", f"rs:{w['id']}:{h}")]]))
+        except Exception as e:                              # Telegram недоступен — строка статуса всё равно есть
+            print("unsent:", e, flush=True)
+        return True
+
+    def push_enter(self, wid: str, h: str = "", sleep=time.sleep) -> str:
+        """Кнопка «Отправить» (бот, панель): Enter — только если в поле ввода наш текст и окно свободно."""
+        w = self.tmux.window(wid)
+        if not w or w.get("cmd") != "claude":
+            return "Окна уже нет."
+        left = self.tmux.draft(wid, dim=True)
+        rec = self.deliv.match(wid, left, within=6 * 3600) if left else None
+        if not rec or (h and rec.get("sha") != h):
+            return "В поле ввода уже нет этого текста — нажимать нечего."
+        if not free("\n".join(self.tmux.screen(wid, 15))):
+            return "Сейчас в окне идёт ход или открыт вопрос — ответьте там или нажмите позже."
+        with self.hold(wid):
+            self.tmux.keys(wid, "Enter")
+        sleep(1.5)
+        left = self.tmux.draft(wid, dim=True)
+        ok = not left or not deliveries.matches(left, rec)
+        self.deliv.record(wid, "button", None, sha=rec.get("sha"), head=rec.get("head"),
+                          res="redelivered" if ok else "unsent-again")
+        if ok and (sends := getattr(self, "sends", None)):
+            sends.delivered(wid)
+        return "✅ Отправлено." if ok else "Не ушло и сейчас — откройте «Экран»: возможно, фокус не в поле ввода."
+
+    def draft_watch(self, w: dict, lines: list[str], now: float | None = None) -> bool:
+        """Сторож монитора (раз в 3 с): в поле ввода окна наш текст (доставка пульта за последний час), висит дольше
+        ``DRAFT_WAIT`` и окно свободно — то же уведомление, что у перепроверки. Чужой черновик (человек печатает
+        в окне сам) — не трогаем и не говорим. True — уведомили."""
+        if getattr(self, "deliv", None) is None:
+            return False
+        if getattr(self, "drafts", None) is None:
+            self.drafts = {}
+        now = time.time() if now is None else now
+        wid = w["id"]
+        left = prompt_draft(lines, dim=True)
+        rec = self.deliv.match(wid, left, self.DRAFT_WITHIN) if left else None
+        if not rec:
+            self.drafts.pop(wid, None)
+            return False
+        key, since = self.drafts.get(wid, ("", now))
+        if key != rec["sha"]:
+            self.drafts[wid] = (rec["sha"], now)
+            return False
+        if now - since < self.DRAFT_WAIT or not free("\n".join(lines[-15:])) or self.deliv.notified(wid, rec["sha"]):
+            return False
+        self.deliv.record(wid, "watch", None, sha=rec["sha"], head=rec["head"], len=rec.get("len"), res="unsent",
+                          why="draft")
+        if sends := getattr(self, "sends", None):
+            sends.unsent(wid)
+        try:
+            self.broadcast(f"⚠️ «{w.get('name') or wid}»: сообщение не отправлено — висит в поле ввода "
+                           f"({rec.get('len', '?')} знаков) больше {int(self.DRAFT_WAIT // 60)} мин.",
+                           reply_markup=kb([[("⏎ Отправить", f"rs:{wid}:{rec['sha']}")]]))
+        except Exception as e:
+            print("draft watch:", e, flush=True)
+        return True
 
     # ---------- строка статуса: что агент делает сейчас (activity.py) ----------
     FOLLOW_EVERY = 3.5          # с между правками служебного сообщения (лимиты Telegram на правки)
@@ -404,7 +548,19 @@ class Pult:
         """Статус окна: журнал (последний ход), запись об отправке и экран (``screen``; нет — читаем сами)."""
         j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "")
         scr = screen if screen is not None else self.screen_state(w["id"])
-        return activity.combine(j, self.sends.get(w["id"]), scr, sends=self.sends, wid=w["id"])
+        rec = self.sends.get(w["id"])
+        if rec and rec.get("unsent_at") and not self.still_unsent(w["id"]):   # отправили руками или стёрли
+            self.sends.taken(w["id"])
+            rec = None
+        return activity.combine(j, rec, scr, sends=self.sends, wid=w["id"])
+
+    def still_unsent(self, wid: str) -> bool:
+        """В поле ввода окна всё ещё текст из журнала доставок (за 6 ч)?"""
+        try:
+            left = self.tmux.draft(wid, dim=True)
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            return False
+        return bool(left) and self.deliv.match(wid, left, within=activity.UNSENT_KEEP) is not None
 
     def to_claude_live(self, chat: int, w: dict, text: str):
         """Сообщение человека в окно и одно служебное сообщение «⏳ Отправлено», которое бот правит по фазам.
@@ -887,6 +1043,7 @@ class Pult:
                     lines = self.tmux.screen(w["id"])
                     scr = screens[w["id"]] = "\n".join(lines)
                     self.changes.look(w["id"], lines)
+                    self.draft_watch(w, lines)                  # наш текст висит в поле ввода дольше 2 мин?
                     if w["id"] in self.fallback.pending:        # сессия стоит на ошибке, человек не набирает
                         idle = not BUSY.search(scr) and not DIALOG.search(scr)
                         self.fallback.step(w, idle and not fallback.typing(lines, self.tmux.hint(w["id"])))
@@ -1092,7 +1249,8 @@ class Pult:
                 if not w:
                     return
                 try:
-                    return self.to_claude(w, text)
+                    with self.via("scheduler"):
+                        return self.to_claude(w, text)
                 except NotReady as e:
                     why = str(e)
                     time.sleep(5)
@@ -1219,7 +1377,8 @@ class Pult:
             name = f"«{m['title']}» ({folder.name})"
             try:
                 if w := self.project_window(str(folder)):
-                    self.to_claude(w, item["prompt"])
+                    with self.via("scheduler"):
+                        self.to_claude(w, item["prompt"])
                     continue
                 if w := self.folder_window(str(folder)):   # окно папки есть, Claude в нём остановлен — в нём же
                     by = modules.mark_of(folder).get("by")
@@ -1596,6 +1755,9 @@ class Pult:
             return self.show_people(chat)
         if kind == "off":                                  # «Отключить человека» (только владелец — как всё, кроме lg:)
             return self.switch_off(chat, arg)
+        if kind == "rs":                                   # «Отправить»: наш текст висит в поле ввода — Enter
+            wid, _, h = arg.rpartition(":")
+            return send(self.push_enter(wid, h))
         if kind == "hint":                                 # 💡 под ответом — отправить подсказку Claude
             wid, h = self.hints.get(int(arg), ("", "")) if arg.isdigit() else ("", "")
             w = self.tmux.window(wid) if wid else None
