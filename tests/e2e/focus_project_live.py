@@ -7,7 +7,7 @@ HOME, GAS_PULT_DATA_DIR, GAS_PULT_CONFIG_DIR, свой сервер tmux по к
 окна «shop» и «other» — в папках двух проектов).
 
 Сценарий:
-  (а) владелец: панель чатов → «⋯» проекта «shop» → «Фокус-ссылка на проект» — ссылка ``…/#focus=<токен>``;
+  (а) владелец: панель чатов → «⋯» проекта «shop» → «Создать фокус-ссылку на проект» — ссылка ``…/#focus=<токен>``;
   (б) телефон (390, светлая) по ссылке: видны только сессии «shop», под шапкой — проект и «Вход действует до ДД.ММ
       (через 7 дн.)»; API проекта «other», его окна, список проектов, люди — 403;
   (в) шторка проекта → «Новая сессия в проекте» — новое окно в папке «shop», сообщение уходит и приходит ответ;
@@ -77,7 +77,7 @@ def run(shots: str = ""):
             row = po.locator(f'#navList [data-np="{pid}"]')
             row.hover()
             row.locator("[data-nmore]").click()
-            po.locator(".pop button", has_text="Фокус-ссылка на проект").click()
+            po.locator(".pop button", has_text="Создать фокус-ссылку на проект").click()
             po.wait_for_selector("#focusUrl")
             h3 = po.locator(".sheet h3")
             assert h3.filter(has_text="Фокус-ссылка на проект").count() == 1, h3.all_inner_texts()

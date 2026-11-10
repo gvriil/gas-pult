@@ -8,9 +8,11 @@ GAS_PULT_DATA_DIR, GAS_PULT_CONFIG_DIR и своим сервером tmux (``GA
 
 Сценарий (телефон 390 и компьютер 1366, светлая и тёмная тема):
   (а) остановленная сессия (Claude вышел, в окне оболочка) → «Завершить сессию» — окно закрыто (было: 404);
-  (б) работающая сессия → «⋯» → «Удалить» → подтверждение → «Удалено»: окна нет, журнал — в корзине пульта,
-      после обновления страницы карточка не возвращается и в «Завершённых» проекта чата нет;
-  (в) завершённый чат проекта → «⋯» → «Удалить» — пропал из «Завершённых»;
+  (б) работающая сессия → «⋯» → «Удалить» → плашка «Удалено · Отменить» (без окна «Вы уверены?»), через 5 с —
+      окна нет, журнал — в корзине пульта, после обновления страницы карточка не возвращается и в «Завершённых»
+      проекта чата нет;
+  (б2) «Удалить» → «Отменить» на плашке — ничего не удалено, окно и журнал на месте;
+  (в) завершённый чат проекта → «⋯» → «Удалить» — сразу пропал из «Завершённых», через 5 с журнал в корзине;
   (г) перезапуск панели (та же папка данных) — удалённое не вернулось;
   (д) «Настройки» → «Корзина чатов» → нажать чат — «Вернуть»: журнал на месте, чат снова в «Завершённых».
 """
@@ -184,12 +186,30 @@ def run(shots: str = ""):
                     break
                 time.sleep(0.2)
             assert journal(w["shop_sid"]), "подставной Claude не записал журнал"
+            def wait_for(cond, what, sec=30):
+                for _ in range(sec * 5):
+                    if cond():
+                        return
+                    time.sleep(0.2)
+                raise AssertionError(what)
+
+            # (б2) «Удалить» → «Отменить»: ничего не ушло на сервер
             pg.evaluate(f"sessionSheet({json.dumps(w['shop'])})")
             sheet_click(pg, "Удалить")
-            pg.wait_for_selector(".sheet h3:text('Удалено')", timeout=30000)
+            pg.wait_for_selector(".toast.undo", timeout=5000)
+            assert pg.locator(".sheet-bg").count() == 0, "после «Удалить» осталось окно"
+            pg.click(".toast.undo button")
+            pg.wait_for_function(f"sessions.some((s) => s.id === {json.dumps(w['shop'])})", timeout=15000)
+            time.sleep(6)
+            assert w["shop"] in windows() and journal(w["shop_sid"]), "«Отменить» не остановило удаление"
+            log("(б2) «Отменить» на плашке — окно и журнал на месте")
+
+            pg.evaluate(f"sessionSheet({json.dumps(w['shop'])})")
+            sheet_click(pg, "Удалить")
+            pg.wait_for_selector(".toast.undo", timeout=5000)
             shot(pg, "b-deleted-390-light")
-            assert "в корзине" in pg.inner_text(".sheet")
-            assert w["shop"] not in windows() and not journal(w["shop_sid"])
+            assert "Удалено" in pg.inner_text(".toast.undo")
+            wait_for(lambda: w["shop"] not in windows() and not journal(w["shop_sid"]), "окно или журнал не удалены")
             trash = list((root / "data" / "trash" / "chats").glob(f"*__{w['shop_sid']}/{w['shop_sid']}.jsonl"))
             assert trash, "журнала нет в корзине"
             pg.reload()
@@ -206,11 +226,10 @@ def run(shots: str = ""):
             # (в) завершённый чат → «Удалить»
             pg.click(f".card[data-chat='{w['old_sid']}'] [data-chat-more]")
             sheet_click(pg, "Удалить")
-            pg.wait_for_selector(".sheet h3:text('Удалено')", timeout=15000)
-            pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
+            pg.wait_for_selector(".toast.undo", timeout=5000)
             gone = f"!document.querySelector(\".card[data-chat='{w['old_sid']}']\")"
-            pg.wait_for_function(gone, timeout=10000)
-            assert not journal(w["old_sid"])
+            pg.wait_for_function(gone, timeout=2000)
+            wait_for(lambda: not journal(w["old_sid"]), "журнал завершённого чата не удалён")
             log("(в) завершённый чат удалён из «Завершённых»")
             pg.context.close()
 

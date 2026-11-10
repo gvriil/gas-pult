@@ -263,6 +263,7 @@
   /* ===== Переписка ===== */
   .live { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
   .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); display: inline-block; }
+  #live:not(.stale) { display: none; }                  /* на связи — тихо; «нет связи · N с» — янтарным */
   .live.stale { color: var(--status-approval); } .live.stale i { background: var(--status-approval); }
   .net { align-self: stretch; display: flex; align-items: center; gap: 8px;
          background: var(--status-approval-bg); color: var(--text-primary); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent);
@@ -647,6 +648,7 @@
   /* Лента на компьютере (план UX, пункт 6): колонка ~760 px по центру, поле ввода — той же ширины. */
   body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 760px; }
   .sidebtn, .grip, .rail { display: none; }
+  body.no-dup.has-nav:not(.side-mini) #top .titles { visibility: hidden; }
   body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
   body.split .sidebtn { display: grid; }
   body.split:not(.side-mini) .grip { display: block; position: fixed; top: 0; bottom: 0; left: calc(var(--side) - 4px); width: 8px; z-index: 7; cursor: col-resize; touch-action: none; }
@@ -1653,9 +1655,9 @@ function renderNav() {
   const on = navOn();
   document.body.classList.toggle("has-nav", on);
   const two = split();
-  $("navBtn").hidden = !on || (two ? !sideMini : view !== "home" && view !== "session");
-  $("composeBtn").hidden = !on || meta?.role === "viewer" || (two ? !sideMini : view !== "home");
-  $("navCloseBtn").hidden = two; syncBack(); $("nav").inert = !on || (!two && !NAV.open) || (two && sideMini);
+  setHidden($("navBtn"), !on || (two ? !sideMini : view !== "home" && view !== "session"));
+  setHidden($("composeBtn"), !on || meta?.role === "viewer" || (two ? !sideMini : view !== "home"));
+  setHidden($("navCloseBtn"), two); syncBack(); $("nav").inert = !on || (!two && !NAV.open) || (two && sideMini);
   if (!on) { if (NAV.open) navOpen(false); return; }
   const q = NAV.q.trim().toLowerCase(), hit = (t) => !q || String(t || "").toLowerCase().includes(q);
   const ss = sessions.filter((x) => !NAV.gone.has(x.id)), nm = (x) => x.name + " " + (x.title || "");
@@ -1698,11 +1700,12 @@ $("navNew").onclick = () => newChat();
 $("navHome").onclick = () => { navOpen(false); current = null; show("home"); setHome("sessions"); };
 $("composeBtn").onclick = () => newChat();
 $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
-  ...(meta?.role !== "viewer" ? [{ label: "Новый чат", icon: "compose", run: () => newChat() },
-    { label: "Новая папка", icon: "plus", run: () => newFolder() }] : []),
-  ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Из модуля", icon: "puzzle", run: () => modulesView() }] : []),
-  ...(meta?.role === "owner" ? [{ label: "В фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
-  { sep: true }, { label: "Главная: сессии и проекты", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
+  // В меню «⋯» — глаголы (план UX, пункт 9): что произойдёт, а не куда попадёте
+  ...(meta?.role !== "viewer" ? [{ label: "Начать новый чат", icon: "compose", run: () => newChat() },
+    { label: "Создать папку", icon: "plus", run: () => newFolder() }] : []),
+  ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Создать из модуля", icon: "puzzle", run: () => modulesView() }] : []),
+  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
+  { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
 function closePop() { document.querySelectorAll(".pop").forEach((x) => { x.anchor?.classList.remove("menu-on"); x.btn?.setAttribute("aria-expanded", "false"); x.remove(); }); }
@@ -1733,31 +1736,22 @@ function navItems(row) {
   if (row.dataset.np) {
     const p = projOf(row.dataset.np); if (!p) return [];
     return [...(canPin() ? [{ label: p.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!p.pinned, run: () => pinSet({ project: p.id }, !p.pinned, p.name) }] : []),
-      ...(meta?.role !== "viewer" ? [{ label: "Новый чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
+      ...(meta?.role !== "viewer" ? [{ label: "Начать чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
       { label: "Открыть проект", icon: "folder", run: () => navProject(p.id) },
-      ...(meta?.role === "owner" && !FOCUS ? [{ label: "Фокус-ссылка на проект", icon: "qr", run: () => focusLink(null, p.id) }] : [])];
+      ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку на проект", icon: "qr", run: () => focusLink(null, p.id) }] : [])];
   }
   const s = sessions.find((x) => x.id === row.dataset.nw); if (!s) return [];
   const name = s.title || s.name;
   return [...(canPin(s) ? [{ label: s.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!s.pinned, run: () => pinSet({ w: s.id }, !s.pinned, name) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule ? [{ label: "Удалить", icon: "trash", danger: true, run: () => navDelete(s) }] : []),
-    { sep: true }, { label: "Все действия…", icon: "more", run: () => sessionSheet(s.id) }];
+    { sep: true }, { label: "Показать все действия…", icon: "more", run: () => sessionSheet(s.id) }];
 }
 function navProject(id) {                             // «Все чаты проекта» — страница проекта на главной
   navOpen(false); current = null; show("home"); setMode("projects"); setHome("sessions"); openProject(id);
 }
-// «Удалить» с плашкой «Отменить»: строка уходит сразу, на сервер — через 5 с, если не отменили.
-function navDelete(s) {
-  const name = s.title || s.name;
-  NAV.gone.add(s.id); sessions = sessions.filter((x) => x.id !== s.id);
-  if (current === s.id && view === "session") back(); else { renderNav(); refresh(); }
-  undoBar(`Удалено: «${name}»`, () => { NAV.gone.delete(s.id); refresh(); toast("Вернул «" + name + "»"); }, async () => {
-    try { const d = await api("/api/chat/delete", { w: s.id }); if (d.draft) toast("В поле ввода был неотправленный текст — он в корзине вместе с перепиской", 4500); }
-    catch (e) { toast("Не удалено: " + e.message, 5000); }
-    finally { NAV.gone.delete(s.id); refresh(); }
-  });
-}
+// «Удалить» в меню строки — та же плашка «Отменить» (chatDelete).
+function navDelete(s) { chatDelete({ w: s.id }, s.title || s.name); }
 function undoBar(text, undo, commit, ms = 5000) {
   document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast undo"; t.setAttribute("role", "status");
@@ -2075,6 +2069,7 @@ function show(v) {
   $("title").classList.toggle("sw", v === "session" && !two);
   $("settingsBtn").hidden = gate;
   $("title").classList.toggle("brand-text", v === "home" || gate);   // «Пульт» — фирменным градиентом
+  noDup();
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
   $("tabsBar").hidden = v !== "session" || !two;     // на компьютере — вкладки; на телефоне — кнопка «Экран» в шапке
   setBars(true); scrollToY(0);
@@ -2126,11 +2121,15 @@ addEventListener("touchstart", (e) => {
 }, { passive: true });
 // «‹ Назад» слева в шапке — на любом вложенном экране: сессия (телефон), форма подключения, вкладки главной
 // «Команды» и «Интеграции» (телефон). Шапка прячется при прокрутке — кнопка вместе с ней; Telegram — своя кнопка.
+// Атрибут hidden — только если меняется: опрос не трогает шапку (MutationObserver, перерисовка стилей).
+function setHidden(el, on) { if (el.hidden !== on) el.hidden = on; }
+// Компьютер, главная: «Пульт» уже в шапке панели чатов — заголовок «Пульт / хост» справа не дублируем (пункт 9).
+function noDup() { document.body.classList.toggle("no-dup", view === "home" && split() && homeView !== "integrations"); }
 function syncBack() {
   const two = split();
   const canBack = !FOCUS && view === "mcpForm" || (view === "session" && !two) || (view === "home" && !two && (homeView !== "sessions" || (projMode() && !!proj)));
   // телефон, сессия: слева ☰ — панель чатов (в ней и главная); Telegram сохраняет свою «Назад»
-  $("backBtn").hidden = !canBack || (view === "session" && !two && document.body.classList.contains("has-nav"));
+  setHidden($("backBtn"), !canBack || (view === "session" && !two && document.body.classList.contains("has-nav")));
   if (tg) canBack ? tg.BackButton.show() : tg.BackButton.hide();
 }
 function back() {
@@ -2666,7 +2665,7 @@ function setHome(v) {
   if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
     const sub = (v !== "sessions" || inProj) && !two;
     $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : "Пульт";
-    $("title").classList.toggle("brand-text", !sub);
+    $("title").classList.toggle("brand-text", !sub); noDup();
     $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
   }
   syncBack();
@@ -3491,9 +3490,11 @@ async function refresh() {
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
-    const hostLine = `${d.host} · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
-    $("brandSub").textContent = hostLine;
-    if (view === "home" && homeView !== "integrations") setSub(`<span>${esc(hostLine)}</span>`);
+    // Без «обновлено ЧЧ:ММ:СС» (план UX, пункт 9): о связи говорит только плашка «Нет связи»; текст не меняется
+    // каждый опрос — меньше перерисовок.
+    const hostLine = d.host || "";
+    if ($("brandSub").textContent !== hostLine) { $("brandSub").textContent = hostLine; $("navHome").title = "Главная: сессии и проекты · " + hostLine; }
+    if (view === "home" && homeView !== "integrations" && $("subtitle").textContent !== hostLine) setSub(`<span>${esc(hostLine)}</span>`);
     renderRail(); renderNav();
     if (!$("home").hidden) {
       const n = (k) => sessions.filter((s) => s.status === k).length;
@@ -3716,23 +3717,20 @@ function chatSheet(sid) {
     ...(meta?.role === "owner" ? [{ label: "Удалить", icon: "trash", danger: true, sub: "переписка — в корзину пульта; можно вернуть", run: () => chatDelete({ id: p.id, sid }, c.title) }] : []),
   ]);
 }
-// «Удалить» сессию (окно) или завершённый чат: окно закрывается, журнал Claude Code — в корзину пульта, чат скрыт и
-// не возвращается после обновления. Итог — шторкой с «Вернуть»; ошибка — текстом сервера, не молча.
+// «Удалить» сессию (окно) или завершённый чат — плашкой «Отменить» вместо окна «Вы уверены?» (план UX, пункт 9):
+// строка уходит сразу, на сервер — через 5 с, если не отменили. Окно закрывается, журнал Claude Code — в корзину
+// пульта (вернуть — «Настройки» → «Корзина чатов»); ошибка — текстом сервера, не молча.
 function chatDelete(body, name) {
-  confirmDanger(`Удалить «${name || "чат"}»? ${body.w ? "Окно закроется, переписка" : "Переписка"} уйдёт в корзину пульта — её можно вернуть.`, async () => {
-    toast("Удаляю…", 20000);
+  const label = name || "чат", done = () => proj && projTab === "done" && loadDone();
+  if (body.w) { NAV.gone.add(body.w); sessions = sessions.filter((x) => x.id !== body.w); }
+  else if (projDone?.chats) { projDone = { ...projDone, chats: projDone.chats.filter((c) => c.sid !== body.sid) }; renderProject(); }
+  if (body.w && body.w === current && view === "session") back(); else { renderNav(); refresh(); }
+  undoBar(`Удалено: «${label}»`, () => { if (body.w) NAV.gone.delete(body.w); projDone = null; refresh(); done(); toast("Вернул «" + label + "»"); }, async () => {
     try {
       const d = await api("/api/chat/delete", body);
-      document.querySelectorAll(".toast").forEach((t) => t.remove());
-      if (body.w && body.w === current && view === "session") back();
-      projDone = null; await refresh(); if (proj && projTab === "done") loadDone();
-      sheetFrom = null; helpSheet("sheet.chat-trash");           // итог — без «Назад» к меню удалённой сессии
-      sheet("Удалено", [
-        { info: true, icon: "trash", label: `«${d.trash?.title || name || "Чат"}»`, sub: [d.closed ? "окно закрыто" : "", d.trash ? "переписка — в корзине пульта, в списках её больше нет" : "журнала у окна не нашлось — закрыто только окно"].filter(Boolean).join("; ") },
-        ...(d.trash ? [{ label: "Вернуть", icon: "refresh", sub: "переписка снова в «Завершённых» проекта", run: () => chatRestore(d.trash.id) }] : []),
-        ...(d.draft ? [{ label: "Скопировать черновик", icon: "copy", sub: "был в поле ввода и не отправлен", run: () => copyText(d.draft, "Черновик скопирован") }] : []),
-      ], "Готово");
+      if (d.draft) toast("В поле ввода был неотправленный текст — он в корзине вместе с перепиской", 4500);
     } catch (e) { toast("Не удалено: " + e.message, 5000); }
+    finally { if (body.w) NAV.gone.delete(body.w); projDone = null; await refresh(); done(); }
   });
 }
 async function chatRestore(id) {
@@ -3890,9 +3888,9 @@ function sessionSheet(id) {
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
-    ...(meta?.role === "owner" && !FOCUS ? [{ label: "Фокус-ссылка", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
-    ...(canRepos(s) ? [{ label: "Репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этой сессии — без перезапуска", run: () => repoSheet(id) }] : []),
-    ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
+    ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
+    ...(canRepos(s) ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этой сессии — без перезапуска", run: () => repoSheet(id) }] : []),
+    ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Настроить расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
     ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
     ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule && !FOCUS ? [{ label: "Удалить", icon: "trash", danger: true, sub: "окно закроется, переписка — в корзину пульта; можно вернуть", run: () => chatDelete({ w: id }, s.title || s.name) }] : []),
@@ -4018,7 +4016,8 @@ function stickBottom() {
   if (stickRO) { stickRO.disconnect(); stickRO.observe($("content")); $("dock") && stickRO.observe($("dock")); }
 }
 ["wheel", "touchmove", "keydown"].forEach((ev) => addEventListener(ev, (e) => { if (ev !== "keydown" || /^(Arrow|Page|Home|End)/.test(e.key)) stick = 0; }, { passive: true, capture: true }));
-function markFresh() { if ($("live").classList.contains("stale")) return; $("live").querySelector("span").innerHTML = '<span class="lw">обновлено </span>' + new Date().toLocaleTimeString("ru-RU"); }
+// Связь есть — индикатор у поля скрыт (план UX, пункт 9); виден только «нет связи · N с» (netTick).
+function markFresh() { const sp = $("live").querySelector("span"); if (!$("live").classList.contains("stale") && sp.textContent) sp.textContent = ""; }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
 // Опрос — только для зрителя. Вкладка скрыта — не опрашиваем совсем (каждый опрос — список окон tmux на сервере,
 // у демо-пространств ещё и sudo). Панель открыта, но 10 минут никто её не касался — раз в 30 с, а не раз в 3 с.
@@ -6195,7 +6194,7 @@ function legend() {
     { info: true, vis: '<span class="ctx warn"><span class="bar"><i style="width:80%"></i></span></span>', label: "Контекст: N%", sub: "сколько памяти разговора занято; жёлтая — больше 70%, пора «Сжать» (/compact)" },
     { info: true, vis: chip("cost", "$0.42"), label: "Расход сессии", sub: "деньги по ценам API и токены из журнала Claude Code; «из $N» — лимит; жёлтая — больше 80% лимита. Видит только хозяин учётки" },
     { info: true, vis: chip("s-approval", "пауза"), label: "На паузе по расходу", sub: "сессия превысила лимит: Claude остановлен, сообщения не уходят, пока владелец не решит" },
-    { info: true, vis: '<span class="live"><i></i></span>', label: "Зелёная точка «обновлено»", sub: "панель на связи; жёлтая — связь прервалась, данные могут быть старыми" },
+    { info: true, vis: '<span class="live stale"><i></i></span>', label: "«Нет связи · N с» у поля ввода", sub: "связь прервалась, данные могут быть старыми; пока связь есть, индикатора нет" },
     { head: "Вкладка «Команды»" },
     { info: true, vis: chip("s-running", "идёт"), label: "Выполняется", sub: "команду запустили через пульт — ждём итог" },
     { info: true, vis: chip("ok", "код 0"), label: "Код 0 — успешно", sub: "выполнена через пульт без ошибок" },

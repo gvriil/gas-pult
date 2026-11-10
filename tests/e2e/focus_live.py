@@ -9,7 +9,8 @@ Telegram — подмена ``telegram.Api`` (запросы пишутся в �
 (``webauth``), как после входа кодом.
 
 Сценарий:
-  (а) владелец: меню сессии → «Фокус-ссылка» — ссылка ``…/#focus=<токен>``, «Отправить себе в Telegram» (подмена);
+  (а) владелец: меню сессии → «Создать фокус-ссылку» — ссылка ``…/#focus=<токен>``, «Отправить себе в Telegram»
+      (подмена);
   (б) устройство A по ссылке без входа — только эта сессия; устройство B той же ссылкой — «Ссылка не действует»;
       с cookie фокуса API другой сессии, список людей, фокус-ссылки, ключи, создание сессии — 403;
   (в) на устройстве A: сообщение и ответ, файл, интеграции, уровень усилий, модель (перезапуск чата);
@@ -210,7 +211,7 @@ def run(shots: str = ""):
             def new_link() -> str:
                 po.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
                 po.evaluate(f"sessionSheet({json.dumps(shop)})")
-                sheet_click(po, "Фокус-ссылка")
+                sheet_click(po, "Создать фокус-ссылку")
                 po.wait_for_selector("#focusUrl")
                 url = po.inner_text("#focusUrl")
                 assert url.startswith(base + "/#focus="), url
