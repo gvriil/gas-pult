@@ -4369,7 +4369,9 @@ async function renderCmds() {                          // в место .cmds п
   if (!d?.cmds?.length || tab !== "chat" || !slot.isConnected) return;
   const box = slot;
   box.innerHTML = `<div class="section">Команды из ответа</div>` + d.cmds.map((c) => `<div class="cmd">
-    <pre>${esc(c.cmd)}</pre>${c.kind === "local" && meta?.role === "owner"
+    <pre>${esc(c.cmd)}</pre>${FOCUS
+      ? `<div class="hint">${ic("copy", "s16")}по фокус-ссылке команды не выполняются — скопируйте и выполните в пульте или терминале</div>`
+      : c.kind === "local" && meta?.role === "owner"
       ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-run="${c.i}" data-sha="${c.sha}">${c.danger ? ic("warn") : ic("play")}Выполнить на ${esc(d.host)}</button>`
       : c.kind === "tty" && meta?.role === "owner"
       ? `<div class="hint">${ic("key", "s16")}нужен ввод (пароль) — кнопкой не выполнится</div><button class="btn sm ${c.danger ? "danger" : ""}" data-term="${c.i}" data-sha="${c.sha}">${ic("term")}Открыть в терминале</button>`

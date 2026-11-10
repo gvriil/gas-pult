@@ -2467,10 +2467,11 @@ INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Фокус (задача 41, focus.py): с cookie фокуса — только чат одной сессии; окно ``w`` в запросе — только её.
 # Настройки самой сессии — тоже здесь: модель, поставщик, усилия, файлы, интеграции (список и вход из её экрана).
 # Нет: другие сессии, их создание и переключение, общие настройки пульта (ключи, люди, добавление интеграций).
+# Нет и команд на сервере пульта (решение владельца 10.11): ни «Выполнить» (/api/run), ни терминала — только копировать.
 FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/ask", "/api/hint", "/api/cmds",
              "/api/tts", "/api/last", "/api/activity", "/api/space/files", "/api/space/download", "/api/mcp",
              "/api/mcp/connected", "/api/repos"}
-FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/run", "/api/revive", "/api/upload",
+FOCUS_POST = {"/api/send", "/api/key", "/api/select", "/api/command", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
