@@ -125,6 +125,21 @@
   .focus-end .i { width: 40px; height: 40px; color: var(--text-secondary); }
   .focus-end h2 { margin: 12px 0 8px; }
   .focus-qr { display: block; width: 220px; height: 220px; margin: 8px auto; image-rendering: pixelated; background: #fff; border-radius: 8px; }
+  /* Шторка «Нужен вход» (logins.py): ① код, ② ссылка, ③ ответ в окно — только владельцу */
+  .login-steps { margin: 0; padding: 0 16px; list-style: none; counter-reset: ls; }
+  .login-steps > li { counter-increment: ls; position: relative; padding: 10px 0 10px 34px; border-top: 1px solid var(--border-subtle); }
+  .login-steps > li:first-child { border-top: 0; }
+  .login-steps > li::before { content: counter(ls); position: absolute; left: 0; top: 10px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent-primary); display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+  .login-steps .lt { margin: 0 0 6px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
+  .login-code { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .login-code code { font: 600 calc(22px * var(--fz, 1))/1.2 ui-monospace, monospace; letter-spacing: .08em; padding: 6px 10px; border-radius: 8px;
+    background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); user-select: all; }
+  .login-url { margin-top: 6px; font: 12px/1.4 ui-monospace, monospace; color: var(--text-muted); word-break: break-all; max-height: 3.2em; overflow: hidden; }
+  .login-in { display: flex; gap: 8px; } .login-in input { flex: 1; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
+  .login-in input:focus { outline: none; border-color: var(--border-focus); }
+  .sheet .login-steps .btn { width: auto; }
   .focus-url { margin: 4px 16px 0; padding: 8px 10px; border-radius: 8px; background: var(--bg-surface); font: 12px/1.4 ui-monospace, monospace; word-break: break-all; }
   .space-h { display: flex; align-items: center; gap: 8px; margin: 18px 4px 8px; font-weight: 600; color: var(--text-secondary); }
   .space-h button { margin-left: auto; border: 0; cursor: pointer; }
@@ -3267,7 +3282,7 @@ function ttyOpen(wid) {
     try {
       const fresh = first || (atBottom() && !st.q && !st.deep);   // внизу — свежий хвост; прокрутили вверх — дописываем
       const d = await get(fresh ? "" : "&start=" + st.tailStart);
-      head(d); take(d, fresh); render(first ? { stick: true } : {});
+      head(d); take(d, fresh); render(first ? { stick: true } : {}); loginNotice(d.login, wid);
     } catch (e) { hint(e.message, true); } finally { st.busy = false; }
   }
   const soon = () => { clearTimeout(st.soonT); st.soonT = setTimeout(() => poll(), 250); };
@@ -4113,7 +4128,7 @@ async function loadContent() {
   }
   try {
     const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]);
-    renderAsk(scr.lines, scr.auth);
+    renderAsk(scr.lines, scr.auth); loginNotice(scr.login, current);
     $("keys").hidden = tab !== "screen";                    // клавиши — на «Экране»; в переписке вопрос — карточкой
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
@@ -4609,6 +4624,60 @@ document.addEventListener("click", async (e) => {
   });
 });
 const guessName = () => (document.querySelector(".ask .q span")?.textContent || "").replace("Вход в ", "").trim();
+
+// ---------- «Нужен вход» (logins.py): шторка прямо в панели — только владельцу ----------
+// Сервер отдаёт login в /api/screen и /api/tty только владельцу (не фокус, не пространство) и только при паре «ссылка +
+// слово входа». Шторка — один раз на окно и ссылку: закрыли — не навязываем, пока ссылка та же. Код входа — только в
+// окно (/api/login/code), в журналы и в адрес запроса не попадает.
+const LOGIN = { seen: new Set(), open: null };
+const LOGIN_KIND = { claude: "Claude", gh: "GitHub", mcp: "сервис", device: "сервис", url: "сервис" };
+function loginNotice(l, w) {
+  if (!l || !w || meta?.role !== "owner" || FOCUS || DEMO && !params.has("login")) return;
+  const key = w + " " + l.url;
+  if (LOGIN.seen.has(key) || document.querySelector(".sheet-bg.login-bg")) return;
+  LOGIN.seen.add(key); loginSheet(l, w);
+}
+function loginSheet(l, w) {
+  const name = sessions.find((x) => x.id === w)?.name || w, who = l.service || LOGIN_KIND[l.kind] || "сервис";
+  const host = (() => { try { return new URL(l.url).host; } catch (e) { return ""; } })();
+  const asks = l.wants === "url" ? { ph: "http://localhost:…/callback?code=…", t: "Страница после входа не загрузится — так и должно быть. Скопируйте её адрес и вставьте:" }
+    : l.wants === "code" || l.kind === "claude" ? { ph: "Код со страницы входа", t: "Сайт покажет код — скопируйте его и вставьте сюда:" } : null;
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.classList.add("login-bg"); bg.dataset.help = hv("sheet.login");
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-labelledby="loginH"><h3 id="loginH">Нужен вход: ${esc(who)}</h3>
+    <p class="note" style="margin:0 16px 8px">Окно «${esc(name)}» просит войти. Пароль вводится на сайте ${esc(host || "сервиса")} — панель его не видит.</p>
+    <ol class="login-steps">
+      ${l.code ? `<li><p class="lt">Код для страницы входа:</p><div class="login-code"><code id="loginOtp">${esc(l.code)}</code><button class="btn sm ghost" type="button" data-la="copy">${ic("copy")}Копировать</button></div></li>` : ""}
+      <li><p class="lt">${l.code ? "Откройте страницу и введите этот код:" : "Откройте страницу входа и войдите как обычно:"}</p>
+        <button class="btn sm ghost" type="button" data-la="open">${ic("ext")}Открыть ссылку</button><div class="login-url">${esc(l.url)}</div></li>
+      ${asks ? `<li><p class="lt">${esc(asks.t)}</p><div class="login-in"><input id="loginIn" type="text" autocomplete="one-time-code" spellcheck="false" maxlength="512" placeholder="${esc(asks.ph)}" aria-label="${esc(asks.ph)}">
+        <button class="btn sm ghost" type="button" data-la="send">${ic("send")}В окно</button></div></li>` : ""}
+      <li><p class="lt">Вошли — проверим, что окно больше не ждёт:</p><button class="btn sm ghost" type="button" data-la="check">${ic("check")}Готово — проверить</button><div id="loginRes"></div></li>
+    </ol>
+    <button class="cancel" data-close>Закрыть</button></div>`;
+  document.body.append(bg);
+  const res = (ok, text) => { bg.querySelector("#loginRes").innerHTML = `<div class="result ${ok ? "ok" : "bad"}">${ic(ok ? "check" : "warn")}<span>${esc(text)}</span></div>`; };
+  bg.addEventListener("click", async (e) => {
+    if (e.target === bg || e.target.closest("[data-close]")) return bg.remove();
+    const b = e.target.closest("[data-la]"); if (!b) return;
+    if (b.dataset.la === "copy") return copyText(l.code, "Код скопирован");
+    if (b.dataset.la === "open") return openUrl(l.url);
+    if (b.dataset.la === "send") {
+      const inp = bg.querySelector("#loginIn"), code = inp.value.trim();
+      if (!code) { inp.focus(); return toast(l.wants === "url" ? "Вставьте адрес страницы после входа" : "Вставьте код со страницы входа"); }
+      if (/[\u0000-\u001f\u007f]/.test(code) || code.length > 512) return toast("Нужна одна строка до 512 знаков");
+      return busy(b, "Отправляю…", async () => {
+        try { await api("/api/login/code", { w, code }); inp.value = ""; toast("Отправлено в окно"); } catch (err) { res(false, err.message); }
+      });
+    }
+    if (b.dataset.la === "check") return busy(b, "Проверяю…", async () => {
+      try {
+        const d = await api("/api/login/check", { w, kind: l.kind });
+        res(d.ok, d.text); haptic("notificationOccurred", d.ok ? "success" : "error");
+        if (d.ok) setTimeout(() => bg.remove(), 1500);
+      } catch (err) { res(false, err.message); }
+    });
+  });
+}
 
 // ---------- вопрос Claude → у большого пальца: варианты кнопками ----------
 function setAsk(html, key = html) {
@@ -6759,7 +6828,13 @@ $("setupView").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.t
 // hv("…") у своих листов), форма (formHelp), выбранный модуль. Ответ — из карты экранов, без модели, с кнопками
 // «Перейти: …»: только id из карты, их открывает go(id). Демо (?demo) отвечает из help-map.json — той же карты.
 let helpNext = "", formHelp = "", helpModule = "";
-const hv = (id) => id;                                 // id экрана помощника (тест сверяет их с картой)
+const hv = (id) => id;
+// Демо «Нужен вход»: ?login=claude|gh|mcp на окне @1 (заведомо поддельные ссылки и коды)
+const DEMO_LOGIN = {
+  claude: { kind: "claude", service: "Claude", url: "https://claude.ai/oauth/authorize?code=true&client_id=demo&state=demo", code: "", wants: "code" },
+  gh: { kind: "gh", service: "GitHub", url: "https://github.com/login/device", code: "AB12-CD34", wants: "" },
+  mcp: { kind: "mcp", service: "notion", url: "https://mcp.example.invalid/authorize?client_id=demo", code: "", wants: "url" },
+};                                 // id экрана помощника (тест сверяет их с картой)
 function helpSheet(id) { helpNext = id; }
 function helpViewId() {
   if (SIM.on) return hv("simple.chat");
@@ -8195,7 +8270,10 @@ function demoApi(path, body) {
     return new Promise((ok, no) => setTimeout(() => m === "fail" ? no(new Error("распознавание не удалось")) : ok({ text }), 2500));
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
-    auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null });
+    auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null,
+    login: decodeURIComponent(path).includes("@1") ? DEMO_LOGIN[params.get("login")] || null : null });
+  if (key === "/api/login/code") { demoApi.loginCode = body?.code || ""; return Promise.resolve({ ok: true }); }
+  if (key === "/api/login/check") return Promise.resolve(demoApi.loginCode ? { ok: true, text: "вход выполнен", login: null } : { ok: false, text: "окно всё ещё просит войти" });
   if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true, invite: true });
   if (key === "/api/invite") return Promise.resolve(params.get("invite") === "bad" ? { ok: false } : { ok: true, guest: true, title: "Планета", kind: params.get("invite") === "device" ? "device" : "invite", name: "Анна" });
   if (key === "/api/invite/check") return /^\s*planeta[\s-]*482157\s*$/i.test(body?.code || "") ? Promise.resolve({ ok: true, guest: true, title: "Планета", kind: "invite" })
