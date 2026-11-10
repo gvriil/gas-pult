@@ -65,27 +65,76 @@ def prompt_hint(lines: list[str]) -> str:
 
 
 BOX = re.compile(r"^[\s─━═╭╮╰╯│┃]*$")              # рамка поля ввода Claude Code (линии без текста)
+RULE = re.compile(r"[─━═]{3}")                     # в строке-рамке есть сама линия, а не только «│»
+SGR = re.compile(r"\x1b\[([0-9;]*)m")
 
 
-def prompt_draft(lines: list[str]) -> str:
-    """Неотправленный текст в поле ввода Claude Code: обычный (не бледный) текст после «❯» в последнем поле ввода и
-    его продолжение до нижней рамки. Бледный текст сразу после «❯» — подсказка или заглушка, не черновик."""
-    for i in range(len(lines) - 1, max(-1, len(lines) - 40), -1):
-        raw = lines[i]
-        plain = ANSI.sub("", raw)
-        if not plain.lstrip().lstrip("│┃ ").startswith("❯"):
+def _rule(line: str) -> bool:
+    t = ANSI.sub("", line)
+    return bool(t.strip()) and bool(BOX.match(t)) and bool(RULE.search(t))
+
+
+def _first_dim(after: str) -> bool:
+    """Первый видимый знак после «❯» — бледный (ESC[2m)? Курсор (инверсия ESC[7m на пробеле) и пробелы пропускаем:
+    пустое поле Claude Code рисует как «❯ <курсор><бледная заглушка>»."""
+    dim, i = False, 0
+    while i < len(after):
+        m = SGR.match(after, i)
+        if m:
+            for code in (m.group(1) or "0").split(";"):
+                if code in ("0", ""):
+                    dim = False
+                elif code == "2":
+                    dim = True
+                elif code == "22":
+                    dim = False
+            i = m.end()
             continue
-        after = raw.split("❯", 1)[1].lstrip(" \u00a0")
-        if after.startswith("\x1b[2m") or not ANSI.sub("", after).strip():
-            return ""
-        out = [ANSI.sub("", after).rstrip(" │┃")]
+        if after[i] in " \u00a0":
+            i += 1
+            continue
+        return dim
+    return False
+
+
+def prompt_field(lines: list[str]) -> int:
+    """Номер строки «❯» поля ввода Claude Code; нет — -1.
+
+    «❯» Claude Code ставит не только в поле ввода, но и у выбранного пункта любого списка: панель фоновых агентов
+    под полем («❯● main»), подсказки файлов после «@», меню. Поле ввода — та строка «❯», над которой рамка и чей текст
+    кончается рамкой. Берём последнюю такую; рамок на экране нет (другая программа, старый вид) — последнюю «❯»."""
+    marks = [i for i in range(len(lines) - 1, max(-1, len(lines) - 40), -1)
+             if ANSI.sub("", lines[i]).lstrip().lstrip("│┃ ").startswith("❯")]
+    for i in marks:
+        above = next((lines[j] for j in range(i - 1, -1, -1) if ANSI.sub("", lines[j]).strip()), "")
+        if not _rule(above):
+            continue
         for nxt in lines[i + 1:]:
-            t = ANSI.sub("", nxt)
-            if BOX.match(t) or not t.strip():
+            if _rule(nxt):
+                return i
+            if not ANSI.sub("", nxt).strip() or BOX.match(ANSI.sub("", nxt)):
                 break
-            out.append(t.strip(" │┃"))
-        return "\n".join(x.rstrip() for x in out).strip()[:4000]
-    return ""
+    return marks[0] if marks else -1
+
+
+def prompt_draft(lines: list[str], dim: bool = False) -> str:
+    """Неотправленный текст в поле ввода Claude Code: текст после «❯» в поле ввода (``prompt_field``) и его
+    продолжение до нижней рамки. Бледный текст сразу после «❯» — подсказка или заглушка, не черновик; ``dim=True`` —
+    отдать и его: так проверяют, не висит ли там НАШ текст (поле не в фокусе Claude Code рисует бледным, а заглушка
+    с нашим текстом не совпадёт никогда)."""
+    i = prompt_field(lines)
+    if i < 0:
+        return ""
+    after = lines[i].split("❯", 1)[1]
+    if (not dim and _first_dim(after)) or not ANSI.sub("", after).strip():
+        return ""
+    out = [ANSI.sub("", after).strip(" \u00a0│┃")]
+    for nxt in lines[i + 1:]:
+        t = ANSI.sub("", nxt)
+        if BOX.match(t) or not t.strip():
+            break
+        out.append(t.strip(" │┃"))
+    return "\n".join(x.rstrip() for x in out).strip()[:4000]
 
 
 def is_ours(draft: str, text: str) -> bool:
@@ -201,9 +250,14 @@ class Tmux:
             w["stopped"] = not claude and bool(w.get("mark")) and w["cmd"] in SHELLS
         return ws
 
-    def draft(self, wid: str) -> str:
+    def draft(self, wid: str, dim: bool = False) -> str:
         """Неотправленный текст в поле ввода окна (``prompt_draft``); нет — пусто."""
-        return prompt_draft(self.run("capture-pane", "-p", "-e", "-J", "-t", wid).splitlines())
+        return prompt_draft(self.run("capture-pane", "-p", "-e", "-J", "-t", wid).splitlines(), dim=dim)
+
+    def field(self, wid: str) -> tuple[str, str]:
+        """Поле ввода одним снимком: (черновик, он же вместе с бледным текстом) — см. ``prompt_draft``."""
+        lines = self.run("capture-pane", "-p", "-e", "-J", "-t", wid).splitlines()
+        return prompt_draft(lines), prompt_draft(lines, dim=True)
 
     def hint(self, wid: str) -> str:
         """Что Claude Code предлагает написать следующим (бледный текст в строке ввода); нет — пусто."""
@@ -230,25 +284,43 @@ class Tmux:
     SUBMIT_TRIES = (1.0, 2.0, 3.5)      # с после вставки: проверить, ушёл ли текст; не ушёл — Enter ещё раз
 
     def paste(self, wid: str, text: str, sleep=time.sleep) -> bool:
-        """Bracketed paste: многострочный текст не отправится раньше времени; Enter — отдельно. Под нагрузкой Claude
-        Code ещё разбирает длинную вставку («[Pasted text #1 +N lines]»), когда приходит Enter, — и Enter теряется:
-        текст остаётся в поле ввода неотправленным, а пульт пишет «Доставлено». Поэтому после Enter смотрим поле ввода
-        (``draft``): там всё ещё наш текст — Enter ещё раз (до трёх). Ушёл — True; так и висит — False."""
+        """Bracketed paste: многострочный текст не отправится раньше времени; Enter — отдельно. Ушёл — True; так и
+        висит в поле ввода после повторов Enter — False. Подробности (сколько повторов, что в поле) — ``paste_ex``;
+        итог последней вставки этого потока — ``last_paste.r`` (для журнала доставок)."""
+        r = self.last_paste.r = self.paste_ex(wid, text, sleep)
+        return r["ok"]
+
+    last_paste = threading.local()
+
+    def paste_ex(self, wid: str, text: str, sleep=time.sleep) -> dict:
+        """Под нагрузкой Claude Code ещё разбирает длинную вставку («[Pasted text #1 +N lines]»), когда приходит
+        Enter, — и Enter теряется: текст остаётся в поле ввода неотправленным, а пульт пишет «Доставлено». Поэтому
+        после Enter смотрим поле ввода (``field``, вместе с бледным текстом — поле не в фокусе рисуется бледным): там
+        всё ещё наш текст — Enter ещё раз (до трёх).
+
+        ``{"ok": bool, "result": "sent" | "retried N" | "stuck", "after": "empty" | "ours" | "other"}``."""
         self.run("load-buffer", "-b", "gas-pult", "-", input=text)
         self.run("paste-buffer", "-p", "-d", "-b", "gas-pult", "-t", wid)
         sleep(0.5)
         self.keys(wid, "Enter")
-        waited = 0.0
+        waited, tries = 0.0, 0
+
+        def done(seen: tuple[str, str]) -> dict | None:
+            plain, left = seen
+            if left and is_ours(left, text):
+                return None
+            return {"ok": True, "result": f"retried {tries}" if tries else "sent",
+                    "after": "other" if plain else "empty"}
+
         for at in self.SUBMIT_TRIES:
             sleep(at - waited)
             waited = at
-            left = self.draft(wid)
-            if not left or not is_ours(left, text):
-                return True
+            if r := done(self.field(wid)):
+                return r
             self.keys(wid, "Enter")
+            tries += 1
         sleep(0.8)
-        left = self.draft(wid)
-        return not left or not is_ours(left, text)
+        return done(self.field(wid)) or {"ok": False, "result": "stuck", "after": "ours"}
 
     def type(self, wid: str, text: str):
         self.run("send-keys", "-t", wid, "-l", text)

@@ -18,8 +18,9 @@ class FakeTmux(tmux.Tmux):
         self.calls.append(a)
         return ""
 
-    def draft(self, wid):
-        return self.drafts.pop(0) if self.drafts else ""
+    def field(self, wid):
+        d = self.drafts.pop(0) if self.drafts else ""
+        return d, d
 
 
 def enters(t):

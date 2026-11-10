@@ -4291,7 +4291,7 @@ function userMsg(m) {                               // вставленный в
 // Отправлено → Доставлено в сессию → Взял в работу → «Читает файл X · 12 с» → Готово; «Ждёт вашего ответа» — с кнопкой.
 // Опрос /api/activity раз в 1,5 с, пока идёт ход (иначе — раз в 4,5 с); текст меняется только при смене фазы.
 const busySince = {};
-const ACT_CLS = { sent: "run", delivered: "run", started: "run", working: "run", thinking: "run", queued: "wait", waiting: "wait", stuck: "bad", done: "done" };
+const ACT_CLS = { sent: "run", delivered: "run", started: "run", working: "run", thinking: "run", queued: "wait", waiting: "wait", stuck: "bad", unsent: "bad", done: "done" };
 let liveAct = null, actLocal = null, actSkew = 0, actBusy = false, actTick = 0;
 // Анти-мигание: фаза держится на экране не меньше ACT_DWELL; меняется только textContent. Эскалация — по времени без
 // нового хода и без смены фазы (ACT_ESC, с): «Проверить статус» → «Сообщить по готовности» → «Остановить».
@@ -4349,10 +4349,11 @@ function paintAct() {
     : st.action === "screen" ? "Не видно реакции" : st.text + (st.spinner ? ` (${st.spinner.split(" · ")[0]})` : "");   // кнопка рядом
   const t = row.querySelector(".t");
   if (t.textContent !== text) { t.textContent = text; row.title = text; }   // без мигания: только при смене фазы
-  const btn = fresh && st.action === "screen" ? "screen" : fresh && st.action === "answer" ? "answer" : "";
+  const btn = fresh && ["screen", "answer", "enter"].includes(st.action) ? st.action : "";
   if ((row.dataset.btn || "") !== btn) {
     row.dataset.btn = btn; row.querySelector("button")?.remove();
-    if (btn) row.insertAdjacentHTML("beforeend", btn === "screen" ? `<button data-actbtn="screen">${ic("term", "s16")}Показать экран</button>` : `<button data-actbtn="answer">${ic("chat", "s16")}Ответить</button>`);
+    if (btn) row.insertAdjacentHTML("beforeend", btn === "screen" ? `<button data-actbtn="screen">${ic("term", "s16")}Показать экран</button>`
+      : btn === "enter" ? `<button data-actbtn="enter">${ic("send", "s16")}Отправить</button>` : `<button data-actbtn="answer">${ic("chat", "s16")}Ответить</button>`);
   }
   paintActTimer();
 }
@@ -4400,6 +4401,11 @@ $("content").addEventListener("click", async (e) => {
   }
   const b = e.target.closest("[data-actbtn]"); if (!b) return;
   if (b.dataset.actbtn === "screen") return setTab("screen");
+  if (b.dataset.actbtn === "enter") {               // текст висит в поле ввода сессии — Enter (сервер проверит, что текст наш)
+    b.disabled = true;
+    return api("/api/resend", { w: current }).then((d) => { toast(d.result || "Готово"); pollAct(true); })
+      .catch((err) => toast(err.message, 4000)).finally(() => { b.disabled = false; });
+  }
   const q = $("ask").querySelector("button");                        // вопрос уже карточкой над полем ввода — к нему
   if (q) { $("ask").scrollIntoView({ block: "nearest", behavior: "smooth" }); q.focus({ preventScroll: true }); haptic("selectionChanged"); }
   else setTab("screen");
@@ -8201,17 +8207,22 @@ function demoApi(path, body) {
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
   if (key === "/api/send") {                         // демо: вставка ~0,7 с, потом фазы строки статуса и ответ (&act=stuck — реакции нет)
-    const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20, stuck = params.get("act") === "stuck";
-    demoApi.run = { w: body.w, t: Date.now() + 700, stuck };
+    const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20, stuck = params.get("act") === "stuck" || params.get("act") === "unsent";
+    demoApi.run = { w: body.w, t: Date.now() + 700, stuck, unsent: params.get("act") === "unsent" };
     setTimeout(() => demoApi.h.push({ i: n, role: "user", text: body.text, ts: now }), stuck ? 1e9 : 2200);
     if (!stuck) setTimeout(() => demoApi.h.push({ i: n + 1, role: "assistant", ts: now, text: SIM.on ? simpleDemoText().answer : "Это **демо-ответ**. В настоящей панели здесь будет ответ Claude из вашей сессии — с таблицами, кодом и озвучкой." }), 10700);
     return new Promise((ok) => setTimeout(() => ok({ ok: true }), 700));
+  }
+  if (key === "/api/resend") {                       // демо (&act=unsent): «Отправить» — текст ушёл
+    if (demoApi.run) demoApi.run = { ...demoApi.run, unsent: false, stuck: false, t: Date.now() };
+    return Promise.resolve({ result: "Отправлено." });
   }
   if (key === "/api/activity") {                     // демо: фазы по времени после отправки; без отправки — по сессии
     const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: "demo0000-" + demoApi.h.length, spinner: "", action: "", tool: "" };
     if (r && r.w === w) {
       const t = (Date.now() - r.t) / 1000, at = r.t / 1000;
-      const P = r.stuck ? [[0, "delivered", "Доставлено в сессию"], [4, "stuck", "Не видно реакции — показать экран?", { action: "screen" }]]
+      const P = r.unsent ? [[0, "delivered", "Доставлено в сессию"], [3, "unsent", "Не отправлено — текст в поле ввода", { action: "enter" }]]
+        : r.stuck ? [[0, "delivered", "Доставлено в сессию"], [4, "stuck", "Не видно реакции — показать экран?", { action: "screen" }]]
         : [[0, "delivered", "Доставлено в сессию"], [1.5, "started", "Взял в работу"], [3, "working", "Читает файл index.html", { tool: "Read", spinner: "Reading… · 1s" }],
            [6, "working", "Выполняет команду: npm test", { tool: "Bash", spinner: "Running… · 2s" }], [10, "done", "Готово"]];
       const [s0, phase, text, extra] = P.filter((x) => x[0] <= t).at(-1);
