@@ -451,3 +451,154 @@ def test_e2e_focus_project_live():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert len(mod.run()) == 6
+
+
+# ---------- демо-ссылка: несколько устройств, только просмотр и выбор вариантов ----------
+MENU = ["Какой вариант выбрать?", "❯ 1. Первый", "  2. Второй", "Enter to select · Esc to cancel"]
+
+
+def demo_server(s, monkeypatch, screen):
+    """Экран окна — из списка ``screen`` (меняется в тесте); выбор пункта — запись в ``picked``, вопрос закрывается."""
+    p, picked = s["p"], []
+    s["wins"].screen = lambda wid, n=40: list(screen)
+
+    def select(w, text, n="", go=True):
+        time.sleep(0.2)                                    # как настоящий выбор: стрелки и Enter не мгновенны
+        picked.append((w["id"], n, go))
+        if go:
+            screen[:] = ["❯ "]
+        return list(screen)
+    monkeypatch.setattr(p, "select", select)
+    monkeypatch.setattr(p, "key", lambda w, key: picked.append((w["id"], key, True)) or list(screen))
+    return picked
+
+
+def demo_link(s, wid="@1"):
+    code, d, _ = call(s["base"], "/api/focus/new", {"w": wid, "base": s["base"], "mode": "demo"}, owner(s))
+    assert code == 200 and d["mode"] == "demo", d
+    return d, d["url"].split("#focus=")[1]
+
+
+def demo_open(s, token, device=""):
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, device, FX)
+    assert code == 200, r
+    return setc.split(";")[0]
+
+
+def test_store_demo_link_many_devices_limit_and_revoke(tmp_path):
+    f = focus.Focus(tmp_path / "focus.json")
+    link = f.new(W1, 1, mode="demo")
+    cookies = [f.open(link["token"], "", f"устройство {i}")[0] for i in range(focus.DEMO_MAX)]
+    assert len(set(cookies)) == focus.DEMO_MAX and all(f.by_cookie(c)["w"] == "@1" for c in cookies)
+    assert f.open(link["token"], cookies[0])[0] == cookies[0]           # то же устройство — его cookie, не новое
+    with pytest.raises(focus.Gone, match="устройствах"):
+        f.open(link["token"], "")                                        # больше DEMO_MAX — нет
+    item = f.listing()[0]
+    assert item["mode"] == "demo" and item["devices"] == focus.DEMO_MAX and item["opens"] == focus.DEMO_MAX
+    raw = (tmp_path / "focus.json").read_text()
+    assert link["token"] not in raw and all(c.split(".")[1] not in raw for c in cookies)
+    assert f.revoke(link["id"])
+    for c in cookies:
+        with pytest.raises(focus.Gone, match="отозвал эту демо-ссылку"):
+            f.by_cookie(c)
+    plain = f.new(W1, 1)                                                 # обычная — по-прежнему одно устройство
+    f.open(plain["token"], "")
+    with pytest.raises(focus.Gone, match="другом устройстве"):
+        f.open(plain["token"], "")
+    assert "mode" not in f.listing()[0] and focus.TTL == 7 * 86400
+
+
+def test_demo_link_two_devices_view_only(server, monkeypatch):
+    s = server
+    screen = ["❯ "]
+    picked = demo_server(s, monkeypatch, screen)
+    d, token = demo_link(s)
+    a, b = demo_open(s, token), demo_open(s, token)
+    assert a != b
+    for c in (a, b):                                                     # оба видят сессию
+        code, r, _ = call(s["base"], "/api/sessions", None, c, FX)
+        assert code == 200 and [x["id"] for x in r["sessions"]] == ["@1"]
+        code, m, _ = call(s["base"], "/api/meta", None, c, FX)
+        assert m["focus"]["mode"] == "demo" and m["role"] == "viewer" and m["models"] == [] and m["keys"] == []
+    for path, body in (("/api/send", {"w": "@1", "text": "привет"}), ("/api/upload", None),
+                       ("/api/stt", None), ("/api/model", {"w": "@1", "name": "opus"}),
+                       ("/api/effort", {"w": "@1", "level": "high"}), ("/api/restart", {"w": "@1"}),
+                       ("/api/close", {"w": "@1"}), ("/api/command", {"w": "@1", "i": 0}),
+                       ("/api/revive", {"w": "@1"}), ("/api/resend", {"w": "@1"}),
+                       ("/api/repos/add", {"w": "@1", "repo": "x/y"}), ("/api/mcp", None),
+                       ("/api/mcp/finish", {"w": "@1"}), ("/api/space/upload", None), ("/api/cmds", None),
+                       ("/api/run", {"w": "@1", "i": 0, "sha": "x"}), ("/api/focus/new", {"w": "@1"}),
+                       ("/api/key", {"w": "@1", "key": "Escape"}), ("/api/key", {"w": "@1", "key": "C-c"}),
+                       ("/api/send", {"w": "@2", "text": "x"}), ("/api/history?w=@2", None)):
+        code, r, _ = call(s["base"], path, body, a, FX)
+        assert code == 403 and r.get("code") == "focus_scope", (path, code, r)
+    assert s["sent"] == [] and s["closed"] == [] and picked == []
+    # вопроса на экране нет — выбор и стрелки тоже 403
+    code, r, _ = call(s["base"], "/api/select", {"w": "@1", "text": "", "n": "1"}, a, FX)
+    assert code == 403 and r["code"] == "focus_scope" and picked == []
+    assert call(s["base"], "/api/key", {"w": "@1", "key": "Down"}, a, FX)[0] == 403
+    # вопрос есть — кнопка проходит
+    screen[:] = MENU
+    code, r, _ = call(s["base"], "/api/select", {"w": "@1", "text": "", "n": "1", "go": False}, b, FX)
+    assert code == 200 and picked == [("@1", "1", False)]
+    code, r, _ = call(s["base"], "/api/select", {"w": "@1", "text": "", "n": "1"}, b, FX)
+    assert code == 200 and picked[-1] == ("@1", "1", True)
+    # второе устройство жмёт после ответа — «уже ответили», в окно ничего не уходит
+    code, r, _ = call(s["base"], "/api/select", {"w": "@1", "text": "", "n": "2"}, a, FX)
+    assert code == 409 and r["code"] == "answered" and "Уже ответили" in r["error"] and len(picked) == 2
+    # «Отозвать» гасит оба устройства
+    assert call(s["base"], "/api/focus/revoke", {"id": d["id"]}, owner(s))[0] == 200
+    for c in (a, b):
+        code, r, _ = call(s["base"], "/api/sessions", None, c, FX)
+        assert code == 410 and "отозвал" in r["error"]
+
+
+def test_demo_link_guests_answer_at_once_first_wins(server, monkeypatch):
+    s = server
+    screen = list(MENU)
+    picked = demo_server(s, monkeypatch, screen)
+    _, token = demo_link(s)
+    cookies = [demo_open(s, token) for _ in range(4)]
+    out: list[int] = []
+
+    def tap(c, n):
+        out.append(call(s["base"], "/api/select", {"w": "@1", "text": "", "n": n}, c, FX)[0])
+    ts = [threading.Thread(target=tap, args=(c, str(i % 2 + 1))) for i, c in enumerate(cookies)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert sorted(out) == [200, 409, 409, 409] and len(picked) == 1
+
+
+def test_demo_link_owner_only_and_listing(server, monkeypatch):
+    s = server
+    demo_server(s, monkeypatch, ["❯ "])
+    d, token = demo_link(s)
+    a = demo_open(s, token)
+    demo_open(s, token)
+    assert call(s["base"], "/api/focus/new", {"w": "@1", "base": s["base"], "mode": "demo"}, a, FX)[0] == 403
+    assert call(s["base"], "/api/focus/new", {"w": "@1", "base": s["base"], "mode": "x"}, owner(s))[0] == 400
+    links = call(s["base"], "/api/focus/list", None, owner(s))[1]["links"]
+    assert links[0]["mode"] == "demo" and links[0]["devices"] == 2
+    # «Отправить себе» — текст о демо
+    assert call(s["base"], "/api/focus/send", {"url": d["url"]}, owner(s))[0] == 200
+    assert "Демо-ссылка" in s["tg"][-1][1]["text"] and "только просмотр" in s["tg"][-1][1]["text"]
+
+
+def test_e2e_focus_demo_live():
+    """Демо-ссылка вживую (tests/e2e/focus_demo_live.py); без Chrome/tmux — пропуск."""
+    import importlib.util
+    import shutil
+    import sys
+    from pathlib import Path
+
+    pytest.importorskip("playwright.sync_api")
+    if not (shutil.which("google-chrome") or shutil.which("chrome")) or not shutil.which("tmux"):
+        pytest.skip("нет Chrome или tmux для проверки вживую")
+    e2e = Path(__file__).resolve().parent / "e2e" / "focus_demo_live.py"
+    sys.path.insert(0, str(e2e.parent))
+    spec = importlib.util.spec_from_file_location("focus_demo_live", e2e)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert len(mod.run()) == 5

@@ -12,6 +12,11 @@
 всё остальное API отвечает 403. Ссылка гаснет, когда: сессию завершили (из фокуса, из панели, из бота — окно пропало),
 владелец нажал «Отозвать» («Настройки» → «Фокус-ссылки»), вышел срок (по умолчанию 7 дней). На сервере — только
 SHA-256 от токена и секрета устройства (``focus.json``, 0600).
+
+Демо-ссылка (``mode: "demo"``, меню проекта → «Демо-ссылка»): для показа клиенту и партнёру. Привязки к первому
+устройству нет — каждое открытие получает своё cookie на ту же запись (не больше ``DEMO_MAX`` устройств, счётчик
+``opens``); права — только смотреть и отвечать на вопрос Claude кнопками (``webapp.DEMO_GET``/``DEMO_POST``).
+«Отозвать» гасит все устройства сразу. Старые записи без ``mode`` — обычная ссылка, как раньше.
 """
 
 from __future__ import annotations
@@ -32,6 +37,8 @@ HEADER = "X-Gp-Focus"                   # запрос страницы в ре�
 KEEP = 30 * 86400                       # погасшие записи — месяц для списка, потом чистим
 TOKEN_LEN = (24, 64)
 GRACE = 30                              # с: окна сессии нет — столько считаем, что её перезапускают
+DEMO = "demo"                           # вид ссылки: несколько устройств, только просмотр и выбор вариантов
+DEMO_MAX = 20                           # устройств на одну демо-ссылку
 
 
 def _h(s: str) -> str:
@@ -40,6 +47,14 @@ def _h(s: str) -> str:
 
 class Gone(Exception):
     """Ссылка больше не действует: текст — для экрана «Сессия завершена»."""
+
+
+class Denied(Exception):
+    """Демо-ссылке это нельзя: ответ ``status`` с кодом ``code`` (403 focus_scope, 409 answered)."""
+
+    def __init__(self, text: str, code: str = "focus_scope", status: int = 403):
+        super().__init__(text)
+        self.code, self.status = code, status
 
 
 class Wait(Exception):
@@ -64,14 +79,20 @@ class Focus:
     def live(rec: dict, now: float | None = None) -> bool:
         return rec.get("state") == "active" and (time.time() if now is None else now) < rec.get("exp", 0)
 
-    def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None) -> dict:
+    @staticmethod
+    def is_demo(rec: dict) -> bool:
+        return rec.get("mode") == DEMO
+
+    def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None, mode: str = "") -> dict:
         """Новая ссылка на окно ``w`` (из ``tmux.window``): {token, id, exp}. Токен показывается один раз.
-        ``proj`` — ссылка на весь проект: ``w`` — {id: "", path, name} проекта, окна у ссылки нет."""
+        ``proj`` — ссылка на весь проект: ``w`` — {id: "", path, name} проекта, окна у ссылки нет.
+        ``mode="demo"`` — демо-ссылка: несколько устройств (``devs``), только просмотр и выбор вариантов."""
         token, rid, now = secrets.token_urlsafe(32), secrets.token_hex(6), time.time()
         with self.lock:
             d = {k: v for k, v in self._load().items() if self.live(v, now) or now - v.get("ended", now) < KEEP}
             d[rid] = {"h": _h(token), "w": w["id"], "path": w.get("path", ""), "name": w.get("name", ""),
                       **({"proj": proj} if proj else {}),
+                      **({"mode": DEMO, "devs": {}, "opens": 0} if mode == DEMO else {}),
                       "space": w.get("space") or None, "by": by, "created": int(now), "exp": int(now + ttl),
                       "dev": None, "device": "", "opened": None, "state": "active"}
             self._save(d)
@@ -101,6 +122,8 @@ class Focus:
             rec = d[k]
             if not self.live(rec):
                 raise Gone(self.why(rec))
+            if self.is_demo(rec):
+                return self._open_demo(d, k, rec, cookie, device)
             if rec.get("dev"):
                 if self._match(k, rec, cookie):
                     return cookie, {**rec, "id": k}
@@ -110,10 +133,29 @@ class Focus:
             self._save(d)
             return f"{k}.{secret}", {**rec, "id": k}
 
+    def _open_demo(self, d: dict, k: str, rec: dict, cookie: str, device: str) -> tuple[str, dict]:
+        """Демо-ссылка: то же устройство — его cookie; новое — своё cookie, пока устройств меньше ``DEMO_MAX``."""
+        if self._match(k, rec, cookie):
+            return cookie, {**rec, "id": k}
+        devs = rec.setdefault("devs", {})
+        if len(devs) >= DEMO_MAX:
+            raise Gone(f"Демо-ссылку уже открыли на {DEMO_MAX} устройствах — попросите новую.")
+        secret, now = secrets.token_urlsafe(32), int(time.time())
+        devs[_h(secret)] = {"device": device[:60], "opened": now}
+        rec["opens"] = int(rec.get("opens") or 0) + 1
+        rec.update(device=device[:60], opened=now)           # последнее открытие — для списка у владельца
+        self._save(d)
+        return f"{k}.{secret}", {**rec, "id": k}
+
     @staticmethod
     def _match(k: str, rec: dict, cookie: str) -> bool:
         rid, _, secret = str(cookie or "").partition(".")
-        return bool(secret) and rid == k and bool(rec.get("dev")) and hmac.compare_digest(rec["dev"], _h(secret))
+        if not secret or rid != k:
+            return False
+        if rec.get("mode") == DEMO:                     # демо: любое из открывших устройств
+            h = _h(secret)
+            return any(hmac.compare_digest(x, h) for x in (rec.get("devs") or {}))
+        return bool(rec.get("dev")) and hmac.compare_digest(rec["dev"], _h(secret))
 
     def by_cookie(self, cookie: str) -> dict:
         """Запись по cookie устройства: действующая — {..., id}; погасла — ``Gone``; cookie чужой или нет — ``Gone``."""
@@ -130,7 +172,7 @@ class Focus:
         if rec.get("state") == "closed":
             return "Проект удалён." if rec.get("proj") else "Сессия завершена."
         if rec.get("state") == "revoked":
-            return "Владелец отозвал эту фокус-ссылку."
+            return f"Владелец отозвал эту {'демо' if rec.get('mode') == DEMO else 'фокус'}-ссылку."
         return "Срок фокус-ссылки вышел — попросите новую."
 
     def end(self, rid: str, state: str = "closed") -> bool:
@@ -175,6 +217,8 @@ class Focus:
         now = time.time()
         out = [{"id": k, "name": v.get("name", ""), "space": v.get("space"), "proj": v.get("proj"),
                 "created": v.get("created"),
-                "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", "")}
+                "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", ""),
+                **({"mode": DEMO, "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
+                   if v.get("mode") == DEMO else {})}
                for k, v in self._load().items() if self.live(v, now)]
         return sorted(out, key=lambda x: -(x["created"] or 0))
