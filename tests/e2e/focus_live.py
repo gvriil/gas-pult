@@ -78,6 +78,13 @@ while True:
         print(f"Set effort level to {text.split()[-1]}")
         continue
     put("user", text)
+    if text == "задай вопрос":                   # вопрос с вариантами, как AskUserQuestion: меню и подсказка внизу
+        print("Какой вариант выбрать?\n❯ 1. Первый\n  2. Второй\nEnter to select · Esc to cancel")
+        sys.stdin.readline()                     # Enter — выбран выделенный пункт; меню стирается, как у настоящего
+        sys.stdout.write("\x1b[2J\x1b[H")
+        put("assistant", [{"type": "text", "text": "Выбрано: Первый"}])
+        print("Выбрано: Первый")
+        continue
     if text == "покажи команду":                 # ответ с командой — панель покажет «Команды из ответа»
         put("assistant", [{"type": "text", "text": "Выполните:\n```bash\nls -la\n```"}])
         print("Выполните: ls -la")

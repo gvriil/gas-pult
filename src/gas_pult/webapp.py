@@ -217,6 +217,8 @@ class Panel:
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
         self._trash_at = 0.0                                          # когда фоновый цикл чистил корзину чатов
         self.focus_gap: dict[str, float] = {}   # ссылка → с какого времени окна её сессии нет (перезапуск)
+        self.demo_locks: dict[str, threading.Lock] = {}   # окно → замок ответа гостей демо-ссылки (первый проходит)
+        self.demo_done: dict[str, float] = {}             # окно → когда гость демо-ссылки ответил на вопрос
 
     def setup_status(self, fresh: bool = False) -> dict:
         """Готов ли Claude Code (для мастера на главной); ``claude auth status`` — не чаще раза в 20 с."""
@@ -833,9 +835,12 @@ class Panel:
 
     FOCUS_BASE = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}$")
 
-    def focus_new(self, wid: str, by, base: str, proj: str = "") -> dict:
+    def focus_new(self, wid: str, by, base: str, proj: str = "", mode: str = "") -> dict:
         """«Фокус-ссылка» из меню сессии (владелец): ссылка ``…/#focus=<токен>`` — токен показывается один раз.
-        ``proj`` — «Фокус-ссылка на проект» из меню проекта: все его сессии, окна у ссылки нет."""
+        ``proj`` — «Фокус-ссылка на проект» из меню проекта: все его сессии, окна у ссылки нет.
+        ``mode="demo"`` — «Демо-ссылка»: несколько устройств, только просмотр и выбор вариантов (focus.py)."""
+        if mode not in ("", focus.DEMO):
+            raise ValueError("неизвестный вид ссылки")
         if proj:
             p = self.project(proj)
             w = {"id": "", "path": p["path"], "name": p["name"]}
@@ -847,9 +852,9 @@ class Panel:
         base = (self.public_url or base or "").rstrip("/")
         if not self.FOCUS_BASE.match(base):
             raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
-        f = self.focus.new(w, by, proj=proj or None)
+        f = self.focus.new(w, by, proj=proj or None, mode=mode)
         return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": w["name"],
-                "proj": proj or None}
+                "proj": proj or None, **({"mode": focus.DEMO, "max": focus.DEMO_MAX} if mode else {})}
 
     def focus_sessions(self, rec: dict) -> list[dict]:
         """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""
@@ -881,7 +886,12 @@ class Panel:
         if not chat or int(chat) < 0:
             raise ValueError("не знаю ваш чат с ботом — войдите в панель через Telegram")
         till = time.strftime("%d.%m %H:%M", time.localtime(rec["exp"]))
-        if rec.get("proj"):
+        if focus.Focus.is_demo(rec):
+            text = (f"🎬 Демо-ссылка на «{rec['name']}»\n\nДля показа: открывается на нескольких устройствах (до "
+                    f"{focus.DEMO_MAX}), только просмотр и выбор вариантов в вопросах Claude — писать, загружать файлы "
+                    f"и менять настройки по ней нельзя. Действует до {till}. Отозвать — «Настройки» → «Фокус-ссылки»."
+                    f"\n\n{url}")
+        elif rec.get("proj"):
             text = (f"🎯 Фокус-ссылка на проект «{rec['name']}»\n\nОткройте на нужном устройстве — там будут все "
                     f"сессии этого проекта и новая сессия в нём, без остального пульта. Первое открытие привязывает "
                     f"устройство. Ссылка действует до {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
@@ -925,8 +935,15 @@ class Panel:
         return rec
 
     def focus_meta(self, rec: dict) -> dict:
-        """«meta» для фокуса: только то, что нужно одной сессии и её настройкам — без папок и имени сервера."""
+        """«meta» для фокуса: только то, что нужно одной сессии и её настройкам — без папок и имени сервера.
+        Демо-ссылка: без команд, моделей, поставщиков и клавиш — только смотреть и выбирать вариант."""
         voices = catalog.installed(self.personal(rec.get("by")))
+        if focus.Focus.is_demo(rec):
+            return {"host": rec.get("name", ""), "tz": server_tz(), "projects": [], "commands": [], "models": [],
+                    "profiles": [], "keys": [], "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
+                    "voice": self.voice(voices),
+                    "focus": {"id": rec["id"], "name": rec.get("name", ""), "w": rec["w"], "space": rec.get("space"),
+                              "exp": rec.get("exp"), "proj": rec.get("proj"), "mode": focus.DEMO}}
         return {"host": rec.get("name", ""), "tz": server_tz(), "projects": [],
                 "commands": [t for t, _ in self.pult.command_list()],                  # команды Claude этой сессии
                 "models": [] if rec.get("space") else self.cfg.models,                 # модель и поставщик этого чата
@@ -935,6 +952,27 @@ class Panel:
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices], "voice": self.voice(voices),
                 "focus": {"id": rec["id"], "name": rec.get("name", ""), "w": rec["w"], "space": rec.get("space"),
                           "exp": rec.get("exp"), "proj": rec.get("proj")}}   # proj — ссылка на проект (добавлено)
+
+    DEMO_KEYS = frozenset({"Up", "Down", "Enter"})   # демо-ссылка: клавиши — только чтобы выбрать пункт меню
+    DEMO_GAP = 3                            # с: после ответа гостя остальные нажатия — «уже ответили»
+    DEMO_ANSWERED = 30                      # с: вопроса уже нет, но ответили недавно — «уже ответили», не «нельзя»
+
+    def demo_answer(self, wid: str, go: bool, fn):
+        """Ответ гостя демо-ссылки на вопрос Claude: только когда на экране окна вопрос или меню (``DIALOG``); гости
+        жмут одновременно — первый ответ проходит, остальным «уже ответили» (409). Нет вопроса — 403."""
+        lock = self.demo_locks.setdefault(wid, threading.Lock())
+        with lock:
+            last = self.demo_done.get(wid, 0.0)
+            if go and time.time() - last < self.DEMO_GAP:
+                raise focus.Denied("Уже ответили — вариант выбрали на другом устройстве.", "answered", 409)
+            if not DIALOG.search("\n".join(self.tmux.screen(wid, 60))):
+                if time.time() - last < self.DEMO_ANSWERED:
+                    raise focus.Denied("Уже ответили — вариант выбрали на другом устройстве.", "answered", 409)
+                raise focus.Denied("по демо-ссылке можно только выбрать вариант, когда Claude задаёт вопрос")
+            out = fn()
+            if go:
+                self.demo_done[wid] = time.time()
+            return out
 
     def forget_person(self, uid: int):
         """Отключить человека: роль, сессии браузера и его ссылки для входа — сразу."""
@@ -2507,6 +2545,13 @@ FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/comma
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/mcp/connected", "/api/uses"}   # без окна в запросе
+# Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,
+# экран, статус, «Прослушать») и отвечать на вопрос Claude кнопками (/api/select, /api/key — стрелки и Enter, только
+# когда на экране вопрос: ``Panel.demo_answer``). Нет: текста, файлов, голоса, модели, усилий, перезапуска,
+# завершения, новых сессий, интеграций, репозиториев, команд — 403 focus_scope.
+DEMO_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/activity", "/api/hint", "/api/tts",
+            "/api/ask", "/api/last"}
+DEMO_POST = {"/api/select", "/api/key", "/api/logout"}
 # Фокус на проект (ссылка с ``proj``): весь проект — его окна, «Новая сессия в проекте», завершённые чаты; ``id``
 # проекта в запросе — только её. Ссылке на одну сессию эти пути закрыты (403), как раньше.
 FOCUS_PROJ_GET = {"/api/project", "/api/project/sessions", "/api/project/history"}
@@ -3053,6 +3098,9 @@ def handler(panel: Panel):
                     self.focused = panel.focus_rec(self.focus_cookie())
                 except focus.Gone as e:
                     return fail(str(e), "focus_gone", 4410)
+                if focus.Focus.is_demo(self.focused):      # демо-ссылка: голоса нет — только смотреть и выбирать
+                    self.focused = None
+                    return fail("по демо-ссылке голос недоступен", "focus_scope", 4403)
             else:
                 del self.headers["X-Telegram-Init-Data"]
                 if b.get("init"):
@@ -3138,6 +3186,11 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "code": "focus_wait"}, 503)
             proj_path = path in (FOCUS_PROJ_GET if method == "GET" else FOCUS_PROJ_POST)
             allowed = bool(rec.get("proj")) if proj_path else path in (FOCUS_GET if method == "GET" else FOCUS_POST)
+            if focus.Focus.is_demo(rec):                 # демо-ссылка: только смотреть и выбирать вариант
+                proj_path, allowed = False, path in (DEMO_GET if method == "GET" else DEMO_POST)
+                if not allowed:
+                    return self.json({"error": "по демо-ссылке — только просмотр и выбор вариантов",
+                                      "code": "focus_scope"}, 403)
             if not allowed:
                 return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
             b: dict = {}
@@ -3164,8 +3217,17 @@ def handler(panel: Panel):
                 self.focused, self.raw = None, None
 
         def focus_do(self, method: str, path: str, q: dict, b: dict, rec: dict):
-            if path == "/api/meta":
-                return {**panel.focus_meta(rec), "via": "focus", "role": "owner", "uid": None, "build": build}
+            demo = focus.Focus.is_demo(rec)
+            if path == "/api/meta":                        # демо — роль «наблюдатель»: интерфейс прячет действия
+                return {**panel.focus_meta(rec), "via": "focus", "role": "viewer" if demo else "owner", "uid": None,
+                        "build": build}
+            if demo and path == "/api/key":
+                key = str(b.get("key", ""))
+                if key not in panel.DEMO_KEYS:
+                    raise focus.Denied("по демо-ссылке — только выбор варианта в вопросе Claude")
+                return panel.demo_answer(str(b.get("w") or ""), key == "Enter", lambda: self.post(path))
+            if demo and path == "/api/select":
+                return panel.demo_answer(str(b.get("w") or ""), b.get("go", True) is not False, lambda: self.post(path))
             if path == "/api/sessions":
                 ss = panel.focus_sessions(rec)
                 return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
@@ -3647,7 +3709,7 @@ def handler(panel: Panel):
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
             if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
                 return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
-                                       str(b.get("proj") or ""))
+                                       str(b.get("proj") or ""), str(b.get("mode") or ""))
             if path == "/api/focus/send":                  # «Отправить себе в Telegram»
                 return panel.focus_send(str(b.get("url", "")), self.terms_uid())
             if path == "/api/focus/qr":                    # QR — POST: адрес с токеном не попадает в журнал прокси
@@ -3745,6 +3807,8 @@ def handler(panel: Panel):
                 return self.json({"error": "нет такого метода"}, 404)
             except focus.Gone as e:                      # фокус-ссылка не действует: страница покажет почему
                 return self.json({"error": str(e), "code": "focus_gone"}, 410)
+            except focus.Denied as e:                    # демо-ссылке нельзя (403) или уже ответили (409)
+                return self.json({"error": str(e), "code": e.code}, e.status)
             except LookupError as e:
                 return self.json({"error": str(e)}, 404)
             except emailcode.LimitError as e:
