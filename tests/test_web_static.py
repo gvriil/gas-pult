@@ -142,6 +142,7 @@ SCRIPTS = [
     "login",
     "home",
     "terminal",
+    "usage",
 ]
 
 
