@@ -138,6 +138,7 @@ def test_demo_data_before_main_script_and_only_functions():
 SCRIPTS = [
     "demo", "core/store", "core/i18n", "core/ui", "core/api",
     "nav",
+    "shell",
 ]
 
 
