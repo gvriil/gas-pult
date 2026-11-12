@@ -140,6 +140,7 @@ SCRIPTS = [
     "nav",
     "shell",
     "login",
+    "home",
 ]
 
 
