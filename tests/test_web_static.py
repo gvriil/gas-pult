@@ -139,6 +139,7 @@ SCRIPTS = [
     "demo", "core/store", "core/i18n", "core/ui", "core/api",
     "nav",
     "shell",
+    "login",
 ]
 
 
