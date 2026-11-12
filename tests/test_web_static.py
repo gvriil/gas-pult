@@ -154,6 +154,7 @@ SCRIPTS = [
     "focus",
     "helper",
     "start",
+    "simple",
 ]
 
 
