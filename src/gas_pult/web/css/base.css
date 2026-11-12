@@ -1,0 +1,252 @@
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* Каркас приложения, как в Telegram и ChatGPT: документ не прокручивается — прокручивается только лента (#scroller).
+     Поэтому поле ввода и кнопки внизу стоят на месте при любой прокрутке, «резинке» и открытой клавиатуре.
+     Высота = видимая область без клавиатуры (--app-h из visualViewport, fitViewport()). contain: layout делает body
+     опорой для position: fixed — нижняя панель встаёт ровно над клавиатурой, а не за ней. */
+  html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: var(--app-h, 100%); overflow: hidden; contain: layout;
+         margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
+         font: calc(15px * var(--fz, 1))/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:not(:disabled):active { transform: scale(.97); }
+  .serif { font-weight: 500; letter-spacing: -.01em; }      /* заголовки — без засечек, как в Gemini */
+  .brand-text { background: var(--brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .i { width: 20px; height: 20px; flex: none; display: block; }
+  .ic-16 .i, .i.s16 { width: 16px; height: 16px; }
+  [hidden] { display: none !important; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @keyframes up { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #scroller { height: 100%; overflow: hidden auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* «Потяните, чтобы обновить»: кружок выезжает из-под шапки, когда тянете ленту вниз в самом верху. */
+  .ptr { position: fixed; z-index: 4; width: 40px; height: 40px; margin: -40px 0 0 -20px; border-radius: 50%; display: grid; place-items: center;
+         background: var(--bg-surface); color: var(--text-secondary); box-shadow: 0 2px 10px rgba(0,0,0,.18); pointer-events: none; opacity: 0; }
+  .ptr.ready { color: var(--accent-primary); }
+  .ptr.back { transition: transform .2s ease, opacity .2s ease; }
+  .ptr.spin .i { animation: spin .8s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+  /* ===== Верхняя панель ===== */
+  .top { position: sticky; top: 0; z-index: 5; background: var(--bg-canvas); border-bottom: 1px solid transparent; transition: transform .2s ease; }
+  .top.edge { border-bottom-color: var(--border-subtle); } .top.hide { transform: translateY(-105%); }
+  /* «‹ Назад» не уходит вместе с шапкой — остаётся на месте круглой кнопкой, как в любом меню */
+  #backBtn { transition: transform .2s ease, background .2s, box-shadow .2s; }
+  .top.hide #backBtn { transform: translateY(calc(var(--top-h, 56px) * 1.05)); background: var(--bg-surface);
+                       box-shadow: 0 2px 10px rgba(0,0,0,.18); border-radius: 50%; }
+  .toprow { padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 4px; }
+  .tabsbar { padding: 0 12px 8px; } .tabsbar .seg { margin: 0; }
+  .titles { flex: 1; min-width: 0; padding: 0 4px; }
+  .top h1 { margin: 0; font-size: calc(20px * var(--fz, 1)); font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sub { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .sub > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .sub > .chip { flex: none; overflow: visible; }
+  .icon { width: 40px; height: 40px; border: 0; border-radius: var(--radius-md); background: transparent; display: grid; place-items: center; flex: none; color: var(--text-primary); }
+  .icon:active { background: var(--bg-subtle); }
+
+  main { padding: 4px 12px 24px; }
+  .seg { display: flex; gap: 2px; padding: 3px; background: var(--bg-subtle); border-radius: var(--radius-md); margin: 0 0 10px; }
+  .seg button { flex: 1; border: 0; padding: 7px 4px; border-radius: 9px; background: transparent; font-size: calc(14px * var(--fz, 1)); color: var(--text-secondary);
+                display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .seg button.on { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; box-shadow: var(--shadow-sm); }
+
+  /* ===== Статусы сессии — одни цвета везде (экран «Обозначения», docs/MINI_APP.md):
+     зелёная, мигает — работает; жёлтая — ждёт вашего ответа; серая — свободна; красная — остановлена (нет процесса Claude) */
+  .sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--status-idle); }
+  .s-running .sdot, .sdot.s-running { background: var(--status-running); animation: pulse 1.4s infinite; }
+  .s-approval .sdot, .sdot.s-approval { background: var(--status-approval); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: calc(12px * var(--fz, 1)); font-weight: 500; padding: 2px 8px; border-radius: var(--radius-pill);
+          background: var(--bg-subtle); color: var(--text-secondary); white-space: nowrap; }
+  .chip.s-running { color: var(--status-running); background: color-mix(in srgb, var(--status-running) 12%, transparent); }
+  .chip.s-approval { color: var(--status-approval); background: var(--status-approval-bg); }
+  .chip.new, .chip.ok { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); }
+  .chip.bad { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 12%, transparent); }
+  .chip.accent { color: var(--accent-primary); background: var(--accent-soft); }
+  .chip.space { color: var(--text-secondary); background: var(--bg-subtle); }
+  body:not(.tester) .tester-only { display: none; }
+  /* Фокус (задача 41): одна сессия — без списка, переключения, создания и общих настроек */
+  body:not(.focus) .focus-only { display: none; }
+  body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus #rail, body.focus #home, body.focus #homeBar,
+  body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
+  body.focus #menu [data-act=switch], body.focus #menu [data-act=active] { display: none !important; }
+  /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
+  body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
+  body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
+  body.focus-empty #dock, body.focus-empty #tabsBar, body.focus-empty #mini { display: none !important; }
+  /* Демо-ссылка: только просмотр и выбор вариантов — поля ввода, клавиш и опасных пунктов меню нет */
+  body:not(.focus-demo) .demo-note { display: none; }
+  body.focus-demo #input, body.focus-demo #plus, body.focus-demo #mic, body.focus-demo #send, body.focus-demo #hintBtn,
+  body.focus-demo #draftBar, body.focus-demo #attach, body.focus-demo #keys, body.focus-demo #menu button[data-owner],
+  body.focus-demo #menu button:not([data-act^=say]):not([data-act=refresh]):not([data-act=switch]) { display: none !important; }
+  body.focus-demo:not(.focus-proj) #menu [data-act=switch] { display: none !important; }
+  .demo-note { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
+  .demo-note svg { flex: none; color: var(--accent-primary); }
+  .focus-exp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0 16px 8px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+  .focus-exp span { display: inline-flex; align-items: center; gap: 6px; }
+  .focus-exp button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px; border-radius: var(--radius-pill);
+                      border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer; max-width: 100%; }
+  .focus-exp button b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .focus-exp.soon span { color: var(--status-approval); font-weight: 600; padding: 4px 10px; border-radius: var(--radius-pill); background: var(--status-approval-bg); }
+  .focus-proj-empty { text-align: center; padding: 32px 16px; }
+  .focus-proj-empty .btn { margin: 8px auto 0; max-width: 320px; }
+  .focus-end { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: var(--bg-canvas); color: var(--text-primary); text-align: center; }
+  .focus-end .i { width: 40px; height: 40px; color: var(--text-secondary); }
+  .focus-end h2 { margin: 12px 0 8px; }
+  .focus-qr { display: block; width: 220px; height: 220px; margin: 8px auto; image-rendering: pixelated; background: #fff; border-radius: 8px; }
+  /* Шторка «Нужен вход» (logins.py): ① код, ② ссылка, ③ ответ в окно — только владельцу */
+  .login-steps { margin: 0; padding: 0 16px; list-style: none; counter-reset: ls; }
+  .login-steps > li { counter-increment: ls; position: relative; padding: 10px 0 10px 34px; border-top: 1px solid var(--border-subtle); }
+  .login-steps > li:first-child { border-top: 0; }
+  .login-steps > li::before { content: counter(ls); position: absolute; left: 0; top: 10px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent-primary); display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+  .login-steps .lt { margin: 0 0 6px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
+  .login-code { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .login-code code { font: 600 calc(22px * var(--fz, 1))/1.2 ui-monospace, monospace; letter-spacing: .08em; padding: 6px 10px; border-radius: 8px;
+    background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); user-select: all; }
+  .login-url { margin-top: 6px; font: 12px/1.4 ui-monospace, monospace; color: var(--text-muted); word-break: break-all; max-height: 3.2em; overflow: hidden; }
+  .login-in { display: flex; gap: 8px; } .login-in input { flex: 1; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
+  .login-in input:focus { outline: none; border-color: var(--border-focus); }
+  .sheet .login-steps .btn { width: auto; }
+  .focus-url { margin: 4px 16px 0; padding: 8px 10px; border-radius: 8px; background: var(--bg-surface); font: 12px/1.4 ui-monospace, monospace; word-break: break-all; }
+  .space-h { display: flex; align-items: center; gap: 8px; margin: 18px 4px 8px; font-weight: 600; color: var(--text-secondary); }
+  .space-h button { margin-left: auto; border: 0; cursor: pointer; }
+  .manual { margin: 4px 0 8px; } .manual summary { cursor: pointer; padding: 6px 2px; }
+  .picker .search { position: sticky; top: -8px; background: var(--bg-surface); padding: 4px 16px 8px; z-index: 1; }
+  .picker .search input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); outline: none; }
+  .picker .search input:focus { border-color: var(--border-focus); }
+  .picker .mid { font: 12px ui-monospace, Menlo, monospace; color: var(--text-secondary); }
+  body:not([data-role="owner"]) [data-owner] { display: none !important; }      /* только владельцу */
+  body[data-role="viewer"] [data-member] { display: none !important; }          /* участнику и владельцу */
+  body[data-role="viewer"] #composer, body[data-role="viewer"] #menu, body[data-role="viewer"] #keys, body[data-role="viewer"] #ask button { display: none !important; }
+  .viewonly { text-align: center; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); padding: 10px; }
+  .s-stopped .sdot, .sdot.s-stopped { background: var(--status-stopped); }
+  .sdot.hollow { background: transparent; border: 1.5px solid var(--status-idle); }
+  .card.s-stopped { opacity: .85; }
+  .chip.prov { color: var(--text-primary); background: transparent; border: 1px solid var(--border-subtle); }
+  /* Расход (usage.py): сумма и токены сессии на карточке, итог дня в сводке, плашка «на паузе по расходу» */
+  .chip.cost { color: var(--text-secondary); } .chip.cost .i { width: 14px; height: 14px; }
+  button.chip { border: 0; font: inherit; font-size: calc(13px * var(--fz, 1)); cursor: pointer; }
+  .chip.cost.warn { color: var(--status-approval); background: var(--status-approval-bg); }
+  .costbar { display: flex; gap: 8px; align-items: flex-start; margin: 10px 6px 0 18px; padding: 10px 12px; border-radius: var(--radius-md);
+             background: var(--status-approval-bg); color: var(--text-primary); font-size: calc(13px * var(--fz, 1)); line-height: 1.45; cursor: default; }
+  .costbar > .i { color: var(--status-approval); margin-top: 1px; } .costbar .t { flex: 1; min-width: 0; }
+  .costbar .acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; } .costbar .acts .btn { width: auto; flex: 1 1 150px; }
+  #costPause .costbar { margin: 8px 12px 0; }
+
+  /* ===== Список сессий ===== */
+  .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 2px 12px; }
+  .summary .chip { font-size: calc(13px * var(--fz, 1)); padding: 4px 10px; } .summary b { font-variant-numeric: tabular-nums; }
+  .card { position: relative; display: block; width: 100%; text-align: left; border: 1px solid var(--border-subtle); margin: 0 0 8px; padding: 12px 8px 12px 14px;
+          background: var(--bg-surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); cursor: pointer; transition: border-color .15s; }
+  .card:active { transform: scale(.99); }
+  .card.s-approval { border-color: color-mix(in srgb, var(--status-approval) 55%, var(--border-subtle)); background: color-mix(in srgb, var(--status-approval-bg) 55%, var(--bg-surface)); }
+  .card.active::before { content: ""; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--accent-primary); }
+  .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .ctext { flex: 1; min-width: 0; }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cfoot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 0 18px; }
+  .ctx { margin-left: auto; padding-right: 6px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); }
+  .ctx .bar { width: 52px; height: 4px; border-radius: 2px; background: var(--bg-subtle); overflow: hidden; }
+  .ctx .bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
+  .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
+  .preview { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 6px 6px 0 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card.current { border-color: var(--border-focus); box-shadow: 0 0 0 1px var(--border-focus); }
+  /* «изменена N назад» (ago.py): цифры одной ширины — текст меняется на месте, без прыжков */
+  .ago { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; cursor: help; }
+  .sub .ago { font-size: inherit; }
+  .card.stale .name, .card.stale .meta, .card.stale .preview { color: var(--text-muted); }
+  .chip.stale { color: var(--text-secondary); background: var(--bg-subtle); }
+  .kebab { width: 36px; height: 36px; border: 0; background: transparent; border-radius: 10px; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
+  .kebab:active { background: var(--bg-subtle); }
+  .reply { margin: 10px 6px 0 18px; }
+  .section { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin: 18px 4px 8px; }
+  .note { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 4px 4px 12px; }
+  .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
+  /* Скелетоны (план UX, пункт 3): серые заглушки в размер карточки и сообщения вместо «Загружаю…» — данные встают
+     на то же место, экран не прыгает. Мерцание — только opacity; при prefers-reduced-motion анимации нет (правило выше). */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .skel { pointer-events: none; cursor: default; box-shadow: none; }
+  .skel i { display: block; height: 12px; border-radius: 6px; background: var(--bg-subtle); animation: pulse 1.6s ease-in-out infinite; }
+  .skel .sk-name { width: 55%; height: 14px; margin: 3px 0 9px; } .skel .sk-meta { width: 38%; }
+  .skel .sk-chip { width: 84px; height: 22px; border-radius: 11px; }
+  .skel .sdot { background: var(--bg-subtle); }
+  .nav-skel { padding: 10px 12px; } .nav-skel i { margin: 0 0 16px; }
+  .msg.skel .bubble { width: 62%; height: 42px; background: var(--bg-subtle); animation: pulse 1.6s ease-in-out infinite; }
+  .msg.skel.ai i { margin: 0 0 10px; } .msg.skel.ai i:last-child { width: 46%; }
+  /* «Проекты» (задача 49): поиск, карточка проекта, экран проекта, переписка завершённого чата */
+  .psearch { margin: 0 0 10px; } .psearch input { -webkit-appearance: none; appearance: none; }
+  .projc .row > .i, .dchat .row > .i { width: 20px; height: 20px; color: var(--text-secondary); flex: none; }
+  .projc .cfoot { margin-left: 30px; } .projc .chip.space .i { width: 13px; height: 13px; }
+  body:not(.split) .phead, body:not(.split) .ptitle { display: none; }     /* телефон: «‹ Назад» и имя — в шапке */
+  .phead { margin: 0 0 6px; } .phead .chip { border: 0; cursor: pointer; } .phead .chip .i { width: 14px; height: 14px; }
+  .ptitle { font-size: calc(22px * var(--fz, 1)); margin: 2px 4px 2px; overflow-wrap: anywhere; }
+  .pinfo { margin: 0 4px 12px; overflow-wrap: anywhere; } .pinfo .ppath { color: var(--text-muted); }
+  #projChips .chip { border: 0; cursor: pointer; } #projChats > .btn { width: 100%; margin: 4px 0 8px; }
+  .chatv { display: flex; flex-direction: column; } .chatv h3 { overflow-wrap: anywhere; }
+  .chatv-list { overflow-y: auto; padding: 4px 14px 8px; flex: 1; min-height: 120px; }
+  .chatv-list .msg { margin: 0 0 10px; }
+  .homebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+             background: linear-gradient(to top, var(--bg-canvas) 70%, transparent); }
+  #home { padding-bottom: 76px; }
+
+  /* ===== Кнопки и формы ===== */
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-pill); padding: 13px 18px;
+         font-weight: 600; background: var(--accent-primary); color: var(--on-accent); margin: 8px 0; min-height: 48px; }
+  .btn.ghost { background: transparent; color: var(--accent-primary); border: 1px solid var(--border-subtle); }
+  .btn.quiet { background: var(--bg-subtle); color: var(--text-primary); }
+  .btn.danger { background: transparent; color: var(--status-danger); border: 1px solid color-mix(in srgb, var(--status-danger) 35%, var(--border-subtle)); }
+  .btn.approval { background: var(--status-approval); color: var(--on-approval); }
+  .btn.sm { min-height: 40px; padding: 8px 12px; margin: 0; }
+  .field { margin: 0 0 14px; }
+  .field label { display: block; font-weight: 600; font-size: calc(14px * var(--fz, 1)); margin: 0 0 4px; } .field .opt { color: var(--text-secondary); font-weight: 400; }
+  .field .inp { display: flex; gap: 6px; }
+  textarea, input, select { font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text-primary); }
+  .field input, .field textarea, select { width: 100%; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 11px 12px; background: var(--bg-surface); outline: none; }
+  .field input:focus, .field textarea:focus, select:focus { border-color: var(--border-focus); }
+  .hint { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin-top: 4px; }
+  .result { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: calc(14px * var(--fz, 1)); display: flex; gap: 8px; align-items: flex-start; }
+  .result.ok { background: color-mix(in srgb, var(--status-success) 10%, var(--bg-surface)); }
+  .result.bad { background: color-mix(in srgb, var(--status-danger) 10%, var(--bg-surface)); }
+  .result.wait { background: var(--bg-subtle); }
+  /* Условия использования: первый вход — прочитать и нажать «Принимаю»; до этого остальное не показываем */
+  .terms h2 { margin: 2px 0 4px; font-size: calc(21px * var(--fz, 1)); } .terms .ver { color: var(--text-muted); font-size: calc(13px * var(--fz, 1)); margin: 0 0 12px; }
+  .terms ol { margin: 0 0 12px; padding-left: 22px; } .terms li { margin: 0 0 10px; color: var(--text-primary); }
+  .terms li::marker { color: var(--text-muted); }
+  .terms .full { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary); text-decoration: none; font-size: calc(14px * var(--fz, 1)); margin: 0 0 14px; }
+  .terms .btn { margin: 0 0 8px; } #terms, #country, #persona { max-width: 620px; margin: 8px auto 0; }
+  /* Роли интерфейса (personas.py): экран выбора роли и скрытие частей по возможностям (body.nocap-…) */
+  .pcards { display: grid; gap: 10px; margin: 0 0 12px; } .pcard { display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%;
+    padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer; }
+  .pcard:hover { border-color: var(--accent-primary); } .pcard.on { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .pcard .i { flex: none; width: 22px; height: 22px; color: var(--accent-primary); margin-top: 2px; }
+  .pcard b { display: block; font-size: calc(16px * var(--fz, 1)); margin: 0 0 3px; } .pcard small { display: block; color: var(--text-muted); font-size: calc(13.5px * var(--fz, 1)); line-height: 1.4; }
+  body.nocap-assistant_guide #helpBtn, body.nocap-assistant_guide #sHelp, body.nocap-dev_terminal [data-tab="screen"],
+  body.nocap-dev_models_mcp #homeSeg [data-v="integrations"], body.nocap-dev_cost_tokens .chip.cost { display: none !important; }
+  /* Страна человека: выбор кнопками частых или кодом; номер подтверждается в боте; отметка страны по IP */
+  .cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 0 0 14px; }
+  .cc-grid button { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-subtle);
+    background: var(--bg-surface); color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); text-align: left; cursor: pointer; }
+  .cc-grid button.on { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .cc-grid button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+  .cc-grid .code { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .cc-sig { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: calc(14px * var(--fz, 1)); }
+  .cc-sig .i { flex: none; color: var(--text-secondary); margin-top: 1px; } .cc-sig b { font-weight: 600; }
+  .cc-sig .hint { margin-top: 2px; } .cc-sig a { color: var(--accent-primary); }
+  .chip.sched { border: 0; cursor: pointer; } .chip.sched.off { opacity: .7; }
+  .panel.money { margin: 0 0 8px; padding: 10px 12px; border-color: var(--status-danger); } .money-act { display: flex; flex-wrap: wrap; gap: 8px; } .money-act .btn { width: auto; flex: 1 1 160px; margin: 0; }
+  .panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; box-shadow: var(--shadow-sm); min-width: 0; }
+  /* «Запасные»: порядок поставщиков, на которые сессия переходит сама */
+  .fb-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
+  .fb-row:first-child { border-top: 0; padding-top: 0; }
+  .fb-n { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: calc(12px * var(--fz, 1)); font-weight: 600; background: var(--bg-subtle); color: var(--text-secondary); }
+  .fb-row .ctext { flex: 1; min-width: 0; } .fb-why { color: var(--status-danger); font-size: calc(12px * var(--fz, 1)); white-space: normal; }
+  .fb-row .icon { width: 36px; height: 36px; color: var(--text-secondary); }
+  .fb-add { display: flex; gap: 8px; margin-top: 12px; } .fb-add select { flex: 1; } .fb-add .btn { width: auto; flex: none; }
+  .fb-log { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 6px 0 0; padding: 0; list-style: none; }
+  .fb-log li { padding: 3px 0; } .fb-log time { color: var(--text-muted); margin-right: 6px; }
+  .code-input { letter-spacing: .4em; text-align: center; font-size: calc(24px * var(--fz, 1)) !important; }
+

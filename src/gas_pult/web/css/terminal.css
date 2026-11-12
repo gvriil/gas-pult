@@ -1,0 +1,66 @@
+  /* ===== Экран (терминал) — всегда контрастный, без простыни ===== */
+  .term { background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-md); padding: 8px 0 10px; overflow: hidden; }
+  .termbar { display: flex; gap: 6px; padding: 0 8px 8px; }
+  .termbar button { border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-pill); padding: 5px 11px; font-size: calc(12.5px * var(--fz, 1)); }
+  .termbar button.on { color: #E8E6DE; border-color: #57544E; }
+  .term pre { margin: 0; padding: 0 12px; white-space: pre; overflow-x: auto; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; }
+  .term.wrap pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* Живой терминал (задача 50): лист во весь экран — история окна, поиск, клавиши, строка ввода. */
+  .sheet-bg.ttybg { align-items: stretch; justify-content: center; }
+  .sheet.tty { display: flex; flex-direction: column; height: 100%; max-height: 100%; border-radius: 0; padding: 0 0 env(safe-area-inset-bottom); overflow: hidden; }
+  .sheet.tty::before { display: none; }
+  @media (min-width: 1024px) { .sheet-bg.ttybg { align-items: center; } .sheet.tty { max-width: 1100px; height: 92%; max-height: 92%; border-radius: var(--radius-lg); } }
+  .tty .th { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 14px; border-bottom: 1px solid var(--border-subtle); }
+  .tty .th .tt { flex: 1; min-width: 0; } .tty .th b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tty .th small { display: block; color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet.tty .th button, .sheet.tty .tf button { width: 40px; height: 40px; min-height: 0; padding: 0; justify-content: center; flex: none; border-radius: var(--radius-sm); }
+  .sheet.tty .th button.on { background: var(--accent-soft); } .sheet.tty .th button.on .i { color: var(--accent-primary); }
+  .sheet.tty > .hpill.insheet { top: 11px; right: 138px; padding: 0 6px; } .sheet.tty > .hpill.insheet span { display: none; }
+  .sheet.tty.hp .th .tt { margin-right: 40px; }
+  .tty .tmode { margin: 6px 12px 0; } .sheet.tty .tmode button { min-height: 0; padding: 6px 4px; justify-content: center; font-size: calc(13px * var(--fz, 1)); }
+  .tty .tf { display: flex; align-items: center; gap: 4px; padding: 6px 8px 0 12px; }
+  .tty .tf input { flex: 1; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px 10px; background: var(--bg-canvas); outline: none; }
+  .tty .tf .cnt { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); min-width: 52px; text-align: center; }
+  .tty .tbox { flex: 1; min-height: 0; margin: 8px 8px 0; border-radius: var(--radius-md); padding: 0; display: flex; flex-direction: column; outline: none; text-align: left; }
+  .tty .tbox:focus-visible, .tty .tbox.live { box-shadow: 0 0 0 2px var(--border-focus); }
+  .tty .tbox pre { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px 12px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .tty .tbox mark { background: var(--status-approval-bg); color: var(--text-primary); border-radius: 2px; }
+  .tty .tbox mark.cur { background: var(--status-approval); color: var(--on-approval); }
+  .tty .ttop { color: #9E9B93; font: 12px/1.45 ui-monospace, monospace; padding: 6px 12px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .sheet.tty .ttop button { width: auto; min-height: 0; padding: 3px 10px; border: 1px solid #57544E; border-radius: var(--radius-pill); color: #E8E6DE; font-size: calc(12px * var(--fz, 1)); }
+  .tty .thint { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); margin: 4px 14px 0; min-height: 1em; }
+  .tty .thint.bad { color: var(--status-danger); }
+  .tty .tk { display: flex; gap: 5px; overflow-x: auto; padding: 6px 8px; scrollbar-width: none; }
+  .tty .tk::-webkit-scrollbar { display: none; }
+  .sheet.tty .tk button { flex: none; width: auto; min-width: 44px; min-height: 40px; padding: 0 10px; justify-content: center; border: 1px solid var(--border-subtle);
+                          border-radius: 10px; background: var(--bg-surface); font: 600 calc(13px * var(--fz, 1)) ui-monospace, monospace; color: var(--text-primary); }
+  .sheet.tty .tk button.on { background: var(--accent-primary); color: var(--on-accent); border-color: var(--accent-primary); }
+  .sheet.tty .tk button.cc { color: var(--status-danger); }
+  .tty .tin { display: flex; gap: 6px; padding: 0 8px 8px; }
+  .tty .tin input { flex: 1; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-canvas); outline: none;
+                    font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sheet.tty .tin button { width: 48px; min-height: 44px; padding: 0; justify-content: center; border-radius: 10px; background: var(--accent-primary); flex: none; }
+  .sheet.tty .tin button .i { color: var(--on-accent); }
+  .term .more { display: block; width: calc(100% - 24px); margin: 10px 12px 0; border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-sm); padding: 8px; font-size: calc(13px * var(--fz, 1)); }
+
+  /* ===== Вопрос Claude — у большого пальца ===== */
+  .ask { background: var(--status-approval-bg); border: 1px solid color-mix(in srgb, var(--status-approval) 45%, transparent); border-radius: var(--radius-lg);
+         padding: 12px; margin: 0 0 8px; animation: up .2s ease; }
+  .ask .q { font-weight: 600; margin: 0 0 8px; display: flex; gap: 8px; align-items: flex-start; color: var(--text-primary); }
+  .ask .q .i { color: var(--status-approval); margin-top: 1px; }
+  .ask button.opt { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 1px solid var(--border-subtle); background: var(--bg-surface);
+                    border-radius: var(--radius-md); padding: 11px 12px; margin: 0 0 6px; min-height: 48px; }
+  .ask button.opt.sel { border-color: var(--status-approval); }
+  .ask button.opt { touch-action: manipulation; }   /* без задержки и увеличения от двойного касания на iPhone */
+  .ask .tip { margin: 8px 0 0; font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); }
+  .ask button.opt b { color: var(--status-approval); min-width: 14px; font-variant-numeric: tabular-nums; }
+  .ask button.opt:last-child { margin-bottom: 0; }
+  .keys { display: grid; grid-template-columns: repeat(7, 1fr) 1.5fr; gap: 5px; margin: 0 0 8px; }
+  .keys button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 10px; min-height: 40px; padding: 0; font-weight: 600; font-size: calc(14px * var(--fz, 1)); transition: transform .08s; }
+  .keys button:not(:disabled):active { transform: scale(.96); background: var(--bg-subtle); }
+  .keys .ctrlc { color: var(--status-danger); font-size: calc(12.5px * var(--fz, 1)); }
+  .steps { counter-reset: st; margin: 6px 0 0; padding: 0; list-style: none; }
+  .steps li { position: relative; padding: 0 0 12px 34px; }
+  .steps li::before { counter-increment: st; content: counter(st); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%;
+                      background: var(--accent-primary); color: var(--on-accent); font-weight: 700; font-size: calc(13px * var(--fz, 1)); display: grid; place-items: center; }
+

@@ -1,0 +1,249 @@
+  /* ===== Команды из ответа ===== */
+  .cmd { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px; margin: 8px 0; background: var(--bg-surface); }
+  .cmd pre { margin: 0 0 8px; background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-sm); padding: 10px; font: 12.5px/1.45 ui-monospace, Menlo, monospace;
+             white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd .out { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 260px; overflow-y: auto; width: 100%; }
+  .cmd .hint { display: flex; gap: 6px; align-items: flex-start; margin: 0; }
+  /* вкладка «Команды»: все команды всех сессий */
+  .cmd .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: calc(12.5px * var(--fz, 1)); color: var(--text-secondary); margin: 0 2px 6px; }
+  .cmd .meta b { color: var(--text-primary); font-weight: 600; }
+
+  .cmd .why { font-size: calc(14px * var(--fz, 1)); margin: 0 2px 8px; overflow-wrap: anywhere; }
+  .cmd .acts, .cmd .cmdacts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cmd .cmdacts { margin-top: 6px; }
+  .cmd .cmdacts .btn { width: auto; }
+  .cmd .acts .btn { width: auto; flex: 1 1 auto; }
+  .cmd .acts .btn.ghost { flex: 0 1 auto; }
+  .cmd .meta .chips { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .cmd .chip .sdot { width: 7px; height: 7px; }
+  .cmd .chip .sdot.hollow { background: transparent; border: 1.5px solid var(--status-idle); }
+  .seg.cmdf { margin: 0 0 8px; } .seg.cmdf button { flex: auto; white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: calc(12.5px * var(--fz, 1)); }
+  .cmd .cpout { width: auto; margin-top: 8px; }
+  .cmd .tri { display: flex; gap: 6px; align-items: flex-start; margin: 0 2px 6px; }
+
+  /* ===== Интеграции ===== */
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .tile { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 14px 12px; text-align: left; box-shadow: var(--shadow-sm);
+          display: flex; flex-direction: column; gap: 8px; min-height: 112px; }
+  .tile span { font-weight: 600; } .tile small { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); line-height: 1.35; }
+  .tile.on { border-color: color-mix(in srgb, var(--status-success) 50%, var(--border-subtle)); }
+  .mono { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-weight: 700; font-size: calc(15px * var(--fz, 1));
+          background: var(--bg-subtle); color: var(--text-primary); flex: none; }
+  .tile.on .mono { background: color-mix(in srgb, var(--status-success) 14%, transparent); color: var(--status-success); }
+  .hero { text-align: center; margin: 4px 0 14px; } .hero .mono { width: 56px; height: 56px; font-size: calc(24px * var(--fz, 1)); border-radius: 16px; margin: 0 auto 8px; }
+  .hero .mono .i { width: 28px; height: 28px; }
+  .hero h2 { margin: 0 0 2px; font-size: calc(21px * var(--fz, 1)); } .hero p { margin: 0; color: var(--text-secondary); }
+  .conn { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* ===== Модули-агенты: каталог и экран модуля ===== */
+  .mods .card .meta { white-space: normal; } .mods .card .chip { margin-top: 6px; }
+  .mrow { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+  .mrow:first-of-type { border-top: 0; } .mrow > .i { color: var(--text-secondary); margin-top: 2px; }
+  .mrow .ctext b { display: block; font-weight: 600; } .mrow .ctext small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .mrow .btn.sm { width: auto; margin-top: 8px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .mod .panel { margin: 0 0 10px; } .mod .section { margin-top: 14px; }
+  /* ===== «Примерить на себя»: роли → день с агентом → польза (scenarios.py) ===== */
+  .scn-entry { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; border: 1px dashed var(--border-subtle); background: transparent; border-radius: var(--radius-md);
+               padding: 10px 12px; margin: 4px 0 8px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .scn-entry b { color: var(--text-primary); font-weight: 600; } .scn-entry > .i { color: var(--accent-primary); flex: none; } .scn-entry .ctext { flex: 1; }
+  .scn-link { display: flex; align-items: center; gap: 2px; border: 0; background: none; padding: 0 4px; margin: -4px 0 8px; color: var(--accent-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 500; }
+  .scn-link .i { width: 16px; height: 16px; }
+  .scn-steps { display: flex; gap: 4px; margin: 0 0 12px; } .scn-steps i { flex: 1; height: 4px; border-radius: 4px; background: var(--border-subtle); }
+  .scn-steps i.on { background: var(--accent-primary); }
+  .scn-when { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+  .scn-when .t { font-weight: 700; font-size: calc(17px * var(--fz, 1)); font-variant-numeric: tabular-nums; }
+  .scn-msg { background: var(--bg-subtle); border-radius: 14px 14px 14px 4px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: calc(14px * var(--fz, 1)); }
+  .scn-opts { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .scn-opt { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-pill); padding: 8px 14px; font-size: calc(14px * var(--fz, 1)); color: var(--text-primary); min-height: 40px; }
+  .scn-opt.on { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--accent-soft); }
+  .scn-res { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); font-size: calc(14px * var(--fz, 1)); }
+  .scn-res > .i { color: var(--accent-primary); margin-top: 1px; }
+  .scn-nav { display: flex; gap: 8px; margin: 12px 0 0; } .scn-nav .btn { flex: 1; margin: 0; }
+  .scn-gain { display: grid; gap: 8px; margin: 10px 0 0; }
+  .scn-line { background: var(--bg-subtle); border-radius: 10px; padding: 10px 12px; }
+  .scn-line .v { font-size: calc(18px * var(--fz, 1)); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .scn-line small { display: block; color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); margin-top: 2px; }
+  .scn-in { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0 14px; }
+  .scn-in .field { margin: 0 0 12px; } .scn-in input.bad { border-color: var(--status-danger); }
+  .scn-slide { display: flex; align-items: center; gap: 8px; }
+  .scn-slide input[type=range] { flex: 1; min-width: 0; height: 28px; margin: 0; padding: 0; border: 0; background: transparent; accent-color: var(--accent-primary); }
+  .scn-slide input[type=number] { width: 96px; flex: none; padding: 8px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  .scn-slide .u { flex: none; min-width: 22px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .scn-list { margin: 6px 0 0; padding-left: 18px; } .scn-list li { margin: 0 0 4px; }
+
+  /* ===== Листы, тосты, баннеры ===== */
+  .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(17,17,16,.42); display: flex; align-items: flex-end; animation: fade .15s ease; }
+  .sheet { width: 100%; max-height: 80%; overflow-y: auto; overscroll-behavior: contain; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+           padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow: var(--shadow-lg); animation: up .2s ease; }
+  .sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border-subtle); margin: 0 auto 6px; }
+  .sheet .sback { display: inline-flex; align-items: center; gap: 4px; width: auto; min-height: 36px; margin: 4px 8px 0; padding: 6px 10px;
+                  border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--accent-primary); font: inherit; font-size: calc(15px * var(--fz, 1)); }
+  .sheet h3.sub { margin-top: 14px; }
+  .sheet button.info { cursor: default; }
+  .sheet .vis { width: 44px; flex: none; display: flex; justify-content: center; align-items: center; }
+  .sheet .vis .sdot, .sheet button.info > .sdot { width: 10px; height: 10px; }
+  .sheet button.info > .sdot, .sheet button.info > .i { margin: 0 9px; }
+  .sheet h3 { margin: 8px 16px 6px; font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .sheet button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: calc(16px * var(--fz, 1)); min-height: 52px; }
+  .sheet button .i { color: var(--text-secondary); }
+  .sheet button span { flex: 1; min-width: 0; } .sheet button small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .sheet button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — меню, не выделение */
+  .sheet button .sdot { margin: 0 3px; }
+  .sheet .row2 { display: flex; gap: 8px; padding: 12px 16px 4px; }
+  .sheet .row2 .btn { flex: 1; margin: 0; min-height: 0; justify-content: center; font-size: calc(15px * var(--fz, 1)); }   /* .btn, а не пункт шторки */
+  .sheet .row2 .btn:not(.ghost) { background: var(--accent-primary); color: var(--on-accent); }
+  .sheet .row2 .btn.ghost { border: 1px solid var(--border-subtle); }
+  /* Чат прежде всего (телефон): имя сессии с ▾ — переключатель; тихая точка — что-то ждёт в другой сессии */
+  .top h1.sw { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .top h1.sw .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .top h1.sw .caret { flex: none; display: inline-grid; color: var(--text-secondary); }
+  .top h1.sw .sig { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--status-approval); }
+  .sheet button.on { color: var(--accent-primary); font-weight: 600; } .sheet button.danger, .sheet button.danger .i { color: var(--status-danger); }
+  .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+  .toast { animation: fade .15s ease; max-width: min(560px, 100%);
+           background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
+  .brand { display: none; } .brand h1 { margin: 0; font-size: calc(20px * var(--fz, 1)); font-weight: 600; }
+  .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
+  .pick h2 { color: var(--text-primary); font-size: calc(22px * var(--fz, 1)); font-weight: 600; margin: 0 0 6px; }
+  /* Широкий экран: слева — панель чатов #nav шириной --side-w (тянется за край, 200–480 px), свёрнутая — скрыта
+     (☰ в шапке возвращает). Главная (#home: карточки, проекты, команды) — в основной колонке, как страница.
+     Шрифт панели — --fz (Cmd/Ctrl + «+»/«−»/«0»): размеры текста в CSS умножаются на него. На телефоне не задаются. */
+  body.split { --side: var(--side-w, 280px); } body.split.side-mini { --side: 0px; } body.split.side-mini.has-nav { --side: 60px; }
+  body.split #home { max-width: 860px; margin: 0 auto; }
+  body.split .top, body.split main, body.split .demo { margin-left: var(--side); }
+  body.split .tabsbar .seg { max-width: 860px; margin: 0 auto; }
+  body.split .dock { left: var(--side); } body.split .homebar { left: var(--side); } body.split .homebar .btn { max-width: 836px; margin: 0 auto !important; } body.split .notices { left: var(--side); }
+  body.split #session, body.split #mcpForm, body.split .dock > * { max-width: 860px; margin-left: auto; margin-right: auto; }
+  /* Лента на компьютере (план UX, пункт 6): колонка ~760 px по центру, поле ввода — той же ширины. */
+  body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 760px; }
+  .sidebtn, .grip, .rail { display: none; }
+  body.no-dup.has-nav:not(.side-mini) #top .titles { visibility: hidden; }
+  body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
+  body.split .sidebtn { display: grid; }
+  body.split:not(.side-mini) .grip { display: block; position: fixed; top: 0; bottom: 0; left: calc(var(--side) - 4px); width: 8px; z-index: 7; cursor: col-resize; touch-action: none; }
+  .grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .15s; }
+  .grip:hover::after, .grip:focus-visible::after, body.resizing .grip::after { background: var(--accent-primary); }
+  .grip:focus-visible { outline: none; }
+  body.resizing { cursor: col-resize; user-select: none; -webkit-user-select: none; }
+  /* Узкая полоса (свёрнутая панель чатов, только ПК): ⇥ раскрыть, ✎ новый чат, ⌕ поиск, проекты квадратами, ⚙ внизу */
+  body.split.side-mini.has-nav .rail { display: flex; flex-direction: column; align-items: center; gap: 6px; position: fixed; top: 0; bottom: 0; left: 0; width: 60px;
+    z-index: 4; padding: 8px 0; background: var(--bg-subtle); border-right: 1px solid var(--border-subtle); overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  .rail .rb { position: relative; width: 40px; height: 40px; min-height: 0; border: 0; padding: 0; border-radius: 50%; background: var(--bg-canvas); color: var(--text-primary);
+              display: grid; place-items: center; font-weight: 600; font-size: calc(15px * var(--fz, 1)); flex: none; }
+  .rail .rb:hover { box-shadow: 0 0 0 2px var(--border-subtle); }
+  .rail .rb:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+  .rail .rb.on { background: var(--accent-soft); color: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-primary); }
+  .rail .rb.s-stopped { color: var(--text-muted); }
+  .rail .rb .sdot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border: 2px solid var(--bg-subtle); }
+  .rail .rb.new::before { content: ""; position: absolute; right: 0; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-primary); border: 2px solid var(--bg-subtle); }
+  .rail .rt { background: transparent; color: var(--text-secondary); border-radius: var(--radius-sm); }
+  .rail .rt:hover { background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-primary); box-shadow: none; }
+  .rail .rt.on { color: var(--accent-primary); box-shadow: none; background: var(--accent-soft); }
+  .rail .rnew { background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-secondary); margin-top: 4px; }
+  .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; flex: none; }
+  .rail .rgap { flex: 1 0 4px; }
+  .rail .pj { border-radius: 10px; background: var(--pj1-bg); color: var(--pj1-fg); font-size: calc(13px * var(--fz, 1)); letter-spacing: .02em; }
+  .rail .pj.c2 { background: var(--pj2-bg); color: var(--pj2-fg); } .rail .pj.c3 { background: var(--pj3-bg); color: var(--pj3-fg); }
+  .rail .pj.c4 { background: var(--pj4-bg); color: var(--pj4-fg); } .rail .pj.c5 { background: var(--pj5-bg); color: var(--pj5-fg); }
+  .rail .pj.c6 { background: var(--pj6-bg); color: var(--pj6-fg); }
+  .rail .pj.on { box-shadow: 0 0 0 2px var(--bg-subtle), 0 0 0 4px var(--accent-primary); }
+  .rail .pj .cnt { position: absolute; right: -5px; bottom: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--radius-pill);
+                   background: var(--bg-canvas); color: var(--text-primary); border: 1px solid var(--border-subtle); font-size: 11px; line-height: 16px; font-weight: 600; }
+  .rail .pj .pdot { position: absolute; right: -3px; top: -3px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bg-subtle); background: var(--accent-primary); }
+  .rail .pj .pdot.wait { background: var(--status-approval); }
+  /* ===== Зона уведомлений (задача 26): тосты, «Есть новая версия», «Нет связи», предложение тура — только здесь.
+     Под шапкой (её нет — под вырезом экрана) и не ниже верха нижней панели: --nz-top и --nz-max считает placeNotices()
+     из шапки, дока и visualViewport (клавиатура). Не влезло — обрезается, но поле ввода и кнопки не закрывает.
+     Новый всплывающий элемент — в реестр NOTICES в скрипте и через notice(el); tests/test_notices.py следит. */
+  .notices { position: fixed; z-index: 30; left: 0; right: 0; top: max(var(--nz-top, 0px), calc(8px + env(safe-area-inset-top)));
+             max-height: var(--nz-max, 50%); overflow: hidden; padding: 0 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+             pointer-events: none; }
+  .notices > * { pointer-events: auto; flex: none; }
+  .notices:empty, .notices:not(:has(> :not([hidden]))) { display: none; }
+  .upd { display: flex; align-items: center; gap: 2px; max-width: min(560px, 100%); min-height: 34px; padding: 0 4px 0 12px; border-radius: var(--radius-pill);
+         background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); box-shadow: 0 2px 10px rgba(0,0,0,.12);
+         font-size: calc(13px * var(--fz, 1)); animation: fade .2s ease; }
+  .upd > .i { width: 16px; height: 16px; color: var(--accent-primary); margin-right: 6px; }
+  .upd > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .upd button { border: 0; background: transparent; border-radius: var(--radius-pill); padding: 6px 10px; min-height: 30px; font-weight: 600; flex: none; }
+  .upd .go { color: var(--accent-primary); } .upd .later { color: var(--text-secondary); font-weight: 500; }
+
+  /* ===== Дежурный помощник «? Подсказать» (helper.py, docs/HELPER.md): пилюля в шапке и в каждом листе; шторка на 55 %
+     высоты — поверх экрана или листа, закрылась — вы там же. */
+  .hpill { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 32px; padding: 0 10px 0 7px; border: 1px solid var(--border-subtle);
+           border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--accent-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
+  .hpill .i { width: 18px; height: 18px; }
+  .sheet:not(.help) { position: relative; }
+  .sheet .hpill.insheet { position: absolute; top: 10px; right: 12px; width: auto; min-height: 0; height: 30px; padding: 0 10px 0 7px; gap: 4px; font-size: calc(13px * var(--fz, 1)); z-index: 1; }
+  .sheet .hpill.insheet .i { color: var(--accent-primary); }
+  .sheet.hp > h3:first-of-type, .sheet.hp > .sback + h3 { padding-right: 116px; }
+  @media (max-width: 359px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }
+  .help-bg { z-index: 35; }
+  .help-bg { justify-content: center; }
+  /* Шторка помощника поверх экрана — над нижней панелью, а не на ней: поле ввода и кнопки видны (задача 26).
+     Поверх другого листа — как раньше, на весь экран: под ней лист, а не поле ввода. */
+  .help-bg { bottom: var(--nz-dock, 0px); } body:has(> .sheet-bg:not(.help-bg)) .help-bg { bottom: 0; }
+  .help-bg .sheet.help { height: min(100%, calc(var(--app-h, 100vh) * .55)); max-height: 100%; }   /* 55 % экрана, не фона */
+  @media (min-width: 1024px) { .help-bg .sheet.help { height: min(100%, calc(var(--app-h, 100vh) * .6)); } }
+  .sheet.help { display: flex; flex-direction: column; height: 55%; max-height: 55%; min-height: 320px; }
+  @media (min-width: 1024px) { .sheet.help { max-width: 720px; height: 60%; max-height: 60%; } }
+  .sheet.help button { width: auto; min-height: 0; padding: 0; gap: 6px; font-size: inherit; display: inline-flex; align-items: center; }   /* не пункты шторки */
+  .sheet.help button .i { color: inherit; }
+  .sheet.help h3 { display: flex; align-items: center; gap: 6px; }
+  .sheet.help .hwhere { margin: -2px 16px 8px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .sheet.help .hmsgs { flex: 1 1 auto; min-height: 90px; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .sheet.help .hq { align-self: flex-end; max-width: 85%; background: var(--accent-soft); border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: calc(14px * var(--fz, 1)); overflow-wrap: anywhere; }
+  .sheet.help .ha { background: var(--bg-subtle); border-radius: 14px 14px 14px 4px; padding: 10px 12px; font-size: calc(15px * var(--fz, 1)); overflow-wrap: anywhere; }
+  .sheet.help .ha.wait { color: var(--text-secondary); }
+  .sheet.help .ha p { margin: 0; }
+  .sheet.help .hnote { margin: 8px 0 0; color: var(--status-approval); font-size: calc(13px * var(--fz, 1)); }
+  .sheet.help .hgo { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .sheet.help .hgo button { width: 100%; justify-content: flex-start; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg-surface); border: 1px solid var(--border-subtle);
+                            color: var(--accent-primary); font-weight: 600; font-size: calc(14px * var(--fz, 1)); text-align: left; }
+  .sheet.help .hfoot { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .sheet.help .hmark { font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-surface); }
+  .sheet.help .hfb { width: 32px; height: 32px; border-radius: 50%; justify-content: center; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+  .sheet.help .hfb .i { width: 16px; height: 16px; } .sheet.help .hfb.on { color: var(--accent-primary); border-color: var(--accent-primary); background: var(--accent-soft); }
+  .sheet.help .hchips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 16px 2px; scrollbar-width: none; flex: none; }
+  .sheet.help .hchips::-webkit-scrollbar { display: none; }
+  .sheet.help .hchips button { flex: none; padding: 7px 12px; border-radius: var(--radius-pill); background: var(--bg-subtle); border: 1px solid var(--border-subtle);
+                               color: var(--text-primary); font-size: calc(13px * var(--fz, 1)); white-space: nowrap; }
+  .sheet.help .hrow { display: flex; gap: 8px; padding: 8px 16px 2px; flex: none; }
+  .sheet.help .hrow input { flex: 1; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); padding: 10px 14px; background: var(--bg-canvas);
+                            color: var(--text-primary); outline: none; font: inherit; font-size: calc(16px * var(--fz, 1)); }
+  .sheet.help .hrow input:focus { border-color: var(--border-focus); }
+  .sheet.help .hrow .hsend { width: 44px; height: 44px; flex: none; border-radius: 50%; justify-content: center; border: 0; background: var(--accent-primary); color: var(--on-accent); }
+  .sheet.help .cancel { width: 100%; justify-content: center; padding: 12px 16px; min-height: 48px; margin-top: 6px; }
+  .sheet.help .htour { margin: 8px 16px 0; padding: 8px 12px; border-radius: var(--radius-pill); border: 1px dashed var(--border-subtle);
+                       background: transparent; color: var(--accent-primary); font-weight: 600; font-size: calc(13px * var(--fz, 1)); align-self: flex-start; }
+
+  /* ===== Короткий тур (driver.js 1.8.0 с cdnjs — грузится только при старте тура): попап — токенами панели ===== */
+  .tour-offer { align-self: flex-end; width: min(340px, 100%);
+                background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+                box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 12px 12px 14px; animation: up .2s ease; }
+  .kb .tour-offer { display: none; }                   /* клавиатура открыта — человек пишет: предложение тура подождёт */
+  .tour-offer .row { align-items: flex-start; } .tour-offer .row > .i { color: var(--accent-primary); margin-top: 2px; }
+  .tour-offer b { font-size: calc(15px * var(--fz, 1)); }
+  .tour-offer .meta { white-space: normal; margin-top: 2px; }
+  .tour-offer .icon { width: 32px; height: 32px; margin: -4px -4px 0 0; color: var(--text-secondary); }
+  .tour-offer .seg { margin: 10px 0 0; } .tour-offer .seg button { font-size: calc(13px * var(--fz, 1)); }
+  .tour-offer .acts { display: flex; gap: 8px; margin-top: 10px; } .tour-offer .acts .btn { flex: 1; width: auto; }
+  .driver-popover.gp-tour { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+                            box-shadow: 0 8px 28px rgba(0,0,0,.28); padding: 14px 16px; min-width: 0; width: min(320px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; }
+  .gp-tour .driver-popover-arrow { display: none; }
+  .gp-tour .driver-popover-title { font-size: calc(16px * var(--fz, 1)); font-weight: 600; line-height: 1.35; padding-right: 28px; }
+  .gp-tour .driver-popover-description { font-size: calc(14px * var(--fz, 1)); line-height: 1.5; color: var(--text-secondary); margin-top: 4px; }
+  .gp-tour .driver-popover-close-btn { width: 40px; height: 40px; top: 2px; right: 2px; font-size: 22px; color: var(--text-muted); }
+  .gp-tour .driver-popover-close-btn:hover, .gp-tour .driver-popover-close-btn:focus-visible { color: var(--text-primary); }
+  .gp-tour .driver-popover-footer { margin-top: 12px; gap: 8px; flex-wrap: wrap; }
+  .gp-tour .driver-popover-progress-text { color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); }
+  .gp-tour .driver-popover-navigation-btns { gap: 6px; } .gp-tour .driver-popover-navigation-btns button + button { margin-left: 0; }
+  .gp-tour .driver-popover-footer-btn { min-height: 36px; padding: 8px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-subtle);
+                                        color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); line-height: 1.2; text-shadow: none; }
+  .gp-tour .driver-popover-footer-btn:hover, .gp-tour .driver-popover-footer-btn:focus { background: var(--bg-subtle); }
+  .gp-tour .driver-popover-footer-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+  .gp-tour .driver-popover-next-btn { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--on-accent); font-weight: 600; }
+  .gp-tour .driver-popover-next-btn:hover, .gp-tour .driver-popover-next-btn:focus { background: var(--accent-primary); }
+

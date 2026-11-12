@@ -105,3 +105,15 @@ def test_page_links_only_existing_files():
     for ref in re.findall(r'<(?:script|link)\b[^>]*\b(?:src|href)="/((?:js|css)/[^"?]+)"', page):
         assert (WEB / ref).is_file(), f"index.html подключает {ref}, а файла нет"
     assert "?v=" not in page                     # версию дописывает сервер при отдаче, в исходнике её нет
+
+
+def test_every_file_is_linked_in_cascade_order():
+    """Каждый web/css/*.css подключён в <head> ровно один раз; tokens.css — первым (на токенах стоит всё остальное)."""
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    head = page[:page.index("</head>")]
+    linked = re.findall(r'<link rel="stylesheet" href="/(css/[\w/.-]+\.css)">', head)
+    files = sorted(p.relative_to(WEB).as_posix() for p in WEB.glob("css/**/*.css"))
+    assert sorted(linked) == files and len(set(linked)) == len(linked)
+    if linked:
+        assert linked[0] == "css/tokens.css"
+    assert "<style>" not in page                  # стили — только в файлах (кэшируются), не в странице

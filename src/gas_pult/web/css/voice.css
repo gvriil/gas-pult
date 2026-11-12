@@ -1,0 +1,83 @@
+  /* ===== Нижняя панель сессии ===== */
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg-canvas);
+          padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); max-height: 78%; overflow-y: auto; overscroll-behavior: contain; }
+  .kb .dock { padding-bottom: 8px; }                    /* клавиатура открыта — полоса «домой» не нужна */
+  .dock { transition: transform .2s ease; } .dock.hide { transform: translateY(calc(100% + 8px)); }
+  .tobottom { transition: transform .2s ease; }       /* над полем ввода — сдвиг transform, без пересчёта раскладки */
+  .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
+  .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
+  .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; overflow-y: hidden; }
+  .composer .attach { padding: 8px 6px 0; }
+  .ctools { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .tool { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
+  .tool:active, .tool.on { background: color-mix(in srgb, var(--text-primary) 9%, transparent); }
+  .tool.send { background: var(--accent-primary); color: var(--on-accent); }
+  .ctools .target { padding: 0 4px 0 6px; font-size: calc(12px * var(--fz, 1)); }
+  .ctools .live { font-size: calc(11.5px * var(--fz, 1)); padding-right: 2px; }
+  .target { flex: 1; display: flex; align-items: center; gap: 6px; font-size: calc(12.5px * var(--fz, 1)); color: var(--text-secondary); min-width: 0; white-space: nowrap;
+            border: 0; background: transparent; font-family: inherit; text-align: left; min-height: 36px; border-radius: var(--radius-pill); cursor: pointer; }
+  .target:active { background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+  .target .caret { flex: none; display: inline-flex; color: var(--text-muted); }
+  .target b { flex: 0 0 auto; max-width: 55%; }            /* имя сессии — главное: куда уйдёт сообщение */
+  .target > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 440px) { .live .lw { display: none; } }
+  .target b { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 0 8px; animation: up .18s ease; }
+  .menu button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: 7px 2px 6px; min-height: 52px; font-size: calc(12px * var(--fz, 1));
+                 display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-primary); line-height: 1.15; }
+  .menu button .i { width: 18px; height: 18px; color: var(--text-secondary); }
+  .menu .danger { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 35%, var(--border-subtle)); }
+  .menu .danger .i { color: var(--status-danger); }
+  .attach { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 6px; scrollbar-width: none; }
+  .attach span { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 70vw; border: 1px solid var(--border-subtle);
+                 background: var(--bg-surface); border-radius: var(--radius-pill); padding: 4px 4px 4px 10px; font-size: calc(13px * var(--fz, 1)); }
+  .attach span em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach span button { border: 0; background: none; color: var(--text-secondary); padding: 2px; display: grid; place-items: center; }
+  /* Озвучка: состояние — прямо в сообщении; на других экранах — мини-плеер. Плеер один на всю панель. */
+  .voice { display: flex; flex-wrap: wrap; align-items: center; column-gap: 4px; row-gap: 0; margin: 6px 0 0; padding: 4px 8px 2px; border-radius: var(--radius-md, 12px);
+           background: var(--bg-surface); border: 1px solid var(--border-subtle); font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+  .voice button { border: 0; background: none; color: var(--text-primary); padding: 4px; display: grid; place-items: center; cursor: pointer; }
+  .voice .vb { min-width: 44px; min-height: 44px; border-radius: var(--radius-pill); }
+  .voice .vb:active { background: var(--border-subtle); }
+  .voice .vb .i { width: 26px; height: 26px; }
+  .voice .vb.play { color: var(--accent-primary); }
+  .voice .vb.rate { min-width: 48px; padding: 0 6px; font-weight: 600; font-size: calc(13px * var(--fz, 1)); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .voice .vb.play .i { width: 30px; height: 30px; }
+  /* Полоса — отдельной строкой во всю ширину; высота касания 44 px, сама линия 4 px, кружок — куда тянуть. */
+  .voice .bar { order: 10; flex: 1 0 100%; position: relative; box-sizing: content-box; height: 4px; padding: 20px 0; margin: -12px 0 -8px; background-clip: content-box;
+                cursor: pointer; border-radius: 2px; background-color: var(--border-subtle); touch-action: none; }
+  .voice .bar i { display: block; height: 100%; width: 0; background: var(--accent-primary); border-radius: 2px; }
+  .voice .bar b { position: absolute; top: 50%; left: 0; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+                  background: var(--accent-primary); box-shadow: 0 0 0 3px var(--bg-surface); transition: transform .12s; }
+  .voice .bar.drag b, .voice .bar:focus-visible b { transform: scale(1.35); }
+  .voice .bar:focus-visible { outline: none; }
+  .voice.prep .bar { margin: 6px 0; padding: 0; overflow: hidden; }
+  .voice.prep .bar b { display: none; }
+  .voice .t { font-variant-numeric: tabular-nums; margin-left: auto; padding: 0 4px; white-space: nowrap; }
+  .voice.prep .bar i { width: 30%; animation: vprep 1.2s ease-in-out infinite; }
+  @keyframes vprep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .mini { position: fixed; z-index: 15; left: 50%; transform: translateX(-50%); bottom: calc(var(--mini-b, 16px) + env(safe-area-inset-bottom));
+          width: min(360px, calc(100% - 32px)); margin: 0; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+  .mini .name { flex: 1 1 0; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);
+                border: 0; background: none; font: inherit; text-align: left; cursor: pointer; padding: 4px; }
+  .recbar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--status-danger); border-radius: 22px;
+            padding: 4px 4px 4px 12px; background: color-mix(in srgb, var(--status-danger) 7%, var(--bg-surface)); height: 44px; }
+  .recbar .dotrec { width: 9px; height: 9px; border-radius: 50%; background: var(--status-danger); animation: pulse 1s infinite; flex: none; }
+  .recbar canvas { flex: 1; min-width: 0; height: 28px; }
+  .recbar .t { font-variant-numeric: tabular-nums; font-size: calc(14px * var(--fz, 1)); color: var(--status-danger); flex: none; }
+  .recbar button { border: 0; border-radius: var(--radius-pill); height: 36px; padding: 0 12px; font-size: calc(13px * var(--fz, 1)); font-weight: 600; flex: none; display: grid; place-items: center; }
+  .recbar .ok { background: var(--accent-primary); color: var(--on-accent); width: 36px; padding: 0; } .recbar .no { background: var(--bg-subtle); width: 36px; padding: 0; }
+  .recbar .txt { background: var(--bg-subtle); color: var(--text-primary); display: inline-flex; align-items: center; gap: 5px; padding: 0 11px 0 9px; }
+  /* Распознавание и ошибка — в той же строке, пока сервер не ответит или пока не нажмут */
+  .recbar.stt { border-color: var(--accent-primary); background: var(--accent-soft); }
+  .recbar.stt .t { color: var(--text-secondary); }
+  .recbar .spin { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--accent-primary); border-right-color: transparent; animation: spin .8s linear infinite; }
+  .recbar .msg { flex: 1; min-width: 0; font-size: calc(14px * var(--fz, 1)); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recbar.err { height: auto; min-height: 44px; border-color: var(--status-danger); }
+  .recbar.err > .i { color: var(--status-danger); flex: none; }
+  .recbar.err .msg { white-space: normal; line-height: 1.3; padding: 4px 0; }
+  .recbar canvas { cursor: pointer; }
+  .recbar.live { margin-top: 4px; } .s-col > .recbar { margin-top: 6px; }      /* диктовка потоком: строка под полем */
+  textarea.dictating { caret-color: transparent; }
+  #mic, #sMic { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+

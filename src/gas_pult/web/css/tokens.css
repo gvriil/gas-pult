@@ -1,0 +1,29 @@
+  /* ===== Дизайн-система: тёплая бумага + терракота; статусы семантические (свободна ≠ зелёный) ===== */
+  /* ===== Палитра в духе Gemini (Material 3): белый и #F0F4F9, синий акцент; статусы — по смыслу ===== */
+  :root, :root[data-theme="light"] {
+    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F0F4F9; --bg-terminal: #1E1F20;
+    --border-subtle: #E1E5EA; --border-focus: #0B57D0;
+    --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
+    --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
+    --status-idle: #747775; --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
+    --status-success: #146C2E; --status-danger: #B3261E; --status-stopped: #D93025;
+    --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
+    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
+    --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
+    --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
+    /* Значки проектов в узкой полосе: фон и буквы (контраст ≥ 4,5:1 в обеих темах) */
+    --pj1-bg: #D3E3FD; --pj1-fg: #0842A0; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #E9DDFF; --pj3-fg: #4A2C8A;
+    --pj4-bg: #FFDDB8; --pj4-fg: #7A4100; --pj5-bg: #FFD8E4; --pj5-fg: #8C1D48; --pj6-bg: #C2E8E7; --pj6-fg: #00504F;
+  }
+  :root[data-theme="dark"] {
+    --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
+    --border-subtle: #3C4043; --border-focus: #A8C7FA;
+    --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
+    --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
+    --status-idle: #8E918F; --status-running: #81C995; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
+    --status-success: #6DD58C; --status-danger: #F2B8B5; --status-stopped: #EE675C;
+    --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
+    --qr-bg: #FFFFFF;
+    --pj1-bg: #1B2B48; --pj1-fg: #A8C7FA; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #34245A; --pj3-fg: #D0BCFF;
+    --pj4-bg: #4A2C00; --pj4-fg: #FFB870; --pj5-bg: #4A1730; --pj5-fg: #FFB0CB; --pj6-bg: #003D3C; --pj6-fg: #80D5D2;
+  }
