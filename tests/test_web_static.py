@@ -137,6 +137,7 @@ def test_demo_data_before_main_script_and_only_functions():
 # основного скрипта сверху вниз, так что порядок кода — прежний. Новый файл — сюда, на своё место.
 SCRIPTS = [
     "demo", "core/store", "core/i18n", "core/ui", "core/api",
+    "nav",
 ]
 
 
