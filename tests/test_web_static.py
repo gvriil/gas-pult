@@ -144,6 +144,7 @@ SCRIPTS = [
     "terminal",
     "usage",
     "projects",
+    "chat",
 ]
 
 
