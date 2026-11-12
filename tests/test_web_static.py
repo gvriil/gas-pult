@@ -126,8 +126,51 @@ def test_demo_data_before_main_script_and_only_functions():
     """demoApi зовётся уже из start() при загрузке — demo.js обычным (не defer) скриптом перед основным; в нём
     только объявления функций: порядок выполнения не важен, переменных основного скрипта он не трогает."""
     page = (WEB / "index.html").read_text(encoding="utf-8")
-    assert '<script src="/js/demo.js"></script>\n<script>\n' in page
+    assert re.search(r'<script src="/js/demo\.js"></script>\n(<script src="/js/[\w/.-]+"></script>\n)*<script>\n', page)
     demo = (WEB / "js" / "demo.js").read_text(encoding="utf-8")
     top = [x for x in demo.split("\n") if x and not x.startswith((" ", "}", "//"))]
     assert top and all(re.match(r"(async )?function \w+\(", x) for x in top), top[:3]
     assert "function demoApi(" in demo and "function demoApi(" not in page
+
+
+# Порядок файлов = порядок выполнения (обычные <script> перед основным встроенным): переносятся непрерывные куски
+# основного скрипта сверху вниз, так что порядок кода — прежний. Новый файл — сюда, на своё место.
+SCRIPTS = [
+    "demo", "core/store", "core/i18n", "core/ui", "core/api",
+]
+
+
+def test_scripts_before_main_in_order():
+    """Ядро (шаг 4): store (общее состояние и store()), i18n (словарь), ui (значки, тема, ссылки, шторки, toast),
+    api (сеть); дальше — разделы основного скрипта (шаг 5) в прежнем порядке."""
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    assert re.findall(r'<script src="/js/([\w/.-]+)\.js"></script>', page) == SCRIPTS
+    assert not re.search(r"<script[^>]*\b(defer|async)\b[^>]*src=\"/js/", page)   # пока основной встроен — без defer
+    assert f'<script src="/js/{SCRIPTS[-1]}.js"></script>\n<script>\n' in page        # сразу за ними — основной
+
+
+def test_load_order_no_forward_calls():
+    """Верхний уровень каждого файла при загрузке не вызывает функций из более поздних файлов (tests/jsorder.py)."""
+    from jsorder import check
+    assert check(WEB) == []
+
+
+JSORDER_CASES = {                                   # код файла перед основным → есть ли вызов «вперёд»
+    "const v = late();": True, "[1].forEach(() => late());": True, "(() => { late(); })();": True,
+    "Promise.resolve().then(() => late());": True,     # продолжение обещания — сразу после файла
+    "setInterval(late, 1000);": True, '$("x").onclick = late;': True, 'document.addEventListener("click", late);': True,
+    "let t = `${late()}`;": True, "function g() { late(); }\ng();": True, "const h = () => late();\nh();": True,
+    "const X = { a: () => late() };": False, 'document.addEventListener("click", () => late());': False,
+    "const f = () => late();": False, "function g() { late(); }": False, 'const s = "late()"; // late()': False,
+    "function g2() {\n  return () => late();\n}\ng2();": False,
+}
+
+
+@pytest.mark.parametrize("code", JSORDER_CASES)
+def test_jsorder_catches_forward_call(tmp_path, code):
+    from jsorder import check
+    (tmp_path / "js").mkdir()
+    (tmp_path / "index.html").write_text('<script src="/js/a.js"></script>\n<script>\nfunction late() {}\n</script>',
+                                         encoding="utf-8")
+    (tmp_path / "js" / "a.js").write_text(code + "\n", encoding="utf-8")
+    assert bool(check(tmp_path)) is JSORDER_CASES[code]
