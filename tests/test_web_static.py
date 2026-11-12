@@ -126,14 +126,14 @@ def test_demo_data_before_main_script_and_only_functions():
     """demoApi зовётся уже из start() при загрузке — demo.js обычным (не defer) скриптом перед основным; в нём
     только объявления функций: порядок выполнения не важен, переменных основного скрипта он не трогает."""
     page = (WEB / "index.html").read_text(encoding="utf-8")
-    assert re.search(r'<script src="/js/demo\.js"></script>\n(<script src="/js/[\w/.-]+"></script>\n)*<script>\n', page)
+    assert re.search(r'<script src="/js/demo\.js"></script>\n(<script src="/js/[\w/.-]+"></script>\n)*', page)
     demo = (WEB / "js" / "demo.js").read_text(encoding="utf-8")
     top = [x for x in demo.split("\n") if x and not x.startswith((" ", "}", "//"))]
     assert top and all(re.match(r"(async )?function \w+\(", x) for x in top), top[:3]
     assert "function demoApi(" in demo and "function demoApi(" not in page
 
 
-# Порядок файлов = порядок выполнения (обычные <script> перед основным встроенным): переносятся непрерывные куски
+# Порядок файлов = порядок выполнения (обычные <script> в конце <body>): переносятся непрерывные куски
 # основного скрипта сверху вниз, так что порядок кода — прежний. Новый файл — сюда, на своё место.
 SCRIPTS = [
     "demo", "core/store", "core/i18n", "core/ui", "core/api",
@@ -155,16 +155,18 @@ SCRIPTS = [
     "helper",
     "start",
     "simple",
+    "boot",
 ]
 
 
 def test_scripts_before_main_in_order():
     """Ядро (шаг 4): store (общее состояние и store()), i18n (словарь), ui (значки, тема, ссылки, шторки, toast),
-    api (сеть); дальше — разделы основного скрипта (шаг 5) в прежнем порядке."""
+    api (сеть); дальше — разделы основного скрипта (шаг 5) в прежнем порядке; boot — запуск панели, последним."""
     page = (WEB / "index.html").read_text(encoding="utf-8")
     assert re.findall(r'<script src="/js/([\w/.-]+)\.js"></script>', page) == SCRIPTS
-    assert not re.search(r"<script[^>]*\b(defer|async)\b[^>]*src=\"/js/", page)   # пока основной встроен — без defer
-    assert f'<script src="/js/{SCRIPTS[-1]}.js"></script>\n<script>\n' in page        # сразу за ними — основной
+    assert not re.search(r"<script[^>]*\b(defer|async)\b[^>]*src=\"/js/", page)   # обычные, по порядку
+    assert "<script>" not in page                                   # встроенного основного скрипта больше нет
+    assert f'<script src="/js/{SCRIPTS[-1]}.js"></script>\n</body>' in page    # boot — последним, в конце <body>
 
 
 def test_load_order_no_forward_calls():

@@ -52,7 +52,8 @@ gas-pult init && gas-pult run
 
 ## Панель: как проверить изменения
 
-Интерфейс — без сборки: `src/gas_pult/web/index.html` (разметка и JS) и стили `web/css/*.css` (подключены в
+Интерфейс — без сборки: `src/gas_pult/web/index.html` (разметка), скрипты `web/js/**.js` (обычные `<script>` по порядку,
+порядок — `tests/test_web_static.py::SCRIPTS`) и стили `web/css/*.css` (подключены в
 `<head>` по порядку; сервер отдаёт их с `?v=<версия>` и вечным кэшем), сервер — `webapp.py`.
 
 ```bash
