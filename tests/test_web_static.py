@@ -151,6 +151,7 @@ SCRIPTS = [
     "input",
     "integrations",
     "settings",
+    "focus",
 ]
 
 
