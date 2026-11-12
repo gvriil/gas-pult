@@ -146,6 +146,7 @@ SCRIPTS = [
     "projects",
     "chat",
     "activity",
+    "commands",
 ]
 
 
