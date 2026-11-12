@@ -143,6 +143,7 @@ SCRIPTS = [
     "home",
     "terminal",
     "usage",
+    "projects",
 ]
 
 
