@@ -8,8 +8,8 @@
 Сценарии: «главная» (``&home`` → первая карточка сессии ``#sessionsView .card[data-id]``) и «сессия» (``&open=@1``
 → первое сообщение ``#content .msg[data-i]``). Устройства: телефон 390 (замедление процессора ×4 и сеть «4G»:
 задержка 60 мс, 9 Мбит/с вниз) и компьютер 1366 (без замедления). Каждый прогон — холодный заход (новый профиль,
-пустой кэш) и сразу повторный в том же профиле (тёплый кэш). Внешние адреса (telegram.org, cdnjs) подменяются
-пустым ответом — сеть до них не влияет на цифры; их число показано отдельно.
+пустой кэш) и сразу повторный в том же профиле (тёплый кэш). Внешние адреса (telegram.org, cdnjs) не открываются
+(имя не находится сразу) — сеть до них не влияет на цифры; их число показано отдельно.
 
 Метрики (медиана по прогонам): FCP; время до цели (карточка или сообщение); DOMContentLoaded; load; длинные задачи
 (число и «блокировка» — сумма их частей сверх 50 мс, как TBT) до цели; время работы скриптов и всех задач (CDP
@@ -53,12 +53,9 @@ DEVICES = {"390": dict(viewport={"width": 390, "height": 844}, is_mobile=True, h
 KEYS = ("fcp", "hit", "dcl", "load", "long_n", "tbt", "script", "task", "own_n", "own_bytes", "own_transfer", "ext_n")
 
 
-def stub(ext: list):
-    """Внешний адрес — пустой ответ и запись в ``ext`` (один аргумент: с двумя Playwright передаёт и request)."""
-    def handle(route):
-        ext.append(route.request.url)
-        route.fulfill(status=200, body="", content_type="text/javascript")
-    return handle
+def outside(origin: str, ext: list):
+    """Запрос не к своему серверу — в ``ext`` (замыкание: обработчику Playwright — один аргумент)."""
+    return lambda r: None if r.url.startswith(origin) else ext.append(r.url)
 
 
 def one(ctx, url: str, sel: str, mobile: bool, ext: list) -> dict:
@@ -90,7 +87,10 @@ def measure(base: str, runs: int = 7) -> dict:
     sep = "&" if "?" in base else "?"
     res: dict = {}
     with sync_playwright() as p:
-        br = p.chromium.launch(channel="chrome", headless=True)
+        # Внешние адреса — «нет такого имени» сразу (без сети и без ожидания). Не через route: перехват запросов в
+        # Playwright отключает HTTP-кэш, и «тёплый» заход качал бы всё заново.
+        br = p.chromium.launch(channel="chrome", headless=True,
+                               args=["--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"])
         for dev, kw in DEVICES.items():
             for scene, (q, sel) in SCENES.items():
                 for warm in ("cold", "warm"):
@@ -98,7 +98,7 @@ def measure(base: str, runs: int = 7) -> dict:
                 for _ in range(runs):
                     ctx = br.new_context(**kw)
                     ext: list = []
-                    ctx.route(lambda u: not u.startswith(origin), stub(ext))
+                    ctx.on("request", outside(origin, ext))
                     url = f"{base}{sep}{q}&theme=light"
                     for warm in ("cold", "warm"):
                         res[f"{dev} {scene} {warm}"].append(one(ctx, url, sel, dev == "390", ext))
