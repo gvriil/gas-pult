@@ -153,6 +153,7 @@ SCRIPTS = [
     "settings",
     "focus",
     "helper",
+    "start",
 ]
 
 
