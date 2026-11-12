@@ -110,7 +110,7 @@ Claude what to change», «No, and tell Claude what to do differently (esc)», �
    пункт — строка в `OPTIONS` (`key`, регулярка, уровень; опасное — `2`), ошибка — в `ERRORS`.
 2. Тексты — ключи `ask.<kind>.title` / `.detail`, `opt.<key>.label` / `.note`, `err.<key>` в **обоих** словарях.
 3. Образец экрана — в `tests/test_humanize.py` (как его отдаёт tmux), `pytest`.
-4. Если менялся разбор демо-экранов — `python -m gas_pult.humanize` (обновит `const SIMPLE_DEMO` в `index.html`; тест
+4. Если менялся разбор демо-экранов — `python -m gas_pult.humanize` (обновит `const SIMPLE_DEMO` в интерфейсе — `index.html` или `web/js/`; тест
    сверяет).
 
 ## Белый список латиницы

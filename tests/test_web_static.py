@@ -117,3 +117,17 @@ def test_every_file_is_linked_in_cascade_order():
     if linked:
         assert linked[0] == "css/tokens.css"
     assert "<style>" not in page                  # стили — только в файлах (кэшируются), не в странице
+    scripts = re.findall(r'<script\b[^>]*\bsrc="/(js/[\w/.-]+\.js)"', page)
+    assert sorted(scripts) == sorted(p.relative_to(WEB).as_posix() for p in WEB.glob("js/**/*.js"))
+    assert len(set(scripts)) == len(scripts)
+
+
+def test_demo_data_before_main_script_and_only_functions():
+    """demoApi зовётся уже из start() при загрузке — demo.js обычным (не defer) скриптом перед основным; в нём
+    только объявления функций: порядок выполнения не важен, переменных основного скрипта он не трогает."""
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    assert '<script src="/js/demo.js"></script>\n<script>\n' in page
+    demo = (WEB / "js" / "demo.js").read_text(encoding="utf-8")
+    top = [x for x in demo.split("\n") if x and not x.startswith((" ", "}", "//"))]
+    assert top and all(re.match(r"(async )?function \w+\(", x) for x in top), top[:3]
+    assert "function demoApi(" in demo and "function demoApi(" not in page

@@ -341,10 +341,15 @@ def demo_json() -> str:
 
 if __name__ == "__main__":       # python -m gas_pult.humanize — обновить демо-разбор в index.html после правки словаря
     from pathlib import Path
-    page = Path(__file__).with_name("web") / "index.html"
+    web = Path(__file__).with_name("web")              # строка — в том файле интерфейса, где она есть
+    line = re.compile(r"^const SIMPLE_DEMO = .*;$", re.M)
+    page = next((f for f in (web / "index.html", *sorted(web.glob("js/**/*.js")))
+                 if line.search(f.read_text(encoding="utf-8"))), None)
+    if page is None:
+        raise SystemExit("в интерфейсе (web/index.html, web/js) нет строки const SIMPLE_DEMO = …;")
     src = page.read_text(encoding="utf-8")
-    new, n = re.subn(r"^const SIMPLE_DEMO = .*;$", lambda _: f"const SIMPLE_DEMO = {demo_json()};", src, flags=re.M)
+    new, n = line.subn(lambda _: f"const SIMPLE_DEMO = {demo_json()};", src)
     if n != 1:
-        raise SystemExit("в index.html нет строки const SIMPLE_DEMO = …;")
+        raise SystemExit(f"в {page} строк const SIMPLE_DEMO = …; — {n}, нужна одна")
     page.write_text(new, encoding="utf-8")
     print(f"демо простого режима обновлено: {', '.join(DEMO_SCREENS)} → {page}")
