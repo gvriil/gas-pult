@@ -141,6 +141,7 @@ SCRIPTS = [
     "shell",
     "login",
     "home",
+    "terminal",
 ]
 
 
