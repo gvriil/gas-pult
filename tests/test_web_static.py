@@ -150,6 +150,7 @@ SCRIPTS = [
     "voice",
     "input",
     "integrations",
+    "settings",
 ]
 
 
