@@ -148,6 +148,7 @@ SCRIPTS = [
     "activity",
     "commands",
     "voice",
+    "input",
 ]
 
 
