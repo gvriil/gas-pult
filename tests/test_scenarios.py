@@ -9,10 +9,10 @@ import threading
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
-from importlib import resources
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import modules, scenarios, webapp, webauth
 from gas_pult.config import Config
@@ -30,7 +30,7 @@ def dirs(monkeypatch, tmp_path):
 
 
 def page() -> str:
-    return resources.files("gas_pult").joinpath("web/index.html").read_text(encoding="utf-8")
+    return web_source()
 
 
 # ---------- каталог и схема ----------

@@ -9,6 +9,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import personas, webapp, webauth
 from gas_pult.config import Config
@@ -193,8 +194,7 @@ def test_team_ceiling_enforced(server):
 def test_demo_catalog_in_sync():
     """Демо панели (?demo&persona=1) показывает тот же справочник ролей, что сервер."""
     import re
-    from pathlib import Path
-    index = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    index = web_source()
     demo = json.loads(re.search(r"const DEMO_PERSONAS = (\{.*?\});\n", index).group(1))
     assert demo == {lang: personas.catalog(lang) for lang in ("ru", "en")}
     # тумблеры и роли в панели — только по справочнику с сервера, своих списков нет
@@ -236,10 +236,9 @@ def test_session_sections(server, tmp_path):
 def test_team_screen_fields_match_server(server):
     """Экран «Команда» читает только то, что отдаёт /api/team; пункт — только владельцу."""
     import re
-    from pathlib import Path
     panel, base = server
     t = call(base, "/api/team", token=panel.auth.issue(1))[1]
-    index = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    index = web_source()
     body = index[index.index("async function teamSheet("):index.index("function personSheet(")]
     assert {"staff_caps", "sections", "people", "catalog"} <= set(t)
     used = set(re.findall(r"\b(?:x|p)\.(own_caps|own_sections|ceiling|sections|name|username|id)\b", body))

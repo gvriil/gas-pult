@@ -13,13 +13,14 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import activity, ago, bot, transcripts, webapp
 from gas_pult.config import Config
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "src" / "gas_pult" / "web"
-INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+INDEX = web_source()
 NOW = 1793779200.0                    # 2026-11-04 08:00:00 UTC
 MIN, H, D = 60, 3600, 86400
 

@@ -8,11 +8,12 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import projects, webapp, webauth
 from gas_pult.config import Config
 
-INDEX = (Path(__file__).parent.parent / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
+INDEX = web_source()
 
 
 @pytest.fixture(autouse=True)

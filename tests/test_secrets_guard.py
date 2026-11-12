@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import secrets_guard as g
 from gas_pult import tenant_admin, transcripts
@@ -269,7 +270,7 @@ def test_transcript_shows_block_note_not_key(tmp_path):
 
 # ---------- панель: те же правила и то же поведение ----------
 def html_rules():
-    m = re.search(r'<script type="application/json" id="secretRules">\n(.*?)\n</script>', HTML.read_text(), re.S)
+    m = re.search(r'<script type="application/json" id="secretRules">\n(.*?)\n</script>', web_source(), re.S)
     return json.loads(m.group(1))
 
 
@@ -278,7 +279,7 @@ def test_panel_rules_are_copy_of_python():
 
 
 def test_panel_checks_before_send():
-    h = HTML.read_text()
+    h = web_source()
     body = h[h.index("async function sendText()"):h.index("const msgId")]
     assert body.index("redactSecrets(typed)") < body.index("pending.push")
     assert 'helpSheet("sheet.secret")' in h and "Убрать и отправить" in h and "Отправить как есть" in h
@@ -288,7 +289,7 @@ def test_panel_js_matches_python():
     node = shutil.which("node") or os.environ.get("NODE")
     if not node:
         pytest.skip("нет node — поведение JS проверяет CI (ubuntu, node есть)")
-    h = HTML.read_text()
+    h = web_source()
     code = h[h.index("// secrets:begin"):h.index("// secrets:end")]
     texts = [t for t, _, _ in SAMPLES] + FALSE
     prog = ("const document = { getElementById: () => ({ textContent: process.argv[1] }) };\n" + code

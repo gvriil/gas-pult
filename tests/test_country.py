@@ -9,6 +9,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import bot, country, fallback, models, webapp, webauth
 from gas_pult.config import Config
@@ -138,7 +139,7 @@ def test_owner_country_in_side_file(tmp_path):
 def test_no_vpn_hints_in_interface():
     src = Path(__file__).parent.parent / "src" / "gas_pult"
     for f in ("web/index.html", "bot.py", "country.py", "terms.py"):
-        text = (src / f).read_text(encoding="utf-8")
+        text = web_source() if f == "web/index.html" else (src / f).read_text(encoding="utf-8")
         assert "VPN" not in text and "смените регион" not in text.lower(), f
     assert country.DENY == models.DENY == "Этот сервис недоступен в вашей стране по условиям поставщика"
 

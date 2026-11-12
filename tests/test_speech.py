@@ -2,15 +2,15 @@
 Одна кнопка «Прослушать» и скорость 1×–2× в плеере; скорость — в настройках человека на сервере."""
 
 import json
-from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import transcripts, voice, webapp
 from gas_pult.config import Config
 from gas_pult.speech import cardinal, decimal, ordinal, speakable
 
-PAGE = (Path(webapp.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+PAGE = web_source()
 
 
 # ---------- ссылки и пути ----------

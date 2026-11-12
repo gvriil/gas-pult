@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from websrc import web_source
 
 from gas_pult import bot, commands, termwin, webapp, webauth
 from gas_pult.config import SUDO_ALLOW, Config
@@ -214,7 +215,7 @@ def test_no_pass_code_left():
     for gone in ("passcheck", "pass_unlock", "pass-unlock", "boot_check", "PASS_LOCKED"):
         assert gone not in py, gone
     assert not re.search(r"/api/pass[\"/?]", py)
-    html = (src / "web" / "index.html").read_text()
+    html = web_source()
     assert not re.search(r"/api/pass[\"/?]", html)
     for gone in ("passUnlock", "serverSheet", "pass-unlock", "passLockedNote", "data-pass-unlock"):
         assert gone not in html, gone

@@ -12,6 +12,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import bot, modules, tmux, webapp, webauth
 from gas_pult.config import Config
@@ -381,7 +382,7 @@ def test_closed_with_pause_waits_until_enabled(server, tmp_path, monkeypatch):
 
 
 # ---------- «Новая папка»: в боте (🆕 → 📁) и в панели («Новая сессия» → «Новая папка») ----------
-INDEX = (Path(__file__).parent.parent / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
+INDEX = web_source()
 
 
 def test_panel_new_session_sheet_has_new_folder():
@@ -549,7 +550,7 @@ def test_panel_module_offers_existing_then_confirmed_another(server, tmp_path):
     assert code == 400 and "уже есть" in d["error"] and not (tmp_path / "projects" / "night-shift-2").exists()
     code, d = call(base, "/api/modules/create", {"id": "night-shift", "again": True}, owner)
     assert code == 200 and d["folder"] == "night-shift-2"
-    html = (Path(webapp.__file__).with_name("web") / "index.html").read_text(encoding="utf-8")
+    html = web_source()
     assert "data-mopen" in html and "Создать ещё одно пространство" in html and "again" in html
 
 

@@ -15,9 +15,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
-PAGE = (WEB / "index.html").read_text(encoding="utf-8")
+PAGE = web_source()
 SCRIPT = PAGE[PAGE.index("<script>\n"):]
 BLOCK = SCRIPT[SCRIPT.index("// enter:start"):SCRIPT.index("// enter:end")]
 

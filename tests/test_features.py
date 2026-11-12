@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import bot, cli, features, webapp, webauth
 from gas_pult.config import Config
@@ -140,6 +141,6 @@ def test_api_uses_records_for_any_role(tmp_path, monkeypatch):
 
 
 def test_panel_marks_screens_and_actions():
-    page = (Path(webapp.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    page = web_source()
     assert 'api("/api/uses", { ids })' in page and 'useMark("act:" + b.dataset.act)' in page
     assert "if (id && !DEMO && meta) USE.ids.add(id)" in page

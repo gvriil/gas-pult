@@ -14,6 +14,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import mcp, models, providers, selftest
 
@@ -263,7 +264,7 @@ def test_api_selftest_owner_only(dirs, monkeypatch):
 
 
 def test_ui_wiring():
-    page = (Path(selftest.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    page = web_source()
     for s in ("paintGaps(s);", "providersView", "/api/selftest", "gapPick(p)", "connAlt(c)", 'T("int.any.title")'):
         assert s in page, s
     ru = json.loads((Path(selftest.__file__).parent / "web" / "i18n" / "ru.json").read_text(encoding="utf-8"))

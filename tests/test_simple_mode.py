@@ -18,6 +18,7 @@ from importlib import resources
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import humanize, modules, webapp, webauth
 from gas_pult.config import Config
@@ -25,7 +26,7 @@ from gas_pult.people import People
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "src" / "gas_pult" / "web"
-INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+INDEX = web_source()
 RU = json.loads((WEB / "i18n" / "ru.json").read_text(encoding="utf-8"))
 EN = json.loads((WEB / "i18n" / "en.json").read_text(encoding="utf-8"))
 E2E = ROOT / "tests" / "e2e" / "simple_mode.py"

@@ -9,6 +9,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import webapp
 
@@ -33,6 +34,6 @@ def test_e2e_chat_keeps_place():
 def test_journal_id_in_revision_is_first_part():
     """Фронт отличает другой разговор по первой части rev (journalOf): формат transcripts.revision это и даёт."""
     from gas_pult import transcripts
-    src = (Path(webapp.__file__).parent / "web" / "index.html").read_text()
+    src = web_source()
     assert 'const journalOf = (rev) => String(rev || "").split("-")[0];' in src
     assert 'f"{f.stem[:8]}-{st.st_size}-{st.st_mtime_ns}"' in Path(transcripts.__file__).read_text()

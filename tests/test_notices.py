@@ -15,9 +15,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
-PAGE = (WEB / "index.html").read_text(encoding="utf-8")
+PAGE = web_source()
 CSS = re.sub(r"/\*.*?\*/", "", PAGE[PAGE.index("<style>"):PAGE.index("</style>")], flags=re.S)
 SCRIPT = PAGE[PAGE.index("<script>\n"):]
 E2E = Path(__file__).resolve().parent / "e2e" / "notices_demo.py"

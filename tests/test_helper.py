@@ -14,13 +14,14 @@ from importlib import resources
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import helper, offers, webapp, webauth
 from gas_pult.config import Config
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "src" / "gas_pult" / "web"
-INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+INDEX = web_source()
 OFFER = (WEB / "offer.html").read_text(encoding="utf-8")
 M = helper.the_map()
 

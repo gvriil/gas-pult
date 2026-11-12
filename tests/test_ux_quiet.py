@@ -7,9 +7,10 @@
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web" / "index.html"
-PAGE = WEB.read_text(encoding="utf-8")
+PAGE = web_source()
 
 
 def test_no_updated_clock():

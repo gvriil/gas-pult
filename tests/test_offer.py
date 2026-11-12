@@ -13,6 +13,7 @@ from datetime import date
 from http.server import ThreadingHTTPServer
 
 import pytest
+from websrc import web_source
 
 from gas_pult import bot, cli, modules, offer_report, offers, terms, webapp, webauth
 from gas_pult.config import Config
@@ -555,7 +556,7 @@ def test_offer_page_calculator_same_js_as_panel():
     web = Path(offers.__file__).with_name("web")
     block = lambda t: re.search(r"/\* benefit:start.*?/\* benefit:end \*/", t, re.S).group(0)   # noqa: E731
     offer = (web / "offer.html").read_text(encoding="utf-8")
-    assert block(offer) == block((web / "index.html").read_text(encoding="utf-8"))
+    assert block(offer) == block(web_source())
     day = offer[offer.index("function dayHtml("):offer.index("function bindDemo(")]
     assert "api(" not in day and "fetch(" not in day                 # модель и сервер не вызываются
     assert "Допущения" in day and "assumptions_disclaimer" in day and 'type="range"' in day

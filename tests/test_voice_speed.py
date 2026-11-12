@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 from gas_pult import asr, providers, transcripts, voice, webapp
 from gas_pult.asr import service
@@ -69,7 +70,7 @@ def test_tts_sends_different_text_per_mode(monkeypatch):
 
 def test_panel_cache_key_includes_mode():
     """Плеер панели: тот же ответ в другом режиме — новый запрос (full= в адресе), ответ старого режима не играет."""
-    page = (Path(webapp.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    page = web_source()
     assert "voice.msg === msg && voice.full === full" in page
     assert "voice.msg !== msg || voice.full !== full) return;" in page
     assert page.count("/api/tts?w=${encodeURIComponent(") == 2 and page.count("&full=${") == 2

@@ -9,12 +9,13 @@ import re
 from pathlib import Path
 
 import pytest
+from websrc import web_source
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web" / "index.html"
 
 
 def test_lists_use_morph():
-    html = WEB.read_text(encoding="utf-8")
+    html = web_source()
     for box in ("sessionsView", "projList", "projChats"):
         assert f'morph($("{box}")' in html, box
         assert f'$("{box}").innerHTML' not in html, box

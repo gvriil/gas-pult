@@ -2583,9 +2583,52 @@ DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content
              '{title}</h1><p style="color:#6E6C65">{text}</p></body>')
 
 
-def handler(panel: Panel):
-    page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
-    build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
+# Файлы интерфейса рядом с index.html (разбиение пульта на модули): web/js/**.js и web/css/**.css. Отдаются по
+# /js/… и /css/… без входа, как сама страница. В index.html у ссылок на них сервер дописывает ?v=<версия файла>
+# (начало sha256 содержимого): с ней ответ кэшируется навсегда (immutable), файл изменился — новый адрес, старый
+# кэш не мешает; без версии или с чужой — no-cache. Сама страница — как раньше, no-store.
+ASSET_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+ASSET_REF = re.compile(rb'(<(?:script|link)\b[^>]*?\b(?:src|href)=")(/(?:js|css)/[\w./-]+?\.(?:js|css))(")')
+ASSET_CACHE = "public, max-age=31536000, immutable"
+
+
+def web_assets(web) -> dict[str, tuple[bytes, str]]:
+    """{"/js/chat.js": (содержимое, версия)} — все .js и .css в web/js и web/css (с подпапками), по алфавиту."""
+    out: dict[str, tuple[bytes, str]] = {}
+
+    def walk(d, prefix: str):
+        for x in sorted(d.iterdir(), key=lambda t: t.name):
+            if x.is_dir():
+                walk(x, f"{prefix}/{x.name}")
+            elif os.path.splitext(x.name)[1] in ASSET_TYPES:
+                body = x.read_bytes()
+                out[f"{prefix}/{x.name}"] = (body, hashlib.sha256(body).hexdigest()[:10])
+    for top in ("js", "css"):
+        if web.joinpath(top).is_dir():
+            walk(web.joinpath(top), "/" + top)
+    return out
+
+
+def link_assets(page: bytes, assets: dict[str, tuple[bytes, str]]) -> bytes:
+    """Ссылкам <script src="/js/…"> и <link href="/css/…"> в странице — ?v=<версия файла> (файла нет — как есть)."""
+    def ver(m: re.Match) -> bytes:
+        a = assets.get(m[2].decode())
+        return m[1] + m[2] + (b"?v=" + a[1].encode() if a else b"") + m[3]
+    return ASSET_REF.sub(ver, page)
+
+
+def web_build(page: bytes, assets: dict[str, tuple[bytes, str]]) -> str:
+    """Версия панели: изменилась страница или любой её файл — панель предложит обновиться (без файлов — как раньше,
+    начало sha256 страницы)."""
+    return hashlib.sha256(page + b"".join(a[0] for a in assets.values())).hexdigest()[:12]
+
+
+def handler(panel: Panel, web=None):
+    web = web or resources.files("gas_pult").joinpath("web")
+    page = web.joinpath("index.html").read_bytes()
+    assets = web_assets(web)
+    build = web_build(page, assets)
+    page = link_assets(page, assets)
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
@@ -2612,7 +2655,8 @@ def handler(panel: Panel):
                 self.send_header(k, v)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            if "Cache-Control" not in (headers or {}):       # свой — только у файлов интерфейса (/js, /css)
+                self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body)
@@ -2802,6 +2846,10 @@ def handler(panel: Panel):
             url = urllib.parse.urlparse(self.path)
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8")
+            if (asset := assets.get(url.path)) is not None:   # файлы интерфейса: с версией — навсегда в кэш
+                fresh = urllib.parse.parse_qs(url.query).get("v", [""])[0] == asset[1]
+                return self.reply(200, asset[0], ASSET_TYPES[os.path.splitext(url.path)[1]],
+                                  headers={"Cache-Control": ASSET_CACHE if fresh else "no-cache"})
             if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
                 return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
