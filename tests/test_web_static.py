@@ -152,6 +152,7 @@ SCRIPTS = [
     "integrations",
     "settings",
     "focus",
+    "helper",
 ]
 
 
