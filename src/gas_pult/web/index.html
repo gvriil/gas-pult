@@ -4143,6 +4143,7 @@ function sessionSheet(id) {
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
+    ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этой сессии" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
@@ -4158,6 +4159,17 @@ function sessionSheet(id) {
       { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed(s.space) },
       { label: T("sf.title"), sub: T("sf.sub"), icon: "file", run: () => sfFiles(s.id) }] : []),
   ]);
+}
+// Уровень уведомлений сессии (#189 п. 1, notifylevel.py): в Telegram — всё, только вопросы и ошибки, или ничего.
+const NOTIFY_T = { all: "все", input: "только вопросы", muted: "тихо" };
+function notifySheet(s) {
+  helpSheet("sheet.session");
+  const set = (level) => api("/api/notify/level", { w: s.id, level }).then((d) => { toast("Уведомления: " + NOTIFY_T[d.notify]); refresh(); }, (e) => toast(e.message, 4000));
+  sheet("Уведомления: " + (s.title || s.name), [
+    { label: "Все", sub: "ответы, вопросы и ошибки", icon: "bell", on: s.notify_own && s.notify === "all", run: () => set("all") },
+    { label: "Только вопросы и ошибки", sub: "Claude спрашивает или что-то сломалось", icon: "bell", on: s.notify_own && s.notify === "input", run: () => set("input") },
+    { label: "Тихо", sub: "ничего в Telegram; в панели всё видно", icon: "bell", on: s.notify_own && s.notify === "muted", run: () => set("muted") },
+    { label: "Как в настройках бота", sub: "убрать свою настройку", icon: "refresh", on: !s.notify_own, run: () => set("inherit") }]);
 }
 function confirmClose(id) {
   const s = sessions.find((x) => x.id === id);
@@ -8115,7 +8127,7 @@ function demoApi(path, body) {
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
-    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
+    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", notify: x.status === "stopped" ? "" : (demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit" ? demoApi.nl[x.id] : "all"), notify_own: !!demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
@@ -8174,6 +8186,7 @@ function demoApi(path, body) {
     if (!fp && path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
+  if (path === "/api/notify/level") { (demoApi.nl ||= {})[body.w] = body.level; R["/api/notify/level"] = { notify: body.level === "inherit" ? "all" : body.level }; }
   if (path === "/api/stopped/clear") { const st = (R["/api/sessions"]?.sessions || []).filter((x) => x.status === "stopped"); st.forEach((x) => { (demoApi.gone ||= {})[x.id] = 1; }); R["/api/stopped/clear"] = { closed: st.length, names: st.map((x) => x.name) }; }
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
   R["/api/module/delete"] = { result: "удалено", trash: "~/.local/share/gas-pult/trash/modules/20261105-101500__gas-pult" };
