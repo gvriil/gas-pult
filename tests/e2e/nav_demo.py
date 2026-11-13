@@ -6,7 +6,7 @@
 - «Новый чат» (✎): пустое поле, над ним папка; окно запускается только при первой отправке (/api/project/session),
   затем само сообщение (/api/send);
 - «⋯» у строки — меню у самой строки (не шторка снизу), первым «Закрепить»; закреплённое — в «Закреплённые»;
-- «Удалить» — строка уходит сразу, «Отменить» 5 с: отменили — на сервер ничего; не отменили — /api/chat/delete;
+- «Удалить» — строка уходит сразу и /api/chat/delete — сразу; «Отменить» — из корзины и сессия снова открыта;
 - телефон: ☰ и свайп от левого края (панель идёт за пальцем), затемнение закрывает; долгое нажатие — меню строки;
 - Ctrl+K — поиск по чатам. Консоль без ошибок.
 """
@@ -100,7 +100,8 @@ def one(br, base: str, sep: str, w: int, h: int, mob: bool, th: str, shots, errs
     assert "Закреплённые" in pg.inner_text("#navList")
     assert pg.evaluate(CALLS, "/api/pin")[-1][1]["on"] is True
 
-    # «Удалить» → «Отменить»: на сервер ничего
+    # «Удалить» → на сервер сразу (#179 P1.4: через 5 с закрытая панель не удаляла ничего); «Отменить» — из корзины,
+    # живая сессия снова открывается
     def delete(rid: str):
         menu(pg.locator(f"#navList .nrow[data-nw='{rid}']").first)
         pg.locator(".pop button", has_text="Удалить").click()
@@ -109,16 +110,14 @@ def one(br, base: str, sep: str, w: int, h: int, mob: bool, th: str, shots, errs
 
     rid = pg.locator("#navList .nrow[data-nw]:not(.pinned)").first.get_attribute("data-nw")
     delete(rid)
+    dl = pg.evaluate(CALLS, "/api/chat/delete")
+    assert len(dl) == 1 and dl[0][1] == {"w": rid}, f"{tag}: удаление не ушло сразу: {dl}"
     if shots:
         pg.screenshot(path=f"{shots}/nav-undo-{w}-{th}.png")
     pg.click(".toast.undo button")
     pg.wait_for_selector(f"#navList .nrow[data-nw='{rid}']")
-    pg.wait_for_timeout(5500)
-    assert not pg.evaluate(CALLS, "/api/chat/delete"), f"{tag}: «Отменить» — а на сервер ушло удаление"
-    delete(rid)
-    pg.wait_for_timeout(5600)
-    dl = pg.evaluate(CALLS, "/api/chat/delete")
-    assert len(dl) == 1 and dl[0][1] == {"w": rid}, f"{tag}: удаление не ушло через 5 с: {dl}"
+    assert pg.evaluate(CALLS, "/api/chat/restore"), f"{tag}: «Отменить» не вернуло из корзины"
+    assert pg.evaluate(CALLS, "/api/project/resume"), f"{tag}: «Отменить» не открыло сессию снова"
 
     # Ctrl+K — поиск
     if mob:

@@ -3928,8 +3928,18 @@ async function chatDelete(body, name) {
   if (body.w) NAV.gone.delete(body.w); projDone = null; refresh(); done();
   const why = d.kept ? ` · переписка осталась: она открыта в «${d.kept}»` : d.schedule === "paused" ? " · расписание на паузе" : "";
   if (d.draft) toast("В поле ввода был неотправленный текст — он в корзине вместе с перепиской", 4500);
-  else if (d.trash) undoBar(`Удалено: «${label}»${why}`, () => chatRestore(d.trash.id), () => {}, 8000);
+  else if (d.trash) undoBar(`Удалено: «${label}»${why}`, () => chatUndo(d.trash, !!body.w, label), () => {}, 8000);
   else toast(`Удалено: «${label}»${why}`, 4000);
+}
+// «Отменить» сразу после «Удалить»: переписка — из корзины; удаляли живую сессию — она снова открывается с тем же
+// разговором (окно новое: прежнее уже закрыто на сервере).
+async function chatUndo(t, live, label) {
+  try {
+    await api("/api/chat/restore", { id: t.id });
+    if (live && t.project) await api("/api/project/resume", { id: t.project, sid: t.sid });
+    toast("Вернул «" + label + "»" + (live ? " — сессия снова открыта" : ""), 3500);
+  } catch (e) { toast("Не вернул: " + e.message, 5000); }
+  projDone = null; await refresh(); if (proj && projTab === "done") loadDone();
 }
 async function chatRestore(id) {
   try { const r = await api("/api/chat/restore", { id }); toast("Вернул: «" + (r.title || "чат") + "» — в «Завершённых»", 4000); projDone = null; await refresh(); if (proj && projTab === "done") loadDone(); }
@@ -8025,6 +8035,7 @@ async function demoChat(key, body, ses) {
   if (key === "/api/chat/restore") {
     const i = tr.findIndex((x) => x.id === body.id); if (i < 0) throw new Error("в корзине такого чата нет");
     const [t] = tr.splice(i, 1);
+    if (t.w && demoApi.gone) delete demoApi.gone[t.w];   // демо: «Отменить» сразу после «Удалить» — окно на месте
     if (t.chat) delete pj.hidden[t.sid];
     else ((pj.extra ||= {})[t.project] ||= []).unshift({ sid: t.sid, title: t.title, mtime: now - 60, msgs: 5, mine: true });
     return { id: t.id, sid: t.sid, title: t.title, project: t.project, at: t.at };

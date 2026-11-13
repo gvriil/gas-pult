@@ -21,3 +21,13 @@ def no_default_tmux(monkeypatch):
     os.makedirs(os.path.join(d, "data"))
     yield
     shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def no_actor_leak():
+    """«Кто действует» (``Pult.actor``) — общий для потока: тест бота, оставивший Telegram ID, ломал проверку страны
+    в следующих тестах (порядок файлов менял итог). Сбрасываем до и после каждого теста."""
+    from gas_pult.bot import Pult
+    Pult.actor.uid = None
+    yield
+    Pult.actor.uid = None

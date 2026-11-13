@@ -63,3 +63,14 @@ def test_retry_once_only_runner_not_acquired():
     assert '"$head" != "$SHA"' in script                                         # новый пуш — не повторяем
     if shutil.which("bash"):
         assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
+
+
+def test_browser_tests_run_in_ci_without_skips():
+    """13.11: 25 браузерных тестов в CI молча пропускались — playwright не ставился. Теперь — задание «browser»."""
+    js = jobs((WF / "ci.yml").read_text())
+    b = js["browser"]
+    assert '.[dev,browser]' in b and "playwright install --with-deps chromium" in b
+    assert '! grep -E "SKIPPED.*(playwright' in b and "--cov=gas_pult" in b
+    assert "browser" in re.search(r"needs: \[(.+)\]", js["build"]).group(1)
+    pp = (WF.parents[1] / "pyproject.toml").read_text()
+    assert re.search(r'^browser = \[.*"playwright>=', pp, re.M)

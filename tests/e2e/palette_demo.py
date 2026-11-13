@@ -10,6 +10,21 @@ Ctrl+K открывает поиск панели чатов (#149) — он ж�
 import sys
 
 
+def palette(pg, tries: int = 4):
+    """Ctrl+K → фокус в поиске. Сразу после открытия сессии панель ещё ставит фокус в поле ввода и может перехватить
+    его у палитры (13.11: падало по таймауту 3 с на CI-подобной нагрузке) — жмём ещё раз, пока не откроется."""
+    for i in range(tries):
+        pg.keyboard.press("Control+k")
+        try:
+            pg.wait_for_function("() => document.activeElement?.id === 'navQ'", timeout=2500)
+            return
+        except Exception:
+            if i == tries - 1:
+                raise
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(300)
+
+
 def run(base: str, shots: str = ""):
     from playwright.sync_api import sync_playwright
 
@@ -29,8 +44,7 @@ def run(base: str, shots: str = ""):
                 pg.wait_for_timeout(1200)                        # open=@1 открывает сессию в конце start
                 seen = pg.locator("input[type=search]").filter(visible=True).count()
                 assert seen == 0, f"{tag}: поиск виден до Ctrl+K"
-                pg.keyboard.press("Control+k")
-                pg.wait_for_function("() => document.activeElement?.id === 'navQ'", timeout=3000)
+                palette(pg)
                 pg.wait_for_timeout(300)                         # телефон: панель выезжает, фокус в поле — через 220 мс
                 # команды — по запросу, чаты — по-прежнему
                 pg.keyboard.type("экран")
@@ -42,8 +56,7 @@ def run(base: str, shots: str = ""):
                 pg.keyboard.press("Enter")                       # чатов нет — первая команда
                 pg.wait_for_function("() => tab === 'screen'", timeout=3000)
                 # чат по имени — Enter открывает его, команд в выдаче нет
-                pg.keyboard.press("Control+k")
-                pg.wait_for_function("() => document.activeElement?.id === 'navQ'", timeout=3000)
+                palette(pg)
                 pg.wait_for_timeout(300)                         # телефон: панель выезжает, фокус в поле — через 220 мс
                 pg.fill("#navQ", "shop")
                 pg.wait_for_selector("#navList [data-nw]")
@@ -52,8 +65,7 @@ def run(base: str, shots: str = ""):
                 pg.keyboard.press("Enter")
                 pg.wait_for_function(f"() => current === {wid!r} && view === 'session'", timeout=3000)
                 # стрелки — по строкам, Enter на команде
-                pg.keyboard.press("Control+k")
-                pg.wait_for_function("() => document.activeElement?.id === 'navQ'", timeout=3000)
+                palette(pg)
                 pg.wait_for_timeout(300)                         # телефон: панель выезжает, фокус в поле — через 220 мс
                 pg.fill("#navQ", "настрой")
                 pg.wait_for_selector("#navList [data-ncmd='settings']")
