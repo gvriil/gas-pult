@@ -91,6 +91,11 @@ from gas_pult.telegram import Api, TelegramError
 from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
 
+
+class NeedForce(ValueError):
+    """Действие можно сделать только принудительно (фоновые задачи сессии): панель спросит и повторит с ``force``."""
+
+
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
 MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
@@ -271,8 +276,8 @@ class Panel:
                 continue
             if w["cmd"] != "claude":
                 continue
-            if not w.get("mark"):                    # окна до метки: помечаем, чтобы и они потом стали «остановлена»
-                self.tmux.run("set-option", "-w", "-t", w["id"], "@gas_pult", w.get("profile") or "claude")
+            # окно без метки открыл не пульт (вручную в tmux): не метим — иначе после выхода Claude оно навсегда
+            # оставалось «остановленной» сессией (#179 P1.6); такое окно просто пропадает из списка, как терминал
             lines = self.tmux.screen(w["id"], 40)
             scr = "\n".join(lines)
             home = self.pult.home_of(w)                       # папка Claude того, кто открыл окно
@@ -642,7 +647,7 @@ class Panel:
             return None
         return transcripts.current(w["path"], home)
 
-    def chat_delete(self, wid: str = "", pid: str = "", sid: str = "") -> dict:
+    def chat_delete(self, wid: str = "", pid: str = "", sid: str = "", force: bool = False) -> dict:
         """«Удалить»: окно сессии (``wid``) или завершённый чат проекта (``pid`` + ``sid``). Окно закрывается (Claude
         выходит штатно; не вышел за 20 с — окно закрываем, разговор уже в журнале), журнал — в корзину пульта, чат
         помечается скрытым в ``projects.json``: после обновления и перезапуска не возвращается. «Вернуть» —
@@ -661,14 +666,17 @@ class Panel:
             if w.get("cmd") == "claude":
                 r = self.pult.quit_ex(w)
                 draft = r["draft"]
-                if r["result"] == "background":
-                    raise ValueError("не удалил: у сессии есть фоновые задачи — решите в самом окне")
-                if r["result"] == "busy" and self.tmux.window(w["id"]):
+                if r["result"] == "background" and not force:
+                    raise NeedForce("не удалил: у сессии есть фоновые задачи — «Удалить принудительно» остановит их")
+                if r["result"] in ("busy", "background") and self.tmux.window(w["id"]):
                     self.tmux.kill(w["id"])
             else:
                 self.tmux.kill(w["id"])
             self.focus.end_window(w["id"])                  # фокус-ссылки этой сессии гаснут
-        out = {"result": "удалено", "closed": bool(w), "draft": draft, "trash": None}
+            if (sch := self.schedule_of(w["path"])) and sch.get("state") == "on":
+                modules.set_schedule(Path(w["path"]), "paused")   # иначе расписание снова откроет удалённую сессию
+        out = {"result": "удалено", "closed": bool(w), "draft": draft, "trash": None,
+               **({"schedule": "paused"} if w and (self.schedule_of(w["path"]) or {}).get("state") == "paused" else {})}
         if f and (o := self.sid_owner(f.stem, (w or {}).get("id", ""))):
             out["kept"] = o["name"]                          # журнал открыт в другом окне — его разговор не уносим
             return out
@@ -2125,15 +2133,33 @@ class Panel:
     def close(self, w: dict) -> str:
         return self.close_ex(w)["result"]
 
-    def close_ex(self, w: dict) -> dict:
-        """Завершить сессию: текст итога и неотправленный черновик из поля ввода (если был) — панель его покажет."""
+    def close_ex(self, w: dict, force: bool = False) -> dict:
+        """Завершить сессию: текст итога и неотправленный черновик из поля ввода (если был) — панель его покажет.
+        ``code`` — «background» (фоновые задачи) или «busy» (Claude не вышел): панель предложит «Закрыть
+        принудительно» (``force``) — окно закрывается, фоновые задачи останавливаются, переписка остаётся в журнале."""
         if w.get("stopped"):                            # остановленная: Claude уже вышел — окно с оболочкой закрыть
             self.tmux.kill(w["id"])
             return {"result": "закрыто", "draft": ""}
         r = self.pult.quit_ex(w)
-        text = {"background": "не закрыл: у сессии есть фоновые задачи — решите в самом окне",
-                "busy": "Claude не вышел за 20 с (возможно, занят) — посмотрите экран"}.get(r["result"], "закрыто")
-        return {"result": text, "draft": r["draft"]}
+        if r["result"] in ("background", "busy") and force:
+            if self.tmux.window(w["id"]):
+                self.tmux.kill(w["id"])
+            return {"result": "закрыто", "draft": r["draft"], "forced": True}
+        text = {"background": "не закрыл: у сессии есть фоновые задачи — их можно остановить, закрыв принудительно",
+                "busy": "Claude не вышел за 20 с (возможно, занят) — можно закрыть принудительно"}.get(r["result"],
+                                                                                                    "закрыто")
+        return {"result": text, "draft": r["draft"], **({"code": r["result"]} if text != "закрыто" else {})}
+
+    def clear_stopped(self) -> dict:
+        """«Убрать все остановленные»: закрыть окна сессий пульта, где Claude уже вышел (осталась оболочка).
+        Журналы не трогаем — разговоры остаются в «Завершённых» проекта. Окна пространств — не наши."""
+        gone = []
+        for w in self.tmux.windows():
+            if w.get("stopped") and not w.get("space"):
+                self.tmux.kill(w["id"])
+                self.focus.end_window(w["id"])
+                gone.append(w["name"])
+        return {"closed": len(gone), "names": gone}
 
     def upload(self, name: str, data: bytes) -> str:
         """Файл из панели → inbox пульта; Claude получает путь (как файлы из чата бота)."""
@@ -2495,7 +2521,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
-              "/api/chat/delete", "/api/chat/restore", "/api/chat/trash",
+              "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
@@ -3726,7 +3752,10 @@ def handler(panel: Panel):
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
             if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
-                return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
+                return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""),
+                                         b.get("force") is True)
+            if path == "/api/stopped/clear":              # «Убрать все остановленные» — окна, журналы остаются
+                return panel.clear_stopped()
             if path == "/api/chat/restore":               # «Вернуть» из корзины
                 return panel.chat_restore(str(b.get("id") or ""))
             if path == "/api/project/new":                # «Новый проект»: папка, CLAUDE.md, запись; чат — при отправке
@@ -3802,7 +3831,7 @@ def handler(panel: Panel):
                 w = panel.session_window(b.get("w"))
                 if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
                     panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
-                r = panel.close_ex(w)                      # {result, draft}: черновик не теряется молча
+                r = panel.close_ex(w, force=True) if b.get("force") is True else panel.close_ex(w)   # + черновик
                 if r["result"] == "закрыто":
                     panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
                 return r
@@ -3864,6 +3893,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "code": e.code}, e.status)
             except LookupError as e:
                 return self.json({"error": str(e)}, 404)
+            except NeedForce as e:
+                return self.json({"error": str(e), "code": "force"}, 409)
             except emailcode.LimitError as e:
                 return self.json({"error": str(e), "retry": e.retry}, 429)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:

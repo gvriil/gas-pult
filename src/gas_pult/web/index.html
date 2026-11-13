@@ -1895,6 +1895,9 @@ function navItems(row) {
   return [...(canPin(s) ? [{ label: s.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!s.pinned, run: () => pinSet({ w: s.id }, !s.pinned, name) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule ? [{ label: "Удалить", icon: "trash", danger: true, run: () => navDelete(s) }] : []),
+    ...(meta?.role === "owner" && s.schedule && !s.space ? [{ label: "Удалить", icon: "trash", danger: true, sub: "расписание выключится, папка — в корзину", run: () => moduleDelete(s) }] : []),
+    ...(s.space && meta?.role !== "viewer" ? [{ label: T("ss.del.item"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) }] : []),
+    ...(meta?.role === "owner" && s.status === "stopped" ? [stoppedItem()] : []),
     { sep: true }, { label: "Показать все действия…", icon: "more", run: () => sessionSheet(s.id) }];
 }
 function navProject(id) {                             // «Все чаты проекта» — страница проекта на главной
@@ -1902,6 +1905,12 @@ function navProject(id) {                             // «Все чаты пр�
 }
 // «Удалить» в меню строки — та же плашка «Отменить» (chatDelete).
 function navDelete(s) { chatDelete({ w: s.id }, s.title || s.name); }
+// «Убрать все остановленные»: окна, где Claude уже вышел, закрываются; переписка остаётся в «Завершённых» проекта.
+function stoppedItem() {
+  const n = sessions.filter((x) => x.status === "stopped" && !x.space).length;
+  return { label: `Убрать все остановленные (${n})`, icon: "x", sub: "окна закроются, переписка останется в «Завершённых» проекта",
+    run: () => api("/api/stopped/clear", {}).then((d) => { toast(`Убрано окон: ${d.closed}`); refresh(); }, (e) => toast("Не вышло: " + e.message, 4500)) };
+}
 function undoBar(text, undo, commit, ms = 5000) {
   document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast undo"; t.setAttribute("role", "status");
@@ -2115,7 +2124,7 @@ async function api(path, body, raw, extra, signal) {
     if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
     if (r.status === 403 && err.code === "country") showCountry();  // страна ещё не выбрана
     if (r.status === 403 && err.confirm === "code") { await confirmCode(); return api(path, body, raw, extra, signal); }
-    throw new Error(err.error || "ошибка " + r.status);
+    throw Object.assign(new Error(err.error || "ошибка " + r.status), { code: err.code || "" });
   }
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
@@ -3873,21 +3882,29 @@ function chatSheet(sid) {
     ...(meta?.role === "owner" ? [{ label: "Удалить", icon: "trash", danger: true, sub: "переписка — в корзину пульта; можно вернуть", run: () => chatDelete({ id: p.id, sid }, c.title) }] : []),
   ]);
 }
-// «Удалить» сессию (окно) или завершённый чат — плашкой «Отменить» вместо окна «Вы уверены?» (план UX, пункт 9):
-// строка уходит сразу, на сервер — через 5 с, если не отменили. Окно закрывается, журнал Claude Code — в корзину
-// пульта (вернуть — «Настройки» → «Корзина чатов»); ошибка — текстом сервера, не молча.
-function chatDelete(body, name) {
+// «Удалить» сессию (окно) или завершённый чат — плашкой «Отменить» вместо окна «Вы уверены?» (план UX, пункт 9).
+// Запрос уходит на сервер СРАЗУ (#179 P1.4: раньше — через 5 с, и закрытая за это время панель не удаляла ничего,
+// сессия «возвращалась»). «Отменить» — вернуть переписку из корзины пульта. Фоновые задачи — «Удалить
+// принудительно»; другая причина отказа — текстом сервера, не молча.
+async function chatDelete(body, name) {
   const label = name || "чат", done = () => proj && projTab === "done" && loadDone();
   if (body.w) { NAV.gone.add(body.w); sessions = sessions.filter((x) => x.id !== body.w); }
   else if (projDone?.chats) { projDone = { ...projDone, chats: projDone.chats.filter((c) => c.sid !== body.sid) }; renderProject(); }
-  if (body.w && body.w === current && view === "session") back(); else { renderNav(); refresh(); }
-  undoBar(`Удалено: «${label}»`, () => { if (body.w) NAV.gone.delete(body.w); projDone = null; refresh(); done(); toast("Вернул «" + label + "»"); }, async () => {
-    try {
-      const d = await api("/api/chat/delete", body);
-      if (d.draft) toast("В поле ввода был неотправленный текст — он в корзине вместе с перепиской", 4500);
-    } catch (e) { toast("Не удалено: " + e.message, 5000); }
-    finally { if (body.w) NAV.gone.delete(body.w); projDone = null; await refresh(); done(); }
-  });
+  if (body.w && body.w === current && view === "session") back(); else renderNav();
+  let d;
+  try { d = await api("/api/chat/delete", body); }
+  catch (e) {
+    if (body.w) NAV.gone.delete(body.w); projDone = null; await refresh(); done();
+    if (e.code === "force") return helpSheet("session.menu"), sheet(`Удалить «${label}»?`, [
+      { info: true, icon: "warn", label: e.message, sub: "фоновые задачи остановятся; переписка уйдёт в корзину пульта" },
+      { label: "Удалить принудительно", icon: "trash", danger: true, run: () => chatDelete({ ...body, force: true }, name) }]);
+    return toast("Не удалено: " + e.message, 5000);
+  }
+  if (body.w) NAV.gone.delete(body.w); projDone = null; refresh(); done();
+  const why = d.kept ? ` · переписка осталась: она открыта в «${d.kept}»` : d.schedule === "paused" ? " · расписание на паузе" : "";
+  if (d.draft) toast("В поле ввода был неотправленный текст — он в корзине вместе с перепиской", 4500);
+  else if (d.trash) undoBar(`Удалено: «${label}»${why}`, () => chatRestore(d.trash.id), () => {}, 8000);
+  else toast(`Удалено: «${label}»${why}`, 4000);
 }
 async function chatRestore(id) {
   try { const r = await api("/api/chat/restore", { id }); toast("Вернул: «" + (r.title || "чат") + "» — в «Завершённых»", 4000); projDone = null; await refresh(); if (proj && projTab === "done") loadDone(); }
@@ -4099,6 +4116,7 @@ function sessionSheet(id) {
     ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
     ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule && !FOCUS ? [{ label: "Удалить", icon: "trash", danger: true, sub: "окно закроется, переписка — в корзину пульта; можно вернуть", run: () => chatDelete({ w: id }, s.title || s.name) }] : []),
+    ...(meta?.role === "owner" && s.status === "stopped" && !FOCUS ? [stoppedItem()] : []),
     ...(s.space && meta?.role !== "viewer" ? [
       { label: T("ss.close.item"), sub: T("ss.close.sub"), icon: "power", run: () => ssClose(s) },
       { label: T("ss.del.item"), sub: T("ss.del.sub"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) },
@@ -5050,9 +5068,12 @@ function effortSheet() {
     ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
     .map(([v, label, sub]) => ({ label, sub, icon: "bolt", run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
 }
-async function closeSession(id = current, schedule = "") {
+async function closeSession(id = current, schedule = "", force = false) {
   try {
-    const d = await api("/api/close", { w: id, ...(schedule ? { schedule } : {}) }); toast(d.result === "закрыто" ? "Сессия завершена" : "Не завершена: " + d.result, 4500);
+    const d = await api("/api/close", { w: id, ...(schedule ? { schedule } : {}), ...(force ? { force: true } : {}) });
+    if (d.code) helpSheet("session.menu"), sheet("Сессия не завершена", [{ info: true, icon: "warn", label: d.result, sub: "переписка сохранится в журнале; «Продолжить» в проекте её поднимет" },
+      { label: "Закрыть принудительно", icon: "power", danger: true, run: () => closeSession(id, schedule, true) }]);
+    else toast(d.result === "закрыто" ? (d.forced ? "Закрыта принудительно" : "Сессия завершена") : "Не завершена: " + d.result, 4500);
     if (d.result === "закрыто") { if (FOCUS) return focusGone(); if (id === current) back(); else refresh(); }
     if (d.draft) draftSheet(d.draft);                 // неотправленный текст из поля ввода — не теряем молча
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
@@ -8117,6 +8138,7 @@ function demoApi(path, body) {
     if (!fp && path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
+  if (path === "/api/stopped/clear") { const st = (R["/api/sessions"]?.sessions || []).filter((x) => x.status === "stopped"); st.forEach((x) => { (demoApi.gone ||= {})[x.id] = 1; }); R["/api/stopped/clear"] = { closed: st.length, names: st.map((x) => x.name) }; }
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
   R["/api/module/delete"] = { result: "удалено", trash: "~/.local/share/gas-pult/trash/modules/20261105-101500__gas-pult" };
   R["/api/model"] = { id: body?.w || "@1", model: body?.name || "" };
