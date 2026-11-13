@@ -2625,14 +2625,21 @@ def handler(panel: Panel):
         focused: dict | None = None             # запрос из фокуса: ссылка (focus.py), уже проверенная
         raw: bytes | None = None                # тело, прочитанное проверкой фокуса
 
+        renew = ""                              # Set-Cookie продлённой или новой сессии — уйдёт с ответом
+
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
+
+        def parse_request(self) -> bool:
+            self.renew = ""                     # соединение keep-alive: у каждого запроса своё
+            return super().parse_request()
 
         def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = "",
                   headers: dict | None = None):
             self.send_response(code)
-            if cookie:
-                self.send_header("Set-Cookie", cookie)
+            if cookie or self.renew:
+                self.send_header("Set-Cookie", cookie or self.renew)
+            self.renew = ""
             for k, v in (headers or {}).items():
                 self.send_header(k, v)
             self.send_header("Content-Type", ctype)
@@ -2652,15 +2659,36 @@ def handler(panel: Panel):
                 return "focus", "owner", self.focused.get("by")
             user = verify(self.headers.get("X-Telegram-Init-Data", ""), panel.cfg.token)
             if user and (role := panel.people.role(user.get("id"))):
+                self.tg_cookie(int(user["id"]))
                 return "telegram", role, int(user["id"])
             uid = panel.auth.uid(self.session())
             if uid is None:
                 return "", None, None
+            if panel.auth.touch(self.session()):          # скользящий срок: заходит — вход не кончается
+                self.renew = webauth.set_cookie(self.session())
             role = "owner" if uid == webauth.LEGACY else panel.people.role(uid)
             return ("browser", role, uid) if role else ("", None, None)
 
         def via(self) -> str:
             return self.who()[0]
+
+        def tg_cookie(self, uid: int):
+            """Mini App: подпись Telegram (``initData``) действует сутки (``MAX_AGE``), а окно Mini App живёт дольше —
+            и через сутки панель просила войти. При загрузке (``/api/meta``) с верной подписью выдаём и cookie той же
+            сессии на 30 дней: подпись устареет — запросы пройдут по cookie. Cookie уже есть — только продлеваем."""
+            tok = self.session()
+            if panel.auth.uid(tok) == uid:
+                if panel.auth.touch(tok):
+                    self.renew = webauth.set_cookie(tok)
+                return
+            if urllib.parse.urlsplit(self.path).path != "/api/meta" or self.renew:
+                return
+            seen = panel.__dict__.setdefault("_tg_issued", {})     # cookie не вернулся (iframe web.telegram.org) —
+            now = time.time()                                       # не плодим сессии: одна на человека за 10 минут
+            if now - seen.get(uid, 0) < 600:
+                return
+            seen[uid] = now
+            self.renew = webauth.set_cookie(panel.auth.issue(uid, self.client()[1]))
 
         def person(self) -> int | None:
             """Telegram ID вошедшего, если это не владелец: его окна и интеграции — в его папке Claude Code."""
