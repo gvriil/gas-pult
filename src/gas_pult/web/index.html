@@ -4370,7 +4370,7 @@ function userMsg(m) {                               // вставленный в
 // Отправлено → Доставлено в сессию → Взял в работу → «Читает файл X · 12 с» → Готово; «Ждёт вашего ответа» — с кнопкой.
 // Опрос /api/activity раз в 1,5 с, пока идёт ход (иначе — раз в 4,5 с); текст меняется только при смене фазы.
 const busySince = {};
-const ACT_CLS = { sent: "run", delivered: "run", started: "run", working: "run", thinking: "run", queued: "wait", waiting: "wait", stuck: "bad", unsent: "bad", done: "done" };
+const ACT_CLS = { sent: "run", delivered: "run", started: "run", working: "run", thinking: "run", queued: "wait", waiting: "wait", stuck: "bad", failed: "bad", unsent: "bad", done: "done" };
 let liveAct = null, actLocal = null, actSkew = 0, actBusy = false, actTick = 0;
 // Анти-мигание: фаза держится на экране не меньше ACT_DWELL; меняется только textContent. Эскалация — по времени без
 // нового хода и без смены фазы (ACT_ESC, с): «Проверить статус» → «Сообщить по готовности» → «Остановить».
@@ -4425,7 +4425,7 @@ function paintAct() {
   if (row.className !== cls) row.className = cls;
   let text = "";
   if (fresh) text = st.phase === "done" ? "Готово" + (st.since ? " · " + new Date(st.since * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "")
-    : st.action === "screen" ? "Не видно реакции" : st.text + (st.spinner ? ` (${st.spinner.split(" · ")[0]})` : "");   // кнопка рядом
+    : st.action === "screen" && st.phase !== "failed" ? "Не видно реакции" : st.text + (st.spinner ? ` (${st.spinner.split(" · ")[0]})` : "");   // кнопка рядом
   const t = row.querySelector(".t");
   if (t.textContent !== text) { t.textContent = text; row.title = text; }   // без мигания: только при смене фазы
   const btn = fresh && ["screen", "answer", "enter"].includes(st.action) ? st.action : "";

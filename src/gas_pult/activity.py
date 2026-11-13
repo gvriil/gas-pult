@@ -39,12 +39,14 @@ def _expired(rec: dict, now: float) -> bool:
     if rec.get("unsent_at"):
         return now - rec["unsent_at"] > UNSENT_KEEP
     return now - rec["sent_at"] > KEEP
+NO_START = 300                     # с: ход «взят», а ни слова агента — сбой, а не «в работе» (#189 п. 4, приём bb)
 STALE = 15                        # с: журнал говорит «ход идёт», а экран — «свободно» дольше этого — ход прерван
 
 TEXTS = {"sent": "Отправлено", "delivered": "Доставлено в сессию", "started": "Взял в работу",
          "thinking": "Думает…", "waiting": "Ждёт вашего ответа", "done": "Готово", "idle": "",
          "queued": "Занят предыдущей задачей — в очереди",
          "stuck": "Не видно реакции — показать экран?",
+         "failed": "Ход не начался за 5 минут — похоже, сбой у поставщика",
          "unsent": "Не отправлено — текст в поле ввода"}
 ACTIVE = {"sent", "delivered", "started", "working", "thinking", "queued"}     # ход идёт или вот-вот начнётся
 
@@ -299,6 +301,18 @@ def spinner(lines: list[str]) -> str:
     return ""
 
 
+TOKENS = re.compile(r"[↓↑]\s*([\d.]+)\s*(k?)\s*tokens")
+
+
+def tokens(lines: list[str]) -> float:
+    """Счётчик токенов в спиннере («↓ 3.4k tokens»): поставщик отвечает — ход идёт, даже если журнал молчит
+    (долгое размышление на высоком уровне усилий). Нет счётчика — 0."""
+    for line in reversed(lines[-15:]):
+        if SPINNER.search(line) and (m := TOKENS.search(line)):
+            return float(m.group(1)) * (1000 if m.group(2) else 1)
+    return 0.0
+
+
 # ---------- фазы до хода: отправлено → доставлено → взял в работу ----------
 class Sends:
     """Что и когда отправили в окно (только в памяти процесса): фазы до того, как ход появится в журнале."""
@@ -393,6 +407,10 @@ def combine(journal: dict, rec: dict | None = None, screen: dict | None = None,
     if (not rec and screen is not None and res["phase"] in ("working", "thinking", "started") and not scr.get("busy")
             and now - (journal.get("last") or 0) > STALE):
         res |= {"phase": "done", "text": TEXTS["done"], "tool": "", "since": journal.get("last") or now}
+    # ход «взят» (запрос в журнале), но агент не сказал ни слова и не вызвал ни одного инструмента за NO_START —
+    # поставщик принял запрос и не начал; сессия не должна висеть «в работе» часами
+    if res["phase"] == "started" and now - (res.get("since") or now) > NO_START and not scr.get("tokens"):
+        res |= {"phase": "failed", "text": TEXTS["failed"], "tool": "", "action": "screen"}
     res["spinner"] = scr.get("spinner", "") if res["phase"] in ("working", "thinking", "started") else ""
     res.setdefault("action", "")
     res["now"] = now
@@ -410,7 +428,7 @@ def elapsed(sec: float) -> str:
 
 
 ICON = {"sent": "⏳", "delivered": "📨", "started": "✅", "working": "⚙️", "thinking": "💭", "queued": "🕓",
-        "stuck": "⚠️", "unsent": "⚠️", "waiting": "⏸", "done": "✅", "idle": "✅"}
+        "stuck": "⚠️", "failed": "⚠️", "unsent": "⚠️", "waiting": "⏸", "done": "✅", "idle": "✅"}
 
 
 def line(st: dict, now: float | None = None, started: bool = False) -> str:

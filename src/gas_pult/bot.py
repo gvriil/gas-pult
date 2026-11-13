@@ -554,7 +554,8 @@ class Pult:
         lines = self.tmux.screen(wid)
         scr = "\n".join(lines)
         busy = bool(BUSY.search(scr))
-        return {"busy": busy, "dialog": bool(DIALOG.search(scr)), "spinner": activity.spinner(lines) if busy else ""}
+        return {"busy": busy, "dialog": bool(DIALOG.search(scr)), "spinner": activity.spinner(lines) if busy else "",
+                "tokens": activity.tokens(lines) if busy else 0.0}
 
     def activity(self, w: dict, screen: dict | None = None) -> dict:
         """Статус окна: журнал (последний ход), запись об отправке и экран (``screen``; нет — читаем сами)."""
@@ -640,17 +641,20 @@ class Pult:
                     prog, prog_at = key2, now
                 took = took or st["phase"] not in ("sent", "delivered", "queued", "stuck")
                 end = took and st["phase"] in ("done", "idle")
+                failed = st["phase"] == "failed"             # ход не начался за 5 мин — сбой, дальше не следим
                 if end:
                     text = f"✅ Готово · {activity.elapsed(now - t0)}"
+                elif failed:
+                    text = f"⚠️ {st['text']}. Посмотрите экран: Esc — остановить, потом отправьте ещё раз"
                 else:
                     since = st.get("since") or now               # таймер — шагом 5 с: меньше правок
                     text = activity.line({**st, "since": now - (now - since) // 5 * 5}, now, started=took)
                 text = head + text
-                lv = 0 if end or st["phase"] in ("done", "idle", "waiting") else \
+                lv = 0 if end or failed or st["phase"] in ("done", "idle", "waiting") else \
                     sum(now - prog_at >= x for x in self.ESCALATE)
                 if (text != shown or lv != level) and self.pause_until <= now:
                     rows = escalate_rows(w["id"], lv)
-                    if st["phase"] == "stuck" and not rows:
+                    if st["phase"] in ("stuck", "failed") and not rows:
                         rows = [[("📺 Экран", f"scr:{w['id']}")]]
                     kw = {"reply_markup": kb(rows)} if rows else {}
                     try:
@@ -661,7 +665,7 @@ class Pult:
                             self.pause_until = time.time() + e.retry_after
                         elif "not modified" not in e.description:
                             return                       # удалили или править нельзя — тихо прекращаем
-                if end:
+                if end or failed:
                     return
         finally:
             with self.lock:
