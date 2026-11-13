@@ -827,12 +827,14 @@ class Pult:
             return self.send(chat, f"«{w['name']}» завершена.")
         r = self.quit_ex(w)
         tail = f"\n\nЧерновик из поля ввода (не отправлен):\n{r['draft']}" if r["draft"] else ""
+        force = kb([[("⛔ Закрыть принудительно", f"fclose:{w['id']}"), ("Нет", "noop:")]])
         if r["result"] == "background":
             return self.send(chat, f"«{w['name']}» не завершена: у сессии есть фоновые задачи, они бы "
-                                   "остановились. Реши в самом окне." + tail)
+                                   "остановились. Закрыть принудительно? Переписка останется в журнале." + tail,
+                             reply_markup=force)
         if r["result"] == "busy":
             return self.send(chat, f"«{w['name']}»: Claude не вышел за {self.QUIT_WAIT:.0f} с (возможно, занят). "
-                                   "Посмотри 📺 Экран." + tail)
+                                   "Посмотри 📺 Экран или закрой принудительно." + tail, reply_markup=force)
         focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])   # фокус-ссылки этой сессии гаснут
         self.send(chat, f"«{w['name']}» завершена." + tail)
 
@@ -1886,6 +1888,10 @@ class Pult:
                  reply_markup=kb([[("Да, завершить", f"close:{w['id']}"), ("Нет", "noop:")]]))
         elif kind == "close":
             self.close(chat, w)
+        elif kind == "fclose":                             # «Закрыть принудительно»: фоновые задачи остановятся
+            self.tmux.kill(w["id"])
+            focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])
+            send(f"«{w['name']}» закрыта принудительно. Переписка — в журнале, «Продолжить» в панели её поднимет.")
 
     def react(self, m: dict, emoji: str):
         try:

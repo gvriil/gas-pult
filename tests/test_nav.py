@@ -35,11 +35,12 @@ def test_row_menu_is_popover_and_pin_first():
     assert re.search(r'e\.target\.closest\("\[data-nmore\]"\)\) return popMenu', PAGE)
 
 
-def test_delete_waits_for_undo_and_new_chat_waits_for_send():
+def test_delete_goes_right_away_and_new_chat_waits_for_send():
     d = fn("chatDelete")                                                 # navDelete — через chatDelete (пункт 9)
     assert "chatDelete(" in fn("navDelete")
     assert "undoBar(" in d and "/api/chat/delete" in d
-    assert d.index("undoBar(") < d.index("/api/chat/delete"), "запрос — только после «Отменить» не нажали"
+    # #179 P1.4: запрос — сразу (через 5 с закрытая панель не удаляла ничего), «Отменить» — из корзины
+    assert d.index("/api/chat/delete") < d.index("undoBar("), "запрос уходит сразу, плашка — после"
     assert "/api/project/session" not in fn("newChat") and "/api/new" not in fn("newChat")
     assert "/api/project/session" in fn("draftSend")
     assert "if (DRAFT) return draftSend();" in fn("sendText")

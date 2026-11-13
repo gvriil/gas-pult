@@ -113,7 +113,7 @@ def test_delete_rights_and_refusals(srv, monkeypatch):
     f = transcripts.project_dir(str(shop)) / f"{OPEN}.jsonl"
     monkeypatch.setattr(p.pult, "quit_ex", lambda w: {"result": "background", "draft": ""})
     code, e = call(base, "/api/chat/delete", {"w": "@1"}, tok)
-    assert code == 400 and "фоновые задачи" in e["error"] and f.exists()     # ничего не тронуто
+    assert code == 409 and e["code"] == "force" and "фоновые задачи" in e["error"] and f.exists()   # не тронуто
     monkeypatch.setattr(p.pult, "quit_ex", lambda w: {"result": "busy", "draft": "черновик"})
     code, d = call(base, "/api/chat/delete", {"w": "@1"}, tok)                 # не вышел за 20 с — окно закрыто
     assert code == 200 and "@1" in kw.killed and d["draft"] == "черновик" and not f.exists()
