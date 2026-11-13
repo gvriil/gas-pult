@@ -75,10 +75,27 @@ jobs:
           ! grep -q SKIPPED passkeys.log
       - run: pytest -q
 
+  # Браузерные тесты панели (Playwright + Chromium): в задании «test» их нет (playwright не ставится) — здесь
+  # он стоит, и ни один тест не должен пропуститься из-за браузера. Плюс замер покрытия Python (отчёт в логе).
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,browser]"
+      - run: python -m playwright install --with-deps chromium
+      - name: все тесты, браузерные — без пропусков
+        run: |
+          pytest -q -rs --cov=gas_pult --cov-report=term:skip-covered | tee browser.log
+          ! grep -E "SKIPPED.*(playwright|браузер|chromium)" browser.log
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint, test, passkeys]
+    needs: [lint, test, passkeys, browser]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

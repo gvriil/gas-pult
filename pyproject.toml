@@ -36,6 +36,8 @@ silero = ["torch>=2.4", "numpy>=1.26", "scipy>=1.13"]
 # Вход по ключу (Face ID / passkey, passkeys.py): проверка подписей WebAuthn — py_webauthn (BSD-3-Clause).
 passkeys = ["webauthn==2.8.0"]
 dev = ["pytest>=8", "ruff>=0.8"]
+# Браузерные тесты панели (Playwright, Chromium): в CI — отдельное задание «browser», без пропусков.
+browser = ["playwright>=1.47", "pytest-cov>=5"]
 
 [project.scripts]
 gas-pult = "gas_pult.cli:main"

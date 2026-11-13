@@ -74,7 +74,7 @@ def test_ui_deletes_right_away_and_offers_force():
     i = INDEX.index("async function chatDelete")
     body = INDEX[i:INDEX.index("\n}\n", i)]
     assert body.index('api("/api/chat/delete"') < body.index("undoBar(")     # запрос — до плашки, не через 5 с
-    assert "chatRestore(d.trash.id)" in body                                # «Отменить» — из корзины
+    assert "chatUndo(d.trash" in body and "/api/project/resume" in INDEX   # «Отменить» — из корзины и снова открыть
     assert 'e.code === "force"' in body and "Удалить принудительно" in body
     assert "Закрыть принудительно" in INDEX and "/api/stopped/clear" in INDEX
     nav = INDEX[INDEX.index("const s = sessions.find((x) => x.id === row.dataset.nw)"):]

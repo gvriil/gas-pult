@@ -634,6 +634,11 @@ def test_space_sessions_close_resume_delete_restore(world, monkeypatch, tmp_path
     side.mkdir()
     subprocess.run(["tmux", "-S", w["socks"]["demo"], "new-session", "-d", "-s", "side", "-c", str(side), "sleep 300"],
                    check=True)
+    # tmux узнаёт папку нового окна не мгновенно (и список окон кэшируется) — ждём, а не проверяем один раз:
+    # 13.11 на 3.11 в CI проверка успела раньше и упала (нестабильный тест)
+    end = time.time() + 5
+    while "Своя работа" in {x["folder"] for x in call(w, "/api/space/sessions")[1]["closed"]} and time.time() < end:
+        time.sleep(0.2)
     assert "Своя работа" not in {x["folder"] for x in call(w, "/api/space/sessions")[1]["closed"]}
     assert call(w, "/api/space/resume", {"folder": "Своя работа"})[0] == 400
     assert call(w, "/api/space/delete", {"folder": "Своя работа", "confirm": "Своя работа"})[0] == 400
