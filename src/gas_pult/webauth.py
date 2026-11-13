@@ -8,7 +8,10 @@
 **Кодом владельцу** (запасной, ``Auth.start/verify``): 6 цифр приходят владельцам, код живёт 5 минут.
 
 Сессия — cookie на 30 дней (HttpOnly, Secure, SameSite=Strict) с Telegram ID человека; роль проверяется на каждый
-запрос (``people.py``). На сервере хранятся только SHA-256 от кодов, номеров ожидания и сессий.
+запрос (``people.py``). На сервере хранятся только SHA-256 от кодов, номеров ожидания и сессий. Срок скользящий:
+человек заходит — раз в ``RENEW_EVERY`` срок снова 30 дней (``touch``), выходит из панели только через 30 дней
+тишины. Сессии — в файле (``web_sessions.json``): перезапуск службы их не теряет. Файл пишут и панель, и бот —
+изменения под файловым замком (``_locked``), чтобы одна запись не затирала другую.
 
 **Подтверждение кодом** (аудит 09.11): сессии моложе ``CONFIRM_FRESH`` выполнять команды на сервере и писать в
 терминал (``webapp.CONFIRM``) не могут, пока человек не введёт код (``confirm_start`` / ``confirm_verify``); после
@@ -17,6 +20,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import hmac
 import json
@@ -31,6 +36,7 @@ CODE_TTL = 300
 CODE_TRIES = 5
 START_LIMIT = (5, 600)                   # не больше 5 кодов за 10 минут — чтобы бот не засыпали
 SESSION_TTL = 30 * 86400
+RENEW_EVERY = 86400                      # продлить срок сессии не чаще раза в сутки (меньше записей на диск)
 COOKIE = "gp_session"
 LOGIN_TTL = 300
 LEGACY = -1                              # сессия по коду владельцу (до входа через Telegram): права владельца
@@ -57,6 +63,36 @@ class Auth:
 
     def _save(self, d: dict):
         write_private(self.store, json.dumps(d))
+
+    @contextlib.contextmanager
+    def _locked(self):
+        """Замок потоков и файловый замок (панель и бот — разные процессы): прочитать → изменить → записать."""
+        with self.lock:
+            self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with open(self.store.with_name(f".{self.store.name}.lock"), "a") as fh:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
+
+    def touch(self, token: str, now: float | None = None) -> bool:
+        """Скользящий срок: живая сессия, которую не продлевали ``RENEW_EVERY``, снова получает ``SESSION_TTL``.
+        True — продлили (браузеру нужно обновить cookie). Истёкшую не оживляем."""
+        if not token:
+            return False
+        now = time.time() if now is None else now
+        h = _h(token)
+        s = self._load().get(h)
+        if not s or s["exp"] <= now or s["exp"] - now > SESSION_TTL - RENEW_EVERY:
+            return False
+        with self._locked():
+            d = self._load()
+            if not (s := d.get(h)) or s["exp"] <= now:
+                return False
+            s["exp"] = now + SESSION_TTL
+            self._save(d)
+        return True
 
     def start(self) -> tuple[str, str]:
         """Новый код: (id запроса, код). Код уходит владельцу, id — браузеру."""
@@ -118,6 +154,7 @@ class Auth:
         """Верный код → сессия подтверждена до конца своего срока."""
         with self.lock:
             self._take(str(rid), code, _h(token))
+        with self._locked():
             d = self._load()
             if (s := d.get(_h(token))) is None or s["exp"] < time.time():
                 raise ValueError("сессия истекла — войдите снова")
@@ -127,7 +164,7 @@ class Auth:
     def issue(self, uid: int, ua: str = "") -> str:
         """Новая сессия человека ``uid`` (её значение — в cookie браузера)."""
         token = secrets.token_urlsafe(32)
-        with self.lock:
+        with self._locked():
             d = {k: v for k, v in self._load().items() if v["exp"] > time.time()}
             d[_h(token)] = {"exp": time.time() + SESSION_TTL, "ua": ua[:120], "created": time.time(), "uid": uid}
             self._save(d)
@@ -145,7 +182,7 @@ class Auth:
 
     def drop(self, uid: int) -> int:
         """Погасить все сессии человека (его отключили или вход перенесён). Возвращает, сколько."""
-        with self.lock:
+        with self._locked():
             d = self._load()
             keep = {k: v for k, v in d.items() if v.get("uid", LEGACY) != int(uid)}
             if len(keep) != len(d):
@@ -153,7 +190,7 @@ class Auth:
         return len(d) - len(keep)
 
     def logout(self, token: str):
-        with self.lock:
+        with self._locked():
             d = self._load()
             if d.pop(_h(token), None) is not None:
                 self._save(d)
