@@ -17,6 +17,7 @@ def no_default_tmux(monkeypatch):
     # prefs.json владельца (свой фикстур файла может поставить другую временную папку — он важнее)
     monkeypatch.setenv("GAS_PULT_DATA_DIR", os.path.join(d, "data"))
     monkeypatch.setenv("GAS_PULT_CONFIG_DIR", os.path.join(d, "cfg"))
+    monkeypatch.setenv("GAS_PULT_CTX_DIR", os.path.join(d, "ctx"))   # снимки строки статуса — не боевые
     os.makedirs(os.path.join(d, "data"))
     yield
     shutil.rmtree(d, ignore_errors=True)

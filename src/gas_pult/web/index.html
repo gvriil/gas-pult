@@ -189,6 +189,10 @@
   .cfoot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 0 18px; }
   .ctx { margin-left: auto; padding-right: 6px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); }
   .ctx .bar { width: 52px; height: 4px; border-radius: 2px; background: var(--bg-subtle); overflow: hidden; }
+  .sinfo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 2px 10px 0; color: var(--text-muted); font-size: calc(12px * var(--fz, 1)); }
+  .sinfo b { color: var(--text-secondary); font-weight: 500; }
+  .sinfo .warn, .ctx.warn { color: var(--status-approval); }
+  .sinfo .ctx { margin-left: 0; padding-right: 0; }
   .ctx .bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
   .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
   .preview.twin { color: var(--status-danger); white-space: normal; display: flex; gap: 6px; align-items: flex-start; }
@@ -1164,6 +1168,7 @@
     <div class="attach" id="attach" hidden></div>
     <textarea id="input" rows="1" enterkeyhint="enter" placeholder="Сообщение…"></textarea>
     <div class="demo-note" id="demoNote" role="note"></div>
+    <div class="sinfo" id="sinfo" hidden></div>
     <div class="ctools" id="ctools">
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
       <button class="tool" id="menuBtn" data-tour="menu" aria-label="Меню действий"></button>
@@ -2853,6 +2858,24 @@ function ctxMeter(s) {
   const u = ctxUsed(s);
   return u == null ? "" : `<span class="ctx ${u > 70 ? "warn" : ""}" title="${u > 70 ? "Контекст почти заполнен — пора /compact" : "Заполнение контекста"}">Контекст: ${u}%<span class="bar"><i style="width:${u}%"></i></span></span>`;
 }
+// Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
+// лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
+const EFFORT_RU = { auto: "авто", low: "низкие", medium: "средние", high: "высокие", xhigh: "очень высокие", max: "максимум" };
+function resetAt(ts) {
+  if (!ts) return "";
+  const d = new Date(ts * 1000), today = new Date().toDateString() === d.toDateString();
+  return " ↻" + d.toLocaleString(LANG === "en" ? "en-GB" : "ru-RU", today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}
+function limitsLine(L) {
+  const x = L?.limits; if (!x) return "";
+  const one = (k, name) => x[k] ? `<span class="${x[k].used >= 80 ? "warn" : ""}" title="Лимит подписки: использовано за ${name}; ↻ — когда обнулится">${name} ${x[k].used}%${resetAt(x[k].resets_at)}</span>` : "";
+  return one("five_hour", "5 ч") + one("seven_day", "неделя");
+}
+function sinfo(s) {
+  const eff = s?.effort ? `<span title="${s.effort_guess ? "Уровень усилий из настроек — Claude Code его не сообщил" : "Уровень усилий"}">усилия: <b>${esc(EFFORT_RU[s.effort] || s.effort)}</b>${s.effort_guess ? "?" : ""}</span>` : "";
+  const html = s ? [s.model ? `<b>${esc(s.model)}</b>` : "", eff, ctxMeter(s), meta?.role === "owner" ? limitsLine(limitsInfo) : ""].filter(Boolean).join("") : "";
+  setHidden($("sinfo"), !html); setHTML($("sinfo"), html);
+}
 // ---------- «изменена N назад» (ago.py — те же правила и словари ago.*; тест сверяет обе реализации) ----------
 // Шкала: до 5 с — «только что», дальше секунды, минуты, часы, «вчера» (до двух суток), дни, недели, месяцы, дата.
 // Текст обновляется на месте (agoTick из общего секундного тика): раз в секунду, пока что-то изменилось меньше минуты
@@ -3556,6 +3579,7 @@ async function sfFiles(w) {
 // space-files:end
 // ---------- расход (usage.py): токены и деньги по журналам Claude Code, лимиты, пауза ----------
 // Сервер показывает расход только хозяину учётки: владельцу — его пул, участнику — его папку Claude.
+let limitsInfo = null;                                // лимиты подписки владельца (5 ч, неделя) — d.limits
 let costInfo = null;                                  // итог дня, лимиты (владельцу) — d.cost из /api/sessions
 const usd = (x) => x == null ? "цена неизвестна" : "$" + (x >= 100 ? Math.round(x) : x.toFixed(2));
 const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n || 0);
@@ -3650,7 +3674,7 @@ async function refresh() {
     const d = await api(pv ? "/api/projects" : "/api/sessions");
     if (pv) projData = d;
     await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
-    sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)); costInfo = d.cost || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
+    sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)); costInfo = d.cost || null; limitsInfo = d.limits || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
@@ -3705,6 +3729,7 @@ function paintSession(s) {
   setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`);
   const ph = hint || "Сообщение для " + s.name + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
   if ($("input").placeholder !== ph) $("input").placeholder = ph;
+  sinfo(s);                                         // модель · усилия · контекст · лимиты — под полем ввода
   paintWorking(s);
   paintGaps(s);                                     // что недоступно у поставщика сессии (задача 38)
 }
@@ -8079,7 +8104,7 @@ function demoApi(path, body) {
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
-    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, sessions: S.map((x) => ({ ...x, repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
+    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
