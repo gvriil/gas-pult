@@ -44,6 +44,7 @@ from gas_pult import (
     balance,
     chat_trash,
     country,
+    ctxsnap,
     emailcode,
     fallback,
     features,
@@ -285,12 +286,19 @@ class Panel:
             # когда менялась (ago.py): последний ход в журнале или смена экрана; ответ агента, ваше сообщение
             when = ago.stamps(self.pult.acts.status(w["path"], home, sid), self.pult.changes.look(w["id"], lines))
             ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
+            snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
             rev = transcripts.revision(w["path"], home, sid)
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
-                        "context": int(ctx.group(1)) if ctx else None,
-                        # на чём работает сессия: строка статуса «🤖 …», иначе — модель последнего ответа в журнале
-                        "model": mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid),
+                        # свободно % контекста: снимок строки статуса, иначе — текст экрана (старый способ)
+                        "context": 100 - snap["used"] if snap and snap["used"] is not None
+                        else int(ctx.group(1)) if ctx else None,
+                        # на чём работает сессия: снимок строки статуса, «🤖 …» на экране, иначе — модель из журнала
+                        "model": (snap or {}).get("model") or (mdl.group(1).strip() if mdl
+                                                               else self.model_of(w["path"], rev, home, sid)),
+                        "effort": (snap or {}).get("effort", ""),        # уровень усилий (добавлено)
+                        "effort_guess": bool((snap or {}).get("effort_guess")),
+                        "ctx_at": (snap or {}).get("at"),                # когда строка статуса обновлялась
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": rev,                                       # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev, home, sid),
@@ -2928,6 +2936,8 @@ def handler(panel: Panel):
                 return {"sessions": ss, "host": panel.cfg.host, "build": build,
                         "now": time.time(),                                   # часы сервера: «N назад» без сдвига
                         "cost": panel.cost_summary(pool),
+                        # лимиты подписки (5 часов, неделя) и время сброса — учётка владельца, видит только он
+                        "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
@@ -2937,6 +2947,7 @@ def handler(panel: Panel):
                 # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
                 return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
                         "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
+                        "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
                         "new_root": projects.tilde(str(panel.pult.module_root()), panel.pult.home),   # «Новый проект»
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
