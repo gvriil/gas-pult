@@ -4187,7 +4187,14 @@ function confirmClose(id) {
 
 // ---------- сессия ----------
 // Не «open»: функция верхнего уровня стала бы window.open и ломала внешние ссылки в браузере.
+// Открыли сессию — скоро «Прослушать»: поднять службу озвучки и голос заранее (#190), не чаще раза в 10 минут.
+let ttsWarmAt = 0;
+function ttsWarm(id) {
+  if (DEMO || Date.now() - ttsWarmAt < 600000) return;
+  ttsWarmAt = Date.now(); api(`/api/tts/warm?w=${encodeURIComponent(id)}`).catch(() => { ttsWarmAt = 0; });
+}
 async function openSession(id, startTab) {
+  ttsWarm(id);
   document.body.classList.remove("focus-empty");
   current = id; termAll = false; store("last", id); hint = ""; show("session"); liveAct = null; actTick = 0;
   if (!cur()) await refresh();
@@ -4965,22 +4972,40 @@ async function say(full, btn, msg) {
     return player().paused ? player().play() : player().pause();     // тот же ответ уже загружен — пауза/продолжить
   }
   const saved = voiceSaved(w, msg, full);
-  stopPlayer(true); voice = { w, name, msg, full, state: "prep" }; renderChat(false); voiceUi();
+  stopPlayer(true); const v = voice = { w, name, msg, full, state: "prep" }; renderChat(false); voiceUi();
   try {
-    const blob = DEMO ? demoTone() : await api(`/api/tts?w=${encodeURIComponent(w)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`);
-    if (!voice || voice.w !== w || voice.msg !== msg || voice.full !== full) return;   // пока готовили — остановили, начали другое или сменили режим
-    await voiceLoad(blob, full, name, saved?.t);
-  } catch (e) { voice = null; voiceUi(); toast("Озвучка: " + e.message, 4500); }
+    const url = `/api/tts?w=${encodeURIComponent(w)}&full=${full ? 1 : 0}${msg == null ? "" : "&msg=" + msg}`;
+    const blob = DEMO ? demoTone() : await ttsFetch(url, v, saved?.t > 1);
+    if (voice !== v) return;                        // пока готовили — остановили, начали другое или сменили режим
+    const fromHead = !!v.head; v.head = false;     // дальше играет полный ответ: его конец — настоящий конец
+    await voiceLoad(blob, full, name, fromHead ? player().currentTime : saved?.t, fromHead);
+  } catch (e) { if (voice === v) { voice = null; voiceUi(); } toast("Озвучка: " + e.message, 4500); }
 }
-async function voiceLoad(blob, full, name, from) {
-  const p = player(); if (p.src) URL.revokeObjectURL(p.src);
+// Быстрый первый звук (#190): сначала начало ответа (head=1, первые предложения — служба озвучки делает их за
+// ~0,3 с) — играет сразу; потом весь ответ — плеер подменяет файл на том же месте (полоса и перемотка — по полному).
+// Запросы по очереди: служба синтезирует по одному, начало не должно ждать весь ответ.
+async function ttsFetch(url, v, resume) {
+  if (!resume) {
+    try {
+      const head = await api(url + "&head=1");
+      if (voice === v && !player().src) { v.head = true; await voiceLoad(head, v.full, v.name, 0, true); }
+    } catch (e) { /* начало не вышло — ждём весь ответ, как раньше */ }
+  }
+  return api(url);
+}
+async function voiceLoad(blob, full, name, from, swap) {   // swap — подмена начала полным ответом: молча, с того же места
+  const p = player(), paused = swap && voice?.state === "pause", ended = swap && p.ended;
+  if (p.src) URL.revokeObjectURL(p.src);
+  if (voice && swap) voice.swapping = true;         // подмена — не «пауза» и не «конец» для интерфейса
   p.src = URL.createObjectURL(blob);
   p.playbackRate = p.defaultPlaybackRate = voiceRate();
   mediaSession(full ? "Ответ Claude" : "Ответ Claude кратко", name);
-  if (from > 1) {                                   // в прошлый раз остановились здесь — продолжаем
+  if (from > (swap ? 0 : 1)) {                      // в прошлый раз остановились здесь — продолжаем
     await new Promise((r) => { if (p.readyState >= 1) r(); else p.addEventListener("loadedmetadata", r, { once: true }); });
-    if (from < p.duration - 1) { p.currentTime = from; toast("Продолжаю с " + mmss(from)); }
+    if (from < p.duration - 1) { p.currentTime = from; if (!swap) toast("Продолжаю с " + mmss(from)); }
   }
+  if (voice) delete voice.swapping;
+  if (paused && !ended) { voice.state = "pause"; voiceUi(); return; }
   await p.play().catch(() => { if (voice) { voice.state = "pause"; voiceUi(); } toast("Нажмите ▶, чтобы слушать"); });
 }
 function stopPlayer(keep) {                         // keep — сменили ответ, а не нажали ✕: место в старом не забываем
@@ -4990,8 +5015,9 @@ function stopPlayer(keep) {                         // keep — сменили �
   voice = null; drag = null; voiceUi();
 }
 player().addEventListener("play", () => { if (voice) { voice.state = "play"; voiceUi(); mediaPos(); } });
-player().addEventListener("pause", () => { if (voice && voice.state !== "prep" && !player().ended) { voice.state = "pause"; voiceUi(); voicePos(true); } });
-player().addEventListener("ended", () => stopPlayer());
+player().addEventListener("pause", () => { if (voice && !voice.swapping && voice.state !== "prep" && !player().ended) { voice.state = "pause"; voiceUi(); voicePos(true); } });
+player().addEventListener("ended", () => { if (voice?.head && voice.state !== "done") { voice.state = "prep"; voiceUi(); return; }   // начало кончилось, весь ответ ещё готовится
+  stopPlayer(); });
 player().addEventListener("timeupdate", voiceTick);
 player().addEventListener("loadedmetadata", () => { voiceTick(); mediaPos(); });
 player().addEventListener("seeked", mediaPos);
