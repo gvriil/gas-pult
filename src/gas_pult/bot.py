@@ -60,6 +60,7 @@ from gas_pult import (
     termwin,
     testers,
     tglinks,
+    tgroutes,
     transcripts,
     usage,
     voice,
@@ -223,10 +224,12 @@ class Pult:
         self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
         self.changes = ago.Screens()                       # когда менялся экран окна — «изменена N назад» (ago.py)
         self.following: dict[tuple, tuple] = {}            # (чат, окно) → (метка, id служебного сообщения статуса)
+        self.routes = tgroutes.Routes(cfg.data / "tg_routes.json")   # сообщение бота → окно: reply идёт туда
         self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
 
     # ---------- Telegram ----------
-    def send(self, chat: int, text: str, **kw) -> dict:
+    def send(self, chat: int, text: str, wid: str | None = None, **kw) -> dict:
+        """``wid`` — окно, о котором сообщение: ответ (reply) на любой его кусок уйдёт в это окно (``tgroutes``)."""
         if (left := self.pause_until - time.time()) > 0:
             self.skipped += 1
             raise TelegramError("sendMessage", f"лимит Telegram — пауза ещё {left:.0f} с")
@@ -235,6 +238,8 @@ class Pult:
         try:
             for i, c in enumerate(parts):  # кнопки — под последним куском
                 r = self.api("sendMessage", chat_id=chat, text=c or "—", **(kw if i == len(parts) - 1 else {}))
+                if wid:
+                    self.bind(chat, r, wid)
         except TelegramError as e:
             if e.retry_after:
                 self.pause_until = time.time() + e.retry_after
@@ -242,17 +247,23 @@ class Pult:
             raise
         return r or {}
 
-    def send_answer(self, chat: int, head: str, text: str, **kw) -> dict:
+    def bind(self, chat, r, wid: str):
+        """Запомнить окно сообщения бота (заготовки ``Pult.__new__`` в тестах — без карты)."""
+        routes = getattr(self, "routes", None)
+        if routes and isinstance(r, dict):
+            routes.bind(chat, r.get("message_id"), wid)
+
+    def send_answer(self, chat: int, head: str, text: str, wid: str | None = None, **kw) -> dict:
         """Ответ Claude — HTML (tglinks): адреса нажимаемые и в `коде`, и без схемы; под блоком кода — «Ссылки: …».
         Куски по 4000 с целыми тегами, кнопки — под последним. Telegram не разобрал разметку — тот же ответ текстом."""
         chunks, r = tglinks.messages(text, head), {}
         try:
             for i, c in enumerate(chunks):
-                r = self.send(chat, c, parse_mode="HTML", **(kw if i == len(chunks) - 1 else {}))
+                r = self.send(chat, c, parse_mode="HTML", wid=wid, **(kw if i == len(chunks) - 1 else {}))
         except TelegramError as e:
             if e.retry_after or "parse" not in e.description.lower() or i:
                 raise
-            return self.send(chat, f"{head}\n{text}", **kw)
+            return self.send(chat, f"{head}\n{text}", wid=wid, **kw)
         return r
 
     def after_pause(self):
@@ -278,7 +289,7 @@ class Pult:
                     except TelegramError as e:
                         if "not modified" in e.description:
                             continue                     # то же самое — ничего не делаем; иначе (удалили) — заново
-                msgs[chat] = self.send(chat, text, **kw).get("message_id")
+                msgs[chat] = self.send(chat, text, wid=w["id"], **kw).get("message_id")
             except TelegramError as e:
                 print("send:", e, flush=True)
         shown[w["id"]] = {"msgs": msgs, "hash": h, "t": now}
@@ -577,7 +588,7 @@ class Pult:
                 print("secrets:", e, flush=True)
         mid = None
         try:
-            mid = self.send(chat, activity.line({"phase": "sent"})).get("message_id")
+            mid = self.send(chat, self.to_head(w) + activity.line({"phase": "sent"}), wid=w["id"]).get("message_id")
         except TelegramError as e:
             print("status:", e, flush=True)
         try:
@@ -592,6 +603,11 @@ class Pult:
         if mid:
             threading.Thread(target=self.follow, args=(chat, mid, w), daemon=True).start()
 
+    @staticmethod
+    def to_head(w: dict) -> str:
+        """«→ [имя окна] » перед строкой статуса: видно, в какую сессию ушло сообщение (#178)."""
+        return f"→ [{w['name']}] " if w.get("name") else ""
+
     def follow(self, chat: int, mid: int, w: dict, clock=time.time, sleep=time.sleep):
         """Правит одно сообщение по фазам — не чаще раза в ``FOLLOW_EVERY`` с и только когда текст изменился.
         Новое сообщение в то же окно — прежнее служебное убираем. Правка не удалась (сообщение удалено) — тихо стоп.
@@ -605,7 +621,8 @@ class Pult:
                 self.api("deleteMessage", chat_id=chat, message_id=old[1])
             except TelegramError:
                 pass
-        shown, took, level = activity.line({"phase": "sent"}), False, 0
+        head = self.to_head(w)
+        shown, took, level = head + activity.line({"phase": "sent"}), False, 0
         prog, prog_at = "", t0                           # последняя смена фазы или шага — для эскалации
         try:
             while self.following.get(key, (None,))[0] is token and clock() - t0 < self.FOLLOW_MAX:
@@ -627,6 +644,7 @@ class Pult:
                 else:
                     since = st.get("since") or now               # таймер — шагом 5 с: меньше правок
                     text = activity.line({**st, "since": now - (now - since) // 5 * 5}, now, started=took)
+                text = head + text
                 lv = 0 if end or st["phase"] in ("done", "idle", "waiting") else \
                     sum(now - prog_at >= x for x in self.ESCALATE)
                 if (text != shown or lv != level) and self.pause_until <= now:
@@ -720,7 +738,7 @@ class Pult:
 
     def send_screen(self, chat: int, w: dict, title: str):
         text, kw = self.screen_msg(w, title)
-        self.send(chat, text, **kw)
+        self.send(chat, text, wid=w["id"], **kw)
 
     def project_window(self, path: str) -> dict | None:
         """Окно Claude, уже работающее в этой папке (правило: одно окно на проект)."""
@@ -971,7 +989,8 @@ class Pult:
         rows, msgs = [[("🔊", f"say:{n}"), ("✅ Да", f"yes:{w['id']}"), ("✏️ Ответить", f"act:{w['id']}")]], {}
         for chat in self.cfg.owners:
             try:
-                msgs[chat] = self.send_answer(chat, f"[{w['name']}]", text, reply_markup=kb(rows)).get("message_id")
+                msgs[chat] = self.send_answer(chat, f"[{w['name']}]", text, wid=w["id"],
+                                              reply_markup=kb(rows)).get("message_id")
             except TelegramError as e:
                 print("send:", e, flush=True)
         self.hint_wait[w["id"]] = {"t": time.time(), "msgs": msgs, "rows": rows}
@@ -1764,7 +1783,7 @@ class Pult:
             if not w:
                 return send("Подсказка устарела или окна уже нет.")
             self.to_claude(w, h)
-            return send(f"→ [{w['name']}]: {h}")
+            return send(f"→ [{w['name']}]: {h}", wid=w["id"])
         if kind == "dg":
             return self.on_digest(chat, arg)
         if kind == "md":                                   # модули-агенты: описание, создание пространства
@@ -1861,7 +1880,7 @@ class Pult:
             text = transcripts.last_answer(w["path"], self.home_of(w), w.get("sid") or "")
             if not text:
                 return send("Ответов Claude в этой папке не нашёл.")
-            send(text, reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))
+            send(text, wid=w["id"], reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))
         elif kind == "ask":
             send(f"Завершить «{w['name']}»? Claude выйдет штатно, переписка сохранится.",
                  reply_markup=kb([[("Да, завершить", f"close:{w['id']}"), ("Нет", "noop:")]]))
@@ -2430,7 +2449,10 @@ class Pult:
             tid = task.group(1).upper()
             rows = [[(self.short(p), f"tnew:{i}|{tid}")] for i, p in enumerate(self.projects())]
             return send(f"Задача {tid}: в какой папке открыть сессию?", reply_markup=kb(rows))
-        if not (w := self.need_active(chat)):
+        w = self.reply_target(chat, m)
+        if w is False:                                     # ответ на сообщение окна, которого нет — не подменяем
+            return
+        if not w and not (w := self.need_active(chat)):
             return
         if v := (m.get("voice") or m.get("audio")):
             self.react(m, "✍")
@@ -2441,7 +2463,7 @@ class Pult:
                 return send(f"Не разобрал голосовое: {e}")
             if not text:
                 return send("Не разобрал голосовое — попробуй ещё раз.")
-            send(f"🎙 → [{w['name']}]: {text}")
+            send(f"🎙 → [{w['name']}]: {text}", wid=w["id"])
             return self.to_claude_live(chat, w, text)
         f = (m.get("photo") or [None])[-1] or m.get("document") or m.get("video")
         if f:
@@ -2451,6 +2473,29 @@ class Pult:
             return send("Пришли текст, голосовое или файл.")
         self.to_claude_live(chat, w, t)
         self.react(m, "👀")
+
+    def reply_target(self, chat: int, m: dict):
+        """Окно, на сообщение которого человек ответил (reply) в Telegram; None — не ответ на сообщение окна
+        (пишем в активное); False — окно найдено, но его уже нет или Claude там остановлен: сказали человеку.
+        Порядок: карта ``tg_routes.json`` → кнопки исходного сообщения → «[имя]», если такое окно одно."""
+        rt = m.get("reply_to_message") or {}
+        if not rt or not (rt.get("from") or {}).get("is_bot"):
+            return None
+        routes = getattr(self, "routes", None)
+        wid = (routes.get(chat, rt.get("message_id")) if routes else None) or tgroutes.markup_wid(rt)
+        ws = self.tmux.windows() if not wid else []
+        if not wid and (name := tgroutes.head_name(rt)):
+            same = [x for x in ws if x["name"] == name]
+            wid = same[0]["id"] if len(same) == 1 else None
+        if not wid:
+            return None
+        w = self.tmux.window(wid)
+        if w and w["cmd"] == "claude":
+            return w
+        self.send(chat, ("Сессии этого сообщения уже нет" if not w else f"В «{w['name']}» Claude остановлен")
+                  + " — текст не отправил. Ответьте на сообщение живой сессии или выберите окно в 🔀 Переключить.",
+                  reply_markup=MENU)
+        return False
 
     def on_review(self, m: dict, t: str) -> bool:
         """«#ревью» владельца (и продолжение длинной посылки) — файлом в inbox, не в сессию (review_inbox.py).

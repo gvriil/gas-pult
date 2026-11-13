@@ -191,6 +191,7 @@
   .ctx .bar { width: 52px; height: 4px; border-radius: 2px; background: var(--bg-subtle); overflow: hidden; }
   .ctx .bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
   .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
+  .preview.twin { color: var(--status-danger); white-space: normal; display: flex; gap: 6px; align-items: flex-start; }
   .preview { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 6px 6px 0 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.current { border-color: var(--border-focus); box-shadow: 0 0 0 1px var(--border-focus); }
   /* «изменена N назад» (ago.py): цифры одной ширины — текст меняется на месте, без прыжков */
@@ -2973,6 +2974,7 @@ function card(s, chat) {                              // chat — в проек�
       <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div>${sub}<div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
+    ${s.twin ? `<div class="preview twin">${ic("warn", "s16")}Этот разговор открыт ещё в «${esc(s.twin)}» — ответы смешиваются. Закройте одно окно.</div>` : ""}
     <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
     ${costBar(s)}${reposLine(s)}
