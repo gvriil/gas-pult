@@ -290,6 +290,7 @@ class Panel:
                         "rev": rev,                                       # изменился журнал → «новый ответ»
                         "preview": self.preview(w["path"], rev, home, sid),
                         "sid": sid,                                       # id сессии Claude Code окна (добавлено)
+                        "twin": ((o := self.sid_owner(sid, w["id"], wins, running=True)) and o["name"]) or "",
                         "title": self.chat_title(pd, w["path"], home, sid),   # название чата («Проекты»)
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
@@ -576,9 +577,8 @@ class Panel:
         p = self.project(pid)
         f = self.chat_file(p, sid)
         by_sid, _ = self.open_sids(p)
-        if w := by_sid.get(f.stem):
-            self.pult.set_state(active=w["id"])
-            return {"id": w["id"], "existing": True, "sid": f.stem}
+        if w := by_sid.get(f.stem) or self.sid_owner(f.stem, running=True):   # чат уже идёт — его окно
+            return {"id": w["id"], "existing": True, "sid": f.stem}     # активное окно бота не меняем (#179)
         mine = self.my_claude(person)
         if f.parent.parent.parent != mine:
             raise ValueError("этот чат вёлся на другой учётке Claude — продолжить его может только её хозяин")
@@ -600,6 +600,26 @@ class Panel:
         rec = self.projects.set_chat(f.stem, p["id"], title=title, hidden=None if hidden is None else bool(hidden))
         self._proj = (0.0, {})
         return rec
+
+    def sid_owner(self, sid, skip: str = "", wins: list[dict] | None = None, running: bool = False) -> dict | None:
+        """Другое окно (не ``skip``), где этот разговор: id у живого процесса Claude или метка остановленного окна.
+        ``running`` — только окна, где Claude сейчас работает. Два процесса на один журнал пишут вперемешку: ответы
+        одного окна видны в другом (#178) — поэтому второй раз один разговор не запускаем и журнал не уносим."""
+        sid = transcripts.valid_sid(sid)
+        if not sid:
+            return None
+        for x in self.tmux.windows() if wins is None else wins:
+            if x["id"] == skip or x.get("space") or transcripts.valid_sid(x.get("sid")) != sid:
+                continue
+            if x.get("cmd") == "claude" or (x.get("stopped") and not running):
+                return x
+        return None
+
+    def busy_sid(self, sid, skip: str = ""):
+        """Разговор уже идёт в другом окне — понятный отказ вместо второго процесса на тот же журнал."""
+        if o := self.sid_owner(sid, skip, running=True):
+            raise ValueError(f"этот разговор уже открыт в окне «{o['name']}» — откройте его там; второй запуск "
+                             "смешал бы ответы двух окон")
 
     # ---------- «Удалить» сессию или чат: окно закрыто, журнал — в корзину пульта (chat_trash.py) ----------
     def session_window(self, wid: str) -> dict:
@@ -649,6 +669,9 @@ class Panel:
                 self.tmux.kill(w["id"])
             self.focus.end_window(w["id"])                  # фокус-ссылки этой сессии гаснут
         out = {"result": "удалено", "closed": bool(w), "draft": draft, "trash": None}
+        if f and (o := self.sid_owner(f.stem, (w or {}).get("id", ""))):
+            out["kept"] = o["name"]                          # журнал открыт в другом окне — его разговор не уносим
+            return out
         if f and f.is_file():
             pid = (w and self.project_of(d, w)) or pid
             meta = (d.get("sessions") or {}).get(f.stem) or {}
@@ -1240,7 +1263,8 @@ class Panel:
                  and os.path.realpath(x.get("path", "")) == real and self.pult.home_of(x) == home]
         if any(not transcripts.valid_sid(x.get("sid")) for x in mates):
             return sid                                  # рядом старое окно без метки — его журнал не забираем
-        if nxt := transcripts.follow(w["path"], home, sid, {x["sid"] for x in mates}):
+        taken = {x.get("sid") for x in wins if x["id"] != w["id"] and transcripts.valid_sid(x.get("sid"))}
+        if nxt := transcripts.follow(w["path"], home, sid, taken):   # журнал любого другого окна — не наш
             self.tmux.set_sid(w["id"], nxt)
             w["sid"] = sid = nxt
         return sid
@@ -1821,8 +1845,7 @@ class Panel:
             raise ValueError("список папок изменился — обновите панель")
         path = dirs[i]
         if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
-            self.pult.set_state(active=w["id"])
-            return {"id": w["id"], "existing": w["name"]}
+            return {"id": w["id"], "existing": w["name"]}   # активное окно бота — только явным выбором (#179)
         return {"id": self.open_in(path, profile, person, uid)["id"]}
 
     def open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
@@ -1844,10 +1867,8 @@ class Panel:
                                    mark=profile or "claude", by=str(person) if home else "", sid=sid)
         if not home:
             self.mark_by(wid, uid)
-        upd: dict = {"active": wid}
-        if model:
-            upd["window_models"] = {**(st.get("window_models") or {}), wid: model}
-        self.pult.set_state(**upd)
+        if model:                                   # активное окно бота не трогаем — только явным выбором (#179)
+            self.pult.set_state(window_models={**(st.get("window_models") or {}), wid: model})
         return {"id": wid, "sid": sid}
 
     def new_in_space(self, slug: str, name: str = "") -> dict:
@@ -2013,6 +2034,7 @@ class Panel:
         cmd += repos.flags(st, w["path"])                                    # подключённые репозитории (задача 43)
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
             cmd += f" --model {shlex.quote(own)}"
+        self.busy_sid(w.get("sid"), wid)                                     # тот же разговор уже идёт рядом
         # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
         self.tmux.respawn(wid, w["path"], cmd + transcripts.resume_args(w.get("sid")), mark=profile)
         return {"id": wid}
@@ -2036,6 +2058,7 @@ class Panel:
         cmd += f" --model {shlex.quote(model)}" if model else ""
         sid = transcripts.valid_sid(w.get("sid"))
         if keep:                                        # свой журнал окна — тот же разговор (--resume), иначе последний
+            self.busy_sid(w.get("sid"), w["id"])        # метка окна могла указывать на чужой живой разговор
             cmd += transcripts.resume_args(w.get("sid"))
         else:                                           # чистый лист — новый журнал со своей меткой
             sid = str(uuid.uuid4())
@@ -2049,6 +2072,8 @@ class Panel:
             self.mark_by(wid, w.get("by") or uid)
         own.pop(w["id"], None)
         self.focus.move(w["id"], wid)                   # фокус-ссылка — за той же сессией в новом окне
+        if routes := getattr(self.pult, "routes", None):    # ответы в Telegram на старые сообщения — в новое окно
+            routes.moved(w["id"], wid)
         if model:
             own[wid] = model                            # выбор — только этого чата: «Продолжить» и перезапуск — с ним
         upd = {"window_models": own}
