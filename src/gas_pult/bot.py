@@ -45,6 +45,7 @@ from gas_pult import (
     invites,
     models,
     modules,
+    notifylevel,
     offers,
     people,
     providers,
@@ -1050,8 +1051,7 @@ class Pult:
                             if text := turns.setdefault(f, transcripts.Turns()).feed(e):
                                 got.setdefault(w["id"], (w, []))[1].append(text)
                     for w, texts in got.values():
-                        quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
-                        if quiet:
+                        if not notifylevel.wants(st, w["id"], "answer"):    # уровень окна: «все» — с ответами
                             continue
                         if len(texts) > self.BURST:            # пачка за 3 с — сбой, а не переписка
                             self.broadcast(f"[{w['name']}] пропущено ответов: {len(texts) - 1} — они в панели. "
@@ -1060,7 +1060,7 @@ class Pult:
                             self.deliver(w, text)
                 screens: dict[str, str] = {}
                 for w in ws:
-                    quiet = st["notify"] == "off" or (st["notify"] == "active" and w["id"] != st.get("active"))
+                    quiet = not notifylevel.wants(st, w["id"], "dialog")   # «тихо» — и вопросы не шлём
                     lines = self.tmux.screen(w["id"])
                     scr = screens[w["id"]] = "\n".join(lines)
                     self.changes.look(w["id"], lines)
@@ -1856,6 +1856,15 @@ class Pult:
             return self.tmux.keys(wid, key)
         if kind == "nd":                                   # «Сообщить по готовности» из строки статуса
             return send(self.ask_notify_done(arg, chat))
+        if kind == "nl":                                   # уровень уведомлений окна (notifylevel.py)
+            wid, _, lv = arg.partition("|")
+            if not self.tmux.window(wid):
+                return send("Этого окна уже нет.")
+            try:
+                self.set_state(notify_levels=notifylevel.updated(self.state(), wid, lv))
+            except ValueError as e:
+                return send(str(e))
+            return send(f"🔔 Уведомления этой сессии: {notifylevel.TITLES.get(lv, 'как в настройках')}.")
         w = self.tmux.window(arg)
         if not w:
             return send("Этого окна уже нет.")
@@ -1869,8 +1878,11 @@ class Pult:
         elif kind == "yes":
             self.to_claude(w, "да")
         elif kind == "w":
-            send(f"«{w['name']}» · {w['path']}", reply_markup=kb([
+            lv = notifylevel.level(self.state(), w["id"])
+            send(f"«{w['name']}» · {w['path']}\n🔔 Уведомления: {notifylevel.TITLES[lv]}", reply_markup=kb([
                 [("🔀 Сделать активной", f"act:{w['id']}")],
+                [(("✅ " if lv == x else "") + t, f"nl:{w['id']}|{x}")
+                 for x, t in (("all", "🔔 Все"), ("input", "❓ Вопросы"), ("muted", "🔕 Тихо"))],
                 [("📺 Экран", f"scr:{w['id']}"), ("💬 Последний ответ", f"last:{w['id']}")],
                 [("✏️ Переименовать", f"ren:{w['id']}"), ("⛔ Завершить", f"ask:{w['id']}")]]))
         elif kind == "ren":

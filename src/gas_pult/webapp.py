@@ -55,6 +55,7 @@ from gas_pult import (
     logins,
     models,
     modules,
+    notifylevel,
     offer_report,
     offers,
     oidc,
@@ -304,6 +305,8 @@ class Panel:
                         "preview": self.preview(w["path"], rev, home, sid),
                         "sid": sid,                                       # id сессии Claude Code окна (добавлено)
                         "twin": ((o := self.sid_owner(sid, w["id"], wins, running=True)) and o["name"]) or "",
+                        "notify": notifylevel.level(st, w["id"]),        # уровень уведомлений окна (добавлено)
+                        "notify_own": bool(notifylevel.own(st, w["id"])),
                         "title": self.chat_title(pd, w["path"], home, sid),   # название чата («Проекты»)
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
@@ -2092,7 +2095,7 @@ class Panel:
             routes.moved(w["id"], wid)
         if model:
             own[wid] = model                            # выбор — только этого чата: «Продолжить» и перезапуск — с ним
-        upd = {"window_models": own}
+        upd = {"window_models": own, "notify_levels": notifylevel.moved(st, w["id"], wid)}
         if st.get("active") == w["id"]:                 # активная в боте — та же сессия, но чужую не делаем активной
             upd["active"] = wid
         self.pult.set_state(**upd)
@@ -2529,7 +2532,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
-              "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear",
+              "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear", "/api/notify/level",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
@@ -3872,6 +3875,10 @@ def handler(panel: Panel):
             if path == "/api/active":
                 panel.pult.set_state(active=w["id"])
                 return {"ok": True}
+            if path == "/api/notify/level":               # уровень уведомлений этой сессии (notifylevel.py)
+                lv = str(b.get("level") or "")
+                panel.pult.set_state(notify_levels=notifylevel.updated(panel.pult.state(), w["id"], lv))
+                return {"notify": notifylevel.level(panel.pult.state(), w["id"])}
             if path == "/api/command":
                 return panel.command(w, int(b.get("i", -1)))
             if path == "/api/model":                     # модель — только этого чата (перезапуск с --model)

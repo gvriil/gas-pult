@@ -451,6 +451,47 @@ def cmd_oidc(a):
         print(f"{meta['title']}: выключен — в [{p}] config.toml не хватает: {', '.join(miss) or 'https-адреса'}.")
 
 
+def own_window() -> tuple[str, str]:
+    """Окно tmux, из которого запущена команда (агент в сессии пульта): (id, имя); вне tmux — («», «»)."""
+    pane = os.environ.get("TMUX_PANE", "")
+    if not pane:
+        return "", ""
+    r = subprocess.run(["tmux", "display-message", "-p", "-t", pane, "#{window_id}\t#{window_name}"],
+                       capture_output=True, text=True)
+    wid, _, name = r.stdout.strip().partition("\t")
+    return (wid, name) if r.returncode == 0 and wid.startswith("@") else ("", "")
+
+
+def cmd_notify(a):
+    """Своё уведомление владельцам в бот — для агента («готово, нужен ваш ответ»). Ответ (reply) на него уйдёт
+    в окно, из которого отправлено (``tgroutes``). Уровни уведомлений окна на него не действуют: это явная просьба.
+    Приём — как ``bb push-notifications send`` (#189 п. 1)."""
+    from gas_pult import tgroutes
+
+    text = " ".join(a.text).strip() or (sys.stdin.read().strip() if not sys.stdin.isatty() else "")
+    if not text:
+        raise SystemExit("Текст уведомления пуст: gas-pult notify \"Готово, посмотрите\"")
+    try:
+        cfg = config.load()
+    except config.ConfigError as e:
+        raise SystemExit(str(e)) from None
+    wid, name = (a.window, a.window) if a.window else own_window()
+    head = f"🔔 [{name}] " if name else "🔔 "
+    api, routes, sent = Api(cfg.token), tgroutes.Routes(cfg.data / "tg_routes.json"), 0
+    for chat in cfg.owners:
+        try:
+            r = api("sendMessage", chat_id=chat, text=(head + text)[:3900])
+        except TelegramError as e:
+            print(f"не дошло до {chat}: {api.redact(e)}", file=sys.stderr)
+            continue
+        sent += 1
+        if wid:
+            routes.bind(chat, r.get("message_id"), wid)
+    if not sent:
+        raise SystemExit("уведомление не доставлено ни одному владельцу")
+    print(f"отправлено владельцам: {sent}" + (f" · ответ придёт в окно {wid}" if wid else ""))
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -536,6 +577,10 @@ def main(argv: list[str] | None = None):
     s = sub.add_parser("usage", help="функции панели: report — что не открывали 30 дней и что в ходу (файл и текст)")
     s.add_argument("action", choices=["report"], nargs="?", default="report")
     s.set_defaults(fn=cmd_usage)
+    s = sub.add_parser("notify", help="своё уведомление владельцам в бот (агенту: «готово, нужен ответ»)")
+    s.add_argument("text", nargs="*", help="текст; пусто — из stdin")
+    s.add_argument("--window", default="", help="окно (@N), куда пойдёт ответ; по умолчанию — своё окно tmux")
+    s.set_defaults(fn=cmd_notify)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)
