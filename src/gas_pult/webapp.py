@@ -122,7 +122,24 @@ def desk_pass(uid: int, now: float | None = None) -> str:
     return tok
 
 
-def desk_cookie(tok: str) -> str:
+DESK_TICKETS: dict[str, tuple[int, float]] = {}   # одноразовые ссылки «Открыть в браузере»: билет → (uid, до)
+TICKET_TTL = 120
+
+
+def desk_ticket(uid: int, now: float | None = None) -> str:
+    """Вкладка браузера (особенно из Mini App: tg.openLink — внешний браузер без cookie панели) входит по одноразовой
+    ссылке /desktop-enter?t=… (2 минуты, один раз) — она ставит свой пропуск и ведёт на noVNC."""
+    now = now or time.time()
+    for k in [k for k, (_, exp) in DESK_TICKETS.items() if exp < now]:
+        DESK_TICKETS.pop(k, None)
+    t = secrets.token_urlsafe(24)
+    DESK_TICKETS[t] = (uid, now + TICKET_TTL)
+    return t
+
+
+def desk_cookie(tok: str, tab: bool = False) -> str:
+    if tab:                                       # своя вкладка браузера: обычный cookie первого лица
+        return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=Lax"
     # SameSite=None + Partitioned: Mini App в Telegram Web сам открыт во фрейме — без этого cookie не дойдёт
     return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=None; Partitioned"
 
@@ -3079,6 +3096,12 @@ def handler(panel: Panel):
             url = urllib.parse.urlparse(self.path)
             if url.path == "/api/gate/desktop":         # Caddy forward_auth рабочего стола (#206): только владелец
                 return self.desktop_gate()
+            if url.path == "/desktop-enter":             # одноразовая ссылка вкладки: пропуск и переход на noVNC
+                t = urllib.parse.parse_qs(url.query).get("t", [""])[0]
+                got = DESK_TICKETS.pop(t, None) if t else None
+                if not got or got[1] < time.time():
+                    return self.oidc_page(403, "Ссылка устарела", "Откройте рабочий стол заново кнопкой в пульте.")
+                return self.go(DESKTOP_URL, (desk_cookie(desk_pass(got[0]), tab=True),))
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8", packed=page_gz, etag=f'"{build}"')
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
@@ -3971,8 +3994,9 @@ def handler(panel: Panel):
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
                 uid = self.who()[2]
-                tok = desk_pass(uid if uid is not None else webauth.LEGACY)
-                return ("cookie", desk_cookie(tok), {"url": DESKTOP_URL})
+                uid = uid if uid is not None else webauth.LEGACY
+                return ("cookie", desk_cookie(desk_pass(uid)),
+                        {"url": DESKTOP_URL, "tab": "/desktop-enter?t=" + desk_ticket(uid)})
             if path == "/api/tasks/add":                  # задача владельца руками (#203)
                 return panel.tasks.add(b, by="owner")
             if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи

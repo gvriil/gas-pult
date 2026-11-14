@@ -30,12 +30,19 @@ function deskShow(d) {
   el.addEventListener("click", (e) => {
     const b = e.target.closest("[data-desk]"); if (!b) return;
     if (b.dataset.desk === "close") return deskClose();
-    if (b.dataset.desk === "tab") return openUrl(location.origin + d.url);
+    if (b.dataset.desk === "tab") return deskTab();
     st.textContent = "подключаю…"; deskOpen();             // переподключить: новый пропуск и заново noVNC
   });
   document.body.append(el); document.body.classList.add("desk-on");
   try { tg?.BackButton?.show(); tg?.BackButton?.onClick(deskClose); } catch (_) {}
   haptic("impactOccurred", "light");
+}
+
+// Отдельная вкладка (владелец 14.11: «чтобы окно убунту открывалось во вкладке»): свежая одноразовая ссылка —
+// из Mini App вкладка открывается во внешнем браузере, где нет ни входа панели, ни пропуска.
+async function deskTab() {
+  try { const d = await api("/api/desktop/open", {}); openUrl(location.origin + (d.tab || d.url)); }
+  catch (e) { toast("Рабочий стол: " + e.message, 5000); }
 }
 
 function deskClose() {
@@ -44,4 +51,4 @@ function deskClose() {
   try { tg?.BackButton?.offClick(deskClose); if (typeof view !== "undefined" && view === "home") tg?.BackButton?.hide(); } catch (_) {}
 }
 
-Object.assign(window, { deskOpen, deskClose });
+Object.assign(window, { deskOpen, deskClose, deskTab });
