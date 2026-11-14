@@ -380,16 +380,16 @@ DEMO_PREFIX = '  R["/api/scenarios"] = '
 
 
 def demo_line() -> str:
-    """Строка демо-данных в index.html (``?demo``): тот же JSON, что отдаёт ``GET /api/scenarios``."""
+    """Строка демо-данных в web/js/demo.js (``?demo``): тот же JSON, что отдаёт ``GET /api/scenarios``."""
     return DEMO_PREFIX + json.dumps(api_data(), ensure_ascii=False, separators=(",", ":")) + ";"
 
 
 def main():
-    """Из клона репозитория: пересобрать docs/SCENARIOS.md и демо-данные в index.html."""
+    """Из клона репозитория: пересобрать docs/SCENARIOS.md и демо-данные панели (web/js/demo.js, #191)."""
     pkg = Path(__file__).parent
     doc = pkg.parent.parent / "docs" / "SCENARIOS.md"
     doc.write_text(markdown(), encoding="utf-8")
-    page = pkg / "web" / "index.html"
+    page = pkg / "web" / "js" / "demo.js"
     lines = page.read_text(encoding="utf-8").split("\n")
     i = next(i for i, x in enumerate(lines) if x.startswith(DEMO_PREFIX))
     lines[i] = demo_line()

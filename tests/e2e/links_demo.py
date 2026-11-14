@@ -112,6 +112,9 @@ def run(base: str):
                 pg.on("pageerror", lambda e: errs.append(str(e)))
                 pg.goto(f"{base}{sep}{q}&theme={theme}&noscroll")
                 pg.wait_for_selector(sel + " .msg", timeout=8000)
+                # разметка (marked, DOMPurify) приходит с CDN после первого показа — до неё ответ простым текстом
+                # и сущности не раскрыты; проверяем уже с разметкой (14.11: тест падал через раз)
+                pg.wait_for_function("() => mdReady()", timeout=15000)
                 if mode == "full":                   # демо-ответ: ссылка из текста — нажимаемая, из кода — нет
                     demo = pg.eval_on_selector_all(sel + " .msg.ai a.clink", "a => a.map((x) => x.href)")
                     assert any(h.endswith("/docs/MINI_APP.md") for h in demo), f"{where}: демо без ссылки {demo}"

@@ -194,8 +194,9 @@ def test_demo_catalog_in_sync():
     """Демо панели (?demo&persona=1) показывает тот же справочник ролей, что сервер."""
     import re
     from pathlib import Path
-    index = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
-    demo = json.loads(re.search(r"const DEMO_PERSONAS = (\{.*?\});\n", index).group(1))
+    web = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
+    index = (web / "index.html").read_text(encoding="utf-8") + (web / "js/demo.js").read_text(encoding="utf-8")
+    demo = json.loads(re.search(r"const DEMO_PERSONAS = (\{.*?\});\n", index).group(1))   # демо — в js/demo.js (#191)
     assert demo == {lang: personas.catalog(lang) for lang in ("ru", "en")}
     # тумблеры и роли в панели — только по справочнику с сервера, своих списков нет
     for c in CAPS:

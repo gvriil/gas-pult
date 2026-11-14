@@ -99,6 +99,8 @@ class NeedForce(ValueError):
     """Действие можно сделать только принудительно (фоновые задачи сессии): панель спросит и повторит с ``force``."""
 
 
+PART_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")   # имя части интерфейса: web/js/<имя>.js
+PART_PATH = re.compile(r"/js/([a-z0-9][a-z0-9-]{0,40})\.js")
 GZIP_LEVEL = 5                          # ответы API — быстро и в разы меньше; страница — заранее с уровнем 9
 GZIP_MIN = 1024                         # меньше — сжимать не стоит
 GZIP_TYPES = ("text/", "application/json", "application/javascript", "image/svg+xml")
@@ -2700,7 +2702,16 @@ DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content
 
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
-    build = hashlib.sha256(page).hexdigest()[:12]      # версия страницы: изменилась — панель предложит обновиться
+    # части интерфейса по требованию (#191): web/js/<имя>.js — нативные ES-модули без сборки; читаются и сжимаются
+    # один раз при старте, отдаются с ETag (после выкладки браузер получит новую версию, иначе — 304 без тела)
+    parts = {}
+    js_dir = resources.files("gas_pult").joinpath("web/js")
+    for f in (js_dir.iterdir() if js_dir.is_dir() else []):
+        if f.name.endswith(".js") and PART_NAME.fullmatch(f.name[:-3]):
+            body = f.read_bytes()
+            parts[f.name[:-3]] = (body, gzip.compress(body, 9), '"' + hashlib.sha256(body).hexdigest()[:12] + '"')
+    # версия страницы вместе с частями: изменилось что-то одно — панель предложит обновиться
+    build = hashlib.sha256(page + b"".join(parts[k][0] for k in sorted(parts))).hexdigest()[:12]
     page_gz = gzip.compress(page, 9)                     # страница сжимается один раз при старте (887 → ~200 КБ)
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
@@ -2963,6 +2974,9 @@ def handler(panel: Panel):
             url = urllib.parse.urlparse(self.path)
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8", packed=page_gz, etag=f'"{build}"')
+            if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
+                body, gz, etag = parts[m.group(1)]
+                return self.reply(200, body, "text/javascript; charset=utf-8", packed=gz, etag=etag)
             if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
                 return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state

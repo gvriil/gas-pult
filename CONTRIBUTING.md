@@ -52,7 +52,9 @@ gas-pult init && gas-pult run
 
 ## Панель: как проверить изменения
 
-Интерфейс — один файл `src/gas_pult/web/index.html` (HTML, CSS и JS без сборки), сервер — `webapp.py`.
+Интерфейс — нативные ES-модули без сборщика и без новых зависимостей (#191): ядро `src/gas_pult/web/index.html` (HTML, CSS,
+JS первого экрана), редкое и тяжёлое — части `src/gas_pult/web/js/<имя>.js`, их грузит `part("<имя>")` по требованию;
+сервер отдаёт части с gzip и ETag (`webapp.py`). Сервер — `webapp.py`.
 
 ```bash
 gas-pult webapp --port 8797          # локально, без Telegram
