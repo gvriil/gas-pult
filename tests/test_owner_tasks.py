@@ -146,3 +146,61 @@ def test_bot_tasks(tmp_path, monkeypatch):
     assert f"tk:done:{x['id']}" in json.dumps(kw) and "act:@1" in json.dumps(kw)
     p.on_callback({"id": "c", "from": {"id": 1}, "message": {"chat": {"id": 1}}, "data": f"tk:done:{x['id']}"})
     assert p.tasks.get(x["id"])["status"] == "done" and "выполнено" in sent[-2][0]
+
+
+def test_ui_static():
+    from pathlib import Path
+    web = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
+    index = (web / "index.html").read_text(encoding="utf-8")
+    part = (web / "js" / "tasks.js").read_text(encoding="utf-8")
+    assert 'data-space="tasks"' in index and 'data-space="demo"' not in index      # «Демо и тесты» — не наверху
+    assert "data-demo-here" in index and "return demoSheet();" in index            # а в «Подсказать»
+    assert 'part("tasks").then(() => tasksOpen()' in index and '"/api/tasks/run"' in index
+    assert "function taskSheet(t)" in part and "tasksOpen" not in index.split("function tasksCount")[0][-2000:]
+
+
+def test_e2e_tasks_demo():
+    import importlib.util
+    import threading
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    pytest.importorskip("playwright.sync_api")
+    web = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(web)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    e2e = Path(__file__).resolve().parent / "e2e" / "tasks_demo.py"
+    spec = importlib.util.spec_from_file_location("tasks_demo", e2e)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
+    finally:
+        srv.shutdown()
+
+
+def test_cli_update_chat_by_name_index_or_id(tmp_path, monkeypatch, capsys):
+    """Штаб 14.11: «task update --chat @12» молча ничего не менял; люди называют окно номером или именем."""
+    monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
+    wins = [{"id": "@14", "idx": "2", "name": "штаб", "sid": "22222222-2222-4222-8222-222222222222"},
+            {"id": "@12", "idx": "13", "name": "gastech-site", "sid": "33333333-3333-4333-8333-333333333333"}]
+    monkeypatch.setattr(cli, "_windows", lambda: [dict(w) for w in wins])
+    monkeypatch.setattr(cli, "own_window", lambda: ("", ""))
+    t = tasks.Tasks(tmp_path / "tasks.json")
+    x = t.add({"title": "DNS гастех.рф", "next": "проверить", "chat": "@14"})
+    for ref in ("gastech-site", "13", "@12"):
+        cli.main(["task", "update", x["id"], "--chat", ref])
+        y = t.get(x["id"])
+        assert y["chat"] == "@12" and y["sid"].startswith("3333"), ref
+        t.update(x["id"], {"chat": "@14"})
+    with pytest.raises(SystemExit, match=r"не найдено.*13:gastech-site"):
+        cli.main(["task", "update", x["id"], "--chat", "нет-такого"])
+    with pytest.raises(SystemExit, match="нечего менять"):
+        cli.main(["task", "update", x["id"]])
+    cli.main(["task", "update", x["id"], "--chat", "none"])
+    assert t.get(x["id"])["chat"] == ""
+    cli.main(["task", "add", "--title", "сайт", "--next", "x", "--chat", "gastech-site"])
+    capsys.readouterr()
+    cli.main(["task", "list"])
+    assert "чат 13:gastech-site" in capsys.readouterr().out                 # в списке — номер и имя окна

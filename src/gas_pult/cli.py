@@ -468,12 +468,13 @@ def cmd_task(a):
 
     t = tasks.Tasks(config.data_dir() / "tasks.json")
     if a.action == "list":
+        names = {w["id"]: f"{w['idx']}:{w['name']}" for w in _windows()}
         for x in t.list():
             if x["status"] == "done" and not a.all:
                 continue
             print(f"{x['id']}  [{tasks.STATUS_TITLES[x['status']]}] {tasks.TITLES[x['kind']]}: {x['title']}"
                   + (f" — дальше: {x['next']}" if x.get("next") and x["status"] != "done" else "")
-                  + (f" · чат {x['chat']}" if x.get("chat") else ""))
+                  + (f" · чат {names.get(x['chat'], x['chat'] + ' (окна нет)')}" if x.get("chat") else ""))
         return
     if a.action in ("done", "undo"):
         if not a.id:
@@ -492,11 +493,17 @@ def cmd_task(a):
         if a.action == "update":
             if not a.id:
                 raise SystemExit("нужен id задачи: gas-pult task update <id> --next …")
+            if a.chat:                                 # сменить чат задачи (или «none» — отвязать)
+                d.update({"chat": "", "sid": ""} if a.chat == "none" else _chat(a.chat))
+            if not d:
+                raise SystemExit("нечего менять: укажите --next, --status, --chat или поля типа")
             x = t.update(a.id, d)
         else:
-            wid, name = (a.chat, "") if a.chat else own_window()
-            if wid and wid != "none":
-                d["chat"], d["sid"] = wid, _sid_of(wid)
+            _, name = own_window()
+            if a.chat and a.chat != "none":
+                d.update(_chat(a.chat))
+            elif not a.chat and (own := own_window()[0]):
+                d.update({"chat": own, "sid": _sid_of(own)})
             x = t.add(d, by=a.by or (f"агент · {name}" if name else "агент"))
     except (ValueError, LookupError) as e:
         raise SystemExit(f"не записал: {e}") from None
@@ -506,11 +513,36 @@ def cmd_task(a):
 
 def _sid_of(wid: str) -> str:
     """id разговора окна (метка или живой процесс) — по нему задача найдёт чат и после перезапуска окна."""
+    return (_window(wid) or {}).get("sid") or ""
+
+
+def _windows() -> list[dict]:
     from gas_pult.tmux import Tmux
     try:
-        return (Tmux(config.load().session).window(wid) or {}).get("sid") or ""
+        return Tmux(config.load().session).windows()
     except (config.ConfigError, OSError):
-        return ""
+        return []
+
+
+def _window(ref: str) -> dict | None:
+    """Окно по тому, как его называют люди: «@12» (id tmux), «13» (номер в строке tmux) или имя («gastech-site»)."""
+    ref = str(ref or "").strip()
+    ws = _windows()
+    if ref.startswith("@"):
+        return next((w for w in ws if w["id"] == ref), None)
+    if ref.isdigit():
+        return next((w for w in ws if str(w.get("idx")) == ref), None)
+    same = [w for w in ws if w.get("name") == ref]
+    return same[0] if len(same) == 1 else None
+
+
+def _chat(ref: str) -> dict:
+    """Поля чата задачи по ``--chat``; окна нет — понятная ошибка, а не молчание."""
+    w = _window(ref)
+    if not w:
+        names = ", ".join(f"{x['idx']}:{x['name']}" for x in _windows()[:30]) or "окон нет"
+        raise SystemExit(f"окно «{ref}» не найдено — укажите @id, номер или имя. Сейчас: {names}")
+    return {"chat": w["id"], "sid": w.get("sid") or ""}
 
 
 def cmd_notify(a):
@@ -639,7 +671,8 @@ def main(argv: list[str] | None = None):
     s.add_argument("--type", default="", help="command | call | write | meeting | decision | check | other")
     s.add_argument("--next", default="", help="что сделать дальше — одна строка")
     s.add_argument("--status", default="", help="todo | doing | waiting | done (по умолчанию todo)")
-    s.add_argument("--chat", default="", help="окно (@N) задачи; по умолчанию — своё окно tmux; none — без чата")
+    s.add_argument("--chat", default="",
+                   help="окно задачи: @id, номер в tmux или имя; по умолчанию — своё; none — без чата")
     s.add_argument("--link", default="", help="источник: issue, PR, документ")
     s.add_argument("--cmd", default="", help="команда (тип command)")
     s.add_argument("--phone", default="", help="телефон (тип call)")
