@@ -44,7 +44,7 @@ def test_open_needs_desktop_and_confirm(server, monkeypatch):
     code, e = call(base, "/api/desktop/open", {}, tok)
     assert code == 400 and "не запущен" in e["error"]
     monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
-    assert call(base, "/api/desktop/open", {}, tok)[1] == {"url": webapp.DESKTOP_URL}
+    assert call(base, "/api/desktop/open", {}, tok)[1]["url"] == webapp.DESKTOP_URL
     assert call(base, "/api/desktop/open", {}, p.auth.issue(2))[0] == 403     # участнику — нет
     assert call(base, "/api/meta", tok=tok)[1]["desktop"] is True
 
@@ -100,3 +100,37 @@ def test_ui_part_and_e2e():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
     finally:
         srv.shutdown()
+
+
+def test_tab_link_one_time_sets_first_party_pass(server, monkeypatch):
+    """«Открыть в браузере» из Mini App: внешний браузер без cookie панели входит по одноразовой ссылке."""
+    import http.client
+    import urllib.parse
+
+    p, base, *_ = server
+    tok = p.auth.issue(1)
+    monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
+    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    d = call(base, "/api/desktop/open", {}, tok)[1]
+    assert d["tab"].startswith("/desktop-enter?t=")
+    u = urllib.parse.urlparse(base)
+
+    def enter(path):
+        c = http.client.HTTPConnection(u.hostname, u.port)
+        c.request("GET", path)                                                 # без cookie — как внешний браузер
+        r = c.getresponse()
+        return r.status, r.getheader("Location"), r.getheader("Set-Cookie") or ""
+
+    code, loc, ck = enter(d["tab"])
+    assert code == 303 and loc == webapp.DESKTOP_URL
+    assert "SameSite=Lax" in ck and "Partitioned" not in ck and "Path=/desktop/" in ck
+    assert gate(base, ck.split(";")[0]) == 204
+    assert enter(d["tab"])[0] == 403                                           # второй раз — нет
+    assert enter("/desktop-enter?t=wrong")[0] == 403
+    assert call(base, "/api/desktop/open", {}, p.auth.issue(2))[0] == 403     # участнику ссылку не выдают
+
+
+def test_ticket_expires():
+    t = webapp.desk_ticket(1, now=1000.0)
+    webapp.desk_ticket(1, now=1000.0 + webapp.TICKET_TTL + 1)
+    assert t not in webapp.DESK_TICKETS
