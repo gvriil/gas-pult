@@ -27,7 +27,7 @@ def get(url, headers=None):
 
 def test_demo_is_a_part_not_in_core():
     assert "function demoApi(" not in INDEX and "function demoApi(" in DEMO
-    assert "Object.assign(window, { DEMO_PERSONAS" in DEMO                # ядро видит функции демо через window
+    assert "Object.assign(window, {" in DEMO and "demoApi });" in DEMO     # ядро видит функции демо через window
     assert 'if (DEMO) part("demo");' in INDEX and 'if (DEMO && !window.demoApi) await part("demo");' in INDEX
     assert "import(`/js/${name}.js`)" in INDEX and "[500, 1500]" in INDEX # загрузка с двумя повторами, как у bb
     assert len(INDEX.encode()) < 760_000                                   # ядро меньше прежних 866 КБ

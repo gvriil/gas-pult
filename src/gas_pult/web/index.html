@@ -893,7 +893,7 @@
   .spaces { display: flex; gap: 6px; padding: 2px 0 6px; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
     border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
   .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
-  .spaces .sp-demo { border-color: var(--status-approval); color: var(--status-approval); } .spaces .i { width: 15px; height: 15px; }
+  .spaces .sp-tasks.wait { border-color: var(--status-approval); color: var(--status-approval); }   /* есть «ждут вас» */ .spaces .i { width: 15px; height: 15px; }
   .pvbar { position: fixed; left: 0; right: 0; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px;
     padding: calc(6px + env(safe-area-inset-top)) 12px 6px; background: var(--status-approval); color: var(--on-approval); font-size: calc(13.5px * var(--fz, 1)); font-weight: 600; text-align: center; }
   .pvbar button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
@@ -1034,7 +1034,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
-  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-demo" type="button" data-space="demo" aria-pressed="false"></button></div>
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
@@ -2118,7 +2118,7 @@ function toast(text, ms = 2600) {
 // ---------- сеть ----------
 // Команды на сервере и ввод в терминал (webapp.CONFIRM): новый вход в браузере — только после кода. Сервер отвечает
 // 403 {confirm: "code"} — шторка «Подтвердите кодом», после кода тот же запрос повторяется. Демо: &confirm, код 123456.
-const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/commands/run", "/api/commands/term", "/api/term/type",
+const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/tasks/run", "/api/commands/run", "/api/commands/term", "/api/term/type",
   "/api/term/key", "/api/tty/type", "/api/tty/key"]);
 async function api(path, body, raw, extra, signal) {
   if (DEMO && !window.demoApi) await part("demo");   // ответы демо — в своей части (js/demo.js)
@@ -3700,7 +3700,8 @@ async function refresh() {
     const d = boot || await api(pv ? "/api/projects" : "/api/sessions");
     if (pv) projData = d;
     await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
-    sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)); costInfo = d.cost || null; limitsInfo = d.limits || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
+    sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)); costInfo = d.cost || null; limitsInfo = d.limits || null;
+    if (d.tasks && JSON.stringify(d.tasks) !== JSON.stringify(tasksInfo)) { tasksInfo = d.tasks; if (!$("spaces").hidden) tasksCount(); } agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
@@ -7093,7 +7094,7 @@ function openHelp() {
   if (document.querySelector(".help-bg")) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
   bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="${esc(L("help.title", "Помощник"))}"><h3>${ic("help", "s16")}${esc(L("help.title", "Помощник"))}</h3><div class="hwhere"></div>
-    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" || SIM.on ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}Показать тур по этому экрану</button>`}
+    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" || SIM.on ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}Показать тур по этому экрану</button>`}${meta?.role === "owner" && !SIM.on && view !== "login" ? `<button class="htour" data-demo-here>${ic("flask", "s16")}Демо и тесты</button>` : ""}
     <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="${esc(L("help.ask", "Спросите, что непонятно…"))}" aria-label="${esc(L("help.ask.aria", "Вопрос помощнику"))}">
       <button class="hsend" type="submit" aria-label="${esc(L("help.send", "Спросить"))}">${ic("send")}</button></form>
     <button class="cancel" data-close>${esc(L("help.close", "Закрыть"))}</button></div>`;
@@ -7102,6 +7103,7 @@ function openHelp() {
     if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();   // лист под ним остаётся
     if (!b) return;
     if (b.hasAttribute("data-tour-here")) { bg.remove(); return startTour(tourKind(), true); }
+    if (b.hasAttribute("data-demo-here")) { bg.remove(); return demoSheet(); }   // «Демо и тесты» — здесь (#203)
     const id = b.closest(".ha")?.dataset.id;
     if (b.dataset.chip) return helpAsk(bg, { chip: b.dataset.chip }, b.textContent);
     if (b.dataset.fb) {
@@ -7331,6 +7333,7 @@ async function start() {
   store("seenAny", "1");
   start.poll ||= () => tourOn || refreshShared();          // общий секундный тик (tick, pollDue); во время тура экран не перерисовываем
   start.done = true; afterPaint(mdLoad);
+  if (meta.role === "owner") afterPaint(() => part("tasks").catch(() => {}));   // список задач — заранее, в простое
   setTimeout(tourOffer, 1200);
   keepAwake();
   let resume = null;
@@ -7441,13 +7444,25 @@ function demoUrl() { const u = new URL(location.href); UI.simple ? u.searchParam
 
 // «Моё пространство» и «Демо и тесты» (только владельцу): его пульт неприкосновенен. Просмотр другой роли — на вкладку,
 // в памяти страницы: на сервер не пишется, перезагрузка возвращает в своё пространство; сверху — яркая полоса.
+// Полоса наверху — владельцу: «Моё пространство» (если есть) и «Задачи (N)» (#203: чек-лист «что не решено» вместо
+// «Демо и тесты» — они теперь в «Подсказать»). Код списка задач — часть по требованию (js/tasks.js).
+let tasksInfo = null;                                  // {open, waiting} из опроса списка (/api/sessions, /api/projects)
 function paintSpaces() {
-  const on = !!UI?.own_space && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
+  const on = (meta?.role === "owner" || !!UI?.own_space) && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
   $("spaces").hidden = !on; if (!on) return;
+  $("spaces").querySelector(".sp-mine").hidden = !UI?.own_space;
   $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
-  $("spaces").querySelector(".sp-demo").innerHTML = ic("spark") + "Демо и тесты";
+  tasksCount();
 }
-$("spaces").addEventListener("click", (e) => { if (e.target.closest("[data-space=demo]")) demoSheet(); });
+function tasksCount() {
+  const b = $("spaces").querySelector(".sp-tasks"), n = tasksInfo?.open || 0, w = tasksInfo?.waiting || 0;
+  const html = ic("tasks") + (n ? `Задачи · ${n}` : "Задачи") + (w ? ` · ждут ${w}` : "");
+  if (b.innerHTML !== html) b.innerHTML = html;
+  b.classList.toggle("wait", !!w);
+}
+$("spaces").addEventListener("click", (e) => {
+  if (e.target.closest("[data-space=tasks]")) part("tasks").then(() => tasksOpen(), (er) => toast("Задачи не загрузились: " + er.message, 4500));
+});
 function demoSheet() {
   helpSheet("spaces.demo");
   sheet("Демо и тесты", [

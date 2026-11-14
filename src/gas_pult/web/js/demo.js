@@ -201,7 +201,7 @@ function demoApi(path, body) {
                      { id: "zai", title: "GLM (Z.ai)", short: "GLM", about: "GLM от Z.ai: длинный контекст, недорого. Картинки не понимает", needs_key: true, key: { set: true, tail: "…k3Qa" }, key_url: "https://z.ai/manage-apikey/apikey-list", main: "glm-5.3[1m]", fast: "glm-5.3-flash[1m]", default_main: "glm-5.3[1m]", default_fast: "glm-5.3-flash[1m]", hint: "" },
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Интеграции» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
-    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", notify: x.status === "stopped" ? "" : (demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit" ? demoApi.nl[x.id] : "all"), notify_own: !!demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
+    "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, tasks: demoTaskCount(), limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", notify: x.status === "stopped" ? "" : (demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit" ? demoApi.nl[x.id] : "all"), notify_own: !!demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
       cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
@@ -260,6 +260,7 @@ function demoApi(path, body) {
     if (!fp && path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
+  if (path.startsWith("/api/tasks")) return demoTasks(path, body);     // задачи владельца (#203)
   if (path === "/api/notify/level") { (demoApi.nl ||= {})[body.w] = body.level; R["/api/notify/level"] = { notify: body.level === "inherit" ? "all" : body.level }; }
   if (path === "/api/stopped/clear") { const st = (R["/api/sessions"]?.sessions || []).filter((x) => x.status === "stopped"); st.forEach((x) => { (demoApi.gone ||= {})[x.id] = 1; }); R["/api/stopped/clear"] = { closed: st.length, names: st.map((x) => x.name) }; }
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
@@ -504,4 +505,31 @@ function demoApi(path, body) {
   return Promise.resolve(R[key] || { ok: true });
 }
 
-Object.assign(window, { DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
+// Задачи владельца (#203) в демо: примеры всех типов действий, всё — в памяти страницы.
+function demoTaskList() {
+  return demoApi.tasks ||= [
+    { id: "t1", title: "Выбрать цену пилота для клиента", kind: "decision", status: "waiting", question: "Цена пилота на 4 недели?",
+      options: ["50 тыс. ₽", "80 тыс. ₽", "Обсудить на созвоне"], next: "выбрать вариант — ответ уйдёт в чат", chat: "@1", chat_now: "@1", chat_name: "tgi-0904", by: "агент · штаб", created: Date.now() / 1000 - 3600 },
+    { id: "t2", title: "Перезапустить панель после выкладки", kind: "command", status: "todo", cmd: "systemctl --user restart gas-pult-webapp",
+      next: "нажать «Выполнить»", chat: "@2", chat_now: "@2", chat_name: "icon-1146", by: "агент · gas-pult", created: Date.now() / 1000 - 7200 },
+    { id: "t3", title: "Позвонить бухгалтеру про акт сверки", kind: "call", status: "todo", phone: "+7 900 000-00-00", next: "уточнить дату акта", by: "owner", created: Date.now() / 1000 - 9000 },
+    { id: "t4", title: "Написать Ивану про доступ", kind: "write", status: "doing", to: "@ivan_example", draft: "Иван, добрый день! Доступ к пульту открыт — войдите через Telegram.", next: "отправить черновик", by: "агент · штаб", created: Date.now() / 1000 - 600 },
+    { id: "t5", title: "Проверить PR с задачами", kind: "check", status: "done", link: "https://github.com/gvriil/gas-pult/pulls", next: "", by: "агент · gas-pult", created: Date.now() / 1000 - 86400, done_at: Date.now() / 1000 - 3000 },
+  ];
+}
+function demoTaskCount() {
+  const l = demoTaskList();
+  return { open: l.filter((t) => t.status !== "done").length, waiting: l.filter((t) => t.status === "waiting").length };
+}
+function demoTasks(path, body) {
+  const l = demoTaskList(), t = l.find((x) => x.id === body?.id);
+  if (path === "/api/tasks") return Promise.resolve({ tasks: [...l].sort((a, b) => ({ waiting: 0, doing: 1, todo: 2, done: 3 })[a.status] - ({ waiting: 0, doing: 1, todo: 2, done: 3 })[b.status]) });
+  if (path === "/api/tasks/add") { const x = { id: "t" + Date.now(), kind: "other", status: "todo", by: "owner", created: Date.now() / 1000, ...body }; l.unshift(x); return Promise.resolve(x); }
+  if (path === "/api/tasks/remove") { demoApi.tasks = l.filter((x) => x !== t); return Promise.resolve({ ok: !!t }); }
+  if (!t) return Promise.reject(new Error("задачи уже нет"));
+  if (path === "/api/tasks/update") { Object.assign(t, body); if (body.status === "done") t.done_at = Date.now() / 1000; return Promise.resolve(t); }
+  if (path === "/api/tasks/run") { t.result = { code: 0, at: Date.now() / 1000 }; return Promise.resolve({ code: 0, seconds: 1, out: "(демо) команда выполнена\n" }); }
+  return Promise.resolve({ ok: true });
+}
+
+Object.assign(window, { demoTasks, demoTaskCount, DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
