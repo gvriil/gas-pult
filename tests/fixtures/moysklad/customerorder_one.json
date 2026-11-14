@@ -1,0 +1,118 @@
+{
+ "_source": "не проверено на песочнице: собрано по примерам из официальной документации МойСклад JSON API 1.2 (github.com/moysklad/api-remap-1.2-doc @012cd53, md/documents/_customerOrder.md, «Получить Заказ покупателя» + expand=agent,state,positions.assortment), данные выдуманные",
+ "meta": {
+  "href": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/34efe2ee-015e-11e6-9464-e4de0000006b",
+  "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/metadata",
+  "type": "customerorder",
+  "mediaType": "application/json",
+  "uuidHref": "https://online.moysklad.ru/app/#customerorder/edit?id=34efe2ee-015e-11e6-9464-e4de0000006b"
+ },
+ "id": "34efe2ee-015e-11e6-9464-e4de0000006b",
+ "accountId": "84e60e93-f504-11e5-8a84-bae500000008",
+ "updated": "2026-11-12 12:57:00",
+ "name": "00001",
+ "description": "Доставка до 10:00",
+ "externalCode": "CntjFix4hoyZOIhZiULjv2",
+ "moment": "2026-11-12 12:57:00",
+ "applicable": true,
+ "created": "2026-11-12 12:57:00",
+ "vatEnabled": true,
+ "vatIncluded": true,
+ "sum": 1250000,
+ "agent": {
+  "meta": {
+   "href": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/9794d400-f689-11e5-8a84-bae500000078",
+   "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/metadata",
+   "type": "counterparty",
+   "mediaType": "application/json"
+  },
+  "id": "9794d400-f689-11e5-8a84-bae500000078",
+  "name": "ООО «Ромашка-Бистро»",
+  "companyType": "legal"
+ },
+ "state": {
+  "meta": {
+   "href": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/metadata/states/fb56c504-2e58-11e6-8a84-bae500000069",
+   "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/metadata",
+   "type": "state",
+   "mediaType": "application/json"
+  },
+  "id": "fb56c504-2e58-11e6-8a84-bae500000069",
+  "name": "Новый",
+  "color": 15106326,
+  "stateType": "Regular",
+  "entityType": "customerorder"
+ },
+ "positions": {
+  "meta": {
+   "href": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/34efe2ee-015e-11e6-9464-e4de0000006b/positions",
+   "type": "customerorderposition",
+   "mediaType": "application/json",
+   "size": 2,
+   "limit": 1000,
+   "offset": 0
+  },
+  "rows": [
+   {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/34efe2ee-015e-11e6-9464-e4de0000006b/positions/34f6344f-015e-11e6-9464-e4de0000006c",
+     "type": "customerorderposition",
+     "mediaType": "application/json"
+    },
+    "id": "34f6344f-015e-11e6-9464-e4de0000006c",
+    "accountId": "84e60e93-f504-11e5-8a84-bae500000008",
+    "quantity": 2.5,
+    "price": 320000,
+    "discount": 0,
+    "vat": 20,
+    "vatEnabled": true,
+    "assortment": {
+     "meta": {
+      "href": "https://api.moysklad.ru/api/remap/1.2/entity/product/c02e3a5c-007e-11e6-9464-e4de00000006",
+      "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata",
+      "type": "product",
+      "mediaType": "application/json"
+     },
+     "id": "c02e3a5c-007e-11e6-9464-e4de00000006",
+     "name": "Томаты черри",
+     "code": "one1"
+    },
+    "shipped": 0,
+    "reserve": 0
+   },
+   {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/customerorder/34efe2ee-015e-11e6-9464-e4de0000006b/positions/34f6344f-015e-11e6-9464-e4de0000006d",
+     "type": "customerorderposition",
+     "mediaType": "application/json"
+    },
+    "id": "34f6344f-015e-11e6-9464-e4de0000006d",
+    "accountId": "84e60e93-f504-11e5-8a84-bae500000008",
+    "quantity": 10,
+    "price": 45000,
+    "discount": 0,
+    "vat": 20,
+    "vatEnabled": true,
+    "assortment": {
+     "meta": {
+      "href": "https://api.moysklad.ru/api/remap/1.2/entity/product/cc99c055-fa34-11e5-9464-e4de00000069",
+      "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata",
+      "type": "product",
+      "mediaType": "application/json"
+     },
+     "id": "cc99c055-fa34-11e5-9464-e4de00000069",
+     "name": "Базилик зелёный, пучок",
+     "code": "00006"
+    },
+    "shipped": 0,
+    "reserve": 0
+   }
+  ]
+ },
+ "reservedSum": 0,
+ "deliveryPlannedMoment": "2026-11-12 18:00:00",
+ "payedSum": 0,
+ "shippedSum": 0,
+ "invoicedSum": 1250000,
+ "shipmentAddress": "Москва, ул. Примерная, 1"
+}
