@@ -150,6 +150,27 @@ def find_auth(lines: list[str]) -> dict | None:
     return None
 
 
+HEAD_CHARS = 240             # начало озвучки: первые предложения, не длиннее (служба синтезирует их за ~0,3 с)
+
+
+def head_of(text: str, limit: int = HEAD_CHARS) -> str:
+    """Первые предложения текста, вместе не длиннее ``limit``; одно длинное — до пробела перед ``limit``."""
+    out = ""
+    for s in re.split(r"(?<=[.!?…])\s+|\n+", text.strip()):
+        s = s.strip()
+        if not s:
+            continue
+        if out and len(out) + 1 + len(s) > limit:
+            break
+        out = f"{out} {s}".strip()
+        if len(out) >= limit // 2:
+            break
+    if len(out) > limit:
+        cut = out.rfind(" ", 0, limit)
+        out = out[:cut if cut > 0 else limit]
+    return out
+
+
 def brief(text: str, limit: int = 700) -> str:
     """«Кратко» для озвучки: первые абзацы до ~700 знаков — в наших ответах там вывод.
 
@@ -2362,9 +2383,14 @@ class Panel:
             raise ValueError("сообщение не найдено — обновите переписку")
         return items[0]["text"]
 
-    def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False, cloud: bool = True) -> bytes:
+    def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False, cloud: bool = True,
+            head: bool = False) -> bytes:
+        """``head`` — только начало ответа (первые предложения): панель играет его сразу, пока готовится весь
+        ответ, — первый звук через доли секунды, а не после синтеза всего текста (#190)."""
         text = transcripts.clean(self.message(w, msg))
         text = (text if full else brief(text))[:3500]   # «кратко» (full=0) — для старых панелей; новая шлёт full=1
+        if head:
+            text = head_of(text)
         if not text:
             raise ValueError("нечего озвучивать")
         vs = self.voice_settings()
@@ -2387,6 +2413,16 @@ class Panel:
             return out.read_bytes()
         finally:
             out.unlink(missing_ok=True)
+
+    def tts_warm(self, personal: bool = False) -> dict:
+        """Человек открыл сессию — поднять службу озвучки и загрузить голос заранее (в фоне, ответ сразу)."""
+        vs = self.voice_settings()
+        if vs["tts"] == "elevenlabs" and self.el_ok():
+            return {"ok": True, "voice": "elevenlabs"}
+        v = self.voice(personal=personal)
+        if v:
+            voice.warm(v, self.cfg.data)
+        return {"ok": bool(v), "voice": v or ""}
 
 
     # ---------- ▶️ команды из последнего ответа ----------
@@ -2584,7 +2620,8 @@ REPOS = ("/api/repos", "/api/repos/add", "/api/repos/remove")
 USES = "/api/uses"                      # панель отмечает открытые экраны и листы (features.py): только id, без людей
 SPACE_OK = TERMS_FREE | {USES,
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
-    "/api/hint", "/api/history", "/api/tts", "/api/stt", "/api/voice/cards", "/api/scenarios", "/api/new",
+    "/api/hint", "/api/history", "/api/tts", "/api/tts/warm", "/api/stt", "/api/voice/cards", "/api/scenarios",
+    "/api/new",
     "/api/send", "/api/resend", "/api/key", "/api/select", "/api/command", "/api/rename", "/api/help/call",
     "/api/space/sessions", "/api/space/close", "/api/space/resume", "/api/space/delete", "/api/space/restore",
     "/api/space/files", "/api/space/upload", "/api/space/download", STT_STREAM, *REPOS,
@@ -2600,8 +2637,8 @@ INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Нет: другие сессии, их создание и переключение, общие настройки пульта (ключи, люди, добавление интеграций).
 # Нет и команд на сервере пульта (решение владельца 10.11): ни «Выполнить» (/api/run), ни терминала — только копировать.
 FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/ask", "/api/hint", "/api/cmds",
-             "/api/tts", "/api/last", "/api/activity", "/api/space/files", "/api/space/download", "/api/mcp",
-             "/api/mcp/connected", "/api/repos"}
+             "/api/tts", "/api/tts/warm", "/api/last", "/api/activity", "/api/space/files", "/api/space/download",
+             "/api/mcp", "/api/mcp/connected", "/api/repos"}
 FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/command", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
@@ -2612,7 +2649,7 @@ FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/log
 # когда на экране вопрос: ``Panel.demo_answer``). Нет: текста, файлов, голоса, модели, усилий, перезапуска,
 # завершения, новых сессий, интеграций, репозиториев, команд — 403 focus_scope.
 DEMO_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/activity", "/api/hint", "/api/tts",
-            "/api/ask", "/api/last"}
+            "/api/tts/warm", "/api/ask", "/api/last"}
 DEMO_POST = {"/api/select", "/api/key", "/api/logout"}
 # Фокус на проект (ссылка с ``proj``): весь проект — его окна, «Новая сессия в проекте», завершённые чаты; ``id``
 # проекта в запросе — только её. Ссылке на одну сессию эти пути закрыты (403), как раньше.
@@ -3088,7 +3125,9 @@ def handler(panel: Panel):
                 msg = int(q["msg"]) if q.get("msg", "").isdigit() else None
                 return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg,
                                                  panel.cfg.personal_voices and self.who()[1] == "owner",
-                                                 cloud=not self.space()))
+                                                 cloud=not self.space(), head=q.get("head") == "1"))
+            if path == "/api/tts/warm":                   # открыли сессию — голос загрузится заранее (#190)
+                return panel.tts_warm(panel.cfg.personal_voices and self.who()[1] == "owner")
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 sid = w.get("sid") or ""                   # окно со своим журналом — его переписка

@@ -71,7 +71,8 @@ def test_panel_cache_key_includes_mode():
     """Плеер панели: тот же ответ в другом режиме — новый запрос (full= в адресе), ответ старого режима не играет."""
     page = (Path(webapp.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
     assert "voice.msg === msg && voice.full === full" in page
-    assert "voice.msg !== msg || voice.full !== full) return;" in page
+    # пока готовили — сменили режим или ответ: новый объект voice, старый запрос не играет (#190)
+    assert "if (voice !== v) return;" in page and "const v = voice = { w, name, msg, full" in page
     assert page.count("/api/tts?w=${encodeURIComponent(") == 2 and page.count("&full=${") == 2
 
 
