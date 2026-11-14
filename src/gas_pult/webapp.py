@@ -27,6 +27,7 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -102,6 +103,19 @@ class NeedForce(ValueError):
 
 PART_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")   # имя части интерфейса: web/js/<имя>.js
 PART_PATH = re.compile(r"/js/([a-z0-9][a-z0-9-]{0,40})\.js")
+DESKTOP_PORT = 6080                     # noVNC/websockify рабочего стола агентов (agent-desktop.service, штаб)
+DESKTOP_URL = "/desktop/vnc.html?autoconnect=1&resize=scale&path=desktop/websockify"
+
+
+def desktop_up(port: int = DESKTOP_PORT) -> bool:
+    """Рабочий стол запущен: кто-то слушает 127.0.0.1:<port> (без него кнопку не показываем)."""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
 SENT = object()                         # обработчик сам отправил ответ (dispatch ничего не дописывает)
 GZIP_LEVEL = 5                          # ответы API — быстро и в разы меньше; страница — заранее с уровнем 9
 GZIP_MIN = 1024                         # меньше — сжимать не стоит
@@ -2629,6 +2643,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
               "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear", "/api/notify/level",
+              "/api/desktop/open",
               "/api/tasks", "/api/tasks/add", "/api/tasks/update", "/api/tasks/remove", "/api/tasks/run",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
@@ -2638,7 +2653,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
 # «Подтвердите кодом» и повторит запрос. Mini App в Telegram — доверенное устройство (код ушёл бы в тот же Telegram);
 # фокус-ссылка — права и окно задал владелец, код ей прийти некуда.
-CONFIRM = {"/api/run", "/api/run/term", "/api/tasks/run", "/api/commands/run", "/api/commands/term", "/api/term/type",
+CONFIRM = {"/api/run", "/api/run/term", "/api/tasks/run", "/api/desktop/open", "/api/commands/run",
+           "/api/commands/term", "/api/term/type",
            "/api/term/key",
            "/api/tty/type", "/api/tty/key"}
 CONFIRM_API = ("/api/confirm/start", "/api/confirm/verify")
@@ -2832,6 +2848,25 @@ def handler(panel: Panel):
             role = "owner" if uid == webauth.LEGACY else panel.people.role(uid)
             return ("browser", role, uid) if role else ("", None, None)
 
+        def desktop_gate(self):
+            """Рабочий стол агентов (noVNC за Caddy, #206) — полное управление браузером со входами: пускаем только
+            владельца по cookie входа панели (Mini App сюда не ходит — новая вкладка браузера). Фокус-ссылки,
+            пространства, участники, наблюдатели, демо — нет. Свежему входу — сперва код подтверждения, как для команд
+            на сервере (``CONFIRM``). 204 — можно; 401 — нет входа; 403 — не владелец или нужен код."""
+            tok = self.session()
+            uid = panel.auth.uid(tok)
+            if uid is None:
+                return self.json({"error": "нужен вход"}, 401)
+            role = "owner" if uid == webauth.LEGACY else panel.people.role(uid)
+            if role != "owner" or panel.people.tenant(uid):
+                return self.json({"error": "рабочий стол — только владельцу"}, 403)
+            if panel.auth.needs_confirm(tok):
+                return self.json({"error": "новый вход: подтвердите кодом в панели", "code": "confirm"}, 403)
+            self.send_response(204)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return None
+
         def via(self) -> str:
             return self.who()[0]
 
@@ -3016,6 +3051,8 @@ def handler(panel: Panel):
 
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
+            if url.path == "/api/gate/desktop":         # Caddy forward_auth рабочего стола (#206): только владелец
+                return self.desktop_gate()
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8", packed=page_gz, etag=f'"{build}"')
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
@@ -3109,6 +3146,7 @@ def handler(panel: Panel):
                         "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
                         "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
                         "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
+                        "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
                         "projects_ui": not self.space(),              # «Проекты» (docs/PROJECTS.md): экран включён
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
@@ -3903,6 +3941,10 @@ def handler(panel: Panel):
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
+            if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
+                if not desktop_up():
+                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
+                return {"url": DESKTOP_URL}
             if path == "/api/tasks/add":                  # задача владельца руками (#203)
                 return panel.tasks.add(b, by="owner")
             if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
