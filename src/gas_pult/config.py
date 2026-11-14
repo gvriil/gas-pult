@@ -80,6 +80,7 @@ class Config:
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
+    auto_close_days: int = 0                                # закрыть сессию без активности N дней (0 — никогда)
     email: dict = field(default_factory=dict)               # [email]: SMTP входа по коду (emailcode.py); {} — выкл.
     passkeys: dict = field(default_factory=dict)            # [passkeys]: rp_id и origin (passkeys.py); {} — выкл.
     google: dict = field(default_factory=dict)              # [google]: вход через Google (oidc.py); {} — выкл.

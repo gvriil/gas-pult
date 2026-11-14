@@ -1088,6 +1088,7 @@ class Pult:
                         self.show_dialog(w, scr, shown)
                 self.notify_done_check(ws, screens, st)
                 self.retry_tick(ws, screens, st)
+                self.auto_close_tick()
                 self.offer_hints()
                 self.cost_watch(st)
             except Exception as e:
@@ -1132,6 +1133,39 @@ class Pult:
                 except Exception as e:                       # окно не готово — сказать, повтор снимаем
                     self.broadcast(f"⏳ [{r.get('name', wid)}] продолжить после лимита не вышло: {e}")
             self.set_state(limit_retries=limitretry.cancel(self.state(), wid))
+    # ---------- автоархив: сессии без активности N дней закрываются (#189 п. 12, по умолчанию — никогда) ----------
+    AUTO_CLOSE_EVERY = 600      # с между проверками
+
+    def auto_close_tick(self, now: float | None = None) -> list[str]:
+        """Окна без активности дольше ``auto_close_days`` закрыть: Claude выходит штатно, переписка — в журнале
+        («Завершённые» проекта, «Продолжить»). Не трогаем: активное окно бота, окна пространств, окна с фоновыми
+        задачами или занятые. Возвращает имена закрытых."""
+        days = int(getattr(self.cfg, "auto_close_days", 0) or 0)
+        now = time.time() if now is None else now
+        if days <= 0 or now - getattr(self, "_ac_at", 0) < self.AUTO_CLOSE_EVERY:
+            return []
+        self._ac_at = now
+        st, closed = self.state(), []
+        for w in self.tmux.windows():
+            if w.get("space") or w["id"] == st.get("active") or not (w["cmd"] == "claude" or w.get("stopped")):
+                continue
+            changed = self.stamps(w).get("changed")
+            if not changed or now - changed < days * 86400:
+                continue                                    # неизвестно, когда менялась, — не трогаем
+            if w.get("stopped") or w.get("sleep"):          # Claude уже не работает — окно просто закрыть
+                self.tmux.kill(w["id"])
+            else:
+                scr = "\n".join(self.tmux.screen(w["id"]))
+                if BUSY.search(scr) or DIALOG.search(scr):
+                    continue
+                if self.quit_ex(w)["result"] != "closed":
+                    continue                                # фоновые задачи или не вышла — оставляем
+            focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])
+            closed.append(w["name"])
+        if closed:
+            self.broadcast(f"🗄 Закрыты сессии без активности дольше {days} дн.: {', '.join(closed)}. Переписка — "
+                           "в «Завершённых» проекта, «Продолжить» её поднимет.")
+        return closed
 
     # ---------- расход: лимиты на сессию и на день (usage.py) ----------
     def pool_of(self, w: dict) -> str:
