@@ -9,6 +9,10 @@ const KIND_T = { command: "Выполнить команду", call: "Позво
   decision: "Решение", check: "Проверить", other: "Другое" };
 const KIND_IC = { command: "term", call: "phone", write: "mail", meeting: "cal", decision: "help", check: "eye", other: "tasks" };
 const ST_T = { todo: "не начато", doing: "в работе", waiting: "ждёт вас", done: "выполнено" };
+// Матрица Эйзенхауэра (решение владельца 14.11: «по срочности и важности»): квадрант считает сервер (поле q, 0 — не оценено)
+const Q_T = { 1: "Срочно и важно — сделать сейчас", 0: "Не разобрано — оцените срочность и важность",
+  2: "Важно, не срочно — запланировать", 3: "Срочно, не важно — быстро или делегировать", 4: "Не срочно и не важно — потом или убрать" };
+const Q_SHORT = { 1: "срочно и важно", 2: "важно", 3: "срочно", 4: "ни то ни другое", 0: "не разобрано" };
 let TASKS = [];
 
 async function tasksLoad() {
@@ -24,11 +28,19 @@ async function tasksOpen() {
 function tasksSheet() {
   const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
   helpSheet("sheet.tasks");
+  const rows = [];
+  for (const q of [1, 0, 2, 3, 4]) {                    // сервер уже отсортировал: внутри квадранта — «ждёт вас» первыми
+    const g = open.filter((t) => (t.q || 0) === q);
+    if (!g.length) continue;
+    rows.push({ head: `${Q_T[q]} · ${g.length}` });
+    rows.push(...g.map((t) => ({ label: t.title, icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
+      sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
+        t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
+      run: () => taskGo(t) })));
+  }
   sheet(`Задачи · не решено ${open.length}`, [
     ...(open.length ? [] : [{ info: true, icon: "check", label: "Всё решено", sub: "агенты ставят задачи командой gas-pult task add" }]),
-    ...open.map((t) => ({ label: t.title, icon: KIND_IC[t.kind] || "tasks", danger: t.status === "waiting",
-      sub: [ST_T[t.status], KIND_T[t.kind], "дальше: " + (t.next || "—"), t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
-      run: () => taskGo(t) })),
+    ...rows,
     { label: "Добавить задачу", icon: "plus", run: () => taskNew() },
     ...(done.length ? [{ head: `Выполнено · ${done.length}` },
       ...done.slice(0, 15).map((t) => ({ label: t.title, icon: "check", sub: "выполнено" + (t.done_at ? " · " + when(t.done_at) : ""), run: () => taskSheet(t) }))] : []),
@@ -63,12 +75,18 @@ function taskSheet(t) {
   if (t.chat_now && t.chat_now !== current) a.push({ label: "Открыть чат «" + t.chat_name + "»", icon: "chat", run: () => openSession(t.chat_now) });
   a.push(t.status === "done" ? { label: "Вернуть в работу", icon: "refresh", run: () => taskSet(t, { status: "todo" }, "Задача снова в работе") }
     : { label: "Отметить выполненным", icon: "check", run: () => taskSet(t, { status: "done" }, "Выполнено") });
-  if (t.status !== "done") a.push({ label: "Что сделать дальше…", icon: "edit", sub: t.next, run: () => taskNext(t) },
+  if (t.status !== "done") a.push({ label: "Срочность и важность…", icon: "bolt", sub: Q_SHORT[t.q || 0], run: () => taskQ(t) },
+    { label: "Что сделать дальше…", icon: "edit", sub: t.next, run: () => taskNext(t) },
     ...(t.status !== "waiting" ? [{ label: "Ждёт меня", icon: "wait", run: () => taskSet(t, { status: "waiting" }, "Поставил первой в списке") }] : []));
   a.push({ label: "Удалить задачу", icon: "trash", danger: true, run: () => taskSet(t, null, "Задача удалена") });
   helpSheet("sheet.tasks");
   sheet(t.title, [{ info: true, icon: KIND_IC[t.kind] || "tasks", label: "Дальше: " + (t.next || "—"),
-    sub: [ST_T[t.status], KIND_T[t.kind], t.by ? "поставил: " + t.by : "", t.result ? "последний запуск: код " + t.result.code : ""].filter(Boolean).join(" · ") }, ...a]);
+    sub: [Q_SHORT[t.q || 0], ST_T[t.status], KIND_T[t.kind], t.due ? "срок " + t.due : "", t.by ? "поставил: " + t.by : "", t.result ? "последний запуск: код " + t.result.code : ""].filter(Boolean).join(" · ") }, ...a]);
+}
+
+function taskQ(t) {                                     // квадрант руками: 1–4
+  sheet("Срочность и важность", [1, 2, 3, 4].map((q) => ({ label: Q_T[q], icon: q === (t.q || 0) ? "check" : "bolt",
+    run: () => taskSet(t, { q }, "Записал: " + Q_SHORT[q]).then(() => tasksSheet()) })));
 }
 
 async function taskSet(t, upd, ok) {

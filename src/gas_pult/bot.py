@@ -1100,14 +1100,18 @@ class Pult:
 
     # ---------- задачи владельца (tasks.py, #203) ----------
     TASK_ICON: ClassVar[dict] = {"waiting": "⏳", "doing": "🔄", "todo": "⬜", "done": "✅"}
+    Q_ICON: ClassVar[dict] = {1: "🔴", 0: "⚪", 2: "🟡", 3: "🟠", 4: "⚫"}
 
     def show_tasks(self, chat: int):
         """/tasks: невыполненные (ждут вас — первыми), у каждой — что дальше; кнопки «✅ Выполнено» и «💬 В чат»."""
         open_ = [x for x in self.tasks.list() if x["status"] != "done"][:10]
         if not open_:
             return self.send(chat, "✅ Невыполненных задач нет. Агенты ставят их командой gas-pult task add.")
-        lines, rows = ["📋 Задачи — что не решено:"], []
+        lines, rows, group = ["📋 Задачи — что не решено (по срочности и важности):"], [], None
         for i, x in enumerate(open_, 1):
+            if x.get("q", 0) != group:
+                group = x.get("q", 0)
+                lines.append(f"\n{self.Q_ICON[group]} {tasks.QUADRANTS[group]}")
             what = {"command": x.get("cmd"), "call": x.get("phone"), "write": x.get("to"),
                     "meeting": " · ".join(v for v in (x.get("with"), x.get("when")) if v),
                     "decision": x.get("question"), "check": x.get("link")}.get(x["kind"]) or ""

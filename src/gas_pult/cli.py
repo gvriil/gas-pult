@@ -469,10 +469,17 @@ def cmd_task(a):
     t = tasks.Tasks(config.data_dir() / "tasks.json")
     if a.action == "list":
         names = {w["id"]: f"{w['idx']}:{w['name']}" for w in _windows()}
+        group = None
         for x in t.list():
             if x["status"] == "done" and not a.all:
                 continue
+            g = "Выполнено" if x["status"] == "done" else f"Q{x['q']} · {tasks.QUADRANTS[x['q']]}" if x["q"] \
+                else tasks.QUADRANTS[0]
+            if g != group:
+                print(("\n" if group else "") + f"== {g}")
+                group = g
             print(f"{x['id']}  [{tasks.STATUS_TITLES[x['status']]}] {tasks.TITLES[x['kind']]}: {x['title']}"
+                  + (f" · срок {x['due']}" + (" (просрочено)" if x["overdue"] else "") if x.get("due") else "")
                   + (f" — дальше: {x['next']}" if x.get("next") and x["status"] != "done" else "")
                   + (f" · чат {names.get(x['chat'], x['chat'] + ' (окна нет)')}" if x.get("chat") else ""))
         return
@@ -488,8 +495,13 @@ def cmd_task(a):
     d = {k: v for k, v in {"title": a.title, "kind": a.type, "next": a.next, "status": a.status, "link": a.link,
                            "cmd": a.cmd, "phone": a.phone, "to": a.to, "draft": a.draft, "with": a.with_,
                            "when": a.when, "question": a.question,
-                           "options": a.option or None}.items() if v}
+                           "options": a.option or None, "due": a.due}.items() if v}
+    for k in ("urgent", "important"):                  # да/нет — и «нет» тоже значение (не пропускаем)
+        if getattr(a, k) != "":
+            d[k] = getattr(a, k)
     try:
+        if a.q:
+            d = tasks.set_quadrant(d, a.q)
         if a.action == "update":
             if not a.id:
                 raise SystemExit("нужен id задачи: gas-pult task update <id> --next …")
@@ -682,6 +694,10 @@ def main(argv: list[str] | None = None):
     s.add_argument("--when", default="", help="когда (тип meeting)")
     s.add_argument("--question", default="", help="вопрос (тип decision)")
     s.add_argument("--option", action="append", help="вариант решения (тип decision), можно несколько")
+    s.add_argument("--urgent", default="", help="срочно: yes | no")
+    s.add_argument("--important", default="", help="важно: yes | no")
+    s.add_argument("--q", default="", help="квадрант сразу: 1 срочно и важно · 2 важно · 3 срочно · 4 ни то ни другое")
+    s.add_argument("--due", default="", help="срок ГГГГ-ММ-ДД (прошёл — задача станет срочной)")
     s.add_argument("--all", action="store_true", help="list: и выполненные")
     s.add_argument("--by", default="", help="кто поставил (по умолчанию «агент · окно»)")
     s.set_defaults(fn=cmd_task)

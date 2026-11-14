@@ -27,7 +27,7 @@ def test_add_check_order_and_done(t):
                "status": "waiting"})
     c = t.add({"title": "Сделано", "kind": "other", "status": "done"})
     assert [x["id"] for x in t.list()] == [b["id"], a["id"], c["id"]]        # ждут вас — первыми, выполненные — в конце
-    assert t.open_count() == {"open": 2, "waiting": 1}
+    assert t.open_count() == {"open": 2, "waiting": 1, "q1": 0}
     x = t.update(a["id"], {"status": "done"})
     assert x["done_at"] and t.open_count()["open"] == 1
     x = t.update(a["id"], {"status": "todo"})
@@ -104,7 +104,7 @@ def test_api_owner_only_etag_and_run(server, monkeypatch):
     except urllib.error.HTTPError as e:
         assert e.code == 304
     code, d = call(base, "/api/sessions", tok=tok)
-    assert d["tasks"] == {"open": 1, "waiting": 0}
+    assert d["tasks"] == {"open": 1, "waiting": 0, "q1": 0}
     monkeypatch.setattr(p.auth, "needs_confirm", lambda token, fresh=None: False)
     ran = []
     monkeypatch.setattr(webapp, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))
@@ -143,6 +143,7 @@ def test_bot_tasks(tmp_path, monkeypatch):
     p.show_tasks(1)
     text, kw = sent[-1]
     assert "Позвонить бухгалтеру" in text and "+7 900" in text and "уточнить акт" in text
+    assert "Не разобрано" in text                                            # бот — тоже по квадрантам
     assert f"tk:done:{x['id']}" in json.dumps(kw) and "act:@1" in json.dumps(kw)
     p.on_callback({"id": "c", "from": {"id": 1}, "message": {"chat": {"id": 1}}, "data": f"tk:done:{x['id']}"})
     assert p.tasks.get(x["id"])["status"] == "done" and "выполнено" in sent[-2][0]
@@ -204,3 +205,40 @@ def test_cli_update_chat_by_name_index_or_id(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     cli.main(["task", "list"])
     assert "чат 13:gastech-site" in capsys.readouterr().out                 # в списке — номер и имя окна
+
+
+def test_eisenhower_quadrants(t):
+    """Решение владельца 14.11: «по срочности и важности» — квадранты 1–4; 1 сверху, не разобрано — после него."""
+    q = {n: t.add({"title": f"q{n}", "next": "x", **({"q": n} if n else {})}) for n in (4, 3, 2, 1, 0)}
+    assert [x["title"] for x in t.list()] == ["q1", "q0", "q2", "q3", "q4"]
+    assert [x["q"] for x in t.list()] == [1, 0, 2, 3, 4]
+    assert q[3]["urgent"] is True and q[3]["important"] is False
+    assert t.open_count()["q1"] == 1
+    late = t.add({"title": "просрочено", "next": "x", "important": "да", "urgent": "нет", "due": "2020-01-01"})
+    x = next(x for x in t.list() if x["id"] == late["id"])
+    assert x["q"] == 1 and x["overdue"] is True                                  # срок прошёл → срочно
+    assert t.update(late["id"], {"status": "done"}) and t.open_count()["q1"] == 1  # выполненное — не просрочено
+    t.update(q[0]["id"], {"urgent": "no", "important": "yes"})
+    assert next(x for x in t.list() if x["id"] == q[0]["id"])["q"] == 2
+    for bad in ({"q": 5}, {"urgent": "может"}, {"due": "завтра"}):
+        with pytest.raises(ValueError):
+            t.add({"title": "x", "next": "y", **bad})
+
+
+def test_cli_quadrants(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cli, "_windows", lambda: [])
+    monkeypatch.setattr(cli, "own_window", lambda: ("", ""))
+    cli.main(["task", "add", "--title", "Ключ гипервизора", "--next", "сменить",
+              "--urgent", "yes", "--important", "yes"])
+    cli.main(["task", "add", "--title", "Digest", "--next", "потом", "--q", "4"])
+    cli.main(["task", "add", "--title", "Без оценки", "--next", "x"])
+    t = tasks.Tasks(tmp_path / "tasks.json")
+    d = next(x for x in t.list() if x["title"] == "Digest")
+    cli.main(["task", "update", d["id"], "--q", "2", "--due", "2099-01-01"])
+    assert next(x for x in t.list() if x["id"] == d["id"])["q"] == 2
+    capsys.readouterr()
+    cli.main(["task", "list"])
+    out = capsys.readouterr().out
+    assert out.index("== Q1 · Срочно и важно") < out.index("== Не разобрано") < out.index("== Q2 · Важно")
+    assert "срок 2099-01-01" in out

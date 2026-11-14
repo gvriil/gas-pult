@@ -7464,10 +7464,11 @@ function paintSpaces() {
   tasksCount();
 }
 function tasksCount() {
-  const b = $("spaces").querySelector(".sp-tasks"), n = tasksInfo?.open || 0, w = tasksInfo?.waiting || 0;
-  const html = ic("tasks") + (n ? `Задачи · ${n}` : "Задачи") + (w ? ` · ждут ${w}` : "");
+  // На кнопке — сколько «срочно и важно» (квадрант 1 матрицы Эйзенхауэра, решение владельца 14.11), иначе — сколько открыто
+  const b = $("spaces").querySelector(".sp-tasks"), n = tasksInfo?.open || 0, q1 = tasksInfo?.q1 || 0;
+  const html = ic("tasks") + (q1 ? `Задачи · срочно ${q1}` : n ? `Задачи · ${n}` : "Задачи");
   if (b.innerHTML !== html) b.innerHTML = html;
-  b.classList.toggle("wait", !!w);
+  b.classList.toggle("wait", !!q1);
 }
 $("spaces").addEventListener("click", (e) => {
   if (e.target.closest("[data-space=tasks]")) part("tasks").then(() => tasksOpen(), (er) => toast("Задачи не загрузились: " + er.message, 4500));
