@@ -47,6 +47,11 @@ def service_up(data: Path | None = None) -> bool:
         return False
 
 
+def _spawn(cmd, **kw):
+    """Запуск службы озвучки отдельным процессом (тесты подменяют только его, а не весь subprocess)."""
+    return subprocess.Popen(cmd, **kw)
+
+
 def ensure_service(data: Path | None = None, wait: float = SERVICE_WAIT) -> bool:
     """Служба озвучки отвечает; нет — поднять её (одну на всех: замок файла) и подождать. Не вышло — False."""
     from gas_pult.voice import service
@@ -59,8 +64,8 @@ def ensure_service(data: Path | None = None, wait: float = SERVICE_WAIT) -> bool
         if not service_up(data):
             cmd = [sys.executable, "-m", "gas_pult.voice.service", "--socket", str(service.socket_path(data))]
             with open(d / "service.log", "ab") as log:
-                subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
-                                 env={**os.environ, "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS", "4")})
+                _spawn(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
+                       env={**os.environ, "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS", "4")})
         end = time.monotonic() + wait
         while time.monotonic() < end:
             if service_up(data):

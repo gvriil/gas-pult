@@ -117,11 +117,11 @@ def test_ensure_service_starts_one_and_waits(tmp_path, monkeypatch):
     def popen(cmd, **kw):
         started.append(cmd)
         threading.Thread(target=service.serve, args=(sock, 0.5), daemon=True).start()
-    monkeypatch.setattr(voice.subprocess, "Popen", popen)
+    monkeypatch.setattr(voice, "_spawn", popen)
     assert voice.ensure_service(tmp_path, wait=5) is True
     assert voice.ensure_service(tmp_path, wait=5) is True               # уже поднята — второй не стартуем
     assert len(started) == 1 and started[0][1:3] == ["-m", "gas_pult.voice.service"]
-    monkeypatch.setattr(voice.subprocess, "Popen", lambda cmd, **kw: None)
+    monkeypatch.setattr(voice, "_spawn", lambda cmd, **kw: None)
     sock2 = Path("/tmp") / f"gp-tts-none-{time.time_ns()}.sock"
     monkeypatch.setenv("GAS_PULT_TTS_SOCKET", str(sock2))
     assert voice.ensure_service(tmp_path, wait=0.3) is False            # не поднялась — запасной путь
