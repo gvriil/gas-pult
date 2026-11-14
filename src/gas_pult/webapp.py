@@ -74,6 +74,7 @@ from gas_pult import (
     space_sessions,
     spaces,
     speech,
+    tasks,
     tenants,
     terms,
     termwin,
@@ -101,6 +102,7 @@ class NeedForce(ValueError):
 
 PART_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")   # имя части интерфейса: web/js/<имя>.js
 PART_PATH = re.compile(r"/js/([a-z0-9][a-z0-9-]{0,40})\.js")
+SENT = object()                         # обработчик сам отправил ответ (dispatch ничего не дописывает)
 GZIP_LEVEL = 5                          # ответы API — быстро и в разы меньше; страница — заранее с уровнем 9
 GZIP_MIN = 1024                         # меньше — сжимать не стоит
 GZIP_TYPES = ("text/", "application/json", "application/javascript", "image/svg+xml")
@@ -254,6 +256,7 @@ class Panel:
         self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
+        self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
@@ -2471,6 +2474,45 @@ class Panel:
         return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
                 **({"full": out[-FULL:]} if len(out) > TAIL else {}), "triage": tri, "triage_to": to}
 
+    # ---------- задачи владельца (tasks.py, #203) ----------
+    def task_chat(self, t: dict) -> dict | None:
+        """Окно задачи: сначала по разговору (окно могло смениться при перезапуске), потом по номеру окна."""
+        wins = [w for w in self.tmux.windows() if w.get("cmd") == "claude" or w.get("stopped") or w.get("sleep")]
+        sid = transcripts.valid_sid(t.get("sid"))
+        return next((w for w in wins if sid and w.get("sid") == sid), None) or \
+            next((w for w in wins if t.get("chat") and w["id"] == t["chat"]), None)
+
+    def task_list(self) -> list[dict]:
+        """Задачи с живым окном (``chat_now`` — куда «провалиться», ``chat_name``); окна нет — без него."""
+        out = []
+        for t in self.tasks.list():
+            w = self.task_chat(t) if (t.get("chat") or t.get("sid")) else None
+            out.append({**t, "chat_now": (w or {}).get("id", ""), "chat_name": (w or {}).get("name", "")})
+        return out
+
+    def task_run(self, tid: str, confirmed: bool) -> dict:
+        """«Выполнить» команду задачи: как ▶ у ответа Claude — те же правила (sudo, ввод пароля, другая машина —
+        вручную; опасное — второе подтверждение), в папке чата задачи; итог — в задачу (код и время, без вывода)."""
+        t = self.tasks.get(tid)
+        if not t:
+            raise LookupError("задачи уже нет")
+        if t.get("kind") != "command" or not t.get("cmd"):
+            raise ValueError("у этой задачи нет команды")
+        w = self.task_chat(t)
+        if w and in_space(w):
+            raise PermissionError(SPACE_RUN)
+        kind = self.pult.cmds.kind(t["cmd"])
+        if kind != "local":
+            raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
+                             "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(kind,
+                                                                                      "она для другой машины"))
+        if DANGER.search(t["cmd"]) and not confirmed:
+            return {"confirm": True}
+        code, secs, out = execute(t["cmd"], (w or {}).get("path") or self.pult.home)
+        self.tasks.update(tid, {"result": {"code": code, "at": time.time()}})
+        return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
+                **({"full": out[-FULL:]} if len(out) > TAIL else {})}
+
     # ---------- команде нужен ввод — окно терминала панели (termwin.py, задача 47) ----------
     def term_open(self, cmd: str, kind: str, danger: bool, path: str, confirmed: bool) -> dict:
         """Команда — в новом окне ``gp-term`` (пароль вводят там). Для другой машины — нет."""
@@ -2587,6 +2629,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
               "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear", "/api/notify/level",
+              "/api/tasks", "/api/tasks/add", "/api/tasks/update", "/api/tasks/remove", "/api/tasks/run",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
@@ -2595,7 +2638,8 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
 # «Подтвердите кодом» и повторит запрос. Mini App в Telegram — доверенное устройство (код ушёл бы в тот же Telegram);
 # фокус-ссылка — права и окно задал владелец, код ей прийти некуда.
-CONFIRM = {"/api/run", "/api/run/term", "/api/commands/run", "/api/commands/term", "/api/term/type", "/api/term/key",
+CONFIRM = {"/api/run", "/api/run/term", "/api/tasks/run", "/api/commands/run", "/api/commands/term", "/api/term/type",
+           "/api/term/key",
            "/api/tty/type", "/api/tty/key"}
 CONFIRM_API = ("/api/confirm/start", "/api/confirm/verify")
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
@@ -3026,6 +3070,7 @@ def handler(panel: Panel):
                         "cost": panel.cost_summary(pool),
                         # лимиты подписки (5 часов, неделя) и время сброса — учётка владельца, видит только он
                         "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
+                        "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
@@ -3036,6 +3081,7 @@ def handler(panel: Panel):
                 return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
                         "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
                         "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
+                        "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
                         "new_root": projects.tilde(str(panel.pult.module_root()), panel.pult.home),   # «Новый проект»
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
@@ -3045,6 +3091,11 @@ def handler(panel: Panel):
             if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
                 before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
+            if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
+                etag = panel.tasks.etag()
+                body = json.dumps({"tasks": panel.task_list()}, ensure_ascii=False).encode()
+                self.reply(200, body, etag=etag)
+                return SENT
             if path == "/api/chat/trash":                # корзина чатов и скрытые чаты
                 return panel.chat_trash_list()
             if path == "/api/project/history":           # переписка завершённого чата — без окна
@@ -3852,6 +3903,14 @@ def handler(panel: Panel):
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
+            if path == "/api/tasks/add":                  # задача владельца руками (#203)
+                return panel.tasks.add(b, by="owner")
+            if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
+                return panel.tasks.update(str(b.get("id") or ""), {k: v for k, v in b.items() if k != "id"})
+            if path == "/api/tasks/remove":
+                return {"ok": panel.tasks.remove(str(b.get("id") or ""))}
+            if path == "/api/tasks/run":                  # «Выполнить» команду задачи — с подтверждением кодом
+                return panel.task_run(str(b.get("id") or ""), b.get("confirmed") is True)
             if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
                 return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""),
                                          b.get("force") is True)
@@ -4004,6 +4063,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "retry": e.retry}, 429)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
+            if out is SENT:                              # ответ уже отправлен (свой заголовок: ETag)
+                return None
             if isinstance(out, tuple) and out[0] == "cookie":
                 return self.reply(200, json.dumps(out[2], ensure_ascii=False).encode(), cookie=out[1])
             if isinstance(out, tuple):                   # (тип, байты[, заголовки]) — файл, звук
