@@ -1,0 +1,46 @@
+{
+ "_source": "github.com/bitrix24/b24restdocs @30861a4 — api-reference/crm/leads/crm-lead-list.md (пример ответа из документации; данные выдуманные; не проверено на песочнице)",
+ "result": [
+  {
+   "ID": "7",
+   "TITLE": "Заявка с сайта",
+   "NAME": "Анна",
+   "LAST_NAME": "Смирнова",
+   "STATUS_ID": "NEW",
+   "SOURCE_ID": "WEB",
+   "OPPORTUNITY": "0.00",
+   "CURRENCY_ID": "RUB",
+   "ASSIGNED_BY_ID": "1",
+   "DATE_CREATE": "2026-11-14T01:12:00+03:00",
+   "HAS_PHONE": "Y",
+   "HAS_EMAIL": "N",
+   "COMMENTS": "Хочу пробную тренировку в субботу"
+  },
+  {
+   "ID": "6",
+   "TITLE": "Заявка ВКонтакте",
+   "NAME": "Олег",
+   "LAST_NAME": "Кузнецов",
+   "STATUS_ID": "IN_PROCESS",
+   "SOURCE_ID": "OTHER",
+   "OPPORTUNITY": "0.00",
+   "CURRENCY_ID": "RUB",
+   "ASSIGNED_BY_ID": "1",
+   "DATE_CREATE": "2026-11-13T15:40:00+03:00",
+   "HAS_PHONE": "N",
+   "HAS_EMAIL": "N",
+   "COMMENTS": null
+  }
+ ],
+ "next": 2,
+ "total": 3,
+ "time": {
+  "start": 1731571200.1,
+  "finish": 1731571200.4,
+  "duration": 0.3,
+  "processing": 0.1,
+  "date_start": "2026-11-14T10:00:00+03:00",
+  "date_finish": "2026-11-14T10:00:00+03:00",
+  "operating": 0
+ }
+}

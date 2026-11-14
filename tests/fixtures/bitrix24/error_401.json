@@ -1,0 +1,5 @@
+{
+ "_source": "github.com/bitrix24/b24restdocs @30861a4 — _includes/system-errors.md (пример ответа из документации; данные выдуманные; не проверено на песочнице)",
+ "error": "INVALID_CREDENTIALS",
+ "error_description": "Invalid request credentials"
+}

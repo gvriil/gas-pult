@@ -1,0 +1,51 @@
+{
+ "_source": "github.com/bitrix24/b24restdocs @30861a4 — api-reference/tasks/tasks-task-list.md (пример ответа из документации; данные выдуманные; не проверено на песочнице)",
+ "result": {
+  "tasks": [
+   {
+    "id": "8017",
+    "title": "Перезвонить Ивановым по абонементу",
+    "deadline": "2026-11-13T19:00:00+03:00",
+    "createdDate": "2026-11-12T16:15:55+03:00",
+    "responsibleId": "6",
+    "priority": "2",
+    "status": "3",
+    "subStatus": "-1",
+    "responsible": {
+     "id": "6",
+     "name": "Ольга Менеджерова",
+     "link": "/company/personal/user/6/"
+    },
+    "ufCrmTask": [
+     "D_41"
+    ]
+   },
+   {
+    "id": "8018",
+    "title": "Подготовить расписание детской секции",
+    "deadline": "2026-11-20T19:00:00+03:00",
+    "createdDate": "2026-11-13T10:00:00+03:00",
+    "responsibleId": "1",
+    "priority": "1",
+    "status": "2",
+    "subStatus": "2",
+    "responsible": {
+     "id": "1",
+     "name": "Админ Клуба",
+     "link": "/company/personal/user/1/"
+    },
+    "ufCrmTask": []
+   }
+  ]
+ },
+ "total": 2,
+ "time": {
+  "start": 1731571200.1,
+  "finish": 1731571200.4,
+  "duration": 0.3,
+  "processing": 0.1,
+  "date_start": "2026-11-14T10:00:00+03:00",
+  "date_finish": "2026-11-14T10:00:00+03:00",
+  "operating": 0
+ }
+}
