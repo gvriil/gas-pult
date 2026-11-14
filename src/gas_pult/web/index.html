@@ -1381,8 +1381,9 @@ const FOCUS = !!FOCUS_TOKEN || params.has("focus");
 if (FOCUS_TOKEN) history.replaceState(null, "", location.pathname + (params.has("focus") ? location.search : (location.search ? location.search + "&" : "?") + "focus"));
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
-             stopped: { label: "остановлена", cls: "s-stopped" } };      // Claude завершился, в окне — командная строка
-const ORDER = { dialog: 0, busy: 1, idle: 2, stopped: 3 };
+             stopped: { label: "остановлена", cls: "s-stopped" },
+             sleep: { label: "💤 спит", cls: "s-idle" } };                 // claude-sleep: первое сообщение разбудит      // Claude завершился, в окне — командная строка
+const ORDER = { dialog: 0, busy: 1, idle: 2, sleep: 2, stopped: 3 };
 let lastY = 0, autoUntil = 0, barsShown = true, barsDir = 0, barsRun = 0, barsHidDir = 0;   // прячущиеся панели
 let drag = null;                                    // перемотка пальцем: { id, bar, t }
 let voice = null;                                   // озвучка: { w, name, msg, full, state: "prep" | "play" | "pause", at? }

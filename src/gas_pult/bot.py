@@ -413,6 +413,15 @@ class Pult:
         deliv = getattr(self, "deliv", None)
         if sends:
             sends.sent(w["id"], text)
+        cur = self.tmux.window(w["id"]) or w
+        if cur.get("sleep"):                                # спит (claude-sleep): не ждём «❯» — будим этим текстом
+            with self.hold(w["id"]):
+                self.tmux.wake(w["id"], text)
+            if deliv:
+                deliv.record(w["id"], src, text, res="woke")
+            if sends:
+                sends.delivered(w["id"])
+            return True
         try:
             with self.hold(w["id"]):
                 self.ready_for_text(w["id"])

@@ -311,7 +311,9 @@ class Panel:
             snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
             rev = transcripts.revision(w["path"], home, sid)
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
-                        "status": "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
+                        "status": "sleep" if w.get("sleep") else
+                        "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
+                        "sleep": bool(w.get("sleep")),                   # 💤 claude-sleep: первое сообщение разбудит
                         # свободно % контекста: снимок строки статуса, иначе — текст экрана (старый способ)
                         "context": 100 - snap["used"] if snap and snap["used"] is not None
                         else int(ctx.group(1)) if ctx else None,

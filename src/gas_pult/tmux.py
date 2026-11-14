@@ -238,6 +238,15 @@ class Tmux:
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             procs_w = procs.get(w.get("tty", "").removeprefix("/dev/"), [])        # [[pid, argv…], …]
             claude = [p[1:] for p in procs_w if is_claude(p[1:])]
+            # спящее окно (claude-sleep): заглушка с argv0 «claude» ждёт первое сообщение — файла сессии у неё нет,
+            # id разговора — в её аргументах: … claude-sleep stub <id> <папка>
+            stub = next((a for a in claude if "stub" in a and any(x.endswith("claude-sleep") for x in a)), None)
+            if stub:
+                i = stub.index("stub")
+                sid = stub[i + 1] if len(stub) > i + 1 and UUID.match(stub[i + 1]) else ""
+                w["sleep"] = True
+                if sid:
+                    w["tag"], w["sid"] = w.get("sid", ""), sid
             # журнал окна — по самому процессу Claude (sessions/<pid>.json), а не по метке или «последнему в папке»
             live = next((sid for p in procs_w if is_claude(p[1:]) and (sid := live_sid(p[0]))), "")
             if live:
@@ -321,6 +330,12 @@ class Tmux:
             tries += 1
         sleep(0.8)
         return done(self.field(wid)) or {"ok": False, "result": "stuck", "after": "ours"}
+
+    def wake(self, wid: str, text: str):
+        """Разбудить спящее окно сообщением: заглушка читает строки, а не вставку (маркеры bracketed paste попали бы
+        в текст) — набираем текст как с клавиатуры и Enter; claude --resume стартует уже с этим сообщением."""
+        self.run("send-keys", "-t", wid, "-l", text)
+        self.run("send-keys", "-t", wid, "Enter")
 
     def type(self, wid: str, text: str):
         self.run("send-keys", "-t", wid, "-l", text)
