@@ -1140,7 +1140,7 @@ class Pult:
         """Окна без активности дольше ``auto_close_days`` закрыть: Claude выходит штатно, переписка — в журнале
         («Завершённые» проекта, «Продолжить»). Не трогаем: активное окно бота, окна пространств, окна с фоновыми
         задачами или занятые. Возвращает имена закрытых."""
-        days = int(getattr(self.cfg, "auto_close_days", 0) or 0)
+        days = int(getattr(getattr(self, "cfg", None), "auto_close_days", 0) or 0)   # заготовки в тестах — без cfg
         now = time.time() if now is None else now
         if days <= 0 or now - getattr(self, "_ac_at", 0) < self.AUTO_CLOSE_EVERY:
             return []
