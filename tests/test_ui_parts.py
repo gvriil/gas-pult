@@ -47,3 +47,12 @@ def test_part_served_with_gzip_and_etag(server):
 def test_part_names():
     assert webapp.PART_PATH.fullmatch("/js/demo.js") and not webapp.PART_PATH.fullmatch("/js/../x.js")
     assert not webapp.PART_NAME.fullmatch("../x") and webapp.PART_NAME.fullmatch("voice-player")
+
+
+def test_boot_requests_not_repeated():
+    """Шаг 2: список — сразу параллельно с /api/meta; одновременные refresh() склеиваются; опрос переписки не
+    дублирует её первую загрузку (при входе было 4 запроса /api/projects и 2 полных /api/history)."""
+    assert 'bootList = { at: Date.now(), p: api("/api/projects").catch(() => null) }' in INDEX
+    assert "if (!rfRun) return rfRun = refresh()" in INDEX and "return rfNext ||= rfRun.then(" in INDEX
+    assert "start.poll ||= () => tourOn || refreshShared();" in INDEX
+    assert '|| histLoading) return;' in INDEX and "histLoading = true;" in INDEX

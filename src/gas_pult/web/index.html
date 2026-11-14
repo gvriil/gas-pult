@@ -3679,11 +3679,25 @@ function fallbackNotices(list) {
   toast(fresh.at(-1).text, 6000);
   try { localStorage.setItem("fbSeen", String(fresh.at(-1).ts)); } catch (e) { /* не страшно */ }
 }
+// Опрос списка (#191, шаг 2): опрос и загрузка зовут refreshShared — одновременные вызовы склеиваются: в полёте один
+// запрос и не больше одного следом (при входе было четыре подряд). refresh() — как раньше, напрямую: его зовут и
+// изнутри обновления (focusGone), склейка там ждала бы саму себя.
+let rfRun = null, rfNext = null, histLoading = false;
+function refreshShared() {
+  if (!rfRun) return rfRun = refresh().finally(() => { rfRun = null; });
+  return rfNext ||= rfRun.then(() => { rfNext = null; return refreshShared(); });
+}
+// Список при входе — сразу, параллельно с /api/meta (как у bb: данные не ждут цепочку загрузки). /api/projects — шире
+// /api/sessions, годится для любого первого экрана; первый refresh берёт его, если он свежий (до 5 с).
+let bootList = null;
+if (!DEMO && !FOCUS) bootList = { at: Date.now(), p: api("/api/projects").catch(() => null) };
 async function refresh() {
   lastPoll = Date.now();
   try {
     const pv = projOn() && (navOn() || projMode() && !$("home").hidden);   // панель чатов и «Проекты» — тот же опрос, ответ шире
-    const d = await api(pv ? "/api/projects" : "/api/sessions");
+    const boot = bootList && Date.now() - bootList.at < 5000 ? await bootList.p : null;
+    bootList = null;
+    const d = boot || await api(pv ? "/api/projects" : "/api/sessions");
     if (pv) projData = d;
     await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
     sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)); costInfo = d.cost || null; limitsInfo = d.limits || null; agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
@@ -4209,11 +4223,11 @@ async function openSession(id, startTab) {
   ttsWarm(id);
   document.body.classList.remove("focus-empty");
   current = id; termAll = false; store("last", id); hint = ""; show("session"); liveAct = null; actTick = 0;
-  if (!cur()) await refresh();
+  if (!cur()) await refresh();                      // напрямую: openSession зовут и изнутри обновления (focusGone)
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
   $("content").className = "chat"; $("content").innerHTML = skelMsgs(); setAsk("");
-  hist = []; setTab(startTab || "chat"); refresh(); haptic("selectionChanged"); padDock();
+  hist = []; setTab(startTab || "chat"); refreshShared(); haptic("selectionChanged"); padDock();
   if (matchMedia("(pointer: fine)").matches) setTimeout(() => $("input").focus(), 300);   // на компьютере — сразу печатать
 }
 function setTab(t) {
@@ -4239,7 +4253,8 @@ async function loadContent() {
     return;
   }
   try {
-    const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]);
+    if (tab === "chat") histLoading = true;           // опрос (liveChat) не дублирует эту загрузку
+    const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]).finally(() => { histLoading = false; });
     renderAsk(scr.lines, scr.auth); loginNotice(scr.login, current);
     $("keys").hidden = tab !== "screen";                    // клавиши — на «Экране»; в переписке вопрос — карточкой
     if (tab === "chat") {
@@ -4265,7 +4280,7 @@ function renderTerm(lines) {
 }
 
 async function liveChat() {                         // каждые 3 с: менялся ли журнал; изменился — дорисовываем, не сбивая прокрутку
-  if (!current || tab !== "chat" || cur()?.status === "stopped") return;
+  if (!current || tab !== "chat" || cur()?.status === "stopped" || histLoading) return;   // первая загрузка ещё идёт
   try {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
     markFresh();
@@ -7293,7 +7308,7 @@ async function tourOffer() {                           // один раз: се�
 // ---------- старт ----------
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
-  loadSpaces().then(() => { if (spacesInfo?.tenants?.length && view === "home") refresh(); });   // группа «Пространства»
+  loadSpaces().then(() => { if (spacesInfo?.tenants?.length && view === "home") refreshShared(); });   // группа «Пространства»
   if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
@@ -7314,17 +7329,17 @@ async function start() {
     if (store("seenAny")) { helpSheet("whatsnew"); sheet(wn.title, wn.items.map((t) => ({ info: true, label: t, icon: "check" })), "Понятно"); }
   }
   store("seenAny", "1");
-  start.poll ||= () => tourOn || refresh();          // общий секундный тик (tick, pollDue); во время тура экран не перерисовываем
+  start.poll ||= () => tourOn || refreshShared();          // общий секундный тик (tick, pollDue); во время тура экран не перерисовываем
   start.done = true; afterPaint(mdLoad);
   setTimeout(tourOffer, 1200);
   keepAwake();
   let resume = null;
   try { resume = JSON.parse(sessionStorage.getItem("resume") || "null"); sessionStorage.removeItem("resume"); } catch (e) {}
-  if (resume?.id && !DEMO) { await refresh(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
+  if (resume?.id && !DEMO) { await refreshShared(); if (sessions.some((x) => x.id === resume.id)) await openSession(resume.id, resume.tab); }
   // Чат прежде всего: на телефоне панель сразу открывает последнюю сессию (открытую здесь, иначе активную в чате бота).
   if (view !== "session" && !split() && !params.has("open") && !params.has("home") && !params.has("prof") && !params.has("cmds")
       && !params.has("view") && !params.has("modules") && !(setupData && !setupData.ready)) {
-    if (!sessions.length) await refresh();
+    if (!sessions.length) await refreshShared();
     const live = sessions.filter((x) => x.status !== "stopped");
     const pick = sessions.find((x) => x.id === store("last")) || live.find((x) => x.active)
       || [...live].sort((a, b) => ORDER[a.status] - ORDER[b.status])[0];
