@@ -31,6 +31,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
+from typing import ClassVar
 
 from gas_pult import (
     activity,
@@ -58,6 +59,7 @@ from gas_pult import (
     setup,
     space_budget,
     speech,
+    tasks,
     tenants,
     terms,
     termwin,
@@ -228,6 +230,7 @@ class Pult:
         self.changes = ago.Screens()                       # когда менялся экран окна — «изменена N назад» (ago.py)
         self.following: dict[tuple, tuple] = {}            # (чат, окно) → (метка, id служебного сообщения статуса)
         self.routes = tgroutes.Routes(cfg.data / "tg_routes.json")   # сообщение бота → окно: reply идёт туда
+        self.tasks = tasks.Tasks(cfg.data / "tasks.json")           # задачи владельца (#203): /tasks
         self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
 
     # ---------- Telegram ----------
@@ -1095,6 +1098,27 @@ class Pult:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
 
+    # ---------- задачи владельца (tasks.py, #203) ----------
+    TASK_ICON: ClassVar[dict] = {"waiting": "⏳", "doing": "🔄", "todo": "⬜", "done": "✅"}
+
+    def show_tasks(self, chat: int):
+        """/tasks: невыполненные (ждут вас — первыми), у каждой — что дальше; кнопки «✅ Выполнено» и «💬 В чат»."""
+        open_ = [x for x in self.tasks.list() if x["status"] != "done"][:10]
+        if not open_:
+            return self.send(chat, "✅ Невыполненных задач нет. Агенты ставят их командой gas-pult task add.")
+        lines, rows = ["📋 Задачи — что не решено:"], []
+        for i, x in enumerate(open_, 1):
+            what = {"command": x.get("cmd"), "call": x.get("phone"), "write": x.get("to"),
+                    "meeting": " · ".join(v for v in (x.get("with"), x.get("when")) if v),
+                    "decision": x.get("question"), "check": x.get("link")}.get(x["kind"]) or ""
+            lines.append(f"{i}. {self.TASK_ICON.get(x['status'], '•')} {tasks.TITLES[x['kind']]}: {x['title']}"
+                         + (f"\n   {what}" if what else "") + f"\n   → {x['next']}")
+            row = [(f"✅ {i}", f"tk:done:{x['id']}")]
+            if x.get("chat") and self.tmux.window(x["chat"]):
+                row.append((f"💬 {i} — в чат", f"act:{x['chat']}"))
+            rows.append(row)
+        self.send(chat, "\n".join(lines), reply_markup=kb(rows))
+
     # ---------- один повтор после лимита подписки (limitretry.py, #189 п. 6) ----------
     def limit_wait(self, w: dict, text: str):
         """Окно встало на лимите подписки, запасных нет: один повтор на время сброса (запись на окно — одна)."""
@@ -1942,6 +1966,14 @@ class Pult:
             if not self.tmux.window(wid):
                 return send("Этого окна уже нет.")
             return self.tmux.keys(wid, key)
+        if kind == "tk":                                   # задачи владельца: tk:done:<id> / tk:undo:<id>
+            act, _, tid = arg.partition(":")
+            try:
+                x = self.tasks.update(tid, {"status": "done" if act == "done" else "todo"})
+            except (LookupError, ValueError) as e:
+                return send(f"Не вышло: {e}.")
+            send(f"{'✅' if x['status'] == 'done' else '↩️'} «{x['title']}» — {tasks.STATUS_TITLES[x['status']]}.")
+            return self.show_tasks(chat)
         if kind == "rc":                                   # «Не продолжать» после лимита подписки
             self.set_state(limit_retries=limitretry.cancel(self.state(), arg))
             return send("Хорошо, сама не продолжу.")
@@ -2542,6 +2574,8 @@ class Pult:
             return self.send_invite(chat, t.removeprefix("/invite").strip())
         if t == "/modules":
             return self.show_modules(chat)
+        if t == "/tasks":
+            return self.show_tasks(chat)
         if t in ("/start", "/menu", "/help"):
             send("Пульт сессий Claude Code. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice, "
                  "готовые агенты — /modules.",

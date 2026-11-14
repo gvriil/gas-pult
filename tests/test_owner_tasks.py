@@ -1,0 +1,148 @@
+"""Задачи владельца (#203): чек-лист «что решено, что нет» — с действием и привязкой к чату.
+
+Владелец 14.11: «чтобы я понимал, какие задачи не решены и какие решены … сразу нажать, провалиться туда и
+продолжить работу … это для меня супер важно, чтобы не теряться»."""
+
+import json
+import multiprocessing
+import urllib.request
+
+import pytest
+from test_project_chats import call
+from test_project_chats import server as server
+
+from gas_pult import bot, cli, tasks, webapp, webauth
+from gas_pult.config import Config
+
+
+@pytest.fixture
+def t(tmp_path):
+    return tasks.Tasks(tmp_path / "tasks.json")
+
+
+def test_add_check_order_and_done(t):
+    a = t.add({"title": "Перезапустить панель", "kind": "command", "cmd": "systemctl --user restart x",
+               "next": "нажать «Выполнить»"})
+    b = t.add({"title": "Ответить Ивану", "kind": "write", "to": "@ivan", "draft": "Привет", "next": "отправить",
+               "status": "waiting"})
+    c = t.add({"title": "Сделано", "kind": "other", "status": "done"})
+    assert [x["id"] for x in t.list()] == [b["id"], a["id"], c["id"]]        # ждут вас — первыми, выполненные — в конце
+    assert t.open_count() == {"open": 2, "waiting": 1}
+    x = t.update(a["id"], {"status": "done"})
+    assert x["done_at"] and t.open_count()["open"] == 1
+    x = t.update(a["id"], {"status": "todo"})
+    assert "done_at" not in x
+    for bad in ({"kind": "other", "next": "x"}, {"title": "x"}, {"title": "x", "kind": "command", "next": "y"},
+                {"title": "x", "kind": "decision", "question": "?", "options": ["один"], "next": "y"},
+                {"title": "x", "kind": "звонок", "next": "y"}):
+        with pytest.raises(ValueError):
+            t.add(bad)
+    assert t.remove(c["id"]) and not t.remove(c["id"])
+    with pytest.raises(LookupError):
+        t.update("нет", {"status": "done"})
+    assert oct((t.path).stat().st_mode & 0o777) == "0o600"
+
+
+def test_etag_changes_with_content(t):
+    e0 = t.etag()
+    t.add({"title": "a", "next": "b"})
+    e1 = t.etag()
+    assert e0 != e1 and e1 == t.etag()
+
+
+def _add_many(path, n):
+    x = tasks.Tasks(path)
+    for i in range(n):
+        x.add({"title": f"t{i}", "next": "n"})
+
+
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+def test_concurrent_writers_do_not_lose_tasks(tmp_path):
+    ctx = multiprocessing.get_context("fork")
+    ps = [ctx.Process(target=_add_many, args=(tmp_path / "tasks.json", 20)) for _ in range(3)]
+    for p in ps:
+        p.start()
+    for p in ps:
+        p.join(30)
+    assert len(tasks.Tasks(tmp_path / "tasks.json").list()) == 60
+
+
+def test_cli_add_list_done(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cli, "own_window", lambda: ("@4", "штаб"))
+    monkeypatch.setattr(cli, "_sid_of", lambda wid: "11111111-1111-4111-8111-111111111111")
+    cli.main(["task", "add", "--title", "Выбрать цену пилота", "--type", "decision", "--question", "Сколько?",
+              "--option", "50 тыс.", "--option", "80 тыс.", "--next", "выбрать вариант", "--status", "waiting"])
+    out = capsys.readouterr().out
+    tid = out.split()[1].rstrip(":")
+    x = tasks.Tasks(tmp_path / "tasks.json").get(tid)
+    assert x["chat"] == "@4" and x["sid"].startswith("1111") and x["by"] == "агент · штаб"
+    assert x["options"] == ["50 тыс.", "80 тыс."]
+    cli.main(["task", "list"])
+    assert "ждёт вас" in capsys.readouterr().out
+    cli.main(["task", "done", tid])
+    assert tasks.Tasks(tmp_path / "tasks.json").get(tid)["status"] == "done"
+    with pytest.raises(SystemExit, match="не записал"):
+        cli.main(["task", "add", "--title", "без дальше", "--chat", "none"])
+
+
+def test_api_owner_only_etag_and_run(server, monkeypatch):
+    p, base, *_ = server
+    tok, member = p.auth.issue(1), p.auth.issue(2)
+    code, x = call(base, "/api/tasks/add", {"title": "Посмотреть логи", "kind": "command", "cmd": "echo привет",
+                                            "next": "выполнить", "chat": "@1"}, tok)
+    assert code == 200 and x["id"]
+    assert call(base, "/api/tasks", tok=member)[0] == 403                    # участнику — нет
+    req = urllib.request.Request(base + "/api/tasks", headers={"Cookie": f"{webauth.COOKIE}={tok}"})
+    with urllib.request.urlopen(req) as r:
+        etag, d = r.headers["ETag"], json.loads(r.read())
+    assert d["tasks"][0]["chat_now"] == "@1"                                 # окно задачи живо — куда «провалиться»
+    req.add_header("If-None-Match", etag)
+    try:
+        urllib.request.urlopen(req)
+        raise AssertionError("ждали 304")
+    except urllib.error.HTTPError as e:
+        assert e.code == 304
+    code, d = call(base, "/api/sessions", tok=tok)
+    assert d["tasks"] == {"open": 1, "waiting": 0}
+    monkeypatch.setattr(p.auth, "needs_confirm", lambda token, fresh=None: False)
+    ran = []
+    monkeypatch.setattr(webapp, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))
+    code, r = call(base, "/api/tasks/run", {"id": x["id"]}, tok)
+    assert code == 200 and r["code"] == 0 and "привет" in r["out"]
+    assert p.tasks.get(x["id"])["result"]["code"] == 0 and ran[0][0] == "echo привет"
+    code, y = call(base, "/api/tasks/add", {"title": "Удалить", "kind": "command", "cmd": "rm -rf /tmp/x",
+                                            "next": "x"}, tok)
+    assert call(base, "/api/tasks/run", {"id": y["id"]}, tok)[1] == {"confirm": True}   # опасное — ещё раз
+    code, z = call(base, "/api/tasks/update", {"id": x["id"], "status": "done"}, tok)
+    assert z["status"] == "done"
+
+
+def test_run_needs_confirm_code_for_fresh_session(server):
+    p, base, *_ = server
+    tok = p.auth.issue(1)
+    _, x = call(base, "/api/tasks/add", {"title": "ls", "kind": "command", "cmd": "ls", "next": "x"}, tok)
+    code, e = call(base, "/api/tasks/run", {"id": x["id"]}, tok)
+    assert code == 403 and e.get("confirm") == "code"        # новый вход — сперва код, как у «Выполнить»
+
+
+def test_bot_tasks(tmp_path, monkeypatch):
+    monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
+    p = bot.Pult.__new__(bot.Pult)
+    p.cfg = Config(token="t", owners=[1])
+    p.tasks = tasks.Tasks(tmp_path / "tasks.json")
+    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid} if wid == "@1" else None})()
+    sent = []
+    p.send = lambda chat, text, **kw: sent.append((text, kw))
+    p.to = lambda chat: lambda text, **kw: sent.append((text, kw))
+    p.api = lambda *a, **k: {}
+    p.show_tasks(1)
+    assert "Невыполненных задач нет" in sent[-1][0]
+    x = p.tasks.add({"title": "Позвонить бухгалтеру", "kind": "call", "phone": "+7 900 000-00-00",
+                     "next": "уточнить акт", "chat": "@1"})
+    p.show_tasks(1)
+    text, kw = sent[-1]
+    assert "Позвонить бухгалтеру" in text and "+7 900" in text and "уточнить акт" in text
+    assert f"tk:done:{x['id']}" in json.dumps(kw) and "act:@1" in json.dumps(kw)
+    p.on_callback({"id": "c", "from": {"id": 1}, "message": {"chat": {"id": 1}}, "data": f"tk:done:{x['id']}"})
+    assert p.tasks.get(x["id"])["status"] == "done" and "выполнено" in sent[-2][0]

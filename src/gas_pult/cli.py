@@ -462,6 +462,57 @@ def own_window() -> tuple[str, str]:
     return (wid, name) if r.returncode == 0 and wid.startswith("@") else ("", "")
 
 
+def cmd_task(a):
+    """Задачи владельца (#203): агент или человек кладёт задачу — она видна сверху в панели и в боте (/tasks)."""
+    from gas_pult import tasks
+
+    t = tasks.Tasks(config.data_dir() / "tasks.json")
+    if a.action == "list":
+        for x in t.list():
+            if x["status"] == "done" and not a.all:
+                continue
+            print(f"{x['id']}  [{tasks.STATUS_TITLES[x['status']]}] {tasks.TITLES[x['kind']]}: {x['title']}"
+                  + (f" — дальше: {x['next']}" if x.get("next") and x["status"] != "done" else "")
+                  + (f" · чат {x['chat']}" if x.get("chat") else ""))
+        return
+    if a.action in ("done", "undo"):
+        if not a.id:
+            raise SystemExit("нужен id задачи: gas-pult task done <id>")
+        try:
+            x = t.update(a.id, {"status": "done" if a.action == "done" else "todo"})
+        except (ValueError, LookupError) as e:
+            raise SystemExit(f"не записал: {e}") from None
+        print(f"{x['id']}: {tasks.STATUS_TITLES[x['status']]}")
+        return
+    d = {k: v for k, v in {"title": a.title, "kind": a.type, "next": a.next, "status": a.status, "link": a.link,
+                           "cmd": a.cmd, "phone": a.phone, "to": a.to, "draft": a.draft, "with": a.with_,
+                           "when": a.when, "question": a.question,
+                           "options": a.option or None}.items() if v}
+    try:
+        if a.action == "update":
+            if not a.id:
+                raise SystemExit("нужен id задачи: gas-pult task update <id> --next …")
+            x = t.update(a.id, d)
+        else:
+            wid, name = (a.chat, "") if a.chat else own_window()
+            if wid and wid != "none":
+                d["chat"], d["sid"] = wid, _sid_of(wid)
+            x = t.add(d, by=a.by or (f"агент · {name}" if name else "агент"))
+    except (ValueError, LookupError) as e:
+        raise SystemExit(f"не записал: {e}") from None
+    print(f"задача {x['id']}: {x['title']} [{tasks.STATUS_TITLES[x['status']]}]"
+          + (f" · чат {x['chat']}" if x.get("chat") else ""))
+
+
+def _sid_of(wid: str) -> str:
+    """id разговора окна (метка или живой процесс) — по нему задача найдёт чат и после перезапуска окна."""
+    from gas_pult.tmux import Tmux
+    try:
+        return (Tmux(config.load().session).window(wid) or {}).get("sid") or ""
+    except (config.ConfigError, OSError):
+        return ""
+
+
 def cmd_notify(a):
     """Своё уведомление владельцам в бот — для агента («готово, нужен ваш ответ»). Ответ (reply) на него уйдёт
     в окно, из которого отправлено (``tgroutes``). Уровни уведомлений окна на него не действуют: это явная просьба.
@@ -581,6 +632,26 @@ def main(argv: list[str] | None = None):
     s.add_argument("text", nargs="*", help="текст; пусто — из stdin")
     s.add_argument("--window", default="", help="окно (@N), куда пойдёт ответ; по умолчанию — своё окно tmux")
     s.set_defaults(fn=cmd_notify)
+    s = sub.add_parser("task", help="задачи владельца: add | list | done <id> | undo <id> | update <id> (#203)")
+    s.add_argument("action", choices=["add", "list", "done", "undo", "update"])
+    s.add_argument("id", nargs="?", default="")
+    s.add_argument("--title", default="")
+    s.add_argument("--type", default="", help="command | call | write | meeting | decision | check | other")
+    s.add_argument("--next", default="", help="что сделать дальше — одна строка")
+    s.add_argument("--status", default="", help="todo | doing | waiting | done (по умолчанию todo)")
+    s.add_argument("--chat", default="", help="окно (@N) задачи; по умолчанию — своё окно tmux; none — без чата")
+    s.add_argument("--link", default="", help="источник: issue, PR, документ")
+    s.add_argument("--cmd", default="", help="команда (тип command)")
+    s.add_argument("--phone", default="", help="телефон (тип call)")
+    s.add_argument("--to", default="", help="кому (тип write)")
+    s.add_argument("--draft", default="", help="черновик сообщения (тип write)")
+    s.add_argument("--with", dest="with_", default="", help="с кем встреча (тип meeting)")
+    s.add_argument("--when", default="", help="когда (тип meeting)")
+    s.add_argument("--question", default="", help="вопрос (тип decision)")
+    s.add_argument("--option", action="append", help="вариант решения (тип decision), можно несколько")
+    s.add_argument("--all", action="store_true", help="list: и выполненные")
+    s.add_argument("--by", default="", help="кто поставил (по умолчанию «агент · окно»)")
+    s.set_defaults(fn=cmd_task)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)
