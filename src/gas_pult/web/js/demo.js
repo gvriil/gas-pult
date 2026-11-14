@@ -508,26 +508,37 @@ function demoApi(path, body) {
 // Задачи владельца (#203) в демо: примеры всех типов действий, всё — в памяти страницы.
 function demoTaskList() {
   return demoApi.tasks ||= [
-    { id: "t1", title: "Выбрать цену пилота для клиента", kind: "decision", status: "waiting", question: "Цена пилота на 4 недели?",
+    { id: "t1", title: "Выбрать цену пилота для клиента", kind: "decision", status: "waiting", urgent: true, important: true, question: "Цена пилота на 4 недели?",
       options: ["50 тыс. ₽", "80 тыс. ₽", "Обсудить на созвоне"], next: "выбрать вариант — ответ уйдёт в чат", chat: "@1", chat_now: "@1", chat_name: "tgi-0904", by: "агент · штаб", created: Date.now() / 1000 - 3600 },
-    { id: "t2", title: "Перезапустить панель после выкладки", kind: "command", status: "todo", cmd: "systemctl --user restart gas-pult-webapp",
+    { id: "t2", title: "Перезапустить панель после выкладки", kind: "command", status: "todo", urgent: true, important: false, cmd: "systemctl --user restart gas-pult-webapp",
       next: "нажать «Выполнить»", chat: "@2", chat_now: "@2", chat_name: "icon-1146", by: "агент · gas-pult", created: Date.now() / 1000 - 7200 },
-    { id: "t3", title: "Позвонить бухгалтеру про акт сверки", kind: "call", status: "todo", phone: "+7 900 000-00-00", next: "уточнить дату акта", by: "owner", created: Date.now() / 1000 - 9000 },
+    { id: "t3", title: "Позвонить бухгалтеру про акт сверки", kind: "call", status: "todo", urgent: false, important: true, due: "2026-01-15", phone: "+7 900 000-00-00", next: "уточнить дату акта", by: "owner", created: Date.now() / 1000 - 9000 },
     { id: "t4", title: "Написать Ивану про доступ", kind: "write", status: "doing", to: "@ivan_example", draft: "Иван, добрый день! Доступ к пульту открыт — войдите через Telegram.", next: "отправить черновик", by: "агент · штаб", created: Date.now() / 1000 - 600 },
     { id: "t5", title: "Проверить PR с задачами", kind: "check", status: "done", link: "https://github.com/gvriil/gas-pult/pulls", next: "", by: "агент · gas-pult", created: Date.now() / 1000 - 86400, done_at: Date.now() / 1000 - 3000 },
   ];
 }
+// Квадрант — как на сервере (tasks.quadrant): срок прошёл — срочно; не оценено — 0
+function demoQ(t) {
+  const today = new Date().toISOString().slice(0, 10), over = !!t.due && t.status !== "done" && t.due < today;
+  const u = over ? true : t.urgent, i = t.important;
+  if (u == null && i == null) return { q: 0, overdue: over };
+  return { q: u && i ? 1 : i ? 2 : u ? 3 : 4, overdue: over };
+}
 function demoTaskCount() {
-  const l = demoTaskList();
-  return { open: l.filter((t) => t.status !== "done").length, waiting: l.filter((t) => t.status === "waiting").length };
+  const l = demoTaskList().filter((t) => t.status !== "done");
+  return { open: l.length, waiting: l.filter((t) => t.status === "waiting").length, q1: l.filter((t) => demoQ(t).q === 1).length };
 }
 function demoTasks(path, body) {
   const l = demoTaskList(), t = l.find((x) => x.id === body?.id);
-  if (path === "/api/tasks") return Promise.resolve({ tasks: [...l].sort((a, b) => ({ waiting: 0, doing: 1, todo: 2, done: 3 })[a.status] - ({ waiting: 0, doing: 1, todo: 2, done: 3 })[b.status]) });
+  const QO = { 1: 0, 0: 1, 2: 2, 3: 3, 4: 4 }, SO = { waiting: 0, doing: 1, todo: 2, done: 3 };
+  const key = (x) => (x.status === "done" ? 90 : QO[demoQ(x).q] * 10) + SO[x.status];
+  if (path === "/api/tasks") return Promise.resolve({ tasks: l.map((x) => ({ ...x, ...demoQ(x) })).sort((a, b) => key(a) - key(b)) });
   if (path === "/api/tasks/add") { const x = { id: "t" + Date.now(), kind: "other", status: "todo", by: "owner", created: Date.now() / 1000, ...body }; l.unshift(x); return Promise.resolve(x); }
   if (path === "/api/tasks/remove") { demoApi.tasks = l.filter((x) => x !== t); return Promise.resolve({ ok: !!t }); }
   if (!t) return Promise.reject(new Error("задачи уже нет"));
-  if (path === "/api/tasks/update") { Object.assign(t, body); if (body.status === "done") t.done_at = Date.now() / 1000; return Promise.resolve(t); }
+  if (path === "/api/tasks/update") {
+    if (body.q) Object.assign(body, { urgent: [1, 3].includes(body.q), important: [1, 2].includes(body.q) });
+    Object.assign(t, body); if (body.status === "done") t.done_at = Date.now() / 1000; return Promise.resolve(t); }
   if (path === "/api/tasks/run") { t.result = { code: 0, at: Date.now() / 1000 }; return Promise.resolve({ code: 0, seconds: 1, out: "(демо) команда выполнена\n" }); }
   return Promise.resolve({ ok: true });
 }
