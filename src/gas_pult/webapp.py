@@ -25,6 +25,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import shlex
 import shutil
 import socket
@@ -104,7 +105,26 @@ class NeedForce(ValueError):
 PART_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")   # имя части интерфейса: web/js/<имя>.js
 PART_PATH = re.compile(r"/js/([a-z0-9][a-z0-9-]{0,40})\.js")
 DESKTOP_PORT = 6080                     # noVNC/websockify рабочего стола агентов (agent-desktop.service, штаб)
-DESKTOP_URL = "/desktop/vnc.html?autoconnect=1&resize=scale&path=desktop/websockify"
+DESKTOP_URL = "/desktop/vnc.html?autoconnect=1&resize=scale&reconnect=1&path=desktop/websockify"
+DESK_COOKIE, DESK_TTL = "gp_desk", 12 * 3600
+# Пропуск рабочего стола: выдаёт «Рабочий стол» (владельцу, после кода подтверждения). Нужен потому, что встроенный
+# экран — iframe: в Mini App вход идёт заголовком Telegram, а iframe и WebSocket noVNC шлют только cookie. Живёт в
+# памяти панели (перезапуск — нажать кнопку снова), путь /desktop/, 12 часов; роль владельца — на каждый запрос.
+DESK_PASSES: dict[str, tuple[int, float]] = {}
+
+
+def desk_pass(uid: int, now: float | None = None) -> str:
+    now = now or time.time()
+    for k in [k for k, (_, exp) in DESK_PASSES.items() if exp < now]:
+        DESK_PASSES.pop(k, None)
+    tok = secrets.token_urlsafe(24)
+    DESK_PASSES[tok] = (uid, now + DESK_TTL)
+    return tok
+
+
+def desk_cookie(tok: str) -> str:
+    # SameSite=None + Partitioned: Mini App в Telegram Web сам открыт во фрейме — без этого cookie не дойдёт
+    return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=None; Partitioned"
 
 
 def desktop_up(port: int = DESKTOP_PORT) -> bool:
@@ -2850,17 +2870,23 @@ def handler(panel: Panel):
 
         def desktop_gate(self):
             """Рабочий стол агентов (noVNC за Caddy, #206) — полное управление браузером со входами: пускаем только
-            владельца по cookie входа панели (Mini App сюда не ходит — новая вкладка браузера). Фокус-ссылки,
+            владельца — по cookie входа панели или по пропуску из кнопки «Рабочий стол» (``DESK_COOKIE``). Фокус-ссылки,
             пространства, участники, наблюдатели, демо — нет. Свежему входу — сперва код подтверждения, как для команд
             на сервере (``CONFIRM``). 204 — можно; 401 — нет входа; 403 — не владелец или нужен код."""
             tok = self.session()
             uid = panel.auth.uid(tok)
+            fresh = True
+            got = next((v for k, _, v in (c.strip().partition("=") for c in self.headers.get("Cookie", "").split(";"))
+                        if k == DESK_COOKIE), "")
+            ps = DESK_PASSES.get(got) if got else None
+            if ps and ps[1] > time.time():                # пропуск из «Рабочий стол» (код уже подтверждён)
+                uid, fresh = ps[0], False
             if uid is None:
                 return self.json({"error": "нужен вход"}, 401)
             role = "owner" if uid == webauth.LEGACY else panel.people.role(uid)
             if role != "owner" or panel.people.tenant(uid):
                 return self.json({"error": "рабочий стол — только владельцу"}, 403)
-            if panel.auth.needs_confirm(tok):
+            if fresh and panel.auth.needs_confirm(tok):
                 return self.json({"error": "новый вход: подтвердите кодом в панели", "code": "confirm"}, 403)
             self.send_response(204)
             self.send_header("Cache-Control", "no-store")
@@ -3944,7 +3970,9 @@ def handler(panel: Panel):
             if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                return {"url": DESKTOP_URL}
+                uid = self.who()[2]
+                tok = desk_pass(uid if uid is not None else webauth.LEGACY)
+                return ("cookie", desk_cookie(tok), {"url": DESKTOP_URL})
             if path == "/api/tasks/add":                  # задача владельца руками (#203)
                 return panel.tasks.add(b, by="owner")
             if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
