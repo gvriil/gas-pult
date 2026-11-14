@@ -413,8 +413,7 @@ class Pult:
         deliv = getattr(self, "deliv", None)
         if sends:
             sends.sent(w["id"], text)
-        cur = self.tmux.window(w["id"]) or w
-        if cur.get("sleep"):                                # спит (claude-sleep): не ждём «❯» — будим этим текстом
+        if w.get("sleep"):                                  # спит (claude-sleep): не ждём «❯» — будим этим текстом
             with self.hold(w["id"]):
                 self.tmux.wake(w["id"], text)
             if deliv:
