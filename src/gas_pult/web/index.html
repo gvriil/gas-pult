@@ -5265,7 +5265,16 @@ function secretSheet(typed, s) {
 }
 
 // ---------- ввод ----------
+// Enter (или «Отправить») во время записи голоса = «Стоп и отправить» (#208): запись останавливается, приходит итог
+// распознавания и уходит ОДНО сообщение, микрофон гаснет. Раньше Enter слал частичный текст, а диктовка шла дальше.
+function micSendNow(where) {
+  if (vs && vs.where === where) { if (!vs.ending) voiceStop(true); return true; }      // диктовка потоком
+  if (rec && where === MIC_FULL) { micBar?.querySelector(".ok")?.click(); return true; } // запись до «Стоп»
+  if (micBar && micBar.classList.contains("stt")) return true;                          // уже распознаётся — ждём
+  return false;
+}
 async function sendText() {
+  if (micSendNow(MIC_FULL)) return;
   if (DRAFT) return draftSend();                    // новый чат: окно — при первой отправке
   if (cur()?.status === "stopped") return toast("Сессия остановлена — сначала «Перезапустить»", 4000);
   if (files.some((f) => !f.path)) return toast("Подождите — файл ещё загружается");
@@ -7784,6 +7793,7 @@ async function sChoose(o, btn) {
   } catch (e) { toast(T("s.fail"), 3500); box.dataset.sig = ""; sAsk(); }
 }
 async function sSend() {
+  if (micSendNow(MIC_SIMPLE)) return;               // Enter во время записи — «Стоп и отправить» (#208)
   const t = $("sInput"), text = t.value.trim();
   if (!text || !SIM.w) return;
   if (SIM.ask) { toast(T("s.answer.first"), 3500); return $("sAsk").scrollIntoView({ block: "nearest", behavior: "smooth" }); }
