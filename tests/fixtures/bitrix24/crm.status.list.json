@@ -1,0 +1,95 @@
+{
+ "_source": "github.com/bitrix24/b24restdocs @30861a4 — api-reference/crm/status/crm-status-list.md (пример ответа из документации; данные выдуманные; не проверено на песочнице)",
+ "result": [
+  {
+   "ID": "103",
+   "ENTITY_ID": "DEAL_STAGE",
+   "STATUS_ID": "PREPARATION",
+   "NAME": "Подготовка договора",
+   "NAME_INIT": "",
+   "SORT": "20",
+   "SYSTEM": "N",
+   "CATEGORY_ID": null,
+   "COLOR": "#39A8EF",
+   "SEMANTICS": null,
+   "EXTRA": {
+    "SEMANTICS": "process",
+    "COLOR": "#39A8EF"
+   }
+  },
+  {
+   "ID": "101",
+   "ENTITY_ID": "DEAL_STAGE",
+   "STATUS_ID": "NEW",
+   "NAME": "Новая",
+   "NAME_INIT": "",
+   "SORT": "10",
+   "SYSTEM": "N",
+   "CATEGORY_ID": null,
+   "COLOR": "#39A8EF",
+   "SEMANTICS": null,
+   "EXTRA": {
+    "SEMANTICS": "process",
+    "COLOR": "#39A8EF"
+   }
+  },
+  {
+   "ID": "107",
+   "ENTITY_ID": "DEAL_STAGE",
+   "STATUS_ID": "EXECUTING",
+   "NAME": "В работе",
+   "NAME_INIT": "",
+   "SORT": "40",
+   "SYSTEM": "N",
+   "CATEGORY_ID": null,
+   "COLOR": "#39A8EF",
+   "SEMANTICS": null,
+   "EXTRA": {
+    "SEMANTICS": "process",
+    "COLOR": "#39A8EF"
+   }
+  },
+  {
+   "ID": "111",
+   "ENTITY_ID": "DEAL_STAGE",
+   "STATUS_ID": "WON",
+   "NAME": "Сделка успешна",
+   "NAME_INIT": "",
+   "SORT": "60",
+   "SYSTEM": "N",
+   "CATEGORY_ID": null,
+   "COLOR": "#39A8EF",
+   "SEMANTICS": "S",
+   "EXTRA": {
+    "SEMANTICS": "success",
+    "COLOR": "#39A8EF"
+   }
+  },
+  {
+   "ID": "113",
+   "ENTITY_ID": "DEAL_STAGE",
+   "STATUS_ID": "LOSE",
+   "NAME": "Сделка провалена",
+   "NAME_INIT": "",
+   "SORT": "70",
+   "SYSTEM": "N",
+   "CATEGORY_ID": null,
+   "COLOR": "#39A8EF",
+   "SEMANTICS": "F",
+   "EXTRA": {
+    "SEMANTICS": "failure",
+    "COLOR": "#39A8EF"
+   }
+  }
+ ],
+ "total": 5,
+ "time": {
+  "start": 1731571200.1,
+  "finish": 1731571200.4,
+  "duration": 0.3,
+  "processing": 0.1,
+  "date_start": "2026-11-14T10:00:00+03:00",
+  "date_finish": "2026-11-14T10:00:00+03:00",
+  "operating": 0
+ }
+}

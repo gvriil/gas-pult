@@ -1,0 +1,13 @@
+{
+ "_source": "github.com/bitrix24/b24restdocs @30861a4 — api-reference/crm/deals/crm-deal-update.md (пример ответа из документации; данные выдуманные; не проверено на песочнице)",
+ "result": true,
+ "time": {
+  "start": 1731571200.1,
+  "finish": 1731571200.4,
+  "duration": 0.3,
+  "processing": 0.1,
+  "date_start": "2026-11-14T10:00:00+03:00",
+  "date_finish": "2026-11-14T10:00:00+03:00",
+  "operating": 0
+ }
+}

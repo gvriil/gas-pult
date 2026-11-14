@@ -1,0 +1,39 @@
+{
+ "_source": "github.com/bitrix24/b24restdocs @30861a4 — api-reference/crm/contacts/crm-contact-list.md (пример ответа из документации; данные выдуманные; не проверено на песочнице)",
+ "result": [
+  {
+   "ID": "84",
+   "NAME": "Мария",
+   "LAST_NAME": "Иванова",
+   "COMPANY_ID": null,
+   "ASSIGNED_BY_ID": "1",
+   "DATE_CREATE": "2026-11-13T00:00:00+03:00",
+   "PHONE": [
+    {
+     "ID": "301",
+     "VALUE_TYPE": "MOBILE",
+     "VALUE": "+79990000001",
+     "TYPE_ID": "PHONE"
+    }
+   ],
+   "EMAIL": [
+    {
+     "ID": "215",
+     "VALUE_TYPE": "WORK",
+     "VALUE": "ivanova@example.com",
+     "TYPE_ID": "EMAIL"
+    }
+   ]
+  }
+ ],
+ "total": 1,
+ "time": {
+  "start": 1731571200.1,
+  "finish": 1731571200.4,
+  "duration": 0.3,
+  "processing": 0.1,
+  "date_start": "2026-11-14T10:00:00+03:00",
+  "date_finish": "2026-11-14T10:00:00+03:00",
+  "operating": 0
+ }
+}
