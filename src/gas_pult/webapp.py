@@ -327,6 +327,8 @@ class Panel:
                         "sid": sid,                                       # id сессии Claude Code окна (добавлено)
                         "twin": ((o := self.sid_owner(sid, w["id"], wins, running=True)) and o["name"]) or "",
                         "notify": notifylevel.level(st, w["id"]),        # уровень уведомлений окна (добавлено)
+                        # один повтор после лимита подписки — когда (limitretry.py); нет — None
+                        "retry_at": ((st.get("limit_retries") or {}).get(w["id"]) or {}).get("at"),
                         "notify_own": bool(notifylevel.own(st, w["id"])),
                         "title": self.chat_title(pd, w["path"], home, sid),   # название чата («Проекты»)
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем

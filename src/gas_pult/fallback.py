@@ -213,13 +213,14 @@ class Switcher:
     STALE = 300             # ошибка старше 5 минут (старый журнал, повтор истории после --continue) — не повод
 
     def __init__(self, tmux, state, base: str, region: str = "", say=print, log=None, keys=None, clock=time.time,
-                 countries=None):
+                 countries=None, on_rate=None):
         self.tmux, self.state, self.base, self.region = tmux, state, base, (region or "").upper()
         # страны человека, чьё окно (``countries(w) -> set``); не задано — только страна сервера
         self.countries = countries
         self.say, self.log = say, log or (lambda entry: None)
         self.keys = keys or providers.load_keys
         self.clock = clock
+        self.on_rate = on_rate                  # лимит, запасных нет — (окно, текст ошибки): отложенный повтор
         self.pending: dict[str, dict] = {}      # окно → последняя ошибка, ждём, пока сессия остановится
         self.windows: dict[str, dict] = {}      # окно → {"t": когда действовали, "tried": {профиль: когда упал}}
 
@@ -232,7 +233,8 @@ class Switcher:
             last = self.windows.get(wid, {}).get("t", 0)
             if (t and now - t > self.STALE) or (t and t <= last):
                 return
-            self.pending[wid] = {"kind": hit[0], "code": hit[1], "t": now}
+            self.pending[wid] = {"kind": hit[0], "code": hit[1], "t": now,
+                                 "text": transcripts.text_of((e.get("message") or {}).get("content"))[:300]}
         elif e.get("type") == "assistant" or (e.get("type") == "user" and transcripts.is_real_prompt(e)):
             self.pending.pop(wid, None)
 
@@ -244,9 +246,9 @@ class Switcher:
         if self.clock() - self.windows.get(w["id"], {}).get("t", 0) < self.COOLDOWN:
             return None                          # только что переключали — подождём; ошибка не забыта
         del self.pending[w["id"]]
-        return self.act(w, p["kind"], p["code"])
+        return self.act(w, p["kind"], p["code"], text=p.get("text", ""))
 
-    def act(self, w: dict, kind: str, code: int | None, region=None) -> str | None:
+    def act(self, w: dict, kind: str, code: int | None, region=None, text: str = "") -> str | None:
         now, wid = self.clock(), w["id"]
         if region is None:
             region = self.countries(w) if self.countries else self.region
@@ -264,7 +266,10 @@ class Switcher:
                        and (r := reason(p, region, keys, st))]
             line = f"{head} — запасных нет" + (f" ({'; '.join(skipped)})" if skipped else "") + \
                    f", сессия «{w['name']}» ждёт"
-            return self.tell(w, line, failed, "", kind, code)
+            out = self.tell(w, line, failed, "", kind, code)
+            if kind == "rate" and self.on_rate:          # лимит подписки — один повтор на время сброса (#189 п. 6)
+                self.on_rate(w, text)
+            return out
         try:
             cmd = (models.command(self.base, nxt, st) + repos.flags(st, w["path"])
                    + transcripts.resume_args(w.get("sid")))   # тот же разговор и те же репозитории

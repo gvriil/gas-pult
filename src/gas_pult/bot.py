@@ -36,6 +36,7 @@ from gas_pult import (
     activity,
     ago,
     country,
+    ctxsnap,
     deliveries,
     digest,
     emailcode,
@@ -43,6 +44,7 @@ from gas_pult import (
     features,
     focus,
     invites,
+    limitretry,
     models,
     modules,
     notifylevel,
@@ -215,7 +217,7 @@ class Pult:
         # запасные — по странам человека, чьё окно (@gas_pult_by), иначе первого владельца
         self.fallback = fallback.Switcher(self.tmux, self.state, cfg.claude, cfg.region,
                                           say=lambda line: self.broadcast("🔁 " + line), log=self.fallback_logged,
-                                          countries=self.window_countries)
+                                          countries=self.window_countries, on_rate=self.limit_wait)
         # вход в Claude Code из пульта (setup.py); config_dir/env — когда у каждого человека будет своя папка Claude
         self.login = setup.Login(cfg.session, cfg.claude, home=self.home)
         self.meter = usage.Meter()                         # расход сессий по журналам (usage.py)
@@ -1077,11 +1079,51 @@ class Pult:
                     elif not quiet:
                         self.show_dialog(w, scr, shown)
                 self.notify_done_check(ws, screens, st)
+                self.retry_tick(ws, screens, st)
                 self.offer_hints()
                 self.cost_watch(st)
             except Exception as e:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
+
+    # ---------- один повтор после лимита подписки (limitretry.py, #189 п. 6) ----------
+    def limit_wait(self, w: dict, text: str):
+        """Окно встало на лимите подписки, запасных нет: один повтор на время сброса (запись на окно — одна)."""
+        now = time.time()
+        at = limitretry.reset_at(text, ctxsnap.limits(), now)
+        if not at:
+            return self.broadcast(f"⏳ [{w['name']}] упёрлась в лимит подписки; когда он сбросится — не знаю, "
+                                  "напишите «продолжай» сами.")
+        if at - now > limitretry.MAX_WAIT:
+            return self.broadcast(f"⏳ [{w['name']}] упёрлась в лимит подписки до {limitretry.hhmm(at, now)} — это "
+                                  "дольше 6 часов, сама не продолжу.")
+        self.set_state(limit_retries=limitretry.schedule(self.state(), w["id"], w["name"], at, now))
+        self.broadcast(f"⏳ [{w['name']}] упёрлась в лимит подписки. Продолжу сама в {limitretry.hhmm(at, now)} — "
+                       "один раз; напишете в сессию раньше — повтор снимется.",
+                       reply_markup=kb([[("Не продолжать", f"rc:{w['id']}")]]))
+
+    def retry_tick(self, ws: list[dict], screens: dict, st: dict):
+        """Пора: окно свободно и человек сам не писал после остановки — «продолжай»; окна нет или писали — снять."""
+        due = limitretry.due(st)
+        if not due:
+            return
+        by, humans = {w["id"]: w for w in ws}, [r for r in self.deliv.recent(limitretry.MAX_WAIT + 3600)
+                                                 if r.get("src") in ("panel", "bot", "focus")]
+        for wid, r in due:
+            w = by.get(wid)
+            if w and any(h.get("w") == wid and h.get("ts", 0) > r["since"] for h in humans):
+                w = None                                    # человек уже написал сам — повтор не нужен
+            if w:
+                scr = screens.get(wid, "")
+                if BUSY.search(scr) or DIALOG.search(scr):
+                    continue                                # занята — подождём следующего обхода
+                try:
+                    with self.via("retry"):
+                        self.to_claude(w, limitretry.TEXT)
+                    self.broadcast(f"▶️ [{w['name']}] лимит подписки обновился — написал «продолжай».")
+                except Exception as e:                       # окно не готово — сказать, повтор снимаем
+                    self.broadcast(f"⏳ [{r.get('name', wid)}] продолжить после лимита не вышло: {e}")
+            self.set_state(limit_retries=limitretry.cancel(self.state(), wid))
 
     # ---------- расход: лимиты на сессию и на день (usage.py) ----------
     def pool_of(self, w: dict) -> str:
@@ -1858,6 +1900,9 @@ class Pult:
             if not self.tmux.window(wid):
                 return send("Этого окна уже нет.")
             return self.tmux.keys(wid, key)
+        if kind == "rc":                                   # «Не продолжать» после лимита подписки
+            self.set_state(limit_retries=limitretry.cancel(self.state(), arg))
+            return send("Хорошо, сама не продолжу.")
         if kind == "nd":                                   # «Сообщить по готовности» из строки статуса
             return send(self.ask_notify_done(arg, chat))
         if kind == "nl":                                   # уровень уведомлений окна (notifylevel.py)
