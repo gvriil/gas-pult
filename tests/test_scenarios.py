@@ -30,7 +30,11 @@ def dirs(monkeypatch, tmp_path):
 
 
 def page() -> str:
-    return resources.files("gas_pult").joinpath("web/index.html").read_text(encoding="utf-8")
+    """Интерфейс целиком: ядро и части по требованию (web/js, #191) — демо-данные теперь в js/demo.js."""
+    web = resources.files("gas_pult").joinpath("web")
+    parts = sorted((f for f in web.joinpath("js").iterdir() if f.name.endswith(".js")), key=lambda f: f.name)
+    return "\n".join([web.joinpath("index.html").read_text(encoding="utf-8")]
+                     + [f.read_text(encoding="utf-8") for f in parts])
 
 
 # ---------- каталог и схема ----------
