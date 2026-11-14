@@ -192,7 +192,7 @@ function demoApi(path, body) {
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
   const R = {
-    "/api/meta": { ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
+    "/api/meta": { desktop: true, ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
                    projects: ["домашняя (~)", "tgi", "icon", "gas-pult"], voices: [{ id: "irina", label: "Ирина" }], voice: "irina", role: params.get("role") || "owner", tty: params.get("role") !== "viewer" && !params.has("tester"), terms: { version: "2026-11-02", accepted: !params.has("terms") || !!demoApi.terms },
                    country: { chosen: demoApi.cc || (params.has("country") ? "" : "NL"), need: params.has("country") && !demoApi.cc, mismatch: false, phone: !params.has("country"), ip_cc: "NL", check: ["NL"] },
@@ -260,7 +260,8 @@ function demoApi(path, body) {
     if (!fp && path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
-  if (path.startsWith("/api/tasks")) return demoTasks(path, body);     // задачи владельца (#203)
+  if (path.startsWith("/api/tasks")) return demoTasks(path, body);
+  if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)
   if (path === "/api/notify/level") { (demoApi.nl ||= {})[body.w] = body.level; R["/api/notify/level"] = { notify: body.level === "inherit" ? "all" : body.level }; }
   if (path === "/api/stopped/clear") { const st = (R["/api/sessions"]?.sessions || []).filter((x) => x.status === "stopped"); st.forEach((x) => { (demoApi.gone ||= {})[x.id] = 1; }); R["/api/stopped/clear"] = { closed: st.length, names: st.map((x) => x.name) }; }
   R["/api/module/schedule"] = S.find((y) => y.id === "@3")?.schedule || {};
