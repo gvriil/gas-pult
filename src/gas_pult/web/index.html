@@ -890,9 +890,15 @@
   .s-langsw { justify-content: flex-end; margin: 0 0 6px; }
   /* Пространство владельца: «Моё пространство» (его настоящий пульт) и «Демо и тесты» — разными цветами. Просмотр
      другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
-  .spaces { display: flex; gap: 6px; padding: 2px 0 6px; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
+  .spaces { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 6px; } .spaces button { white-space: nowrap; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
     border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
   .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
+  /* Рабочий стол Ubuntu (#206, js/desktop.js): экран поверх панели, внутри noVNC */
+  .desk { position: fixed; inset: 0; z-index: 19; display: flex; flex-direction: column; background: var(--bg-canvas); padding-top: env(safe-area-inset-top); }
+  .desk-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--border-subtle); }
+  .desk-bar b { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; } .desk-st { flex: 1; color: var(--text-secondary); font-size: 13px; }
+  .desk iframe { flex: 1; width: 100%; border: 0; background: var(--bg-terminal); padding-bottom: env(safe-area-inset-bottom); }
+  body.desk-on { overflow: hidden; }
   .spaces .sp-tasks.wait { border-color: var(--status-approval); color: var(--status-approval); }   /* есть «ждут вас» */ .spaces .i { width: 15px; height: 15px; }
   .pvbar { position: fixed; left: 0; right: 0; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px;
     padding: calc(6px + env(safe-area-inset-top)) 12px 6px; background: var(--status-approval); color: var(--on-approval); font-size: calc(13.5px * var(--fz, 1)); font-weight: 600; text-align: center; }
@@ -1034,7 +1040,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
-  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button></div>
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
@@ -2118,7 +2124,7 @@ function toast(text, ms = 2600) {
 // ---------- сеть ----------
 // Команды на сервере и ввод в терминал (webapp.CONFIRM): новый вход в браузере — только после кода. Сервер отвечает
 // 403 {confirm: "code"} — шторка «Подтвердите кодом», после кода тот же запрос повторяется. Демо: &confirm, код 123456.
-const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/tasks/run", "/api/commands/run", "/api/commands/term", "/api/term/type",
+const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/tasks/run", "/api/desktop/open", "/api/commands/run", "/api/commands/term", "/api/term/type",
   "/api/term/key", "/api/tty/type", "/api/tty/key"]);
 async function api(path, body, raw, extra, signal) {
   if (DEMO && !window.demoApi) await part("demo");   // ответы демо — в своей части (js/demo.js)
@@ -7461,6 +7467,8 @@ function paintSpaces() {
   $("spaces").hidden = !on; if (!on) return;
   $("spaces").querySelector(".sp-mine").hidden = !UI?.own_space;
   $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
+  const dk = $("spaces").querySelector(".sp-desk");     // рабочий стол агентов (#206): владельцу, если он запущен
+  dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + "Ubuntu";   // владелец: «открыть Ubuntu сразу»
   tasksCount();
 }
 function tasksCount() {
@@ -7471,6 +7479,7 @@ function tasksCount() {
   b.classList.toggle("wait", !!q1);
 }
 $("spaces").addEventListener("click", (e) => {
+  if (e.target.closest("[data-space=desk]")) return part("desktop").then(() => deskOpen(), (er) => toast("Рабочий стол не загрузился: " + er.message, 4500));
   if (e.target.closest("[data-space=tasks]")) part("tasks").then(() => tasksOpen(), (er) => toast("Задачи не загрузились: " + er.message, 4500));
 });
 function demoSheet() {
