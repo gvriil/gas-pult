@@ -3007,7 +3007,7 @@ function card(s, chat) {                              // chat — в проек�
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     ${s.twin ? `<div class="preview twin">${ic("warn", "s16")}Этот разговор открыт ещё в «${esc(s.twin)}» — ответы смешиваются. Закройте одно окно.</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
+    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${s.retry_at ? `<span class="chip" title="Упёрлась в лимит подписки — продолжит сама один раз">${ic("refresh", "s16")}продолжит в ${new Date(s.retry_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>` : ""}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
       ${ctxMeter(s)}</div>
     ${costBar(s)}${reposLine(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
