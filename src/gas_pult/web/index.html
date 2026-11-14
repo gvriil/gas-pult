@@ -2461,7 +2461,7 @@ const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
 // position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
 // .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
 // body.back-drag #home — главная под сессией только на время свайпа «назад» (план UX, пункт 7).
-const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", "body.split.side-mini.has-nav .rail", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]"];
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", "body.split.side-mini.has-nav .rail", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]", ".desk"];   // .desk — рабочий стол Ubuntu (#206), на всё окно
 function notice(el) { $("notices").append(el); placeNotices(); return el; }
 function placeNotices() {
   const root = document.documentElement.style, H = document.body.clientHeight;
