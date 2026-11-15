@@ -150,6 +150,15 @@ def desk_cookie(tok: str, tab: bool = False) -> str:
     return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=None; Partitioned"
 
 
+def upload_log(n: int, secs: float, src: str) -> str:
+    """Строка журнала на каждую загрузку (владелец 15.11: «почему так долго загружается фото»): байты, секунды,
+    скорость, откуда (telegram — Mini App, browser, focus, bot). Без имени файла и содержимого."""
+    line = (f"upload: {n / 1024:.0f} КБ за {secs:.1f} с ({n / 1024 / max(secs, 0.001):.1f} КБ/с) · "
+            f"{src or 'неизвестно'}")
+    print(line, flush=True)
+    return line
+
+
 def desktop_up(port: int = DESKTOP_PORT) -> bool:
     """Рабочий стол запущен: кто-то слушает 127.0.0.1:<port> (без него кнопку не показываем)."""
     try:
@@ -3891,7 +3900,10 @@ def handler(panel: Panel):
                 n = int(self.headers.get("Content-Length", 0))
                 if n > MAX_BODY:
                     raise ValueError("слишком большой запрос")
-                return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
+                t0 = time.monotonic()
+                out = {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
+                upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
+                return out
             if path == "/api/stt":
                 before = panel.fallback_note()
                 text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())
