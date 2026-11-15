@@ -35,3 +35,30 @@ def test_e2e_voice_enter():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
     finally:
         srv.shutdown()
+
+
+def test_e2e_voice_not_stuck_on_slow_start():
+    """Жалоба владельца 15.11 (iPhone): «закончил говорить, а кнопка ни стоп, ни отправить не нажимается»."""
+    import importlib.util
+    import threading
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    pytest.importorskip("playwright.sync_api")
+    web = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(web)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    e2e = Path(__file__).resolve().parent / "e2e" / "voice_stuck_demo.py"
+    spec = importlib.util.spec_from_file_location("voice_stuck_demo", e2e)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
+    finally:
+        srv.shutdown()
+
+
+def test_hold_only_when_capture_ready_and_final_wait_short():
+    f = INDEX[INDEX.index("function micUp()"):]
+    assert "vs.cap && Date.now() - p.t >= HOLD_MS" in f[:f.index("\n}\n")]
+    assert "FINAL_WAIT = 1500" in INDEX
