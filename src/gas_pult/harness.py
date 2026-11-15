@@ -85,10 +85,10 @@ class ClaudeCode(Harness):
         return transcripts.last_model(path, home=home, sid=sid)
 
     def last_answer(self, path, home=None, sid=""):
-        return transcripts.last_answer(path, home=home, sid=sid)
+        return transcripts.last_answer(path, home, sid)
 
     def revision(self, path, home=None, sid=""):
-        return transcripts.revision(path, home=home, sid=sid)
+        return transcripts.revision(path, home, sid)
 
     def new_args(self, sid):
         sid = transcripts.valid_sid(sid)
