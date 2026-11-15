@@ -1,0 +1,156 @@
+[
+ {
+  "code": "SPB1",
+  "name": "SPB1, Санкт-Петербург, пр-т Лиговский",
+  "uuid": "305ab885-c73d-4960-bf09-7bdce3f9cef5",
+  "nearest_metro_station": "Ст.м . Лиговский проспект\\ ст.м. Площадь Восстания",
+  "work_time": "Пн-Вс 08:00-21:00",
+  "phones": [
+   {
+    "number": "+70000000000"
+   }
+  ],
+  "email": "office@example.com",
+  "type": "PVZ",
+  "owner_code": "CDEK",
+  "take_only": false,
+  "is_handout": true,
+  "is_reception": true,
+  "is_dressing_room": true,
+  "is_ltl": false,
+  "have_cashless": true,
+  "have_cash": true,
+  "have_fast_payment_system": false,
+  "allowed_cod": true,
+  "site": "https://www.cdek.ru/contacts/g_sankt-peterburg_ligovskiy_pr_d_50_korp13.html",
+  "work_time_list": [
+   {
+    "day": 1,
+    "time": "08:00/21:00"
+   },
+   {
+    "day": 2,
+    "time": "08:00/21:00"
+   },
+   {
+    "day": 3,
+    "time": "08:00/21:00"
+   },
+   {
+    "day": 4,
+    "time": "08:00/21:00"
+   },
+   {
+    "day": 5,
+    "time": "08:00/21:00"
+   },
+   {
+    "day": 6,
+    "time": "08:00/21:00"
+   },
+   {
+    "day": 7,
+    "time": "08:00/21:00"
+   }
+  ],
+  "work_time_exception_list": [],
+  "weight_min": 0.0,
+  "weight_max": 30.0,
+  "status": "ACTIVE",
+  "location": {
+   "country_code": "RU",
+   "region_code": 82,
+   "region": "Санкт-Петербург",
+   "city_code": 137,
+   "city": "Санкт-Петербург",
+   "fias_guid": "c2deb16a-0330-4f05-821f-1d09c93331e6",
+   "postal_code": "191040",
+   "longitude": 30.3621769,
+   "latitude": 59.9234772,
+   "address": "пр-т Лиговский, 50, корп.13, 101а",
+   "address_full": "191040, Россия, Санкт-Петербург, Санкт-Петербург, пр-т Лиговский, 50, корп.13, 101а",
+   "city_uuid": "24acb83a-bfbf-49a0-8c53-8575019bf39d"
+  },
+  "ltl_acceptance_partners": false,
+  "ltl_issuance_partners": false,
+  "fulfillment": false
+ },
+ {
+  "code": "SPB3",
+  "name": "SPB3, Санкт-Петербург, пр-т Коломяжский",
+  "uuid": "a68d154e-63d7-4d78-b4a5-470a4d83d453",
+  "address_comment": "Вход со двора.",
+  "nearest_metro_station": "ст. м Пионерская",
+  "work_time": "Пн-Пт 09:00-21:00, Сб-Вс 10:00-19:00",
+  "phones": [
+   {
+    "number": "+70000000000"
+   }
+  ],
+  "note": "Вход со двора.",
+  "type": "PVZ",
+  "owner_code": "CDEK",
+  "take_only": false,
+  "is_handout": true,
+  "is_reception": true,
+  "is_dressing_room": true,
+  "is_ltl": false,
+  "have_cashless": true,
+  "have_cash": true,
+  "have_fast_payment_system": false,
+  "allowed_cod": true,
+  "site": "https://www.cdek.ru/contacts/gsankt-peterburg_kolomyazhskiy_pr_d_28_korp_2_pome.html",
+  "work_time_list": [
+   {
+    "day": 1,
+    "time": "09:00/21:00"
+   },
+   {
+    "day": 2,
+    "time": "09:00/21:00"
+   },
+   {
+    "day": 3,
+    "time": "09:00/21:00"
+   },
+   {
+    "day": 4,
+    "time": "09:00/21:00"
+   },
+   {
+    "day": 5,
+    "time": "09:00/21:00"
+   },
+   {
+    "day": 6,
+    "time": "10:00/19:00"
+   },
+   {
+    "day": 7,
+    "time": "10:00/19:00"
+   }
+  ],
+  "work_time_exception_list": [],
+  "weight_min": 0.0,
+  "weight_max": 30.0,
+  "status": "ACTIVE",
+  "location": {
+   "country_code": "RU",
+   "region_code": 82,
+   "region": "Санкт-Петербург",
+   "city_code": 137,
+   "city": "Санкт-Петербург",
+   "fias_guid": "c2deb16a-0330-4f05-821f-1d09c93331e6",
+   "postal_code": "197341",
+   "longitude": 30.2950897,
+   "latitude": 60.008152,
+   "address": "пр-т Коломяжский, 28, корп.2, 14-Н ",
+   "address_full": "197341, Россия, Санкт-Петербург, Санкт-Петербург, пр-т Коломяжский, 28, корп.2, 14-Н ",
+   "city_uuid": "24acb83a-bfbf-49a0-8c53-8575019bf39d"
+  },
+  "ltl_acceptance_partners": false,
+  "ltl_issuance_partners": false,
+  "fulfillment": false,
+  "email": "office@example.com"
+ }
+]

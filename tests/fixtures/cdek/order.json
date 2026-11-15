@@ -1,0 +1,77 @@
+{
+ "_source": "по схеме ResponseDtoOrderResponseDto из OpenAPI СДЭК (apidoc.cdek.ru), данные выдуманные: на песочнице заказ не создавали (создание заказа — действие с деньгами)",
+ "entity": {
+  "uuid": "72753031-0000-4000-8000-000000000001",
+  "type": 1,
+  "is_return": false,
+  "is_reverse": false,
+  "cdek_number": "1106207236",
+  "number": "ZAKAZ-42",
+  "tariff_code": 136,
+  "delivery_point": "SPB1",
+  "keep_free_until": "2026-11-25T23:59:00+0300",
+  "planned_delivery_date": "2026-11-17",
+  "from_location": {
+   "code": 44,
+   "city": "Москва",
+   "country_code": "RU"
+  },
+  "to_location": {
+   "code": 137,
+   "city": "Санкт-Петербург",
+   "country_code": "RU"
+  },
+  "recipient": {
+   "name": "Иван Тестов",
+   "phones": [
+    {
+     "number": "+70000000001"
+    }
+   ]
+  },
+  "statuses": [
+   {
+    "code": "CREATED",
+    "name": "Создан",
+    "date_time": "2026-11-14T10:00:00+0300",
+    "city": "Москва"
+   },
+   {
+    "code": "RECEIVED_AT_SHIPMENT_WAREHOUSE",
+    "name": "Принят на склад отправителя",
+    "date_time": "2026-11-14T15:20:00+0300",
+    "city": "Москва"
+   },
+   {
+    "code": "ACCEPTED_AT_PICK_UP_POINT",
+    "name": "Принят на склад до востребования",
+    "date_time": "2026-11-16T09:05:00+0300",
+    "city": "Санкт-Петербург"
+   },
+   {
+    "code": "ACCEPTED",
+    "name": "Принят",
+    "date_time": "2026-11-14T09:59:00+0300",
+    "city": "Москва"
+   }
+  ],
+  "packages": [
+   {
+    "number": "1",
+    "weight": 2000,
+    "length": 30,
+    "width": 20,
+    "height": 15
+   }
+  ]
+ },
+ "requests": [
+  {
+   "request_uuid": "00000000-0000-0000-0000-000000000002",
+   "type": "CREATE",
+   "date_time": "2026-11-14T10:00:00+0300",
+   "state": "SUCCESSFUL"
+  }
+ ],
+ "related_entities": []
+}
