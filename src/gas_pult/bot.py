@@ -40,6 +40,7 @@ from gas_pult import (
     ctxsnap,
     deliveries,
     digest,
+    drive_inbox,
     emailcode,
     fallback,
     features,
@@ -2615,6 +2616,8 @@ class Pult:
         f = (m.get("photo") or [None])[-1] or m.get("document") or m.get("video")
         if f:
             path = self.api.download(f["file_id"], self.cfg.data / "inbox", f.get("file_name") or "photo.jpg")
+            # проект с папкой на Google Диске — файл туда (<проект>/Входящие, #217); нет — остаётся в inbox
+            path = drive_inbox.place(path, folder=None if w.get("space") else self.cfg.drive_folder(w.get("path", "")))
             t = f"{t or 'Посмотри файл.'}\n\nФайл из Telegram: {path}"
         if not t:
             return send("Пришли текст, голосовое или файл.")
