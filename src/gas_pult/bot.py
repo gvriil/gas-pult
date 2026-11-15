@@ -53,6 +53,7 @@ from gas_pult import (
     notifylevel,
     offers,
     people,
+    pi_journal,
     providers,
     qr,
     review_inbox,
@@ -574,7 +575,11 @@ class Pult:
 
     def activity(self, w: dict, screen: dict | None = None) -> dict:
         """Статус окна: журнал (последний ход), запись об отправке и экран (``screen``; нет — читаем сами)."""
-        j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "")
+        h = harness.of(w)
+        if h.name == "pi":                               # Pi: статус хода — по его журналу (экран — Claude Code)
+            j = pi_journal.status(h.journal(w["path"], sid=w.get("sid") or ""))
+        else:
+            j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "")
         scr = screen if screen is not None else self.screen_state(w["id"])
         rec = self.sends.get(w["id"])
         if rec and rec.get("unsent_at") and not self.still_unsent(w["id"]):   # отправили руками или стёрли
@@ -1077,6 +1082,7 @@ class Pult:
                                            "Последний:")
                         for text in texts[-1:] if len(texts) > self.BURST else texts:
                             self.deliver(w, text)
+                self.pi_answers([w for w in ws if harness.of(w).name == "pi"], st)
                 screens: dict[str, str] = {}
                 for w in ws:
                     quiet = not notifylevel.wants(st, w["id"], "dialog")   # «тихо» — и вопросы не шлём
@@ -1099,6 +1105,26 @@ class Pult:
             except Exception as e:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
+
+    def pi_answers(self, ws: list[dict], st: dict):
+        """Ответы окон Pi — в Telegram, как ответы Claude Code (у Claude их ловит ``Tail``/``Turns`` по журналам
+        ``~/.claude``; у Pi свой журнал). Первый взгляд на журнал — только запоминаем: старое не пересылаем."""
+        seen = self.__dict__.setdefault("pi_seen", {})
+        for w in ws:
+            f = harness.of(w).journal(w["path"], sid=w.get("sid") or "")
+            if not f:
+                continue
+            got = pi_journal.answers(f)
+            n = seen.get(str(f))
+            seen[str(f)] = len(got)
+            if n is None or len(got) <= n or not notifylevel.wants(st, w["id"], "answer"):
+                continue
+            new = got[n:]
+            if len(new) > self.BURST:
+                self.broadcast(f"[{w['name']}] пропущено ответов: {len(new) - 1} — они в панели. Последний:")
+                new = new[-1:]
+            for text in new:
+                self.deliver(w, text)
 
     # ---------- задачи владельца (tasks.py, #203) ----------
     TASK_ICON: ClassVar[dict] = {"waiting": "⏳", "doing": "🔄", "todo": "⬜", "done": "✅"}

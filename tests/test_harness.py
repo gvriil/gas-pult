@@ -198,3 +198,73 @@ def test_ui_offers_pi_in_model_pick():
     assert "meta.agents" in f and '" — другой агент"' in f and "ready.length + agents.length < 2" in f
     assert 'profile === "pi" ? "Запускаю Pi…"' in s
     assert 'agents: [{ id: "pi"' in (web / "js" / "demo.js").read_text(encoding="utf-8")
+def _pi_rows(*msgs):
+    rows = [{"type": "session", "version": 3, "id": "s", "timestamp": "2026-11-15T10:00:00.000Z", "cwd": "/p"}]
+    for n, m in enumerate(msgs):
+        rows.append({"type": "message", "id": f"m{n}", "timestamp": f"2026-11-15T10:00:{n:02d}.000Z", "message": m})
+    return rows
+
+
+def test_pi_status_phases_and_answers(tmp_path):
+    from gas_pult import pi_journal
+    user = {"role": "user", "content": [{"type": "text", "text": "Сколько файлов?"}]}
+    call = {"role": "assistant", "stopReason": "toolUse", "content": [
+        {"type": "thinking", "thinking": "…"}, {"type": "toolCall", "id": "c1", "name": "bash",
+                                               "arguments": {"command": "ls -la"}}]}
+    res = {"role": "toolResult", "toolCallId": "c1", "content": [{"type": "text", "text": "total 0"}]}
+    end = {"role": "assistant", "stopReason": "stop", "content": [{"type": "text", "text": "Файлов нет."}]}
+    f = tmp_path / "s.jsonl"
+
+    def at(*msgs):
+        f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in _pi_rows(*msgs)) + "\n")
+        return pi_journal.status(f)
+    assert pi_journal.status(None)["phase"] == "idle"
+    assert at(user)["phase"] == "started"
+    s = at(user, call)
+    assert s["phase"] == "working" and s["tool"] == "bash" and "ls -la" in s["text"]
+    assert at(user, call, res)["phase"] == "thinking"
+    s = at(user, call, res, end)
+    assert s["phase"] == "done" and s["said"] > 0
+    assert pi_journal.answers(f) == ["Файлов нет."]
+    at(user, call, res, end, user)
+    assert pi_journal.answers(f) == ["Файлов нет."] and pi_journal.status(f)["phase"] == "started"
+
+
+def test_bot_sends_only_new_pi_answers(tmp_path, monkeypatch):
+    from gas_pult import bot
+    root = tmp_path / "sessions"
+    pi = harness.Pi(root=root)
+    monkeypatch.setitem(harness.HARNESSES, "pi", pi)
+    sid = "11111111-1111-4111-8111-111111111111"
+    user = {"role": "user", "content": "вопрос"}
+    end = lambda t: {"role": "assistant", "stopReason": "stop", "content": [{"type": "text", "text": t}]}  # noqa: E731
+    f = _pi_journal(root, rows=_pi_rows(user, end("старый ответ")), sid=sid)
+    p = bot.Pult.__new__(bot.Pult)
+    sent = []
+    p.deliver = lambda w, text: sent.append(text)
+    p.broadcast = lambda text: sent.append("!" + text)
+    w = {"id": "@5", "name": "pi-1", "path": "/home/u/proj", "harness": "pi", "sid": sid}
+    p.pi_answers([w], {})
+    assert sent == []                                                      # старое не пересылаем
+    with open(f, "a") as fh:
+        for r in _pi_rows(user, end("новый ответ"))[1:]:
+            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+    p.pi_answers([w], {})
+    assert sent == ["новый ответ"]
+    p.pi_answers([w], {})
+    assert sent == ["новый ответ"]                                         # без повторов
+
+
+def test_bot_activity_uses_pi_journal(tmp_path, monkeypatch):
+    from gas_pult import bot
+    root = tmp_path / "sessions"
+    monkeypatch.setitem(harness.HARNESSES, "pi", harness.Pi(root=root))
+    sid = "11111111-1111-4111-8111-111111111111"
+    _pi_journal(root, rows=_pi_rows({"role": "user", "content": "x"}), sid=sid)
+    p = bot.Pult.__new__(bot.Pult)
+    p.screen_state = lambda wid: {}
+    p.sends = type("S", (), {"get": lambda self, wid: None})()
+    seen = {}
+    monkeypatch.setattr(bot.activity, "combine", lambda j, rec, scr, **k: seen.setdefault("j", j))
+    p.activity({"id": "@5", "path": "/home/u/proj", "harness": "pi", "sid": sid})
+    assert seen["j"]["phase"] == "started"
