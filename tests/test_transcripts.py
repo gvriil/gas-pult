@@ -1,4 +1,5 @@
 import json
+import os
 
 from gas_pult import transcripts as t
 
@@ -275,3 +276,91 @@ def test_last_model_from_journal(tmp_path, monkeypatch):
     assert t.model_title("claude-haiku-5-5") == "Haiku 5.5"
     assert t.model_title("glm-5.3") == "glm-5.3"
     assert t.last_model("/srv/none") == ""
+
+
+def _rows(n: int) -> list[dict]:
+    """Журнал из всех видов записей ``history``: ходы, очередь, вставки агентов, сайдчейн."""
+    note = "<task-notification><task-id>x</task-id></task-notification>"
+    out = []
+    for k in range(n):
+        out += [{"type": "user", "message": {"content": f"вопрос {k}"}, "timestamp": f"2026-11-15T10:{k % 60:02d}:00"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": f"ответ {k}"}]}},
+                {"type": "assistant", "isSidechain": True, "message": {"content": [{"type": "text", "text": "суб"}]}},
+                {"type": "queue-operation", "operation": "enqueue", "content": f"ещё {k}"},
+                {"type": "queue-operation", "operation": "enqueue", "content": note},
+                {"type": "queue-operation", "operation": "remove", "content": f"ещё {k}"},
+                {"type": "attachment", "attachment": {"type": "queued_command", "prompt": f"ещё {k}"}},
+                {"type": "queue-operation", "operation": "dequeue"},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": f"дальше {k}"}]}}]
+    return out
+
+
+def _full(f) -> list[dict]:
+    """Эталон — разбор всего файла с нуля."""
+    fd = t._Feed()
+    fd.update(f)
+    return [{**x, "i": n} for n, x in enumerate(fd.items)]
+
+
+def test_history_incremental_same_as_full_parse(tmp_path, monkeypatch):
+    """Лента дочитывает журнал с прошлого места (аудит #189): после каждой дозаписи, в том числе оборванной на
+    середине строки, ответ тот же, что у разбора всего файла."""
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    t._FEEDS.clear()
+    d = t.project_dir("/home/u/inc")
+    d.mkdir(parents=True)
+    f = d / "s.jsonl"
+    data = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in _rows(40)).encode()
+    f.write_bytes(b"")
+    pos = 0
+    for step in (1, 7, 300, 4096, 13, 50000, len(data)):
+        with f.open("ab") as fh:
+            fh.write(data[pos:pos + step])
+        pos += step
+        items, more = t.history("/home/u/inc", limit=1000)
+        assert items == _full(f) and not more
+    assert pos >= len(data) and len(items) > 100
+
+
+def test_history_reads_only_tail(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    t._FEEDS.clear()
+    d = t.project_dir("/home/u/tail")
+    d.mkdir(parents=True)
+    f = d / "s.jsonl"
+    f.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in _rows(20)))
+    t.history("/home/u/tail")
+    parsed = []
+    orig = t._Feed.line
+    monkeypatch.setattr(t._Feed, "line", lambda self, data: (parsed.append(data), orig(self, data))[1])
+    t.history("/home/u/tail")
+    assert parsed == []                                   # файл не менялся — ни одной строки заново
+    with f.open("a") as fh:
+        fh.write(json.dumps({"type": "user", "message": {"content": "новое"}}, ensure_ascii=False) + "\n")
+    items, _ = t.history("/home/u/tail", limit=1)
+    assert parsed[0].startswith(b'{"type": "user"') and all(not x.strip() for x in parsed[1:])
+    assert items[0]["text"] == "новое"                    # дочитана одна новая строка
+
+
+def test_history_file_replaced_or_rewritten(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "CLAUDE_PROJECTS", tmp_path)
+    t._FEEDS.clear()
+    d = t.project_dir("/home/u/rep")
+    d.mkdir(parents=True)
+    f = d / "s.jsonl"
+
+    def put(*texts):
+        return "".join(json.dumps({"type": "user", "message": {"content": x}}, ensure_ascii=False) + "\n"
+                       for x in texts)
+
+    f.write_text(put("раз", "два"))
+    assert [x["text"] for x in t.history("/home/u/rep")[0]] == ["раз", "два"]
+    new = d / "new.tmp"                                   # подменили файл (другой inode)
+    new.write_text(put("три"))
+    os.replace(new, f)
+    assert [x["text"] for x in t.history("/home/u/rep")[0]] == ["три"]
+    f.write_text(put("один"))                             # укоротили на месте
+    assert [x["text"] for x in t.history("/home/u/rep")[0]] == ["один"]
+    f.write_text(put("другой", "длиннее"))                # переписали на месте и стал длиннее — не «дозапись»
+    assert [x["text"] for x in t.history("/home/u/rep")[0]] == ["другой", "длиннее"]
+    assert t.history("/home/u/rep")[0] == _full(f)

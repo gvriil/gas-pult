@@ -6,7 +6,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from gas_pult import secrets_guard, speech
@@ -229,6 +232,138 @@ def revision(path: str, home: Path | None = None, sid: str = "") -> str:
     return f"{f.stem[:8]}-{st.st_size}-{st.st_mtime_ns}"
 
 
+class _Feed:
+    """Разбор журнала для ``history`` по строкам: состояние между запросами — чтобы дочитывать только хвост файла.
+
+    ``offset`` — до какого байта файл уже разобран (только полные строки), ``ino`` и ``tail`` (последние байты до
+    ``offset``) — тот ли это файл: подменили, укоротили или переписали — разбор заново."""
+
+    TAIL = 64
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.reset()
+
+    def reset(self):
+        self.items: list[dict] = []
+        self.queue: list[tuple[str, dict | None]] = []   # очередь Claude Code: (текст как в журнале, пузырь или None)
+        self.seen: set[int] = set()                      # пузыри очереди, к которым уже пришёл ``queued_command``
+        self.cut = False                                 # была служебная вставка — следующий ответ Claude отдельно
+        self.ino, self.offset, self.tail = 0, 0, b""
+
+    def line(self, data: bytes):
+        try:
+            e = json.loads(data.decode("utf-8", "replace"))
+        except ValueError:
+            return
+        if not isinstance(e, dict):
+            return
+        if e.get("isSidechain"):
+            return
+        ts = e.get("timestamp", "")[:16].replace("T", " ")
+        kind = e.get("type")
+        if kind == "queue-operation":
+            op, raw = e.get("operation"), str(e.get("content") or "")
+            if op == "enqueue":
+                it = None
+                if raw.strip() and not is_service(raw):
+                    text = secrets_guard.redact(PASTED.sub("", raw).strip())[0]   # ключ в очереди — не показываем
+                    it = {"role": "user", "text": text, "ts": ts, "queued": "wait"}
+                    self.items.append(it)
+                self.queue.append((raw, it))
+            elif op == "dequeue" and self.queue:
+                # взят следующим ходом: дальше будет обычная запись ``user`` (или /команда, или блок хука)
+                _, it = self.queue.pop(0)
+                if it is not None and it.get("queued") == "wait" and it in self.items:
+                    self.items.remove(it)
+                self.cut = self.cut or it is None
+            elif op == "remove":
+                k = next((n for n, (r, _) in enumerate(self.queue) if r == raw), None)
+                if k is not None:
+                    _, it = self.queue.pop(k)
+                    if it is not None and it.get("queued") == "wait":
+                        it["queued"] = "read"   # отдан по ходу работы (absorbed_mid_turn)
+        elif kind == "system" and BLOCKED in str(e.get("content", "")):
+            # хук скрытия секретов остановил сообщение (secrets_guard): в чате — его пояснение, а не «в очереди»
+            why = str(e["content"]).split(BLOCKED, 1)[1].lstrip(" :\n")
+            w = next((x for x in reversed(self.items) if x.get("queued") == "wait"), None)
+            if w:
+                self.items.remove(w)
+            self.items.append({"role": "assistant", "text": why, "ts": ts, "note": "blocked"})
+        elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "queued_command":
+            a = e["attachment"]
+            raw = str(a.get("prompt", ""))
+            if a.get("commandMode", "prompt") != "prompt" or is_service(raw):
+                self.cut = True                      # уведомление агента или задачи — не сообщение человека
+                return
+            text = PASTED.sub("", raw).strip()
+            q = next((x for x in reversed(self.items) if x.get("queued") in ("wait", "read") and id(x) not in self.seen
+                      and x["text"] == text), None)
+            if q:
+                q["queued"] = "read"
+                self.seen.add(id(q))
+            elif text:
+                self.items.append({"role": "user", "text": text, "ts": ts, "queued": "read"})
+                self.seen.add(id(self.items[-1]))
+        elif kind == "user" and is_real_prompt(e):
+            text = PASTED.sub("", text_of(e["message"]["content"])).strip()
+            # очередь, которую Claude взял обычным ходом, — не дублируем
+            self.items = [x for x in self.items if not (x.get("queued") == "wait" and x["text"] == text)]
+            self.items.append({"role": "user", "text": text, "ts": ts})
+        elif kind == "user" and not e.get("isMeta") and (e.get("isCompactSummary") or is_service(
+                text_of((e.get("message") or {}).get("content")).strip())):
+            self.cut = True                          # ответ на уведомление агента — не продолжение прежнего ответа
+        elif e.get("type") == "assistant" and (t := text_of((e.get("message") or {}).get("content")).strip()):
+            if self.items and self.items[-1]["role"] == "assistant" and not self.cut:
+                self.items[-1]["text"] += "\n\n" + t
+            else:
+                self.items.append({"role": "assistant", "text": t, "ts": ts})
+            self.cut = False
+
+    def update(self, f: Path):
+        """Дочитать файл с ``offset``: только полные строки; последняя без перевода строки — если это уже целый JSON."""
+        with open(f, "rb") as fh:
+            st = os.fstat(fh.fileno())
+            if self.offset:
+                fh.seek(max(0, self.offset - len(self.tail)))
+                same = st.st_ino == self.ino and st.st_size >= self.offset and fh.read(len(self.tail)) == self.tail
+                if not same:                               # подменили / укоротили / переписали — заново
+                    self.reset()
+            fh.seek(self.offset)
+            chunk = fh.read()
+        self.ino = st.st_ino
+        if not chunk:
+            return
+        cut = chunk.rfind(b"\n") + 1
+        rest = chunk[cut:]
+        if rest.strip():
+            try:
+                json.loads(rest.decode("utf-8", "replace"))
+                cut = len(chunk)                           # целая запись без перевода строки — разбираем сразу
+            except ValueError:
+                pass                                       # запись ещё пишется — дочитаем в следующий раз
+        for raw in chunk[:cut].split(b"\n"):
+            self.line(raw)
+        if cut:
+            self.offset += cut
+            self.tail = (self.tail + chunk[:cut])[-self.TAIL:]
+
+
+_FEEDS: OrderedDict[str, _Feed] = OrderedDict()           # разобранные журналы: путь → состояние (последние FEEDS)
+_FEEDS_LOCK = threading.Lock()
+FEEDS = 16
+
+
+def _feed(f: Path) -> _Feed:
+    key = str(f)
+    with _FEEDS_LOCK:
+        fd = _FEEDS.pop(key, None) or _Feed()
+        _FEEDS[key] = fd
+        while len(_FEEDS) > FEEDS:
+            _FEEDS.popitem(last=False)
+    return fd
+
+
 def history(path: str, limit: int = 30, before: int | None = None,
             home: Path | None = None, sid: str = "", file: Path | None = None) -> tuple[list[dict], bool]:
     """Переписка сессии из последнего транскрипта папки: [{i, role, text, ts, queued?}], есть ли раньше.
@@ -244,82 +379,13 @@ def history(path: str, limit: int = 30, before: int | None = None,
     f = file or current(path, home, sid)          # ``file`` — журнал завершённой сессии без окна («Проекты»)
     if not f:
         return [], False
-    items: list[dict] = []
-    queue: list[tuple[str, dict | None]] = []       # очередь Claude Code: (текст как в журнале, пузырь или None)
-    seen: set[int] = set()                          # пузыри очереди, к которым уже пришла запись ``queued_command``
-    cut = False                                     # была служебная вставка — следующий ответ Claude отдельным пузырём
-    with open(f, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            try:
-                e = json.loads(line)
-            except ValueError:
-                continue
-            if e.get("isSidechain"):
-                continue
-            ts = e.get("timestamp", "")[:16].replace("T", " ")
-            kind = e.get("type")
-            if kind == "queue-operation":
-                op, raw = e.get("operation"), str(e.get("content") or "")
-                if op == "enqueue":
-                    it = None
-                    if raw.strip() and not is_service(raw):
-                        text = secrets_guard.redact(PASTED.sub("", raw).strip())[0]   # ключ в очереди — не показываем
-                        it = {"role": "user", "text": text, "ts": ts, "queued": "wait"}
-                        items.append(it)
-                    queue.append((raw, it))
-                elif op == "dequeue" and queue:
-                    # взят следующим ходом: дальше будет обычная запись ``user`` (или /команда, или блок хука)
-                    _, it = queue.pop(0)
-                    if it is not None and it.get("queued") == "wait" and it in items:
-                        items.remove(it)
-                    cut = cut or it is None
-                elif op == "remove":
-                    k = next((n for n, (r, _) in enumerate(queue) if r == raw), None)
-                    if k is not None:
-                        _, it = queue.pop(k)
-                        if it is not None and it.get("queued") == "wait":
-                            it["queued"] = "read"   # отдан по ходу работы (absorbed_mid_turn)
-            elif kind == "system" and BLOCKED in str(e.get("content", "")):
-                # хук скрытия секретов остановил сообщение (secrets_guard): в чате — его пояснение, а не «в очереди»
-                why = str(e["content"]).split(BLOCKED, 1)[1].lstrip(" :\n")
-                w = next((x for x in reversed(items) if x.get("queued") == "wait"), None)
-                if w:
-                    items.remove(w)
-                items.append({"role": "assistant", "text": why, "ts": ts, "note": "blocked"})
-            elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "queued_command":
-                a = e["attachment"]
-                raw = str(a.get("prompt", ""))
-                if a.get("commandMode", "prompt") != "prompt" or is_service(raw):
-                    cut = True                      # уведомление агента или задачи — не сообщение человека
-                    continue
-                text = PASTED.sub("", raw).strip()
-                q = next((x for x in reversed(items) if x.get("queued") in ("wait", "read") and id(x) not in seen
-                          and x["text"] == text), None)
-                if q:
-                    q["queued"] = "read"
-                    seen.add(id(q))
-                elif text:
-                    items.append({"role": "user", "text": text, "ts": ts, "queued": "read"})
-                    seen.add(id(items[-1]))
-            elif kind == "user" and is_real_prompt(e):
-                text = PASTED.sub("", text_of(e["message"]["content"])).strip()
-                # очередь, которую Claude взял обычным ходом, — не дублируем
-                items = [x for x in items if not (x.get("queued") == "wait" and x["text"] == text)]
-                items.append({"role": "user", "text": text, "ts": ts})
-            elif kind == "user" and not e.get("isMeta") and (e.get("isCompactSummary") or is_service(
-                    text_of((e.get("message") or {}).get("content")).strip())):
-                cut = True                          # ответ на уведомление агента — не продолжение прежнего ответа
-            elif e.get("type") == "assistant" and (t := text_of((e.get("message") or {}).get("content")).strip()):
-                if items and items[-1]["role"] == "assistant" and not cut:
-                    items[-1]["text"] += "\n\n" + t
-                else:
-                    items.append({"role": "assistant", "text": t, "ts": ts})
-                cut = False
-    for i, it in enumerate(items):
-        it["i"] = i
-    end = len(items) if before is None else max(0, min(before, len(items)))
-    start = max(0, end - limit)
-    return items[start:end], start > 0
+    fd = _feed(f)
+    with fd.lock:                                   # журнал дочитывается с прошлого места, а не разбирается заново
+        fd.update(f)
+        items = fd.items
+        end = len(items) if before is None else max(0, min(before, len(items)))
+        start = max(0, end - limit)
+        return [{**it, "i": n} for n, it in enumerate(items[start:end], start)], start > 0
 
 
 TOOLS = {"Bash": "команда", "Read": "читает", "Edit": "правит", "MultiEdit": "правит", "Write": "пишет",
