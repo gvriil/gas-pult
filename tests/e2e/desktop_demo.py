@@ -3,11 +3,13 @@
     python tests/e2e/desktop_demo.py http://127.0.0.1:8797/?demo
 
 Владелец 14.11: «внутри пульта кнопочка … открыть Ubuntu сразу». Владелец 15.11: «окно с адаптивным дизайном под
-размер экрана, с горизонтальной и вертикальной ориентацией и возможностью зума». Демо ``&space=1&home``: кнопка
+размер экрана, с горизонтальной и вертикальной ориентацией и возможностью зума»; «копия не проходит … пароль
+неудобно вписывать» — буфер обмена в обе стороны. Демо ``&space=1&home``: кнопка
 «Ubuntu» → экран поверх панели; «стол» демо — 1600×900 без сети. Проверяем: вписан по умолчанию (пропорции, весь стол
 виден), + / − / 100 % / «Вписать», щипок двумя пальцами и двойной тап («Рука»), поворот — пересчёт без
-переподключения, экранная клавиатура, сворачивание кнопок. iPhone 13 (портрет и альбом), iPad, компьютер 1366;
-светлая и тёмная; консоль без ошибок. С ``&confirm`` сперва код подтверждения.
+переподключения, экранная клавиатура, буфер обмена в обе стороны (латиница и кириллица), сворачивание кнопок.
+iPhone 13 (портрет и альбом), iPad, компьютер 1366; светлая и тёмная; консоль без ошибок.
+С ``&confirm`` сперва код подтверждения.
 """
 
 import sys
@@ -40,7 +42,7 @@ def run(base: str):
                 ("компьютер", {"viewport": {"width": 1366, "height": 860}}, "dark")]
         for name, dev, th in devs:
             dev = {k: v for k, v in dev.items() if k != "default_browser_type"}
-            ctx = br.new_context(**dev, color_scheme=th)
+            ctx = br.new_context(**dev, color_scheme=th, permissions=["clipboard-read", "clipboard-write"])
             pg = ctx.new_page()
             pg.on("console", lambda m: m.type == "error" and "404" not in m.text and errs.append(m.text))
             pg.on("pageerror", lambda e: errs.append(str(e)))
@@ -65,6 +67,7 @@ def run(base: str):
             pg.click("[data-desk=fit]")
             assert pg.evaluate("window.__deskDemo.fitted")
             touch = name != "компьютер"
+            pg.evaluate("localStorage.removeItem('gp.desk.ui')")
             assert pg.locator(".desk-pan").is_visible() == touch, f"{name}: «Рука» по умолчанию"
             if not touch:
                 pg.click("[data-desk=hand]")                                   # компьютер: включить «Руку» руками
@@ -86,15 +89,55 @@ def run(base: str):
                 assert pg.inner_text(".desk-st") == "демо", "поворот переподключил"
                 pg.set_viewport_size({"width": vw, "height": vh})
                 pg.wait_for_timeout(300)
+            # терминал на столе (владелец 15.11: «ввёл пароль, но Enter не работает … Ctrl+C, если мы в терминале»)
+            bar = pg.locator(".desk-bar").bounding_box()
+            assert bar["height"] < 48, f"{name}: панель не в одну строку {bar}"
+            if touch:
+                assert pg.locator(".desk-keys").is_visible(), f"{name}: ряд клавиш на телефоне — по умолчанию"
+                assert pg.locator(".desk-pan").is_visible(), "«Рука» включена — а клавиатура всё равно должна работать"
+            else:
+                pg.click("[data-desk=keys]")
             pg.click("[data-desk=kbd]")
-            pg.keyboard.type("ls")
+            pg.keyboard.type("echo ok")
             pg.keyboard.press("Enter")
-            typed = "".join(pg.evaluate("window.__deskDemo.typed"))
-            assert typed == "ls<Enter>", f"{name}: клавиатура {typed}"
-            pg.click("[data-desk=tools]")
-            assert not pg.locator(".desk-tools").is_visible() and pg.locator("[data-desk=close]").is_visible()
+            assert "$ echo ok\nok\n$ " in pg.evaluate("window.__deskDemo.term"), f"{name}: Enter не выполнил строку"
+            pg.keyboard.type("sleep 100")
+            pg.evaluate("""() => document.querySelector('.desk-kbd').dispatchEvent(new InputEvent('beforeinput',
+                {inputType: 'insertLineBreak', cancelable: true, bubbles: true}))""")      # Enter клавиатуры iOS
+            assert pg.evaluate("window.__deskDemo.term").endswith("sleep 100\n"), f"{name}: Enter iOS"
+            pg.click(".desk-keys [data-key=c]")                                # Ctrl+C из ряда клавиш
+            assert pg.evaluate("window.__deskDemo.term").endswith("^C\n$ "), f"{name}: Ctrl+C"
+            pg.click(".desk-keys [data-key='mod:Ctrl']")                       # залипающий Ctrl + буква
+            assert pg.get_attribute(".desk-keys [data-key='mod:Ctrl']", "aria-pressed") == "true"
+            pg.focus(".desk-kbd")
+            pg.keyboard.type("l")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "Ctrl+l" and \
+                pg.get_attribute(".desk-keys [data-key='mod:Ctrl']", "aria-pressed") == "false", f"{name}: Ctrl залип"
+            pg.click(".desk-keys [data-key=Enter]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "<Enter>"
+            # буфер обмена (владелец 15.11: «копия не проходит … пароль неудобно вписывать»)
+            pg.click("[data-desk=clip]")
+            pg.fill(".desk-clip-in", "Pa$$w0rd-123")
+            pg.click("[data-desk=clip-paste]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "[вставка]Pa$$w0rd-123", f"{name}: вставка"
+            pg.fill(".desk-clip-in", "Пароль-1")                                 # не Latin-1 — набрать клавишами
+            pg.click("[data-desk=clip-paste]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "Пароль-1", f"{name}: кириллица"
+            assert pg.input_value(".desk-clip-in") == "", f"{name}: поле не очищено"
+            pg.fill(".desk-clip-in", "ёжик")
+            pg.click("[data-desk=clip-type]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "ёжик", f"{name}: «Напечатать»"
+            pg.evaluate("window.__deskDemo.copy('https://example.com/секрет')")   # скопировали на столе
+            assert pg.locator(".desk-clip-out").is_visible() and "секрет" in pg.inner_text(".desk-clip-text")
+            pg.click("[data-desk=clip-copy]")
+            assert pg.evaluate("navigator.clipboard.readText()") == "https://example.com/секрет", f"{name}: копия"
+            pg.click("[data-desk=clip]")
+            pg.click("[data-desk=hide]")                                       # скрыть панель — значок в углу
+            assert not pg.locator(".desk-bar").is_visible() and pg.locator(".desk-fab").is_visible()
             pg.wait_for_timeout(200)
             assert pg.evaluate("window.__deskDemo.fitted")
+            pg.click(".desk-fab")
+            assert pg.locator(".desk-bar").is_visible() and not pg.locator(".desk-fab").is_visible()
             pg.click("[data-desk=close]")
             pg.wait_for_function("!document.querySelector('.desk')")
             ctx.close()
