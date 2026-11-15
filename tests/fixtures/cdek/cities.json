@@ -1,0 +1,32 @@
+[
+ {
+  "code": 44,
+  "city_uuid": "7e8f36ba-d937-4ce4-8d53-e44177db6469",
+  "city": "Москва",
+  "fias_guid": "0c5b2444-70a0-4932-980c-b4dc0d3f02b5",
+  "country_code": "RU",
+  "country": "Россия",
+  "region": "Москва",
+  "region_code": 81,
+  "sub_region": "Москва",
+  "longitude": 37.61556,
+  "latitude": 55.75222,
+  "time_zone": "Europe/Moscow",
+  "payment_limit": -1.0
+ },
+ {
+  "code": 1172673,
+  "city_uuid": "e8c0978f-535b-4f9c-b3be-2cf5a23b8d0b",
+  "city": "Москва",
+  "fias_guid": "26a25efa-4f63-4d4b-8db6-dfc29cdaab24",
+  "country_code": "RU",
+  "country": "Россия",
+  "region": "Псковская область",
+  "region_code": 30,
+  "sub_region": "Порховский район",
+  "longitude": 29.18512,
+  "latitude": 57.448555,
+  "time_zone": "Europe/Moscow",
+  "payment_limit": 0.0
+ }
+]

@@ -1,0 +1,17 @@
+{
+ "requests": [
+  {
+   "type": "GET",
+   "date_time": "2026-11-15T13:09:57+0000",
+   "state": "INVALID",
+   "errors": [
+    {
+     "code": "v2_order_not_found",
+     "additional_code": "0x7B234F39",
+     "message": "Order not found by cdek_number 1234567890"
+    }
+   ]
+  }
+ ],
+ "related_entities": []
+}

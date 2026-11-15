@@ -1,0 +1,259 @@
+{
+ "tariff_codes": [
+  {
+   "tariff_code": 121,
+   "tariff_name": "Магистральный экспресс дверь-дверь",
+   "tariff_description": "",
+   "delivery_mode": 1,
+   "delivery_sum": 780.0,
+   "period_min": 8,
+   "period_max": 12,
+   "calendar_min": 8,
+   "calendar_max": 12,
+   "delivery_date_range": {
+    "min": "2026-11-23",
+    "max": "2026-11-27"
+   }
+  },
+  {
+   "tariff_code": 123,
+   "tariff_name": "Магистральный экспресс дверь-склад",
+   "tariff_description": "",
+   "delivery_mode": 2,
+   "delivery_sum": 780.0,
+   "period_min": 8,
+   "period_max": 12,
+   "calendar_min": 8,
+   "calendar_max": 12,
+   "delivery_date_range": {
+    "min": "2026-11-23",
+    "max": "2026-11-27"
+   }
+  },
+  {
+   "tariff_code": 122,
+   "tariff_name": "Магистральный экспресс склад-дверь",
+   "tariff_description": "",
+   "delivery_mode": 3,
+   "delivery_sum": 780.0,
+   "period_min": 8,
+   "period_max": 12,
+   "calendar_min": 8,
+   "calendar_max": 12,
+   "delivery_date_range": {
+    "min": "2026-11-23",
+    "max": "2026-11-27"
+   }
+  },
+  {
+   "tariff_code": 62,
+   "tariff_name": "Магистральный экспресс склад-склад",
+   "tariff_description": "",
+   "delivery_mode": 4,
+   "delivery_sum": 780.0,
+   "period_min": 8,
+   "period_max": 12,
+   "calendar_min": 8,
+   "calendar_max": 12,
+   "delivery_date_range": {
+    "min": "2026-11-23",
+    "max": "2026-11-27"
+   }
+  },
+  {
+   "tariff_code": 480,
+   "tariff_name": "Экспресс дверь-дверь",
+   "tariff_description": "Экспресс-доставка",
+   "delivery_mode": 1,
+   "delivery_sum": 695.0,
+   "period_min": 2,
+   "period_max": 4,
+   "calendar_min": 2,
+   "calendar_max": 4,
+   "delivery_date_range": {
+    "min": "2026-11-17",
+    "max": "2026-11-19"
+   }
+  },
+  {
+   "tariff_code": 481,
+   "tariff_name": "Экспресс дверь-склад",
+   "tariff_description": "Экспресс-доставка",
+   "delivery_mode": 2,
+   "delivery_sum": 610.0,
+   "period_min": 2,
+   "period_max": 4,
+   "calendar_min": 2,
+   "calendar_max": 4,
+   "delivery_date_range": {
+    "min": "2026-11-17",
+    "max": "2026-11-19"
+   }
+  },
+  {
+   "tariff_code": 482,
+   "tariff_name": "Экспресс склад-дверь",
+   "tariff_description": "Экспресс-доставка",
+   "delivery_mode": 3,
+   "delivery_sum": 610.0,
+   "period_min": 2,
+   "period_max": 4,
+   "calendar_min": 2,
+   "calendar_max": 4,
+   "delivery_date_range": {
+    "min": "2026-11-17",
+    "max": "2026-11-19"
+   }
+  },
+  {
+   "tariff_code": 483,
+   "tariff_name": "Экспресс склад-склад",
+   "tariff_description": "Экспресс-доставка",
+   "delivery_mode": 4,
+   "delivery_sum": 530.0,
+   "period_min": 2,
+   "period_max": 4,
+   "calendar_min": 2,
+   "calendar_max": 4,
+   "delivery_date_range": {
+    "min": "2026-11-17",
+    "max": "2026-11-19"
+   }
+  },
+  {
+   "tariff_code": 485,
+   "tariff_name": "Экспресс дверь-постамат",
+   "tariff_description": "Экспресс-доставка",
+   "delivery_mode": 6,
+   "delivery_sum": 610.0,
+   "period_min": 2,
+   "period_max": 4,
+   "calendar_min": 2,
+   "calendar_max": 4,
+   "delivery_date_range": {
+    "min": "2026-11-17",
+    "max": "2026-11-19"
+   }
+  },
+  {
+   "tariff_code": 486,
+   "tariff_name": "Экспресс склад-постамат",
+   "tariff_description": "Экспресс-доставка",
+   "delivery_mode": 7,
+   "delivery_sum": 530.0,
+   "period_min": 2,
+   "period_max": 4,
+   "calendar_min": 2,
+   "calendar_max": 4,
+   "delivery_date_range": {
+    "min": "2026-11-17",
+    "max": "2026-11-19"
+   }
+  },
+  {
+   "tariff_code": 751,
+   "tariff_name": "Сборный груз склад-склад",
+   "tariff_description": "Наземная доставка сборных горузов",
+   "delivery_mode": 4,
+   "delivery_sum": 2500.0,
+   "period_min": 8,
+   "period_max": 12,
+   "calendar_min": 8,
+   "calendar_max": 12,
+   "delivery_date_range": {
+    "min": "2026-11-23",
+    "max": "2026-11-27"
+   }
+  },
+  {
+   "tariff_code": 139,
+   "tariff_name": "Посылка дверь-дверь",
+   "tariff_description": "",
+   "delivery_mode": 1,
+   "delivery_sum": 490.0,
+   "period_min": 1,
+   "period_max": 2,
+   "calendar_min": 1,
+   "calendar_max": 2,
+   "delivery_date_range": {
+    "min": "2026-11-16",
+    "max": "2026-11-17"
+   }
+  },
+  {
+   "tariff_code": 138,
+   "tariff_name": "Посылка дверь-склад",
+   "tariff_description": "",
+   "delivery_mode": 2,
+   "delivery_sum": 345.0,
+   "period_min": 1,
+   "period_max": 2,
+   "calendar_min": 1,
+   "calendar_max": 2,
+   "delivery_date_range": {
+    "min": "2026-11-16",
+    "max": "2026-11-17"
+   }
+  },
+  {
+   "tariff_code": 137,
+   "tariff_name": "Посылка склад-дверь",
+   "tariff_description": "",
+   "delivery_mode": 3,
+   "delivery_sum": 345.0,
+   "period_min": 1,
+   "period_max": 2,
+   "calendar_min": 1,
+   "calendar_max": 2,
+   "delivery_date_range": {
+    "min": "2026-11-16",
+    "max": "2026-11-17"
+   }
+  },
+  {
+   "tariff_code": 136,
+   "tariff_name": "Посылка склад-склад",
+   "tariff_description": "",
+   "delivery_mode": 4,
+   "delivery_sum": 200.0,
+   "period_min": 1,
+   "period_max": 2,
+   "calendar_min": 1,
+   "calendar_max": 2,
+   "delivery_date_range": {
+    "min": "2026-11-16",
+    "max": "2026-11-17"
+   }
+  },
+  {
+   "tariff_code": 366,
+   "tariff_name": "Посылка дверь-постамат",
+   "tariff_description": "",
+   "delivery_mode": 6,
+   "delivery_sum": 345.0,
+   "period_min": 1,
+   "period_max": 2,
+   "calendar_min": 1,
+   "calendar_max": 2,
+   "delivery_date_range": {
+    "min": "2026-11-16",
+    "max": "2026-11-17"
+   }
+  },
+  {
+   "tariff_code": 368,
+   "tariff_name": "Посылка склад-постамат",
+   "tariff_description": "",
+   "delivery_mode": 7,
+   "delivery_sum": 200.0,
+   "period_min": 1,
+   "period_max": 2,
+   "calendar_min": 1,
+   "calendar_max": 2,
+   "delivery_date_range": {
+    "min": "2026-11-16",
+    "max": "2026-11-17"
+   }
+  }
+ ]
+}
