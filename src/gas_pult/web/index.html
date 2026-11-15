@@ -5333,7 +5333,7 @@ async function upload(f) {
   try {
     item.path = cur()?.space                         // сессия пространства: файл — в её папку (sfPut), агенту — имя
       ? (await sfPut(current, f, item.name)).name
-      : (await api("/api/upload", f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(item.name) })).path;
+      : (await api(`/api/upload${current ? `?w=${encodeURIComponent(current)}` : ""}`, f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(item.name) })).path;
   }
   catch (e) { files = files.filter((x) => x !== item); toast(`«${item.name}» не загрузился: ${e.message}`, 4500); }
   renderFiles();

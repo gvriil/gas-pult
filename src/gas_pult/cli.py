@@ -295,6 +295,36 @@ def cmd_usage(a):
     print(f"Сохранено: {path}")
 
 
+def cmd_inbox(a):
+    """Старый inbox пульта → Google Диск (#217): в папку проекта, если проект известен по журналам Claude Code,
+    иначе в ``gas-pult/Входящие-архив``. Локальная копия удаляется только после сверки размера на Диске."""
+    from gas_pult import drive_inbox
+
+    try:
+        cfg = config.load()
+        setting, roots = cfg.drive_root, cfg.roots()
+    except config.ConfigError:                     # без настроек — значения по умолчанию
+        dflt = config.Config(token="", owners=[])
+        setting, roots = dflt.drive_root, dflt.roots()
+    root = drive_inbox.drive_root(setting)
+    if not root:
+        raise SystemExit("Google Диск выключен: drive_root = \"\" в config.toml")
+    claude = a.claude_dir or os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude"
+    claude_dir = Path(os.path.expanduser(claude)) / "projects"
+    try:
+        rows = drive_inbox.migrate(config.data_dir() / "inbox", root, roots, claude_dir=claude_dir, dry_run=a.dry_run)
+    except OSError as e:
+        raise SystemExit(f"Ошибка: {e}") from None
+    for r in rows:
+        mark = "→" if r["ok"] else "✗"
+        print(f"{mark} {r['file']} ({r['size']} Б) {r['to']}{'  ' + r['error'] if r['error'] else ''}")
+    ok = sum(r["ok"] for r in rows)
+    verb = "перенесу" if a.dry_run else "перенесено"
+    print(f"Итого: {verb} {ok} из {len(rows)}" + (" (проверка, ничего не менял)" if a.dry_run else ""))
+    if ok != len(rows):
+        raise SystemExit(1)
+
+
 def invite_qr(link: str, hint: str) -> Path:
     """PNG с QR ссылки — в данных пульта (папка 0700, файл 0600): показать с экрана или распечатать."""
     from gas_pult import qr
@@ -701,6 +731,11 @@ def main(argv: list[str] | None = None):
     s.add_argument("--all", action="store_true", help="list: и выполненные")
     s.add_argument("--by", default="", help="кто поставил (по умолчанию «агент · окно»)")
     s.set_defaults(fn=cmd_task)
+    s = sub.add_parser("inbox", help="старый inbox → Google Диск: migrate [--dry-run] (#217)")
+    s.add_argument("action", choices=["migrate"])
+    s.add_argument("--dry-run", action="store_true", help="показать, что куда пойдёт, ничего не трогая")
+    s.add_argument("--claude-dir", default="", help="папка Claude Code (журналы — откуда проект файла)")
+    s.set_defaults(fn=cmd_inbox)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

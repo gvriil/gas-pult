@@ -22,6 +22,7 @@ import contextlib
 import gzip
 import hashlib
 import hmac
+import io
 import json
 import os
 import re
@@ -41,6 +42,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
+from typing import BinaryIO
 
 from gas_pult import (
     ago,
@@ -49,6 +51,7 @@ from gas_pult import (
     chat_trash,
     country,
     ctxsnap,
+    drive_inbox,
     emailcode,
     fallback,
     features,
@@ -2305,15 +2308,16 @@ class Panel:
                 gone.append(w["name"])
         return {"closed": len(gone), "names": gone}
 
-    def upload(self, name: str, data: bytes) -> str:
-        """Файл из панели → inbox пульта; Claude получает путь (как файлы из чата бота)."""
+    def upload(self, name: str, data: bytes | BinaryIO, size: int | None = None, w: str = "") -> str:
+        """Файл из панели → папка проекта сессии ``w`` на Google Диске (``<проект>/Входящие``, #217); нет Диска или
+        папки проекта — inbox пульта, как раньше. Claude получает путь (как файлы из чата бота). Поток — кусками."""
         safe = re.sub(r"[^\w.\-]+", "_", os.path.basename(urllib.parse.unquote(name)))[-80:].lstrip(".") or "file"
-        d = self.cfg.data / "inbox"
-        d.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path = d / f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}-{safe}"
-        path.write_bytes(data)
-        path.chmod(0o600)
-        return str(path)
+        win = self.tmux.window(w) if w else None
+        folder = self.cfg.drive_folder(win.get("path", "")) if win and not win.get("space") else None
+        src = io.BytesIO(data) if isinstance(data, bytes | bytearray) else data
+        return str(drive_inbox.save(src, safe, folder=folder, inbox=self.cfg.data / "inbox",
+                                    inbox_name=f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}-{safe}",
+                                    size=size))
 
     # ---------- голос: локально или ElevenLabs ----------
     def voice_settings(self) -> dict:
@@ -3844,8 +3848,16 @@ def handler(panel: Panel):
                 slug, w = self.space_win(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)))
                 name = urllib.parse.unquote(self.headers.get("X-File-Name", "file"))
                 return {"name": space_files.put(slug, space_files.folder_of(slug, w), name, self.body())}
-            if path == "/api/upload":
-                return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.body())}
+            if path == "/api/upload":                    # поток в файл, не в память; ``w`` — проект на Диске
+                w = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)).get("w", "")
+                if w and self.focused and not panel.focus_owns(self.focused, w):
+                    w = ""                               # фокус-ссылка — только её сессия; чужая — в inbox
+                if self.raw is not None:
+                    return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.raw, w=w)}
+                n = int(self.headers.get("Content-Length", 0))
+                if n > MAX_BODY:
+                    raise ValueError("слишком большой запрос")
+                return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
             if path == "/api/stt":
                 before = panel.fallback_note()
                 text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())

@@ -85,6 +85,7 @@ class Config:
     passkeys: dict = field(default_factory=dict)            # [passkeys]: rp_id и origin (passkeys.py); {} — выкл.
     google: dict = field(default_factory=dict)              # [google]: вход через Google (oidc.py); {} — выкл.
     yandex: dict = field(default_factory=dict)              # [yandex]: вход через Яндекс ID (oidc.py); {} — выкл.
+    drive_root: str = "~/drive"                             # Google Диск (rclone): <проект>/Входящие; "" — выкл.
 
     @property
     def data(self) -> Path:
@@ -92,6 +93,12 @@ class Config:
 
     def roots(self) -> list[Path]:
         return [Path(os.path.expanduser(r)) for r in self.project_roots]
+
+    def drive_folder(self, path: str) -> Path | None:
+        """Папка проекта окна (``path``) на Google Диске, если Диск смонтирован и она есть (drive_inbox.py)."""
+        from gas_pult import drive_inbox
+        root = drive_inbox.drive_root(self.drive_root)
+        return drive_inbox.project_dir(root, drive_inbox.project_of(path, self.roots()))
 
 
 def read_token() -> str:
