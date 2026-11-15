@@ -2874,6 +2874,15 @@ function isNew(s) {                                   // журнал измен
   if (seen == null) { if (s.rev) store(seenKey(s), s.rev); return false; }
   return s.status === "idle" && s.rev && s.rev !== seen;
 }
+// Счётчик (#189): «(N) …» во вкладке и на значке PWA; N — ждут ответа и с новым ответом.
+const TITLE0 = document.title;
+let attnN = -1;
+function attnBadge() {
+  const n = sessions.filter((x) => x.status === "dialog" || isNew(x)).length;
+  if (n === attnN) return;
+  attnN = n; document.title = n ? `(${n}) ${TITLE0}` : TITLE0;
+  try { (n ? navigator.setAppBadge?.(n) : navigator.clearAppBadge?.())?.catch?.(() => {}); } catch (e) { /* нет API */ }
+}
 // Поставщик модели сессии (models.py): у обычных сессий Claude метки нет — не шумим.
 const profileOf = (id) => meta?.profiles?.find((p) => p.id === id);
 const provName = (s) => s.profile && s.profile !== "claude" ? (profileOf(s.profile)?.short || s.profile) : "";
@@ -3718,6 +3727,7 @@ async function refresh() {
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
+    attnBadge();
     // Без «обновлено ЧЧ:ММ:СС» (план UX, пункт 9): о связи говорит только плашка «Нет связи»; текст не меняется
     // каждый опрос — меньше перерисовок.
     const hostLine = d.host || "";
