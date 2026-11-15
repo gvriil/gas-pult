@@ -5520,7 +5520,7 @@ function sttFail(text, blob, sendNow, where = MIC_FULL) {
 // Звук: AudioWorklet (нет — ScriptProcessor) → PCM 16 кГц моно, кусками по 100 мс → WebSocket /api/stt/stream → служба
 // T-one на сервере → частичный текст в поле. Отпустили — итог за доли секунды. Удержание короче HOLD_MS — нажатие:
 // запись идёт до «Стоп», как раньше. Службы нет или поток оборвался — та же запись уходит WAV-файлом в /api/stt.
-const HOLD_MS = 350, STT_RATE = 16000, FINAL_WAIT = 4000;
+const HOLD_MS = 350, STT_RATE = 16000, FINAL_WAIT = 1500;   // итог от службы не пришёл за 1,5 с — берём распознанное
 const MIC_FULL = { inp: "input", hide: ["input", "ctools"], after: "input", liveHide: ["ctools"], liveAfter: "ctools", send: () => sendText() };
 const MIC_SIMPLE = { inp: "sInput", hide: ["sComp"], after: "sComp", liveHide: ["sMic", "sSend"], liveAfter: "sComp", send: () => sSend() };
 // Понижение частоты: среднее по окну (простой фильтр) → Int16, по 1600 отсчётов (100 мс). Тот же класс — в AudioWorklet.
@@ -5593,7 +5593,10 @@ function micDown(e, where) {
 function micUp() {
   const p = micPress; micPress = null;
   if (!p || !vs || vs.ending) return;
-  if (Date.now() - p.t >= HOLD_MS) { vs.hold = true; voiceStop(false); }   // держали — отпустили: итог в поле
+  // «Держали — отпустили» — только когда запись уже идёт (захват звука готов). На iPhone запуск (разрешение микрофона,
+  // AudioWorklet) дольше HOLD_MS: отпускание или pointercancel окна разрешения во время запуска — это касание,
+  // запись идёт до «Стоп» (жалоба владельца 15.11: «кнопка ни стоп, ни отправить не нажимается»).
+  if (vs.cap && Date.now() - p.t >= HOLD_MS) { vs.hold = true; voiceStop(false); }
 }
 document.addEventListener("pointerup", micUp); document.addEventListener("pointercancel", micUp);
 async function voiceStart(where) {
@@ -5659,16 +5662,20 @@ function voiceEnd(s) {                              // микрофон и ст�
   if (vs === s) vs = null; micPark();
 }
 async function voiceStop(sendNow) {
-  const s = vs; if (!s || s.ending) return;
+  const s = vs; if (!s) return;
+  if (s.ending) { if (sendNow) s.sendNow = true; return; }   // уже останавливаем: «Отправить» во время итога — запомнить
+  if (!s.cap) return;                                 // запись ещё запускается — «Стоп» появится, когда она пойдёт
   s.ending = true; s.sendNow = sendNow;
   cancelAnimationFrame(s.raf);
   const bar = micBar; if (bar) { bar.className = "recbar live stt"; bar.querySelector(".dotrec")?.replaceWith(Object.assign(document.createElement("span"), { className: "spin" })); }
-  await s.cap.flush();                               // последний неполный кусок — тоже в поток
+  try { await s.cap.flush(); }                       // последний неполный кусок — тоже в поток
+  catch (_) {}                                       // не дал дослать — не беда: итог всё равно будет
   if (s.done) return;
   s.stopping = true; s.cap.close(); micPark();       // микрофон гаснет сразу, не дожидаясь итога
   if (!s.ws) return voiceFallback(s);                // потока нет — запись целиком прежним путём
   if (s.ready) { for (const a of s.queue.splice(0)) s.ws.send(a.buffer); s.ws.send('{"end": true}'); }
-  s.timer = setTimeout(() => voiceFallback(s), FINAL_WAIT);   // итог не пришёл — не ждём дольше
+  // Итог не пришёл за 1,5 с: есть распознанное потоком — его и берём (отправляем, если просили); нет — запись файлом
+  s.timer = setTimeout(() => (s.partial ? voiceDone(s, s.partial) : voiceFallback(s)), FINAL_WAIT);
 }
 function voiceDone(s, text) {
   if (s.done) return; s.done = true;
