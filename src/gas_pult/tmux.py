@@ -253,6 +253,7 @@ class Tmux:
                 w["tag"], w["sid"], w["live"] = w.get("sid", ""), live, True
             if claude:
                 w["cmd"] = "claude"
+            w["harness"] = "claude" if claude else ""      # какой агент в окне (harness.py); "" — агента нет
             w["profile"] = profile_of(claude[0]) if claude else ""   # у какого поставщика модели (models.py)
             w["channel"] = any("--channels" in p for p in claude)   # у окна свой Telegram — не дублируем
             # окно открыл пульт (метка — поставщик), а Claude в нём завершился и осталась оболочка — «остановлена»
