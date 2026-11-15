@@ -291,3 +291,25 @@ def test_send_to_pi_skips_claude_prompt_wait(monkeypatch):
                             "screen": lambda self, wid, n=15: shots.append(wid) or ["❯ "]})()
     p.ready_for_text("@1")                                                 # Claude — как раньше, по экрану
     assert shots == ["@1"]
+
+
+def test_bot_sends_first_pi_answer_of_new_window(tmp_path, monkeypatch):
+    """Живая проверка 15.11: окно Pi открыли, Pi ответил за 3 с между взглядами бота — ответ терялся как «старый»."""
+    import time as _t
+
+    from gas_pult import bot
+    root = tmp_path / "sessions"
+    monkeypatch.setitem(harness.HARNESSES, "pi", harness.Pi(root=root))
+    sid = "11111111-1111-4111-8111-111111111111"
+    now = _t.strftime("%Y-%m-%dT%H:%M:%S.000Z", _t.gmtime())
+    rows = [{"type": "session", "id": "s", "timestamp": now, "cwd": "/p"},
+            {"type": "message", "timestamp": now, "message": {"role": "user", "content": "вопрос"}},
+            {"type": "message", "timestamp": now, "message": {"role": "assistant", "stopReason": "stop",
+                                                              "content": [{"type": "text", "text": "Зелёного."}]}}]
+    _pi_journal(root, rows=rows, sid=sid)
+    p = bot.Pult.__new__(bot.Pult)
+    p.pi_start = _t.time() - 60                                            # бот запущен минуту назад
+    sent = []
+    p.deliver = lambda w, text: sent.append(text)
+    p.pi_answers([{"id": "@5", "name": "pi-1", "path": "/home/u/proj", "harness": "pi", "sid": sid}], {})
+    assert sent == ["Зелёного."]

@@ -171,6 +171,12 @@ def status(f: Path | None) -> dict:
 
 def answers(f: Path) -> list[str]:
     """Законченные ответы агента по порядку: текст хода, завершённого ``stopReason: "stop"`` (для Telegram)."""
+    return [t for _, t in answers_at(f)]
+
+
+def answers_at(f: Path) -> list[tuple[float, str]]:
+    """То же с временем записи ответа (Unix): бот отличает ответы до своего запуска от новых."""
+    from gas_pult import activity
     out, cur = [], []
     for e in _rows(f):
         m = e["message"]
@@ -181,6 +187,6 @@ def answers(f: Path) -> list[str]:
                 cur.append(t)
             kinds = {b.get("type") for b in m.get("content") or [] if isinstance(b, dict)}
             if m.get("stopReason") == "stop" and "toolCall" not in kinds and cur:
-                out.append("\n\n".join(cur))
+                out.append((activity.stamp(e.get("timestamp", "")), "\n\n".join(cur)))
                 cur = []
     return out

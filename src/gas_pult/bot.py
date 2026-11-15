@@ -1112,14 +1112,18 @@ class Pult:
         """Ответы окон Pi — в Telegram, как ответы Claude Code (у Claude их ловит ``Tail``/``Turns`` по журналам
         ``~/.claude``; у Pi свой журнал). Первый взгляд на журнал — только запоминаем: старое не пересылаем."""
         seen = self.__dict__.setdefault("pi_seen", {})
+        start = self.__dict__.setdefault("pi_start", time.time())   # ответы до запуска бота — старые, не пересылаем
         for w in ws:
             f = harness.of(w).journal(w["path"], sid=w.get("sid") or "")
             if not f:
                 continue
-            got = pi_journal.answers(f)
-            n = seen.get(str(f))
+            at = pi_journal.answers_at(f)
+            got = [t for _, t in at]
+            # первый взгляд: старое — только написанное до запуска бота (окно открыли и Pi ответил за 3 с между
+            # взглядами — первый ответ новый, его шлём; раньше считался «старым» и терялся)
+            n = seen.get(str(f), sum(ts and ts < start - 5 for ts, _ in at))
             seen[str(f)] = len(got)
-            if n is None or len(got) <= n or not notifylevel.wants(st, w["id"], "answer"):
+            if len(got) <= n or not notifylevel.wants(st, w["id"], "answer"):
                 continue
             new = got[n:]
             if len(new) > self.BURST:
