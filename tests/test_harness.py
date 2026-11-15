@@ -137,8 +137,10 @@ def test_pi_launch_and_env_sid(monkeypatch, tmp_path):
     assert cmd.startswith(f"env GAS_PULT_SID={sid} {fake} --provider deepseek --model deepseek-v4-pro")
     assert cmd.endswith(f" --session-id {sid}") and pi.launch(sid, resume=True).endswith(f" --session-id {sid}")
     assert harness.available() == [{"id": "pi", "title": "Pi", "model": "deepseek/deepseek-v4-pro"}]
-    p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"], env={**os.environ, "GAS_PULT_SID": sid})
+    p = subprocess.Popen([sys.executable, "-c", "import time; print('ok', flush=True); time.sleep(5)"],
+                         env={**os.environ, "GAS_PULT_SID": sid}, stdout=subprocess.PIPE, text=True)
     try:
+        assert p.stdout.readline().strip() == "ok"                         # процесс уже запущен (после exec)
         assert pi.live_sid(p.pid) == sid                                   # Pi меняет имя процесса — id из окружения
     finally:
         p.kill()
