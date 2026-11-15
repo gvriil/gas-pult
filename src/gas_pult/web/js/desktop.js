@@ -12,7 +12,15 @@
 // пересчёт без переподключения. Полный экран (Fullscreen API; в Mini App — свой полноэкранный режим), безопасные зоны
 // iPhone, экранная клавиатура, панель кнопок сворачивается.
 
-let deskEl = null, deskScr = null, deskOff = [];
+let deskEl = null, deskScr = null, deskOff = [], deskSize = "";
+// Размер стола под устройство: портрет — «высокий» 1080×1920, альбом и компьютер — 1600×900 (как у агентов).
+// Стол общий для агентов: по закрытию просмотра — обратно 1600×900. Сервер пускает только эти размеры.
+const DESK_BASE = "1600x900", deskWant = () => (innerHeight > innerWidth * 1.2 ? "1080x1920" : DESK_BASE);
+function deskResize(want) {
+  if (want === deskSize) return Promise.resolve(false);
+  const [w, h] = want.split("x").map(Number);
+  return api("/api/desktop/size", { w, h }).then(() => { deskSize = want; return true; }, () => false);
+}
 const Z_MIN = 0.25, Z_MAX = 4, Z_STEP = 1.25;
 
 async function deskOpen() {
@@ -101,7 +109,11 @@ function deskShow(d) {
     fitted = false; z = nz; deskScr.scale(z); sc().scrollLeft = sx; sc().scrollTop = sy; show();
   };
   const relayout = () => { if (!deskEl) return; if (fitted) fit(); else zoom(z); };   // без переподключения
-  const later = () => setTimeout(relayout, 80);
+  let sizeT = 0;
+  const later = () => {
+    setTimeout(relayout, 80);
+    if (!d.demo) { clearTimeout(sizeT); sizeT = setTimeout(() => deskResize(deskWant()).then((ch) => ch && setTimeout(relayout, 700)), 700); }
+  };
   for (const [t, ev] of [[window, "resize"], [window, "orientationchange"], [window.visualViewport, "resize"]])
     if (t) { t.addEventListener(ev, later); deskOff.push(() => t.removeEventListener(ev, later)); }
   try { if (tg?.onEvent) { tg.onEvent("viewportChanged", later); deskOff.push(() => tg.offEvent?.("viewportChanged", later)); } } catch (_) {}
@@ -157,7 +169,10 @@ function deskShow(d) {
 
   (d.demo ? Promise.resolve(demoScreen(view, st)) : rfbScreen(view, st)).then((scr) => {
     if (deskEl !== el) return scr.close();
-    deskScr = scr; scr.onready = () => { hand(!pan.hidden); fit(); };
+    deskScr = scr; scr.onready = () => {
+      hand(!pan.hidden); fit();
+      if (!d.demo) deskResize(deskWant()).then((ch) => ch && setTimeout(relayout, 700));   // стол — под экран
+    };
   }, (e) => { st.textContent = "не подключился: " + e.message; });
   haptic("impactOccurred", "light");
 }
@@ -182,6 +197,7 @@ async function deskTab() {
 function deskClose() {
   if (!deskEl) return;
   deskScr?.close(); deskScr = null; deskOff.forEach((f) => f()); deskOff = [];
+  if (deskSize && deskSize !== DESK_BASE) deskResize(DESK_BASE);   // стол общий — вернуть агентам обычный размер
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   deskEl.remove(); deskEl = null; document.body.classList.remove("desk-on");
   try { tg?.BackButton?.offClick(deskClose); if (typeof view !== "undefined" && view === "home") tg?.BackButton?.hide(); } catch (_) {}

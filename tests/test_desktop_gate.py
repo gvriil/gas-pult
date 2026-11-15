@@ -5,6 +5,7 @@ noVNC даёт полное управление браузером агенто
 
 import urllib.request
 
+import pytest
 from test_project_chats import call
 from test_project_chats import server as server
 
@@ -134,3 +135,30 @@ def test_ticket_expires():
     t = webapp.desk_ticket(1, now=1000.0)
     webapp.desk_ticket(1, now=1000.0 + webapp.TICKET_TTL + 1)
     assert t not in webapp.DESK_TICKETS
+
+
+def test_desktop_size_presets_and_maximize():
+    import subprocess
+    ran = []
+
+    def run(cmd, **k):
+        ran.append(cmd)
+        wins = "0x00200002  0 host Chrome — вкладка 0x99\n0x00400001  0 host Терминал\n"
+        out = wins if cmd[:2] == ["wmctrl", "-l"] else ""
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+    assert webapp.desktop_size("1080", 1920, run=run) == {"w": 1080, "h": 1920}
+    assert ran[0] == ["xrandr", "--fb", "1080x1920"]
+    assert [c[3] for c in ran[2:]] == ["0x00200002", "0x00400001"]           # оба окна; «0x99» в заголовке — нет
+    for bad in ((800, 600), (2560, 2560), ("x", 1)):
+        with pytest.raises(ValueError):
+            webapp.desktop_size(*bad, run=run)
+    fail = lambda cmd, **k: subprocess.CompletedProcess(cmd, 1, "", "xrandr: bad")   # noqa: E731
+    with pytest.raises(RuntimeError, match="не сменил"):
+        webapp.desktop_size(1600, 900, run=fail)
+
+
+def test_desktop_size_owner_only(server, monkeypatch):
+    p, base, *_ = server
+    monkeypatch.setattr(webapp, "desktop_size", lambda w, h, run=None: {"w": int(w), "h": int(h)})
+    assert call(base, "/api/desktop/size", {"w": 1080, "h": 1920}, p.auth.issue(1))[1] == {"w": 1080, "h": 1920}
+    assert call(base, "/api/desktop/size", {"w": 1080, "h": 1920}, p.auth.issue(2))[0] == 403

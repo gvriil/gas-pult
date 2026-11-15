@@ -148,6 +148,32 @@ def desk_cookie(tok: str, tab: bool = False) -> str:
     return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=None; Partitioned"
 
 
+# Размер стола под устройство (владелец 15.11: «под размер экрана … горизонтальной и вертикальной ориентацией»).
+# Xvfb :50 запущен с буфером до 2560×2560 и RANDR, x11vnc — с ``-xrandr resize``: смена размера доходит до noVNC сама.
+# Стол общий для агентов — только эти размеры; по закрытию просмотра панель возвращает 1600×900.
+DESKTOP_DISPLAY = os.environ.get("GAS_PULT_DESKTOP_DISPLAY", ":50")
+DESKTOP_SIZES = {(1600, 900), (1920, 1080), (1080, 1920), (1280, 800)}
+
+
+def desktop_size(w, h, run=subprocess.run) -> dict:
+    """Сменить размер стола (``xrandr --fb``) и развернуть окна на новый размер (``wmctrl``)."""
+    try:
+        w, h = int(w), int(h)
+    except (TypeError, ValueError):
+        raise ValueError("размер: числа") from None
+    if (w, h) not in DESKTOP_SIZES:
+        raise ValueError("размер стола: " + ", ".join(f"{a}×{b}" for a, b in sorted(DESKTOP_SIZES)))
+    env = {**os.environ, "DISPLAY": DESKTOP_DISPLAY}
+    r = run(["xrandr", "--fb", f"{w}x{h}"], env=env, capture_output=True, text=True, timeout=10)
+    if r.returncode:
+        raise RuntimeError("стол не сменил размер: " + (r.stderr or "").strip()[:200])
+    out = run(["wmctrl", "-l"], env=env, capture_output=True, text=True, timeout=10).stdout or ""
+    for wid in [ln.split()[0] for ln in out.splitlines() if ln.startswith("0x")]:   # окна — во весь новый стол
+        run(["wmctrl", "-i", "-r", wid, "-b", "add,maximized_vert,maximized_horz"], env=env,
+            capture_output=True, timeout=10)
+    return {"w": w, "h": h}
+
+
 def desktop_up(port: int = DESKTOP_PORT) -> bool:
     """Рабочий стол запущен: кто-то слушает 127.0.0.1:<port> (без него кнопку не показываем)."""
     try:
@@ -2726,7 +2752,7 @@ OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/comma
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
               "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear", "/api/notify/level",
-              "/api/desktop/open",
+              "/api/desktop/open", "/api/desktop/size",
               "/api/tasks", "/api/tasks/add", "/api/tasks/update", "/api/tasks/remove", "/api/tasks/run",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
@@ -4044,6 +4070,8 @@ def handler(panel: Panel):
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
+            if path == "/api/desktop/size":               # размер стола под экран (только владелец)
+                return desktop_size(b.get("w"), b.get("h"))
             if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
