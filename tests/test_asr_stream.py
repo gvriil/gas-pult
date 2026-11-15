@@ -430,6 +430,15 @@ def test_unit_has_memory_cap(tmp_path):
     assert "Restart=on-failure" in t and "Restart=always" not in t
 
 
+def test_unit_oom_score_first_to_go():
+    """Нехватка памяти — служба распознавания падает первой (500 > 200 у бота, панели и агентов); в user-юните
+    значение можно только повышать, поэтому — не ниже 200 (аудит #189)."""
+    t = install.unit_text(Path("/v/bin/python"), Path("/src"), Path("/d/asr.sock"), Path("/d/model.onnx"))
+    adj = [ln for ln in t.splitlines() if ln.startswith("OOMScoreAdjust=")]
+    assert adj == ["OOMScoreAdjust=500"]
+    assert t.index("[Service]") < t.index("OOMScoreAdjust=") < t.index("[Install]")
+
+
 def test_fetch_model_checks_sha(tmp_path):
     src, dest = tmp_path / "m.onnx", tmp_path / "out" / "model.onnx"
     src.write_bytes(b"model")
