@@ -52,7 +52,10 @@ class Api:
         path = self("getFile", file_id=file_id)["file_path"]
         dst_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         dst = dst_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.path.basename(name or path)}"
+        t0 = time.monotonic()
         urllib.request.urlretrieve(f"https://api.telegram.org/file/bot{self._token}/{path}", dst)
+        secs, n = time.monotonic() - t0, dst.stat().st_size      # журнал загрузок: сколько и как быстро (без имени)
+        print(f"upload: {n / 1024:.0f} КБ за {secs:.1f} с ({n / 1024 / max(secs, 0.001):.1f} КБ/с) · bot", flush=True)
         return dst
 
     def redact(self, text: str) -> str:

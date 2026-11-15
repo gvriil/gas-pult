@@ -2101,7 +2101,7 @@ $("draftBar").onclick = (e) => {
 async function draftSend() {
   const text = $("input").value.trim();
   if (!text && !files.length) return toast("Напишите первое сообщение");
-  if (files.some((f) => !f.path)) return toast("Подождите — файл ещё загружается");
+  if (files.some((f) => !f.path)) { toast("Дождусь загрузки файла и запущу чат", 2500); await Promise.all(files.map((f) => f.done)); }
   const dr = DRAFT, p = projOf(dr.proj), keep = files;
   $("send").disabled = true;
   toast("Запускаю новый чат в «" + (p?.name || "папке") + "»…", 4000);
@@ -5336,16 +5336,24 @@ async function sendText() {
   if (micSendNow(MIC_FULL)) return;
   if (DRAFT) return draftSend();                    // новый чат: окно — при первой отправке
   if (cur()?.status === "stopped") return toast("Сессия остановлена — сначала «Перезапустить»", 4000);
-  if (files.some((f) => !f.path)) return toast("Подождите — файл ещё загружается");
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
   if (typed && secretPass !== typed) { const s = redactSecrets(typed); if (s.found.length) return secretSheet(typed, s); }
   secretPass = null;
-  const text = (typed || "Посмотри файл.") + (files.length ? "\n\n" + files.map((f) => "Файл из панели: " + f.path).join("\n") : "");
-  const p = { text, state: "sending", id: msgId(), w: current }; pending.push(p);
-  $("input").value = ""; const sent = files; files = []; renderFiles(); grow();
+  // файл ещё грузится — сообщение не ждёт в поле: оно уже в переписке «отправляется», путь подставим по готовности
+  const sent = files, body = typed || "Посмотри файл.";
+  const withPaths = () => body + (sent.some((f) => f.path) ? "\n\n" + sent.filter((f) => f.path).map((f) => "Файл из панели: " + f.path).join("\n") : "");
+  const p = { text: withPaths(), state: "sending", id: msgId(), w: current }; pending.push(p);
+  $("input").value = ""; files = []; renderFiles(); grow();
   if (tab === "chat") renderChat(true); else toast("Отправлено в «" + (cur()?.name || "сессию") + "»");
-  await deliver(p, () => { if (!$("input").value.trim()) { $("input").value = typed; files = sent; renderFiles(); grow(); } });
+  if (sent.some((f) => !f.path)) {
+    p.text = body + "\n\n(файл загружается…)"; renderChat(true);
+    await Promise.all(sent.map((f) => f.done || Promise.resolve()));
+    const lost = sent.filter((f) => !f.path);
+    if (lost.length) toast("Не загрузился: " + lost.map((f) => "«" + f.name + "»").join(", ") + " — сообщение уходит без него", 5000);
+    p.text = withPaths(); renderChat(true);
+  }
+  await deliver(p, () => { if (!$("input").value.trim()) { $("input").value = typed; files = sent.filter((f) => f.path); renderFiles(); grow(); } });
 }
 const msgId = () => crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2);
 // Обрыв связи — не «не отправлено»: текст мог уже дойти. Повторяем с тем же id (сервер второй раз не вставит), а
@@ -5376,24 +5384,33 @@ $("content").addEventListener("click", (e) => {
 });
 $("plus").onclick = () => helpSheet("sheet.attach") || sheet("Прикрепить", [
   { label: "Сфотографировать", icon: "camera", run: () => $("fCam").click() },
-  { label: "Фото или видео из галереи", icon: "image", run: () => $("fPhoto").click() },
+  { label: "Фото или видео из галереи", icon: "image", sub: "фото сжимаем до 1920 px — быстрее загрузка", run: () => $("fPhoto").click() },
+  { label: "Фото без сжатия", icon: "image", sub: "оригинал — дольше по медленной сети", run: () => { noShrink = true; $("fPhoto").click(); } },
   { label: "Файл с устройства", icon: "file", sub: "документ, таблица, архив — до 50 МБ", run: () => $("fFile").click() },
 ]);
-for (const id of ["fCam", "fPhoto", "fFile"]) $(id).onchange = (e) => { [...e.target.files].forEach(upload); e.target.value = ""; };
-async function upload(f) {
+let noShrink = false;                                  // «Фото без сжатия» — на один выбор
+for (const id of ["fCam", "fPhoto", "fFile"]) $(id).onchange = (e) => {
+  const raw = noShrink || id === "fFile"; noShrink = false;
+  [...e.target.files].forEach((f) => upload(f, raw)); e.target.value = "";
+};
+async function upload(f, raw = false) {
   if (f.size > 50 * 1024 * 1024) return toast(`«${f.name}» больше 50 МБ`, 4000);
-  const item = { name: f.name || "photo.jpg", path: null }; files.push(item); renderFiles();
-  try {
-    item.path = cur()?.space                         // сессия пространства: файл — в её папку (sfPut), агенту — имя
-      ? (await sfPut(current, f, item.name)).name
-      : (await api(`/api/upload${current ? `?w=${encodeURIComponent(current)}` : ""}`, f, f.type || "application/octet-stream", { "X-File-Name": encodeURIComponent(item.name) })).path;
-  }
-  catch (e) { files = files.filter((x) => x !== item); toast(`«${item.name}» не загрузился: ${e.message}`, 4500); }
-  renderFiles();
+  const item = { name: f.name || "photo.jpg", path: null, pct: 0 }; files.push(item); renderFiles();
+  item.done = (async () => {
+    try {
+      if (cur()?.space) { item.path = (await sfPut(current, f, item.name)).name; return; }   // пространство — её папка
+      await part("upload");                             // сжатие и загрузка с прогрессом — часть js/upload.js
+      const g = raw ? f : await shrinkImage(f);
+      if (g !== f) { item.name = g.name; item.saved = f.size - g.size; }
+      const url = `/api/upload${current ? `?w=${encodeURIComponent(current)}` : ""}`;
+      item.path = (await uploadXhr(url, g, { "X-File-Name": encodeURIComponent(item.name) }, (q) => { item.pct = Math.round(q * 100); renderFiles(); })).path;
+    } catch (e) { files = files.filter((x) => x !== item); toast(`«${item.name}» не загрузился: ${e.message}`, 4500); }
+    finally { renderFiles(); }
+  })();
 }
 function renderFiles() {
   $("attach").hidden = !files.length;
-  $("attach").innerHTML = files.map((f, i) => `<span>${ic(f.path ? "file" : "wait", "s16")}<em>${esc(f.name)}</em><button data-rmf="${i}" aria-label="Убрать">${ic("x", "s16")}</button></span>`).join("");
+  $("attach").innerHTML = files.map((f, i) => `<span>${ic(f.path ? "file" : "wait", "s16")}<em>${esc(f.name)}${f.path ? "" : ` · ${f.pct || 0} %`}</em><button data-rmf="${i}" aria-label="Убрать">${ic("x", "s16")}</button></span>`).join("");
   sync(); padDock();
 }
 $("attach").onclick = (e) => { const b = e.target.closest("[data-rmf]"); if (b) { files.splice(+b.dataset.rmf, 1); renderFiles(); } };
