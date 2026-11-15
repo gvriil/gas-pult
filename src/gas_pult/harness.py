@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from gas_pult import transcripts
+from gas_pult import pi_journal, transcripts
 
 
 class Harness:
@@ -98,7 +99,64 @@ class ClaudeCode(Harness):
         return transcripts.resume_args(sid)
 
 
-HARNESSES: dict[str, Harness] = {h.name: h for h in (ClaudeCode(),)}
+class Pi(Harness):
+    """Pi (основной запасной агент): процесс ``pi`` (node …/pi-coding-agent/…/cli.js), журналы
+    ``~/.pi/agent/sessions/--<путь>--/*_<id>.jsonl``. Пульт запускает Pi с ``--session-id <id>``: Pi открывает эту
+    сессию или создаёт её — один и тот же аргумент для нового окна и для «Продолжить»."""
+
+    name = "pi"
+    title = "Pi"
+
+    def __init__(self, root: Path | None = None):
+        self.root = root
+
+    def matches(self, argv):
+        return any(os.path.basename(a) == "pi" or "/pi-coding-agent/" in a for a in argv[:2])
+
+    def live_sid(self, pid):
+        try:
+            argv = Path(f"/proc/{int(pid)}/cmdline").read_bytes().decode(errors="replace").split("\0")
+        except (OSError, ValueError):
+            return ""
+        return pi_journal.session_arg(argv)
+
+    def journal(self, path, home=None, sid=""):
+        return pi_journal.current(path, home or self.root, sid)
+
+    def history(self, path, limit=30, before=None, home=None, sid="", file=None):
+        return pi_journal.history(file or self.journal(path, home, sid), limit, before)
+
+    def preview(self, path, home=None, sid=""):
+        f = self.journal(path, home, sid)
+        items = pi_journal.parse(f)[0] if f else []
+        return transcripts._line(items[-1]["text"]) if items else ""
+
+    def last_model(self, path, home=None, sid=""):
+        f = self.journal(path, home, sid)
+        return pi_journal.parse(f)[1] if f else ""
+
+    def last_answer(self, path, home=None, sid=""):
+        f = self.journal(path, home, sid)
+        items = pi_journal.parse(f)[0] if f else []
+        return next((x["text"] for x in reversed(items) if x["role"] == "assistant"), "")
+
+    def revision(self, path, home=None, sid=""):
+        f = self.journal(path, home, sid)
+        if not f:
+            return ""
+        st = f.stat()
+        return f"{f.stem[-8:]}-{st.st_size}-{st.st_mtime_ns}"
+
+    def new_args(self, sid):
+        sid = pi_journal.valid_sid(sid)
+        return f" --session-id {sid}" if sid else ""
+
+    def resume_args(self, sid):
+        sid = pi_journal.valid_sid(sid)
+        return f" --session-id {sid}" if sid else " --continue"
+
+
+HARNESSES: dict[str, Harness] = {h.name: h for h in (ClaudeCode(), Pi())}
 DEFAULT = "claude"
 
 
