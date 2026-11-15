@@ -492,6 +492,21 @@ def own_window() -> tuple[str, str]:
     return (wid, name) if r.returncode == 0 and wid.startswith("@") else ("", "")
 
 
+def cmd_pi(a):
+    """Собрать добавку к системному промпту окон Pi: свод главных правил и оверлей модели → ``<конфиг>/pi/append.md``;
+    пульт передаёт её Pi ключом ``--append-system-prompt`` при каждом запуске окна (новые окна и «Перезапустить»)."""
+    from gas_pult import harness, pi_journal
+    from gas_pult.config import write_private
+    try:
+        text = pi_journal.compose_overlay(Path(a.src).expanduser(), a.model)
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
+    out = harness.Pi.overlay()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    write_private(out, text)
+    print(f"готово: {out} ({len(text)} символов) — подключится при следующем запуске окна Pi")
+
+
 def cmd_task(a):
     """Задачи владельца (#203): агент или человек кладёт задачу — она видна сверху в панели и в боте (/tasks)."""
     from gas_pult import tasks
@@ -731,6 +746,11 @@ def main(argv: list[str] | None = None):
     s.add_argument("--all", action="store_true", help="list: и выполненные")
     s.add_argument("--by", default="", help="кто поставил (по умолчанию «агент · окно»)")
     s.set_defaults(fn=cmd_task)
+    s = sub.add_parser("pi", help="Pi: overlay --from <папка профилей> [--model deepseek-v4] — добавка к промпту окон")
+    s.add_argument("action", choices=["overlay"])
+    s.add_argument("--from", dest="src", required=True, help="папка профилей моделей (_core-short.md, <модель>.md)")
+    s.add_argument("--model", default="deepseek-v4", help="профиль модели (имя файла без .md)")
+    s.set_defaults(fn=cmd_pi)
     s = sub.add_parser("inbox", help="старый inbox → Google Диск: migrate [--dry-run] (#217)")
     s.add_argument("action", choices=["migrate"])
     s.add_argument("--dry-run", action="store_true", help="показать, что куда пойдёт, ничего не трогая")

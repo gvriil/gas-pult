@@ -333,3 +333,70 @@ def test_fcc_free_profile(tmp_path, monkeypatch):
     assert env["ANTHROPIC_AUTH_TOKEN"] == "t0ken" and env["ANTHROPIC_MODEL"].endswith(":free")
     pub = next(x for x in models.public({}) if x["id"] == "fcc")
     assert pub["needs_key"] is False and "не для клиентских данных" in pub["about"] and not pub["not_ready"]
+
+
+def test_pi_usage_like_pi_footer(tmp_path):
+    """Владелец 15.11: у окна Pi нижняя строка показывала лимиты Claude. Теперь — как у Pi: ↑ input, ↓ output, $."""
+    from gas_pult import pi_journal
+    store = tmp_path / "models-store.json"
+    store.write_text(json.dumps({"deepseek": {"models": [{"id": "deepseek-v4-flash", "contextWindow": 1000000}]}}))
+    pi_journal._windows.clear()
+    a = {"role": "assistant", "provider": "deepseek", "model": "deepseek-v4-flash", "stopReason": "stop",
+         "content": [{"type": "text", "text": "x"}],
+         "usage": {"input": 1843, "output": 149, "cacheRead": 4992, "cacheWrite": 0, "cost": {"total": 0.0032424}}}
+    b = {**a, "usage": {"input": 134, "output": 65, "cacheRead": 6912, "cacheWrite": 0, "cost": {"total": 0.0007384}}}
+    f = tmp_path / "s.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in _pi_rows({"role": "user", "content": "q"}, a, b)) + "\n")
+    u = pi_journal.usage(f, store)
+    assert (u["in"], u["out"], u["read"], u["cost"]) == (1977, 214, 11904, 0.004)
+    assert u["ctx"] == 134 + 6912 + 65 and u["window"] == 1000000 and u["used"] == 0.7
+    assert u["provider"] == "deepseek" and u["model"] == "deepseek-v4-flash" and u["at"] > 0
+    assert pi_journal.usage(None)["used"] is None
+
+
+def test_panel_pi_row_has_own_status_line(tmp_path, monkeypatch):
+    from gas_pult import pi_journal, webapp
+    root = tmp_path / "sessions"
+    monkeypatch.setitem(harness.HARNESSES, "pi", harness.Pi(root=root))
+    monkeypatch.setattr(pi_journal, "window_of", lambda p, m, store=None: 1000000)
+    sid = "11111111-1111-4111-8111-111111111111"
+    a = {"role": "assistant", "provider": "deepseek", "model": "deepseek-v4-pro", "stopReason": "toolUse",
+         "content": [{"type": "toolCall", "id": "c", "name": "bash", "arguments": {"command": "ls"}}],
+         "usage": {"input": 9000, "output": 1000, "cacheRead": 0, "cacheWrite": 0, "cost": {"total": 0.01}}}
+    _pi_journal(root, rows=_pi_rows({"role": "user", "content": "q"}, a), sid=sid)
+    p = webapp.Panel.__new__(webapp.Panel)
+    r = p.pi_row({"path": "/home/u/proj", "harness": "pi"}, sid)
+    assert r["status"] == "busy" and r["model"] == "deepseek/deepseek-v4-pro" and r["context"] == 99
+    assert r["usage"]["in"] == 9000 and r["usage"]["cost"] == 0.01
+
+
+def test_pi_overlay_compose_and_launch(tmp_path, monkeypatch):
+    from gas_pult import cli, pi_journal
+    src = tmp_path / "profiles"
+    src.mkdir()
+    (src / "_core-short.md").write_text("# Свод\nвступление\n<!-- overlay -->\nГлавное: делай, что просят.\n")
+    (src / "deepseek-v4.md").write_text("# DS\n<!-- overlay -->\n- не угадывай картинку\n<!-- /overlay -->\nхвост\n")
+    text = pi_journal.compose_overlay(src, "deepseek-v4")
+    assert text == "Главное: делай, что просят.\n\n- не угадывай картинку\n"     # свод первым, без вступлений
+    monkeypatch.setenv("GAS_PULT_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setattr(harness.Pi, "overlay", staticmethod(lambda: tmp_path / "cfg" / "pi" / "append.md"))
+    cli.main(["pi", "overlay", "--from", str(src)])
+    assert (tmp_path / "cfg" / "pi" / "append.md").read_text() == text
+    fake = tmp_path / "pi"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("GAS_PULT_PI", str(fake))
+    cmd = harness.HARNESSES["pi"].launch("11111111-1111-4111-8111-111111111111")
+    assert f"--append-system-prompt {tmp_path / 'cfg' / 'pi' / 'append.md'}" in cmd
+    import pytest
+    with pytest.raises(SystemExit, match="нет ни"):
+        cli.main(["pi", "overlay", "--from", str(tmp_path / "пусто")])
+
+
+def test_ui_hides_claude_limits_for_other_agents():
+    from pathlib import Path
+    s = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
+    f = s[s.index("function sinfo(s) {"):]
+    f = f[:f.index("\n}\n")]
+    assert 'const other = s?.harness && s.harness !== "claude"' in f and "usageLine(s.usage)" in f
+    assert "function usageLine(u)" in s

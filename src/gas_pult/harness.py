@@ -136,7 +136,16 @@ class Pi(Harness):
         provider, _, model = self.MODEL.partition("/")
         cmd = f"env GAS_PULT_SID={sid} {shlex.quote(b)}" if sid else shlex.quote(b)
         cmd += f" --provider {shlex.quote(provider)} --model {shlex.quote(model)}" if model else ""
+        if (ov := self.overlay()).is_file():          # оверлей правил к системному промпту (gas-pult pi overlay)
+            cmd += f" --append-system-prompt {shlex.quote(str(ov))}"
         return cmd + (self.resume_args(sid) if resume else self.new_args(sid))
+
+    @staticmethod
+    def overlay() -> Path:
+        """Добавка к системному промпту окон Pi: свод главных правил и оверлей модели (собирает ``gas-pult pi
+        overlay``). Владелец 15.11 о Pi: «решает за меня, долгие циклы инструментов» — правила короче и строже."""
+        from gas_pult.config import config_dir
+        return config_dir() / "pi" / "append.md"
 
     def live_sid(self, pid):
         """Сессия процесса Pi: ``GAS_PULT_SID`` из окружения (окна пульта), иначе ``--session-id`` в аргументах."""
