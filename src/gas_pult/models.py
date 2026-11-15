@@ -26,8 +26,10 @@ Claude Code говорит с любым Anthropic-совместимым API: �
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
+import socket
 from itertools import pairwise
 from pathlib import Path
 
@@ -99,6 +101,17 @@ PROFILES = [
      "hint": "в документации DeepSeek основная по умолчанию — deepseek-flash[1m] (быстрее и дешевле)",
      "env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "786432"},
      "blocked": UNSUPPORTED},
+    # Бесплатно: FCC (Free Claude Code, служба на этом сервере, 127.0.0.1:8082) — модели OpenRouter «:free». Ключ — не
+    # ключ поставщика, а токен прокси FCC из файла (его пишет установщик FCC); ключ OpenRouter — у самой FCC.
+    {"id": "fcc", "title": "Бесплатно (FCC)", "short": "Бесплатно", "local_token": "~/.config/fcc/proxy.token",
+     "base_url": "http://127.0.0.1:8082", "main": "open_router/nvidia/nemotron-3.5-super-vl:free",
+     "fast": "open_router/nvidia/nemotron-3.5-super-vl:free",
+     "about": "Бесплатные модели OpenRouter через FCC на сервере. Данные уходят поставщику модели — не для клиентских "
+              "данных и секретов",
+     "hint": "модели — только с «:free» в имени (open_router/<id>:free); качество ниже платных",
+     # окно бесплатных моделей Claude Code не знает и считает 1M — сжимаем рано, с запасом (128K)
+     "env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "131072"},
+     "regions": ANTHROPIC, "blocked": NOT_FOR_ANTHROPIC},
     # Через шлюз клиента: адрес и ключ шлюза, модели — имена, которые знает шлюз. Claude Code — без лишнего трафика
     # (телеметрия, обновления, отчёты об ошибках): из такой сессии запросы идут только в шлюз.
     {"id": "gigachat", "title": "GigaChat (через шлюз)", "short": "GigaChat", "key": "gigachat", "gateway": True,
@@ -132,6 +145,8 @@ CAPS = {
                "works": ["claude_md", "files", "mcp", "webfetch", "websearch", "connectors", "images"]},
     "openrouter": {"limits": OUTSIDE, "unsure": ["websearch"],
                    "works": ["claude_md", "files", "mcp", "webfetch", "images"]},
+    "fcc": {"limits": [*OUTSIDE, "websearch"], "unsure": ["images"],           # бесплатные модели — по-разному
+            "works": ["claude_md", "files", "mcp", "webfetch"]},
     "zai": {"limits": [*OUTSIDE, "websearch", "images"], "unsure": [],     # GLM-5.3 — только текст
             "works": ["claude_md", "files", "mcp", "webfetch"]},
     "deepseek": {"limits": [*OUTSIDE, "images"], "unsure": [],   # V4 Pro: картинка → «[Unsupported Image]»
@@ -247,7 +262,29 @@ def base_url_of(p: dict, state: dict | None) -> str:
     return p.get("base_url", "")
 
 
+def local_token(p: dict) -> str:
+    """Токен локальной службы (FCC) из файла; нет файла — «»."""
+    try:
+        return Path(os.path.expanduser(p["local_token"])).read_text(encoding="utf-8").strip()
+    except (OSError, KeyError):
+        return ""
+
+
+def local_up(p: dict) -> bool:
+    """Локальная служба профиля слушает свой порт (FCC не запущена — профиль не предлагаем)."""
+    m = re.match(r"^https?://([\d.]+|localhost):(\d+)", p.get("base_url", ""))
+    if not m:
+        return False
+    try:
+        with socket.create_connection((m.group(1), int(m.group(2))), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
 def no_gateway(p: dict) -> str:
+    if p.get("local_token"):
+        return f"{p['title']}: служба на сервере не запущена (127.0.0.1:8082) или нет её токена"
     return (f"не задан адрес шлюза {p['short']} — «Интеграции» → «Модели» → {p['title']}. "
             f"Шлюз разворачиваете вы, в России: {p.get('guide', GUIDE)}")
 
@@ -255,6 +292,8 @@ def no_gateway(p: dict) -> str:
 def has_gateway(profile: str, state: dict | None) -> bool:
     """Есть ли куда слать запросы: у профиля со шлюзом — задан ли адрес; у остальных — всегда."""
     p = BY_ID.get(profile or "claude")
+    if p and p.get("local_token"):                  # локальная служба: запущена и есть её токен
+        return bool(local_token(p)) and local_up(p)
     return bool(p) and (not p.get("gateway") or bool(base_url_of(p, state)))
 
 
@@ -304,9 +343,9 @@ def command(base: str, profile: str, state: dict, home: Path | None = None) -> s
     p = BY_ID.get(profile)
     if not p:
         raise ValueError("нет такого профиля")
-    if not base_url_of(p, state):
+    if not base_url_of(p, state) or (p.get("local_token") and not has_gateway(profile, state)):
         raise ValueError(no_gateway(p))
-    key = providers.load_keys().get(p["key"])
+    key = local_token(p) if p.get("local_token") else providers.load_keys().get(p["key"])
     if not key:
         raise ValueError(f"нет ключа {p['title']} — добавьте его в «Интеграции» → «Модели»")
     f = profiles_dir() / f"{profile}.json"
@@ -328,7 +367,7 @@ def public(state: dict, countries=None) -> list[dict]:
     keys = providers.key_info()
     out = []
     for p in PROFILES:
-        main, fast = models_of(p, state) if p.get("key") else ("", "")
+        main, fast = models_of(p, state) if p.get("key") or p.get("local_token") else ("", "")
         out.append({k: p[k] for k in ("id", "title", "short", "about") if k in p}
                    | {"needs_key": bool(p.get("key")), "key": keys.get(p.get("key", "")),
                       "key_url": p.get("key_url", ""), "hint": p.get("hint", ""), "oauth": bool(p.get("oauth")),

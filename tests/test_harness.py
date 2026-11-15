@@ -313,3 +313,23 @@ def test_bot_sends_first_pi_answer_of_new_window(tmp_path, monkeypatch):
     p.deliver = lambda w, text: sent.append(text)
     p.pi_answers([{"id": "@5", "name": "pi-1", "path": "/home/u/proj", "harness": "pi", "sid": sid}], {})
     assert sent == ["Зелёного."]
+def test_fcc_free_profile(tmp_path, monkeypatch):
+    """«Бесплатно (FCC)»: ключ — токен прокси из файла; служба не слушает — профиль не готов, команда — отказ."""
+    from gas_pult import models
+    p = dict(models.BY_ID["fcc"])
+    tok = tmp_path / "proxy.token"
+    tok.write_text("t0ken\n")
+    monkeypatch.setitem(models.BY_ID, "fcc", {**p, "local_token": str(tok)})
+    monkeypatch.setattr(models, "profiles_dir", lambda: tmp_path / "profiles")
+    monkeypatch.setattr(models, "local_up", lambda p: False)
+    assert not models.has_gateway("fcc", {})
+    import pytest
+    with pytest.raises(ValueError, match="не запущена"):
+        models.command("claude", "fcc", {})
+    monkeypatch.setattr(models, "local_up", lambda p: True)
+    cmd = models.command("claude", "fcc", {})
+    env = json.loads((tmp_path / "profiles" / "fcc.json").read_text())["env"]
+    assert "--settings" in cmd and env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:8082"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "t0ken" and env["ANTHROPIC_MODEL"].endswith(":free")
+    pub = next(x for x in models.public({}) if x["id"] == "fcc")
+    assert pub["needs_key"] is False and "не для клиентских данных" in pub["about"] and not pub["not_ready"]
