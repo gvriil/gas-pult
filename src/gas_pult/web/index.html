@@ -895,11 +895,21 @@
   .spaces { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 6px; } .spaces button { white-space: nowrap; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
     border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
   .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
-  /* Рабочий стол Ubuntu (#206, js/desktop.js): экран поверх панели, внутри noVNC */
-  .desk { position: fixed; inset: 0; z-index: 19; display: flex; flex-direction: column; background: var(--bg-canvas); padding-top: env(safe-area-inset-top); }
-  .desk-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--border-subtle); }
-  .desk-bar b { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; } .desk-st { flex: 1; color: var(--text-secondary); font-size: 13px; }
-  .desk iframe { flex: 1; width: 100%; border: 0; background: var(--bg-terminal); padding-bottom: env(safe-area-inset-bottom); }
+  /* Рабочий стол Ubuntu (#206, js/desktop.js): экран поверх панели, свой просмотр на ядре noVNC; зум, «Рука», поворот */
+  .desk { position: fixed; inset: 0; z-index: 19; display: flex; flex-direction: column; background: var(--bg-terminal);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  .desk-bar, .desk-tools { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--bg-canvas); flex: none; }
+  .desk-bar { border-bottom: 1px solid var(--border-subtle); } .desk-tools { flex-wrap: wrap; padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); }
+  .desk-bar b { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; } .desk-st { flex: 1; min-width: 0; color: var(--text-secondary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .desk-tools .icon { font-size: 20px; line-height: 1; } .desk-z { min-width: 64px; text-align: center; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .desk-t { min-height: 34px; padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 13px; }
+  .desk-t[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
+  .desk.desk-min .desk-tools { display: none; }
+  .desk-stage { position: relative; flex: 1; min-height: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .desk-view { position: absolute; inset: 0; overflow: auto; display: flex; } .desk-view > * { margin: auto; flex: none; }   /* margin: auto — центр без обрезки при зуме */
+  .desk-pan { position: absolute; inset: 0; z-index: 1; touch-action: none; cursor: grab; }
+  .desk-demo { display: grid; place-items: center; background: var(--bg-surface); color: var(--text-secondary); text-align: center; font-size: 15px; outline: 1px solid var(--border-subtle); }
+  .desk-kbd { position: fixed; left: -100px; bottom: 0; width: 1px; height: 1px; opacity: 0; }
   body.desk-on { overflow: hidden; }
   .spaces .sp-tasks.wait { border-color: var(--status-approval); color: var(--status-approval); }   /* есть «ждут вас» */ .spaces .i { width: 15px; height: 15px; }
   .pvbar { position: fixed; left: 0; right: 0; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px;
@@ -1427,7 +1437,7 @@ const haptic = (kind, v) => { try { tg?.HapticFeedback?.[kind]?.(v); } catch (e)
 
 // ---------- иконки (линейные SVG, цвет — currentColor) ----------
 const P = {
-  back: '<path d="M15 18l-6-6 6-6"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>', swap: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
+  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', back: '<path d="M15 18l-6-6 6-6"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>', swap: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
   settings: '<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>',
   menu: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6M12 17.2v.1"/>',
@@ -2470,7 +2480,7 @@ const ABOVE_DOCK = [".tobottom", ".mini", ".help-bg"];
 // position: fixed, но не всплывающее: сам каркас, нижние панели, листы-шторки (свой фон на весь экран), служебное;
 // .pvbar — полоса просмотра роли в самом верху, место под неё отведено (body.previewing), поле ввода не трогает.
 // body.back-drag #home — главная под сессией только на время свайпа «назад» (план UX, пункт 7).
-const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", "body.split.side-mini.has-nav .rail", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]", ".desk"];   // .desk — рабочий стол Ubuntu (#206), на всё окно
+const FIXED_OK = ["body", ".ptr", ".homebar", ".dock", ".sheet-bg", ".nav", ".nav-bg", "body.split.side-mini.has-nav .rail", ".pop", "body.split:not(.side-mini) .grip", "#simple", ".notices", ".pvbar", ".focus-end", "body.back-drag #home[hidden]", ".desk", ".desk-kbd"];   // .desk — рабочий стол Ubuntu (#206), на всё окно
 function notice(el) { $("notices").append(el); placeNotices(); return el; }
 function placeNotices() {
   const root = document.documentElement.style, H = document.body.clientHeight;
