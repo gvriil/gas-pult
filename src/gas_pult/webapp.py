@@ -29,6 +29,7 @@ import secrets
 import shlex
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -261,6 +262,30 @@ def brief(text: str, limit: int = 700) -> str:
     return out.strip()
 
 
+TEMP_SKIP = {"inbox"}                                      # входящие файлы — своя очистка (#217)
+
+
+def sweep_temp(data: Path, now: float, age: float) -> list[Path]:
+    """Остатки оборванной озвучки (``*.tmp.wav``, пустые ``*.mp3``) старше ``age`` с в ``data`` и её подпапках первого
+    уровня (кроме ``TEMP_SKIP``) — удалить. → что удалено."""
+    dirs = [data] + [d for d in sorted(data.iterdir()) if d.is_dir() and not d.is_symlink()
+                     and d.name not in TEMP_SKIP] if data.is_dir() else []
+    gone = []
+    for d in dirs:
+        for f in [*d.glob("*.tmp.wav"), *d.glob("*.mp3")]:
+            try:
+                st = f.lstat()
+                if not stat.S_ISREG(st.st_mode) or now - st.st_mtime < age:
+                    continue
+                if f.name.endswith(".mp3") and st.st_size:
+                    continue                               # озвучка с содержимым — кеш голосов, не мусор
+                f.unlink()
+                gone.append(f)
+            except OSError:
+                pass
+    return gone
+
+
 class Panel:
     """Действия панели поверх того же tmux и state.json, что у бота (окна, активное, голос)."""
 
@@ -312,6 +337,7 @@ class Panel:
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
         self._trash_at = 0.0                                          # когда фоновый цикл чистил корзину чатов
+        self._temp_at = 0.0                                           # когда фоновый цикл убирал остатки озвучки
         self.focus_gap: dict[str, float] = {}   # ссылка → с какого времени окна её сессии нет (перезапуск)
         self.demo_locks: dict[str, threading.Lock] = {}   # окно → замок ответа гостей демо-ссылки (первый проходит)
         self.demo_done: dict[str, float] = {}             # окно → когда гость демо-ссылки ответил на вопрос
@@ -823,6 +849,20 @@ class Panel:
         gone = chat_trash.purge(self.cfg.data, now)
         if gone:
             print(f"корзина чатов: удалено окончательно {len(gone)} (старше {chat_trash.KEEP_DAYS} дн.)", flush=True)
+        return gone
+
+    TEMP_AGE = 3600                                     # с: остаток озвучки старше — мусор (озвучка идёт секунды)
+
+    def temp_tick(self, now: float | None = None) -> list[Path]:
+        """Из фонового цикла панели, не чаще раза в час: удалить остатки оборванной озвучки — ``*.tmp.wav`` и пустые
+        ``*.mp3`` старше ``TEMP_AGE`` в папке данных и её подпапках первого уровня. ``inbox`` не трогаем (#217)."""
+        now = time.time() if now is None else now
+        if now - self._temp_at < self.TRASH_EVERY:
+            return []
+        self._temp_at = now
+        gone = sweep_temp(self.cfg.data, now, self.TEMP_AGE)
+        if gone:
+            print(f"остатки озвучки: удалено {len(gone)} (старше {self.TEMP_AGE // 60} мин)", flush=True)
         return gone
 
     def chat_restore(self, tid: str) -> dict:
@@ -2443,7 +2483,9 @@ class Panel:
         return text
 
     def stt_stream(self, rate: int) -> asr.Stream:
-        """Поток в службу распознавания; её нет или занята — ``asr.Unavailable`` (панель уйдёт на ``/api/stt``)."""
+        """Поток в службу распознавания; её нет или занята — ``asr.Unavailable`` (панель уйдёт на ``/api/stt``).
+        Служба ушла после простоя — поднимаем её (до ``asr.START_WAIT`` с; звук панель копит, пока нет ``ready``)."""
+        asr.ensure_service(self.cfg.data)
         return asr.Stream(rate, partials=True, path=asr.socket_path(self.cfg.data))
 
     def message(self, w: dict, i: int | None) -> str:
@@ -4221,6 +4263,10 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
                 panel.trash_tick()                         # корзина чатов: старше 30 дней — раз в час окончательно
             except Exception as e:                         # цикл не падает из-за корзины
                 print("корзина чатов:", e, flush=True)
+            try:
+                panel.temp_tick()                          # остатки озвучки (*.tmp.wav, пустые .mp3) — раз в час
+            except Exception as e:
+                print("остатки озвучки:", e, flush=True)
     threading.Thread(target=sweep, daemon=True).start()
     proc = None
     if use_tunnel:

@@ -10,6 +10,9 @@ PCM 16 бит little-endian моно. Клиент: ``{"op": "start", "rate": 16
 текст изменился; ``{"op": "end"}`` → ``{"final": "…", "lag_ms": …}``. ``{"op": "ping"}`` → ``{"ok": true, …}``.
 
 Нет службы, занята или упала — ``Unavailable``: пульт идёт нынешним путём (облако или whisper, ``voice.transcribe``).
+
+Служба выходит после простоя (``--idle`` в юните, аудит #189: модель держит ~0,6 ГБ). Клиент поднимает её снова сам —
+``ensure_service``: ``systemctl --user start`` юнита, если он установлен и слушает этот же сокет, и ждёт сокет.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ import struct
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 from gas_pult import config
@@ -36,6 +40,7 @@ RATES = (8000, 16000, 48000)               # частоты, которые сл
 CHUNK = 32000                              # по столько байт файл уходит в службу (1 с при 16 кГц)
 PARALLEL = 2                               # готовую запись — в столько потоков службы сразу (из её 3; один — панели)
 PART_MIN_S = 8.0                           # кусок готовой записи не короче, с
+START_WAIT = 8.0                           # с: сколько ждать сокет после запуска службы (модель грузится 1–4 с)
 QUIET_S = 0.3                              # разрез — посреди самого тихого окна такой длины, с
 
 
@@ -93,6 +98,62 @@ def recv(sock: socket.socket) -> tuple[bytes, object] | None:
             raise ValueError("ожидался объект JSON")
         return kind, obj
     return kind, data
+
+
+# ---------- запуск по требованию ----------
+
+def alive(path: Path) -> bool:
+    """Сокет принимает соединения (файл сокета мог остаться от упавшей службы)."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(1.0)
+            s.connect(str(path))
+        return True
+    except OSError:
+        return False
+
+
+def unit_file() -> Path:
+    return Path.home() / ".config/systemd/user" / UNIT
+
+
+def unit_socket() -> Path | None:
+    """Сокет из ``ExecStart`` установленного юнита (``--socket …``); юнита нет — None."""
+    try:
+        text = unit_file().read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("ExecStart=") and "--socket" in line:
+            words = line.split()
+            return Path(words[words.index("--socket") + 1]) if words[-1] != "--socket" else None
+    return None
+
+
+def _start() -> None:
+    """Запустить юнит службы, не дожидаясь его (тесты подменяют только это)."""
+    subprocess.run(["systemctl", "--user", "start", "--no-block", UNIT], capture_output=True, timeout=10)
+
+
+def ensure_service(data: Path | None = None, wait: float = START_WAIT) -> bool:
+    """Служба отвечает; нет — поднять её юнитом systemd и подождать сокет. Юнит не установлен или слушает другой
+    сокет (второй пульт, проверка) — не трогаем, False: пульт уйдёт на запасной путь."""
+    path = socket_path(data)
+    if alive(path):
+        return True
+    unit = unit_socket()
+    if unit is None or unit != path:
+        return False
+    try:
+        _start()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    end = time.monotonic() + wait
+    while time.monotonic() < end:
+        if alive(path):
+            return True
+        time.sleep(0.1)
+    return False
 
 
 # ---------- клиент ----------
@@ -266,7 +327,7 @@ def decode(src: Path | bytes, rate: int = 16000, timeout: float = 60) -> bytes:
 def transcribe(src: Path | bytes, data: Path | None = None, timeout: float = 60) -> str:
     """Файл или байты голосового → текст службой; службы нет — ``Unavailable``."""
     path = socket_path(data)
-    if not path.exists():                     # без службы и ffmpeg не запускаем
+    if not ensure_service(data):              # без службы и ffmpeg не запускаем; ушла после простоя — поднимаем
         raise Unavailable("служба распознавания не запущена")
     return transcribe_pcm(decode(src, 16000, timeout), 16000, path, timeout)
 

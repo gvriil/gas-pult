@@ -4,10 +4,12 @@ Description=gas-pult-asr — распознавание речи для пуль
 After=default.target
 
 [Service]
-ExecStart={python} -m gas_pult.asr.service --socket {socket} --model {model} --threads {threads}
+ExecStart={python} -m gas_pult.asr.service --socket {socket} --model {model} --threads {threads} --idle {idle}
 Environment=PYTHONPATH={src}
 Environment=OMP_NUM_THREADS={threads}
-Restart=always
+# Простой {idle} с — служба выходит сама (код 0) и не перезапускается; голос поднимет её снова (asr.ensure_service).
+# Сбой или потолок памяти — перезапуск.
+Restart=on-failure
 RestartSec=5
 # Модель в памяти ≈ 0,6 ГБ. Больше 1 ГБ — служба падает и перезапускается, своп не трогает: пульт не страдает.
 MemoryMax=1G
