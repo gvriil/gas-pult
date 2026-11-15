@@ -2218,8 +2218,21 @@ class Panel:
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
         не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
         """
-        if w.get("mark") == "pi" or harness.of(w).name == "pi":
-            raise ValueError("в окне Pi модель меняется в самом Pi: /model")
+        if w.get("mark") == "pi" or harness.of(w).name == "pi":   # окно Pi: перезапуск — снова Pi, тот же разговор
+            if profile not in ("", "pi", "claude") and profile != (w.get("profile") or ""):
+                raise ValueError("в окне Pi модель меняется в самом Pi: /model")
+            if uid is not None:
+                self.check("pi", uid)
+            sid = (w.get("sid") or "") if keep else str(uuid.uuid4())
+            cmd = harness.HARNESSES["pi"].launch(sid, resume=keep)
+            if (result := self.close(w)) != "закрыто":
+                raise ValueError(result)
+            wid = self.tmux.new_window(w["name"], w["path"], cmd, mark="pi", sid=sid)
+            self.mark_by(wid, w.get("by") or uid)
+            self.focus.move(w["id"], wid)
+            if routes := getattr(self.pult, "routes", None):
+                routes.moved(w["id"], wid)
+            return {"id": wid}
         if uid is not None:
             self.check(profile, uid)                                          # не для страны — до закрытия
         home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал
