@@ -343,13 +343,91 @@ def test_ws_service_dies_midway(panel_srv, service_sock, monkeypatch):
     c.close()
 
 
+# ---------- выход после простоя и запуск по требованию (аудит #189) ----------
+
+def start_service(path: Path, idle: float) -> tuple[service.Server, threading.Thread]:
+    srv = service.Server(path, FakeEngine(), streams=1)
+    service.watch_idle(srv, idle, every=0.05)
+    t = threading.Thread(target=lambda: (srv.serve_forever(), srv.server_close(), path.unlink(missing_ok=True)),
+                         daemon=True)
+    t.start()
+    return srv, t
+
+
+def test_service_exits_after_idle_but_not_mid_stream(monkeypatch):
+    d = Path(tempfile.mkdtemp(prefix="gp-asr-", dir="/tmp"))
+    path = d / "asr.sock"
+    monkeypatch.setenv(asr.SOCKET_ENV, str(path))
+    try:
+        _, t = start_service(path, idle=0.4)
+        with asr.Stream(16000, path=path) as st:
+            for _ in range(8):                                         # поток идёт дольше простоя — служба живёт
+                assert asr.alive(path)
+                st.audio(b"\0" * 3200)
+                time.sleep(0.1)
+            st.end()
+            assert "final" in list(st.events(5))[-1]
+        end = time.monotonic() + 3
+        while t.is_alive() and time.monotonic() < end:                 # ping (проверка состояния) простой не продлевает
+            asr.status()
+            time.sleep(0.05)
+        assert not t.is_alive() and not path.exists()                  # простой — вышла и убрала сокет
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_ensure_service_starts_unit_again(monkeypatch, tmp_path):
+    """Служба вышла после простоя — голос поднимает её снова юнитом (``systemctl --user start``), ждёт сокет и
+    распознаёт; чужой юнит (другой сокет) или нет юнита — не трогаем, запасной путь."""
+    d = Path(tempfile.mkdtemp(prefix="gp-asr-", dir="/tmp"))
+    path = d / "asr.sock"
+    monkeypatch.setenv(asr.SOCKET_ENV, str(path))
+    unit = tmp_path / asr.UNIT
+    monkeypatch.setattr(asr, "unit_file", lambda: unit)
+    started = []
+
+    def start():
+        started.append(1)
+        start_service(path, idle=0.3)
+    monkeypatch.setattr(asr, "_start", start)
+    try:
+        assert not asr.ensure_service(wait=0.5) and not started                       # юнита нет
+        unit.write_text(install.unit_text(Path("/v/py"), Path("/src"), d / "другой.sock", Path("/m.onnx")))
+        assert not asr.ensure_service(wait=0.5) and not started                       # юнит другого сокета
+        unit.write_text(install.unit_text(Path("/v/py"), Path("/src"), path, Path("/m.onnx")))
+        assert asr.transcribe_pcm(b"\0" * 16000 * 2, path=path) if asr.ensure_service() else False
+        assert started == [1]
+        assert asr.ensure_service() and started == [1]                               # уже работает — не трогаем
+        for _ in range(60):                                                           # простой — вышла
+            if not path.exists():
+                break
+            time.sleep(0.05)
+        assert not asr.alive(path)
+        monkeypatch.setattr(asr, "decode", lambda src, rate=16000, timeout=60: b"\0" * rate * 2)
+        assert asr.transcribe(b"ogg") == "покажи что итог" and started == [1, 1]       # голос поднял её снова
+        p = webapp.Panel(Config(token="1:T", owners=[1]))
+        for _ in range(60):
+            if not path.exists():
+                break
+            time.sleep(0.05)
+        with p.stt_stream(16000) as st:                                               # и поток панели — тоже
+            st.end()
+            assert "final" in list(st.events(5))[-1]
+        assert started == [1, 1, 1]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 # ---------- установка службы ----------
 
 def test_unit_has_memory_cap(tmp_path):
     t = install.unit_text(Path("/v/bin/python"), Path("/src"), Path("/d/asr.sock"), Path("/d/model.onnx"))
     assert "MemoryMax=1G" in t and "MemorySwapMax=0" in t and "Environment=PYTHONPATH=/src" in t
-    assert "ExecStart=/v/bin/python -m gas_pult.asr.service --socket /d/asr.sock --model /d/model.onnx --threads 2" in t
+    assert ("ExecStart=/v/bin/python -m gas_pult.asr.service --socket /d/asr.sock --model /d/model.onnx --threads 2"
+            " --idle 1200\n") in t
     assert "WantedBy=default.target" in t
+    # выход после простоя — код 0: systemd не перезапускает; сбой и потолок памяти — перезапуск (аудит #189)
+    assert "Restart=on-failure" in t and "Restart=always" not in t
 
 
 def test_fetch_model_checks_sha(tmp_path):

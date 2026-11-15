@@ -1,10 +1,12 @@
 """Служба распознавания речи ``gas-pult-asr`` (задача 46): T-one в памяти, unix-сокет, протокол — ``gas_pult.asr``.
 
-    python -m gas_pult.asr.service [--socket …] [--model …/model.onnx] [--threads 2] [--streams 3]
+    python -m gas_pult.asr.service [--socket …] [--model …/model.onnx] [--threads 2] [--streams 3] [--idle 1200]
 
 Запускается из своего venv (``gas-pult asr install``: onnxruntime, numpy) юнитом systemd --user с потолком памяти.
 Здесь — только стандартная библиотека: движок (``gas_pult.asr.tone``) грузится при старте, а в проверках подменяется.
 Каждое соединение — свой поток; одновременно не больше ``--streams`` распознаваний, лишнему — ``busy``.
+``--idle N`` — нет распознаваний N секунд (``ping`` не в счёт) — выход с кодом 0 и память свободна; следующий голос
+поднимет службу снова (``asr.ensure_service``). Без ``--idle`` (0) — работает всегда, как раньше.
 """
 
 from __future__ import annotations
@@ -34,11 +36,32 @@ class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         path.unlink(missing_ok=True)                # сокет прошлого запуска
         self.engine, self.limit = engine, threading.BoundedSemaphore(streams)
         self.active, self.started, self.lock = 0, time.time(), threading.Lock()
+        self.last = time.monotonic()                 # последнее распознавание (начало или конец) — для ``--idle``
         old = os.umask(0o077)                        # сокет — только владельцу
         try:
             super().__init__(str(path), Handler)
         finally:
             os.umask(old)
+
+
+    def idle_for(self) -> float:
+        """Сколько секунд нет ни одного распознавания (идёт — 0)."""
+        with self.lock:
+            return 0.0 if self.active else time.monotonic() - self.last
+
+
+def watch_idle(srv: Server, idle: float, every: float = 5.0) -> threading.Thread:
+    """Фоновый поток: простой дольше ``idle`` — ``srv.shutdown()``: ``serve_forever`` вернётся, сокет — за ``main``."""
+    def run():
+        while True:
+            time.sleep(min(every, idle))
+            if srv.idle_for() > idle:
+                print(f"gas-pult-asr: простой {idle:.0f} с — выхожу, память свободна", file=sys.stderr, flush=True)
+                srv.shutdown()
+                return
+    t = threading.Thread(target=run, daemon=True, name="asr-idle")
+    t.start()
+    return t
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -61,6 +84,7 @@ class Handler(socketserver.BaseRequestHandler):
             try:
                 with srv.lock:
                     srv.active += 1
+                    srv.last = time.monotonic()
                 self.stream(sock, r[1])
             except (OSError, ValueError):
                 raise
@@ -70,6 +94,7 @@ class Handler(socketserver.BaseRequestHandler):
             finally:
                 with srv.lock:
                     srv.active -= 1
+                    srv.last = time.monotonic()
                 srv.limit.release()
         except (OSError, ValueError):
             return                                    # клиент ушёл или прислал мусор — просто закрываем
@@ -110,6 +135,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--model", type=Path, default=asr.home() / "model" / "model.onnx")
     p.add_argument("--threads", type=int, default=2, help="потоков onnxruntime на одно распознавание")
     p.add_argument("--streams", type=int, default=3, help="одновременных распознаваний")
+    p.add_argument("--idle", type=float, default=0, help="с без распознаваний до выхода (0 — не выходить)")
     a = p.parse_args(argv)
     from gas_pult.asr import tone  # numpy и onnxruntime — только в venv службы
 
@@ -120,10 +146,13 @@ def main(argv: list[str] | None = None):
     print(f"gas-pult-asr: T-one загружен за {time.perf_counter() - t0:.1f} с, сокет {path}", file=sys.stderr,
           flush=True)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # остановка службы — убрать сокет за собой
+    if a.idle > 0:
+        watch_idle(srv, a.idle)
     try:
         srv.serve_forever()
     finally:
         path.unlink(missing_ok=True)
+        srv.server_close()
 
 
 if __name__ == "__main__":

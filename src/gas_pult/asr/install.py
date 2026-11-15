@@ -28,15 +28,16 @@ REVISION = "106f3b0b32a9e107eb613312e4ebc61ff3d53926"          # t-tech/T-one н
 MODEL_URL = f"https://huggingface.co/t-tech/T-one/resolve/{REVISION}/model.onnx"
 MODEL_SHA256 = "707e4a282d5036304a0b8603ad83945840c3075f53c49911ef88c19bcc5a7d52"
 THREADS = 2                                                     # потоков onnxruntime на распознавание
+IDLE = 1200                                                     # с без распознаваний — служба выходит (как озвучка)
 
 
 def unit_path() -> Path:
-    return Path.home() / ".config/systemd/user" / asr.UNIT
+    return asr.unit_file()
 
 
-def unit_text(python: Path, src: Path, sock: Path, model: Path, threads: int = THREADS) -> str:
+def unit_text(python: Path, src: Path, sock: Path, model: Path, threads: int = THREADS, idle: int = IDLE) -> str:
     tpl = resources.files("gas_pult.asr").joinpath("gas-pult-asr.service").read_text(encoding="utf-8")
-    return tpl.format(python=python, src=src, socket=sock, model=model, threads=threads)
+    return tpl.format(python=python, src=src, socket=sock, model=model, threads=threads, idle=idle)
 
 
 def sha256(path: Path) -> str:
