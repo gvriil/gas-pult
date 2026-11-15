@@ -45,6 +45,7 @@ from gas_pult import (
     fallback,
     features,
     focus,
+    harness,
     invites,
     limitretry,
     models,
@@ -341,7 +342,7 @@ class Pult:
 
     def active(self) -> dict | None:
         w = self.tmux.window(self.state().get("active") or "")
-        return w if w and w["cmd"] == "claude" else None
+        return w if w and harness.is_agent(w) else None
 
     def need_active(self, chat: int) -> dict | None:
         w = self.active()
@@ -361,7 +362,7 @@ class Pult:
     def ready_for_text(self, wid: str, limit: int = 40):
         """Довести окно до строки ввода: меню закрыть (Esc), на вопрос — не отвечать, свежий Claude — дождаться."""
         w = self.tmux.window(wid)
-        if w and w.get("cmd") != "claude" and w.get("mark"):     # Claude завершился — в окне оболочка, не печатаем
+        if w and not harness.is_agent(w) and w.get("mark"):     # Claude завершился — в окне оболочка, не печатаем
             raise NotReady("Claude в этом окне остановлен — текст в командную строку не отправляю. Перезапустите "
                            "сессию: в панели «Перезапустить» или 🆕 в той же папке")
         escapes = 0
@@ -505,7 +506,7 @@ class Pult:
     def push_enter(self, wid: str, h: str = "", sleep=time.sleep) -> str:
         """Кнопка «Отправить» (бот, панель): Enter — только если в поле ввода наш текст и окно свободно."""
         w = self.tmux.window(wid)
-        if not w or w.get("cmd") != "claude":
+        if not w or not harness.is_agent(w):
             return "Окна уже нет."
         left = self.tmux.draft(wid, dim=True)
         rec = self.deliv.match(wid, left, within=6 * 3600) if left else None
@@ -763,7 +764,7 @@ class Pult:
         """Окно Claude, уже работающее в этой папке (правило: одно окно на проект)."""
         real = os.path.realpath(path)
         return next((w for w in self.tmux.windows()
-                     if w["cmd"] == "claude" and os.path.realpath(w["path"]) == real), None)
+                     if harness.is_agent(w) and os.path.realpath(w["path"]) == real), None)
 
     def folder_window(self, path: str) -> dict | None:
         """Любое окно этой папки (в том числе с остановленным Claude) — для запуска по расписанию в нём же."""
@@ -834,14 +835,14 @@ class Pult:
                 if "Enter to confirm" in "\n".join(self.tmux.screen(w["id"])):
                     self.tmux.keys(w["id"], "Escape")
                     return {"result": "background", "draft": draft}
-                if cur["cmd"] != "claude":
+                if not harness.is_agent(cur):
                     self.tmux.kill(w["id"])
                     return {"result": "closed", "draft": draft}
                 if time.monotonic() >= end:
                     return {"result": "busy", "draft": draft}
 
     def close(self, chat: int, w: dict):
-        if w["cmd"] != "claude":
+        if not harness.is_agent(w):
             self.tmux.kill(w["id"])
             return self.send(chat, f"«{w['name']}» завершена.")
         r = self.quit_ex(w)
@@ -1049,7 +1050,7 @@ class Pult:
             try:
                 self.after_pause()
                 st = self.state()
-                ws = [w for w in self.tmux.windows() if w["cmd"] == "claude" and not w["channel"]]
+                ws = [w for w in self.tmux.windows() if harness.is_agent(w) and not w["channel"]]
                 by_path: dict[tuple, list[dict]] = {}   # окна в одной папке пишут в общий каталог транскриптов
                 for w in ws:                            # (у человека со своей папкой Claude — свой каталог)
                     by_path.setdefault((w["path"], self.home_of(w)), []).append(w)
@@ -1176,7 +1177,7 @@ class Pult:
         self._ac_at = now
         st, closed = self.state(), []
         for w in self.tmux.windows():
-            if w.get("space") or w["id"] == st.get("active") or not (w["cmd"] == "claude" or w.get("stopped")):
+            if w.get("space") or w["id"] == st.get("active") or not (harness.is_agent(w) or w.get("stopped")):
                 continue
             changed = self.stamps(w).get("changed")
             if not changed or now - changed < days * 86400:
@@ -1213,7 +1214,7 @@ class Pult:
         """Окна Claude пула владельца с расходом текущей сессии — для проверки лимитов."""
         out = []
         for w in ws if ws is not None else self.tmux.windows():
-            if w["cmd"] != "claude" or self.pool_of(w) != "owner":
+            if not harness.is_agent(w) or self.pool_of(w) != "owner":
                 continue
             s = self.meter.session(w["path"], None, today, w.get("sid") or "")
             if s:
@@ -1283,7 +1284,8 @@ class Pult:
             except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
                 print("digest:", e, flush=True)
         for w in self.tmux.windows():
-            if w["cmd"] == "claude" and DIALOG.search("\n".join(self.tmux.screen(w["id"]))):
+            claude = harness.is_agent(w) and harness.of(w).name == "claude"     # диалог — экран Claude Code
+            if claude and DIALOG.search("\n".join(self.tmux.screen(w["id"]))):
                 items.append({"kind": "win", "key": digest.key("win", w["id"]), "id": w["id"], "name": w["name"]})
         return items + digest.handoffs(self.cfg.roots())
 
@@ -1557,7 +1559,7 @@ class Pult:
             return self.send(chat, "Окон нет. Нажми 🆕 Новая.")
         now, info = time.time(), {}
         for w in ws:                                       # ждущие ответа — сверху, дальше — по последнему изменению
-            if w["cmd"] == "claude":
+            if harness.is_agent(w):
                 lines = self.tmux.screen(w["id"])
                 self.changes.look(w["id"], lines)
                 info[w["id"]] = (bool(DIALOG.search("\n".join(lines))), self.stamps(w)["changed"] or 0.0)
@@ -1568,13 +1570,13 @@ class Pult:
             when = (" · " + ago.ago(ch, now) + (" · " + ago.tr("ru", "ago.stale") if ago.stale(ch, now) else "")
                     if ch else "")
             return (f"{w['idx']}: {'⏸ ' if wait else ''}{w['name']} · {self.short(w['path'])}{when}"
-                    + (" 🤖" if w["cmd"] == "claude" else ""))
+                    + (" 🤖" if harness.is_agent(w) and harness.of(w).name == "claude" else ""))
         rows = [[(label(w), f"w:{w['id']}")] for w in ws]
         self.send(chat, "Окна tmux (🤖 — работает Claude, ⏸ — ждёт ответа; сверху — ждущие и недавние):",
                   reply_markup=kb(rows))
 
     def show_switch(self, chat: int):
-        ws = [w for w in self.tmux.windows() if w["cmd"] == "claude"]
+        ws = [w for w in self.tmux.windows() if harness.is_agent(w)]
         act = self.state().get("active")
         if not ws:
             return self.send(chat, "Окон с Claude нет. Нажми 🆕 Новая.")
@@ -1585,7 +1587,7 @@ class Pult:
     def show_summary(self, chat: int):
         act, lines = self.state().get("active"), []
         for w in self.tmux.windows():
-            if w["cmd"] != "claude":
+            if not harness.is_agent(w):
                 lines.append(f"{w['idx']}. {w['name']} — терминал")
                 continue
             scr = "\n".join(self.tmux.screen(w["id"], 40))
@@ -1621,13 +1623,13 @@ class Pult:
 
     def before_run(self, cmd: str, path: str):
         """▶️ в боте — во вкладке «Команды» панели сразу «выполняется»."""
-        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
+        wins = [w for w in self.tmux.windows() if harness.is_agent(w) and w["path"] == path]
         self.journal.collect(wins, self.cmds.kind)
         self.journal.flag_cmd(path, cmd, running=time.strftime("%Y-%m-%d %H:%M", time.gmtime()))
 
     def after_run(self, cmd: str, path: str, code, secs: float, out: str) -> str:
         """▶️ в боте: отметка «выполнено» во вкладке «Команды» панели; упала — на разбор в сессию. Строка для итога."""
-        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
+        wins = [w for w in self.tmux.windows() if harness.is_agent(w) and w["path"] == path]
         self.journal.collect(wins, self.cmds.kind)            # панель могла ещё не видеть этот ответ
         tri, to = self.triage(path, "", cmd, code, out)
         self.journal.mark_cmd(path, cmd, {"code": code, "seconds": round(secs), "by": "bot", "out": out[-TAIL:],
@@ -1640,7 +1642,7 @@ class Pult:
         (состояние, имя окна): sent — отправлено, dup — уже отправляли, closed — окна нет, busy — Claude ждёт ответа."""
         if code == 0:
             return "", ""
-        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude" and w["path"] == path]
+        wins = [w for w in self.tmux.windows() if harness.is_agent(w) and w["path"] == path]
         w = next((x for x in wins if x["id"] == wid), None) or (wins[0] if wins else None)
         key = fail_key(path, cmd, code, out)
         if not w:
@@ -2019,7 +2021,7 @@ class Pult:
         elif kind == "scr":
             self.send_screen(chat, w, "экран:")
         elif kind == "last":
-            text = transcripts.last_answer(w["path"], self.home_of(w), w.get("sid") or "")
+            text = harness.of(w).last_answer(w["path"], self.home_of(w), w.get("sid") or "")
             if not text:
                 return send("Ответов Claude в этой папке не нашёл.")
             send(text, wid=w["id"], reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))
@@ -2640,7 +2642,7 @@ class Pult:
         if not wid:
             return None
         w = self.tmux.window(wid)
-        if w and w["cmd"] == "claude":
+        if w and harness.is_agent(w):
             return w
         self.send(chat, ("Сессии этого сообщения уже нет" if not w else f"В «{w['name']}» Claude остановлен")
                   + " — текст не отправил. Ответьте на сообщение живой сессии или выберите окно в 🔀 Переключить.",

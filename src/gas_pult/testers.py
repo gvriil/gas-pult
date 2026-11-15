@@ -15,7 +15,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-from gas_pult import humanize, tenants, transcripts, usage
+from gas_pult import harness, humanize, tenants, transcripts, usage
 from gas_pult.spaces import wid_of
 
 QUESTION_MAX = 400
@@ -42,7 +42,7 @@ def windows(slug: str) -> list[dict]:
     except OSError:
         return []
     return [{**w, "raw": w["id"], "id": wid_of(slug, w["id"]), "space": slug}
-            for w in ws if w.get("cmd") == "claude" or w.get("stopped")]
+            for w in ws if harness.is_agent(w) or w.get("stopped")]
 
 
 def question(slug: str, w: dict) -> str:
@@ -56,7 +56,7 @@ def question(slug: str, w: dict) -> str:
         opts = " / ".join(o.get("label_ru") or o.get("text", "") for o in ask["options"] if o.get("key") != "details")
         return cut(f"{ask['title_ru']}" + (f" ({opts})" if opts else ""), QUESTION_MAX)
     home = tenants.paths(slug)["claude"]
-    text = transcripts.last_answer(w["path"], home) if w.get("path") else ""
+    text = harness.of(w).last_answer(w["path"], home) if w.get("path") else ""
     return cut(text.strip().split("\n\n")[-1] if text else "", QUESTION_MAX)
 
 

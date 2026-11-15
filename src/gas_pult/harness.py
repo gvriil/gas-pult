@@ -121,7 +121,7 @@ class Pi(Harness):
         return pi_journal.session_arg(argv)
 
     def journal(self, path, home=None, sid=""):
-        return pi_journal.current(path, home or self.root, sid)
+        return pi_journal.current(path, self.root, sid)        # ``home`` — папка Claude Code, у Pi своя
 
     def history(self, path, limit=30, before=None, home=None, sid="", file=None):
         return pi_journal.history(file or self.journal(path, home, sid), limit, before)
@@ -158,6 +158,11 @@ class Pi(Harness):
 
 HARNESSES: dict[str, Harness] = {h.name: h for h in (ClaudeCode(), Pi())}
 DEFAULT = "claude"
+
+
+def is_agent(w: dict | None) -> bool:
+    """В окне работает агент (любой harness). Окна без поля ``harness`` — по прежнему признаку ``cmd == "claude"``."""
+    return bool(w) and bool(w.get("harness") or w.get("cmd") == "claude")
 
 
 def detect(argv: list[str]) -> Harness | None:
