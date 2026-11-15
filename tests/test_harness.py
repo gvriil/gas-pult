@@ -175,8 +175,15 @@ def test_panel_opens_and_revives_pi_window(monkeypatch, tmp_path):
     webapp.Panel.revive(p, "@9", uid=None)
     assert resp[0][1] == "pi" and resp[0][0].endswith("--session-id 22222222-2222-4222-8222-222222222222")
     import pytest
-    with pytest.raises(ValueError, match="/model"):
-        webapp.Panel.restart(p, {"id": "@9", "mark": "pi", "path": "/p"}, "claude")
+    with pytest.raises(ValueError, match="/model"):                       # другой поставщик — модель меняется в Pi
+        webapp.Panel.restart(p, {"id": "@9", "mark": "pi", "path": "/p", "profile": ""}, "deepseek")
+    p.close = lambda w: "закрыто"
+    p.focus = type("F", (), {"move": lambda self, a, b: None})()
+    made.clear()
+    sid = "33333333-3333-4333-8333-333333333333"
+    r = webapp.Panel.restart(p, {"id": "@9", "mark": "pi", "path": "/p", "name": "pi-1", "sid": sid}, "claude")
+    cmd, k = made[0]                                                       # «Перезапустить» окна Pi — снова Pi
+    assert r == {"id": "@9"} and k["mark"] == "pi" and cmd.endswith(f"--session-id {sid}")
 
 
 def test_pi_country_rule_is_deepseek(monkeypatch):
@@ -268,3 +275,19 @@ def test_bot_activity_uses_pi_journal(tmp_path, monkeypatch):
     monkeypatch.setattr(bot.activity, "combine", lambda j, rec, scr, **k: seen.setdefault("j", j))
     p.activity({"id": "@5", "path": "/home/u/proj", "harness": "pi", "sid": sid})
     assert seen["j"]["phase"] == "started"
+
+
+def test_send_to_pi_skips_claude_prompt_wait(monkeypatch):
+    """Владелец 15.11: «Pi не работает, не отвечает» — пульт ждал на экране Pi приглашение Claude «❯» 40 с и
+    отвечал «окно не готово к вводу» (400), текст не уходил."""
+    from gas_pult import bot
+    p = bot.Pult.__new__(bot.Pult)
+    shots = []
+    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid, "harness": "pi", "cmd": "pi", "mark": "pi"},
+                            "screen": lambda self, wid, n=15: shots.append(wid) or ["Pi", "> "]})()
+    p.ready_for_text("@21")                                                # сразу, без ожидания «❯»
+    assert shots == []
+    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid, "harness": "claude", "cmd": "claude"},
+                            "screen": lambda self, wid, n=15: shots.append(wid) or ["❯ "]})()
+    p.ready_for_text("@1")                                                 # Claude — как раньше, по экрану
+    assert shots == ["@1"]

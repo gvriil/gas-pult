@@ -366,6 +366,8 @@ class Pult:
         if w and not harness.is_agent(w) and w.get("mark"):     # Claude завершился — в окне оболочка, не печатаем
             raise NotReady("Claude в этом окне остановлен — текст в командную строку не отправляю. Перезапустите "
                            "сессию: в панели «Перезапустить» или 🆕 в той же папке")
+        if w and harness.of(w).name != "claude":           # экран другого агента (Pi): «❯», меню и вопросы — не Claude;
+            return                                          # Pi принимает ввод и во время хода (ставит в очередь)
         escapes = 0
         for _ in range(limit):
             scr = "\n".join(self.tmux.screen(wid, 15))
