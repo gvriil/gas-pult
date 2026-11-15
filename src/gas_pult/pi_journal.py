@@ -115,3 +115,72 @@ def session_arg(argv: list[str]) -> str:
         if a.startswith("--session-id="):
             return valid_sid(a.split("=", 1)[1])
     return ""
+
+
+TOOLS = {"bash": "Bash", "read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "find": "Glob",
+         "ls": "Bash"}
+
+
+def status(f: Path | None) -> dict:
+    """Статус последнего хода по журналу Pi — в той же форме, что ``activity.parse`` у Claude Code: ``phase``
+    (idle, started, thinking, working, done), ``text``, ``tool``, ``since``, ``turn``, ``last``, ``said``.
+    Ход закончен, когда ответ агента пришёл с ``stopReason: "stop"`` без вызова инструмента; ``toolUse`` — ход идёт."""
+    from gas_pult import activity  # активность — общий словарь текстов и описание инструментов
+    turn = last = said = 0.0
+    done, state, open_tools = True, "idle", {}
+    for e in _rows(f) if f else ():
+        m, ts = e["message"], activity.stamp(e.get("timestamp", ""))
+        last = ts or last
+        role = m.get("role")
+        if role == "user" and text_of(m.get("content")):
+            turn, done, state, open_tools = ts, False, "started", {}
+        elif role == "toolResult":
+            open_tools.pop(str(m.get("toolCallId")), None)
+            state = "thinking"
+        elif role == "assistant":
+            blocks = m.get("content") if isinstance(m.get("content"), list) else []
+            for b in blocks:
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") == "toolCall":
+                    open_tools[str(b.get("id"))] = (str(b.get("name", "")), b.get("arguments") or {}, ts)
+                    state = "tool"
+                elif b.get("type") == "thinking":
+                    state = "thinking"
+                elif b.get("type") == "text" and str(b.get("text", "")).strip():
+                    state, said = "text", ts or said
+            kinds = {b.get("type") for b in blocks if isinstance(b, dict)}
+            if m.get("stopReason") == "stop" and "toolCall" not in kinds and kinds - {"thinking"}:
+                done, state, open_tools = True, "done", {}
+    out = {"turn": turn, "last": last, "said": said, "prompt": "", "queued": 0, "enq": 0.0, "picked": 0.0, "tool": ""}
+    T = activity.TEXTS
+    if not turn and not last:
+        return {**out, "phase": "idle", "text": "", "since": 0.0}
+    if done:
+        return {**out, "phase": "done", "text": T["done"], "since": last}
+    if open_tools:
+        name, arg, ts = list(open_tools.values())[-1]
+        a = dict(arg) if isinstance(arg, dict) else {}
+        a.setdefault("file_path", a.get("path", ""))
+        return {**out, "phase": "working", "text": activity.describe(TOOLS.get(name, name), a), "tool": name,
+                "since": ts or last}
+    if state == "started":
+        return {**out, "phase": "started", "text": T["started"], "since": turn}
+    return {**out, "phase": "thinking", "text": T["thinking"], "since": last}
+
+
+def answers(f: Path) -> list[str]:
+    """Законченные ответы агента по порядку: текст хода, завершённого ``stopReason: "stop"`` (для Telegram)."""
+    out, cur = [], []
+    for e in _rows(f):
+        m = e["message"]
+        if m.get("role") == "user" and text_of(m.get("content")):
+            cur = []
+        elif m.get("role") == "assistant":
+            if t := text_of(m.get("content")):
+                cur.append(t)
+            kinds = {b.get("type") for b in m.get("content") or [] if isinstance(b, dict)}
+            if m.get("stopReason") == "stop" and "toolCall" not in kinds and cur:
+                out.append("\n\n".join(cur))
+                cur = []
+    return out
