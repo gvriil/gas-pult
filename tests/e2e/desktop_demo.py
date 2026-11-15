@@ -3,11 +3,13 @@
     python tests/e2e/desktop_demo.py http://127.0.0.1:8797/?demo
 
 Владелец 14.11: «внутри пульта кнопочка … открыть Ubuntu сразу». Владелец 15.11: «окно с адаптивным дизайном под
-размер экрана, с горизонтальной и вертикальной ориентацией и возможностью зума». Демо ``&space=1&home``: кнопка
+размер экрана, с горизонтальной и вертикальной ориентацией и возможностью зума»; «копия не проходит … пароль
+неудобно вписывать» — буфер обмена в обе стороны. Демо ``&space=1&home``: кнопка
 «Ubuntu» → экран поверх панели; «стол» демо — 1600×900 без сети. Проверяем: вписан по умолчанию (пропорции, весь стол
 виден), + / − / 100 % / «Вписать», щипок двумя пальцами и двойной тап («Рука»), поворот — пересчёт без
-переподключения, экранная клавиатура, сворачивание кнопок. iPhone 13 (портрет и альбом), iPad, компьютер 1366;
-светлая и тёмная; консоль без ошибок. С ``&confirm`` сперва код подтверждения.
+переподключения, экранная клавиатура, буфер обмена в обе стороны (латиница и кириллица), сворачивание кнопок.
+iPhone 13 (портрет и альбом), iPad, компьютер 1366; светлая и тёмная; консоль без ошибок.
+С ``&confirm`` сперва код подтверждения.
 """
 
 import sys
@@ -40,7 +42,7 @@ def run(base: str):
                 ("компьютер", {"viewport": {"width": 1366, "height": 860}}, "dark")]
         for name, dev, th in devs:
             dev = {k: v for k, v in dev.items() if k != "default_browser_type"}
-            ctx = br.new_context(**dev, color_scheme=th)
+            ctx = br.new_context(**dev, color_scheme=th, permissions=["clipboard-read", "clipboard-write"])
             pg = ctx.new_page()
             pg.on("console", lambda m: m.type == "error" and "404" not in m.text and errs.append(m.text))
             pg.on("pageerror", lambda e: errs.append(str(e)))
@@ -91,6 +93,23 @@ def run(base: str):
             pg.keyboard.press("Enter")
             typed = "".join(pg.evaluate("window.__deskDemo.typed"))
             assert typed == "ls<Enter>", f"{name}: клавиатура {typed}"
+            # буфер обмена (владелец 15.11: «копия не проходит … пароль неудобно вписывать»)
+            pg.click("[data-desk=clip]")
+            pg.fill(".desk-clip-in", "Pa$$w0rd-123")
+            pg.click("[data-desk=clip-paste]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "[вставка]Pa$$w0rd-123", f"{name}: вставка"
+            pg.fill(".desk-clip-in", "Пароль-1")                                 # не Latin-1 — набрать клавишами
+            pg.click("[data-desk=clip-paste]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "Пароль-1", f"{name}: кириллица"
+            assert pg.input_value(".desk-clip-in") == "", f"{name}: поле не очищено"
+            pg.fill(".desk-clip-in", "ёжик")
+            pg.click("[data-desk=clip-type]")
+            assert pg.evaluate("window.__deskDemo.typed").pop() == "ёжик", f"{name}: «Напечатать»"
+            pg.evaluate("window.__deskDemo.copy('https://example.com/секрет')")   # скопировали на столе
+            assert pg.locator(".desk-clip-out").is_visible() and "секрет" in pg.inner_text(".desk-clip-text")
+            pg.click("[data-desk=clip-copy]")
+            assert pg.evaluate("navigator.clipboard.readText()") == "https://example.com/секрет", f"{name}: копия"
+            pg.click("[data-desk=clip]")
             pg.click("[data-desk=tools]")
             assert not pg.locator(".desk-tools").is_visible() and pg.locator("[data-desk=close]").is_visible()
             pg.wait_for_timeout(200)

@@ -905,6 +905,11 @@
   .desk-t { min-height: 34px; padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 13px; }
   .desk-t[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
   .desk.desk-min .desk-tools { display: none; }
+  .desk-clip { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; background: var(--bg-canvas); border-bottom: 1px solid var(--border-subtle); flex: none; }
+  .desk-clip-in { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); resize: vertical; }
+  .desk-clip-row, .desk-clip-out { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .desk-clip-out span { font-size: 13px; color: var(--text-secondary); } .desk-clip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .desk-t.on { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--on-accent); }
   .desk-stage { position: relative; flex: 1; min-height: 0; padding-bottom: env(safe-area-inset-bottom); }
   .desk-view { position: absolute; inset: 0; overflow: auto; display: flex; } .desk-view > * { margin: auto; flex: none; }   /* margin: auto — центр без обрезки при зуме */
   .desk-pan { position: absolute; inset: 0; z-index: 1; touch-action: none; cursor: grab; }
