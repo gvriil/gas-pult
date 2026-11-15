@@ -165,3 +165,14 @@ def test_ui_plays_head_first_then_swaps():
     assert f.index('"&head=1"') < f.index("return api(url)")              # начало — первым, весь ответ — после
     assert "ttsWarm(id);" in INDEX and "/api/tts/warm" in INDEX
     assert "voice.swapping" in INDEX                                     # подмена — не «пауза» для интерфейса
+
+
+def test_tts_service_raises_own_oom_score(tmp_path):
+    """Служба озвучки — не юнит systemd, её запускают бот и панель: она сама поднимает себе oom_score_adj до 500 —
+    при нехватке памяти падает первой (её поднимет следующий запрос). Уже выше или нет /proc — не трогает."""
+    f = tmp_path / "oom_score_adj"
+    f.write_text("200\n")
+    assert service.oom_first(proc=f) and f.read_text() == "500"
+    f.write_text("800\n")
+    assert not service.oom_first(proc=f) and f.read_text() == "800\n"
+    assert not service.oom_first(proc=tmp_path / "нет")

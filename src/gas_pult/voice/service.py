@@ -35,6 +35,7 @@ from gas_pult.voice.text import chunks
 SILERO_RATE = 48000
 PIECE = 250                 # предложения склеиваются в куски не длиннее — первый звук после первого куска
 IDLE = 1200                 # с без запросов — выход
+OOM_SCORE_ADJ = 500         # нехватка памяти — служба падает первой (её поднимет следующий запрос), а не пульт
 FRAME = 64000               # PCM уходит кадрами не больше (лимит кадра протокола — 1 МБ)
 
 
@@ -162,11 +163,24 @@ def serve(path: Path, idle: float = IDLE):
         srv.close()
 
 
+def oom_first(value: int = OOM_SCORE_ADJ, proc: Path = Path("/proc/self/oom_score_adj")) -> bool:
+    """Поднять себе ``oom_score_adj`` (повышать можно без прав — man 5 proc): служба не юнит systemd, её запускает
+    бот или панель, и без этого она наследует их значение. Уже выше или нет ``/proc`` (macOS) — не трогаем."""
+    try:
+        if int(proc.read_text().strip()) >= value:
+            return False
+        proc.write_text(str(value))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="тёплая служба озвучки пульта")
     ap.add_argument("--idle", type=float, default=IDLE, help="с без запросов до выхода")
     ap.add_argument("--socket", default="", help="путь сокета (по умолчанию — в папке данных пульта)")
     a = ap.parse_args(argv)
+    oom_first()
     serve(Path(a.socket) if a.socket else socket_path(), a.idle)
 
 

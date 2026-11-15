@@ -14,6 +14,9 @@ RestartSec=5
 # Модель в памяти ≈ 0,6 ГБ. Больше 1 ГБ — служба падает и перезапускается, своп не трогает: пульт не страдает.
 MemoryMax=1G
 MemorySwapMax=0
+# Нехватка памяти — служба падает первой, раньше бота, панели и агентов (у них 200 от user-менеджера): она
+# перезапускается сама. В user-юните OOMScoreAdjust можно только повышать (man systemd.exec, man 5 proc).
+OOMScoreAdjust=500
 
 [Install]
 WantedBy=default.target
