@@ -22,7 +22,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from gas_pult import modules, transcripts
+from gas_pult import harness, modules, transcripts
 from gas_pult.config import write_private
 
 VERSION = 1
@@ -148,7 +148,7 @@ class Store:
                 else:
                     self._add(d, f, home_real)
             for w in windows:
-                if w.get("space") or not (w.get("cmd") == "claude" or w.get("mark")) or not w.get("path"):
+                if w.get("space") or not (harness.is_agent(w) or w.get("mark")) or not w.get("path"):
                     continue
                 if self.of_path(d, w["path"]) is None and os.path.isdir(w["path"]):
                     if main_repo(w["path"]):

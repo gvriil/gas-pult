@@ -56,6 +56,7 @@ from gas_pult import (
     fallback,
     features,
     focus,
+    harness,
     helper,
     humanize,
     invites,
@@ -358,7 +359,7 @@ class Panel:
 
     def window(self, wid: str) -> dict | None:
         w = self.tmux.window(wid)
-        return w if w and w["cmd"] == "claude" else None
+        return w if w and harness.is_agent(w) else None
 
     BRANCH_TTL = 10                                     # с: ветка git окна — не на каждый опрос списка
 
@@ -394,7 +395,7 @@ class Panel:
                             "repos": repos.public(repos.of(st, w["path"])),
                             **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or ""))})
                 continue
-            if w["cmd"] != "claude":
+            if not harness.is_agent(w):
                 continue
             # окно без метки открыл не пульт (вручную в tmux): не метим — иначе после выхода Claude оно навсегда
             # оставалось «остановленной» сессией (#179 P1.6); такое окно просто пропадает из списка, как терминал
@@ -406,7 +407,7 @@ class Panel:
             when = ago.stamps(self.pult.acts.status(w["path"], home, sid), self.pult.changes.look(w["id"], lines))
             ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
             snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
-            rev = transcripts.revision(w["path"], home, sid)
+            rev = harness.of(w).revision(w["path"], home, sid)
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "sleep" if w.get("sleep") else
                         "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
@@ -597,7 +598,7 @@ class Panel:
             ts = self.projects.set_pin(who, on, pid=project)
         elif wid:
             w = self.tmux.window(wid)
-            if not w or w.get("space") or not (w.get("cmd") == "claude" or w.get("stopped")):
+            if not w or w.get("space") or not (harness.is_agent(w) or w.get("stopped")):
                 raise LookupError("окна уже нет")
             ts = self.projects.set_pin(who, on, key=self.pin_key(w))
         else:
@@ -622,7 +623,7 @@ class Panel:
         d = self.project_data()
         by_sid, legacy = {}, set()
         for w in self.tmux.windows():
-            if w.get("space") or not (w.get("cmd") == "claude" or w.get("mark")):
+            if w.get("space") or not (harness.is_agent(w) or w.get("mark")):
                 continue
             if self.projects.of_path(d, w.get("path", "")) != p["id"]:
                 continue
@@ -749,7 +750,7 @@ class Panel:
         for x in self.tmux.windows() if wins is None else wins:
             if x["id"] == skip or x.get("space") or transcripts.valid_sid(x.get("sid")) != sid:
                 continue
-            if x.get("cmd") == "claude" or (x.get("stopped") and not running):
+            if harness.is_agent(x) or (x.get("stopped") and not running):
                 return x
         return None
 
@@ -764,7 +765,7 @@ class Panel:
         """Окно сессии пульта для «Завершить»/«Удалить»: с Claude или остановленное (Claude вышел, осталась
         оболочка). Остальные окна tmux владельца (просто терминалы) не трогаем."""
         w = self.tmux.window(str(wid or ""))
-        if not w or not (w.get("cmd") == "claude" or w.get("stopped")):
+        if not w or not (harness.is_agent(w) or w.get("stopped")):
             raise LookupError("окна уже нет")
         return w
 
@@ -775,7 +776,7 @@ class Panel:
         if sid := transcripts.valid_sid(w.get("sid")):
             return transcripts.current(w["path"], home, sid)
         real = os.path.realpath(w["path"])
-        if any(x["id"] != w["id"] and (x.get("cmd") == "claude" or x.get("stopped"))
+        if any(x["id"] != w["id"] and (harness.is_agent(x) or x.get("stopped"))
                and os.path.realpath(x.get("path", "")) == real for x in self.tmux.windows()):
             return None
         return transcripts.current(w["path"], home)
@@ -796,7 +797,7 @@ class Panel:
             f = self.window_journal(w)
         draft = ""
         if w:
-            if w.get("cmd") == "claude":
+            if harness.is_agent(w):
                 r = self.pult.quit_ex(w)
                 draft = r["draft"]
                 if r["result"] == "background" and not force:
@@ -900,7 +901,7 @@ class Panel:
                     break
         homes = self.claude_homes()
         st = projects.stats(projects.session_files(self.projects.folders_of(p), homes))
-        wins = [w["id"] for w in self.tmux.windows() if not w.get("space") and (w.get("cmd") == "claude" or
+        wins = [w["id"] for w in self.tmux.windows() if not w.get("space") and (harness.is_agent(w) or
                                                                                w.get("mark"))
                 and self.projects.of_path(d, w.get("path", "")) == p["id"]]
         return {**self.project_public(p, who), "instructions": text, "instructions_cut": cut,
@@ -1095,7 +1096,7 @@ class Panel:
             w = self.tmux.window(rec["w"])
             if not w or w.get("path") != rec.get("path"):   # перезапустили из бота — то же окно папки (одно на проект)
                 w = next((x for x in self.tmux.windows() if x.get("path") == rec.get("path")
-                          and (x["cmd"] == "claude" or x.get("stopped"))), None)
+                          and (harness.is_agent(x) or x.get("stopped"))), None)
                 if w:
                     self.focus.move(rec["w"], w["id"])
                     rec = {**rec, "w": w["id"]}
@@ -1331,7 +1332,7 @@ class Panel:
         if confirm != folder.name:
             raise ValueError("для удаления введите имя папки точно")
         modules.set_schedule(folder, "off")             # даже если папку вернут — само не запустится
-        if w.get("cmd") == "claude":
+        if harness.is_agent(w):
             r = self.close_ex(w)
             if r["result"] != "закрыто":
                 raise ValueError(r["result"])
@@ -1414,7 +1415,7 @@ class Panel:
                 self.tmux.set_sid(w["id"], sid)         # метка — вслед за процессом: переживёт его завершение
             return sid
         real = os.path.realpath(w["path"])
-        mates = [x for x in wins if x["id"] != w["id"] and x.get("cmd") == "claude" and not x.get("space")
+        mates = [x for x in wins if x["id"] != w["id"] and harness.is_agent(x) and not x.get("space")
                  and os.path.realpath(x.get("path", "")) == real and self.pult.home_of(x) == home]
         if any(not transcripts.valid_sid(x.get("sid")) for x in mates):
             return sid                                  # рядом старое окно без метки — его журнал не забираем
@@ -1766,14 +1767,14 @@ class Panel:
         self.tmux.target(wid)                        # окно не своего пространства — «окна нет» (кэш общий)
         now = time.time()
         if wid not in self.wins[1] or now - self.wins[0] > 3:
-            self.wins = (now, {w["id"]: w for w in self.tmux.windows() if w["cmd"] == "claude"})
+            self.wins = (now, {w["id"]: w for w in self.tmux.windows() if harness.is_agent(w)})
         if not (w := self.wins[1].get(wid)):
             raise LookupError("окна уже нет")
         scr = self.screens.get(wid)
         if not scr or now - scr[0] >= 2:
             scr = self.screens[wid] = (now, self.pult.screen_state(wid))
         home = self.pult.home_of(w)
-        return {**self.pult.activity(w, scr[1]), "rev": transcripts.revision(w["path"], home, w.get("sid") or "")}
+        return {**self.pult.activity(w, scr[1]), "rev": harness.of(w).revision(w["path"], home, w.get("sid") or "")}
 
     def slash(self, w: dict, cmd: str) -> list[str]:
         return self.pult.run_slash(w["id"], cmd)
@@ -1867,9 +1868,9 @@ class Panel:
             return w
         if w.get("space") or w.get("name") == termwin.WINDOW:
             raise ValueError("это окно — только владельцу пульта")
-        if not (w.get("cmd") == "claude" or w.get("mark")):
+        if not (harness.is_agent(w) or w.get("mark")):
             raise ValueError("это не окно сессии пульта")
-        if write and (w.get("cmd") != "claude" or w.get("stopped")):
+        if write and (not harness.is_agent(w) or w.get("stopped")):
             raise ValueError("Claude в этой сессии остановлен — в командную строку сервера вводит только владелец")
         return w
 
@@ -1880,7 +1881,7 @@ class Panel:
             return "term"
         if w.get("stopped"):
             return "stopped"
-        return "session" if w.get("cmd") == "claude" or w.get("mark") else "shell"
+        return "session" if harness.is_agent(w) or w.get("mark") else "shell"
 
     def key(self, w: dict, key: str) -> list[str]:
         if key not in {k for _, k in KEYS + PANEL_KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты
@@ -2070,7 +2071,7 @@ class Panel:
         if not w or w.get("space") != slug:
             raise LookupError("окна уже нет")
         folder = os.path.basename(w.get("path", ""))
-        if w["cmd"] != "claude":                          # Claude уже вышел — окно с оболочкой просто закрыть
+        if not harness.is_agent(w):                          # Claude уже вышел — окно с оболочкой просто закрыть
             self.tmux.kill(wid)
             return {"result": "closed", "folder": folder, "draft": ""}
         if not force and BUSY.search("\n".join(self.tmux.screen(wid, 40))):
@@ -2191,7 +2192,7 @@ class Panel:
             cmd += f" --model {shlex.quote(own)}"
         self.busy_sid(w.get("sid"), wid)                                     # тот же разговор уже идёт рядом
         # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
-        self.tmux.respawn(wid, w["path"], cmd + transcripts.resume_args(w.get("sid")), mark=profile)
+        self.tmux.respawn(wid, w["path"], cmd + harness.of(w).resume_args(w.get("sid")), mark=profile)
         return {"id": wid}
 
     def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None) -> dict:
@@ -2214,7 +2215,7 @@ class Panel:
         sid = transcripts.valid_sid(w.get("sid"))
         if keep:                                        # свой журнал окна — тот же разговор (--resume), иначе последний
             self.busy_sid(w.get("sid"), w["id"])        # метка окна могла указывать на чужой живой разговор
-            cmd += transcripts.resume_args(w.get("sid"))
+            cmd += harness.of(w).resume_args(w.get("sid"))
         else:                                           # чистый лист — новый журнал со своей меткой
             sid = str(uuid.uuid4())
             cmd += f" --session-id {sid}"
@@ -2495,8 +2496,8 @@ class Panel:
     def message(self, w: dict, i: int | None) -> str:
         home, sid = self.pult.home_of(w), w.get("sid") or ""
         if i is None:
-            return transcripts.last_answer(w["path"], home, sid)
-        items, _ = transcripts.history(w["path"], limit=1, before=i + 1, home=home, sid=sid)
+            return harness.of(w).last_answer(w["path"], home, sid)
+        items, _ = harness.of(w).history(w["path"], limit=1, before=i + 1, home=home, sid=sid)
         if not items or items[0]["i"] != i:
             raise ValueError("сообщение не найдено — обновите переписку")
         return items[0]["text"]
@@ -2546,7 +2547,8 @@ class Panel:
     # ---------- ▶️ команды из последнего ответа ----------
     def commands(self, w: dict) -> list[dict]:
         out = []
-        for i, cmd in enumerate(extract(transcripts.last_answer(w["path"], self.pult.home_of(w), w.get("sid") or ""))):
+        answer = harness.of(w).last_answer(w["path"], self.pult.home_of(w), w.get("sid") or "")
+        for i, cmd in enumerate(extract(answer)):
             kind = self.pult.cmds.kind(cmd)
             out.append({"i": i, "cmd": cmd, "kind": kind, "danger": bool(DANGER.search(cmd)),
                         "sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})
@@ -2574,7 +2576,7 @@ class Panel:
     # ---------- задачи владельца (tasks.py, #203) ----------
     def task_chat(self, t: dict) -> dict | None:
         """Окно задачи: сначала по разговору (окно могло смениться при перезапуске), потом по номеру окна."""
-        wins = [w for w in self.tmux.windows() if w.get("cmd") == "claude" or w.get("stopped") or w.get("sleep")]
+        wins = [w for w in self.tmux.windows() if harness.is_agent(w) or w.get("stopped") or w.get("sleep")]
         sid = transcripts.valid_sid(t.get("sid"))
         return next((w for w in wins if sid and w.get("sid") == sid), None) or \
             next((w for w in wins if t.get("chat") and w["id"] == t["chat"]), None)
@@ -2650,7 +2652,7 @@ class Panel:
 
     # ---------- вкладка «Команды»: все команды из ответов всех сессий (время — UTC, как в транскрипте) ----------
     def command_log(self, can_run: bool) -> dict:
-        wins = [w for w in self.tmux.windows() if w["cmd"] == "claude"]
+        wins = [w for w in self.tmux.windows() if harness.is_agent(w)]
         self.journal.collect(wins, self.pult.cmds.kind)
         items = self.journal.items()
         if not can_run:
@@ -3343,7 +3345,7 @@ def handler(panel: Panel):
                 return panel.repo_list(self.repo_win(q))
             w = self.win(q.get("w"))
             if path == "/api/last":
-                return {"text": transcripts.last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
+                return {"text": harness.of(w).last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
                 return {"lines": lines[-40:], "auth": find_auth(lines), "login": self.login_of(w, lines)}
@@ -3363,10 +3365,10 @@ def handler(panel: Panel):
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 sid = w.get("sid") or ""                   # окно со своим журналом — его переписка
-                rev = transcripts.revision(w["path"], home := panel.pult.home_of(w), sid)
+                rev = harness.of(w).revision(w["path"], home := panel.pult.home_of(w), sid)
                 if before is None and q.get("rev") and q["rev"] == rev:
                     return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
-                items, more = transcripts.history(w["path"], 30, before, home=home, sid=sid)
+                items, more = harness.of(w).history(w["path"], 30, before, home=home, sid=sid)
                 for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
                     if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
                         it["human"] = h
