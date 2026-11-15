@@ -968,6 +968,9 @@
   .nrow.on { background: var(--accent-soft); color: var(--accent-primary); }
   .nrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nrow.new .nm { font-weight: 600; }
+  .nrow .ntx { flex: 1; min-width: 0; display: flex; flex-direction: column; } .ntx .nm { flex: none; }
+  .nrow .nmeta { font-size: calc(11px * var(--fz, 1)); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nrow .nnew { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-primary); }
   .nrow .tm { flex: none; font-size: calc(12px * var(--fz, 1)); color: var(--text-muted); padding-right: 6px; }
   .nrow .sdot { flex: none; }
   .nrow .nchev { flex: none; width: 16px; height: 16px; color: var(--text-muted); transition: transform .15s ease; }
@@ -1784,10 +1787,12 @@ function navTime(ts) {                                 // сегодня — в�
 }
 const navBtns = (x, pinOk) => (pinOk ? `<button class="nb npin" type="button" data-npin aria-label="${x.pinned ? "Открепить" : "Закрепить"}" title="${x.pinned ? "Открепить" : "Закрепить"}">${ic("pin")}</button>` : "")
   + `<button class="nb nmore" type="button" data-nmore aria-label="Действия" title="Действия" aria-haspopup="menu">${ic("more")}</button>`;
+// строка под названием (#189): модель · усилия · контекст; точка справа — новый ответ, который вы не открывали
+const navMeta = (s) => [s.model, s.effort && "усилия " + (EFFORT_RU[s.effort] || s.effort), ctxUsed(s) == null ? "" : "контекст " + ctxUsed(s) + "%"].filter(Boolean).join(" · ");
 function navRow(s, sub) {
-  const st = ST[s.status] || ST.idle, name = s.name, tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label;
-  return `<div class="nrow${s.id === current && view === "session" ? " on" : ""}${s.pinned ? " pinned" : ""}${sub ? " sub" : ""}${isNew(s) ? " new" : ""}" data-nw="${esc(s.id)}" role="listitem" tabindex="0" title="${esc(tip)}">`
-    + `<span class="sdot ${st.cls}"></span><span class="nm">${esc(name)}</span><span class="tm">${esc(navTime(lastMsg(s)))}</span>${navBtns(s, canPin(s))}</div>`;
+  const st = ST[s.status] || ST.idle, name = s.name, nw = isNew(s), mt = navMeta(s), tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label + (nw ? " · новый ответ" : "");
+  return `<div class="nrow${s.id === current && view === "session" ? " on" : ""}${s.pinned ? " pinned" : ""}${sub ? " sub" : ""}${nw ? " new" : ""}" data-nw="${esc(s.id)}" role="listitem" tabindex="0" title="${esc(tip)}">`
+    + `<span class="sdot ${st.cls}"></span><span class="ntx"><span class="nm">${esc(name)}</span>${mt ? `<span class="nmeta">${esc(mt)}</span>` : ""}</span>${nw ? '<span class="nnew"></span>' : ""}<span class="tm">${esc(navTime(lastMsg(s)))}</span>${navBtns(s, canPin(s))}</div>`;
 }
 function navProj(p, list, open) {
   const n = p.waiting ? p.waiting + " ждут" : String(list.length || p.chats || "");

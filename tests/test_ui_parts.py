@@ -30,7 +30,7 @@ def test_demo_is_a_part_not_in_core():
     assert "Object.assign(window, {" in DEMO and "demoApi });" in DEMO     # ядро видит функции демо через window
     assert 'if (DEMO) part("demo");' in INDEX and 'if (DEMO && !window.demoApi) await part("demo");' in INDEX
     assert "import(`/js/${name}.js`)" in INDEX and "[500, 1500]" in INDEX # загрузка с двумя повторами, как у bb
-    assert len(INDEX.encode()) < 760_000                                   # ядро меньше прежних 866 КБ
+    assert len(INDEX.encode()) < 770_000                                   # ядро меньше прежних 866 КБ (+10 КБ на #189)
 
 
 def test_part_served_with_gzip_and_etag(server):
