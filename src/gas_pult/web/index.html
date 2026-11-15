@@ -2359,10 +2359,12 @@ function hideDock(on) {
 }
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
+let atBot = false;                                   // лента была у последнего сообщения (держит низ при ресайзе)
 function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); SC.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
 SC.addEventListener("scroll", () => {
   const max = SC.scrollHeight - SC.clientHeight, y = SC.scrollTop;
   const far = !atEnd(200);                           // пролистали вверх — кнопка «к последнему»
+  atBot = atEnd(24);
   $("toBottom").hidden = !(view === "session" && far);
   if (!far) $("toBottom").classList.remove("new");
   $("top").classList.toggle("edge", y > 4);
@@ -4335,13 +4337,14 @@ function mergeChat(h) {   // свежий хвост переписки — к �
 }
 // «Прилипнуть к низу»: после открытия лента ещё растёт — команды под ответом (renderCmds), строка статуса, поле ввода
 // (padDock), таблицы, шрифты. Одна прокрутка в rAF попадала не в конец. Пока человек сам не тронул ленту (палец,
-// колесо, клавиши) — 4 с держим низ при каждом изменении размера.
+// колесо, клавиши) — 4 с держим низ при каждом изменении размера. Дальше (#189): были внизу (atBot) — клавиатура,
+// длинный черновик, поворот, строка статуса не сдвигают от последнего сообщения.
 let stick = 0;
-const stickRO = typeof ResizeObserver === "function" ? new ResizeObserver(() => { if (Date.now() < stick) SC.scrollTop = SC.scrollHeight; }) : null;
+const stickRO = typeof ResizeObserver === "function" ? new ResizeObserver(() => { if (Date.now() < stick || view === "session" && atBot) SC.scrollTop = SC.scrollHeight; }) : null;
 function stickBottom() {
   stick = Date.now() + 4000; SC.scrollTop = SC.scrollHeight;
   requestAnimationFrame(() => { if (Date.now() < stick) SC.scrollTop = SC.scrollHeight; });
-  if (stickRO) { stickRO.disconnect(); stickRO.observe($("content")); $("dock") && stickRO.observe($("dock")); }
+  if (stickRO) { stickRO.disconnect(); stickRO.observe($("content")); stickRO.observe(SC); $("dock") && stickRO.observe($("dock")); }
 }
 ["wheel", "touchmove", "keydown"].forEach((ev) => addEventListener(ev, (e) => { if (ev !== "keydown" || /^(Arrow|Page|Home|End)/.test(e.key)) stick = 0; }, { passive: true, capture: true }));
 // Связь есть — индикатор у поля скрыт (план UX, пункт 9); виден только «нет связи · N с» (netTick).
