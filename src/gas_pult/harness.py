@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import os
+import shlex
+import shutil
 from pathlib import Path
 
 from gas_pult import pi_journal, transcripts
@@ -113,8 +115,36 @@ class Pi(Harness):
     def matches(self, argv):
         return any(os.path.basename(a) == "pi" or "/pi-coding-agent/" in a for a in argv[:2])
 
+    # Модель окна Pi по умолчанию — DeepSeek V4 Pro (решение владельца 15.11: «Pi основной»); ключи — в ~/.pi (штаб)
+    MODEL = os.environ.get("GAS_PULT_PI_MODEL", "deepseek/deepseek-v4-pro")
+    COUNTRY_AS = "deepseek"                       # правила стран — как у поставщика модели (models.allowed)
+
+    def binary(self) -> str:
+        for p in (os.environ.get("GAS_PULT_PI", ""), shutil.which("pi") or "",
+                  str(Path.home() / ".local/share/pi/node_modules/.bin/pi")):
+            if p and os.access(p, os.X_OK):
+                return p
+        return ""
+
+    def launch(self, sid: str, resume: bool = False) -> str:
+        """Команда окна: id сессии — в окружении (Pi меняет имя процесса — аргументов в /proc не видно) и в
+        ``--session-id`` (Pi открывает эту сессию или создаёт её: новое окно и «Продолжить» — одной командой)."""
+        b = self.binary()
+        if not b:
+            raise ValueError("Pi на сервере не установлен")
+        sid = pi_journal.valid_sid(sid)
+        provider, _, model = self.MODEL.partition("/")
+        cmd = f"env GAS_PULT_SID={sid} {shlex.quote(b)}" if sid else shlex.quote(b)
+        cmd += f" --provider {shlex.quote(provider)} --model {shlex.quote(model)}" if model else ""
+        return cmd + (self.resume_args(sid) if resume else self.new_args(sid))
+
     def live_sid(self, pid):
+        """Сессия процесса Pi: ``GAS_PULT_SID`` из окружения (окна пульта), иначе ``--session-id`` в аргументах."""
         try:
+            env = Path(f"/proc/{int(pid)}/environ").read_bytes().decode(errors="replace").split("\0")
+            sid = next((x.split("=", 1)[1] for x in env if x.startswith("GAS_PULT_SID=")), "")
+            if sid := pi_journal.valid_sid(sid):
+                return sid
             argv = Path(f"/proc/{int(pid)}/cmdline").read_bytes().decode(errors="replace").split("\0")
         except (OSError, ValueError):
             return ""
@@ -168,6 +198,12 @@ def is_agent(w: dict | None) -> bool:
 def detect(argv: list[str]) -> Harness | None:
     """Какой агент запущен этим процессом (argv); не агент — None."""
     return next((h for h in HARNESSES.values() if h.matches(argv)), None)
+
+
+def available() -> list[dict]:
+    """Агенты для нового окна (кроме Claude Code — он есть всегда): установлены на сервере."""
+    pi = HARNESSES["pi"]
+    return [{"id": "pi", "title": "Pi", "model": pi.MODEL}] if pi.binary() else []
 
 
 def of(w: dict | None) -> Harness:

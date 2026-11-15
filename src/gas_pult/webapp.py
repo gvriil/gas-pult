@@ -69,6 +69,7 @@ from gas_pult import (
     oidc,
     passkeys,
     personas,
+    pi_journal,
     projects,
     providers,
     qr,
@@ -1446,6 +1447,8 @@ class Panel:
 
     def check(self, profile: str, uid):
         """Поставщик не разрешён для какой-то из стран человека — отказ ровно этим текстом."""
+        if profile == "pi":                              # Pi — по правилам поставщика его модели
+            profile = harness.HARNESSES["pi"].COUNTRY_AS
         if not models.allowed(profile or "claude", self.countries(uid)):
             raise ValueError(country.DENY)
 
@@ -1597,6 +1600,7 @@ class Panel:
                 "models": self.cfg.models,
                 "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
                 "profiles": models.public(self.pult.state(), None if uid is None else self.countries(uid)),
+                "agents": harness.available(),           # другие агенты для нового окна (R13): Pi
                 "projects": [self.pult.short(p) for p in self.pult.projects()],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
                 "voice": self.voice(voices)}
@@ -2009,8 +2013,15 @@ class Panel:
         """Новое окно с Claude в папке — без правила «одно окно на папку»: у окна свой журнал (``--session-id`` и
         метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
         этого чата (``window_models``), как у «Модель» в меню."""
-        self.need_claude()
         base = name or (os.path.basename(path) if path != self.pult.home else "home")
+        if profile == "pi":                              # агент Pi (R13): своя команда, свой журнал, метка «pi»
+            pi = harness.HARNESSES["pi"]
+            sid = pi_journal.valid_sid(resume) or str(uuid.uuid4())
+            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, pi.launch(sid, resume=bool(resume)),
+                                       mark="pi", sid=sid)
+            self.mark_by(wid, uid)
+            return {"id": wid, "sid": sid}
+        self.need_claude()
         home = self.pult.claude_dir(person) if person is not None else None
         st = self.pult.state()
         cmd = models.command(self.cfg.claude, profile, st, home=home)
@@ -2181,6 +2192,12 @@ class Panel:
             profile, cmd = w["mark"] or "claude", tenants.command(t) + repos.flags(self.pult.state(), w["path"])
             self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)
             return {"id": wid}
+        if w.get("mark") == "pi":                        # окно Pi — снова Pi, тот же разговор
+            if uid is not None:
+                self.check("pi", uid)
+            cmd = harness.HARNESSES["pi"].launch(w.get("sid") or "", resume=True)
+            self.tmux.respawn(wid, w["path"], cmd, mark="pi")
+            return {"id": wid}
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
         if uid is not None:
             self.check(profile, uid)
@@ -2201,6 +2218,8 @@ class Panel:
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
         не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
         """
+        if w.get("mark") == "pi" or harness.of(w).name == "pi":
+            raise ValueError("в окне Pi модель меняется в самом Pi: /model")
         if uid is not None:
             self.check(profile, uid)                                          # не для страны — до закрытия
         home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал

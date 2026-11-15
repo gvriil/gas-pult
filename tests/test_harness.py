@@ -121,3 +121,80 @@ def test_tmux_detects_pi_window(monkeypatch):
     import inspect
     src = inspect.getsource(tmux.Tmux._windows)
     assert "harness.detect(p[1:])" in src and 'w["stopped"] = not w["harness"]' in src
+
+
+def test_pi_launch_and_env_sid(monkeypatch, tmp_path):
+    import os
+    import subprocess
+    import sys
+    pi = harness.HARNESSES["pi"]
+    fake = tmp_path / "pi"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("GAS_PULT_PI", str(fake))
+    sid = "11111111-1111-4111-8111-111111111111"
+    cmd = pi.launch(sid)
+    assert cmd.startswith(f"env GAS_PULT_SID={sid} {fake} --provider deepseek --model deepseek-v4-pro")
+    assert cmd.endswith(f" --session-id {sid}") and pi.launch(sid, resume=True).endswith(f" --session-id {sid}")
+    assert harness.available() == [{"id": "pi", "title": "Pi", "model": "deepseek/deepseek-v4-pro"}]
+    p = subprocess.Popen([sys.executable, "-c", "import time; print('ok', flush=True); time.sleep(5)"],
+                         env={**os.environ, "GAS_PULT_SID": sid}, stdout=subprocess.PIPE, text=True)
+    try:
+        assert p.stdout.readline().strip() == "ok"                         # процесс уже запущен (после exec)
+        assert pi.live_sid(p.pid) == sid                                   # Pi меняет имя процесса — id из окружения
+    finally:
+        p.kill()
+    monkeypatch.setenv("GAS_PULT_PI", str(tmp_path / "нет"))
+    monkeypatch.setattr(harness.shutil, "which", lambda n: None)
+    monkeypatch.setattr(harness.Path, "home", lambda: tmp_path)
+    assert harness.available() == []
+    import pytest
+    with pytest.raises(ValueError, match="не установлен"):
+        pi.launch(sid)
+
+
+def test_panel_opens_and_revives_pi_window(monkeypatch, tmp_path):
+    from gas_pult import webapp
+    fake = tmp_path / "pi"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("GAS_PULT_PI", str(fake))
+    made, resp = [], []
+    t = type("T", (), {"new_window": lambda self, name, path, cmd, **k: made.append((cmd, k)) or "@9",
+                       "respawn": lambda self, wid, path, cmd, mark="": resp.append((cmd, mark)),
+                       "window": lambda self, wid: {"id": wid, "path": "/p", "mark": "pi", "stopped": True,
+                                                    "sid": "22222222-2222-4222-8222-222222222222"}})()
+    p = webapp.Panel.__new__(webapp.Panel)
+    p.tmux = t
+    p.pult = type("P", (), {"home": "/home/u"})()
+    p.mark_by = lambda wid, uid: None
+    p.check = lambda profile, uid: None
+    r = webapp.Panel.open_in(p, "/home/u/proj", "pi", uid=1)
+    cmd, k = made[0]
+    assert r["id"] == "@9" and k["mark"] == "pi" and k["sid"] == r["sid"] and f"GAS_PULT_SID={r['sid']}" in cmd
+    webapp.Panel.revive(p, "@9", uid=None)
+    assert resp[0][1] == "pi" and resp[0][0].endswith("--session-id 22222222-2222-4222-8222-222222222222")
+    import pytest
+    with pytest.raises(ValueError, match="/model"):
+        webapp.Panel.restart(p, {"id": "@9", "mark": "pi", "path": "/p"}, "claude")
+
+
+def test_pi_country_rule_is_deepseek(monkeypatch):
+    from gas_pult import webapp
+    seen = []
+    monkeypatch.setattr(webapp.models, "allowed", lambda prof, c: seen.append(prof) or True)
+    p = webapp.Panel.__new__(webapp.Panel)
+    p.countries = lambda uid: ["NL"]
+    webapp.Panel.check(p, "pi", 1)
+    assert seen == ["deepseek"]
+
+
+def test_ui_offers_pi_in_model_pick():
+    from pathlib import Path
+    web = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
+    s = (web / "index.html").read_text(encoding="utf-8")
+    f = s[s.index("function pickProfile("):]
+    f = f[:f.index("\n}\n")]
+    assert "meta.agents" in f and '" — другой агент"' in f and "ready.length + agents.length < 2" in f
+    assert 'profile === "pi" ? "Запускаю Pi…"' in s
+    assert 'agents: [{ id: "pi"' in (web / "js" / "demo.js").read_text(encoding="utf-8")
