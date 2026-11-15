@@ -307,6 +307,8 @@
   /* Появление нового сообщения (план UX, пункт 6): только у новых — morph отличает новые узлы от прежних и
      заменённых (.mupd); первая отрисовка ленты — без анимации. transform + opacity, 150 мс. */
   .chat .msg.enter { animation: msgin .15s ease-out; }
+  .newdiv { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--accent-primary); font-size: calc(11px * var(--fz, 1)); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .newdiv::before, .newdiv::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: .5; }
   @keyframes msgin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .mupd { animation: none !important; }              /* заменён при точечном обновлении — не «появляется» заново; не .upd: это плашка «новая версия» */
   .chat .bubble { border-radius: var(--radius-lg); padding: 10px 13px; overflow-wrap: anywhere; }
@@ -4239,7 +4241,7 @@ async function openSession(id, startTab) {
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
   $("content").className = "chat"; $("content").innerHTML = skelMsgs(); setAsk("");
-  hist = []; setTab(startTab || "chat"); refreshShared(); haptic("selectionChanged"); padDock();
+  hist = []; NEWI.k = ""; setTab(startTab || "chat"); refreshShared(); haptic("selectionChanged"); padDock();
   if (matchMedia("(pointer: fine)").matches) setTimeout(() => $("input").focus(), 300);   // на компьютере — сразу печатать
 }
 function setTab(t) {
@@ -4535,6 +4537,7 @@ $("content").addEventListener("click", async (e) => {
   if (q) { $("ask").scrollIntoView({ block: "nearest", behavior: "smooth" }); q.focus({ preventScroll: true }); haptic("selectionChanged"); }
   else setTab("screen");
 });
+const NEWI = { k: "", at: null };
 function renderChat(toBottom) {
   const box = $("content"); if (box.className !== "chat") box.className = "chat";
   if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div></div>`); return; }
@@ -4543,11 +4546,15 @@ function renderChat(toBottom) {
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
-  const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
+  // «Новое» (#189): перед первым ответом агента после вашего прошлого просмотра; место — одно на визит
+  const jk = "seenI:" + current + ":" + journalOf(histRev);
+  if (NEWI.k !== jk) { const s = store(jk); NEWI.k = jk; NEWI.at = s == null ? null : hist.find((m) => m.role === "assistant" && m.i > +s)?.i ?? null; }
+  if (!document.hidden && hist.length) store(jk, hist.at(-1).i);
+  const had =!!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
   const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${mCopyBtn()}</div></div>`
-    : `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
+    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
