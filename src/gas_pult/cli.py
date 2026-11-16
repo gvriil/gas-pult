@@ -504,6 +504,49 @@ def cmd_tgbiz(a):
     tgbiz_bot.run(token, config.load().owners)
 
 
+def cmd_bridge_code(a):
+    import json as _json
+    import urllib.request
+
+    from gas_pult import webapp
+    req = urllib.request.Request(a.panel.rstrip("/") + "/api/bridge/code", b"{}",
+                                 {"Content-Type": "application/json",
+                                  "X-GP-Local": webapp.bridge_local_token(config.data_dir())})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        d = _json.loads(r.read())
+    url = a.url or "https://<адрес панели>"
+    print(f"Код: {d['code']} (10 минут)\nНа компьютере: node gas-pult-bridge.mjs pair {url} {d['code']}")
+
+
+def cmd_bridge_mcp(a):
+    """MCP по stdio (строка — сообщение JSON-RPC) → панель ``/api/bridge/rpc`` → мост на компьютере пользователя →
+    Playwright MCP ``--extension``. Секрет — файл ``bridge-local.token`` в папке данных пульта."""
+    import json as _json
+    import urllib.request
+
+    from gas_pult import webapp
+    token = webapp.bridge_local_token(config.data_dir())
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = _json.loads(line)
+        except ValueError:
+            continue
+        body = _json.dumps({"msg": msg, "device": a.device}).encode()
+        req = urllib.request.Request(a.panel.rstrip("/") + "/api/bridge/rpc", body,
+                                     {"Content-Type": "application/json", "X-GP-Local": token})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                out = _json.loads(r.read() or b"{}")
+        except Exception as e:                           # панель недоступна — ответ агенту, а не обрыв
+            out = {"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32003, "message": f"пульт: {e}"}}
+        if "id" in msg and out.get("jsonrpc"):
+            sys.stdout.write(_json.dumps(out, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
+
+
 def cmd_pi(a):
     """Собрать добавку к системному промпту окон Pi: свод главных правил и оверлей модели → ``<конфиг>/pi/append.md``;
     пульт передаёт её Pi ключом ``--append-system-prompt`` при каждом запуске окна (новые окна и «Перезапустить»)."""
@@ -761,6 +804,14 @@ def main(argv: list[str] | None = None):
     s = sub.add_parser("tgbiz", help="служба бота Telegram Business: run — читать апдейты в журнал, команды владельца")
     s.add_argument("action", choices=["run"])
     s.set_defaults(fn=cmd_tgbiz)
+    s = sub.add_parser("bridge-code", help="код пары для моста на компьютере пользователя (10 минут)")
+    s.add_argument("--panel", default=os.environ.get("GAS_PULT_PANEL_URL", "http://127.0.0.1:8765"))
+    s.add_argument("--url", default="", help="адрес панели снаружи — для готовой команды")
+    s.set_defaults(fn=cmd_bridge_code)
+    s = sub.add_parser("bridge-mcp", help="MCP «browser-local»: браузер пользователя через мост (stdio, для агентов)")
+    s.add_argument("--device", default="", help="id устройства; пусто — первое подключённое")
+    s.add_argument("--panel", default=os.environ.get("GAS_PULT_PANEL_URL", "http://127.0.0.1:8765"))
+    s.set_defaults(fn=cmd_bridge_mcp)
     s = sub.add_parser("pi", help="Pi: overlay --from <папка профилей> [--model deepseek-v4] — добавка к промпту окон")
     s.add_argument("action", choices=["overlay"])
     s.add_argument("--from", dest="src", required=True, help="папка профилей моделей (_core-short.md, <модель>.md)")

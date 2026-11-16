@@ -1,0 +1,46 @@
+# Мост к браузеру пользователя
+
+Пульт управляет браузером на вашем компьютере (Mac, Windows), где вы уже вошли в свои сервисы. Команды можно давать
+с телефона и с компьютера. Основа — Playwright MCP в режиме `--extension` (Microsoft, Apache-2.0):
+«Connect to a running browser instance (Edge/Chrome only). Requires the "Playwright Extension"» —
+https://github.com/microsoft/playwright-mcp
+
+## Как устроено
+
+```
+телефон / компьютер → пульт (сервер) ⇄ wss /api/bridge/ws ⇄ мост на вашем компьютере → Playwright MCP --extension → ваш Chrome/Edge
+агент в окне пульта → gas-pult bridge-mcp (MCP «browser-local») → /api/bridge/rpc ↗
+```
+
+- Мост сам подключается к пульту (исходящее соединение): на компьютере не нужно открывать порты.
+- Пара: одноразовый код (10 минут) → токен устройства. Токен хранится у вас в `~/.gas-pult-bridge.json` (0600), на
+  сервере — только его хэш. Отозвать устройство — `POST /api/bridge/revoke` (в панели — следующим шагом).
+- Банки и госуслуги выключены. Включает только пользователь у себя: `node gas-pult-bridge.mjs allow <домен>` — мост
+  предупреждает, что правила сервиса могут запрещать автоматизацию.
+- «Сохранить на компьютер» — инструмент `save_to_computer`: файл в папку Загрузки, без перезаписи.
+- Подтверждение «да» перед отправкой, оплатой, удалением — правило агентов пульта, как для коннекторов.
+
+## Установка (Mac, Windows)
+
+1. Node.js 22 или новее — https://nodejs.org (на Маке можно `brew install node`).
+2. В Chrome или Edge — расширение «Playwright Extension» (ссылка — в README Playwright MCP).
+3. Файл моста: `bridge/gas-pult-bridge.mjs` из этого репозитория — в любую папку.
+4. Код пары. На сервере пульта: `gas-pult bridge-code --url https://<адрес панели>` — выведет код и готовую
+   команду.
+5. На компьютере: `node gas-pult-bridge.mjs pair https://<адрес панели> <КОД>`, затем `node gas-pult-bridge.mjs`.
+
+## Агенты пульта
+
+Окно агента получает браузер пользователя как MCP-сервер:
+
+```
+claude mcp add browser-local -- gas-pult bridge-mcp
+```
+
+Несколько компьютеров — `gas-pult bridge-mcp --device <id>` (список — `GET /api/bridge/devices`).
+
+## Не проверено
+
+- Яндекс Браузер (на Chromium): работает ли расширение — проверить на компьютере пользователя.
+- Телефон: iOS и Android не дают расширениям управлять вкладками браузера — для телефона браузер в облаке пульта
+  (рабочий стол Ubuntu). Первоисточник Apple/Google не проверен.
