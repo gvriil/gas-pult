@@ -42,7 +42,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, ClassVar
 
 from gas_pult import (
     ago,
@@ -2363,6 +2363,31 @@ class Panel:
                 gone.append(w["name"])
         return {"closed": len(gone), "names": gone}
 
+    MEDIA: ClassVar[dict] = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
+                             ".gif": "image/gif", ".heic": "image/heic"}
+    MEDIA_MAX = 25 * 1024 * 1024
+
+    def media(self, path: str) -> tuple:
+        """Картинка для ленты: только из inbox пульта и папок Google Диска (``drive_root``) — туда кладутся файлы
+        владельца (#217); ничего другого с сервера не отдаём (путь проверяем после realpath — без «..» и ссылок)."""
+        roots = [os.path.realpath(self.cfg.data / "inbox")]
+        if (d := drive_inbox.drive_root(self.cfg.drive_root)) is not None:
+            roots.append(os.path.realpath(d))
+        real = os.path.realpath(os.path.expanduser(path or ""))
+        if not path or not any(real == r or real.startswith(r + os.sep) for r in roots):
+            raise LookupError("файл не найден")
+        ctype = self.MEDIA.get(os.path.splitext(real)[1].lower())
+        if not ctype:
+            raise ValueError("это не картинка")
+        try:
+            st = os.stat(real)
+            if st.st_size > self.MEDIA_MAX:
+                raise ValueError("картинка больше 25 МБ")
+            data = Path(real).read_bytes()
+        except OSError:
+            raise LookupError("файл не найден") from None
+        return (ctype, data, {"Cache-Control": "private, max-age=3600"})
+
     def upload(self, name: str, data: bytes | BinaryIO, size: int | None = None, w: str = "") -> str:
         """Файл из панели → папка проекта сессии ``w`` на Google Диске (``<проект>/Входящие``, #217); нет Диска или
         папки проекта — inbox пульта, как раньше. Claude получает путь (как файлы из чата бота). Поток — кусками."""
@@ -2775,7 +2800,7 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
 TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
-OWNER_ONLY = {"/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
+OWNER_ONLY = {"/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
@@ -3364,6 +3389,8 @@ def handler(panel: Panel):
                 return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
+            if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
+                return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] == "owner",
                                                      self.terms_uid()))
