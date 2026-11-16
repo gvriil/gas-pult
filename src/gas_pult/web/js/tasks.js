@@ -27,7 +27,6 @@ async function tasksOpen() {
 
 function tasksSheet() {
   const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
-  helpSheet("sheet.tasks");
   const rows = [];
   for (const q of [1, 0, 2, 3, 4]) {                    // сервер уже отсортировал: внутри квадранта — «ждёт вас» первыми
     const g = open.filter((t) => (t.q || 0) === q);
@@ -38,6 +37,7 @@ function tasksSheet() {
         t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
       run: () => taskGo(t) })));
   }
+  helpSheet("sheet.tasks");
   sheet(`Задачи · не решено ${open.length}`, [
     ...(open.length ? [] : [{ info: true, icon: "check", label: "Всё решено", sub: "агенты ставят задачи командой gas-pult task add" }]),
     ...rows,
@@ -85,6 +85,7 @@ function taskSheet(t) {
 }
 
 function taskQ(t) {                                     // квадрант руками: 1–4
+  helpSheet("sheet.tasks");
   sheet("Срочность и важность", [1, 2, 3, 4].map((q) => ({ label: Q_T[q], icon: q === (t.q || 0) ? "check" : "bolt",
     run: () => taskSet(t, { q }, "Записал: " + Q_SHORT[q]).then(() => tasksSheet()) })));
 }

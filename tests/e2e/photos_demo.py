@@ -15,6 +15,23 @@ ADD = """() => { const m = document.createElement('div'); m.className = 'msg me'
     + '\\nФайл из панели: ' + d + 'щит.png</div>';
   document.getElementById('content').append(m); }"""
 
+def open_photo(pg, idx: int) -> None:
+    """Вставить сообщение с фото и открыть idx-ю миниатюру. Лента демо обновляется по таймеру и может стереть
+    вставленное сообщение (элемент «detached» — CI 16.11), поэтому нажатие — в том же шаге JS, что и проверка, с
+    повтором вставки."""
+    for _ in range(5):
+        pg.evaluate(ADD)
+        try:
+            pg.wait_for_function(
+                f"(() => {{ const a = document.querySelectorAll('.att-imgs img[src]');"
+                f" if (a.length !== 2) return false; a[{idx}].click(); return true; }})()", timeout=5000)
+        except Exception:
+            continue
+        if pg.locator(".lb img[src]").count() or pg.wait_for_selector(".lb img[src]", timeout=3000):
+            return
+    raise AssertionError("миниатюры не открылись")
+
+
 
 def ptr(pg, kind, pid, x, y):
     pg.evaluate("([k, id, x, y]) => document.querySelector('.lb').dispatchEvent(new PointerEvent(k, {"
@@ -41,10 +58,7 @@ def run(base: str):
         pg.goto(f"{base}{sep}open=@1&noscroll")
         pg.wait_for_selector("#content .msg")
         pg.wait_for_function("!!window.lightbox", timeout=8000)
-        pg.evaluate(ADD)
-        pg.wait_for_function("document.querySelectorAll('.att-imgs img[src]').length === 2", timeout=5000)
-        pg.locator(".att-imgs img").first.click()
-        pg.wait_for_selector(".lb img[src]")
+        open_photo(pg, 0)
         assert pg.inner_text(".lb-n") == "1 из 2"
         cx, cy = 195, 422
         ptr(pg, "pointerdown", 1, cx - 40, cy)                              # щипок — развести пальцы
@@ -75,10 +89,7 @@ def run(base: str):
         pg.goto(f"{base}{sep}open=@1&noscroll")
         pg.wait_for_selector("#content .msg")
         pg.wait_for_function("!!window.lightbox", timeout=8000)
-        pg.evaluate(ADD)
-        pg.wait_for_function("document.querySelectorAll('.att-imgs img[src]').length === 2", timeout=5000)
-        pg.locator(".att-imgs img").nth(1).click()
-        pg.wait_for_selector(".lb img[src]")
+        open_photo(pg, 1)
         assert pg.inner_text(".lb-n") == "2 из 2"
         pg.mouse.move(683, 430)
         for _ in range(3):

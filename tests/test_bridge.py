@@ -139,3 +139,13 @@ def test_bridge_code_endpoint(server):
     with urllib.request.urlopen(req, timeout=10) as r:
         code = json.loads(r.read())["code"]
     assert p.devices.claim(code, "mac", "darwin")["token"]
+
+
+def test_bridge_ui_part():
+    web = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
+    core = (web / "index.html").read_text(encoding="utf-8")
+    assert 'part("bridge").then(() => bridgeSheet())' in core and 'part("email").then(() => emailSheet())' in core
+    js = (web / "js" / "bridge.js").read_text(encoding="utf-8")
+    assert "/api/bridge/devices" in js and "/api/bridge/pair" in js and "/api/bridge/revoke" in js
+    assert "async function emailSheet" in (web / "js" / "email.js").read_text(encoding="utf-8")
+    assert "async function emailSheet" not in core
