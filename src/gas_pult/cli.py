@@ -526,6 +526,13 @@ def cmd_bridge_mcp(a):
 
     from gas_pult import webapp
     token = webapp.bridge_local_token(config.data_dir())
+    window = ""                                      # окно агента: сервер выдаёт только его устройства
+    if os.environ.get("TMUX_PANE"):
+        try:
+            window = subprocess.run(["tmux", "display-message", "-p", "-t", os.environ["TMUX_PANE"], "#{window_id}"],
+                                    capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            window = ""
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -534,7 +541,7 @@ def cmd_bridge_mcp(a):
             msg = _json.loads(line)
         except ValueError:
             continue
-        body = _json.dumps({"msg": msg, "device": a.device}).encode()
+        body = _json.dumps({"msg": msg, "device": a.device, "window": window}).encode()
         req = urllib.request.Request(a.panel.rstrip("/") + "/api/bridge/rpc", body,
                                      {"Content-Type": "application/json", "X-GP-Local": token})
         try:

@@ -209,6 +209,22 @@ class Focus:
                 self._save(d)
             return n
 
+    def set_browser(self, rid: str, on: bool) -> bool:
+        """Разрешить (или запретить) фокус-пользователю подключить свой браузер (владелец 17.11)."""
+        with self.lock:
+            d = self._load()
+            rec = d.get(str(rid or ""))
+            if not rec or not self.live(rec) or self.is_demo(rec):
+                return False
+            rec["browser"] = bool(on)
+            self._save(d)
+            return True
+
+    def browser_ok(self, rid: str) -> bool:
+        """Устройство фокус-ссылки ``rid`` может работать: ссылка жива и браузер разрешён."""
+        rec = self._load().get(str(rid or ""))
+        return bool(rec) and self.live(rec) and bool(rec.get("browser"))
+
     def revoke(self, rid: str) -> bool:
         return self.end(str(rid or ""), "revoked")
 
@@ -216,7 +232,7 @@ class Focus:
         """Действующие ссылки для «Настройки» → «Фокус-ссылки»: без токенов и секретов."""
         now = time.time()
         out = [{"id": k, "name": v.get("name", ""), "space": v.get("space"), "proj": v.get("proj"),
-                "created": v.get("created"),
+                "created": v.get("created"), "browser": bool(v.get("browser")),
                 "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", ""),
                 **({"mode": DEMO, "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
                    if v.get("mode") == DEMO else {})}

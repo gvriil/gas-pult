@@ -4240,6 +4240,7 @@ function sessionSheet(id) {
     ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этой сессии" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(FOCUS && meta?.focus?.browser ? [{ label: "Подключить браузер", icon: "monitor", sub: "пульт будет работать в Chrome/Edge на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
     ...(canRepos(s) ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этой сессии — без перезапуска", run: () => repoSheet(id) }] : []),
     ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Настроить расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
@@ -6722,6 +6723,7 @@ async function focusLink(id, proj, mode) {           // proj — ссылка н
     <img class="focus-qr" id="focusQr" alt="QR-код ссылки"><div class="focus-url" id="focusUrl"></div>
     <button data-fa="tg">${ic("send")}<span>Отправить себе в Telegram<small>бот пришлёт ссылку в ваш чат с ним</small></span></button>
     <button data-fa="copy">${ic("copy")}<span>Скопировать ссылку</span></button>
+    ${demo ? "" : `<button data-fa="browser">${ic("monitor")}<span>Разрешить подключить свой браузер<small>пульт будет управлять Chrome/Edge на его компьютере — только в этой сессии</small></span></button>`}
     <button data-fa="revoke" class="danger">${ic("x")}<span>Отозвать эту ссылку</span></button>
     <button class="cancel" data-close>Готово</button></div>`;
   bg.querySelector("#focusUrl").textContent = d.url;
@@ -6732,6 +6734,7 @@ async function focusLink(id, proj, mode) {           // proj — ссылка н
     if (e.target === bg || e.target.closest("[data-close]")) return bg.remove();
     const b = e.target.closest("[data-fa]"); if (!b) return;
     if (b.dataset.fa === "copy") return copyText(d.url, "Ссылка скопирована");
+    if (b.dataset.fa === "browser") { try { await api("/api/focus/browser", { id: d.id, on: true }); b.remove(); toast("Браузер разрешён: на фокус-странице появится «Подключить браузер»"); } catch (err) { toast(err.message, 5000); } return; }
     if (b.dataset.fa === "tg") return busy(b, "Отправляю…", async () => { try { await api("/api/focus/send", { url: d.url }); toast("Ссылка — в вашем чате с ботом"); } catch (err) { toast(err.message, 5000); } });
     if (b.dataset.fa === "revoke") { try { await api("/api/focus/revoke", { id: d.id }); bg.remove(); toast(demo ? "Демо-ссылка отозвана — все устройства отключены" : "Ссылка отозвана"); } catch (err) { toast(err.message, 5000); } }
   });

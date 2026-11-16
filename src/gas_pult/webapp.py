@@ -365,7 +365,7 @@ class Panel:
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
-        self.hub = bridge.Hub()
+        self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
@@ -1083,6 +1083,21 @@ class Panel:
             return [s for s in self.sessions(None) if s.get("project") == rec["proj"] and not s.get("space")]
         return [s for s in self.sessions(None) if s["id"] == rec["w"]]
 
+    def bridge_dev_ok(self, dev: dict | None) -> bool:
+        """Устройство моста работает: владельца — всегда; фокус-пользователя — пока жива его ссылка с «Браузер»."""
+        return bool(dev) and (not dev.get("focus") or self.focus.browser_ok(dev["focus"]))
+
+    def bridge_allowed(self, window: str) -> set[str]:
+        """Устройства для агента окна ``window``: окно фокус-ссылки с «Браузер» — только устройства этой ссылки;
+        любое другое окно (и без окна) — только устройства владельца. Чужое устройство агенту не видно."""
+        devs = self.devices.listing()
+        links = [r for r in ({**v, "id": k} for k, v in self.focus._load().items())
+                 if r.get("browser") and focus.Focus.live(r)] if window else []
+        mine = {r["id"] for r in links if self.focus_owns(r, window)}
+        if mine:
+            return {d["id"] for d in devs if d.get("focus") in mine}
+        return {d["id"] for d in devs if not d.get("focus")}
+
     def focus_owns(self, rec: dict, wid: str) -> bool:
         """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта."""
         if not rec.get("proj"):
@@ -1155,6 +1170,22 @@ class Panel:
         self.focus_gap.pop(rec["id"], None)
         return rec
 
+    def focus_bridge(self, rec: dict, path: str, b: dict) -> dict:
+        """Фокус-пользователь и его компьютер: список своих устройств, код пары, отзыв. Только если владелец разрешил
+        «Браузер» для этой ссылки; чужие устройства (владельца, других ссылок) не видны и не отзываются."""
+        if not rec.get("browser"):
+            raise focus.Denied("владелец не разрешил подключать браузер по этой ссылке")
+        mine = [d for d in self.devices.listing() if d.get("focus") == rec["id"]]
+        if path == "/api/focus/bridge/pair":
+            return self.devices.pair_code(focus=rec["id"])
+        if path == "/api/focus/bridge/revoke":
+            did = str(b.get("id") or "")
+            if did not in {d["id"] for d in mine}:
+                raise focus.Denied("это устройство не из вашей ссылки")
+            return {"ok": self.devices.revoke(did)}
+        on = set(self.hub.online())
+        return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
+
     def focus_meta(self, rec: dict) -> dict:
         """«meta» для фокуса: только то, что нужно одной сессии и её настройкам — без папок и имени сервера.
         Демо-ссылка: без команд, моделей, поставщиков и клавиш — только смотреть и выбирать вариант."""
@@ -1172,7 +1203,8 @@ class Panel:
                 "keys": [{"label": t, "key": k} for t, k in KEYS + PANEL_KEYS],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices], "voice": self.voice(voices),
                 "focus": {"id": rec["id"], "name": rec.get("name", ""), "w": rec["w"], "space": rec.get("space"),
-                          "exp": rec.get("exp"), "proj": rec.get("proj")}}   # proj — ссылка на проект (добавлено)
+                          "exp": rec.get("exp"), "proj": rec.get("proj"),     # proj — ссылка на проект (добавлено)
+                          "browser": bool(rec.get("browser"))}}            # можно подключить свой браузер
 
     DEMO_KEYS = frozenset({"Up", "Down", "Enter"})   # демо-ссылка: клавиши — только чтобы выбрать пункт меню
     DEMO_GAP = 3                            # с: после ответа гостя остальные нажатия — «уже ответили»
@@ -2819,7 +2851,8 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
 TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
-OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke",
+OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "/api/bridge/log",
+              "/api/focus/browser",
               "/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
@@ -2904,7 +2937,10 @@ FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/
 FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/command", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
+FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
+FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
+              "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke",
               "/api/mcp/connected", "/api/uses"}   # без окна в запросе
 # Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,
 # экран, статус, «Прослушать») и отвечать на вопрос Claude кнопками (/api/select, /api/key — стрелки и Enter, только
@@ -3412,8 +3448,13 @@ def handler(panel: Panel):
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
             if path == "/api/bridge/devices":            # компьютеры с мостом к браузеру (только владелец)
-                on = set(panel.hub.online())
-                return {"devices": [{**d, "online": d["id"] in on} for d in panel.devices.listing()]}
+                on, names = set(panel.hub.online()), {x["id"]: x["name"] for x in panel.focus.listing()}
+                return {"devices": [{**d, "online": d["id"] in on and panel.bridge_dev_ok(d),
+                                     **({"focus_name": names.get(d["focus"], "ссылка погасла")}
+                                        if d.get("focus") else {})}
+                                    for d in panel.devices.listing()]}
+            if path == "/api/bridge/log":                # журнал действий по устройству (только владелец)
+                return {"log": panel.hub.history(str(q.get("id") or ""))}
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
@@ -3537,7 +3578,9 @@ def handler(panel: Panel):
                 self.json({"error": "нет доступа"}, 403)
                 return SENT
             b = json.loads(self.body() or b"{}")
-            return panel.hub.call(b.get("msg") or {}, str(b.get("device") or "")) or {"ok": True}
+            allowed = {d for d in panel.bridge_allowed(str(b.get("window") or ""))
+                       if panel.bridge_dev_ok(panel.devices.get(d))}
+            return panel.hub.call(b.get("msg") or {}, str(b.get("device") or ""), allowed=allowed) or {"ok": True}
 
         def bridge_code(self):
             if not secrets.compare_digest(self.headers.get("X-GP-Local", ""), bridge_local_token(panel.cfg.data)):
@@ -3553,7 +3596,7 @@ def handler(panel: Panel):
             protos = [x.strip() for x in self.headers.get("Sec-WebSocket-Protocol", "").split(",")]
             tok = next((x[4:] for x in protos if x.startswith("gpb-")), "")
             dev = panel.devices.check(tok)
-            if not dev:
+            if not panel.bridge_dev_ok(dev):
                 return self.json({"error": "устройство не подключено или отозвано"}, 401)
             self.close_connection = True
             self.wfile.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
@@ -3751,6 +3794,8 @@ def handler(panel: Panel):
                 return panel.demo_answer(str(b.get("w") or ""), key == "Enter", lambda: self.post(path))
             if demo and path == "/api/select":
                 return panel.demo_answer(str(b.get("w") or ""), b.get("go", True) is not False, lambda: self.post(path))
+            if path.startswith("/api/focus/bridge"):
+                return panel.focus_bridge(rec, path, b)
             if path == "/api/sessions":
                 ss = panel.focus_sessions(rec)
                 return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
@@ -4271,6 +4316,8 @@ def handler(panel: Panel):
             if path == "/api/focus/qr":                    # QR — POST: адрес с токеном не попадает в журнал прокси
                 panel.focus_token(str(b.get("url", "")))
                 return ("image/png", qr.png_of(str(b["url"])))
+            if path == "/api/focus/browser":               # фокус-ссылка: разрешить подключить свой браузер
+                return {"ok": panel.focus.set_browser(str(b.get("id", "")), bool(b.get("on", True)))}
             if path == "/api/focus/revoke":
                 return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
             if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
