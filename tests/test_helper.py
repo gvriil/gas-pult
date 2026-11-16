@@ -20,7 +20,12 @@ from gas_pult.config import Config
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "src" / "gas_pult" / "web"
-INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+# ядро и части по требованию (#191): экраны ищем во всех частях; разметку листов (helpSheet, data-help) проверяем в
+# ядре и в частях из PARTS_MARKED — остальные части пока без неё
+PARTS_MARKED = ("bridge", "email", "tasks")
+INDEX = (WEB / "index.html").read_text(encoding="utf-8") + "".join(
+    (WEB / "js" / f"{n}.js").read_text(encoding="utf-8") for n in PARTS_MARKED)
+ALL_UI = INDEX + "".join(f.read_text(encoding="utf-8") for f in sorted((WEB / "js").glob("*.js")))
 OFFER = (WEB / "offer.html").read_text(encoding="utf-8")
 M = helper.the_map()
 
@@ -45,7 +50,7 @@ def e2e():
 
 # ---------- карта: только реальные экраны, и все ----------
 def test_map_covers_every_panel_screen():
-    found = set(re.findall(r"\b(?:helpSheet|hv)\(\"([a-z][a-z0-9.\-]*)\"\)", INDEX))
+    found = set(re.findall(r"\b(?:helpSheet|hv)\(\"([a-z][a-z0-9.\-]*)\"\)", ALL_UI))
     assert found == where("panel"), (found - where("panel"), where("panel") - found)
     # каждый лист панели помечен: sheet(…) — после helpSheet(…), свои листы — data-help
     assert INDEX.count('bg.className = "sheet-bg"') == INDEX.count('bg.dataset.help = hv(') + 1   # +1 — сам sheet()

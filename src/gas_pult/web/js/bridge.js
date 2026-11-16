@@ -10,6 +10,7 @@ async function bridgeSheet() {
   let d;
   try { d = await api("/api/bridge/devices"); } catch (e) { return toast("Компьютеры: " + e.message, 4500); }
   const devs = d.devices || [];
+  helpSheet("settings.bridge");
   sheet("Компьютеры — ваш браузер", [
     { info: true, icon: "monitor", label: "Пульт управляет браузером на вашем компьютере",
       sub: "Chrome или Edge, где вы уже вошли в сервисы. Банки и госуслуги выключены — включаете только вы, на компьютере" },
@@ -26,7 +27,7 @@ async function bridgePair() {
   let c;
   try { c = await api("/api/bridge/pair", {}); } catch (e) { return toast(e.message, 4500); }
   const url = location.origin, cmd = `node gas-pult-bridge.mjs pair ${url} ${c.code}`;
-  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.bridge");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Подключить компьютер</h3>
     <ol style="margin:4px 16px 0;padding-left:20px;line-height:1.5">
       <li>Node.js 22 или новее (Mac: <code>brew install node</code>)</li>
