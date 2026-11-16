@@ -91,3 +91,57 @@ def test_connector_alive_service_without_journal_is_empty(state, monkeypatch):
     (state / "alive").touch()
     monkeypatch.setattr(tgbiz_mcp, "_api", lambda *a, **k: pytest.fail("служба жива — Telegram не трогаем"))
     assert tgbiz_mcp._updates() == []
+
+class FakeClaude:
+    """Окно Claude: вставки копятся, ответ задаёт тест (готов?, текст, отпечаток журнала)."""
+
+    def __init__(self):
+        self.pasted, self.open, self.ans = [], True, (False, "", "")
+
+    def open_window(self, name, path):
+        return "@77", "11111111-1111-4111-8111-111111111111"
+
+    def paste(self, wid, text):
+        self.pasted.append(text)
+        return True
+
+
+def test_journalist_mode(state, tmp_path, monkeypatch):
+    """Решение владельца 16.11 («2 Claude»): /журналист → окно Claude со скиллом zhurnalist; сообщения и голос — в окно;
+    законченный ответ Claude — в бот один раз; /стоп — выйти. Черновик — на Диск владельца."""
+    monkeypatch.setattr(tgbiz_bot, "DRAFTS", tmp_path / "drive" / "Статьи" / "черновики")
+    monkeypatch.setattr(tgbiz_bot, "WORK", tmp_path / "work")
+    c = FakeClaude()
+    j = tgbiz_bot.Journalist(c.open_window, c.paste, lambda path, sid: c.ans, lambda wid: c.open)
+    api = FakeApi([[{"update_id": 1, "message": msg(OWNER, "/журналист как мы убрали очереди в автомойке")}],
+                   [{"update_id": 2, "message": msg(OWNER, "1) клиенты — владельцы моек")}],
+                   [{"update_id": 3, "message": msg(OWNER, voice={"file_id": "V"})}],
+                   [], [], [{"update_id": 4, "message": msg(OWNER, "/стоп")}]])
+    bot = tgbiz_bot.Bot(api, [OWNER], save_note=None, stt=lambda fid: "очередь была 40 минут", journalist=j)
+    bot.poll()
+    assert (tmp_path / "drive" / "Статьи" / "черновики").is_dir()
+    assert "Используй скилл zhurnalist" in c.pasted[0] and "автомойке" in c.pasted[0] and "«да»" in c.pasted[0]
+    assert "Режим «журналист»" in api.sent[-1][1]
+    bot.poll()                                                             # текст владельца — в окно, без ответа бота
+    assert c.pasted[-1] == "1) клиенты — владельцы моек" and len(api.sent) == 1
+    bot.poll()                                                             # голос — расшифровка в окно
+    assert c.pasted[-1] == "очередь была 40 минут" and "передал журналисту" in api.sent[-1][1]
+    assert [p for m, p in api.calls if m == "getUpdates"][-1]["timeout"] == 3   # ждём Claude — опрос короткий
+    c.ans = (True, "1. Сколько моек?\n2. Какая выручка?", "rev-1")
+    bot.poll()
+    assert api.sent[-1] == (OWNER, "1. Сколько моек?\n2. Какая выручка?")
+    n = len(api.sent)
+    bot.poll()
+    assert len(api.sent) == n                                              # тот же ответ — второй раз не шлём
+    bot.poll()
+    assert "Вышел из режима" in api.sent[-1][1] and not j.state()
+
+
+def test_journalist_window_closed(state, tmp_path, monkeypatch):
+    monkeypatch.setattr(tgbiz_bot, "DRAFTS", tmp_path / "d")
+    monkeypatch.setattr(tgbiz_bot, "WORK", tmp_path / "w")
+    c = FakeClaude()
+    j = tgbiz_bot.Journalist(c.open_window, c.paste, lambda path, sid: c.ans, lambda wid: c.open)
+    j.start(OWNER, "тема")
+    c.open = False
+    assert j.relay() == (OWNER, "Окно журналиста закрыто — режим выключен.") and not j.state()
