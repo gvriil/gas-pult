@@ -71,6 +71,7 @@ jobs:
       - run: pip show webauthn | head -2
       - name: тесты ключей входа — без пропусков
         run: |
+          set -o pipefail
           pytest -q -rs tests/test_passkeys.py | tee passkeys.log
           ! grep -q SKIPPED passkeys.log
       - run: pytest -q
@@ -88,7 +89,9 @@ jobs:
       - run: pip install -e ".[dev,browser]"
       - run: python -m playwright install --with-deps chromium
       - name: все тесты, браузерные — без пропусков
+        # pipefail: без него код шага — код tee (0), и упавшие тесты не валили задание (16.11: 35 упавших — «зелёный»)
         run: |
+          set -o pipefail
           pytest -q -rs --cov=gas_pult --cov-report=term:skip-covered | tee browser.log
           ! grep -E "SKIPPED.*(playwright|браузер|chromium)" browser.log
 
