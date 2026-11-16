@@ -8054,6 +8054,7 @@ function simpleDemoHist() {
 paintIcons();
 applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
+afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", fitViewport); }
 fitViewport();
 window.visualViewport?.addEventListener("resize", fitViewport);
