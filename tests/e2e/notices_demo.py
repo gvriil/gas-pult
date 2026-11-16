@@ -29,6 +29,8 @@ FAKE_KB = """(() => {
                removeEventListener: et.removeEventListener.bind(et), dispatchEvent: et.dispatchEvent.bind(et) };
   Object.defineProperty(window, "visualViewport", { get: () => vv, configurable: true });
   window.__kb = (px) => { kb = px; et.dispatchEvent(new Event("resize")); };
+  // как на телефоне: фокус ушёл из поля (нажали кнопку) — клавиатура закрылась
+  document.addEventListener("focusout", () => { if (kb) window.__kb(0); });
 })();"""
 
 # Показать всё всплывающее разом. Что появляется само (новая версия, тур, полоса демо), — ждём; что зависит от времени
@@ -135,7 +137,8 @@ def run(base: str, shots: str = ""):
                         pg.wait_for_timeout(300)
                         r = pg.evaluate(RECTS, [".help-bg"])
                         assert r[".help-bg"], f"{where}: шторка помощника не открылась"
-                        check(pg, mode, where + " + помощник", bool(kb))
+                        kb_now = pg.evaluate("document.documentElement.classList.contains('kb')")
+                        check(pg, mode, where + " + помощник", kb_now)
                         if shots:
                             pg.screenshot(path=f"{shots}/notices-{mode}-{w}-{theme}{'-kb' if kb else ''}-help.png")
                         pg.close()
