@@ -41,7 +41,7 @@
      Поэтому поле ввода и кнопки внизу стоят на месте при любой прокрутке, «резинке» и открытой клавиатуре.
      Высота = видимая область без клавиатуры (--app-h из visualViewport, fitViewport()). contain: layout делает body
      опорой для position: fixed — нижняя панель встаёт ровно над клавиатурой, а не за ней. */
-  html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  html { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg-canvas); }
   body { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: var(--app-h, 100%); overflow: hidden; contain: layout;
          margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
          font: calc(15px * var(--fz, 1))/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -2417,8 +2417,13 @@ $("input").addEventListener("focus", () => setBars(true));
 // Каркас — ровно в видимой части экрана. iOS не сжимает страницу под клавиатуру, а сдвигает её, и поле ввода «ездит»
 // вместе с лентой; Android и Telegram сжимают сами. Высота и верх — из visualViewport, класс .kb — клавиатура открыта.
 let fullH = 0, fullW = 0;
+// фокус в поле — клавиатура может быть открыта; нет фокуса — её нет
+const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); };
 function fitViewport() {
-  const v = window.visualViewport, h = v ? v.height : innerHeight, root = document.documentElement;
+  const v = window.visualViewport, root = document.documentElement;
+  // iOS: после клавиатуры visualViewport бывает «с клавиатурой» и молчит — внизу белая треть (16.11); innerHeight
+  // iOS под клавиатуру не уменьшает — без фокуса берём большую высоту
+  const h = !v ? innerHeight : typing() ? v.height : Math.max(v.height, innerHeight);
   if (innerWidth !== fullW) { fullW = innerWidth; fullH = 0; }          // повернули экран — меряем заново
   fullH = Math.max(fullH, h);
   root.style.setProperty("--app-h", h + "px");
@@ -8093,6 +8098,8 @@ if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (
 fitViewport();
 window.visualViewport?.addEventListener("resize", fitViewport);
 window.visualViewport?.addEventListener("scroll", fitViewport);
+// клавиатура уходит с анимацией — пересчёт ещё несколько раз
+document.addEventListener("focusout", () => { for (const ms of [50, 250, 600, 1200]) setTimeout(fitViewport, ms); });
 addEventListener("resize", fitViewport);
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
 wideMQ.addEventListener?.("change", () => { show(view); refresh(); });
