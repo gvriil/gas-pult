@@ -2569,7 +2569,6 @@ function setHTML(el, html) {
   return true;
 }
 function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
-function setHidden(el, on) { if (el.hidden !== on) el.hidden = on; }
 function morph(box, html) {                           // → новые узлы (вставленные и заменённые) — для дообработки
   const t = document.createElement("template"); t.innerHTML = html;
   const old = new Map(), fresh = [], seen = {};
@@ -2933,8 +2932,7 @@ function limitsLine(L) {
   const one = (k, name) => x[k] ? `<span class="${x[k].used >= 80 ? "warn" : ""}" title="Лимит подписки: использовано за ${name}; ↻ — когда обнулится">${name} ${x[k].used}%${resetAt(x[k].resets_at)}</span>` : "";
   return one("five_hour", "5 ч") + one("seven_day", "неделя");
 }
-const tok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n || 0));
-function usageLine(u) {                                // как нижняя строка самого Pi: ↑ ввод, ↓ вывод, $ за сессию
+function usageLine(u) {                                // как у Pi: ↑ ввод, ↓ вывод, $; tok() — из раздела «расход»
   if (!u) return "";
   return `<span title="Токены за сессию: ↑ отправлено модели, ↓ получено; R — из кэша">↑${tok(u.in)} ↓${tok(u.out)}${u.read ? " R" + tok(u.read) : ""}</span>`
     + (u.cost ? `<span title="Расход за сессию по ценам поставщика">$${u.cost.toFixed(3)}</span>` : "")
