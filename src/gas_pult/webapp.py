@@ -48,6 +48,7 @@ from gas_pult import (
     ago,
     asr,
     balance,
+    bridge,
     chat_trash,
     country,
     ctxsnap,
@@ -157,6 +158,22 @@ def upload_log(n: int, secs: float, src: str) -> str:
             f"{src or 'неизвестно'}")
     print(line, flush=True)
     return line
+
+
+def bridge_local_token(data: Path) -> str:
+    """Секрет для ``/api/bridge/rpc``: файл ``bridge-local.token`` (0600) в папке данных — его читают только процессы
+    пульта (``gas-pult bridge-mcp``); нет — создаём."""
+    f = Path(data) / "bridge-local.token"
+    try:
+        t = f.read_text(encoding="utf-8").strip()
+        if t:
+            return t
+    except OSError:
+        pass
+    from gas_pult.config import write_private
+    t = secrets.token_urlsafe(32)
+    write_private(f, t)
+    return t
 
 
 def desktop_up(port: int = DESKTOP_PORT) -> bool:
@@ -347,6 +364,8 @@ class Panel:
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
+        self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
+        self.hub = bridge.Hub()
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
@@ -2800,7 +2819,8 @@ SW_JS = """self.addEventListener("notificationclick", (e) => {
 
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
 TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
-OWNER_ONLY = {"/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
+OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke",
+              "/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
               "/api/people", "/api/people/role", "/api/people/remove", "/api/fallback", "/api/team",
@@ -3255,6 +3275,8 @@ def handler(panel: Panel):
             q = dict(urllib.parse.parse_qsl(url.query))
             if url.path == STT_STREAM:                   # WebSocket: вход — первым сообщением, не заголовком
                 return self.stt_stream()
+            if url.path == "/api/bridge/ws":             # мост к браузеру пользователя: токен — в подпротоколе
+                return self.bridge_ws()
             if url.path == "/api/login/tg":              # браузер ждёт подтверждения из Telegram (по своему rid)
                 return self.dispatch(lambda: self.tg_poll(q))
             if url.path == "/api/login/methods":         # экран входа: какие способы включены на этом пульте
@@ -3389,6 +3411,9 @@ def handler(panel: Panel):
                 return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
+            if path == "/api/bridge/devices":            # компьютеры с мостом к браузеру (только владелец)
+                on = set(panel.hub.online())
+                return {"devices": [{**d, "online": d["id"] in on} for d in panel.devices.listing()]}
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
@@ -3467,6 +3492,12 @@ def handler(panel: Panel):
 
         def do_POST(self):
             path = urllib.parse.urlparse(self.path).path
+            if path == "/api/bridge/claim":             # мост: одноразовый код из панели → токен устройства
+                return self.dispatch(self.bridge_claim)
+            if path == "/api/bridge/rpc":               # агент (gas-pult bridge-mcp) → мост; секрет — файл 0600
+                return self.dispatch(self.bridge_rpc)
+            if path == "/api/bridge/code":              # код пары из командной строки сервера (тот же секрет)
+                return self.dispatch(self.bridge_code)
             if path == "/api/login/start":
                 return self.dispatch(lambda: {"id": panel.login_start(*self.client())})
             if path == "/api/login/verify":
@@ -3496,6 +3527,51 @@ def handler(panel: Panel):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             with panel.tmux.scope(self.space()):
                 self.dispatch(lambda: self.post(path))
+
+        def bridge_claim(self):
+            b = json.loads(self.body() or b"{}")
+            return panel.devices.claim(b.get("code", ""), b.get("name", ""), b.get("os", ""))
+
+        def bridge_rpc(self):
+            if not secrets.compare_digest(self.headers.get("X-GP-Local", ""), bridge_local_token(panel.cfg.data)):
+                self.json({"error": "нет доступа"}, 403)
+                return SENT
+            b = json.loads(self.body() or b"{}")
+            return panel.hub.call(b.get("msg") or {}, str(b.get("device") or "")) or {"ok": True}
+
+        def bridge_code(self):
+            if not secrets.compare_digest(self.headers.get("X-GP-Local", ""), bridge_local_token(panel.cfg.data)):
+                self.json({"error": "нет доступа"}, 403)
+                return SENT
+            return panel.devices.pair_code()
+
+        def bridge_ws(self):
+            """Мост держит соединение: запросы агентов (JSON-RPC MCP) идут ему, ответы — обратно (``bridge.Hub``)."""
+            key = wsock.accept(self.headers)
+            if not key:
+                return self.json({"error": "нужен WebSocket"}, 400)
+            protos = [x.strip() for x in self.headers.get("Sec-WebSocket-Protocol", "").split(",")]
+            tok = next((x[4:] for x in protos if x.startswith("gpb-")), "")
+            dev = panel.devices.check(tok)
+            if not dev:
+                return self.json({"error": "устройство не подключено или отозвано"}, 401)
+            self.close_connection = True
+            self.wfile.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                              f"Sec-WebSocket-Accept: {key}\r\nSec-WebSocket-Protocol: gpb-{tok}\r\n\r\n").encode())
+            self.connection.settimeout(120)
+            ws = wsock.Conn(self.rfile, self.wfile)
+            panel.hub.attach(dev["id"], ws)
+            panel.devices.seen(dev["id"])
+            try:
+                while True:
+                    op, data = ws.recv()
+                    if op == wsock.TEXT:
+                        panel.hub.on_message(dev["id"], data)
+            except (wsock.Closed, wsock.ProtocolError, OSError, ValueError):
+                pass
+            finally:
+                panel.hub.detach(dev["id"], ws)
+                ws.close()
 
         def stt_stream(self):
             """Голос потоком (задача 46): звук PCM 16 бит из панели → служба T-one → частичный текст обратно.
@@ -4130,6 +4206,10 @@ def handler(panel: Panel):
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))
+            if path == "/api/bridge/pair":               # одноразовый код пары (10 мин) для моста на компьютере
+                return panel.devices.pair_code()
+            if path == "/api/bridge/revoke":
+                return {"ok": panel.devices.revoke(str(b.get("id") or ""))}
             if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
