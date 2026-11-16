@@ -132,7 +132,7 @@ def test_tools_list(env):
     (r,) = rpc([("tools/list", {})], env)
     names = [t["name"] for t in r["result"]["tools"]]
     assert names == ["tgbiz_list_messages", "tgbiz_list_connections", "tgbiz_get_connection", "tgbiz_get_bot",
-                     "tgbiz_propose_reply", "tgbiz_apply"]
+                     "tgbiz_propose_reply", "tgbiz_propose_note", "tgbiz_apply"]
     assert all("fn" not in t and t["description"] for t in r["result"]["tools"])
 
 
@@ -251,3 +251,47 @@ def test_propose_validates(env):
     r1, r2 = rpc([call("tgbiz_propose_reply", {"connection_id": "BCtestAAAA0001", "chat_id": 1, "text": ""}),
                   call("tgbiz_propose_reply", {"connection_id": "a b", "chat_id": 1, "text": "x"})], env)
     assert "1 до 4096" in err(r1) and "connection_id" in err(r2) and not Fake.seen
+
+
+def test_note_local_without_notion(env, tmp_path):
+    """Владелец 16.11: «бот оставляет заметки». Notion не настроен — заметка в локальный файл и напоминание."""
+    home = tmp_path / "home"
+    e = env | {"HOME": str(home), "GAS_NOTION_KEY_FILE": str(tmp_path / "нет.token")}
+    (r,) = rpc([call("tgbiz_propose_note", {"text": "Пётр: оплата до пятницы\nсумма 12 000", "source": "чат 7770001",
+                                            "tags": ["оплата"]})], e)
+    d = body(r)
+    assert d["params"]["title"] == "Пётр: оплата до пятницы" and "локальный файл" in d["summary"]
+    (a1,) = rpc([call("tgbiz_apply", {"id": d["id"]})], e | {"GAS_TGBIZ_WRITE": "1"})
+    assert "нет подтверждения" in err(a1)                               # без человека — ничего не сохранено
+    assert not (home / ".local/state/gas-pult/notes").exists()
+    confirm(e, d["id"])
+    (a2,) = rpc([call("tgbiz_apply", {"id": d["id"]})], e | {"GAS_TGBIZ_WRITE": "1"})
+    done = body(a2)
+    assert done["saved"] == "local" and "notion.token" in done["remind"]
+    text = Path(done["path"]).read_text(encoding="utf-8")
+    assert "Пётр: оплата до пятницы" in text and "сумма 12 000" in text and "Источник: чат 7770001" in text
+    assert oct(Path(done["path"]).stat().st_mode)[-3:] == "600"
+
+
+def test_note_to_notion_and_fallback(tmp_path, monkeypatch):
+    from gas_pult.connectors import _core
+    tok = tmp_path / "notion.token"
+    tok.write_text("ntn_" + "x" * 40)
+    db = "0123456789abcdef0123456789abcdef"
+    monkeypatch.setenv("GAS_NOTION_KEY_FILE", str(tok))
+    monkeypatch.setenv("GAS_NOTION_NOTES_DB", db)
+    monkeypatch.setattr(tgbiz_mcp, "NOTES_DIR", tmp_path / "notes")
+    sent = []
+    monkeypatch.setattr(_core, "http", lambda m, url, **k: sent.append((m, url, k)) or {"url": "https://notion.so/x"})
+    out = tgbiz_mcp._save_note({"title": "Встреча", "text": "Вторник 10:00", "source": "", "tags": []})
+    assert out == {"saved": "notion", "url": "https://notion.so/x"}
+    m, url, k = sent[0]
+    assert m == "POST" and url.endswith("/v1/pages") and k["body"]["parent"] == {"database_id": db}
+    assert k["headers"]["Notion-Version"]
+    assert k["body"]["properties"]["Name"]["title"][0]["text"]["content"] == "Встреча"
+
+    def fail(*a, **k):
+        raise _core.ToolError("Notion: 401")
+    monkeypatch.setattr(_core, "http", fail)                            # Notion не принял — заметка не теряется
+    out = tgbiz_mcp._save_note({"title": "Звонок", "text": "перезвонить", "source": "", "tags": []})
+    assert out["saved"] == "local" and "401" in out["warning"] and "перезвонить" in Path(out["path"]).read_text()
