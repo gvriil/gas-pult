@@ -86,6 +86,6 @@ Telegram: около 30 сообщений в секунду на бота, в �
   "env": {"GAS_TGBIZ_KEY_FILE": "{secrets}/tg-business-bot.token"},
   "auth": {"kind": "file", "file": "tg-business-bot.token", "keepass": "mcp/tgbiz",
            "get_key": "@BotFather → новый бот → токен; Telegram → Настройки → Telegram для бизнеса → Чат-боты"},
-  "purpose": "Telegram Business: входящие рабочих чатов — чтение; ответ — через подтверждение (gas-pult PR #N)"
+  "purpose": "Telegram Business: входящие рабочих чатов — чтение; ответ — через подтверждение (gas-pult PR #244)"
 }
 ```
