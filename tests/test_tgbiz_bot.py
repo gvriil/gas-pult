@@ -57,7 +57,7 @@ def test_poll_offset_journal_and_owner_commands(state):
     assert bot.poll() == 3 and bot.offset == 13
     assert [u["update_id"] for u in tgbiz_bot.read()] == [10, 11, 12]          # всё — в журнал
     assert notes == [{"title": "Пётр платит в пятницу", "text": "Пётр платит в пятницу\n12 000",
-                      "source": "команда владельца в боте", "tags": []}]
+                      "source": "команда владельца в боте", "tags": [], "origin": "Личка бота"}]
     assert [c for c, _ in api.sent] == [OWNER] and "Сохранил заметку в файл" in api.sent[0][1]   # чужому — тишина
     bot.poll()
     assert api.calls[-1][1]["offset"] == 13 and tgbiz_bot.alive()

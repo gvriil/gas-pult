@@ -282,6 +282,7 @@ def test_note_to_notion_and_fallback(tmp_path, monkeypatch):
     monkeypatch.setenv("GAS_NOTION_KEY_FILE", str(tok))
     monkeypatch.setenv("GAS_NOTION_NOTES_DB", db)
     monkeypatch.setattr(tgbiz_mcp, "NOTES_DIR", tmp_path / "notes")
+    monkeypatch.setattr(tgbiz_mcp, "_SCHEMA", {db: {"Name": {"type": "title", "title": {}}}})
     sent = []
     monkeypatch.setattr(_core, "http", lambda m, url, **k: sent.append((m, url, k)) or {"url": "https://notion.so/x"})
     out = tgbiz_mcp._save_note({"title": "Встреча", "text": "Вторник 10:00", "source": "", "tags": []})
@@ -296,3 +297,37 @@ def test_note_to_notion_and_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(_core, "http", fail)                            # Notion не принял — заметка не теряется
     out = tgbiz_mcp._save_note({"title": "Звонок", "text": "перезвонить", "source": "", "tags": []})
     assert out["saved"] == "local" and "401" in out["warning"] and "перезвонить" in Path(out["path"]).read_text()
+
+
+def test_note_fields_follow_database_schema(tmp_path, monkeypatch):
+    """База «Заметки (бот GASTECH Business)», штаб 16.11: заголовок «Заметка», «Текст», «Откуда», «Метки», «Ссылка»."""
+    from gas_pult.connectors import _core
+    tok = tmp_path / "notion.token"
+    tok.write_text("ntn_" + "y" * 40)
+    db = "fedcba9876543210fedcba9876543210"
+    monkeypatch.setenv("GAS_NOTION_KEY_FILE", str(tok))
+    monkeypatch.setenv("GAS_NOTION_NOTES_DB", db)
+    monkeypatch.setattr(tgbiz_mcp, "_SCHEMA", {})
+    schema = {"Заметка": {"type": "title", "title": {}}, "Текст": {"type": "rich_text", "rich_text": {}},
+              "Откуда": {"type": "select", "select": {"options": [{"name": "Личка бота"}, {"name": "Голос"}]}},
+              "Метки": {"type": "multi_select", "multi_select": {"options": [{"name": "задача"}, {"name": "идея"}]}},
+              "Ссылка": {"type": "url", "url": {}}, "Создано": {"type": "created_time", "created_time": {}}}
+    sent = []
+
+    def http(m, url, **k):
+        sent.append((m, url, k))
+        return {"properties": schema} if m == "GET" else {"url": "https://notion.so/n"}
+    monkeypatch.setattr(_core, "http", http)
+    for _ in range(2):
+        tgbiz_mcp._save_note({"title": "Позвонить Петру", "text": "Позвонить Петру #задача #чужая",
+                              "source": "бот", "tags": ["задача", "чужая"], "origin": "Личка бота",
+                              "link": "https://t.me/c/1/2"})
+    assert [m for m, *_ in sent] == ["GET", "POST", "POST"]                 # схема — один раз
+    pr = sent[1][2]["body"]["properties"]
+    assert pr["Заметка"]["title"][0]["text"]["content"] == "Позвонить Петру" and "Name" not in pr
+    assert pr["Текст"]["rich_text"][0]["text"]["content"].startswith("Позвонить Петру")
+    assert pr["Откуда"] == {"select": {"name": "Личка бота"}}
+    assert pr["Метки"] == {"multi_select": [{"name": "задача"}]}                # чужой метки в базе нет — не шлём
+    assert pr["Ссылка"] == {"url": "https://t.me/c/1/2"} and "Создано" not in pr
+    tgbiz_mcp._save_note({"title": "x", "text": "x", "source": "", "tags": [], "origin": "Неизвестно"})
+    assert "Откуда" not in sent[-1][2]["body"]["properties"]                   # нет такого варианта — поле пустое
