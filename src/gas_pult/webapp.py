@@ -3495,7 +3495,8 @@ def handler(panel: Panel):
                 return {"text": harness.of(w).last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
             if path == "/api/screen":
                 lines = panel.tmux.screen(w["id"], 60)
-                return {"lines": lines[-40:], "auth": find_auth(lines), "login": self.login_of(w, lines)}
+                return {"lines": lines[-40:], "auth": find_auth(lines), "login": self.login_of(w, lines),
+                        "ask": humanize.parse(lines, target=True)}     # карточка инструмента (#258), добавлено
             if path == "/api/ask":                        # простой режим: вопрос Claude простыми словами и чипы
                 return {"ask": humanize.parse(panel.tmux.screen(w["id"], 60))}
             if path == "/api/hint":

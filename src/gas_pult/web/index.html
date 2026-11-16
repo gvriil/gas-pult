@@ -4324,7 +4324,7 @@ async function loadContent() {
   try {
     if (tab === "chat") histLoading = true;           // опрос (liveChat) не дублирует эту загрузку
     const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]).finally(() => { histLoading = false; });
-    renderAsk(scr.lines, scr.auth); loginNotice(scr.login, current);
+    renderAsk(scr.lines, scr.auth, scr.ask); loginNotice(scr.login, current);
     $("keys").hidden = tab !== "screen";                    // клавиши — на «Экране»; в переписке вопрос — карточкой
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
@@ -4893,8 +4893,12 @@ function setAsk(html, key = html) {
   if (box.dataset.key !== key) { box.innerHTML = html; box.dataset.key = key; }
   padDock();
 }
-function renderAsk(lines, auth) {
+function renderAsk(lines, auth, ask) {
   if (auth?.paste) { if (!$("authUrl")) setAsk(authCard(auth)); return; }
+  if (ask?.target !== undefined && !SIM.on) {         // разрешение инструмента — карточка «Да / Нет» (#258, js/toolcard.js)
+    const h = window.toolCard?.(ask); if (h) return setAsk(h, "tc" + ask.sig);
+    if (!window.toolCard) part("toolcard").then(() => renderAsk(lines, auth, ask)).catch(() => {});
+  }
   const opts = [], re = /^\s*(❯)?\s*(\d+)\.\s+(.+?)\s*$/;
   let end = -1;
   for (let i = lines.length - 1; i >= 0; i--) {

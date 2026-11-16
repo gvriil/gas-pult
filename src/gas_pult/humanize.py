@@ -216,6 +216,21 @@ def _details_chip() -> dict:
             "note_ru": "", "note_en": ""}
 
 
+TARGET_KINDS = ("bash", "edit", "create", "overwrite", "notebook", "fetch", "search", "mcp", "read")
+
+
+def _target(kind: str, above: list[str], q: str) -> str:
+    """Что именно хочет сделать агент — для карточки инструмента в ленте (#258): команда, файл, адрес, инструмент MCP.
+    Правка и создание — имя файла из вопроса; остальное — строки между заголовком диалога и вопросом (до 6 строк)."""
+    if kind in ("edit", "create", "overwrite", "notebook"):
+        m = re.search(r"(?:edit to|create|overwrite|write to)\s+(.+?)\?$", q, re.I)
+        return m.group(1).strip()[:300] if m else ""
+    rx = next((r for k, _, r in DIALOGS if k == kind), None)
+    head = next((i for i in range(len(above) - 1, -1, -1) if rx and rx.search(above[i])), -1)
+    body = [x for x in above[head + 1:] if x and not QUESTION.search(x)] if head >= 0 else []
+    return "\n".join(body[:6])[:500]
+
+
 def _result(kind: str, options: list[dict], known: bool = True, title: str | None = None) -> dict:
     t = text(f"ask.{kind}.title") if title is None else {"ru": title, "en": title}
     d = text(f"ask.{kind}.detail")
@@ -240,8 +255,9 @@ def unknown(opts: list[dict] | None = None) -> dict:
         _details_chip()], known=False)
 
 
-def parse(lines: list[str] | str) -> dict | None:
-    """Экран окна Claude Code → вопрос простыми словами или None (вопроса на экране нет)."""
+def parse(lines: list[str] | str, target: bool = False) -> dict | None:
+    """Экран окна Claude Code → вопрос простыми словами или None (вопроса на экране нет). ``target`` — добавить, что
+    именно хочет сделать агент (команда, файл): только для режима кода (#258); в простом режиме имён файлов нет."""
     raw = lines.splitlines() if isinstance(lines, str) else list(lines)
     tail = [tidy(x) for x in raw[-45:]]
     while tail and not tail[-1]:
@@ -276,7 +292,10 @@ def parse(lines: list[str] | str) -> dict | None:
         return unknown(opts)
     if kind == "question" and q:
         return _result("question", chips, title=q)       # вопрос написала модель — оставляем как есть
-    return _result(kind, chips)
+    out = _result(kind, chips)
+    if target and kind in TARGET_KINDS:                  # что именно: команда, файл, адрес (режим кода, #258)
+        out["target"] = _target(kind, above, q)
+    return out
 
 
 # Ответ в журнале — это служебная строка Claude Code, а не текст агента, если начинается так (для переписки: обычный

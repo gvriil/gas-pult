@@ -415,6 +415,7 @@ function demoApi(path, body) {
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === "demo0000-" + demoApi.h.length ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
     if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;
+    if (body.go) demoApi.toolDone = true;            // карточка инструмента (#258) — вопрос закрыт
     if (body.go) return Promise.resolve({ lines: screen.splice(0, screen.length, "● Bash(npm run build)", "  ⎿  готово", "", "❯ ") && screen });
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
@@ -470,7 +471,10 @@ function demoApi(path, body) {
   }
   if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null,
-    login: decodeURIComponent(path).includes("@1") ? DEMO_LOGIN[params.get("login")] || null : null });
+    login: decodeURIComponent(path).includes("@1") ? DEMO_LOGIN[params.get("login")] || null : null,
+    // ?tool=bash — карточка инструмента (#258): разбор как с сервера и команда в target
+    ask: decodeURIComponent(path).includes("@2") && SIMPLE_DEMO[params.get("tool")] && !demoApi.toolDone
+      ? { ...SIMPLE_DEMO[params.get("tool")], target: "rm -rf build && npm run build\nClean and rebuild the project" } : null });
   if (key === "/api/login/code") { demoApi.loginCode = body?.code || ""; return Promise.resolve({ ok: true }); }
   if (key === "/api/login/check") return Promise.resolve(demoApi.loginCode ? { ok: true, text: "вход выполнен", login: null } : { ok: false, text: "окно всё ещё просит войти" });
   if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true, invite: true });
