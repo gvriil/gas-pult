@@ -222,9 +222,83 @@ def propose_reply(a: dict):
                          f"ответ в Telegram от имени {c['owner']['name'] or 'владельца'} в чат {chat}: «{preview}»")
 
 
+# ---------- заметки (владелец 16.11: «бот оставляет заметки» — договорённости из переписки и по команде) ----------
+# Куда: Notion — токен внутренней интеграции ``~/.config/gastech-mcp/notion.token`` (``GAS_NOTION_KEY_FILE``) и id базы
+# заметок ``~/.config/gastech-mcp/notion-notes.db`` одной строкой (``GAS_NOTION_NOTES_DB``); нет чего-то — локальный
+# файл ``~/.local/state/gas-pult/notes/ГГГГ-ММ-ДД.md`` и в ответе — что положить, чтобы заметки шли в Notion.
+NOTES_DIR = _core.Path.home() / ".local/state/gas-pult/notes"
+_DB = re.compile(r"^[0-9a-fA-F-]{32,36}$")
+
+
+def _notion() -> tuple[str, str]:
+    """(токен, id базы) Notion; чего-то нет — «»."""
+    os.environ.setdefault("GAS_NOTION_KEY_FILE", str(_core.SECRETS_DIR / "notion.token"))
+    try:
+        tok = _core.read_secret("notion").strip()
+    except _core.ToolError:
+        tok = ""
+    db = os.environ.get("GAS_NOTION_NOTES_DB", "")
+    if not db:
+        try:
+            db = (_core.SECRETS_DIR / "notion-notes.db").read_text(encoding="utf-8").strip()
+        except OSError:
+            db = ""
+    return tok, (db if _DB.match(db) else "")
+
+
+def propose_note(a: dict):
+    """Черновик заметки: что договорились, кто, откуда. Сам ничего не сохраняет — человек подтверждает, затем apply."""
+    text = str(a.get("text") or "").strip()
+    if not 1 <= len(text) <= 2000:
+        raise _core.ToolError("text: от 1 до 2000 символов")
+    title = (str(a.get("title") or "").strip() or text.splitlines()[0])[:120]
+    params = {"title": title, "text": text, "source": str(a.get("source") or "")[:300],
+              "tags": [str(t)[:40] for t in (a.get("tags") or [])][:5]}
+    tok, db = _notion()
+    where = "в Notion" if tok and db else "в локальный файл (Notion не настроен)"
+    return _core.propose(SVC, "note", params, f"заметка {where}: «{title}»")
+
+
+def _save_note(p: dict) -> dict:
+    tok, db = _notion()
+    if tok and db:
+        props = {"Name": {"title": [{"text": {"content": p["title"]}}]}}
+        blocks = [{"object": "block", "type": "paragraph",
+                   "paragraph": {"rich_text": [{"type": "text", "text": {"content": p["text"]}}]}}]
+        if p.get("source"):
+            src = [{"type": "text", "text": {"content": "Источник: " + p["source"]}}]
+            blocks.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": src}})
+        try:
+            r = _core.http("POST", f"{_core.base_url('notion', 'https://api.notion.com')}/v1/pages", body={
+                "parent": {"database_id": db}, "properties": props, "children": blocks},
+                headers={"Authorization": f"Bearer {tok}", "Notion-Version": "2022-06-28"}, keys=[tok],
+                service="Notion")
+            return {"saved": "notion", "url": (r or {}).get("url", "")}
+        except _core.ToolError as e:                   # Notion не принял — заметка не теряется: в файл
+            local = _note_file(p)
+            return {"saved": "local", "path": str(local), "warning": _core.hide(str(e), tok)[:200]}
+    local = _note_file(p)
+    return {"saved": "local", "path": str(local),
+            "remind": "чтобы заметки шли в Notion: токен внутренней интеграции — в ~/.config/gastech-mcp/notion.token "
+                      "(0600), id базы заметок — в ~/.config/gastech-mcp/notion-notes.db; базу — открыть интеграции"}
+
+
+def _note_file(p: dict):
+    NOTES_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    f = NOTES_DIR / f"{time.strftime('%Y-%m-%d')}.md"
+    with open(f, "a", encoding="utf-8") as fh:
+        fh.write(f"\n## {time.strftime('%H:%M')} · {p['title']}\n\n{p['text']}\n"
+                 + (f"\nИсточник: {p['source']}\n" if p.get("source") else "")
+                 + (f"Метки: {', '.join(p['tags'])}\n" if p.get("tags") else ""))
+    f.chmod(0o600)
+    return f
+
+
 def apply(a: dict):
     rec = _core.take_confirmed(SVC, a.get("id", ""))
     p = rec["params"]
+    if rec["action"] == "note":
+        return {"done": rec["summary"], **_save_note(p)}
     body = {"business_connection_id": p["connection_id"], "chat_id": p["chat_id"], "text": p["text"]}
     if p.get("reply_to"):
         body["reply_parameters"] = {"message_id": p["reply_to"], "allow_sending_without_reply": True}
@@ -270,9 +344,20 @@ SERVER = {
              "reply_to": {"type": "integer", "description": "message_id, на который ответ"}},
              "required": ["connection_id", "chat_id", "text"]},
          "fn": propose_reply},
+        {"name": f"{SVC}_propose_note",
+         "description": "Черновик заметки: договорённость из переписки или по команде владельца (что, кто, срок). "
+                        "Сохраняет tgbiz_apply после подтверждения человека — в Notion (если настроен) или в "
+                        "локальный файл заметок.",
+         "inputSchema": _OBJ | {"properties": {
+             "text": {"type": "string", "description": "1–2000 символов"},
+             "title": {"type": "string", "description": "коротко; нет — первая строка текста"},
+             "source": {"type": "string", "description": "откуда: чат, сообщение, дата"},
+             "tags": {"type": "array", "items": {"type": "string"}}},
+             "required": ["text"]},
+         "fn": propose_note},
         {"name": f"{SVC}_apply",
-         "description": "Отправить ответ, подтверждённый человеком (id черновика). Без подтверждения и при "
-                        "GAS_TGBIZ_WRITE=0 — ошибка.",
+         "description": "Выполнить черновик, подтверждённый человеком (id): ответ клиенту или заметку. Без "
+                        "подтверждения и при GAS_TGBIZ_WRITE=0 — ошибка.",
          "inputSchema": _OBJ | {"properties": {"id": {"type": "string"}}, "required": ["id"]},
          "fn": apply}],
 }
