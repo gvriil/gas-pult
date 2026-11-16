@@ -1,0 +1,4 @@
+{"_source": "Собрано по описанию типов Bot API 10.4 (Update, Message, BusinessConnection, BusinessBotRights, BusinessMessagesDeleted) — https://core.telegram.org/bots/api, сверено 16.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ЖИВОМ БОТЕ.",
+ "ok": true,
+ "result": {"id": "BCtestBBBB0002", "user": {"id": 5550002, "is_bot": false, "first_name": "Салон", "last_name": "Тестовый"},
+  "user_chat_id": 5550002, "date": 1763170800, "is_enabled": true, "rights": {"can_read_messages": true}}}

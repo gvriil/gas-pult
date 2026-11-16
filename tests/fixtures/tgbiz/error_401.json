@@ -1,0 +1,2 @@
+{"_source": "Собрано по описанию типов Bot API 10.4 (Update, Message, BusinessConnection, BusinessBotRights, BusinessMessagesDeleted) — https://core.telegram.org/bots/api, сверено 16.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ЖИВОМ БОТЕ.",
+ "ok": false, "error_code": 401, "description": "Unauthorized"}

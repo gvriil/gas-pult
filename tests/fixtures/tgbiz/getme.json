@@ -1,0 +1,5 @@
+{"_source": "Собрано по описанию типов Bot API 10.4 (Update, Message, BusinessConnection, BusinessBotRights, BusinessMessagesDeleted) — https://core.telegram.org/bots/api, сверено 16.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ЖИВОМ БОТЕ.",
+ "ok": true,
+ "result": {"id": 8880001, "is_bot": true, "first_name": "Пульт входящие (тест)", "username": "gas_inbox_test_bot",
+  "can_join_groups": false, "can_read_all_group_messages": false, "supports_inline_queries": false,
+  "can_connect_to_business": true, "has_main_web_app": false}}
