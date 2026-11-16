@@ -492,6 +492,18 @@ def own_window() -> tuple[str, str]:
     return (wid, name) if r.returncode == 0 and wid.startswith("@") else ("", "")
 
 
+def cmd_tgbiz(a):
+    """Служба ``gas-pult-tgbiz``: токен — файл коннектора (``~/.config/gastech-mcp/tg-business-bot.token``), владельцы —
+    ``owners`` пульта (только им бот отвечает в личке)."""
+    from gas_pult import tgbiz_bot
+    from gas_pult.connectors import tgbiz_mcp
+    try:
+        token = tgbiz_mcp._key()
+    except Exception as e:                                # нет файла или не токен — понятная ошибка, не трассировка
+        raise SystemExit(f"нет токена бота: {e}") from None
+    tgbiz_bot.run(token, config.load().owners)
+
+
 def cmd_pi(a):
     """Собрать добавку к системному промпту окон Pi: свод главных правил и оверлей модели → ``<конфиг>/pi/append.md``;
     пульт передаёт её Pi ключом ``--append-system-prompt`` при каждом запуске окна (новые окна и «Перезапустить»)."""
@@ -746,6 +758,9 @@ def main(argv: list[str] | None = None):
     s.add_argument("--all", action="store_true", help="list: и выполненные")
     s.add_argument("--by", default="", help="кто поставил (по умолчанию «агент · окно»)")
     s.set_defaults(fn=cmd_task)
+    s = sub.add_parser("tgbiz", help="служба бота Telegram Business: run — читать апдейты в журнал, команды владельца")
+    s.add_argument("action", choices=["run"])
+    s.set_defaults(fn=cmd_tgbiz)
     s = sub.add_parser("pi", help="Pi: overlay --from <папка профилей> [--model deepseek-v4] — добавка к промпту окон")
     s.add_argument("action", choices=["overlay"])
     s.add_argument("--from", dest="src", required=True, help="папка профилей моделей (_core-short.md, <модель>.md)")

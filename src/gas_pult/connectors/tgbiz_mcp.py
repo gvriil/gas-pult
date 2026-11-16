@@ -111,9 +111,35 @@ def _content(m: dict) -> str:
     return s if len(s) <= TEXT_MAX else s[:TEXT_MAX] + f"… (+{len(s) - TEXT_MAX} симв.)"
 
 
+STATE = _core.Path(os.environ.get("GAS_TGBIZ_STATE") or _core.Path.home() / ".local/state/gas-pult/tgbiz")
+
+
+def _journal() -> list[dict] | None:
+    """Журнал службы ``gas-pult-tgbiz`` (решение владельца 16.11: апдейты читает только она): работает (отметка свежее
+    2 мин) — бизнес-апдейты за 7 дней из журнала; не работает — None, читаем Telegram напрямую, как раньше."""
+    try:
+        if time.time() - (STATE / "alive").stat().st_mtime > 120:
+            return None
+        lines = (STATE / "updates.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    out = []
+    for ln in lines:
+        try:
+            u = json.loads(ln).get("update") or {}
+        except (ValueError, AttributeError):
+            continue
+        if any(k in u for k in BUSINESS_UPDATES):
+            out.append(u)
+    return out
+
+
 def _updates() -> list[dict]:
-    """Бизнес-апдейты из очереди Bot API **без подтверждения** (без offset): Telegram их не удаляет, их видит и
-    следующий вызов. Telegram хранит неподтверждённые апдейты до 24 ч и отдаёт не больше 100 самых старых."""
+    """Бизнес-апдейты: из журнала службы (она одна читает Telegram) или, если служба не запущена, из очереди Bot API
+    **без подтверждения** (без offset): Telegram их не удаляет и хранит до 24 ч, не больше 100 самых старых."""
+    j = _journal()
+    if j is not None:
+        return j
     res = _api("GET", "getUpdates", query={"limit": 100, "timeout": 0,
                                            "allowed_updates": json.dumps(BUSINESS_UPDATES)})
     return res if isinstance(res, list) else []
