@@ -418,16 +418,19 @@ class Panel:
             ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
             snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
             rev = harness.of(w).revision(w["path"], home, sid)
+            pi = self.pi_row(w, sid) if harness.of(w).name == "pi" else None   # окно Pi: своя строка и статус
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
-                        "status": "sleep" if w.get("sleep") else
+                        "status": "sleep" if w.get("sleep") else pi["status"] if pi else
                         "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
                         "sleep": bool(w.get("sleep")),                   # 💤 claude-sleep: первое сообщение разбудит
                         # свободно % контекста: снимок строки статуса, иначе — текст экрана (старый способ)
-                        "context": 100 - snap["used"] if snap and snap["used"] is not None
+                        "context": pi["context"] if pi else 100 - snap["used"] if snap and snap["used"] is not None
                         else int(ctx.group(1)) if ctx else None,
                         # на чём работает сессия: снимок строки статуса, «🤖 …» на экране, иначе — модель из журнала
-                        "model": (snap or {}).get("model") or (mdl.group(1).strip() if mdl
-                                                               else self.model_of(w["path"], rev, home, sid)),
+                        "model": pi["model"] if pi else (snap or {}).get("model") or (
+                            mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid)),
+                        "harness": harness.of(w).name if harness.is_agent(w) else "",     # какой агент (добавлено)
+                        "usage": pi["usage"] if pi else None,     # окно Pi: ↑↓ токены, $, контекст (добавлено)
                         "effort": (snap or {}).get("effort", ""),        # уровень усилий (добавлено)
                         "effort_guess": bool((snap or {}).get("effort_guess")),
                         "ctx_at": (snap or {}).get("at"),                # когда строка статуса обновлялась
@@ -466,6 +469,16 @@ class Panel:
             d = self.projects.sync(self.pult.projects(), wins, self.pult.state().get("add_dirs"))
             self._proj = (time.time(), d)
         return self._proj[1]
+
+    def pi_row(self, w: dict, sid: str) -> dict:
+        """Окно Pi: статус хода, модель «поставщик/модель», свободный контекст и расход — из журнала Pi (не из строки
+        статуса Claude Code и не лимиты подписки Claude)."""
+        f = harness.of(w).journal(w["path"], sid=sid)
+        st, u = pi_journal.status(f), pi_journal.usage(f)
+        busy = st["phase"] in ("started", "working", "thinking")
+        return {"status": "busy" if busy else "idle", "usage": u,
+                "model": f"{u['provider']}/{u['model']}" if u["model"] else harness.HARNESSES["pi"].MODEL,
+                "context": None if u["used"] is None else max(0, round(100 - u["used"]))}
 
     def chat_title(self, d: dict, path: str, home, sid: str) -> str:
         """Название чата окна: своё (``projects.json``) → ``summary`` журнала → первое сообщение человека."""

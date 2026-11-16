@@ -117,6 +117,24 @@ def session_arg(argv: list[str]) -> str:
     return ""
 
 
+def overlay_block(text: str) -> str:
+    """Блок между ``<!-- overlay -->`` и ``<!-- /overlay -->`` (профили моделей); нет закрывающей — до конца."""
+    m = re.search(r"<!-- overlay -->\n?(.*?)(?:<!-- /overlay -->|\Z)", text, re.S)
+    return (m.group(1) if m else text).strip()
+
+
+def compose_overlay(src: Path, model: str) -> str:
+    """Свод главных правил (``_core-short.md``) первым, затем оверлей модели (``<model>.md``)."""
+    parts = []
+    for name in ("_core-short.md", f"{model}.md"):
+        f = Path(src) / name
+        if f.is_file():
+            parts.append(overlay_block(f.read_text(encoding="utf-8")))
+    if not parts:
+        raise ValueError(f"нет ни _core-short.md, ни {model}.md в {src}")
+    return "\n\n".join(parts) + "\n"
+
+
 TOOLS = {"bash": "Bash", "read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "find": "Glob",
          "ls": "Bash"}
 
@@ -190,3 +208,47 @@ def answers_at(f: Path) -> list[tuple[float, str]]:
                 out.append((activity.stamp(e.get("timestamp", "")), "\n\n".join(cur)))
                 cur = []
     return out
+
+
+_windows: dict[str, int] = {}
+
+
+def window_of(provider: str, model: str, store: Path | None = None) -> int:
+    """Окно модели (токены) из каталога Pi ``~/.pi/agent/models-store.json``; нет — 0."""
+    key = f"{provider}/{model}"
+    if key in _windows:
+        return _windows[key]
+    try:
+        d = json.loads((store or ROOT.parent / "models-store.json").read_text(encoding="utf-8"))
+        ms = (d.get(provider) or {}).get("models") or []
+        ms = ms.values() if isinstance(ms, dict) else ms
+        ms = [m for m in ms if isinstance(m, dict)]
+        bare = lambda x: re.sub(r"v\d+(?:\.\d+)?-", "", str(x))          # noqa: E731 — deepseek-v4-flash ≈ deepseek-flash
+        w = next((int(m.get("contextWindow") or 0) for m in ms if m.get("id") == model), 0) or \
+            next((int(m.get("contextWindow") or 0) for m in ms if bare(m.get("id")) == bare(model)), 0)
+    except (OSError, ValueError, TypeError, AttributeError):
+        w = 0
+    _windows[key] = w
+    return w
+
+
+def usage(f: Path | None, store: Path | None = None) -> dict:
+    """Нижняя строка окна Pi — как считает сам Pi (footer.js): ↑ сумма input, ↓ сумма output, R — cacheRead, $ — сумма
+    cost.total; контекст — последний запрос к модели (input + cacheRead + cacheWrite + output) / окно модели."""
+    from gas_pult import activity
+    tot = {"in": 0, "out": 0, "read": 0, "write": 0, "cost": 0.0}
+    last, provider, model, at = 0, "", "", 0.0
+    for e in _rows(f) if f else ():
+        m = e["message"]
+        if m.get("role") != "assistant" or not isinstance(m.get("usage"), dict):
+            continue
+        u = m["usage"]
+        for k, src in (("in", "input"), ("out", "output"), ("read", "cacheRead"), ("write", "cacheWrite")):
+            tot[k] += int(u.get(src) or 0)
+        tot["cost"] += float((u.get("cost") or {}).get("total") or 0)
+        last = sum(int(u.get(k) or 0) for k in ("input", "cacheRead", "cacheWrite", "output"))
+        provider, model = str(m.get("provider") or provider), str(m.get("model") or model)
+        at = activity.stamp(e.get("timestamp", "")) or at
+    win = window_of(provider, model, store) if model else 0
+    return {**tot, "cost": round(tot["cost"], 4), "ctx": last, "window": win,
+            "used": round(last * 100 / win, 1) if win else None, "provider": provider, "model": model, "at": at}
