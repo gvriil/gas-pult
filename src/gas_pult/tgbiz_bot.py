@@ -224,8 +224,9 @@ class Bot:
                 body = text[len(cmd):].strip()
                 if not body:
                     return self.reply(chat, "Напишите текст после /заметка, например: /заметка Пётр платит в пт")
+                tags = [w[1:].lower() for w in body.split() if w.startswith("#")]        # #задача, #идея — в «Метки»
                 p = {"title": body.splitlines()[0][:120], "text": body, "source": "команда владельца в боте",
-                     "tags": []}
+                     "tags": tags, "origin": "Личка бота"}
                 out = self.save_note(p)
                 where = "в Notion" if out.get("saved") == "notion" else "в файл на сервере"
                 msg = f"Сохранил заметку {where}: «{p['title']}»"

@@ -282,16 +282,49 @@ def propose_note(a: dict):
         raise _core.ToolError("text: от 1 до 2000 символов")
     title = (str(a.get("title") or "").strip() or text.splitlines()[0])[:120]
     params = {"title": title, "text": text, "source": str(a.get("source") or "")[:300],
-              "tags": [str(t)[:40] for t in (a.get("tags") or [])][:5]}
+              "tags": [str(t)[:40] for t in (a.get("tags") or [])][:5],
+              "origin": str(a.get("origin") or "Рабочий чат")[:40], "link": str(a.get("link") or "")[:2000]}
     tok, db = _notion()
     where = "в Notion" if tok and db else "в локальный файл (Notion не настроен)"
     return _core.propose(SVC, "note", params, f"заметка {where}: «{title}»")
 
 
+_SCHEMA: dict[str, dict] = {}
+
+
+def _props(p: dict, tok: str, db: str) -> dict:
+    """Поля строки по схеме базы (читается один раз): заголовок — поле типа title (любое имя: «Name», «Заметка»);
+    по имени, если такие поля есть: «Текст» (rich_text), «Откуда» (select, только из вариантов базы), «Метки»
+    (multi_select, только существующие), «Ссылка» (url). Схему не прочитали — только заголовок «Name», как раньше."""
+    if db not in _SCHEMA:
+        try:
+            r = _core.http("GET", f"{_core.base_url('notion', 'https://api.notion.com')}/v1/databases/{db}",
+                           headers={"Authorization": f"Bearer {tok}", "Notion-Version": "2022-06-28"}, keys=[tok],
+                           service="Notion")
+            _SCHEMA[db] = (r or {}).get("properties") or {}
+        except _core.ToolError:
+            return {"Name": {"title": [{"text": {"content": p["title"]}}]}}
+    sch = _SCHEMA[db]
+    opts = lambda name: {o.get("name") for o in (sch[name].get(sch[name]["type"]) or {}).get("options", [])}  # noqa: E731
+    title = next((k for k, v in sch.items() if v.get("type") == "title"), "Name")
+    props = {title: {"title": [{"text": {"content": p["title"]}}]}}
+    if sch.get("Текст", {}).get("type") == "rich_text":
+        props["Текст"] = {"rich_text": [{"text": {"content": p["text"][:2000]}}]}
+    if sch.get("Откуда", {}).get("type") == "select" and p.get("origin") in opts("Откуда"):
+        props["Откуда"] = {"select": {"name": p["origin"]}}
+    if sch.get("Метки", {}).get("type") == "multi_select":
+        tags = [t for t in p.get("tags") or [] if t in opts("Метки")]
+        if tags:
+            props["Метки"] = {"multi_select": [{"name": t} for t in tags]}
+    if sch.get("Ссылка", {}).get("type") == "url" and str(p.get("link") or "").startswith(("https://", "http://")):
+        props["Ссылка"] = {"url": p["link"][:2000]}
+    return props
+
+
 def _save_note(p: dict) -> dict:
     tok, db = _notion()
     if tok and db:
-        props = {"Name": {"title": [{"text": {"content": p["title"]}}]}}
+        props = _props(p, tok, db)
         blocks = [{"object": "block", "type": "paragraph",
                    "paragraph": {"rich_text": [{"type": "text", "text": {"content": p["text"]}}]}}]
         if p.get("source"):
@@ -381,7 +414,10 @@ SERVER = {
              "text": {"type": "string", "description": "1–2000 символов"},
              "title": {"type": "string", "description": "коротко; нет — первая строка текста"},
              "source": {"type": "string", "description": "откуда: чат, сообщение, дата"},
-             "tags": {"type": "array", "items": {"type": "string"}}},
+             "tags": {"type": "array", "items": {"type": "string"},
+                      "description": "метки базы, например задача, встреча, идея, клиент"},
+             "origin": {"type": "string", "description": "Личка бота | Рабочий чат | Голос; нет — Рабочий чат"},
+             "link": {"type": "string", "description": "ссылка на сообщение или документ (https://…)"}},
              "required": ["text"]},
          "fn": propose_note},
         {"name": f"{SVC}_apply",
