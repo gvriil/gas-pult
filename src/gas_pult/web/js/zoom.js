@@ -82,3 +82,4 @@ function fontSheet() {                               // настройки → �
 }
 
 Object.assign(window, { fontSheet, zoomFeed, feedZoom: () => fz });
+part("media").catch(() => {});                       // фото в ленте и просмотр (js/media.js) — после зума, без ядра
