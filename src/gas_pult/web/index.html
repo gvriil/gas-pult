@@ -1704,7 +1704,7 @@ function store(k, v) { try { if (v === undefined) return localStorage.getItem(k)
 
 // ---------- широкий экран: ширина и свёртка списка слева, размер шрифта ----------
 // Только при двух колонках (split): на телефоне ни ручки, ни полосы значков, клавиши браузера не перехватываем.
-const SIDE = { min: 200, max: 480, def: 280 }, FONT = { min: 12, max: 20, def: 15 };
+const SIDE = { min: 200, max: 480, def: 280 }, FONT = { min: 12, max: 30, def: 15 };
 const clampN = (v, a, b, d) => (Number.isFinite(v) ? Math.min(b, Math.max(a, Math.round(v))) : d);
 let sideW = clampN(parseInt(store("sideW"), 10), SIDE.min, SIDE.max, SIDE.def);
 let sideMini = store("sideMini") === "1";
@@ -1713,7 +1713,7 @@ function applyWide() {
   const two = split(), root = document.documentElement.style;
   root.setProperty("--side-w", sideW + "px");
   document.body.classList.toggle("side-mini", two && sideMini);
-  if (two && fontPx !== FONT.def) root.setProperty("--fz", String(fontPx / FONT.def)); else root.removeProperty("--fz");
+  if (fontPx !== FONT.def) root.setProperty("--fz", String(fontPx / FONT.def)); else root.removeProperty("--fz");
   const g = $("sideGrip"); g.setAttribute("aria-valuenow", sideW); g.setAttribute("aria-valuetext", sideW + " пикселей");
   const b = $("sideBtn"), t = sideMini ? "Развернуть список" : "Свернуть список";
   b.innerHTML = ic(sideMini ? "sideopen" : "sidebar"); b.setAttribute("aria-label", t); b.title = t; b.setAttribute("aria-expanded", String(!sideMini));
@@ -1723,11 +1723,11 @@ function setSideW(w, save = true) {
   if (save) store("sideW", sideW === SIDE.def ? "" : String(sideW));
 }
 function setMini(on) { sideMini = on; store("sideMini", on ? "1" : ""); applyWide(); renderRail(); renderNav(); }
-function setFont(px) {
+function setFont(px, quiet) {
   const v = clampN(px, FONT.min, FONT.max, FONT.def);
-  if (v === fontPx) return toast(v === FONT.def ? "Шрифт по умолчанию" : v === FONT.max ? "Крупнее нельзя" : "Мельче нельзя", 1400);
+  if (v === fontPx) return quiet || toast(v === FONT.def ? "Шрифт по умолчанию" : v === FONT.max ? "Крупнее нельзя" : "Мельче нельзя", 1400);
   fontPx = v; store("fontPx", v === FONT.def ? "" : String(v)); applyWide();
-  toast(`Шрифт панели: ${v} px${v === FONT.def ? " (по умолчанию)" : ""}`, 1400);
+  if (!quiet) toast(`Шрифт панели: ${v} px${v === FONT.def ? " (по умолчанию)" : ""}`, 1400);
 }
 // Узкая полоса (свёрнутая панель чатов на ПК, решение владельца — проекты): ⇥ раскрыть, ✎ новый чат, ⌕ поиск, затем
 // проекты квадратами — инициалы, цвет (--pjN), цифра — активные чаты, точка — «ждёт ответа» (жёлтая) или «новое»;
@@ -2138,7 +2138,7 @@ async function draftSend() {
 }
 // Cmd/Ctrl + «+»/«−»/«0» — шрифт панели вместо зума страницы. e.code — та же клавиша в любой раскладке, e.key — запасной путь.
 document.addEventListener("keydown", (e) => {
-  if (!split() || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
   const k = e.key, c = e.code;
   const d = c === "Equal" || c === "NumpadAdd" || k === "=" || k === "+" ? 1
     : c === "Minus" || c === "NumpadSubtract" || k === "-" || k === "_" ? -1
@@ -6720,6 +6720,7 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    { label: `Размер текста: ${Math.round(fontPx / FONT.def * 100)} %`, icon: "edit", sub: "A− / A+ или щипком", run: () => part("zoom").then(() => fontSheet()) },
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
     ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
@@ -8094,6 +8095,7 @@ function simpleDemoHist() {
 
 paintIcons();
 applyTheme();
+afterPaint(() => part("zoom").catch(() => {}));
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", fitViewport); }
 fitViewport();
 window.visualViewport?.addEventListener("resize", fitViewport);
