@@ -83,7 +83,8 @@ def env(tmp_path):
     keyfile.write_text(TOKEN + "\n")
     keyfile.chmod(0o600)
     yield {"GAS_TGBIZ_BASE": f"http://127.0.0.1:{srv.server_port}", "GAS_TGBIZ_KEY_FILE": str(keyfile),
-           "GAS_CONFIRM_DIR": str(tmp_path / "confirm")}
+           "GAS_CONFIRM_DIR": str(tmp_path / "confirm"),
+           "GAS_TGBIZ_STATE": str(tmp_path / "tgbiz")}          # не журнал живой службы на этой машине
     srv.shutdown()
 
 
