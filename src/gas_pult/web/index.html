@@ -2610,8 +2610,9 @@ function skelMsgs() {
 // простым текстом с переносами строк. Пришли — лента и простой режим перерисовываются (точечно: меняются только ответы).
 const MD_LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js", "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"];
 const mdReady = () => !!(window.marked && window.DOMPurify);
+const MDC = new Map();                                 // готовый HTML ответов: лента не пересчитывает markdown (#258)
 function md(t) {
-  if (mdReady()) return DOMPurify.sanitize(marked.parse(t || ""));
+  if (mdReady()) { let h = MDC.get(t); if (h == null) { if (MDC.size > 600) MDC.clear(); MDC.set(t, h = DOMPurify.sanitize(marked.parse(t || ""))); } return h; }
   mdLoad();
   return (t || "").split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
 }
@@ -4369,13 +4370,13 @@ function mergeChat(h) {   // свежий хвост переписки — к �
   const atBottom = atEnd(220), first = h.items[0]?.i ?? Infinity;
   // якорь — сообщение, которое сейчас читают (первое видимое), и его отступ от верха экрана; после перерисовки — туда же
   const ms = [...$("content").querySelectorAll(".msg")], top = SC.getBoundingClientRect?.().top || 0;
-  const k = ms.findIndex((el) => el.getBoundingClientRect().bottom > top + 1), anchor = k >= 0 ? hist[k]?.i : null;
+  const k = ms.findIndex((el) => el.getBoundingClientRect().bottom > top + 1), anchor = k >= 0 ? +ms[k].dataset.i : null;
   const off = k >= 0 ? ms[k].getBoundingClientRect().top : 0;
   hist = [...hist.filter((m) => m.i < first), ...h.items];
   if (!hist.some((m) => m.i < first)) histMore = h.more;
   renderChat(atBottom);
   if (atBottom) return;
-  const j = hist.findIndex((m) => m.i === anchor), el = j >= 0 ? $("content").querySelectorAll(".msg")[j] : null;
+  const el = anchor != null ? $("content").querySelector(`.msg[data-i="${anchor}"]`) : null;
   if (el) SC.scrollTop += el.getBoundingClientRect().top - off;
   autoUntil = Date.now() + 300;
   $("toBottom").classList.add("new");
@@ -4596,8 +4597,12 @@ $("content").addEventListener("click", async (e) => {
   else setTab("screen");
 });
 const NEWI = { k: "", at: null };
+// Виртуализация (#258): в DOM — последние VMAX сообщений; «Показать ранее» сначала раскрывает уже загруженные
+const VMAX = 120, VK = { w: "", keep: VMAX };
 function renderChat(toBottom) {
   const box = $("content"); if (box.className !== "chat") box.className = "chat";
+  if (VK.w !== current) Object.assign(VK, { w: current, keep: VMAX });
+  const cut = Math.max(0, hist.length - VK.keep), vis = cut ? hist.slice(cut) : hist;
   if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div></div>`); return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
   pending = pending.filter((p) => !hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));
@@ -4610,7 +4615,7 @@ function renderChat(toBottom) {
   if (!document.hidden && hist.length) store(jk, hist.at(-1).i);
   const had =!!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
-  const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
+  const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
     : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`).join("")
@@ -4654,7 +4659,11 @@ $("content").addEventListener("contextmenu", (e) => { if (e.target.closest("[dat
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.say && sayHeld) { sayHeld = false; return; }   // долгое нажатие уже открыло шторку
+  if (b.id === "older" && hist.length > VK.keep) {     // уже загружены — раскрыть без запроса
+    const y = SC.scrollHeight - SC.scrollTop; VK.keep += VMAX; renderChat(false); return scrollToY(SC.scrollHeight - y);
+  }
   if (b.id === "older") return busy(b, "Загружаю…", async () => {
+    VK.keep = Infinity;                               // подгрузили с сервера — показываем всё, что есть
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&before=${hist[0].i}`);
     const y = SC.scrollHeight - SC.scrollTop; hist = [...h.items, ...hist]; histMore = h.more; renderChat(false);
     scrollToY(SC.scrollHeight - y);
