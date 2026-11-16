@@ -120,9 +120,12 @@ def _journal() -> list[dict] | None:
     try:
         if time.time() - (STATE / "alive").stat().st_mtime > 120:
             return None
-        lines = (STATE / "updates.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
+    try:                                              # служба жива, а апдейтов ещё не было — журнала нет: пусто, а не
+        lines = (STATE / "updates.jsonl").read_text(encoding="utf-8").splitlines()   # getUpdates (409 Conflict)
+    except OSError:
+        return []
     out = []
     for ln in lines:
         try:

@@ -83,3 +83,11 @@ def test_connector_reads_journal_when_service_alive(state, monkeypatch):
     monkeypatch.setattr(tgbiz_mcp, "_api", lambda *a, **k: [{"update_id": 99}])
     assert tgbiz_mcp._updates() == [{"update_id": 99}]                           # как раньше — напрямую
     assert json.loads(tgbiz_bot.journal().read_text().splitlines()[0])["update"] == biz
+
+
+def test_connector_alive_service_without_journal_is_empty(state, monkeypatch):
+    """Живая проверка 16.11: служба запущена, апдейтов ещё не было — коннектор шёл в getUpdates и получал 409."""
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "alive").touch()
+    monkeypatch.setattr(tgbiz_mcp, "_api", lambda *a, **k: pytest.fail("служба жива — Telegram не трогаем"))
+    assert tgbiz_mcp._updates() == []
