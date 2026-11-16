@@ -1,0 +1,6 @@
+{"_source": "Собрано по описанию типов Bot API 10.4 (Update, Message, BusinessConnection, BusinessBotRights, BusinessMessagesDeleted) — https://core.telegram.org/bots/api, сверено 16.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ЖИВОМ БОТЕ.",
+ "ok": true,
+ "result": {"message_id": 44, "business_connection_id": "BCtestAAAA0001",
+  "from": {"id": 5550001, "is_bot": false, "first_name": "Ирина", "last_name": "Управляющая"},
+  "chat": {"id": 7770001, "type": "private", "first_name": "Пётр"},
+  "date": 1763256600, "text": "Пётр, мастер выехал.", "sender_business_bot": {"id": 8880001, "is_bot": true, "first_name": "Пульт входящие (тест)"}}}
