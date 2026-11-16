@@ -354,14 +354,14 @@
      при наведении, на телефоне видна всегда, но приглушённо. После нажатия — галочка «Скопировано» на 1,5 с. */
   .chat .macts { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 2px 0 0; min-height: 28px; }
   .chat .macts .when { margin: 0 2px; }
-  .mcopy, .ccopy { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: none; min-width: 30px; height: 30px; min-height: 0;
+  .mcopy, .ccopy, .medit { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: none; min-width: 30px; height: 30px; min-height: 0;
                    padding: 0 7px; border: 0; background: transparent; color: var(--text-muted); border-radius: var(--radius-pill); cursor: pointer;
                    font-size: calc(12px * var(--fz, 1)); white-space: nowrap; }
-  .mcopy:active, .ccopy:active { background: var(--bg-subtle); }
+  .mcopy:active, .ccopy:active, .medit:active { background: var(--bg-subtle); }
   .mcopy:focus-visible, .ccopy:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
   .mcopy.done, .ccopy.done, .chat .acts button.done { color: var(--status-success); }
-  @media (hover: hover) { .chat .me .mcopy { opacity: 0; transition: opacity .15s ease; }
-    .chat .me:hover .mcopy, .chat .me:focus-within .mcopy, .chat .me .mcopy.done { opacity: 1; }
+  @media (hover: hover) { .chat .me .mcopy, .chat .me .medit { opacity: 0; transition: opacity .15s ease; }
+    .chat .me:hover .mcopy, .chat .me:focus-within .mcopy, .chat .me:hover .medit, .chat .me:focus-within .medit, .chat .me .mcopy.done { opacity: 1; }
     .mcopy:hover, .ccopy:hover { color: var(--text-primary); background: var(--bg-subtle); } }
   .codebox { position: relative; margin: 8px 0; } .codebox > pre { margin: 0; padding-right: 44px; }
   .codebox .ccopy { position: absolute; top: 4px; right: 4px; height: 28px; border-radius: var(--radius-sm); background: var(--bg-surface);
@@ -1573,6 +1573,8 @@ function copiedFlash(b) {                            // «Скопировано
   b.innerHTML = ic("check", "s16") + `<span>${esc(LT("copy.done", "Скопировано"))}</span>`; b.classList.add("done");
   b.__ct = setTimeout(() => { b.innerHTML = b.__html; b.__html = null; b.classList.remove("done"); }, 1500);
 }
+const canEdit = () => meta?.role !== "viewer" && !FOCUS_DEMO();       // «Изменить» своё сообщение (#258, js/edit.js)
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-medit]"); if (b) part("edit").then(() => editMsg(msgText(b.closest(".msg")) || "")); });
 function msgText(el) {                               // исходный текст сообщения (markdown как есть, без разметки)
   const k = el.dataset.key || "", src = el.closest("#sFeed") ? SIM.hist : el.closest(".chatv-list")?.__items || hist;
   if (k.startsWith("p:")) return pending.find((p) => "p:" + p.id === k)?.text;
@@ -4609,7 +4611,7 @@ function renderChat(toBottom) {
   const had =!!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
   const fresh = morph(box, (histMore ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + hist.map((m) => m.role === "user"
-    ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${mCopyBtn()}</div></div>`
+    ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
     : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`).join("")
     + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
@@ -5360,7 +5362,7 @@ async function sendText() {
   if (typed && secretPass !== typed) { const s = redactSecrets(typed); if (s.found.length) return secretSheet(typed, s); }
   secretPass = null;
   // файл ещё грузится — сообщение не ждёт в поле: оно уже в переписке «отправляется», путь подставим по готовности
-  const sent = files, body = typed || "Посмотри файл.";
+  const sent = files, body = (typed && window.editFix ? editFix(typed) : typed) || "Посмотри файл.";   // правка (#258)
   const withPaths = () => body + (sent.some((f) => f.path) ? "\n\n" + sent.filter((f) => f.path).map((f) => "Файл из панели: " + f.path).join("\n") : "");
   const p = { text: withPaths(), state: "sending", id: msgId(), w: current }; pending.push(p);
   $("input").value = ""; files = []; renderFiles(); grow();
