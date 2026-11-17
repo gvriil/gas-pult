@@ -224,3 +224,23 @@ def test_login_check_by_kind(server, monkeypatch):
     assert call(s["base"], "/api/login/check", {"w": "@1", "kind": "mcp"}, s["owner"])[1]["ok"]
     assert call(s["base"], "/api/login/check", {"w": "@1", "kind": "url"}, s["owner"])[1]["ok"]
     assert call(s["base"], "/api/login/check", {"w": "@1", "kind": "claude"}, s["member"])[0] == 403
+
+
+def test_artifact_link_and_old_login_line_is_not_a_login():
+    """iPhone 17.11: на экране штаба — ссылки на артефакты claude.ai и старое «Login reached its time limit · Please
+    run /login» (вход в Claude при этом действует). Карточки входа быть не должно: слово «login» — далеко от ссылки,
+    в самой ссылке признака входа нет."""
+    screen = [
+        "● Stopped watching Artifact: \"Карта бизнеса\" (connection lost)",
+        "● Login reached its time limit · Please run /login",
+        "✻ Crunched for 0s · done 8:50 AM",
+        "● Artifact comment monitor for",
+        "  https://claude.ai/artifact/AAAAAAAAAAAAAAAAAAAAAA didn't resume its",
+        "  automatic replies: this session couldn't confirm that no other session",
+        "● Automatic replies were not resumed for",
+        "  https://claude.ai/artifact/BBBBBBBBBBBBBBBBBBBBBB. Ask Claude to watch",
+        "❯ ",
+    ]
+    assert logins.detect(screen) is None
+    # то же слово рядом со ссылкой — настоящая ссылка входа
+    assert logins.detect(["Open this link to log in:", "https://example.com/start?x=1", "❯ "])["kind"] == "url"
