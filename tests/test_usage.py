@@ -8,7 +8,7 @@ import re
 import threading
 import urllib.error
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 from http.server import ThreadingHTTPServer
 
 import pytest
@@ -18,6 +18,32 @@ from gas_pult.config import Config
 
 OWNER, MEMBER, VIEWER = 1001, 1002, 1003
 TODAY = date.today().isoformat()
+
+
+class _Day(date):
+    """Полночь: TODAY модуля тестов и «сегодня» кода — один день. CI 17.11 стартовал около 23:59 UTC: модуль запомнил
+    16.11, а код уже считал 17.11 — расход «за сегодня» выходил 0."""
+    @classmethod
+    def today(cls):
+        return cls.fromisoformat(TODAY)
+
+
+class _Now(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls.fromisoformat(TODAY + "T12:00:00").astimezone(tz) if tz else cls.fromisoformat(TODAY + "T12:00:00")
+
+
+@pytest.fixture(autouse=True)
+def same_day(monkeypatch):
+    from gas_pult import bot as _b
+    monkeypatch.setattr(_b, "datetime", _Now)
+    from gas_pult import space_budget as _sb
+    from gas_pult import usage as _u
+    from gas_pult import webapp as _w
+    for m in (_u, _w, _sb):
+        if hasattr(m, "date"):
+            monkeypatch.setattr(m, "date", _Day)
 NOW = f"{TODAY}T12:00:00Z"
 
 
