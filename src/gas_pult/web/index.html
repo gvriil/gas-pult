@@ -4008,7 +4008,10 @@ function newProject() {
 async function setModel(s, alias, name) {
   if (!s) return;
   toast("Перезапускаю этот чат с " + name + "…", 6000);
-  try { const d = await api("/api/model", { w: s.id, name: alias }); await refresh(); openSession(d.id); toast(`Модель «${name}» — только для этого чата`, 4500); }
+  try {
+    const d = await api("/api/model", { w: s.id, name: alias }); await refresh(); openSession(d.id); toast(`Модель «${name}» — только для этого чата`, 4500);
+    if ((s.profile || "claude") === "claude") effortSheet(name);   // 17.11: после модели — усилие
+  }
   catch (e) { toast("Не вышло: " + e.message, 5000); }
 }
 // Модель Claude по умолчанию для новых сессий — отдельной явной настройкой владельца (не из чата).
@@ -5082,11 +5085,13 @@ function switchProfile(s) {
   }, s.profile || "claude");
 }
 // После смены модели — сразу уровень усилий (как глубоко думать): одно касание вместо второго меню.
-function effortSheet() {
+// Усилия — у моделей Claude (docs: model-config); у других поставщиков нет
+function effortSheet(model) {
+  const s = cur(); if ((s?.profile || "claude") !== "claude") return toast("У этого поставщика усилий нет", 3500);
   helpSheet("sheet.effort");
-  sheet("Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
+  sheet(model ? `Усилие для «${model}»` : "Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
     ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
-    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
+    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: s?.effort === v, run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
 }
 async function closeSession(id = current, schedule = "", force = false) {
   try {
