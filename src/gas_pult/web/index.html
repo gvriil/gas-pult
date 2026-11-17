@@ -2101,16 +2101,30 @@ function paintDraft() {
   setSub(`<span>${esc(p?.name || "")}${prof?.title ? " · " + esc(prof.title) : ""}</span>`);
   if ($("draftNote")) $("draftNote").textContent = `Напишите первое сообщение — чат запустится в папке «${p?.name || ""}». Папку${readyProfiles().length > 1 ? " и модель" : ""} можно сменить над полем ввода.`;
   $("draftBar").innerHTML = `<button class="dchip" type="button" data-dfold aria-haspopup="menu" title="Папка нового чата">${ic("folder")}<span>${esc(p?.name || "Папка")}</span>${ic("chev", "s16")}</button>`
+    + (DRAFT.route ? `<button class="dchip${DRAFT.model ? " on" : ""}" type="button" data-droute aria-pressed="${!!DRAFT.model}" title="${esc("Почему: " + DRAFT.route.why)}">${ic(DRAFT.model ? "check" : "spark")}<span>${esc((DRAFT.model ? "" : "Подходит: ") + DRAFT.route.name + " — " + DRAFT.route.title)}</span></button>` : "")
     + (readyProfiles().length > 1 ? `<button class="dchip" type="button" data-dmodel title="Модель нового чата">${ic("chip")}<span>${esc(prof?.title || "Claude")}</span>${ic("chev", "s16")}</button>` : "");
   $("input").placeholder = "Сообщение — новый чат в «" + (p?.name || "") + "»…";
 }
 $("draftBar").onclick = (e) => {
   if (!DRAFT) return;
-  const f = e.target.closest("[data-dfold]"), m = e.target.closest("[data-dmodel]");
+  const f = e.target.closest("[data-dfold]"), m = e.target.closest("[data-dmodel]"), r = e.target.closest("[data-droute]");
+  if (r && DRAFT.route) {                            // роутер (router.py): подсказка — нажал, чат запустится с этой моделью
+    const on = !DRAFT.model; Object.assign(DRAFT, on ? { profile: DRAFT.route.profile, model: DRAFT.route.model } : { profile: "", model: "" });
+    paintDraft(); return $("input").focus();
+  }
   if (f) return popMenu(f, [...(projData?.projects || []).map((p) => ({ label: p.name, icon: "folder", on: p.id === DRAFT.proj, run: () => { DRAFT.proj = p.id; paintDraft(); $("input").focus(); } })),
     { sep: true }, { label: "Новая папка…", icon: "plus", run: () => newFolder() }]);
-  if (m) return pickProfile((pid) => { if (DRAFT) { DRAFT.profile = pid; paintDraft(); } });
+  if (m) return pickProfile((pid) => { if (DRAFT) { DRAFT.profile = pid; DRAFT.model = ""; paintDraft(); } });
 };
+let routeT = 0;                                       // подсказка модели по первому сообщению — после паузы в наборе
+$("input").addEventListener("input", () => {
+  if (!DRAFT) return;
+  clearTimeout(routeT);
+  routeT = setTimeout(async () => {
+    const text = $("input").value.trim(); if (!DRAFT || text.length < 12) return;
+    try { const r = (await api("/api/route", { text })).route; if (DRAFT && !DRAFT.model && r?.type !== DRAFT.route?.type) { DRAFT.route = r; paintDraft(); } } catch (e) { /* без подсказки */ }
+  }, 700);
+});
 async function draftSend() {
   const text = $("input").value.trim();
   if (!text && !files.length) return toast("Напишите первое сообщение");
@@ -2119,7 +2133,7 @@ async function draftSend() {
   $("send").disabled = true;
   toast("Запускаю новый чат в «" + (p?.name || "папке") + "»…", 4000);
   try {
-    const d = await api("/api/project/session", { id: dr.proj, profile: dr.profile });
+    const d = await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "" });
     store("lastProj", dr.proj);
     await openSession(d.id);                          // черновик гаснет в show()
     $("input").value = text; files = keep; renderFiles(); grow();

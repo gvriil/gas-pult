@@ -76,6 +76,7 @@ from gas_pult import (
     providers,
     qr,
     repos,
+    router,
     scenarios,
     selftest,
     setup,
@@ -408,6 +409,7 @@ class Panel:
         self.mod_sections: tuple[float, dict] = (0.0, {})    # модуль → разделы чата (sections_of)
         self.mod_sched: tuple[float, dict] = (0.0, {})       # модуль → описание (schedule_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
+        self.repeat = router.Repeat()                    # тот же длинный вопрос в ту же сессию за 10 минут (GAS-16)
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
@@ -642,7 +644,15 @@ class Panel:
             raise LookupError("проекта нет — обновите список")
         return p
 
-    def project_session(self, pid: str, profile: str = "", person: int | None = None, uid=None) -> dict:
+    def route(self, text: str, uid=None) -> dict:
+        """Подсказка модели для первого сообщения нового чата (router.py): только среди готовых профилей."""
+        ready = {p["id"] for p in models.public(self.pult.state(), None if uid is None else self.countries(uid))
+                 if (not p.get("needs_key") or p.get("key")) and not p.get("not_ready") and not p.get("no_balance")
+                 and p.get("allowed") is not False}
+        return {"route": router.route(text, ready)}
+
+    def project_session(self, pid: str, profile: str = "", person: int | None = None, uid=None,
+                        model: str = "") -> dict:
         """«Новая сессия в проекте»: ещё одно окно в главной папке проекта, даже если там уже работает чат — у каждого
         свой журнал (``--session-id``). Поставщик и модель — по умолчанию проекта, если не выбраны."""
         p = self.project(pid)
@@ -652,7 +662,7 @@ class Panel:
         profile = profile or p.get("profile") or ""
         if uid is not None:
             self.check(profile, uid)
-        out = self.open_in(path, profile, person, uid, model=p.get("model") or "")
+        out = self.open_in(path, profile, person, uid, model=router.valid_model(model) or p.get("model") or "")
         return {**out, "project": p["id"]}
 
     INSTR_MAX = 20000
@@ -4385,7 +4395,9 @@ def handler(panel: Panel):
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
             if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
                 return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
-                                             self.terms_uid())
+                                             self.terms_uid(), model=str(b.get("model") or ""))
+            if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
+                return panel.route(str(b.get("text", ""))[:2000], self.terms_uid())
             if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
                 return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
                                             self.terms_uid())
@@ -4534,8 +4546,14 @@ def handler(panel: Panel):
                 text = str(b.get("text", "")).strip()
                 if not text:
                     raise ValueError("пустое сообщение")
+                mid = str(b.get("id", ""))[:64]           # повтор после обрыва связи — не «тот же вопрос»
+                if (ago := panel.repeat.check(w["id"], text, mid=mid)) is not None:
+                    raise ValueError(f"Этот вопрос уже отправлен {max(1, ago // 60)} мин назад — ответ появится выше. "
+                                     "Нужно ещё раз — отправьте снова в течение 2 минут.")
                 with panel.pult.via("focus" if self.focused is not None else "panel"):
-                    return {"ok": True, "dup": panel.send(w, text, str(b.get("id", ""))[:64])}
+                    dup = panel.send(w, text, str(b.get("id", ""))[:64])
+                panel.repeat.done(w["id"], text, mid=mid)
+                return {"ok": True, "dup": dup}
             if path == "/api/resend":                     # «Отправить» у строки «Не отправлено» — Enter после проверки
                 return {"result": panel.pult.push_enter(w["id"], str(b.get("sha", ""))[:12])}
             if path == "/api/rename":
