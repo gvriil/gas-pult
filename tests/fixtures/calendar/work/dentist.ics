@@ -1,0 +1,15 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Example//Test//RU
+BEGIN:VEVENT
+UID:dentist-0002@example.org
+DTSTAMP:20261101T090000Z
+DTSTART:20261119T070000Z
+DTEND:20261119T080000Z
+SUMMARY:Стоматолог
+DESCRIPTION:Клиника на Ленина\, 5.\nВзять полис; приехать за 10 минут. Это
+  длинная строка, перенесённая по RFC 5545.
+ORGANIZER;CN=Клиника:mailto:clinic@example.org
+ATTENDEE;CN=Пациент:mailto:patient@example.org
+END:VEVENT
+END:VCALENDAR
