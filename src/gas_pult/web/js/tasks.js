@@ -25,6 +25,8 @@ async function tasksOpen() {
   tasksSheet();
 }
 
+// Цвет задачи (владелец 17.11): красный — срочно и важно, оранжевый — ждёт вас, жёлтый — в работе, зелёный — готово
+const tqDot = (t, q) => (t.status === "done" ? "tq-g" : q === 1 ? "tq-r" : t.status === "waiting" ? "tq-o" : t.status === "doing" ? "tq-y" : "");
 function tasksSheet() {
   const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
   const rows = [];
@@ -32,7 +34,7 @@ function tasksSheet() {
     const g = open.filter((t) => (t.q || 0) === q);
     if (!g.length) continue;
     rows.push({ head: `${Q_T[q]} · ${g.length}` });
-    rows.push(...g.map((t) => ({ label: t.title, icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
+    rows.push(...g.map((t) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
       sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
         t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
       run: () => taskGo(t) })));
@@ -43,7 +45,7 @@ function tasksSheet() {
     ...rows,
     { label: "Добавить задачу", icon: "plus", run: () => taskNew() },
     ...(done.length ? [{ head: `Выполнено · ${done.length}` },
-      ...done.slice(0, 15).map((t) => ({ label: t.title, icon: "check", sub: "выполнено" + (t.done_at ? " · " + when(t.done_at) : ""), run: () => taskSheet(t) }))] : []),
+      ...done.slice(0, 15).map((t) => ({ label: t.title, dot: "tq-g", sub: "выполнено" + (t.done_at ? " · " + when(t.done_at) : ""), run: () => taskSheet(t) }))] : []),
   ]);
 }
 
