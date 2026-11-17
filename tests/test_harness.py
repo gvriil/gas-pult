@@ -140,6 +140,8 @@ def test_pi_launch_and_env_sid(monkeypatch, tmp_path):
     cmd = pi.launch(sid)
     assert cmd.startswith(f"env GAS_PULT_SID={sid} {fake} --provider deepseek --model deepseek-v4-pro")
     assert cmd.endswith(f" --session-id {sid}") and pi.launch(sid, resume=True).endswith(f" --session-id {sid}")
+    for name in ("opencode", "hermes"):                     # на этой проверке — только Pi
+        monkeypatch.setattr(harness.HARNESSES[name], "binary", lambda: "")
     assert harness.available() == [{"id": "pi", "title": "Pi", "model": "deepseek/deepseek-v4-pro"}]
     p = subprocess.Popen([sys.executable, "-c", "import time; print('ok', flush=True); time.sleep(5)"],
                          env={**os.environ, "GAS_PULT_SID": sid}, stdout=subprocess.PIPE, text=True)
@@ -207,7 +209,7 @@ def test_ui_offers_pi_in_model_pick():
     f = s[s.index("function pickProfile("):]
     f = f[:f.index("\n}\n")]
     assert "meta.agents" in f and '" — другой агент"' in f and "ready.length + agents.length < 2" in f
-    assert 'profile === "pi" ? "Запускаю Pi…"' in s
+    assert 'toast(ag ? `Запускаю ${ag.title}…`' in s
     assert 'agents: [{ id: "pi"' in (web / "js" / "demo.js").read_text(encoding="utf-8")
 def _pi_rows(*msgs):
     rows = [{"type": "session", "version": 3, "id": "s", "timestamp": "2026-11-15T10:00:00.000Z", "cwd": "/p"}]

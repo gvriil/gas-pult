@@ -20,7 +20,7 @@ import shlex
 import shutil
 from pathlib import Path
 
-from gas_pult import pi_journal, transcripts
+from gas_pult import agent_dbs, pi_journal, transcripts
 
 
 class Harness:
@@ -53,6 +53,16 @@ class Harness:
 
     def revision(self, path: str, home: Path | None = None, sid: str = "") -> str:
         return ""
+
+    # Окна без экрана Claude Code (Pi, OpenCode, Hermes): статус хода, расход и ответы — из своего журнала
+    def status(self, f) -> dict:
+        return {"phase": "idle"}
+
+    def usage(self, f) -> dict:
+        return {"provider": "", "model": "", "used": None}
+
+    def answers_at(self, f) -> list:
+        return []
 
     def new_args(self, sid: str) -> str:
         return ""
@@ -186,6 +196,15 @@ class Pi(Harness):
         st = f.stat()
         return f"{f.stem[-8:]}-{st.st_size}-{st.st_mtime_ns}"
 
+    def status(self, f):
+        return pi_journal.status(f)
+
+    def usage(self, f):
+        return pi_journal.usage(f)
+
+    def answers_at(self, f):
+        return pi_journal.answers_at(f) if f else []
+
     def new_args(self, sid):
         sid = pi_journal.valid_sid(sid)
         return f" --session-id {sid}" if sid else ""
@@ -195,7 +214,105 @@ class Pi(Harness):
         return f" --session-id {sid}" if sid else " --continue"
 
 
-HARNESSES: dict[str, Harness] = {h.name: h for h in (ClaudeCode(), Pi())}
+class _DbAgent(Harness):
+    """Агент с журналом в SQLite (OpenCode, Hermes): id сессии программа создаёт сама — журнал окна — сессия с этим
+    id или самая свежая сессия папки окна. Модель и ключи — из настроек самой программы (``~/.config/opencode``,
+    ``~/.hermes``), пульт их не меняет."""
+
+    BIN = ""
+    store: agent_dbs.OpenCodeDB | agent_dbs.HermesDB
+
+    def binary(self) -> str:
+        for p in (os.environ.get(f"GAS_PULT_{self.name.upper()}", ""), shutil.which(self.BIN) or "",
+                  str(Path.home() / ".local/bin" / self.BIN)):
+            if p and os.access(p, os.X_OK):
+                return p
+        return ""
+
+    def matches(self, argv):
+        return any(os.path.basename(a) == self.BIN for a in argv[:2])
+
+    def journal(self, path, home=None, sid=""):
+        return self.store.ref(path, sid)
+
+    def _rows(self, path, sid="", ref=None):
+        ref = ref or self.journal(path, sid=sid)
+        return self.store.rows(ref) if ref else []
+
+    def history(self, path, limit=30, before=None, home=None, sid="", file=None):
+        items = agent_dbs.items(self._rows(path, sid, file))
+        end = len(items) if before is None else max(0, min(before, len(items)))
+        start = max(0, end - limit)
+        return [{**it, "i": n} for n, it in enumerate(items[start:end], start)], start > 0
+
+    def preview(self, path, home=None, sid=""):
+        items = agent_dbs.items(self._rows(path, sid))
+        return transcripts._line(items[-1]["text"]) if items else ""
+
+    def last_model(self, path, home=None, sid=""):
+        return agent_dbs.last_model(self._rows(path, sid))
+
+    def last_answer(self, path, home=None, sid=""):
+        items = agent_dbs.items(self._rows(path, sid))
+        return next((x["text"] for x in reversed(items) if x["role"] == "assistant"), "")
+
+    def revision(self, path, home=None, sid=""):
+        ref = self.journal(path, sid=sid)
+        return self.store.revision(ref) if ref else ""
+
+    def status(self, f):
+        return agent_dbs.status(self.store.rows(f)) if f else {"phase": "idle"}
+
+    def usage(self, f):
+        model = agent_dbs.last_model(self.store.rows(f)) if f else ""
+        provider, _, name = model.partition("/")
+        return {"provider": provider if name else "", "model": name or provider, "used": None}
+
+    def answers_at(self, f):
+        return agent_dbs.answers_at(self.store.rows(f)) if f else []
+
+    def live_sid(self, pid):
+        return ""                                     # id видно только в журнале — по папке окна
+
+    def launch(self, sid: str, resume: bool = False) -> str:
+        b = self.binary()
+        if not b:
+            raise ValueError(f"{self.title} на сервере не установлен")
+        return shlex.quote(b) + (self.resume_args(sid) if resume else self.new_args(sid))
+
+    def new_args(self, sid):
+        return ""
+
+
+class OpenCode(_DbAgent):
+    """OpenCode: ``opencode`` в папке окна; «Продолжить» — ``-s <id>`` или последняя сессия папки (``-c``)."""
+    name, title, BIN = "opencode", "OpenCode", "opencode"
+    COUNTRY_AS = "openrouter"
+
+    def __init__(self, db: Path | None = None):
+        self.store = agent_dbs.OpenCodeDB(db)
+
+    def resume_args(self, sid):
+        sid = agent_dbs.valid_sid(sid)
+        return f" -s {shlex.quote(sid)}" if sid else " -c"
+
+
+class Hermes(_DbAgent):
+    """Hermes: ``hermes`` в папке окна (постоянный дом ``~/.hermes``: правила, скиллы, MCP — штаб, mcp-install.sh);
+    «Продолжить» — ``--resume <id>`` или последняя сессия папки (``-c``)."""
+    name, title, BIN = "hermes", "Hermes", "hermes"
+    COUNTRY_AS = "openrouter"
+
+    def __init__(self, db: Path | None = None):
+        self.store = agent_dbs.HermesDB(db)
+
+    def resume_args(self, sid):
+        sid = agent_dbs.valid_sid(sid)
+        return f" --resume {shlex.quote(sid)}" if sid else " -c"
+
+
+HARNESSES: dict[str, Harness] = {h.name: h for h in (ClaudeCode(), Pi(), OpenCode(), Hermes())}
+JOURNAL_ONLY = ("pi", "opencode", "hermes")         # статус и ответы — из журнала агента, не из экрана Claude Code
 DEFAULT = "claude"
 
 
@@ -211,8 +328,12 @@ def detect(argv: list[str]) -> Harness | None:
 
 def available() -> list[dict]:
     """Агенты для нового окна (кроме Claude Code — он есть всегда): установлены на сервере."""
-    pi = HARNESSES["pi"]
-    return [{"id": "pi", "title": "Pi", "model": pi.MODEL}] if pi.binary() else []
+    out = []
+    for name in JOURNAL_ONLY:
+        h = HARNESSES[name]
+        if h.binary():
+            out.append({"id": name, "title": h.title, "model": getattr(h, "MODEL", "")})
+    return out
 
 
 def of(w: dict | None) -> Harness:
