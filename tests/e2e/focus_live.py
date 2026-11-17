@@ -304,6 +304,8 @@ def run(shots: str = ""):
             sheet_click(pa, "sonnet")
             pa.wait_for_function(f"current && current !== {json.dumps(shop)}", timeout=40000)
             moved = pa.evaluate("current")
+            pa.wait_for_selector(".sheet-bg[data-help='sheet.effort']", timeout=8000)   # 17.11: после модели — «Усилие»
+            pa.click(".sheet-bg[data-help='sheet.effort'] [data-close]")
             pa.fill("#input", "после смены модели")
             pa.click("#send")
             pa.wait_for_selector("text=Ответ (sonnet): после смены модели", timeout=20000)
