@@ -3086,6 +3086,7 @@ def handler(panel: Panel):
     page_gz = gzip.compress(page, 9)                     # страница сжимается один раз при старте (887 → ~200 КБ)
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
+    terms_page = resources.files("gas_pult").joinpath("web/terms.html").read_bytes()   # /terms — без входа (17.11)
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
     i18n = {f"/i18n/{x}.json": resources.files("gas_pult").joinpath(f"web/i18n/{x}.json").read_bytes()
             for x in ("ru", "en")}                       # словари простого режима и первого экрана — и до входа
@@ -3378,6 +3379,8 @@ def handler(panel: Panel):
                 return self.go(DESKTOP_URL, (desk_cookie(desk_pass(got[0]), tab=True),))
             if url.path in ("/", "/index.html"):
                 return self.reply(200, page, "text/html; charset=utf-8", packed=page_gz, etag=f'"{build}"')
+            if url.path == "/terms":                    # соглашение простым языком, RU и EN — без входа (17.11)
+                return self.reply(200, terms_page, "text/html; charset=utf-8")
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
                 body, gz, etag = parts[m.group(1)]
                 return self.reply(200, body, "text/javascript; charset=utf-8", packed=gz, etag=etag)
