@@ -23,6 +23,8 @@ function xLoad() {
 const xcss = document.createElement("style");
 xcss.textContent = `.tty .tbox .txterm { display: none; flex: 1; min-height: 0; padding: 4px 0 0 6px; background: #1E1F20; border-radius: var(--radius-md); }
 .tty .tbox.xt .txterm { display: block; } .tty .tbox.xt pre { display: none; }
+.tty .tbox pre { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.sheet.tty .tsel span { flex: 1; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
 .tty .txterm .xterm { height: 100%; } .tty .txterm .xterm-viewport { overscroll-behavior: contain; }`;
 document.head.append(xcss);
 
@@ -35,10 +37,12 @@ function ttyOpenX(wid) {
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.classList.add("ttybg"); bg.dataset.help = hv("sheet.tty");
   bg.innerHTML = `<div class="sheet tty" role="dialog" aria-label="Живой терминал">
     <div class="th"><div class="tt"><b id="ttyName">Терминал</b><small id="ttySub">загружаю…</small></div>
+      <button type="button" id="ttyCopy" aria-label="Копировать" title="Копировать: выделенное, экран или выделить пальцем">${ic("copy")}</button>
       <button type="button" id="ttyFind" aria-label="Поиск по истории" title="Поиск по истории (Ctrl+F)">${ic("search")}</button>
       <button type="button" id="ttyWrap" aria-label="Перенос строк" title="Перенос строк">${ic("menu")}</button>
       <button type="button" data-close aria-label="Закрыть" title="Закрыть">${ic("x")}</button></div>
     <div class="seg tmode" id="ttyMode" hidden><button type="button" data-m="tmux" class="on">История окна</button><button type="button" data-m="log">Журнал сессии</button></div>
+    <div class="tf tsel" id="ttySelRow" hidden><span>Выделите текст пальцем — в меню «Скопировать»</span><button type="button" id="ttySelAll" aria-label="Скопировать выделенное или всё">${ic("copy")}</button><button type="button" id="ttySelX" aria-label="Обратно к терминалу">${ic("x")}</button></div>
     <div class="tf" id="ttyFindRow" hidden><input id="ttyQ" type="search" placeholder="Найти в истории" autocomplete="off" spellcheck="false" aria-label="Найти в истории">
       <span class="cnt" id="ttyCnt"></span><button type="button" id="ttyPrev" aria-label="Предыдущее совпадение">${ic("up")}</button><button type="button" id="ttyNext" aria-label="Следующее совпадение">${ic("down")}</button></div>
     <div class="term tbox" id="ttyBox" tabindex="0" aria-label="Экран терминала: щёлкните и печатайте"><div class="ttop" id="ttyTop"></div><div class="txterm" id="ttyX"></div><pre id="ttyPre"></pre></div>
@@ -213,7 +217,7 @@ function ttyOpenX(wid) {
     if (e.target.closest("#ttyBox") && fine && !String(getSelection())) box.focus({ preventScroll: true });
   });
   // ---------- эмулятор (xterm.js, 17.11): цвета, курсор, ввод как в терминале; размер окна — под область ----------
-  const xOn = () => !!st.xt && st.mode === "tmux" && $$("ttyFindRow").hidden;
+  const xOn = () => !!st.xt && st.mode === "tmux" && $$("ttyFindRow").hidden && $$("ttySelRow").hidden;
   function xView() { box.classList.toggle("xt", xOn()); if (xOn()) { st.xshown = ""; xFit(); xPoll(); } else { render({ force: true, stick: true }); if (st.mode === "tmux") poll(); } }
   const xFz = () => Math.round(13 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fz")) || 1));
   function xFit() {                                       // колонки и строки — по размеру знака; окно tmux — под них
@@ -282,6 +286,32 @@ function ttyOpenX(wid) {
     st.ro = new ResizeObserver(() => xFit()); st.ro.observe($$("ttyX"));
     xView(); if (fine) setTimeout(() => t.focus(), 50);
   }
+  // ---------- копирование (владелец 17.11: «копирование и выделение на айфоне») ----------
+  // xterm рисует экран без обычного текста — выделять пальцем там нельзя. «Выделить пальцем» — тот же экран текстом
+  // (<pre>), где iOS даёт долгое нажатие → «Скопировать»; ✕ — обратно к эмулятору.
+  function xScreen() {
+    const t = st.xt, b = t.buffer.active, out = [];
+    for (let i = 0; i < t.rows; i++) out.push(b.getLine(b.viewportY + i)?.translateToString(true) ?? "");
+    while (out.length && !out[out.length - 1].trim()) out.pop();
+    return out.join("\n");
+  }
+  function selMode(on) {
+    $$("ttySelRow").hidden = !on; $$("ttyCopy").classList.toggle("on", on); box.classList.toggle("tselect", on);
+    if (on) $$("ttyFindRow").hidden = true;
+    xView();
+  }
+  $$("ttyCopy").onclick = () => {
+    if (!$$("ttySelRow").hidden) return selMode(false);
+    const sel = st.xt?.hasSelection() ? st.xt.getSelection() : String(getSelection());
+    sheet("Копировать", [
+      ...(sel ? [{ label: "Скопировать выделенное", icon: "copy", sub: sel.slice(0, 80), run: () => copyText(sel, "Скопировано") }] : []),
+      { label: "Скопировать экран", icon: "copy", sub: "видимые строки терминала",
+        run: () => copyText(xOn() ? xScreen() : pre.textContent.split("\n").slice(-40).join("\n"), "Экран скопирован") },
+      { label: "Выделить пальцем", icon: "edit", sub: "экран текстом: долгое нажатие → «Скопировать»", run: () => selMode(true) },
+    ]);
+  };
+  $$("ttySelX").onclick = () => selMode(false);
+  $$("ttySelAll").onclick = () => { const t = String(getSelection()); copyText(t || pre.textContent, t ? "Выделенное скопировано" : "Весь текст скопирован"); };
   baseHint(); poll(true); st.timer = setInterval(() => poll(), 1500);
   if (!params.has("ttytext")) xLoad().then(xStart, () => hint("Эмулятор не загрузился — показываю текстом", false));
   if (fine) setTimeout(() => box.focus({ preventScroll: true }), 50);
