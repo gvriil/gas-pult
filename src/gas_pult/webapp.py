@@ -100,7 +100,7 @@ from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, i
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
 from gas_pult.openrouter import CALLBACK, OpenRouter
-from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
+from gas_pult.people import STAFF_ROLES, TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.tmux import Tmux
 from gas_pult.voice import catalog
@@ -1891,6 +1891,7 @@ class Panel:
     def help_ask(self, role: str, uid, b: dict) -> dict:
         """Вопрос вошедшего: роль — с сервера; от клиента — только экран, шаг, модуль и сам вопрос."""
         v = self.ui(uid, role)                         # вид — с сервера: чипы роли и переходы по возможностям
+        role = "member" if role == "admin" else role     # у помощника экраны админа — как у участника
         return self.helper.ask(role, b.get("ctx"), str(b.get("q", "")), str(b.get("chip", "")),
                                who=[self.helper.who_key("u", uid)], extra={"module_ids": self.module_ids()},
                                lang=str(b.get("lang", "ru")),
@@ -2626,11 +2627,31 @@ class Panel:
             self._bot = self.pult.api("getMe")["username"]
         return self._bot
 
-    def set_role(self, uid: int, role: str):
+    def admin_may(self, uid: int, by: str | None) -> dict:
+        """Человек из списка, которого может менять ``by``: владелец — любого, кроме владельца; админ — только
+        участников и наблюдателей (не других админов и не владельца)."""
         p = next((x for x in self.people.list() if x["id"] == uid), None)
         if not p or p["role"] == "owner":
             raise ValueError("такого человека нет в списке")
+        if by != "owner" and p["role"] not in STAFF_ROLES:
+            raise ValueError("админа меняет только владелец")
+        return p
+
+    def set_role(self, uid: int, role: str, by: str | None = "owner"):
+        p = self.admin_may(uid, by)
+        if by != "owner" and role not in STAFF_ROLES:
+            raise ValueError("роль «админ» выдаёт только владелец")
+        if role == "admin" and (p.get("kind") == "guest" or p.get("tenant")):
+            raise ValueError("админ — только человек с Telegram и без демо-пространства")
         self.people.add(uid, role, p.get("name", ""), p.get("username", ""))
+
+    def set_access(self, uid: int, days: int, by: str | None = "owner"):
+        """Продлить доступ человека: на ``days`` дней от сейчас (0 — бессрочно)."""
+        p = self.admin_may(uid, by)
+        if days not in invites.ACCESS:
+            raise ValueError("срок доступа: " + ", ".join(str(x) for x in invites.ACCESS) + " дней (0 — бессрочно)")
+        self.people.add(uid, p["role"], p.get("name", ""), p.get("username", ""),
+                        until=int(time.time() + days * 86400) if days else 0)
 
     def openrouter_done(self, code: str, state: str):
         """Возврат из OpenRouter после «Authorize»: код → ключ → secrets.json (как ключ, вставленный вручную)."""
@@ -2964,6 +2985,11 @@ OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
               "/api/login/code", "/api/login/check"}          # шторка «Нужен вход» (logins.py) — только владельцу
+# Админ (people.py, владелец 17.11): из владельческого — только люди, приглашения, пространства (смотреть и
+# подключаться) и перезапуск сессий без смены модели. Ключи, деньги, команды на сервере, пространства — нет.
+ADMIN_OK = {"/api/people", "/api/people/role", "/api/people/remove", "/api/people/access", "/api/spaces",
+            "/api/invite/new", "/api/space/connect", "/api/restart"}
+OWNER_ONLY |= {"/api/people/access"}
 # Подтверждение кодом (аудит 09.11): сессия браузера моложе суток (``webauth.CONFIRM_FRESH``) выполняет команды на
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
 # «Подтвердите кодом» и повторит запрос. Mini App в Telegram — доверенное устройство (код ушёл бы в тот же Telegram);
@@ -3252,7 +3278,7 @@ def handler(panel: Panel):
             """Чьё пространство: тестировщика — его; владельцу — из запроса (``space``); остальным — отказ."""
             if slug := self.space():
                 return slug
-            if self.who()[1] == "owner" and b.get("space"):
+            if self.who()[1] in ("owner", "admin") and b.get("space"):     # админ — помогает в пространствах
                 return tenants.check_slug(str(b["space"]))
             raise ValueError("это действие — для сессий демо-пространства")
 
@@ -3260,7 +3286,7 @@ def handler(panel: Panel):
             """Окно пространства из запроса (``w``): тестировщику — только своё; владельцу — любое пространство."""
             w = panel.tmux.window(str(q.get("w") or ""))
             slug = self.space()
-            if not slug and self.who()[1] == "owner":
+            if not slug and self.who()[1] in ("owner", "admin"):
                 slug = (w or {}).get("space")
             if not w or not slug or w.get("space") != slug:
                 raise LookupError("окна уже нет")
@@ -3299,10 +3325,11 @@ def handler(panel: Panel):
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN)   # и наблюдателю
-            need = ("owner" if path in OWNER_ONLY else
+            need = (("admin" if path in ADMIN_OK else "owner") if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if not allowed(role, need):
-                why = "это может только владелец" if need == "owner" else "у вас доступ только на просмотр"
+                why = ("это может только владелец" if need == "owner" else "это могут владелец и админ"
+                       if need == "admin" else "у вас доступ только на просмотр")
                 self.json({"error": why}, 403)
                 return False
             cap = personas.PATH_CAP.get(path)               # потолок возможностей — это права, не только вид
@@ -3438,7 +3465,7 @@ def handler(panel: Panel):
                     return {"sessions": panel.sessions(pool, self.pinner()), "host": sp.get("title", ""),
                             "build": build,
                             "now": time.time(), "cost": panel.cost_summary(pool), "fallback": [], "space": sp}
-                with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
+                with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
                     ss = panel.sessions(pool, self.pinner())  # владелец: и окна пространств (группа «Пространства»)
                 return {"sessions": ss, "host": panel.cfg.host, "build": build,
                         "now": time.time(),                                   # часы сервера: «N назад» без сдвига
@@ -3450,7 +3477,7 @@ def handler(panel: Panel):
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
                 pool = self.pool()
-                with panel.tmux.all_spaces() if self.who()[1] == "owner" else contextlib.nullcontext():
+                with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
                     ss = panel.sessions(pool, self.pinner())
                 # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
                 return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
@@ -3564,7 +3591,7 @@ def handler(panel: Panel):
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
-                return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] == "owner",
+                return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] in ("owner", "admin"),
                                                      self.terms_uid()))
             if path == "/api/focus/list":                 # «Настройки» → «Фокус-ссылки»: действующие, без токенов
                 return {"links": panel.focus.listing()}
@@ -4244,7 +4271,7 @@ def handler(panel: Panel):
                 return panel.help_ask(self.who()[1], self.terms_uid(), b if isinstance(b, dict) else {})
             if path == "/api/help/feedback":
                 return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")),
-                                             self.who()[1])
+                                             "member" if self.who()[1] == "admin" else self.who()[1])
             if path in CONFIRM_API:                       # подтверждение кодом — только сессии браузера
                 if self.via() != "browser":
                     raise ValueError("подтверждение кодом — для входа из браузера")
@@ -4257,10 +4284,14 @@ def handler(panel: Panel):
             if path == "/api/commands/mark":
                 return panel.command_mark(str(b.get("id", "")), b.get("done", True) is not False)
             if path == "/api/people/role":
-                panel.set_role(int(b.get("id", 0)), str(b.get("role", "")))
+                panel.set_role(int(b.get("id", 0)), str(b.get("role", "")), by=self.who()[1])
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/people/remove":
+                panel.admin_may(int(b.get("id", 0)), self.who()[1])
                 panel.forget_person(int(b.get("id", 0)))
+                return {"people": panel.people_list(), **panel.geo.info()}
+            if path == "/api/people/access":           # продлить доступ: дней (0 — бессрочно)
+                panel.set_access(int(b.get("id", 0)), int(b.get("days", 0)), by=self.who()[1])
                 return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/logout":
                 panel.auth.logout(self.session())
@@ -4452,8 +4483,11 @@ def handler(panel: Panel):
                 return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": ttl,
                         "uses": int(b.get("uses", 1)), "access": int(b.get("access", 0))}
             if path == "/api/invite/device":               # ссылка для входа на другое устройство: себе или владелец
-                owner = self.who()[1] == "owner"
-                target = int(b["id"]) if owner and b.get("id") is not None else self.terms_uid()
+                role = self.who()[1]
+                if role in ("owner", "admin") and b.get("id") is not None:   # админ — только участникам и наблюдателям
+                    target = panel.admin_may(int(b["id"]), role)["id"]
+                else:
+                    target = self.terms_uid()
                 return panel.device_link(target, self.terms_uid())
             if path == "/api/link/tg":                     # гость: «Привязать Telegram» — ссылка на бота
                 uid = self.terms_uid()
@@ -4489,7 +4523,8 @@ def handler(panel: Panel):
                 return panel.owner_join(w)
             if path == "/api/help/call":                    # тестировщик: «Позвать на помощь» — владельцу в бот
                 return panel.call_help(self.terms_uid(), w)
-            if w.get("space") and self.who()[1] == "owner" and path in ("/api/send", "/api/select", "/api/key"):
+            helper = self.who()[1] in ("owner", "admin")
+            if w.get("space") and helper and path in ("/api/send", "/api/select", "/api/key"):
                 panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
             if path == NOTIFY_DONE:                       # одно сообщение в бот, когда ход закончится (бот следит)
                 return {"result": panel.pult.ask_notify_done(w["id"], self.terms_uid())}
@@ -4528,6 +4563,8 @@ def handler(panel: Panel):
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
             if path == "/api/restart":
+                if self.who()[1] == "admin" and str(b.get("profile", "")) not in ("", w.get("profile") or ""):
+                    raise ValueError("админ перезапускает сессию без смены модели: модель и расход — у владельца")
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
             if path == "/api/run":
                 return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
