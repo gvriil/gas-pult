@@ -1,0 +1,100 @@
+{
+ "_source": "Список папок (порядок, разделитель «|», флаги, имена системных папок) — настоящий ответ LIST Яндекс Почты (imap.yandex.ru, 17.11.2026, ночной конвейер); имена своих папок владельца заменены выдуманными. Папка «Архив» (\\Noselect) добавлена для проверки фильтра — у Яндекса её не было. Письма выдуманные, формат — по RFC 3501 (§6.3.8 LIST, §6.3.2 EXAMINE, §6.4.4 SEARCH, §6.4.5 FETCH, §6.3.11 APPEND, §5.1.3) и RFC 6154 §5.1. Люди, адреса и тексты выдуманные.",
+ "folders": [
+  {
+   "name": "Отправленные",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Sent"
+   ]
+  },
+  {
+   "name": "Обращения",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked"
+   ]
+  },
+  {
+   "name": "Счета",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked"
+   ]
+  },
+  {
+   "name": "Спам",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Junk"
+   ]
+  },
+  {
+   "name": "Удаленные",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Trash"
+   ]
+  },
+  {
+   "name": "Черновики",
+   "flags": [
+    "\\HasChildren",
+    "\\Unmarked",
+    "\\Drafts"
+   ]
+  },
+  {
+   "name": "Черновики|template",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Templates"
+   ]
+  },
+  {
+   "name": "INBOX",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\NoInferiors"
+   ]
+  },
+  {
+   "name": "Архив",
+   "flags": [
+    "\\Noselect",
+    "\\HasChildren"
+   ]
+  }
+ ],
+ "messages": {
+  "INBOX": [
+   {
+    "uid": 101,
+    "flags": [
+     "\\Seen"
+    ],
+    "raw": "From: =?utf-8?b?0JDQvdC90LAg0J/QtdGC0YDQvtCy0LA=?= <anna.petrova@example.com>\nTo: uk-dom@example.ru\nSubject: =?utf-8?b?0J/QtdGA0LXRgNCw0YHRh9GR0YIg0LfQsCDQvtGC0L7Qv9C70LXQvdC4?=\n =?utf-8?b?0LUsINC60LIu?= 12\nDate: Tue, 10 Nov 2026 09:15:00 +0300\nMessage-ID: <a101.petrova@example.com>\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\n0JTQvtCx0YDRi9C5INC00LXQvdGMIQoK0J/RgNC+0YjRgyDRgdC00LXQu9Cw0YLRjCDQv9C10YDQ\ntdGA0LDRgdGH0ZHRgiDQt9CwINC+0YLQvtC/0LvQtdC90LjQtSDQt9CwINC+0LrRgtGP0LHRgNGM\nOiDQsdCw0YLQsNGA0LXQuCDQsdGL0LvQuCDRhdC+0LvQvtC00L3Ri9C1INGBIDMg0L/QviA5INC+\n0LrRgtGP0LHRgNGPLgoK0JDQvdC90LAg0J/QtdGC0YDQvtCy0LAsINGD0LsuINCh0LDQtNC+0LLQ\nsNGPLCDQtC4gNSwg0LrQsi4gMTIK\n"
+   },
+   {
+    "uid": 102,
+    "flags": [],
+    "raw": "From: =?utf-8?b?0KHQtdGA0LPQtdC5INCY0LLQsNC90L7Qsg==?= <s.ivanov@example.org>\nTo: uk-dom@example.ru\nSubject: =?utf-8?b?0J/RgNC+0YLQtdGH0LrQsCDQsiDQv9C+0LTRitC10LfQtNC1?=\nDate: Thu, 12 Nov 2026 18:40:00 +0300\nMessage-ID: <b102.ivanov@example.org>\nContent-Type: text/html; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\nPGh0bWw+PGJvZHk+PHA+0JfQtNGA0LDQstGB0YLQstGD0LnRgtC1ITwvcD48cD7QkiAzLdC8INC/\n0L7QtNGK0LXQt9C00LUg0YLQtdGH0ZHRgiDQutGA0YvRiNCwINC90LDQtCA5INGN0YLQsNC20L7Q\nvC48YnI+0KTQvtGC0L4g0L/RgNC40LvQvtC20YMg0L/QvtC30LbQtS48L3A+PHN0eWxlPnB7Y29s\nb3I6cmVkfTwvc3R5bGU+PC9ib2R5PjwvaHRtbD4K\n"
+   },
+   {
+    "uid": 103,
+    "flags": [],
+    "raw": "From: =?utf-8?b?0J7QntCeIMKr0KDQvtC80LDRiNC60LAt0KHQtdGA0LLQuNGBwrs=?=\n <buh@romashka-service.example>\nTo: uk-dom@example.ru\nSubject: =?utf-8?b?0JDQutGCINGB0LLQtdGA0LrQuCDQt9CwINC+0LrRgtGP0LHRgNGM?=\nDate: Sat, 14 Nov 2026 11:05:00 +0300\nMessage-ID: <c103@romashka-service.example>\nMIME-Version: 1.0\nContent-Type: multipart/mixed; boundary=\"===============8369856218570507537==\"\n\n--===============8369856218570507537==\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\n\n0J3QsNC/0YDQsNCy0LvRj9C10Lwg0LDQutGCINGB0LLQtdGA0LrQuCDQt9CwINC+0LrRgtGP0LHR\ngNGMIDIwMjYg0LMuINCf0YDQvtGB0LjQvCDQv9C+0LTQv9C40YHQsNGC0YwuCg==\n\n--===============8369856218570507537==\nContent-Type: application/pdf\nContent-Transfer-Encoding: base64\nContent-Disposition: attachment; filename=\"akt-sverki-10-2026.pdf\"\nMIME-Version: 1.0\n\nJVBERi0xLjQKJSBmYWtlCg==\n\n--===============8369856218570507537==--\n"
+   }
+  ],
+  "Черновики": [],
+  "Отправленные": [],
+  "Спам": [],
+  "Удаленные": [],
+  "Обращения": []
+ }
+}
