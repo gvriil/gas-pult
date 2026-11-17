@@ -57,7 +57,12 @@ def detect(lines: list[str]) -> dict | None:
     if not url:
         return None
     text = "\n".join(lines)
-    if not (WORD.search(text) or URL_WORD.search(url)):
+    # слово входа — рядом со ссылкой (±2 строки), если в самой ссылке признака входа нет: иначе любая ссылка на экране
+    # (артефакт claude.ai, документ) плюс старое «Login reached its time limit · Please run /login» давали ложную
+    # карточку входа (iPhone 17.11, окно штаба)
+    at = max((i for i, x in enumerate(lines) if url[:40] in x), default=len(lines) - 1)
+    near = "\n".join(lines[max(0, at - 2):at + 3])
+    if not (URL_WORD.search(url) or WORD.search(near)):
         return None
     code = ""
     for line in lines:
