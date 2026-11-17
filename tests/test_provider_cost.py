@@ -5,7 +5,7 @@
 import io
 import json
 import urllib.error
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -13,6 +13,32 @@ from gas_pult import models, openrouter, usage
 from gas_pult import space_budget as sb
 
 TODAY = date.today().isoformat()
+
+
+class _Day(date):
+    """Полночь: TODAY модуля тестов и «сегодня» кода — один день. CI 17.11 стартовал около 23:59 UTC: модуль запомнил
+    16.11, а код уже считал 17.11 — расход «за сегодня» выходил 0."""
+    @classmethod
+    def today(cls):
+        return cls.fromisoformat(TODAY)
+
+
+class _Now(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls.fromisoformat(TODAY + "T12:00:00").astimezone(tz) if tz else cls.fromisoformat(TODAY + "T12:00:00")
+
+
+@pytest.fixture(autouse=True)
+def same_day(monkeypatch):
+    from gas_pult import bot as _b
+    monkeypatch.setattr(_b, "datetime", _Now)
+    from gas_pult import space_budget as _sb
+    from gas_pult import usage as _u
+    from gas_pult import webapp as _w
+    for m in (_u, _w, _sb):
+        if hasattr(m, "date"):
+            monkeypatch.setattr(m, "date", _Day)
 NOW = f"{TODAY}T12:00:00Z"
 GEN = "gen-1794000000-TestGenAaaaaaaaaaaaa1"
 GEN2 = "gen-1794000001-TestGenBbbbbbbbbbbbb2"
