@@ -88,7 +88,7 @@ SIMPLE = ("business_owner", "point_admin", "student")   # простой реж�
 SPACE_FIXED = frozenset({"cap.dev_sessions"})          # «Моё пространство» владельца: всегда с сессиями
 
 # Права пульта → access_role.
-ACCESS = {"owner": "owner", "member": "staff", "viewer": "guest"}
+ACCESS = {"owner": "owner", "admin": "staff", "member": "staff", "viewer": "guest"}
 # Гость смотрит, но инженерные настройки ему не нужны (модели и MCP наблюдателю закрыты и раньше).
 GUEST = ALL - {"cap.dev_models_mcp"}
 

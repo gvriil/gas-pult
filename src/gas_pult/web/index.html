@@ -1918,8 +1918,8 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   ...(meta?.role !== "viewer" ? [{ label: "Начать новый чат", icon: "compose", run: () => newChat() },
     { label: "Создать папку", icon: "plus", run: () => newFolder() }] : []),
   ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Создать из модуля", icon: "puzzle", run: () => modulesView() }] : []),
-  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } },
-    { label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),
+  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
+  ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),   // владелец и админ
   { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
@@ -3164,13 +3164,14 @@ function spaceChips(s) {
     + (s.owner_here && meta?.role !== "owner" ? '<span class="chip accent">Владелец подключился</span>' : "");
 }
 function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
-  if (meta?.role !== "owner" || (!list.length && !spacesInfo?.tenants?.length)) return "";
+  if (!isBoss() || (!list.length && !spacesInfo?.tenants?.length)) return "";
   return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" + '<button class="chip" data-space-closed>' + ic("folder") + "Закрытые</button>" : ""}</div>`
     + (spacesInfo?.tenants || []).filter((x) => x.budget).map((x) => `<div class="note space-bud${x.budget.pct >= 0.8 ? " warn" : ""}"><b>${esc(x.title || x.slug)}</b> — ${esc(x.budget.text)} <button class="chip" data-space-add="${esc(x.slug)}">${ic("plus")}${esc(T("bud.add"))}</button></div>`).join("")
     + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
 }
+const isBoss = () => meta?.role === "owner" || meta?.role === "admin";   // админ: люди, приглашения, пространства
 async function loadSpaces() {
-  if (meta?.role !== "owner") return;
+  if (!isBoss()) return;
   try { spacesInfo = await api("/api/spaces"); } catch (e) { spacesInfo = null; }
 }
 async function callHelp(id) {                        // тестировщик: владельцу — сессия и последний вопрос агента
@@ -6386,7 +6387,7 @@ if (canNotify() && "serviceWorker" in navigator && !DEMO) navigator.serviceWorke
 navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.open) openSession(e.data.open); });
 
 // ---------- люди (только владелец) ----------
-const ROLE = { owner: "владелец", member: "участник", viewer: "наблюдатель" };
+const ROLE = { owner: "владелец", admin: "админ", member: "участник", viewer: "наблюдатель" };
 // Страна в «Людях»: выбор · код номера · страна по IP; расхождение — пометкой (номер и IP не показываются — их нет)
 function countryLine(c, geoip) {
   if (!c?.chosen) return " · страна не выбрана";
@@ -6431,12 +6432,20 @@ async function teamSheet(uid) {
 }
 function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
+  const until = (days) => api("/api/people/access", { id: p.id, days }).then(() => toast(days ? `Доступ продлён на ${days} дней` : "Доступ бессрочный")).catch((e) => toast(e.message, 4000));
+  const owner = meta?.role === "owner";
   helpSheet("settings.person");
+  if (!owner && p.role === "admin") return sheet(p.name || "ID " + p.id, [{ info: true, icon: "lock", label: "Админ", sub: "менять админа может только владелец" }]);
+  const exp = p.access_until ? new Date(p.access_until * 1000).toLocaleDateString("ru-RU") : "";
   sheet(p.name || "ID " + p.id, [
+    { info: true, icon: "wait", label: exp ? (p.access_until * 1000 < Date.now() ? "Доступ закончился " : "Доступ до ") + exp : "Доступ бессрочный" },
+    ...(exp ? [{ label: "Продлить на 30 дней от сегодня", icon: "plus", run: () => until(30) }, { label: "Сделать бессрочным", icon: "check", run: () => until(0) }]
+      : [{ label: "Ограничить доступ: 30 дней", icon: "wait", run: () => until(30) }]),
     ...(p.role === "member" ? [{ label: "Что видит в пульте", icon: "tasks", sub: "разделы и возможности — экран «Команда»", run: () => teamSheet(p.id) }] : []),
     ...(p.tenant ? [{ label: "Ссылка для входа на другое устройство", icon: "phone", sub: "одноразовая, 24 часа: QR, ссылка и код", run: () => personDevice(p) }] : []),
     { label: "Участник", icon: "chat", on: p.role === "member", sub: "писать в сессии, отвечать, новые сессии — без «Выполнить» и ключей", run: () => set("member") },
     { label: "Наблюдатель", icon: "eye", on: p.role === "viewer", sub: "только смотреть", run: () => set("viewer") },
+    ...(owner && p.kind !== "guest" && !p.tenant ? [{ label: "Админ", icon: "key", on: p.role === "admin", sub: "приглашает людей, меняет роли, продлевает доступ, помогает в пространствах — без ключей, денег и команд на сервере", run: () => set("admin") }] : []),
     { label: "Отключить", icon: "power", danger: true, sub: "доступ прекратится сразу: вход перестанет работать на всех устройствах", run: () => confirmDanger(`Отключить ${p.name || "ID " + p.id}? Доступ к пульту прекратится сразу.`, () => api("/api/people/remove", { id: p.id }).then(() => toast("Отключён: " + (p.name || "ID " + p.id))).catch((e) => toast(e.message, 4000))) },
   ]);
 }
@@ -6555,7 +6564,7 @@ $("settingsBtn").onclick = () => {
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: T("st.title"), icon: "chip", sub: T("st.sub"), run: providersView }] : []),
-    ...(meta?.role === "owner" ? [{ label: "Люди", icon: "place", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
+    ...(isBoss() ? [{ label: "Люди", icon: "place", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Корзина чатов", icon: "trash", sub: "удалённые сессии и чаты — вернуть; скрытые — показать снова", run: chatTrash }] : []),
     ...(meta?.role === "owner" ? [{ label: "Фокус-ссылки", icon: "qr", sub: "какие сессии открыты по фокус-ссылке; отозвать", run: focusList }] : []),

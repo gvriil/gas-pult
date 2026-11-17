@@ -59,10 +59,15 @@ from gas_pult import secrets_guard, tenants
 from gas_pult.config import data_dir, write_private
 from gas_pult.terms import VERSION as TERMS_VERSION
 
-ROLES = ("member", "viewer")
+ROLES = ("member", "viewer", "admin")
+# Админ (владелец 17.11: «права приглашать людей, поддерживать пульт и пользователей»): приглашает, меняет роли
+# участникам и наблюдателям, продлевает и отключает доступ, видит пространства и помогает в них, перезапускает
+# сессии. Не может: ключи и секреты, деньги и лимиты, команды на сервере, создание и удаление пространств, выдачу роли
+# «админ», настройки сервера. Назначает только владелец (webapp.ADMIN_OK, Panel.set_role).
+STAFF_ROLES = ("member", "viewer")               # кого админ может назначать, менять и отключать
 FIELDS = ("chosen", "phone_cc", "phone_hash", "phone_at", "ip_cc", "ip_at")
-RANK = {"viewer": 1, "member": 2, "owner": 3}
-TITLES = {"owner": "владелец", "member": "участник", "viewer": "наблюдатель"}
+RANK = {"viewer": 1, "member": 2, "admin": 3, "owner": 4}
+TITLES = {"owner": "владелец", "admin": "админ", "member": "участник", "viewer": "наблюдатель"}
 LANGS = ("ru", "en")
 PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
 RATES = (1.0, 1.25, 1.5, 2.0)                      # скорость озвучки в панели
@@ -134,7 +139,7 @@ class People:
         (смена роли его не снимает), "" — снять. ``until`` — доступ до (приглашение v2; None — как было, 0 — без
         срока), ``plan`` — пометка подписки."""
         if role not in ROLES:
-            raise ValueError("роль: участник или наблюдатель")
+            raise ValueError("роль: участник, наблюдатель или админ")
         if int(uid) in self.owners:
             raise ValueError("это владелец — у него и так всё")
         with self.lock:
