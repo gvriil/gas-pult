@@ -126,11 +126,13 @@ class People:
         if uid in self.owners:
             return "owner"
         p = self._load().get(str(uid))
-        return p["role"] if p and p.get("role") in ROLES else None
+        return p["role"] if p and p.get("role") in ROLES and not expired(p) else None
 
-    def add(self, uid: int, role: str, name: str = "", username: str = "", tenant: str | None = None):
+    def add(self, uid: int, role: str, name: str = "", username: str = "", tenant: str | None = None,
+            until: int | None = None, plan: str = ""):
         """``tenant`` — тестировщик демо-пространства (задача 31): его сессии — только там. None — оставить как было
-        (смена роли его не снимает), "" — снять."""
+        (смена роли его не снимает), "" — снять. ``until`` — доступ до (приглашение v2; None — как было, 0 — без
+        срока), ``plan`` — пометка подписки."""
         if role not in ROLES:
             raise ValueError("роль: участник или наблюдатель")
         if int(uid) in self.owners:
@@ -140,16 +142,22 @@ class People:
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
                    "added": old.get("added") or int(time.time())}
-            for k in ("terms", "country", "email", "tour", "prefs", "ui", "kind", "last"):   # смена роли — не сброс
-                if old.get(k):
+            for k in ("terms", "country", "email", "tour", "prefs", "ui", "kind", "last", "access_until", "plan"):
+                if old.get(k):                           # смена роли — не сброс
                     rec[k] = old[k]
+            if until is not None:
+                rec.pop("access_until", None)
+                if until:
+                    rec["access_until"] = int(until)
+            if plan:
+                rec["plan"] = plan
             space = old.get("tenant", "") if tenant is None else tenant
             if space:                                    # имя — по тем же правилам, что у pult-tenant
                 rec["tenant"] = tenants.check_slug(space)
             d[str(int(uid))] = rec
             self._save(d)
 
-    def add_guest(self, name: str, role: str, tenant: str) -> int:
+    def add_guest(self, name: str, role: str, tenant: str, until: int | None = None, plan: str = "") -> int:
         """Новый гость без Telegram — тестировщик пространства ``tenant``. Возвращает его внутренний ID."""
         name = " ".join(str(name or "").split())[:60]
         if not name:
@@ -162,7 +170,8 @@ class People:
             while str(uid := GUEST_FLOOR - secrets.randbelow(10 ** 15)) in d:
                 pass
             d[str(uid)] = {"role": role, "name": name, "username": "", "added": int(time.time()), "tenant": tenant,
-                           "kind": "guest"}
+                           "kind": "guest", **({"access_until": int(until)} if until else {}),
+                           **({"plan": plan} if plan else {})}
             self._save(d)
         return uid
 
@@ -209,7 +218,7 @@ class People:
         if uid in self.owners:
             return None
         p = self._load().get(str(uid)) or {}
-        return p.get("tenant") or None if p.get("role") in ROLES else None
+        return p.get("tenant") or None if p.get("role") in ROLES and not expired(p) else None
 
     def remove(self, uid: int):
         """Отключить человека: роль и согласие удаляются, любой его вход перестаёт работать сразу."""
@@ -431,6 +440,12 @@ class People:
                 **({"email": m[str(o)]} if str(o) in m else {})} for o in self.owners]
         out += [{"id": int(k), **v} for k, v in self._load().items()]
         return out
+
+
+def expired(p: dict, now: float | None = None) -> bool:
+    """Срок доступа человека вышел (``access_until`` — приглашение v2; нет поля — бессрочно)."""
+    u = p.get("access_until")
+    return bool(u) and (time.time() if now is None else now) >= u
 
 
 def allowed(role: str | None, need: str) -> bool:

@@ -1917,7 +1917,8 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   ...(meta?.role !== "viewer" ? [{ label: "Начать новый чат", icon: "compose", run: () => newChat() },
     { label: "Создать папку", icon: "plus", run: () => newFolder() }] : []),
   ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Создать из модуля", icon: "puzzle", run: () => modulesView() }] : []),
-  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
+  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } },
+    { label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),
   { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
@@ -3175,15 +3176,15 @@ async function spaceConnect(id) {
   try { await api("/api/space/connect", { w: id }); toast("Подключились — тестировщик видит «Владелец подключился»"); openSession(id); refresh(); }
   catch (e) { toast("Не вышло: " + e.message, 4000); }
 }
-function spaceInvite() {                              // ссылка на 24 часа: вход через Telegram — сразу тестировщик
+let invTerms = null;
+async function spaceInvite() {
+  if (!spacesInfo) await loadSpaces();                              // ссылка на 24 часа: вход через Telegram — сразу тестировщик
   const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
   if (!list.length) return toast("Нет готовых пространств — docs/TENANTS.md", 4000);
   helpSheet("sheet.space-invite");
-  sheet("Пригласить тестировщика — в какое пространство?", list.map((t) => ({ label: t.title, icon: "flask", run: async () => {
-    try {
-      inviteReady(await api("/api/invite/new", { space: t.slug }), t.title);
-    } catch (e) { toast("Не вышло: " + e.message, 4000); }
-  } })));
+  const go = (t) => part("invite").then((m) => { invTerms = m.inviteTerms; m.inviteForm(t); }).catch(() => toast("Нет связи", 3000));
+  if (list.length === 1) return go(list[0]);       // приглашения v2 (js/invite.js): роль, срок, входы, доступ
+  sheet("Пригласить — в какое пространство?", list.map((t) => ({ label: t.title, icon: "flask", run: () => go(t) })));
 }
 // ---------- лёгкий вход (задача 34): ссылка, QR и короткий код одного приглашения ----------
 // QR — картинка с сервера (/api/invite/qr, PNG; владельцу — любого приглашения, человеку — своей ссылки входа).
@@ -3199,7 +3200,7 @@ function inviteReady(r, title, who) {             // владелец: приг�
       : "Отправьте человеку ссылку или покажите QR — пусть наведёт камеру телефона. Можно продиктовать код: экран входа → «Есть код приглашения?». Telegram не нужен."}</p>
     ${invQr(link)}<div class="inv-codebig">${esc(r.code || "")}</div><div class="inv-url">${esc(link)}</div>
     <div class="scn-opts">${sChip(false, 'data-cp="link"', "Скопировать ссылку", ic("copy"))}${sChip(false, 'data-cp="code"', "Скопировать код", ic("copy"))}</div>
-    <p class="note">24 часа, один вход: после него ссылка и код сгорают. Отозвать — gas-pult invite revoke ${esc(hint)}</p>`,
+    <p class="note">${esc(r.uses !== undefined && invTerms ? invTerms(r) : "24 часа, один вход: после него ссылка и код сгорают.")} Отозвать — gas-pult invite revoke ${esc(hint)}</p>`,
     (b) => { if (b.dataset.cp) copyText(b.dataset.cp === "code" ? r.code : link, b.dataset.cp === "code" ? "Код скопирован" : "Ссылка скопирована"); });
 }
 async function personDevice(p) {                  // владелец: ссылка для входа человека на другом устройстве

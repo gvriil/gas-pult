@@ -2259,7 +2259,8 @@ class Pult:
     def invited(self, u: dict, inv: dict) -> str:
         """Вход по приглашению (invites.py): роль и пространство из него, без ожидания владельца."""
         name = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or str(u["id"])
-        self.people.add(u["id"], inv["role"], name, u.get("username", ""), tenant=inv["tenant"])
+        self.people.add(u["id"], inv["role"], name, u.get("username", ""), tenant=inv["tenant"],
+                        until=invites.until_of(inv), plan=inv.get("plan", ""))
         self.menu_for(u["id"])
         self.broadcast(f"🎟 {name} (@{u.get('username') or '—'}, ID {u['id']}) вошёл по приглашению — "
                        f"{TITLES[inv['role']]}, тестировщик в пространстве «{inv['tenant']}». Убрать — «Настройки» → "
@@ -2382,7 +2383,12 @@ class Pult:
         return text and self.broadcast(text)
 
     def send_invite(self, chat: int, slug: str):
-        """/invite <пространство> (владелец): приглашение — QR картинкой, ссылка и короткий код в подписи."""
+        """/invite <пространство> [срок 1d|7d|30d|90d|365d] [входов N, 0 — без лимита] [доступ дней] (владелец):
+        приглашение — QR картинкой, ссылка и короткий код в подписи. По умолчанию — 24 часа, один вход, бессрочно."""
+        slug, *opt = (slug or "").split() or [""]
+        ttl = next((invites.TTLS[x] for x in opt if x in invites.TTLS), invites.TTL)
+        nums = [int(x) for x in opt if x.isdigit()]
+        uses, access = (*nums, 0)[:2] if nums else (1, 0)          # «5» — пять входов, доступ бессрочно
         sp = self.spaces()
         if not sp:
             return self.send(chat, "Демо-пространств нет — создайте его: docs/TENANTS.md, шаг 3.")
@@ -2392,10 +2398,16 @@ class Pult:
         base = urllib.parse.urlsplit(self.panel_url())
         if not base.netloc:
             return self.send(chat, "Не знаю адрес панели: запустите её с --url (кнопка «📱 Панель»).")
-        inv = invites.new(slug, by=chat)
+        try:
+            inv = invites.new(slug, by=chat, ttl=ttl, uses=uses, access=access)
+        except ValueError as e:
+            return self.send(chat, f"Приглашение: {e}. Пример: /invite {slug} 7d 0 30")
         link = f"{base.scheme}://{base.netloc}/invite/{inv['code']}"
         title = next((t.get("title") or slug for t in sp if t["slug"] == slug), slug)
-        cap = (f"🎟 Приглашение в «{title}» — 24 часа, один вход, Telegram не нужен.\n\n"
+        days = {v: k for k, v in invites.TTLS.items()}.get(ttl, "1d")
+        cap = (f"🎟 Приглашение в «{title}» — ссылка {days}, "
+               f"{'входов без лимита' if uses == 0 else 'один вход' if uses == 1 else f'до {uses} входов'}, "
+               f"доступ {f'{access} дн.' if access else 'бессрочно'}; Telegram не нужен.\n\n"
                f"Наведите камеру телефона на QR или откройте ссылку:\n{link}\n\n"
                f"Или код на экране входа («Есть код приглашения?»): {inv['short']}\n\n"
                f"Отозвать: gas-pult invite revoke {inv['hint']}")

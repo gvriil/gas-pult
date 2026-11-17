@@ -1082,7 +1082,8 @@ class Panel:
             name = " ".join(str(name or "").split())[:60]
             if not name:
                 raise ValueError("Напишите, как вас зовут — так вас увидит владелец пульта")
-            uid = self.people.add_guest(name, rec["role"], rec["tenant"])
+            uid = self.people.add_guest(name, rec["role"], rec["tenant"], until=invites.until_of(rec),
+                                        plan=rec.get("plan", ""))
             if not invites.redeem(code, uid):                 # кто-то успел раньше — гостя не оставляем
                 self.people.remove(uid)
                 self.invite_miss(code, ip)
@@ -4436,8 +4437,14 @@ def handler(panel: Panel):
             if path == "/api/focus/revoke":
                 return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
             if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
-                inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), by=self.terms_uid())
-                return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": invites.TTL}
+                ttl = invites.TTLS.get(str(b.get("ttl") or "1d"))
+                if not ttl:
+                    raise ValueError("срок ссылки: " + ", ".join(invites.TTLS))
+                inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), ttl=ttl, by=self.terms_uid(),
+                                  uses=int(b.get("uses", 1)), access=int(b.get("access", 0)),
+                                  plan=str(b.get("plan") or ""))
+                return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": ttl,
+                        "uses": int(b.get("uses", 1)), "access": int(b.get("access", 0))}
             if path == "/api/invite/device":               # ссылка для входа на другое устройство: себе или владелец
                 owner = self.who()[1] == "owner"
                 target = int(b["id"]) if owner and b.get("id") is not None else self.terms_uid()

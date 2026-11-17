@@ -481,7 +481,8 @@ function demoApi(path, body) {
   if (key === "/api/invite") return Promise.resolve(params.get("invite") === "bad" ? { ok: false } : { ok: true, guest: true, title: "Планета", kind: params.get("invite") === "device" ? "device" : "invite", name: "Анна" });
   if (key === "/api/invite/check") return /^\s*planeta[\s-]*482157\s*$/i.test(body?.code || "") ? Promise.resolve({ ok: true, guest: true, title: "Планета", kind: "invite" })
     : Promise.reject(new Error("Код не подошёл: проверьте буквы и цифры. Код работает один раз и 24 часа — если он уже использован, попросите новый."));
-  if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: 86400 });
+  if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: { "7d": 604800, "30d": 2592000, "90d": 7776000, "365d": 31536000 }[body?.ttl] || 86400,
+    ...(key === "/api/invite/new" && body?.uses !== undefined ? { uses: body.uses, access: body.access } : {}) });
   if (key === "/api/link/tg") return Promise.resolve({ id: "demo", link: "https://t.me/", ttl: 300 });
   if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
   if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет
