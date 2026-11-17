@@ -100,6 +100,7 @@ def test_tmux_of_and_new_window(tmp_path, monkeypatch):
     monkeypatch.setattr(tenants.subprocess, "run", fake)
     monkeypatch.setattr(tmux.subprocess, "run", fake)
     assert tenants.new_window("demo-1", "w", base_root=root) == "@3"
+    runs = [r for r in runs if r[:1] == ["sudo"]]   # фоновые потоки других тестов зовут tmux напрямую — не наши
     assert runs[0][:4] == ["sudo", "-n", "-u", "pult_t_demo_1"] and runs[0][-1] == "-V"    # проверка sudo
     nw = next(r for r in runs if "new-window" in r)
     cmd = nw[-1]
