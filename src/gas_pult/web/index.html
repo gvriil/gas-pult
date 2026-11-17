@@ -11,6 +11,7 @@
   /* ===== Палитра в духе Gemini (Material 3): белый и #F0F4F9, синий акцент; статусы — по смыслу ===== */
   :root, :root[data-theme="light"] {
     --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F0F4F9; --bg-terminal: #1E1F20;
+    --tq-red: #C5221F; --tq-orange: #C45A00; --tq-yellow: #9A7400; --tq-green: #137333;   /* задачи (17.11), к фону ≥3,9:1 */
     --border-subtle: #E1E5EA; --border-focus: #0B57D0;
     --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
     --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
@@ -26,6 +27,7 @@
   }
   :root[data-theme="dark"] {
     --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
+    --tq-red: #F28B82; --tq-orange: #FCAD70; --tq-yellow: #FDD663; --tq-green: #81C995;   /* к фону ≥6,9:1 */
     --border-subtle: #3C4043; --border-focus: #A8C7FA;
     --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
     --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
@@ -894,6 +896,9 @@
      другой роли — временный, на вкладку: яркая полоса сверху, перезагрузка возвращает в своё пространство. */
   .spaces { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 6px; } .spaces button { white-space: nowrap; } .spaces button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 12px;
     border-radius: var(--radius-pill); font: inherit; font-size: calc(13px * var(--fz, 1)); font-weight: 600; cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); }
+  .sdot.tq-r { background: var(--tq-red); } .sdot.tq-o { background: var(--tq-orange); } .sdot.tq-y { background: var(--tq-yellow); } .sdot.tq-g { background: var(--tq-green); }
+  .spaces .tqs { display: inline-flex; gap: 8px; } .spaces .tqs b { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--text-primary); }
+  @media (max-width: 520px) { .spaces { flex-wrap: nowrap; } .spaces button { padding: 3px 10px; } .spaces .lbl { display: none; } }   /* телефон: одна строка */
   .spaces .sp-mine.on { background: var(--accent-soft); border-color: var(--accent-primary); color: var(--accent-primary); }
   /* Рабочий стол Ubuntu (#206, js/desktop.js): экран поверх панели, свой просмотр на ядре noVNC; зум, «Рука», поворот */
   .desk { position: fixed; inset: 0; z-index: 19; display: flex; flex-direction: column; background: var(--bg-terminal);
@@ -1071,7 +1076,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
-  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал Ubuntu"></button></div>
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu" title="Рабочий стол Ubuntu"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал Ubuntu" title="Терминал Ubuntu"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
@@ -7369,20 +7374,23 @@ let tasksInfo = null;                                  // {open, waiting} из �
 function paintSpaces() {
   const on = (meta?.role === "owner" || !!UI?.own_space) && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
   $("spaces").hidden = !on; if (!on) return;
-  $("spaces").querySelector(".sp-mine").hidden = !UI?.own_space;
+  $("spaces").querySelector(".sp-mine").hidden = !UI?.own_space || meta?.role === "owner";   // владельцу непонятно (17.11)
   $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
   const dk = $("spaces").querySelector(".sp-desk");     // рабочий стол агентов (#206): владельцу, если он запущен
-  dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + "Ubuntu";   // владелец: «открыть Ubuntu сразу»
+  dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + '<span class="lbl">Ubuntu</span>';   // владелец: «открыть Ubuntu сразу»
   const tm = $("spaces").querySelector(".sp-term");     // «Терминал» (17.11): окно ubuntu-shell в живом терминале
-  tm.hidden = !(meta?.role === "owner" && (meta?.desktop || meta?.tty)); tm.innerHTML = ic("term") + "Терминал";
+  tm.hidden = !(meta?.role === "owner" && (meta?.desktop || meta?.tty)); tm.innerHTML = ic("term") + '<span class="lbl">Терминал</span>';
   tasksCount();
 }
 function tasksCount() {
   // На кнопке — сколько «срочно и важно» (квадрант 1 матрицы Эйзенхауэра, решение владельца 14.11), иначе — сколько открыто
-  const b = $("spaces").querySelector(".sp-tasks"), n = tasksInfo?.open || 0, q1 = tasksInfo?.q1 || 0;
-  const html = ic("tasks") + (q1 ? `Задачи · срочно ${q1}` : n ? `Задачи · ${n}` : "Задачи");
+  // сводка (владелец 17.11): красный — срочно, оранжевый — ждут вас, жёлтый — в работе; нет открытых — зелёный
+  const b = $("spaces").querySelector(".sp-tasks"), t = tasksInfo || {}, n = t.open || 0;
+  const parts = [["tq-r", t.q1, "срочно"], ["tq-o", t.waiting, "ждут вас"], ["tq-y", t.doing, "в работе"]].filter((x) => x[1]);
+  const html = ic("tasks") + '<span class="lbl">Задачи</span><span class="tqs">' + (parts.length ? parts.map(([c, k]) => `<b><i class="sdot ${c}"></i>${k}</b>`).join("")
+    : n ? `<b>${n}</b>` : '<b><i class="sdot tq-g"></i>0</b>') + "</span>";
   if (b.innerHTML !== html) b.innerHTML = html;
-  b.classList.toggle("wait", !!q1);
+  b.setAttribute("aria-label", "Задачи: " + (parts.map(([, k, w]) => k + " " + w).join(", ") || (n ? n + " открыто" : "всё решено")));
 }
 $("spaces").addEventListener("click", (e) => {
   if (e.target.closest("[data-space=term]")) return part("links").then(() => shellOpen());

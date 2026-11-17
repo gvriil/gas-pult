@@ -176,7 +176,8 @@ class Tasks:
         items = self._load()
         live = [x for x in items if x.get("status") != "done"]
         return {"open": len(live), "waiting": sum(x.get("status") == "waiting" for x in live),
-                "q1": sum(quadrant(x) == 1 for x in live)}
+                "q1": sum(quadrant(x) == 1 for x in live),
+                "doing": sum(x.get("status") == "doing" for x in live)}   # «в работе» — сводка в полосе (17.11)
 
     def add(self, d: dict, by: str = "owner") -> dict:
         if d.get("q"):

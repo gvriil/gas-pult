@@ -2,7 +2,8 @@
 
     python tests/e2e/tasks_demo.py http://127.0.0.1:8797/?demo
 
-Демо ``&space=1&home``: наверху «Задачи · срочно N» (квадрант 1 матрицы Эйзенхауэра) вместо «Демо и тесты»; список —
+Демо ``&space=1&home``: наверху «Задачи» с цветными счётчиками
+(подпись «Задачи: N срочно, …») (квадрант 1 матрицы Эйзенхауэра) вместо «Демо и тесты»; список —
 по квадрантам (1 сверху, просроченное — срочное), внутри — «ждут вас» первыми,
 выполненные — отдельно; нажал задачу с командой — открылся её чат и карточка; «Выполнить» — итог; «Отметить
 выполненным» — счётчик уменьшился; решение — вариант уходит в чат дословно; «Демо и тесты» — в «Подсказать».
@@ -28,9 +29,10 @@ def run(base: str):
             pg.on("console", lambda m: m.type == "error" and "404" not in m.text and errs.append(m.text))
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(f"{base}{sep}space=1&home&theme={th}")
-            pg.wait_for_selector(".sp-tasks:has-text('Задачи')")
+            pg.wait_for_selector(".sp-tasks[aria-label^='Задачи']")
             assert pg.locator("[data-space=demo]").count() == 0, f"{where}: «Демо и тесты» осталось наверху"
-            assert pg.inner_text(".sp-tasks").startswith("Задачи · срочно 2"), pg.inner_text(".sp-tasks")
+            lab = pg.get_attribute(".sp-tasks", "aria-label")                 # сводка цветом (17.11): подпись — словами
+            assert lab.startswith("Задачи: 2 срочно"), lab
             pg.click(".sp-tasks")
             pg.wait_for_selector(".sheet h3:has-text('Задачи')")
             labels = [x.split("\n")[0] for x in pg.locator(".sheet button").all_inner_texts()]
@@ -60,14 +62,16 @@ def run(base: str):
             pg.wait_for_function("() => current === '@1'")
             pg.evaluate(SPY)
             pg.locator(".sheet button", has_text="80 тыс. ₽").click()
-            pg.wait_for_function("() => document.querySelector('.sp-tasks').innerText.startsWith('Задачи · срочно 1')")
+            pg.wait_for_function("() => (document.querySelector('.sp-tasks').getAttribute('aria-label') || '')"
+                                 ".startsWith('Задачи: 1 срочно')")
             # квадрант руками: «Написать Ивану» → «Срочно и важно»
             pg.click(".sp-tasks")
             pg.wait_for_selector(".sheet h3:has-text('Задачи')")
             pg.locator(".sheet button", has_text="Написать Ивану про доступ").click()
             pg.locator(".sheet button", has_text="Срочность и важность").click()
             pg.locator(".sheet button", has_text="Срочно и важно — сделать сейчас").click()
-            pg.wait_for_function("() => document.querySelector('.sp-tasks').innerText.startsWith('Задачи · срочно 2')")
+            pg.wait_for_function("() => (document.querySelector('.sp-tasks').getAttribute('aria-label') || '')"
+                                 ".startsWith('Задачи: 2 срочно')")
             sent = pg.evaluate("() => window.__sent")
             assert sent and sent[0]["text"] == "80 тыс. ₽" and sent[0]["w"] == "@1", f"{where}: ответ в чат {sent}"
             # «Демо и тесты» — в «Подсказать»
