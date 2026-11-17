@@ -29,8 +29,8 @@ def test_e2e_tty_copy_on_phone():
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
-            pg.evaluate("meta.tty = true; window.__cp = []; window.copyText = async (t) => { __cp.push(t); return true; };"
-                        " ttyOpen('@1'); 0")
+            pg.evaluate("meta.tty = true; window.__cp = [];"
+                        " window.copyText = async (t) => { __cp.push(t); return true; }; ttyOpen('@1'); 0")
             try:
                 pg.wait_for_selector(".tty .tbox.xt .xterm", timeout=15000)
             except sync_api.TimeoutError:
