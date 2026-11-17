@@ -267,8 +267,10 @@ def test_list_folders(env):
     (r,) = rpc([call("mail_list_folders")], env)
     d = body(r)
     roles = {f["name"]: f["role"] for f in d["folders"]}
-    assert roles == {"INBOX": "входящие", "Sent": "отправленные", "Drafts": "черновики", "Spam": "спам",
-                     "Trash": "корзина", "Обращения": ""}  # «Архив» — \Noselect, не показываем
+    # имена и флаги — как в настоящем ответе Яндекса 17.11 (свои папки переименованы)
+    assert roles == {"INBOX": "входящие", "Отправленные": "отправленные", "Черновики": "черновики", "Спам": "спам",
+                     "Удаленные": "корзина", "Черновики|template": "шаблоны", "Обращения": "", "Счета": ""}
+    # «Архив» — \Noselect, не показываем
     login = next(s for s in IMAP.seen if s["cmd"] == "LOGIN")
     assert USER in login["line"] and not imap_writes()
 
@@ -292,6 +294,15 @@ def test_list_messages_filters_cyrillic(env):
     s = next(s for s in IMAP.seen if s["sub"] == "SEARCH")
     assert s["line"].startswith("UID SEARCH CHARSET UTF-8 UNSEEN SINCE 11-Nov-2026 SUBJECT")
     assert s["lits"] == ["протечка".encode()]
+
+
+def test_list_messages_yo_searches_both_spellings(env):
+    """Яндекс ищет буквально (проверено 17.11): «протёчка» ищем и как «протечка», результаты объединяем."""
+    (r,) = rpc([call("mail_list_messages", {"subject": "протёчка"})], env)
+    d = body(r)
+    assert [x["uid"] for x in d["rows"]] == ["102"] and d["total"] == 1
+    lits = [s["lits"][0] for s in IMAP.seen if s["sub"] == "SEARCH"]
+    assert lits == ["протёчка".encode(), "протечка".encode()] and not imap_writes()
 
 
 def test_list_messages_errors(env):
@@ -375,7 +386,7 @@ def test_draft_needs_confirmation_then_one_append(env):
     (r,) = rpc([call("mail_apply", {"id": pid})], env)
     assert "запись выключена" in err(r) and not imap_writes()
     r1, r2 = rpc([call("mail_apply", {"id": pid}), call("mail_apply", {"id": pid})], env | {"GAS_MAIL_WRITE": "1"})
-    assert body(r1)["folder"] == "Drafts" and "не найден" in err(r2)
+    assert body(r1)["folder"] == "Черновики" and "не найден" in err(r2)
     (w,) = imap_writes()
     assert w["cmd"] == "APPEND" and "\\Draft" in w["line"] and not SMTP.seen
     saved = _msg(w["lits"][0].decode())

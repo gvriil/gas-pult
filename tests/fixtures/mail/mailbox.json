@@ -1,44 +1,66 @@
 {
- "_source": "Не проверено на реальном ящике. Формат ответов IMAP — по RFC 3501 (§6.3.8 LIST, §6.3.2 EXAMINE, §6.4.4 SEARCH, §6.4.5 FETCH, §6.3.11 APPEND, §5.1.3 имена папок) и RFC 6154 §5.1 (роли папок \\Drafts, \\Sent…); разделитель «|» и имена папок — как у Яндекс Почты (yandex.ru/support/mail/mail-clients/others.html). Люди, адреса и тексты выдуманные.",
+ "_source": "Список папок (порядок, разделитель «|», флаги, имена системных папок) — настоящий ответ LIST Яндекс Почты (imap.yandex.ru, 17.11.2026, ночной конвейер); имена своих папок владельца заменены выдуманными. Папка «Архив» (\\Noselect) добавлена для проверки фильтра — у Яндекса её не было. Письма выдуманные, формат — по RFC 3501 (§6.3.8 LIST, §6.3.2 EXAMINE, §6.4.4 SEARCH, §6.4.5 FETCH, §6.3.11 APPEND, §5.1.3) и RFC 6154 §5.1. Люди, адреса и тексты выдуманные.",
  "folders": [
   {
-   "name": "INBOX",
-   "flags": [
-    "\\HasNoChildren"
-   ]
-  },
-  {
-   "name": "Sent",
+   "name": "Отправленные",
    "flags": [
     "\\HasNoChildren",
+    "\\Unmarked",
     "\\Sent"
-   ]
-  },
-  {
-   "name": "Drafts",
-   "flags": [
-    "\\HasNoChildren",
-    "\\Drafts"
-   ]
-  },
-  {
-   "name": "Spam",
-   "flags": [
-    "\\HasNoChildren",
-    "\\Junk"
-   ]
-  },
-  {
-   "name": "Trash",
-   "flags": [
-    "\\HasNoChildren",
-    "\\Trash"
    ]
   },
   {
    "name": "Обращения",
    "flags": [
-    "\\HasNoChildren"
+    "\\HasNoChildren",
+    "\\Unmarked"
+   ]
+  },
+  {
+   "name": "Счета",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked"
+   ]
+  },
+  {
+   "name": "Спам",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Junk"
+   ]
+  },
+  {
+   "name": "Удаленные",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Trash"
+   ]
+  },
+  {
+   "name": "Черновики",
+   "flags": [
+    "\\HasChildren",
+    "\\Unmarked",
+    "\\Drafts"
+   ]
+  },
+  {
+   "name": "Черновики|template",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\Templates"
+   ]
+  },
+  {
+   "name": "INBOX",
+   "flags": [
+    "\\HasNoChildren",
+    "\\Unmarked",
+    "\\NoInferiors"
    ]
   },
   {
@@ -69,10 +91,10 @@
     "raw": "From: =?utf-8?b?0J7QntCeIMKr0KDQvtC80LDRiNC60LAt0KHQtdGA0LLQuNGBwrs=?=\n <buh@romashka-service.example>\nTo: uk-dom@example.ru\nSubject: =?utf-8?b?0JDQutGCINGB0LLQtdGA0LrQuCDQt9CwINC+0LrRgtGP0LHRgNGM?=\nDate: Sat, 14 Nov 2026 11:05:00 +0300\nMessage-ID: <c103@romashka-service.example>\nMIME-Version: 1.0\nContent-Type: multipart/mixed; boundary=\"===============8369856218570507537==\"\n\n--===============8369856218570507537==\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\n\n0J3QsNC/0YDQsNCy0LvRj9C10Lwg0LDQutGCINGB0LLQtdGA0LrQuCDQt9CwINC+0LrRgtGP0LHR\ngNGMIDIwMjYg0LMuINCf0YDQvtGB0LjQvCDQv9C+0LTQv9C40YHQsNGC0YwuCg==\n\n--===============8369856218570507537==\nContent-Type: application/pdf\nContent-Transfer-Encoding: base64\nContent-Disposition: attachment; filename=\"akt-sverki-10-2026.pdf\"\nMIME-Version: 1.0\n\nJVBERi0xLjQKJSBmYWtlCg==\n\n--===============8369856218570507537==--\n"
    }
   ],
-  "Drafts": [],
-  "Sent": [],
-  "Spam": [],
-  "Trash": [],
+  "Черновики": [],
+  "Отправленные": [],
+  "Спам": [],
+  "Удаленные": [],
   "Обращения": []
  }
 }

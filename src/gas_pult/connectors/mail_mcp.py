@@ -49,7 +49,8 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
 _SMTP = {"imap.yandex.ru": "smtp.yandex.ru", "imap.yandex.com": "smtp.yandex.com", "imap.gmail.com": "smtp.gmail.com",
          "imap.mail.yahoo.com": "smtp.mail.yahoo.com", "imap.mail.ru": "smtp.mail.ru"}
 ROLES = {"\\inbox": "входящие", "\\sent": "отправленные", "\\drafts": "черновики", "\\junk": "спам",
-         "\\trash": "корзина", "\\archive": "архив", "\\all": "вся почта", "\\flagged": "помеченные"}
+         "\\trash": "корзина", "\\archive": "архив", "\\all": "вся почта", "\\flagged": "помеченные",
+         "\\templates": "шаблоны"}                     # \Templates — не RFC 6154, отдаёт Яндекс (проверено 17.11)
 _DRAFT_NAMES = ("Drafts", "Черновики", "[Gmail]/Drafts", "[Gmail]/Черновики", "Draft")
 
 
@@ -324,11 +325,16 @@ def list_messages(a: dict):
     with _imap(a.get("box")) as (m, name, _):
         _examine(m, folder)
         if lit:                                        # кириллица — литералом в UTF-8, последним условием
-            m.literal = lit[1].encode()
-            typ, data = m.uid("SEARCH", "CHARSET", "UTF-8", *crit, lit[0])
+            found = set()
+            # Яндекс ищет буквально: «счёт» не находит «счет» (проверено 17.11) — ищем оба написания
+            for val in dict.fromkeys((lit[1], lit[1].replace("ё", "е").replace("Ё", "Е"))):
+                m.literal = val.encode()
+                typ, data = m.uid("SEARCH", "CHARSET", "UTF-8", *crit, lit[0])
+                found.update((_ok(typ, data, "поиск не удался")[0] or b"").split())
+            found = sorted(found, key=int)
         else:
             typ, data = m.uid("SEARCH", *(crit or ["ALL"]))
-        found = (_ok(typ, data, "поиск не удался")[0] or b"").split()
+            found = (_ok(typ, data, "поиск не удался")[0] or b"").split()
         uids = [u.decode() for u in found][-limit:]
         rows = []
         if uids:
