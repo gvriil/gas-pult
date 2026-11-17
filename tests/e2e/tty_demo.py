@@ -28,7 +28,7 @@ def run(base: str, shots: str = ""):
                 pg = ctx.new_page()
                 pg.on("console", lambda m: m.type == "error" and "404" not in m.text and errs.append(m.text))
                 pg.on("pageerror", lambda e: errs.append(str(e)))
-                pg.goto(f"{base}{sep}{q}&theme={theme}&noscroll")
+                pg.goto(f"{base}{sep}{q}&theme={theme}&noscroll&ttytext=1")   # текстовый вид; эмулятор — test_xterm
                 pg.wait_for_timeout(1200)
                 return pg
 
@@ -36,6 +36,7 @@ def run(base: str, shots: str = ""):
             pg.evaluate("setTab('screen')")
             pg.wait_for_selector("#termLive", timeout=4000)
             pg.click("#termLive")
+            pg.wait_for_selector("#ttyPre", timeout=8000)                      # часть js/tty.js грузится по требованию
             pg.wait_for_function("document.querySelector('#ttyPre').textContent.includes('❯')", timeout=4000)
             shown = pg.evaluate("document.querySelector('#ttyPre').textContent.split('\\n').length")
             assert shown < 600, f"{where}: сразу показана вся история ({shown})"

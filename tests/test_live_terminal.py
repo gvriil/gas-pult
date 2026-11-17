@@ -263,3 +263,49 @@ def test_e2e_live_terminal_in_browser():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
     finally:
         srv.shutdown()
+
+
+# ---------- терминал как терминал (владелец 17.11): xterm.js, размер окна под панель, курсор ----------
+class SizedTm(FakeTm):
+    """Окно с экраном, курсором и шириной: display-message отдаёт и поля для эмулятора."""
+
+    def run(self, *args, input=None):
+        if args[0] == "display-message":
+            self.calls.append((args, input))
+            return f"{self.rows}\t50000\t{self.height}\t\t0\t0\t7\t3\t100\t1\n"
+        return super().run(*args, input=input)
+
+
+def test_cause_and_size_reset():
+    """Причина «видно только сверху» (17.11): окно без клиента tmux — default-size 80x24, панель размер не меняла.
+    tty_size меняет окно под область, границы проверяет; reset возвращает размер по клиентам tmux."""
+    tm = SizedTm()
+    assert termwin.tty_size(tm, "@1", 47, 37) == {"ok": True, "cols": 47, "rows": 37}
+    assert tm.calls[-1][0] == ("resize-window", "-t", "@1", "-x", "47", "-y", "37")
+    for c, r in ((5, 30), (500, 30), (80, 2), (80, 999), ("x", 30)):
+        with pytest.raises(ValueError):
+            termwin.tty_size(tm, "@1", c, r)
+    assert termwin.tty_size(tm, "@1", 0, 0, reset=True) == {"ok": True, "reset": True}
+    assert tm.calls[-1][0] == ("set-option", "-w", "-u", "-t", "@1", "window-size")
+
+
+def test_color_screen_keeps_rows_and_cursor():
+    tm = SizedTm(rows=10, height=5)
+    d = termwin.history(tm, "@1", color=True)
+    caps = [a for a, _ in tm.calls if a[0] == "capture-pane"]
+    assert all("-e" in a and "-J" not in a for a in caps)                    # цвета, строки экрана не склеены
+    assert (d["cx"], d["cy"], d["width"], d["cursor"]) == (7, 3, 100, True)
+    plain = termwin.history(SizedTm(rows=10, height=5), "@1")
+    assert plain["cx"] == 7 and len(d["lines"]) >= len(plain["lines"])        # эмулятору — экран целиком
+
+
+def test_size_route_rights(server):
+    p, base, _ = server
+    owner, member = confirmed(p, 1), confirmed(p, 2)
+    assert call(base, "/api/tty/size", {"w": "@1", "cols": 90, "rows": 30}, owner)[1] == {"ok": True, "cols": 90,
+                                                                                            "rows": 30}
+    assert call(base, "/api/tty/size", {"w": "@1", "cols": 90, "rows": 30}, member)[0] == 200   # своя сессия — можно
+    assert call(base, "/api/tty/size", {"w": "@9", "cols": 90, "rows": 30}, member)[0] == 400   # gp-term — нет
+    assert call(base, "/api/tty/size", {"w": "@1", "cols": 3, "rows": 30}, owner)[0] == 400
+    code, d = call(base, "/api/tty?w=%401&color=1", tok=owner)
+    assert code == 200 and "cx" in d and "cy" in d

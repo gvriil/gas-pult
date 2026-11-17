@@ -184,7 +184,8 @@ MAX_ROWS = 20_000               # глубже — не отдаём: после
 LINE_MAX = 2000                 # длинная строка обрезается (склеенные -J переносы)
 TEXT_MAX = 8000                 # за один ввод
 CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")   # управляющие знаки из текста — не вводим (кроме \t и \n)
-INFO = "#{history_size}\t#{history_limit}\t#{pane_height}\t#{pane_start_time}\t#{pane_dead}\t#{alternate_on}"
+INFO = ("#{history_size}\t#{history_limit}\t#{pane_height}\t#{pane_start_time}\t#{pane_dead}\t#{alternate_on}"
+        "\t#{cursor_x}\t#{cursor_y}\t#{pane_width}\t#{cursor_flag}")
 
 
 def resolve(tmux, wid: str):
@@ -229,16 +230,18 @@ def _num(x, default=0) -> int:
         return default
 
 
-def _capture(tm, raw: str, a: int, b: int) -> list[str]:
-    """Строки окна с ``y = a`` по ``y = b`` включительно: переносы по ширине склеены, секреты замаскированы."""
-    out = tm.run("capture-pane", "-p", "-J", "-S", str(a), "-E", str(b), "-t", raw)
+def _capture(tm, raw: str, a: int, b: int, color: bool = False) -> list[str]:
+    """Строки окна с ``y = a`` по ``y = b`` включительно: переносы по ширине склеены, секреты замаскированы.
+    ``color`` — для эмулятора (xterm.js): с цветами (``-e``, последовательности SGR) и без склейки — строка экрана
+    остаётся строкой экрана."""
+    out = tm.run("capture-pane", "-p", *(("-e",) if color else ("-J",)), "-S", str(a), "-E", str(b), "-t", raw)
     lines = [x.rstrip()[:LINE_MAX] for x in mask(out).split("\n")]
     if out.endswith("\n") and lines and lines[-1] == "":
         lines.pop()
     return lines
 
 
-def history(tmux, wid: str, start=None, end=None, everything: bool = False) -> dict:
+def history(tmux, wid: str, start=None, end=None, everything: bool = False, color: bool = False) -> dict:
     """История окна в строках tmux: строка ``r`` (от 0 — самой старой в истории) — это ``y = r - history_size``.
 
     Без параметров — последние ``PAGE`` строк (с видимым экраном); ``start`` — от этой строки до конца (живой хвост
@@ -263,12 +266,34 @@ def history(tmux, wid: str, start=None, end=None, everything: bool = False) -> d
         lo, hi = min(max(_num(start), floor), total), total
     else:
         lo, hi = max(floor, total - PAGE), total
-    old = _capture(tm, raw, lo - hs, min(hi, hs) - 1 - hs) if lo < min(hi, hs) else []
-    scr = _capture(tm, raw, max(lo, hs) - hs, hi - 1 - hs) if max(lo, hs) < hi else []
-    if hi == total:                                  # пустой низ экрана под курсором — не нужен
+    old = _capture(tm, raw, lo - hs, min(hi, hs) - 1 - hs, color) if lo < min(hi, hs) else []
+    scr = _capture(tm, raw, max(lo, hs) - hs, hi - 1 - hs, color) if max(lo, hs) < hi else []
+    if hi == total and not color:                    # пустой низ экрана под курсором — не нужен (эмулятору — нужен)
         while scr and not scr[-1]:
             scr.pop()
     return {"alive": True, "lines": old + scr, "cut": len(old), "start": lo, "end": hi, "total": total,
             "floor": floor, "history": hs, "limit": limit, "height": height,
             "since": _num(info[3] if len(info) > 3 else 0), "dead": (info[4:5] or [""])[0] == "1",
-            "alt": (info[5:6] or [""])[0] == "1"}
+            "alt": (info[5:6] or [""])[0] == "1",
+            # курсор и ширина окна — для эмулятора (добавлено, задача «терминал как терминал» 17.11)
+            "cx": _num((info[6:7] or ["0"])[0]), "cy": _num((info[7:8] or ["0"])[0]),
+            "width": _num((info[8:9] or ["0"])[0]), "cursor": (info[9:10] or ["1"])[0] == "1"}
+
+
+SIZE_COLS, SIZE_ROWS = (20, 400), (5, 200)
+
+
+def tty_size(tmux, wid: str, cols, rows, reset: bool = False) -> dict:
+    """Размер окна tmux — под область терминала в панели (окно без клиента tmux держит default-size 80x24, и текст
+    занимал только верх области — причина «видно только сверху», 17.11). Границы — ``SIZE_COLS``/``SIZE_ROWS``.
+    ``resize-window`` ставит окну ``window-size manual``; ``reset`` — вернуть обычный режим (при закрытии терминала)."""
+    if reset:                                        # терминал закрыли: размер — снова по клиентам tmux (Termius)
+        tm, raw = resolve(tmux, wid)
+        tm.run("set-option", "-w", "-u", "-t", raw, "window-size")
+        return {"ok": True, "reset": True}
+    c, r = _num(cols), _num(rows)
+    if not (SIZE_COLS[0] <= c <= SIZE_COLS[1] and SIZE_ROWS[0] <= r <= SIZE_ROWS[1]):
+        raise ValueError(f"размер — {SIZE_COLS[0]}–{SIZE_COLS[1]} колонок и {SIZE_ROWS[0]}–{SIZE_ROWS[1]} строк")
+    tm, raw = resolve(tmux, wid)
+    tm.run("resize-window", "-t", raw, "-x", str(c), "-y", str(r))
+    return {"ok": True, "cols": c, "rows": r}
