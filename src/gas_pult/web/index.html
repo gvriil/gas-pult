@@ -1071,7 +1071,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
-  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu"></button></div>
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал Ubuntu"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
@@ -1660,6 +1660,7 @@ async function shareLink(href) {
   }
   copyText(href, LT("link.share.copied", "Поделиться отсюда нельзя — ссылка скопирована"));
 }
+const deskLinks = () => meta?.role === "owner" && meta?.desktop && !DEMO && !FOCUS;   // владелец 17.11: ссылки — и в Ubuntu
 let linkMenuAt = 0;
 function linkMenu(a) {
   if (Date.now() - linkMenuAt < 800) return;           // долгое нажатие и contextmenu одного касания — одно меню
@@ -1668,6 +1669,7 @@ function linkMenu(a) {
   helpSheet("sheet.link");
   sheet(LT("link.title", "Ссылка"), [
     { label: LT("link.open", "Открыть"), icon: "ext", run: () => openLink(href) || window.open(href, "_blank", "noopener,noreferrer") },
+    ...(deskLinks() ? [{ label: "Открыть в Ubuntu", icon: "monitor", run: () => part("links").then(() => openDesk(href)) }] : []),
     { label: LT("link.copy", "Копировать"), sub: href, icon: "copy", run: () => copyText(href, LT("link.copied", "Ссылка скопирована")) },
     { label: LT("link.share", "Поделиться"), icon: "share", run: () => shareLink(href) },
   ], LT("link.close", "Закрыть"));
@@ -1689,6 +1691,7 @@ document.addEventListener("contextmenu", (e) => {     // долгое нажат
 document.addEventListener("click", (e) => {
   const a = e.target.closest?.("a.clink"); if (!a) return;
   if (linkHeld) { linkHeld = false; e.preventDefault(); return; }   // долгое нажатие уже открыло меню
+  if (deskLinks()) { e.preventDefault(); return part("links").then(() => linkChoose(a.href)); }   // «Где открыть?» (js/links.js)
   if (openLink(a.href)) e.preventDefault();
 });
 // Время в журналах — UTC «ГГГГ-ММ-ДД ЧЧ:ММ» (как в транскрипте Claude Code). Показываем в часовом поясе зрителя
@@ -6697,6 +6700,7 @@ $("settingsBtn").onclick = () => {
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
     ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
+    ...(deskLinks() ? [{ label: "Ссылки: где открывать", icon: "globe", sub: "запомненные сайты — в Ubuntu или здесь", run: () => part("links").then(() => linkPrefsSheet()) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Компьютеры — ваш браузер", icon: "monitor", sub: "пульт управляет Chrome на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: () => part("email").then(() => emailSheet()) },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
@@ -7537,6 +7541,8 @@ function paintSpaces() {
   $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
   const dk = $("spaces").querySelector(".sp-desk");     // рабочий стол агентов (#206): владельцу, если он запущен
   dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + "Ubuntu";   // владелец: «открыть Ubuntu сразу»
+  const tm = $("spaces").querySelector(".sp-term");     // «Терминал» (17.11): окно ubuntu-shell в живом терминале
+  tm.hidden = !(meta?.role === "owner" && (meta?.desktop || meta?.tty)); tm.innerHTML = ic("term") + "Терминал";
   tasksCount();
 }
 function tasksCount() {
@@ -7547,6 +7553,7 @@ function tasksCount() {
   b.classList.toggle("wait", !!q1);
 }
 $("spaces").addEventListener("click", (e) => {
+  if (e.target.closest("[data-space=term]")) return part("links").then(() => shellOpen());
   if (e.target.closest("[data-space=desk]")) return part("desktop").then(() => deskOpen(), (er) => toast("Рабочий стол не загрузился: " + er.message, 4500));
   if (e.target.closest("[data-space=tasks]")) part("tasks").then(() => tasksOpen(), (er) => toast("Задачи не загрузились: " + er.message, 4500));
 });
