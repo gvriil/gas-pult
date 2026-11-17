@@ -1092,11 +1092,33 @@ class Panel:
         любое другое окно (и без окна) — только устройства владельца. Чужое устройство агенту не видно."""
         devs = self.devices.listing()
         links = [r for r in ({**v, "id": k} for k, v in self.focus._load().items())
-                 if r.get("browser") and focus.Focus.live(r)] if window else []
+                 if r.get("browser") and focus.Focus.live(r) and not r.get("space")] if window else []
+        # окна пространств — свой сервер tmux, их номера (@3) совпадают с окнами владельца: такие ссылки — только
+        # через мост пространства (bridge_space)
         mine = {r["id"] for r in links if self.focus_owns(r, window)}
         if mine:
             return {d["id"] for d in devs if d.get("focus") in mine}
         return {d["id"] for d in devs if not d.get("focus")}
+
+    def bridge_space(self, token: str) -> str:
+        """Пространство по токену его моста (``pult-tenant bridge``): хэш в ``<папка>/bridge.sha256``; нет — ""."""
+        if not token or not tenants.enabled():
+            return ""
+        h = hashlib.sha256(token.encode()).hexdigest()
+        for slug in tenants.slugs():
+            try:
+                want = (tenants.paths(slug)["base"] / "bridge.sha256").read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if want and secrets.compare_digest(want, h):
+                return slug
+        return ""
+
+    def bridge_space_allowed(self, slug: str) -> set[str]:
+        """Устройства для агента пространства: только фокус-ссылок этого пространства с «Браузер»."""
+        rids = {k for k, v in self.focus._load().items()
+                if v.get("space") == slug and v.get("browser") and focus.Focus.live(v)}
+        return {d["id"] for d in self.devices.listing() if d.get("focus") in rids}
 
     def focus_owns(self, rec: dict, wid: str) -> bool:
         """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта."""
@@ -3575,11 +3597,14 @@ def handler(panel: Panel):
             return panel.devices.claim(b.get("code", ""), b.get("name", ""), b.get("os", ""))
 
         def bridge_rpc(self):
-            if not secrets.compare_digest(self.headers.get("X-GP-Local", ""), bridge_local_token(panel.cfg.data)):
+            space = panel.bridge_space(self.headers.get("X-GP-Space-Token", ""))
+            if not space and not secrets.compare_digest(self.headers.get("X-GP-Local", ""),
+                                                        bridge_local_token(panel.cfg.data)):
                 self.json({"error": "нет доступа"}, 403)
                 return SENT
             b = json.loads(self.body() or b"{}")
-            allowed = {d for d in panel.bridge_allowed(str(b.get("window") or ""))
+            allowed = {d for d in (panel.bridge_space_allowed(space) if space else
+                                   panel.bridge_allowed(str(b.get("window") or "")))
                        if panel.bridge_dev_ok(panel.devices.get(d))}
             return panel.hub.call(b.get("msg") or {}, str(b.get("device") or ""), allowed=allowed) or {"ok": True}
 

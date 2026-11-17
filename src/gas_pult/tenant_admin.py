@@ -656,6 +656,66 @@ def set_mcp(lay: Layout, s: Sys, slug: str, kind: str, secret: str, engine: str 
     s.out(f"Интеграция {kind} в {slug} подключена; открытые сессии пространства увидят её после перезапуска.")
 
 
+BRIDGE_HASH = "bridge.sha256"                    # хэш токена моста пространства: пульт читает (root:pult-ro 0640)
+
+
+def set_bridge(lay: Layout, s: Sys, slug: str, panel: str = "http://127.0.0.1:8765", token: str = ""):
+    """Мост к браузерам фокус-пользователей для пространства (владелец 17.11, «отдельный пользователь Linux»): клиент
+    ``bridge_client.py`` → ``config/mcp/bridge_mcp.py``, токен пространства ``config/mcp/bridge.token`` (0600, владелец
+    — пользователь пространства), хэш токена ``<папка>/bridge.sha256`` (root:pult-ro 0640) и запись MCP
+    «browser-local» в ``config/claude/.claude.json``. Повторный запуск — тот же токен (пока файл на месте).
+    Откат: ``pult-tenant bridge <slug> --off``."""
+    import hashlib
+    import secrets as _secrets
+    slug = tenants.check_slug(slug)
+    if not tenants.load(slug, lay.tenants):
+        raise SystemExit(f"нет пространства {slug}")
+    p, u = tenants.paths(slug, lay.tenants), tenants.user_of(slug)
+    d = p["config"] / "mcp"
+    s.mkdir(d, 0o700, u, u)
+    s.write(d / "bridge_mcp.py", (Path(__file__).with_name("bridge_client.py")).read_text(encoding="utf-8"),
+            0o644, u, u)
+    tf = d / "bridge.token"
+    if not token:
+        try:
+            token = tf.read_text(encoding="utf-8").strip()
+        except OSError:
+            token = ""
+    token = token or _secrets.token_urlsafe(32)
+    s.write(tf, token + "\n", 0o600, u, u)
+    s.write(p["base"] / BRIDGE_HASH, hashlib.sha256(token.encode()).hexdigest() + "\n", 0o640, "root",
+            tenants.GROUP_RO)
+    cj = p["claude"] / ".claude.json"
+    try:
+        cfg = json.loads(cj.read_text()) if cj.exists() else {}
+    except ValueError:
+        cfg = {}
+    cfg.setdefault("mcpServers", {})["browser-local"] = {
+        "type": "stdio", "command": "/usr/bin/python3", "args": [str(d / "bridge_mcp.py")],
+        "env": {"GAS_PULT_PANEL_URL": panel, "GAS_PULT_BRIDGE_TOKEN_FILE": str(tf)}}
+    s.write(cj, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", 0o600, u, u)
+    audit(s, p, "bridge")
+    s.out(f"Мост к браузерам фокус-ссылок в {slug} подключён; открытые сессии увидят его после перезапуска.")
+
+
+def bridge_off(lay: Layout, s: Sys, slug: str):
+    """Откат ``set_bridge``: файлы моста — в сторону (не удаляются), запись MCP убрана."""
+    slug = tenants.check_slug(slug)
+    p, u = tenants.paths(slug, lay.tenants), tenants.user_of(slug)
+    for f in (p["base"] / BRIDGE_HASH, p["config"] / "mcp" / "bridge.token"):
+        if f.exists():
+            s.run("mv", str(f), f"{f}.off")
+    cj = p["claude"] / ".claude.json"
+    try:
+        cfg = json.loads(cj.read_text()) if cj.exists() else {}
+    except ValueError:
+        cfg = {}
+    if (cfg.get("mcpServers") or {}).pop("browser-local", None) is not None:
+        s.write(cj, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", 0o600, u, u)
+    audit(s, p, "bridge-off")
+    s.out(f"Мост в {slug} выключен.")
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="pult-tenant", description="Демо-пространства gas-pult (запускать через sudo). "
                                  "Подробно — docs/TENANTS.md.")
@@ -699,6 +759,10 @@ def parser() -> argparse.ArgumentParser:
     m.add_argument("--engine", default="yandex", help="сервис поиска: yandex, brave, tavily, exa")
     m.add_argument("--folder", default="", help="ID каталога Yandex Cloud (для yandex)")
     m.add_argument("--rclone", default="", help="путь к rclone (для drive; копируется в пространство)")
+    br = sub.add_parser("bridge", help="мост к браузерам фокус-ссылок пространства (MCP browser-local)")
+    br.add_argument("slug")
+    br.add_argument("--panel", default="http://127.0.0.1:8765", help="адрес панели с сервера")
+    br.add_argument("--off", action="store_true", help="выключить (откат)")
     lg = sub.add_parser("login", help="разрешить ручной вход в Claude — только для ваших тестов")
     lg.add_argument("slug")
     lg.add_argument("--yes", metavar="да")
@@ -740,6 +804,8 @@ def main(argv: list[str] | None = None) -> int:
             secret = (sys.stdin.read() if not sys.stdin.isatty() else
                       getpass.getpass(ask) if ask else input("Ответ rclone authorize \"drive\" (одной строкой): "))
             set_mcp(lay, s, a.slug, a.kind, secret, a.engine, a.folder, a.rclone)
+        elif a.cmd == "bridge":
+            (bridge_off(lay, s, a.slug) if a.off else set_bridge(lay, s, a.slug, a.panel))
         elif a.cmd == "login":
             login(lay, s, a.slug, a.yes)
         elif a.cmd == "logout":
