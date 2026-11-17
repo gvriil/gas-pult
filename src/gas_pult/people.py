@@ -55,7 +55,7 @@ import time
 from pathlib import Path
 
 from gas_pult import country as geo
-from gas_pult import secrets_guard, tenants
+from gas_pult import injection_guard, secrets_guard, tenants
 from gas_pult.config import data_dir, write_private
 from gas_pult.terms import VERSION as TERMS_VERSION
 
@@ -471,6 +471,7 @@ def claude_dir(data: Path, uid, owners) -> Path | None:
         x.chmod(0o700)
     try:                                                # скрытие секретов — в каждой папке человека (secrets_guard)
         secrets_guard.install(d, out=None)
+        injection_guard.install(d, out=None)             # ловушки в данных и ПДн (GAS-16, слой 5)
     except (OSError, ValueError) as e:
         print(f"secrets_guard: {d}: {type(e).__name__}", file=sys.stderr, flush=True)
     return d
