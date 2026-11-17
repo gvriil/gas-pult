@@ -185,6 +185,7 @@ def test_service_install_unit(monkeypatch, tmp_path, wrap, capsys):
     else:
         assert start == f"ExecStart={plain}"                              # группы нет — как раньше
     assert "KillMode=process" in text
+    ran = [c for c in ran if c[0] != "tmux"]       # фоновые потоки других тестов зовут tmux — не наши вызовы
     assert all(c[0] == "systemctl" or c[0] == "loginctl" for c in ran)
 
 
