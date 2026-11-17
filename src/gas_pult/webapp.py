@@ -36,6 +36,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 import uuid
 from datetime import date, datetime, timedelta
 from html import escape
@@ -177,6 +178,68 @@ def bridge_local_token(data: Path) -> str:
     t = secrets.token_urlsafe(32)
     write_private(f, t)
     return t
+
+
+CDP = "http://127.0.0.1:9222"            # Chrome рабочего стола (agent-browser, профиль ~/.local/share/agent-browser)
+SHELL_WINDOW = "ubuntu-shell"            # «Терминал» в панели: bash в домашней папке; gp-term — для «Выполнить»
+LINK_OPEN = ("desk", "here")
+
+
+def desktop_tab(url: str, cdp: str = CDP) -> dict:
+    """Новая вкладка в Chrome рабочего стола: ``PUT /json/new?<адрес>`` (DevTools). Только http(s), без пробелов и
+    управляющих символов. Chrome не отвечает — понятная ошибка."""
+    u = str(url or "").strip()
+    p = urllib.parse.urlparse(u)
+    if p.scheme not in ("http", "https") or not p.netloc or len(u) > 4096 or re.search(r"[\s\x00-\x1f\x7f]", u):
+        raise ValueError("открыть можно только адрес http:// или https://")
+    req = urllib.request.Request(cdp + "/json/new?" + urllib.parse.quote(u, safe=":/?#[]@!$&'()*+,;=%-._~"),
+                                 method="PUT")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            d = json.loads(r.read() or b"{}")
+    except (OSError, ValueError) as e:
+        raise ValueError(f"браузер рабочего стола не ответил (agent-browser, порт 9222): {e}") from e
+    return {"ok": True, "id": d.get("id", ""), "url": d.get("url", u)}
+
+
+def link_prefs(data: Path) -> dict:
+    """Где открывать ссылки сайта: {сайт: "desk" | "here"} (``link_open.json``, 0600). Решение владельца 17.11:
+    «спрашивать один раз и запоминать»."""
+    try:
+        d = json.loads((Path(data) / "link_open.json").read_text(encoding="utf-8"))
+        return {str(k): v for k, v in d.items() if v in LINK_OPEN} if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def link_pref_set(data: Path, host: str, where: str | None) -> dict:
+    host = str(host or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9.-]{1,253}(:\d{1,5})?", host):
+        raise ValueError("неверное имя сайта")
+    if where not in (*LINK_OPEN, None):
+        raise ValueError("где открыть — desk или here")
+    d = link_prefs(data)
+    if where:
+        d[host] = where
+    else:
+        d.pop(host, None)
+    from gas_pult.config import write_private
+    write_private(Path(data) / "link_open.json", json.dumps(d, ensure_ascii=False))
+    return d
+
+
+def shell_window(tmux) -> str:
+    """Окно ``ubuntu-shell`` (bash в домашней папке) — есть, вернуть; нет — открыть в фоне. id окна."""
+    w = next((x for x in tmux.windows() if x.get("name") == SHELL_WINDOW), None)
+    if w:
+        return w["id"]
+    if hasattr(tmux, "ensure_session"):
+        tmux.ensure_session()
+    out = tmux.run("new-window", "-d", "-P", "-F", "#{window_id}", "-t", f"{tmux.session}:", "-n", SHELL_WINDOW,
+                   "-c", str(Path.home()), "bash -l")
+    if not out.strip():
+        raise RuntimeError("tmux не открыл окно терминала")
+    return out.split()[0]
 
 
 def desktop_up(port: int = DESKTOP_PORT) -> bool:
@@ -2909,6 +2972,9 @@ MEMBER_ONLY |= set(TTY)
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 SELFTEST = "/api/selftest"               # автотест поставщиков (selftest.py): итог и «Проверить сейчас» — владельцу
 OWNER_ONLY |= {SELFTEST}
+# Ссылки и терминал (владелец 17.11): вкладка в Chrome рабочего стола, выбор «где открыть» по сайту, окно ubuntu-shell
+OWNER_ONLY |= {"/api/desktop/url", "/api/links/prefs", "/api/shell/open"}
+CONFIRM |= {"/api/desktop/url", "/api/shell/open"}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
 PERSONA = "/api/persona"
@@ -3472,6 +3538,8 @@ def handler(panel: Panel):
                 return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
             if path == "/api/voice/preview":
                 return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
+            if path == "/api/links/prefs":               # где открывать ссылки сайтов (только владелец)
+                return {"sites": link_prefs(panel.cfg.data)}
             if path == "/api/bridge/devices":            # компьютеры с мостом к браузеру (только владелец)
                 on, names = set(panel.hub.online()), {x["id"]: x["name"] for x in panel.focus.listing()}
                 return {"devices": [{**d, "online": d["id"] in on and panel.bridge_dev_ok(d),
@@ -4284,6 +4352,15 @@ def handler(panel: Panel):
                 return panel.devices.pair_code()
             if path == "/api/bridge/revoke":
                 return {"ok": panel.devices.revoke(str(b.get("id") or ""))}
+            if path == "/api/desktop/url":                # ссылка — вкладкой в Chrome рабочего стола (владелец 17.11)
+                if not desktop_up():
+                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
+                return desktop_tab(str(b.get("url") or ""))
+            if path == "/api/links/prefs":               # «Запомнить для этого сайта» / «Забыть» в Настройках
+                return {"sites": link_pref_set(panel.cfg.data, str(b.get("host") or ""), b.get("open"))}
+            if path == "/api/shell/open":                 # «Терминал» рядом с «Ubuntu»: окно ubuntu-shell
+                with panel.tmux.scope(None):
+                    return {"id": shell_window(panel.tmux), "name": SHELL_WINDOW}
             if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
