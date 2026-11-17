@@ -208,7 +208,8 @@ def test_login_check_by_kind(server, monkeypatch):
     class R:
         returncode = 1
     monkeypatch.setattr(webapp.shutil, "which", lambda x: "/usr/bin/gh" if x == "gh" else None)
-    monkeypatch.setattr(webapp.subprocess, "run", lambda args, **kw: ran.append(args) or R())
+    # фоновые потоки других тестов зовут tmux через тот же subprocess — их вызовы не наши
+    monkeypatch.setattr(webapp.subprocess, "run", lambda args, **kw: (args[0] != "tmux" and ran.append(args)) or R())
     s["t"].lines = GH
     code, d = call(s["base"], "/api/login/check", {"w": "@1", "kind": "gh"}, s["owner"])
     assert code == 200 and not d["ok"] and ran == [["/usr/bin/gh", "auth", "status"]]
