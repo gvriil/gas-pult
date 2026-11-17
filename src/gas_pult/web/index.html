@@ -70,6 +70,7 @@
 
   /* ===== Верхняя панель ===== */
   .top { position: sticky; top: 0; z-index: 5; background: var(--bg-canvas); border-bottom: 1px solid transparent; transition: transform .2s ease; }
+  body.tgfs .top { padding-top: var(--tg-top, 0px); }   /* полный экран Telegram: под его кнопками закрыть/меню */
   .top.edge { border-bottom-color: var(--border-subtle); } .top.hide { transform: translateY(-105%); }
   /* «‹ Назад» не уходит вместе с шапкой — остаётся на месте круглой кнопкой, как в любом меню */
   #backBtn { transition: transform .2s ease, background .2s, box-shadow .2s; }
@@ -6533,6 +6534,8 @@ $("settingsBtn").onclick = () => {
     { label: "Тема: как в системе", on: mode === "auto", run: () => { store("theme", "auto"); applyTheme(); } },
     { label: "Тема: светлая", on: mode === "light", run: () => { store("theme", "light"); applyTheme(); } },
     { label: "Тема: тёмная", on: mode === "dark", run: () => { store("theme", "dark"); applyTheme(); } },
+    ...(tgBig() ? [{ label: "Во весь экран на планшете: " + (store("tgFull") === "0" ? "нет" : "да"), icon: "expand", run: () => {
+      const on = store("tgFull") === "0"; store("tgFull", on ? "1" : "0"); try { on ? tg.requestFullscreen() : tg.exitFullscreen(); } catch (e) {} } }] : []),
     { label: `Размер текста: ${Math.round(fontPx / FONT.def * 100)} %`, icon: "edit", sub: "A− / A+", run: () => part("zoom").then(() => fontSheet()) },
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
     ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
@@ -7921,6 +7924,17 @@ applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", fitViewport); }
+// iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
+// Окно намного уже экрана — просим полный экран (Bot API 8.0); выключить — «Настройки» → «Во весь экран на планшете».
+const tgBig = () => !!tg?.isVersionAtLeast?.("8.0") && screen.width >= 700;
+function tgFull() {
+  const a = tg.contentSafeAreaInset || {}, b = tg.safeAreaInset || {};
+  document.body.classList.toggle("tgfs", !!tg.isFullscreen); document.documentElement.style.setProperty("--tg-top", (a.top || 0) + (b.top || 0) + "px");
+}
+if (tgBig()) {
+  for (const ev of ["fullscreenChanged", "contentSafeAreaChanged", "safeAreaChanged"]) tg.onEvent(ev, tgFull);
+  if (innerWidth < screen.width * 0.6 && store("tgFull") !== "0") try { tg.requestFullscreen(); } catch (e) {}
+}
 fitViewport();
 window.visualViewport?.addEventListener("resize", fitViewport);
 window.visualViewport?.addEventListener("scroll", fitViewport);
