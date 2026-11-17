@@ -478,7 +478,8 @@ function demoApi(path, body) {
   if (key === "/api/login/code") { demoApi.loginCode = body?.code || ""; return Promise.resolve({ ok: true }); }
   if (key === "/api/login/check") return Promise.resolve(demoApi.loginCode ? { ok: true, text: "вход выполнен", login: null } : { ok: false, text: "окно всё ещё просит войти" });
   if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true, invite: true });
-  if (key === "/api/invite") return Promise.resolve(params.get("invite") === "bad" ? { ok: false } : { ok: true, guest: true, title: "Планета", kind: params.get("invite") === "device" ? "device" : "invite", name: "Анна" });
+  if (key === "/api/invite") return Promise.resolve(params.get("invite") === "bad" ? { ok: false } : { ok: true, guest: true, title: "Планета", kind: params.get("invite") === "device" ? "device" : "invite", name: "Анна",
+    ...(params.get("invite") === "named" ? { welcome: true, name: "Алексей", title: "Демо" } : {}) });
   if (key === "/api/invite/check") return /^\s*planeta[\s-]*482157\s*$/i.test(body?.code || "") ? Promise.resolve({ ok: true, guest: true, title: "Планета", kind: "invite" })
     : Promise.reject(new Error("Код не подошёл: проверьте буквы и цифры. Код работает один раз и 24 часа — если он уже использован, попросите новый."));
   if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: { "7d": 604800, "30d": 2592000, "90d": 7776000, "365d": 31536000 }[body?.ttl] || 86400,

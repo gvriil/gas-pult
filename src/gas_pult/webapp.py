@@ -1038,8 +1038,11 @@ class Panel:
             return {"ok": False}
         t = tenants.load(rec["tenant"]) if tenants.enabled() else None
         out = {"ok": True, "title": (t or {}).get("title") or rec["tenant"], "guest": tenants.enabled(),
-               "kind": "device" if "uid" in rec else "invite"}
-        if "uid" in rec:
+               "kind": "device" if "uid" in rec and not rec.get("person") else "invite"}
+        if "name" in rec or rec.get("person"):         # одна ссылка: «Здравствуйте, <имя>!» → «Начать»
+            p = next((x for x in self.people.list() if x["id"] == rec.get("uid")), {}) if "uid" in rec else {}
+            out["welcome"], out["name"] = True, rec.get("name") or p.get("name") or "Гость"
+        elif "uid" in rec:
             p = next((x for x in self.people.list() if x["id"] == rec["uid"]), {})
             out["name"] = p.get("name") or ""
         return out
@@ -1073,18 +1076,20 @@ class Panel:
         if not rec:
             self.invite_miss(code, ip)
         dev = webauth.device(ua)
-        if "uid" in rec:                                      # ссылка для входа на другое устройство
+        if "uid" in rec:                                      # другое устройство: тот же человек
             uid = int(rec["uid"])
             if not self.people.role(uid) or not invites.redeem(code, uid):
                 self.invite_miss(code, ip)
-            how = "по ссылке для входа на другое устройство"
+            how = "с нового устройства по ссылке-приглашению" if rec.get("person") else \
+                "по ссылке для входа на другое устройство"
         else:
+            name = rec.get("name") or name                    # одна ссылка: имя дал владелец (или «Гость»)
             name = " ".join(str(name or "").split())[:60]
             if not name:
                 raise ValueError("Напишите, как вас зовут — так вас увидит владелец пульта")
             uid = self.people.add_guest(name, rec["role"], rec["tenant"], until=invites.until_of(rec),
                                         plan=rec.get("plan", ""))
-            if not invites.redeem(code, uid):                 # кто-то успел раньше — гостя не оставляем
+            if not invites.redeem(code, uid, bind="uses" in rec):   # v2: ссылка привязывается к человеку
                 self.people.remove(uid)
                 self.invite_miss(code, ip)
             how = "по приглашению, без Telegram"
@@ -4442,7 +4447,7 @@ def handler(panel: Panel):
                     raise ValueError("срок ссылки: " + ", ".join(invites.TTLS))
                 inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), ttl=ttl, by=self.terms_uid(),
                                   uses=int(b.get("uses", 1)), access=int(b.get("access", 0)),
-                                  plan=str(b.get("plan") or ""))
+                                  plan=str(b.get("plan") or ""), name=str(b.get("name") or ""))
                 return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": ttl,
                         "uses": int(b.get("uses", 1)), "access": int(b.get("access", 0))}
             if path == "/api/invite/device":               # ссылка для входа на другое устройство: себе или владелец

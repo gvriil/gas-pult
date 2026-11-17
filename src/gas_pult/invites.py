@@ -15,6 +15,12 @@
 (24 ч … год), число входов — ``uses`` (1, N или 0 — без лимита, пока не вышел срок), срок доступа человека —
 ``access`` дней (0 — бессрочно; пишется человеку в ``access_until``, «Люди» → продлить), ``plan`` — задел на подписку
 (trial / pilot / paid; оплаты пока нет). Старые записи без ``uses`` — одноразовые, как раньше.
+
+Одна ссылка = вход (владелец 17.11, отзыв тестировщика: «я рассчитываю на обычную ссылку — нажал — сработало»).
+Владелец пишет имя человека (``name``; нет — «Гость»). Человек нажимает ссылку → «Здравствуйте, <имя>!» → «Начать» →
+внутри: без кода, без имени, без Telegram. После первого входа приглашение привязано к человеку (``uid``): та же
+ссылка на других устройствах (``uses``, по умолчанию 3) — тот же человек, а не новый гость. Владельцу — сообщение о
+каждом устройстве. Вход — только нажатием: превью ссылки в мессенджере (GET) вход не тратит.
 """
 
 from __future__ import annotations
@@ -104,7 +110,7 @@ def norm_short(code: str) -> str:
 
 
 def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None, uid: int | None = None,
-        uses: int = 1, access: int = 0, plan: str = "") -> dict:
+        uses: int = 1, access: int = 0, plan: str = "", name: str | None = None) -> dict:
     """Новое приглашение: {code, short, hint}. Коды показываются один раз — в файле только хеши.
 
     ``uid`` — ссылка для входа на другое устройство уже существующего человека (а не новый тестировщик).
@@ -130,6 +136,7 @@ def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None
                        "hint": code[:HINT], "short": _h("s:" + norm_short(short)), "used": None, "revoked": False,
                        "uses": int(uses), "n": 0, **({"access": int(access)} if access else {}),
                        **({"plan": plan} if plan else {}),
+                       **({"name": " ".join(str(name).split())[:60] or "Гость"} if name is not None else {}),
                        **({"by": int(by)} if by else {}), **({"uid": int(uid)} if uid is not None else {})}
         _save(d)
     return {"code": code, "short": short, "hint": code[:HINT]}
@@ -163,7 +170,7 @@ def check(code: str, short: bool = True) -> dict | None:
     return d[k] if k and state(d[k]) == "active" else None
 
 
-def redeem(code: str, uid: int) -> dict | None:
+def redeem(code: str, uid: int, bind: bool = False) -> dict | None:
     """Использовать приглашение (один раз — и ссылка, и короткий код): запись помечается, возвращается
     {tenant, role, title?, uid?}; иначе None."""
     with _lock:
@@ -173,6 +180,8 @@ def redeem(code: str, uid: int) -> dict | None:
         if not rec or state(rec) != "active":
             return None
         rec.update(used=int(uid), used_at=int(time.time()), n=rec.get("n", 0) + 1)
+        if bind and "uid" not in rec:             # одна ссылка: следующие устройства — тот же человек
+            rec["uid"], rec["person"] = int(uid), True
         _save(d)
     return {"tenant": rec["tenant"], "role": rec["role"], **({"uid": rec["uid"]} if "uid" in rec else {}),
             "access": rec.get("access", 0), "plan": rec.get("plan", "")}
@@ -219,7 +228,8 @@ def listing() -> list[dict]:
                     "state": state(v, now), "exp": v.get("exp", 0), "used": v.get("used"),
                     "uses": v.get("uses", 1), "n": v.get("n", 1 if v.get("used") else 0),
                     "access": v.get("access", 0), "plan": v.get("plan", ""),
-                    "kind": "device" if "uid" in v else "invite"}
+                    "kind": "device" if "uid" in v and not v.get("person") else "invite",
+                    "name": v.get("name", "")}
                    for v in _load().values()), key=lambda x: -x["exp"])
 
 

@@ -59,3 +59,15 @@ def test_person_access_until(tmp_path):
     assert rec["plan"] == "pilot" and rec["access_until"] > time.time()
     g = ps.add_guest("Гость", "member", "demo", until=int(time.time()) - 1)
     assert ps.role(g) is None
+
+
+def test_one_link_binds_to_person(env):
+    """Одна ссылка: имя от владельца, после первого входа — тот же человек на других устройствах (до лимита)."""
+    code = invites.new("demo", uses=3, ttl=invites.TTLS["7d"], name="  Алексей  ")["code"]
+    assert invites.check(code)["name"] == "Алексей"
+    assert invites.redeem(code, 77, bind=True)
+    rec = invites.check(code)
+    assert rec["uid"] == 77 and rec["person"] is True                     # второе устройство — тот же человек
+    assert invites.redeem(code, 77) and invites.redeem(code, 77) and invites.redeem(code, 77) is None   # 3 устройства
+    row = invites.listing()[0]
+    assert row["kind"] == "invite" and row["name"] == "Алексей"

@@ -375,3 +375,29 @@ def test_qr_decodes_with_zbar(tmp_path):
     f.write_bytes(qr.png_of(link))
     out = subprocess.run(["zbarimg", "--raw", "-q", str(f)], capture_output=True, text=True).stdout.strip()
     assert out == link
+
+
+def test_one_link_is_the_login(web):
+    """Одна ссылка (владелец 17.11): имя дал владелец → «Здравствуйте, Алексей!» → «Начать» без имени; второе
+    устройство — тот же человек; четвёртое при лимите 3 — нет; владельцу — сообщение о каждом устройстве."""
+    p, base = web
+    owner = p.auth.issue(OWNER)
+    d = req(base, "/api/invite/new", {"space": "demo", "name": "Алексей", "ttl": "7d", "uses": 3}, owner)[2]
+    code = d["path"].rsplit("/", 1)[1]
+    assert d["ttl"] == 7 * 86400 and d["uses"] == 3
+    info = req(base, f"/api/invite?code={code}")[2]
+    assert info["welcome"] and info["name"] == "Алексей" and info["kind"] == "invite"
+    assert req(base, f"/api/invite?code={code}")[2]["ok"]                          # превью ссылки вход не тратит
+    st, h, _ = req(base, "/api/invite/enter", {"code": code, "name": ""})
+    assert st == 200
+    uid = p.auth.uid(cookie(h))
+    assert next(x for x in p.people.list() if x["id"] == uid)["name"] == "Алексей"
+    st, h2, _ = req(base, "/api/invite/enter", {"code": code}, ip="198.51.100.9")   # компьютер
+    assert st == 200 and p.auth.uid(cookie(h2)) == uid
+    assert req(base, f"/api/invite?code={code}")[2]["welcome"]                    # и дальше — «Здравствуйте»
+    assert req(base, "/api/invite/enter", {"code": code}, ip="198.51.100.10")[0] == 200
+    assert req(base, "/api/invite/enter", {"code": code}, ip="198.51.100.11")[0] == 400   # четвёртое устройство
+    assert sum("нового устройства" in t for t in p.pult.api.texts(OWNER)) == 2
+    anon = invites.new("demo", uses=3, name="")["code"]                            # без имени — «Гость»
+    st, h3, _ = req(base, "/api/invite/enter", {"code": anon}, ip="198.51.100.12")
+    assert next(x for x in p.people.list() if x["id"] == p.auth.uid(cookie(h3)))["name"] == "Гость"
