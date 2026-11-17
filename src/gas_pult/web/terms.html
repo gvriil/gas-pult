@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Пользовательское соглашение пульта</title>
+<link rel="icon" href="data:,">
+<style>
+  /* Публичная страница /terms (без входа). Токены — как в начале index.html. Юридический черновик — docs/TERMS.md. */
+  :root {
+    --bg-canvas: #FFFFFF; --bg-subtle: #F0F4F9; --border-subtle: #E1E5EA;
+    --text-primary: #1F1F1F; --text-secondary: #444746; --accent-primary: #0B57D0;
+    --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --radius-md: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg-canvas: #131314; --bg-subtle: #282A2C; --border-subtle: #3C4043;
+      --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --accent-primary: #A8C7FA;
+      --status-approval: #FDD663; --status-approval-bg: #3A2E00; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 19px; margin: 28px 0 8px; }
+  p, li { color: var(--text-primary); } li { margin: 4px 0; }
+  .meta { color: var(--text-secondary); font-size: 14px; margin: 0 0 16px; }
+  .draft { background: var(--status-approval-bg); border: 1px solid var(--status-approval); border-radius: var(--radius-md);
+    padding: 10px 14px; font-size: 15px; }
+  .lang { display: flex; gap: 8px; margin: 0 0 12px; }
+  .lang a { padding: 4px 12px; border: 1px solid var(--border-subtle); border-radius: 9999px; color: var(--accent-primary);
+    text-decoration: none; font-weight: 600; font-size: 14px; }
+  a { color: var(--accent-primary); }
+  hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 40px 0; }
+</style>
+</head>
+<body>
+<main>
+<nav class="lang" aria-label="Язык / Language"><a href="#ru" lang="ru">Русский</a><a href="#en" lang="en">English</a></nav>
+
+<section id="ru" lang="ru">
+<h1>Пользовательское соглашение пульта</h1>
+<p class="meta">Редакция от 17 ноября 2026 года.</p>
+<p class="draft"><b>До проверки юристом.</b> Это понятное изложение условий. Юридический текст — черновик
+<a href="https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md">TERMS.md</a>; при расхождении действует он,
+а после проверки юристом — проверенная редакция.</p>
+
+<h2>1. Что такое пульт</h2>
+<p>Пульт — инструмент. Через Telegram-бот и веб-панель вы даёте задания ИИ-агентам (Claude Code и другим) и
+получаете ответы. Агенты работают на сервере <b>оператора пульта</b> — того, кто установил пульт и пригласил вас.
+Сами модели предоставляют их поставщики (Anthropic, OpenRouter, DeepSeek и другие) по своим условиям.
+Пульт не продаёт доступ к моделям.</p>
+
+<h2>2. Кто за что отвечает</h2>
+<ul>
+<li><b>Оператор пульта</b> отвечает за свой сервер, за то, кого он пригласил, и за настройки доступа.</li>
+<li><b>Вы</b> отвечаете за свои задания агентам и за действия, которые подтверждаете кнопкой «Да».</li>
+<li><b>Поставщики моделей</b> отвечают за свои модели по своим условиям.</li>
+</ul>
+
+<h2>3. Что можно и что нельзя</h2>
+<ul>
+<li>У каждого — свой ключ или своя подписка поставщика модели. Не передавайте свой вход другим людям и не
+пользуйтесь чужим.</li>
+<li>Не делите одну подписку на нескольких людей и не перепродавайте доступ к моделям.</li>
+<li>Работайте только из стран, которые поддерживает поставщик модели. Не обходите ограничения через VPN, прокси
+или чужие аккаунты.</li>
+<li>Не используйте пульт для того, что запрещают закон или условия поставщика.</li>
+<li>Важные действия — отправка людям, оплата, удаление — агент выполняет только после вашего «Да».</li>
+</ul>
+
+<h2>4. Данные и секреты</h2>
+<ul>
+<li>Сессии, переписка с агентами, файлы и настройки хранятся на сервере оператора.</li>
+<li>Ключи и пароли хранятся в файлах, доступных только пользователю пульта на сервере (права 0600), или в
+менеджере паролей на сервере оператора (пилот Vaultwarden).</li>
+<li><b>Кто видит:</b> оператор пульта — администратор своего сервера. Модель видит то, что вы и агент ей
+отправили. Поставщик модели обрабатывает эти данные по своим условиям.</li>
+<li>Страну пульт определяет по вашему выбору, коду страны номера телефона и стране IP-адреса. Хранятся только
+коды стран и хеш номера — сам номер и IP-адрес не сохраняются.</li>
+<li>Отключили вас — ваша запись в пульте удаляется вместе с согласием и данными о стране.</li>
+</ul>
+
+<h2>5. Оплата</h2>
+<p>Сейчас идёт пилот. Цены и условия оплаты оператор сообщит отдельно и только после их утверждения. До этого
+никаких платежей пульт не берёт.</p>
+
+<h2>6. Ограничение ответственности</h2>
+<p>Пульт предоставляется «как есть». Оператор не отвечает за ответы моделей, перерывы в работе поставщиков и
+последствия действий, которые вы подтвердили. Проверяйте важное перед тем, как нажать «Да».</p>
+
+<h2>7. Прекращение доступа</h2>
+<p>Если вы нарушаете это соглашение, условия поставщика или закон, оператор вправе сразу прекратить ваш доступ.</p>
+
+<h2>8. Изменения</h2>
+<p>Соглашение может меняться. Изменился смысл — пульт снова попросит ваше согласие.</p>
+</section>
+
+<hr>
+
+<section id="en" lang="en">
+<h1>User Agreement for the Pult</h1>
+<p class="meta">Revision of 17 November 2026.</p>
+<p class="draft"><b>Not yet reviewed by a lawyer.</b> This is a plain-language summary. The legal text is the draft
+<a href="https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md">TERMS.md</a> (in Russian); if they differ, the
+draft applies, and after legal review — the reviewed version.</p>
+
+<h2>1. What the Pult is</h2>
+<p>The Pult is a tool. Through a Telegram bot and a web panel you give tasks to AI agents (Claude Code and others) and
+receive answers. The agents run on the server of the <b>Pult operator</b> — the person who installed the Pult and
+invited you. The models themselves are provided by their providers (Anthropic, OpenRouter, DeepSeek and others) under
+their own terms. The Pult does not sell access to models.</p>
+
+<h2>2. Who is responsible for what</h2>
+<ul>
+<li><b>The operator</b> is responsible for their server, for whom they invited and for access settings.</li>
+<li><b>You</b> are responsible for your tasks to agents and for actions you confirm with «Yes».</li>
+<li><b>Model providers</b> are responsible for their models under their own terms.</li>
+</ul>
+
+<h2>3. What you may and may not do</h2>
+<ul>
+<li>Everyone uses their own key or subscription with the model provider. Do not give your login to other people and
+do not use someone else's.</li>
+<li>Do not share one subscription among several people and do not resell access to models.</li>
+<li>Work only from countries the model provider supports. Do not bypass restrictions with VPNs, proxies or other
+people's accounts.</li>
+<li>Do not use the Pult for anything the law or the provider's terms forbid.</li>
+<li>Important actions — sending to people, payments, deletion — the agent performs only after your «Yes».</li>
+</ul>
+
+<h2>4. Data and secrets</h2>
+<ul>
+<li>Sessions, conversations with agents, files and settings are stored on the operator's server.</li>
+<li>Keys and passwords are stored in files readable only by the Pult user on the server (mode 0600), or in a password
+manager on the operator's server (Vaultwarden pilot).</li>
+<li><b>Who can see them:</b> the operator administers their own server. The model sees what you and the agent send
+to it. The model provider processes that data under its own terms.</li>
+<li>The Pult determines your country from your choice, your phone number's country code and your IP address's
+country. Only country codes and a hash of the number are stored — not the number or the IP address.</li>
+<li>When you are removed, your record in the Pult is deleted together with your consent and country data.</li>
+</ul>
+
+<h2>5. Payment</h2>
+<p>The Pult is in a pilot. The operator will announce prices and payment terms separately, and only after they are
+approved. Until then the Pult takes no payments.</p>
+
+<h2>6. Limitation of liability</h2>
+<p>The Pult is provided «as is». The operator is not responsible for model answers, provider outages, or the
+consequences of actions you confirmed. Check important things before you press «Yes».</p>
+
+<h2>7. Termination</h2>
+<p>If you break this agreement, a provider's terms or the law, the operator may end your access immediately.</p>
+
+<h2>8. Changes</h2>
+<p>This agreement may change. If its meaning changes, the Pult will ask for your consent again.</p>
+</section>
+</main>
+</body>
+</html>

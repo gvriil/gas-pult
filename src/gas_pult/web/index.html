@@ -2706,6 +2706,7 @@ async function showTerms() {
   let d; try { d = await api("/api/terms"); } catch (e) { $("termsBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   $("termsBox").innerHTML = `<h2 class="serif">${esc(d.title)}</h2><p class="ver">Версия от ${esc(d.version.split("-").reverse().join("."))} · прочитайте перед началом работы</p>
     <ol>${d.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>
+    <a class="full" href="/terms" target="_blank" rel="noopener">${ic("book", "s16")}Соглашение простым языком (RU, EN)</a>
     <a class="full" href="${esc(d.url)}" target="_blank" rel="noopener">${ic("book", "s16")}Полный текст условий</a>
     <button class="btn" id="termsOk">${ic("check")}Принимаю</button>
     ${meta?.via === "browser" ? '<button class="btn ghost" id="termsOut">Не принимаю — выйти</button>' : ""}

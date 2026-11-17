@@ -58,6 +58,7 @@ async function bridgePair() {
       <li>Файл моста: <a href="${BRIDGE_FILE}" target="_blank" rel="noopener">gas-pult-bridge.mjs</a></li>
       <li>В терминале компьютера, в папке с файлом:</li></ol>
     <div class="field" style="margin:6px 16px 0"><code id="bpCmd" style="display:block;word-break:break-all;padding:8px">${esc(cmd)}</code></div>
+    <p class="note" style="margin:6px 16px 0">Подключая компьютер, вы принимаете <a href="/terms" target="_blank" rel="noopener">пользовательское соглашение</a>.</p>
     <p class="note" style="margin:6px 16px 0">Код <b>${esc(c.code)}</b> — 10 минут, один раз. Потом: <code>node gas-pult-bridge.mjs</code></p>
     <div class="row2"><button class="btn ghost" data-close>Закрыть</button><button class="btn" id="bpCopy">Скопировать команду</button></div></div>`;
   document.body.append(bg);
