@@ -700,15 +700,16 @@ def cmd_last(a):
 
 def cmd_secrets(a):
     """Хуки скрытия секретов (``secrets_guard``) в папке Claude Code: поставить, убрать, проверить."""
-    from gas_pult import secrets_guard
+    from gas_pult import injection_guard, secrets_guard
 
     d = Path(a.config_dir or os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser()
     if a.action == "status":
-        ok = secrets_guard.installed(d)
-        print(f"Скрытие секретов в {d}: {'стоит' if ok else 'не стоит — gas-pult secrets install'}")
+        ok = secrets_guard.installed(d) and injection_guard.installed(d)
+        print(f"Скрытие секретов и защита от ловушек в {d}: {'стоит' if ok else 'не стоит — gas-pult secrets install'}")
         raise SystemExit(0 if ok else 1)
     try:
         secrets_guard.install(d, python=a.python, remove=a.action == "uninstall")
+        injection_guard.install(d, python=a.python, remove=a.action == "uninstall")   # ловушки в данных и ПДн
     except ValueError as e:
         raise SystemExit(f"Ошибка: {e}") from None
     if a.action == "install":

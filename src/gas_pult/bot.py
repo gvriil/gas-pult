@@ -46,6 +46,7 @@ from gas_pult import (
     features,
     focus,
     harness,
+    injection_guard,
     invites,
     limitretry,
     models,
@@ -60,6 +61,7 @@ from gas_pult import (
     selftest,
     setup,
     space_budget,
+    spaces,
     speech,
     tasks,
     tenants,
@@ -264,6 +266,8 @@ class Pult:
     def send_answer(self, chat: int, head: str, text: str, wid: str | None = None, **kw) -> dict:
         """Ответ Claude — HTML (tglinks): адреса нажимаемые и в `коде`, и без схемы; под блоком кода — «Ссылки: …».
         Куски по 4000 с целыми тегами, кнопки — под последним. Telegram не разобрал разметку — тот же ответ текстом."""
+        if spaces.split(wid)[0]:                         # пространство клиента: ПДн в ответе — маской (GAS-16)
+            text = injection_guard.mask_pii(text)[0]
         chunks, r = tglinks.messages(text, head), {}
         try:
             for i, c in enumerate(chunks):
