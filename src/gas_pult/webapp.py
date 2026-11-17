@@ -2967,7 +2967,7 @@ CONFIRM_API = ("/api/confirm/start", "/api/confirm/verify")
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 # Живой терминал (задача 50): клавиши и текст прямо в окно, вся история tmux. Только в режиме разработчика (владелец
 # и участник с «Экраном терминала» не в простом режиме — ``H.dev_tty``); наблюдателю, пространству и фокусу — нет.
-TTY = ("/api/tty", "/api/tty/type", "/api/tty/key")
+TTY = ("/api/tty", "/api/tty/type", "/api/tty/key", "/api/tty/size")
 MEMBER_ONLY |= set(TTY)
 OWNER_PRESETS = {"stdio"}               # своя программа на сервере — только владельцу
 SELFTEST = "/api/selftest"               # автотест поставщиков (selftest.py): итог и «Проверить сейчас» — владельцу
@@ -3561,7 +3561,8 @@ def handler(panel: Panel):
                 return termwin.screen(panel.tmux, q.get("id", ""))
             if path == "/api/tty":                        # живой терминал: история окна страницами (задача 50)
                 w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False)
-                d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1")
+                d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1",
+                                    q.get("color") == "1")             # color — экран для xterm.js (добавлено)
                 return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
                         "path": w.get("path", ""), "login": self.login_of(w, d.get("lines") or [])}   # низ — экран
             if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
@@ -4305,9 +4306,11 @@ def handler(panel: Panel):
             if path == "/api/term/close":
                 termwin.close(panel.tmux, str(b.get("id", "")))
                 return {"ok": True}
-            if path in ("/api/tty/type", "/api/tty/key"):   # живой терминал: текст и клавиши прямо в окно
+            if path in ("/api/tty/type", "/api/tty/key", "/api/tty/size"):   # живой терминал: текст, клавиши, размер
                 owner = self.who()[1] == "owner"
                 w = panel.tty_window(str(b.get("w") or ""), owner, write=True)
+                if path == "/api/tty/size":                    # окно tmux — под размер области терминала (17.11)
+                    return termwin.tty_size(panel.tmux, w["id"], b.get("cols"), b.get("rows"), bool(b.get("reset")))
                 if path == "/api/tty/key":
                     termwin.tty_key(panel.tmux, w["id"], str(b.get("key", "")), owner)
                     return {"ok": True}

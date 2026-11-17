@@ -49,7 +49,7 @@ function demoTty(key, path, body) {
   if (e != null) { hi = Math.min(+e, total); lo = q.get("all") ? 0 : Math.max(0, hi - 500); } else if (q.get("all")) lo = 0; else if (s != null) lo = Math.min(+s, total);
   const w = q.get("w");
   return Promise.resolve({ alive: true, lines: all.slice(lo, hi), cut: Math.max(0, Math.min(hi, hs) - lo), start: lo, end: hi, total, floor: 0, history: hs,
-    limit: 50000, height: H, since: 0, w, name: w === "@9" ? "gp-term" : (demoApi.names?.[w] || { "@1": "tgi-0904", "@2": "icon-1146", "@3": "gas-pult", "@4": "digest-0716", "@5": "shop-bot" }[w] || w),
+    limit: 50000, height: H, since: 0, w, cx: 2 + t.buf.length, cy: H - 1, width: 80, cursor: true, name: w === "@9" ? "gp-term" : (demoApi.names?.[w] || { "@1": "tgi-0904", "@2": "icon-1146", "@3": "gas-pult", "@4": "digest-0716", "@5": "shop-bot" }[w] || w),
     kind: w === "@9" ? "term" : w === "@5" ? "stopped" : "session", path: "/home/u/projects/demo" });
 }
 // Демо «Проектов»: проекты — папки сессий демо и ещё два без окон; завершённые чаты — с поиском и «Продолжить».
