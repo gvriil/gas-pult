@@ -160,6 +160,9 @@ def upload_log(n: int, secs: float, src: str) -> str:
     return line
 
 
+BRIDGE_MAX = 16 << 20                      # сообщение моста: base64 снимка экрана или страницы
+
+
 def bridge_local_token(data: Path) -> str:
     """Секрет для ``/api/bridge/rpc``: файл ``bridge-local.token`` (0600) в папке данных — его читают только процессы
     пульта (``gas-pult bridge-mcp``); нет — создаём."""
@@ -3628,7 +3631,7 @@ def handler(panel: Panel):
             self.wfile.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                               f"Sec-WebSocket-Accept: {key}\r\nSec-WebSocket-Protocol: gpb-{tok}\r\n\r\n").encode())
             self.connection.settimeout(120)
-            ws = wsock.Conn(self.rfile, self.wfile)
+            ws = wsock.Conn(self.rfile, self.wfile, limit=BRIDGE_MAX)   # снимки экрана и страниц — больше 1 МБ
             panel.hub.attach(dev["id"], ws)
             panel.devices.seen(dev["id"])
             try:
