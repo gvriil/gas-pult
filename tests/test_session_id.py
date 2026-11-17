@@ -116,6 +116,7 @@ def test_new_window_gets_own_session_id(panel):
     assert transcripts.valid_sid(sid) and cmd == f"claude --session-id {sid}"   # и метка окна — тот же id
 
 
+@pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
 def test_restart_and_revive_resume_own_session(panel, monkeypatch):
     w = {"id": "@1", "name": "a", "path": "/p/shop", "profile": "claude", "sid": A}
     panel.restart(w, "claude")

@@ -5,6 +5,7 @@ import importlib.util
 import json
 import re
 import shutil
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -55,6 +56,7 @@ def test_ordinary_commands_not_touched(cmd):
     assert not termwin.needs_input(cmd), cmd
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="правило sudo пульта — сервер Linux")
 def test_allowed_sudo_runs_with_button(tmp_path):
     c = commands.Commands("box", tmp_path / "cmds.json", SUDO_ALLOW, [])
     assert c.kind("sudo apt install -y jq") == "local"             # разрешён без пароля — пульт добавит -n

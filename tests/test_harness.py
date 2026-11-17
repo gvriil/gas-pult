@@ -1,6 +1,9 @@
 """Провайдер сессий (R13): интерфейс и адаптер Claude Code — поведение то же, что у transcripts/tmux напрямую."""
 
 import json
+import sys
+
+import pytest
 
 from gas_pult import harness, tmux, transcripts
 
@@ -123,6 +126,7 @@ def test_tmux_detects_pi_window(monkeypatch):
     assert "harness.detect(p[1:])" in src and 'w["stopped"] = not w["harness"]' in src
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="id сессии Pi — из /proc/<pid>/environ: только Linux")
 def test_pi_launch_and_env_sid(monkeypatch, tmp_path):
     import os
     import subprocess

@@ -1,5 +1,6 @@
 """«#ревью» в боте: отчёт владельца — файлом в inbox для разбора, не в сессию (задача 52)."""
 
+import shutil
 import stat
 from datetime import datetime
 
@@ -187,6 +188,7 @@ def test_label_then_forwards_are_glued(pult):
     assert pult.to_session == []
 
 
+@pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
 def test_glue_stops_after_pause_and_on_commands(pult):
     pult.on_message(msg("#ревью", mid=30))
     pult.clock.t += review_inbox.GLUE + 1
