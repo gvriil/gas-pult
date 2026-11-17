@@ -106,15 +106,25 @@ def main(argv=None) -> int:
     print(f"Плановых запусков (claude -p): {len(batch)}; часов: {hours(batch):.1f}")
     s0 = midnight(a.sends_from) if a.sends_from else start
     s1 = midnight(a.sends_to) if a.sends_to else end
+    rows, bad = [], 0
     try:
-        rows = [json.loads(x) for x in Path(a.sends).read_text(encoding="utf-8").splitlines() if x.strip()]
+        for x in Path(a.sends).read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                rows.append(json.loads(x)) if x.strip() else None
+            except ValueError:              # строка из нулей после перезагрузки (17.11) — не валим весь замер
+                bad += 1
     except OSError:
         rows = []
+    if bad:
+        print(f"Журнал доставок: пропущено битых строк — {bad}")
     via = [r for r in rows if s0 <= r.get("ts", 0) < s1 and r.get("src") in HUMAN_SRC]
     msgs = [x for x in turns(a.claude, s0, s1) if not x[2]]
     if rows and msgs:
         print(f"Сверка {fmt(s0)} — {fmt(s1)}: сообщений человека агентам {len(msgs)}, из них через пульт "
               f"{len(via)} ({100 * len(via) / len(msgs):.0f} %)")
+        if len(via) > len(msgs):            # пульт шлёт и туда, что журналы Claude Code не считают сообщением человека
+            print("  Внимание: через пульт больше, чем сообщений в журналах Claude Code — доля за этот период "
+                  "не годится как цифра (окна не Claude, вставки штаба); берите часы ходов.")
     else:
         print("Сверка доли через пульт: нет данных (журнал доставок пульта пуст или нет сообщений)")
     return 0
