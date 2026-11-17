@@ -492,5 +492,9 @@
  "mic.empty": "Didn't catch anything — please try again",
  "mic.denied": "No access to the microphone: {e}",
  "mic.check": "Check the text and send it",
- "mic.none": "The panel has no microphone here — dictate with the microphone key on the keyboard"
+ "mic.none": "The panel has no microphone here — dictate with the microphone key on the keyboard",
+ "login.inv.start": "Start",
+ "login.inv.hello": "Hello, {n}!",
+ "login.inv.welcome": "You are invited to «{t}». This is your assistant: describe a task in words — it will do it.",
+ "login.sub.inv": "sign-in by invitation"
 }

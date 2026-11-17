@@ -1159,6 +1159,7 @@
       </div>
       <div id="loginName" hidden>
         <h3 class="serif inv-title" id="invTitle"></h3>
+        <p class="note" id="invWelcome" hidden></p>
         <div class="field" id="invNameBox">
           <label for="invName" class="inv-big" data-l="login.inv.name">Как вас зовут?</label>
           <input id="invName" class="inv-in" autocomplete="name" maxlength="60" enterkeyhint="go">
@@ -1917,7 +1918,8 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   ...(meta?.role !== "viewer" ? [{ label: "Начать новый чат", icon: "compose", run: () => newChat() },
     { label: "Создать папку", icon: "plus", run: () => newFolder() }] : []),
   ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Создать из модуля", icon: "puzzle", run: () => modulesView() }] : []),
-  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
+  ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } },
+    { label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),
   { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
@@ -2654,12 +2656,17 @@ let invInfo = null;
 async function inviteShow(code, r) {              // экран «Как вас зовут?» (или «Вход для …» — другое устройство)
   await dictReady;                                // заголовок — на языке экрана входа
   invCode = code; invInfo = r; loginPane("loginName"); invTitle();
-  const dev = r.kind === "device";
-  $("invNameBox").hidden = dev; $("invTg").hidden = dev || code !== INVITE;      // Telegram — только по ссылке
-  if (!dev) setTimeout(() => $("invName").focus(), 50);
+  const dev = r.kind === "device", wel = !!r.welcome;   // wel — одна ссылка: имя дал владелец, одна кнопка «Начать»
+  $("invNameBox").hidden = dev || wel; $("invTg").hidden = dev || wel || code !== INVITE;      // Telegram — только по ссылке
+  $("invWelcome").hidden = !wel; document.querySelector('#login [data-l="login.title"]').hidden = wel; $("invEnter").textContent = wel ? LL("login.inv.start", "Начать") : LL("login.inv.enter", "Войти");
+  if (!dev && !wel) setTimeout(() => $("invName").focus(), 50);
 }
 function invTitle() {                             // и после смены языка (paintLoginLang)
   if (!invInfo) return;
+  if (invInfo.welcome) {
+    $("invWelcome").textContent = LL("login.inv.welcome", "Вас пригласили в «{t}». Это ваш помощник: напишите задачу словами — он её сделает.").replace("{t}", invInfo.title);
+    return $("invTitle").textContent = LL("login.inv.hello", "Здравствуйте, {n}!").replace("{n}", invInfo.name);
+  }
   $("invTitle").textContent = invInfo.kind === "device" ? LL("login.inv.device", "Вход для «{n}»").replace("{n}", invInfo.name || "")
     : LL("login.inv.title", "Вас пригласили в «{t}»").replace("{t}", invInfo.title);
 }
@@ -3175,15 +3182,13 @@ async function spaceConnect(id) {
   try { await api("/api/space/connect", { w: id }); toast("Подключились — тестировщик видит «Владелец подключился»"); openSession(id); refresh(); }
   catch (e) { toast("Не вышло: " + e.message, 4000); }
 }
-function spaceInvite() {                              // ссылка на 24 часа: вход через Telegram — сразу тестировщик
+let invTerms = null;
+async function spaceInvite() {
+  if (!spacesInfo) await loadSpaces();                              // ссылка на 24 часа: вход через Telegram — сразу тестировщик
   const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
   if (!list.length) return toast("Нет готовых пространств — docs/TENANTS.md", 4000);
   helpSheet("sheet.space-invite");
-  sheet("Пригласить тестировщика — в какое пространство?", list.map((t) => ({ label: t.title, icon: "flask", run: async () => {
-    try {
-      inviteReady(await api("/api/invite/new", { space: t.slug }), t.title);
-    } catch (e) { toast("Не вышло: " + e.message, 4000); }
-  } })));
+  part("invite").then((m) => { invTerms = m.inviteTerms; m.inviteForm(list); }).catch(() => toast("Нет связи", 3000));   // js/invite.js
 }
 // ---------- лёгкий вход (задача 34): ссылка, QR и короткий код одного приглашения ----------
 // QR — картинка с сервера (/api/invite/qr, PNG; владельцу — любого приглашения, человеку — своей ссылки входа).
@@ -3199,7 +3204,7 @@ function inviteReady(r, title, who) {             // владелец: приг�
       : "Отправьте человеку ссылку или покажите QR — пусть наведёт камеру телефона. Можно продиктовать код: экран входа → «Есть код приглашения?». Telegram не нужен."}</p>
     ${invQr(link)}<div class="inv-codebig">${esc(r.code || "")}</div><div class="inv-url">${esc(link)}</div>
     <div class="scn-opts">${sChip(false, 'data-cp="link"', "Скопировать ссылку", ic("copy"))}${sChip(false, 'data-cp="code"', "Скопировать код", ic("copy"))}</div>
-    <p class="note">24 часа, один вход: после него ссылка и код сгорают. Отозвать — gas-pult invite revoke ${esc(hint)}</p>`,
+    <p class="note">${esc(r.uses !== undefined && invTerms ? invTerms(r) : "24 часа, один вход: после него ссылка и код сгорают.")} Отозвать — gas-pult invite revoke ${esc(hint)}</p>`,
     (b) => { if (b.dataset.cp) copyText(b.dataset.cp === "code" ? r.code : link, b.dataset.cp === "code" ? "Код скопирован" : "Ссылка скопирована"); });
 }
 async function personDevice(p) {                  // владелец: ссылка для входа человека на другом устройстве
@@ -4450,6 +4455,7 @@ function renderChat(toBottom) {
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
+  if (lastAi != null) tgOffer();
   // «Новое» (#189): перед первым ответом агента после вашего прошлого просмотра; место — одно на визит
   const jk = "seenI:" + current + ":" + journalOf(histRev);
   if (NEWI.k !== jk) { const s = store(jk); NEWI.k = jk; NEWI.at = s == null ? null : hist.find((m) => m.role === "assistant" && m.i > +s)?.i ?? null; }
@@ -7485,7 +7491,7 @@ function paintLoginLang() {                           // первый экран
   document.querySelectorAll("#login [data-l], #demoBar [data-l]").forEach((el) => { el.dataset.ru ??= el.textContent; el.textContent = LL(el.dataset.l, el.dataset.ru); });
   invTitle();
   if (view === "login" && !SIM.on) {
-    $("title").textContent = LL("login.brand", "Пульт"); setSub(`<span>${esc(LL("login.sub", "вход через Telegram"))}</span>`);
+    $("title").textContent = LL("login.brand", "Пульт"); setSub(`<span>${esc(INVITE ? LL("login.sub.inv", "вход по приглашению") : LL("login.sub", "вход через Telegram"))}</span>`);
     $("helpBtn").innerHTML = ic("help") + `<span>${esc(LL("s.help", "Подсказать"))}</span>`;
   }
 }
@@ -7638,8 +7644,12 @@ function sMsg(m) {
   if (m.human) return `<div class="msg ai"${k}><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
   return `<div class="msg ai"${k}><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
 }
+function tgOffer() {                              // гостю — один раз: «ответы в телефон?» (js/invite.js)
+  if (isGuest() && !store("tgOffer") && !document.querySelector(".tg-offer")) part("invite").then((m) => m.tgOffer()).catch(() => {});
+}
 function sRender(toBottom) {
   const box = $("sFeed");
+  if (SIM.hist?.some?.((m) => m.role === "assistant")) tgOffer();
   if (!SIM.w) {
     box.innerHTML = `<div class="s-empty"><p>${esc(T(canNew() ? "s.none" : "s.none.viewer"))}</p>${canNew() ? `<div class="scn-opts">${sChip(true, 'data-snew="1"', T("s.new"), ic("plus"))}</div>` : ""}</div>`;
     return sAct();

@@ -19,7 +19,7 @@ WATCH = """() => { window.__m = 0;
     if (!t.closest('.ago')) window.__m += 1; } });
   const all = { subtree: true, childList: true, characterData: true, attributes: true };
   ['top', 'dock'].forEach((id) => mo.observe(document.getElementById(id), all)); }"""
-VERBS = ("Начать", "Создать", "Открыть", "Показать", "Закрепить", "Открепить", "Переименовать", "Удалить")
+VERBS = ("Начать", "Создать", "Открыть", "Показать", "Закрепить", "Открепить", "Переименовать", "Удалить", "Пригласить")
 
 
 def run(base: str, shots: str = ""):

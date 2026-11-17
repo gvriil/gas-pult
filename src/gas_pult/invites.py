@@ -10,6 +10,17 @@
 входа. Ссылка и короткий код — одно приглашение: сработал один — сгорели оба. Вход по ним без Telegram заводит
 «гостя» (``people.add_guest``). **Ссылка для входа на другое устройство** — то же приглашение с полем ``uid``: вместо
 нового человека — сессия уже существующего (выпускает владелец или сам человек). Перебор кодов — ``Misses``.
+
+Приглашения v2 (владелец 17.11: «не одноразово — тестировать на телефоне и компьютере»): срок ссылки — ``TTLS``
+(24 ч … год), число входов — ``uses`` (1, N или 0 — без лимита, пока не вышел срок), срок доступа человека —
+``access`` дней (0 — бессрочно; пишется человеку в ``access_until``, «Люди» → продлить), ``plan`` — задел на подписку
+(trial / pilot / paid; оплаты пока нет). Старые записи без ``uses`` — одноразовые, как раньше.
+
+Одна ссылка = вход (владелец 17.11, отзыв тестировщика: «я рассчитываю на обычную ссылку — нажал — сработало»).
+Владелец пишет имя человека (``name``; нет — «Гость»). Человек нажимает ссылку → «Здравствуйте, <имя>!» → «Начать» →
+внутри: без кода, без имени, без Telegram. После первого входа приглашение привязано к человеку (``uid``): та же
+ссылка на других устройствах (``uses``, по умолчанию 3) — тот же человек, а не новый гость. Владельцу — сообщение о
+каждом устройстве. Вход — только нажатием: превью ссылки в мессенджере (GET) вход не тратит.
 """
 
 from __future__ import annotations
@@ -27,6 +38,10 @@ from gas_pult import tenants
 from gas_pult.config import data_dir, write_private
 
 TTL = 24 * 3600
+TTLS = {"1d": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "90d": 90 * 86400, "365d": 365 * 86400}
+ACCESS = (0, 1, 7, 30, 60, 90, 365)          # дней доступа человека после входа; 0 — бессрочно
+PLANS = ("", "trial", "pilot", "paid")       # задел на подписку: только пометка, без оплаты
+MAX_USES = 1000
 ROLES = ("member", "viewer")
 CODE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 HINT = 6                                     # первые знаки кода — чтобы узнать приглашение в списке и отозвать
@@ -63,7 +78,10 @@ def state(rec: dict, now: float | None = None) -> str:
     now = time.time() if now is None else now
     if rec.get("revoked"):
         return "revoked"
-    if rec.get("used"):
+    if "uses" in rec:                         # v2: входов N (0 — без лимита)
+        if rec["uses"] and rec.get("n", 0) >= rec["uses"]:
+            return "used"
+    elif rec.get("used"):
         return "used"
     return "expired" if now >= rec.get("exp", 0) else "active"
 
@@ -91,13 +109,24 @@ def norm_short(code: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(code or "").upper())[:24]
 
 
-def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None, uid: int | None = None) -> dict:
+def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None, uid: int | None = None,
+        uses: int = 1, access: int = 0, plan: str = "", name: str | None = None) -> dict:
     """Новое приглашение: {code, short, hint}. Коды показываются один раз — в файле только хеши.
 
-    ``uid`` — ссылка для входа на другое устройство уже существующего человека (а не новый тестировщик)."""
+    ``uid`` — ссылка для входа на другое устройство уже существующего человека (а не новый тестировщик).
+    ``uses`` — сколько входов (0 — без лимита до конца срока), ``access`` — дней доступа человека (0 — бессрочно),
+    ``plan`` — пометка подписки."""
     tenant = tenants.check_slug(tenant)
     if role not in ROLES:
         raise ValueError("роль: member (участник) или viewer (наблюдатель)")
+    if int(ttl) > TTLS["365d"]:
+        raise ValueError("срок ссылки — не больше года")
+    if not 0 <= int(uses) <= MAX_USES:
+        raise ValueError(f"входов — от 1 до {MAX_USES} или 0 (без лимита)")
+    if int(access) not in ACCESS:
+        raise ValueError("срок доступа: " + ", ".join(str(x) for x in ACCESS) + " дней (0 — бессрочно)")
+    if plan not in PLANS:
+        raise ValueError("план: trial, pilot или paid")
     while (code := secrets.token_urlsafe(18)).startswith("-"):    # «-» в начале — CLI примет код за ключ (revoke)
         pass
     short, now = short_code(tenant), time.time()
@@ -105,6 +134,9 @@ def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None
         d = {k: v for k, v in _load().items() if now - v.get("exp", 0) < 30 * 86400}   # месяц после срока — чистим
         d[_h(code)] = {"tenant": tenant, "role": role, "created": int(now), "exp": int(now + ttl),
                        "hint": code[:HINT], "short": _h("s:" + norm_short(short)), "used": None, "revoked": False,
+                       "uses": int(uses), "n": 0, **({"access": int(access)} if access else {}),
+                       **({"plan": plan} if plan else {}),
+                       **({"name": " ".join(str(name).split())[:60] or "Гость"} if name is not None else {}),
                        **({"by": int(by)} if by else {}), **({"uid": int(uid)} if uid is not None else {})}
         _save(d)
     return {"code": code, "short": short, "hint": code[:HINT]}
@@ -138,7 +170,7 @@ def check(code: str, short: bool = True) -> dict | None:
     return d[k] if k and state(d[k]) == "active" else None
 
 
-def redeem(code: str, uid: int) -> dict | None:
+def redeem(code: str, uid: int, bind: bool = False) -> dict | None:
     """Использовать приглашение (один раз — и ссылка, и короткий код): запись помечается, возвращается
     {tenant, role, title?, uid?}; иначе None."""
     with _lock:
@@ -147,9 +179,18 @@ def redeem(code: str, uid: int) -> dict | None:
         rec = d.get(k) if k else None
         if not rec or state(rec) != "active":
             return None
-        rec.update(used=int(uid), used_at=int(time.time()))
+        rec.update(used=int(uid), used_at=int(time.time()), n=rec.get("n", 0) + 1)
+        if bind and "uid" not in rec:             # одна ссылка: следующие устройства — тот же человек
+            rec["uid"], rec["person"] = int(uid), True
         _save(d)
-    return {"tenant": rec["tenant"], "role": rec["role"], **({"uid": rec["uid"]} if "uid" in rec else {})}
+    return {"tenant": rec["tenant"], "role": rec["role"], **({"uid": rec["uid"]} if "uid" in rec else {}),
+            "access": rec.get("access", 0), "plan": rec.get("plan", "")}
+
+
+def until_of(inv: dict, now: float | None = None) -> int | None:
+    """Доступ человека по приглашению — до какого времени (``access`` дней), None — бессрочно."""
+    days = int(inv.get("access") or 0)
+    return int((time.time() if now is None else now) + days * 86400) if days else None
 
 
 def drop_for(uid: int) -> int:
@@ -185,7 +226,10 @@ def listing() -> list[dict]:
     now = time.time()
     return sorted(({"hint": v.get("hint", ""), "tenant": v.get("tenant", ""), "role": v.get("role", ""),
                     "state": state(v, now), "exp": v.get("exp", 0), "used": v.get("used"),
-                    "kind": "device" if "uid" in v else "invite"}
+                    "uses": v.get("uses", 1), "n": v.get("n", 1 if v.get("used") else 0),
+                    "access": v.get("access", 0), "plan": v.get("plan", ""),
+                    "kind": "device" if "uid" in v and not v.get("person") else "invite",
+                    "name": v.get("name", "")}
                    for v in _load().values()), key=lambda x: -x["exp"])
 
 

@@ -35,7 +35,7 @@ def test_lifecycle(dirs):
     assert code not in raw and code[:invites.HINT] in raw          # в файле — только хеш и первые знаки
     assert invites.store().stat().st_mode & 0o777 == 0o600
     assert invites.check(code)["tenant"] == "demo"
-    assert invites.redeem(code, 5) == {"tenant": "demo", "role": "member"}
+    assert invites.redeem(code, 5) == {"tenant": "demo", "role": "member", "access": 0, "plan": ""}
     assert invites.redeem(code, 6) is None and invites.check(code) is None     # один раз
     assert invites.listing()[0]["state"] == "used"
     late = invites.create("demo", "viewer", ttl=-1)
