@@ -39,8 +39,8 @@ const MAC_TOOLS = [
     inputSchema: { type: "object", properties: { path: { type: "string", description: "путь от домашней папки, например Documents" } } } },
   { name: "open_app", description: "Открыть программу на Маке по имени (из /Applications или /System/Applications), например Safari, Notes.",
     inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
-  { name: "screenshot", description: "Снимок экрана компьютера (JPEG, длинная сторона до 1600 px). На macOS нужно разрешение «Запись экрана» для Терминала.",
-    inputSchema: { type: "object", properties: {} } },
+  { name: "screenshot", description: "Снимок экрана компьютера (JPEG, длинная сторона до 1600 px). На macOS нужно разрешение «Запись экрана» для Терминала. Несколько мониторов (расширенный рабочий стол) — display: 1 основной, 2, 3…",
+    inputSchema: { type: "object", properties: { display: { type: "integer", minimum: 1, maximum: 9, description: "номер дисплея; нет — основной" } } } },
 ];
 const exec = (cmd, args) => new Promise((ok, no) => execFile(cmd, args, { timeout: 20000 }, (e, out) => (e ? no(e) : ok(out))));
 
@@ -66,12 +66,24 @@ export async function openApp(args, os = platform()) {
   return `Открыто: ${name}`;
 }
 
-export async function screenshot(os = platform()) {
+export const SCREEN_HINT = "macOS не дал снять экран: нет разрешения «Запись экрана». На Маке: меню  → Системные " +
+  "настройки → Защита и безопасность → Конфиденциальность → «Запись экрана» → замок → включить «Терминал»; затем " +
+  "закрыть Терминал (Cmd+Q), открыть снова и запустить мост.";
+
+export async function screenshot(os = platform(), run = exec, display = 1) {
   if (os !== "darwin") throw new Error("снимок экрана — пока только на macOS");
   const f = join(tmpdir(), `gp-shot-${Date.now()}.jpg`);
   try {
-    await exec("screencapture", ["-x", "-t", "jpg", f]);
-    await exec("sips", ["-Z", "1600", f]);
+    const d = Math.min(9, Math.max(1, parseInt(display, 10) || 1));      // screencapture -D: номер дисплея, 1 — основной
+    // основной — как раньше (проверено на Big Sur 17.11); -D — только для 2, 3… (расширенный рабочий стол)
+    try { await run("screencapture", ["-x", ...(d > 1 ? ["-D", String(d)] : []), "-t", "jpg", f]); }
+    catch (e) {
+      const m = String(e?.message || e);
+      if (/could not create image/i.test(m)) throw new Error(SCREEN_HINT);
+      if (/display|invalid/i.test(m)) throw new Error(`дисплея ${d} нет — у этого Мака меньше мониторов (1 — основной)`);
+      throw e;
+    }
+    await run("sips", ["-Z", "1600", f]);
     return readFileSync(f).toString("base64");
   } finally { try { rmSync(f); } catch {} }
 }
@@ -138,7 +150,7 @@ function run() {
         const a = p.arguments || {}, fail = (err) => reply(m.id, null, { code: -32011, message: err.message });
         if (p.name === "list_dir") { try { return reply(m.id, { content: [{ type: "text", text: listDir(a) }] }); } catch (err) { return fail(err); } }
         if (p.name === "open_app") return openApp(a).then((t) => reply(m.id, { content: [{ type: "text", text: t }] }), fail);
-        return screenshot().then((b64) => reply(m.id, { content: [{ type: "image", data: b64, mimeType: "image/jpeg" }] }), fail);
+        return screenshot(platform(), exec, a.display).then((b64) => reply(m.id, { content: [{ type: "image", data: b64, mimeType: "image/jpeg" }] }), fail);
       }
       if (m.method === "tools/call" && String(p.name || "").endsWith("navigate")) {
         const d = blockedHost((p.arguments || {}).url, allowed);
@@ -159,7 +171,9 @@ function run() {
 }
 
 const [cmd, a1, a2] = process.argv.slice(2);
-if (cmd === "pair") pair(a1, a2).catch((e) => { console.error("Не привязал:", e.message); process.exit(1); });
+const MAIN = process.argv[1] && realpathSync(process.argv[1]) === realpathSync(new URL(import.meta.url).pathname);   // импорт в тестах — без запуска
+if (!MAIN) { /* модуль импортирован — команды не выполняем */ }
+else if (cmd === "pair") pair(a1, a2).catch((e) => { console.error("Не привязал:", e.message); process.exit(1); });
 else if (cmd === "allow") {
   const c = load(), d = String(a1 || "").toLowerCase();
   if (!BLOCKED.includes(d)) { console.error("Этого сайта нет в запретном списке — разрешать не нужно."); process.exit(0); }

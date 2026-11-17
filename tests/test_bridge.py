@@ -170,3 +170,31 @@ def test_bridge_ui_part():
     assert "/api/bridge/devices" in js and "/api/bridge/pair" in js and "/api/bridge/revoke" in js
     assert "async function emailSheet" in (web / "js" / "email.js").read_text(encoding="utf-8")
     assert "async function emailSheet" not in core
+
+
+@pytest.mark.skipif(not node_ok(), reason="нужен Node 22+")
+def test_screenshot_permission_hint():
+    """Mac 17.11: без разрешения «Запись экрана» screencapture пишет «could not create image from display» — мост
+    отвечает шагами, что включить, а не сырой ошибкой."""
+    js = (f"import {{ screenshot }} from {json.dumps(str(BRIDGE))};" +
+          "const run = async () => { throw new Error("
+          "'Command failed: screencapture\\ncould not create image from display'); };"
+          "screenshot('darwin', run).then(() => console.log('ok'), (e) => console.log(e.message));")
+    out = subprocess.Popen(["node", "--input-type=module", "-e", js], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           text=True).communicate(timeout=30)[0]
+    assert "Запись экрана" in out and "Терминал" in out and "could not" not in out
+
+
+@pytest.mark.skipif(not node_ok(), reason="нужен Node 22+")
+def test_screenshot_display_argument():
+    """Выбор дисплея (владелец 17.11): основной — без -D (как проверено на Big Sur), 2…9 — -D <n>, вне — в пределы."""
+    js = (f"import {{ screenshot }} from {json.dumps(str(BRIDGE))};" +
+          "const got = []; const run = async (c, a) => {"
+          " got.push([c, ...a.slice(0, -1)].join(' ')); throw new Error('stop'); };"
+          "for (const d of [undefined, 2, 99, 'x']) await screenshot('darwin', run, d).catch(() => {});"
+          "console.log(JSON.stringify(got));")
+    out = subprocess.Popen(["node", "--input-type=module", "-e", js], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           text=True).communicate(timeout=30)[0]
+    got = json.loads(out)
+    assert got == ["screencapture -x -t jpg", "screencapture -x -D 2 -t jpg", "screencapture -x -D 9 -t jpg",
+                   "screencapture -x -t jpg"]
