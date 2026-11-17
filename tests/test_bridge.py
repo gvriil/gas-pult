@@ -55,6 +55,10 @@ FAKE_MCP = textwrap.dedent("""
         m = json.loads(line)
         if "id" not in m:
             continue
+        if m.get("params", {}).get("name") == "big":
+            print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text",
+                  "text": "x" * 2_000_000}]}}), flush=True)
+            continue
         if m.get("method") == "tools/list":
             r = {"tools": [{"name": "browser_navigate"}, {"name": "browser_snapshot"}]}
         else:
@@ -99,7 +103,7 @@ def test_bridge_end_to_end(server, tmp_path):
         assert devs[0]["online"] and devs[0]["id"] == conf["id"]
         tools = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         assert tools["id"] == 1 and [t["name"] for t in tools["result"]["tools"]] == [
-            "browser_navigate", "browser_snapshot", "save_to_computer"]
+            "browser_navigate", "browser_snapshot", "save_to_computer", "list_dir", "open_app", "screenshot"]
         ok = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                                     "params": {"name": "browser_snapshot", "arguments": {}}})
         assert ok["result"]["content"][0]["text"] == "ok browser_snapshot"
@@ -113,6 +117,23 @@ def test_bridge_end_to_end(server, tmp_path):
         rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {
             "name": "save_to_computer", "arguments": {"name": "отчёт.txt", "content": "второй"}}})
         assert (home / "Downloads" / "отчёт-2.txt").read_text() == "второй"         # не перезаписывает
+        # уровень 1 «руки на компьютере» (владелец 17.11): белый список, без свободной командной строки
+        ls = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {
+            "name": "list_dir", "arguments": {"path": "Downloads"}}})["result"]["content"][0]["text"]
+        assert "отчёт.txt" in ls and "отчёт-2.txt" in ls
+        esc = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {
+            "name": "list_dir", "arguments": {"path": "../.."}}})
+        assert esc["error"]["code"] == -32011 and "домашней" in esc["error"]["message"]
+        app = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {
+            "name": "open_app", "arguments": {"name": "Safari"}}})
+        shot = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {
+            "name": "screenshot", "arguments": {}}})
+        if sys.platform != "darwin":                                            # на Linux CI — честный отказ
+            assert "macOS" in app["error"]["message"] and "macOS" in shot["error"]["message"]
+        big = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "big"}})
+        assert len(big["result"]["content"][0]["text"]) == 2_000_000          # больше 1 МБ — связь не рвётся
+        log = p.hub.history(conf["id"])
+        assert {"list_dir", "open_app", "screenshot"} <= {r["tool"] for r in log}   # всё — в журнале устройства
         assert call(base, "/api/bridge/revoke", {"id": conf["id"]}, owner)[1] == {"ok": True}
         assert call(base, "/api/bridge/devices", tok=owner)[1]["devices"] == []
     finally:
