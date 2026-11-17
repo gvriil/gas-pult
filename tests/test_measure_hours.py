@@ -41,3 +41,20 @@ def test_turns_hours_and_share(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Ходов агентов (по сообщению человека): 2" in out and "ходов дольше 5 мин: 1" in out
     assert "через пульт 2 (100 %)" in out                                       # «pult» (сам пульт) — не человек
+
+
+def test_broken_sends_line_and_share_over_100(tmp_path, capsys):
+    """17.11: строка из нулей в журнале доставок (перезагрузка) валила весь замер; доля >100 % — предупреждение."""
+    proj = tmp_path / "claude" / "p"
+    proj.mkdir(parents=True)
+    rows = [{"type": "user", "timestamp": iso(10), "message": {"content": "сделай"}},
+            {"type": "assistant", "timestamp": iso(10, 1)}]
+    (proj / "s.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    t0 = datetime(2026, 11, 10, 9, tzinfo=UTC).timestamp()
+    sends = tmp_path / "sends.jsonl"
+    sends.write_text(json.dumps({"ts": t0, "src": "panel"}) + "\n" + "\x00" * 40 + "\n"
+                     + json.dumps({"ts": t0 + 60, "src": "bot"}) + "\n")
+    assert measure.main(["--end", "2026-11-11", "--days", "2", "--claude", str(tmp_path / "claude"),
+                         "--sends", str(sends)]) == 0
+    out = capsys.readouterr().out
+    assert "пропущено битых строк — 1" in out and "через пульт 2 (200 %)" in out and "не годится как цифра" in out
