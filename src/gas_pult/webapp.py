@@ -2185,7 +2185,8 @@ class Panel:
         if profile in harness.JOURNAL_ONLY:              # Pi, OpenCode, Hermes: своя команда, свой журнал, метка
             h = harness.HARNESSES[profile]
             sid = (pi_journal.valid_sid(resume) or str(uuid.uuid4())) if profile == "pi" else resume   # у OC/Hermes id
-            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, h.launch(sid, resume=bool(resume)),
+            cmd = h.launch(sid, resume=bool(resume), path=path)             # + автопамять проекта папки
+            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
                                        mark=profile, sid=sid)       # сессии создаёт сама программа — по папке окна
             self.mark_by(wid, uid)
             return {"id": wid, "sid": sid}
@@ -2363,7 +2364,7 @@ class Panel:
         if w.get("mark") in harness.JOURNAL_ONLY:        # окно Pi/OpenCode/Hermes — снова оно, тот же разговор
             if uid is not None:
                 self.check(w["mark"], uid)
-            cmd = harness.HARNESSES[w["mark"]].launch(w.get("sid") or "", resume=True)
+            cmd = harness.HARNESSES[w["mark"]].launch(w.get("sid") or "", resume=True, path=w["path"])
             self.tmux.respawn(wid, w["path"], cmd, mark=w["mark"])
             return {"id": wid}
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
@@ -2394,7 +2395,7 @@ class Panel:
             if uid is not None:
                 self.check(name, uid)
             sid = (w.get("sid") or "") if keep else (str(uuid.uuid4()) if name == "pi" else "")
-            cmd = h.launch(sid, resume=keep)
+            cmd = h.launch(sid, resume=keep, path=w["path"])
             if (result := self.close(w)) != "закрыто":
                 raise ValueError(result)
             wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=name, sid=sid)

@@ -20,7 +20,7 @@ import shlex
 import shutil
 from pathlib import Path
 
-from gas_pult import agent_dbs, pi_journal, transcripts
+from gas_pult import agent_dbs, agent_memory, pi_journal, transcripts
 
 
 class Harness:
@@ -136,9 +136,10 @@ class Pi(Harness):
                 return p
         return ""
 
-    def launch(self, sid: str, resume: bool = False) -> str:
+    def launch(self, sid: str, resume: bool = False, path: str = "") -> str:
         """Команда окна: id сессии — в окружении (Pi меняет имя процесса — аргументов в /proc не видно) и в
-        ``--session-id`` (Pi открывает эту сессию или создаёт её: новое окно и «Продолжить» — одной командой)."""
+        ``--session-id`` (Pi открывает эту сессию или создаёт её: новое окно и «Продолжить» — одной командой).
+        ``path`` — папка окна: к добавке правил — автопамять её проекта (``agent_memory``)."""
         b = self.binary()
         if not b:
             raise ValueError("Pi на сервере не установлен")
@@ -146,8 +147,11 @@ class Pi(Harness):
         provider, _, model = self.MODEL.partition("/")
         cmd = f"env GAS_PULT_SID={sid} {shlex.quote(b)}" if sid else shlex.quote(b)
         cmd += f" --provider {shlex.quote(provider)} --model {shlex.quote(model)}" if model else ""
-        if (ov := self.overlay()).is_file():          # оверлей правил к системному промпту (gas-pult pi overlay)
-            cmd += f" --append-system-prompt {shlex.quote(str(ov))}"
+        ov = self.overlay()
+        base = ov.read_text(encoding="utf-8") if ov.is_file() else ""
+        mem = agent_memory.overlay(path, base) if path else None      # правила + память проекта — одним файлом
+        if mem or ov.is_file():                       # оверлей правил к системному промпту (gas-pult pi overlay)
+            cmd += f" --append-system-prompt {shlex.quote(str(mem or ov))}"
         return cmd + (self.resume_args(sid) if resume else self.new_args(sid))
 
     @staticmethod
@@ -274,11 +278,17 @@ class _DbAgent(Harness):
     def live_sid(self, pid):
         return ""                                     # id видно только в журнале — по папке окна
 
-    def launch(self, sid: str, resume: bool = False) -> str:
+    def memory_env(self, f: Path) -> str:
+        return ""
+
+    def launch(self, sid: str, resume: bool = False, path: str = "") -> str:
         b = self.binary()
         if not b:
             raise ValueError(f"{self.title} на сервере не установлен")
-        return shlex.quote(b) + (self.resume_args(sid) if resume else self.new_args(sid))
+        mem = agent_memory.overlay(path) if path else None             # автопамять проекта папки окна
+        env = self.memory_env(mem) if mem else ""
+        args = self.resume_args(sid) if resume else self.new_args(sid)
+        return (f"env {env} " if env else "") + shlex.quote(b) + args
 
     def new_args(self, sid):
         return ""
@@ -291,6 +301,10 @@ class OpenCode(_DbAgent):
 
     def __init__(self, db: Path | None = None):
         self.store = agent_dbs.OpenCodeDB(db)
+
+    def memory_env(self, f):
+        import json
+        return "OPENCODE_CONFIG_CONTENT=" + shlex.quote(json.dumps({"instructions": [str(f)]}))
 
     def resume_args(self, sid):
         sid = agent_dbs.valid_sid(sid)
@@ -305,6 +319,9 @@ class Hermes(_DbAgent):
 
     def __init__(self, db: Path | None = None):
         self.store = agent_dbs.HermesDB(db)
+
+    def memory_env(self, f):
+        return "GAS_PULT_MEMORY_FILE=" + shlex.quote(str(f))     # обёртка hermes (штаб) дописывает к оверлею
 
     def resume_args(self, sid):
         sid = agent_dbs.valid_sid(sid)
