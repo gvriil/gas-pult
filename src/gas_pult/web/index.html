@@ -4059,7 +4059,7 @@ function pickProfile(go, exclude) {
   if (!exclude && ready.length + agents.length < 2 && profileOf("claude")?.allowed !== false) return go("claude");
   helpSheet("sheet.pick-model");
   sheet(exclude ? "Перезапустить с поставщиком" : "В какой модели работать?", [
-    ...agents.map((a) => ({ label: a.title + " — другой агент", icon: "term", sub: "модель " + (a.model || "").split("/").pop() + " · запасной агент вместо Claude Code", run: () => go(a.id) })),
+    ...agents.map((a) => ({ label: a.title + " — другой агент", icon: "term", sub: (a.model ? "модель " + a.model.split("/").pop() : "модель — из настроек программы") + " · запасной агент вместо Claude Code", run: () => go(a.id) })),
     ...ready.map((p) => p.allowed === false ? { label: p.title, icon: "lock", sub: p.denied || DENY, run: () => toast(p.denied || DENY, 4500) }
       : { label: p.title, icon: "chip", sub: p.needs_key ? [p.main, p.about, gapPick(p)].filter(Boolean).join(" · ") : p.about, run: () => go(p.id) }),
     ...(meta.profiles || []).filter((p) => p.needs_key && (!p.key || p.not_ready) && p.allowed !== false).map((p) => ({ label: p.title, icon: "key", sub: p.key ? "нет адреса шлюза — настроить" : "нет ключа — добавить", run: () => profileForm(p) })),
@@ -4067,7 +4067,8 @@ function pickProfile(go, exclude) {
   ]);
 }
 async function startSession(i, profile) {
-  toast(profile === "pi" ? "Запускаю Pi…" : profile && profile !== "claude" ? `Запускаю Claude Code с ${profileOf(profile)?.title || profile}…` : "Запускаю Claude…", 3000);
+  const ag = (meta.agents || []).find((a) => a.id === profile);
+  toast(ag ? `Запускаю ${ag.title}…` : profile && profile !== "claude" ? `Запускаю Claude Code с ${profileOf(profile)?.title || profile}…` : "Запускаю Claude…", 3000);
   try {
     const d = await api("/api/new", { i, profile }); await refresh(); openSession(d.id); focusAfterNew(d.id);
     if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);

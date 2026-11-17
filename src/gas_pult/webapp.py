@@ -503,7 +503,7 @@ class Panel:
             ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
             snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
             rev = harness.of(w).revision(w["path"], home, sid)
-            pi = self.pi_row(w, sid) if harness.of(w).name == "pi" else None   # окно Pi: своя строка и статус
+            pi = self.pi_row(w, sid) if harness.of(w).name in harness.JOURNAL_ONLY else None   # Pi, OpenCode, Hermes
             out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
                         "status": "sleep" if w.get("sleep") else pi["status"] if pi else
                         "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
@@ -558,11 +558,12 @@ class Panel:
     def pi_row(self, w: dict, sid: str) -> dict:
         """Окно Pi: статус хода, модель «поставщик/модель», свободный контекст и расход — из журнала Pi (не из строки
         статуса Claude Code и не лимиты подписки Claude)."""
-        f = harness.of(w).journal(w["path"], sid=sid)
-        st, u = pi_journal.status(f), pi_journal.usage(f)
+        h = harness.of(w)
+        f = h.journal(w["path"], sid=sid)
+        st, u = h.status(f), h.usage(f)
         busy = st["phase"] in ("started", "working", "thinking")
         return {"status": "busy" if busy else "idle", "usage": u,
-                "model": f"{u['provider']}/{u['model']}" if u["model"] else harness.HARNESSES["pi"].MODEL,
+                "model": f"{u['provider']}/{u['model']}".strip("/") if u["model"] else getattr(h, "MODEL", ""),
                 "context": None if u["used"] is None else max(0, round(100 - u["used"]))}
 
     def chat_title(self, d: dict, path: str, home, sid: str) -> str:
@@ -1608,8 +1609,8 @@ class Panel:
 
     def check(self, profile: str, uid):
         """Поставщик не разрешён для какой-то из стран человека — отказ ровно этим текстом."""
-        if profile == "pi":                              # Pi — по правилам поставщика его модели
-            profile = harness.HARNESSES["pi"].COUNTRY_AS
+        if profile in harness.JOURNAL_ONLY:              # Pi, OpenCode, Hermes — по правилам поставщика их модели
+            profile = harness.HARNESSES[profile].COUNTRY_AS
         if not models.allowed(profile or "claude", self.countries(uid)):
             raise ValueError(country.DENY)
 
@@ -2175,11 +2176,11 @@ class Panel:
         метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
         этого чата (``window_models``), как у «Модель» в меню."""
         base = name or (os.path.basename(path) if path != self.pult.home else "home")
-        if profile == "pi":                              # агент Pi (R13): своя команда, свой журнал, метка «pi»
-            pi = harness.HARNESSES["pi"]
-            sid = pi_journal.valid_sid(resume) or str(uuid.uuid4())
-            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, pi.launch(sid, resume=bool(resume)),
-                                       mark="pi", sid=sid)
+        if profile in harness.JOURNAL_ONLY:              # Pi, OpenCode, Hermes: своя команда, свой журнал, метка
+            h = harness.HARNESSES[profile]
+            sid = (pi_journal.valid_sid(resume) or str(uuid.uuid4())) if profile == "pi" else resume   # у OC/Hermes id
+            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, h.launch(sid, resume=bool(resume)),
+                                       mark=profile, sid=sid)       # сессии создаёт сама программа — по папке окна
             self.mark_by(wid, uid)
             return {"id": wid, "sid": sid}
         self.need_claude()
@@ -2353,11 +2354,11 @@ class Panel:
             profile, cmd = w["mark"] or "claude", tenants.command(t) + repos.flags(self.pult.state(), w["path"])
             self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)
             return {"id": wid}
-        if w.get("mark") == "pi":                        # окно Pi — снова Pi, тот же разговор
+        if w.get("mark") in harness.JOURNAL_ONLY:        # окно Pi/OpenCode/Hermes — снова оно, тот же разговор
             if uid is not None:
-                self.check("pi", uid)
-            cmd = harness.HARNESSES["pi"].launch(w.get("sid") or "", resume=True)
-            self.tmux.respawn(wid, w["path"], cmd, mark="pi")
+                self.check(w["mark"], uid)
+            cmd = harness.HARNESSES[w["mark"]].launch(w.get("sid") or "", resume=True)
+            self.tmux.respawn(wid, w["path"], cmd, mark=w["mark"])
             return {"id": wid}
         profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
         if uid is not None:
@@ -2379,16 +2380,18 @@ class Panel:
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
         не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
         """
-        if w.get("mark") == "pi" or harness.of(w).name == "pi":   # окно Pi: перезапуск — снова Pi, тот же разговор
-            if profile not in ("", "pi", "claude") and profile != (w.get("profile") or ""):
-                raise ValueError("в окне Pi модель меняется в самом Pi: /model")
+        name = w.get("mark") if w.get("mark") in harness.JOURNAL_ONLY else harness.of(w).name
+        if name in harness.JOURNAL_ONLY:               # Pi/OpenCode/Hermes: перезапуск — снова оно, тот же разговор
+            h = harness.HARNESSES[name]
+            if profile not in ("", name, "claude") and profile != (w.get("profile") or ""):
+                raise ValueError(f"в окне {h.title} модель меняется в самой программе: /model")
             if uid is not None:
-                self.check("pi", uid)
-            sid = (w.get("sid") or "") if keep else str(uuid.uuid4())
-            cmd = harness.HARNESSES["pi"].launch(sid, resume=keep)
+                self.check(name, uid)
+            sid = (w.get("sid") or "") if keep else (str(uuid.uuid4()) if name == "pi" else "")
+            cmd = h.launch(sid, resume=keep)
             if (result := self.close(w)) != "закрыто":
                 raise ValueError(result)
-            wid = self.tmux.new_window(w["name"], w["path"], cmd, mark="pi", sid=sid)
+            wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=name, sid=sid)
             self.mark_by(wid, w.get("by") or uid)
             self.focus.move(w["id"], wid)
             if routes := getattr(self.pult, "routes", None):

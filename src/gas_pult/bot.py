@@ -53,7 +53,6 @@ from gas_pult import (
     notifylevel,
     offers,
     people,
-    pi_journal,
     providers,
     qr,
     review_inbox,
@@ -578,8 +577,8 @@ class Pult:
     def activity(self, w: dict, screen: dict | None = None) -> dict:
         """Статус окна: журнал (последний ход), запись об отправке и экран (``screen``; нет — читаем сами)."""
         h = harness.of(w)
-        if h.name == "pi":                               # Pi: статус хода — по его журналу (экран — Claude Code)
-            j = pi_journal.status(h.journal(w["path"], sid=w.get("sid") or ""))
+        if h.name in harness.JOURNAL_ONLY:               # Pi, OpenCode, Hermes: статус хода — по их журналу
+            j = h.status(h.journal(w["path"], sid=w.get("sid") or ""))
         else:
             j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "")
         scr = screen if screen is not None else self.screen_state(w["id"])
@@ -1084,7 +1083,7 @@ class Pult:
                                            "Последний:")
                         for text in texts[-1:] if len(texts) > self.BURST else texts:
                             self.deliver(w, text)
-                self.pi_answers([w for w in ws if harness.of(w).name == "pi"], st)
+                self.pi_answers([w for w in ws if harness.of(w).name in harness.JOURNAL_ONLY], st)
                 screens: dict[str, str] = {}
                 for w in ws:
                     quiet = not notifylevel.wants(st, w["id"], "dialog")   # «тихо» — и вопросы не шлём
@@ -1109,15 +1108,16 @@ class Pult:
             time.sleep(3)
 
     def pi_answers(self, ws: list[dict], st: dict):
-        """Ответы окон Pi — в Telegram, как ответы Claude Code (у Claude их ловит ``Tail``/``Turns`` по журналам
-        ``~/.claude``; у Pi свой журнал). Первый взгляд на журнал — только запоминаем: старое не пересылаем."""
+        """Ответы окон Pi, OpenCode и Hermes — в Telegram, как ответы Claude Code (у Claude их ловит ``Tail``/``Turns``
+        по журналам ``~/.claude``; у этих — свой журнал). Первый взгляд — только запоминаем: старое не пересылаем."""
         seen = self.__dict__.setdefault("pi_seen", {})
         start = self.__dict__.setdefault("pi_start", time.time())   # ответы до запуска бота — старые, не пересылаем
         for w in ws:
-            f = harness.of(w).journal(w["path"], sid=w.get("sid") or "")
+            h = harness.of(w)
+            f = h.journal(w["path"], sid=w.get("sid") or "")
             if not f:
                 continue
-            at = pi_journal.answers_at(f)
+            at = h.answers_at(f)
             got = [t for _, t in at]
             # первый взгляд: старое — только написанное до запуска бота (окно открыли и Pi ответил за 3 с между
             # взглядами — первый ответ новый, его шлём; раньше считался «старым» и терялся)
