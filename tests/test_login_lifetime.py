@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import multiprocessing
+import shutil
 import threading
 import time
 import urllib.error
@@ -116,6 +117,7 @@ def test_restart_of_service_keeps_login(tmp_path, monkeypatch):
         srv2.shutdown()
 
 
+@pytest.mark.skipif(not shutil.which("tmux"), reason="/api/sessions читает окна tmux")
 def test_mini_app_gets_cookie_and_keeps_working_after_init_data_expires(tmp_path, monkeypatch):
     p, srv, base = start(tmp_path, monkeypatch)
     try:
