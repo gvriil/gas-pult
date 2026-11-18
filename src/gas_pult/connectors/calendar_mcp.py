@@ -178,7 +178,24 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 def _same_host(a: str, b: str) -> bool:
     x, y = urllib.parse.urlsplit(a), urllib.parse.urlsplit(b)
-    return (x.scheme, x.hostname, x.port) == (y.scheme, y.hostname, y.port)
+    dp = {"https": 443, "http": 80}
+    return (x.scheme, x.hostname, x.port or dp.get(x.scheme)) == (y.scheme, y.hostname, y.port or dp.get(y.scheme))
+
+
+# Сервисы, где календари лежат на другом узле того же домена: iCloud отвечает с caldav.icloud.com, а
+# calendar-home-set указывает на узел pNN-caldav.icloud.com (у каждого аккаунта свой; адрес не постоянный).
+_SITES = ("icloud.com",)
+
+
+def _same_site(a: str, b: str) -> bool:
+    """Тот же сервер — или узел того же сервиса из ``_SITES`` по https (пароль уходит только туда)."""
+    if _same_host(a, b):
+        return True
+    x, y = urllib.parse.urlsplit(a), urllib.parse.urlsplit(b)
+    if x.scheme != "https" or y.scheme != "https" or (x.port or 443) != 443 or (y.port or 443) != 443:
+        return False
+    hx, hy = (x.hostname or "").lower(), (y.hostname or "").lower()
+    return any((hx == s or hx.endswith("." + s)) and (hy == s or hy.endswith("." + s)) for s in _SITES)
 
 
 def _req(cfg: dict, method: str, url: str, body: str | None = None, headers: dict | None = None,
@@ -202,7 +219,7 @@ def _req(cfg: dict, method: str, url: str, body: str | None = None, headers: dic
             loc = e.headers.get("Location") if e.code in (301, 302, 303, 307, 308) else None
             if loc:
                 nxt = urllib.parse.urljoin(url, loc)
-                if not _same_host(nxt, url) and cfg["kind"] == "caldav":
+                if not _same_site(nxt, url) and cfg["kind"] == "caldav":
                     raise _core.ToolError(f"{what}: сервер переадресует на другой адрес — укажите в файле url "
                                           f"{_core.hide(nxt, *keys)}") from None
                 url = nxt
@@ -264,7 +281,7 @@ def _collections(cfg: dict) -> list[dict]:
         home = _href_in(root, "prop/c:calendar-home-set", purl)
         if not home:
             raise _core.ToolError(f"календарь «{cfg['name']}»: нет calendar-home-set — это сервер CalDAV?")
-    if not _same_host(home, cfg["url"]):
+    if not _same_site(home, cfg["url"]):
         raise _core.ToolError(f"календарь «{cfg['name']}»: календари на другом сервере — укажите его в url")
     root, hurl = _propfind(cfg, home, "<d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>",
                            "1")
@@ -735,9 +752,10 @@ def get_event(a: dict):
     else:
         if not eid.startswith("/") or ".." in eid or "?" in eid or "#" in eid:
             raise _core.ToolError("id события CalDAV — путь из calendar_list_events")
-        if not any(eid.startswith(c["href"]) for c in _collections(cfg)):
+        col = next((c for c in _collections(cfg) if eid.startswith(c["href"])), None)
+        if not col:
             raise _core.ToolError("событие не из календарей этого аккаунта")
-        _, raw, _ = _req(cfg, "GET", urllib.parse.urljoin(cfg["url"], eid), headers={"Accept": "text/calendar"})
+        _, raw, _ = _req(cfg, "GET", urllib.parse.urljoin(col["url"], eid), headers={"Accept": "text/calendar"})
         evs, href = parse_ics(raw.decode("utf-8", "replace")), eid
     if not evs:
         raise _core.ToolError(f"нет события «{eid}» в календаре «{name}»")
@@ -805,7 +823,8 @@ def propose_event(a: dict):
     col = col[0]
     uid = f"{secrets.token_hex(12)}@gas-pult"
     allday = not isinstance(start, datetime)
-    p = {"calendar": name, "collection": col["name"], "href": col["href"].rstrip("/") + f"/{uid}.ics", "uid": uid,
+    p = {"calendar": name, "collection": col["name"], "href": col["href"].rstrip("/") + f"/{uid}.ics",
+         "url": col["url"].split("?")[0].rstrip("/") + f"/{uid}.ics", "uid": uid,
          "summary": title, "location": " ".join(str(a.get("location") or "").split()), "description": desc,
          "all_day": allday}
     if allday:
@@ -863,8 +882,8 @@ def apply(a: dict):
     if rec["action"] != "create":
         raise _core.ToolError("неизвестное действие черновика")
     _, cfg = _cal(p["calendar"])
-    url = urllib.parse.urljoin(cfg["url"], p["href"])
-    if not _same_host(url, cfg["url"]):
+    url = p.get("url") or urllib.parse.urljoin(cfg["url"], p["href"])
+    if not _same_site(url, cfg["url"]) or urllib.parse.urlsplit(url).path != p["href"]:
         raise _core.ToolError("адрес события не на сервере календаря")
     _req(cfg, "PUT", url, build_ics(p), {"Content-Type": "text/calendar; charset=utf-8", "If-None-Match": "*"},
          ok=(200, 201, 204))

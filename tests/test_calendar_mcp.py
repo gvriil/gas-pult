@@ -443,3 +443,27 @@ def test_monthly_31st_and_last_friday_and_windows_tz():
     assert a == ["2026-01-31", "2026-03-31", "2026-05-31", "2026-07-31"]   # месяцы без 31-го пропускаются
     assert b == ["2026-01-30T15:00:00+00:00", "2026-02-27T15:00:00+00:00", "2026-03-27T15:00:00+00:00",
                  "2026-04-24T15:00:00+00:00"]
+
+
+def test_icloud_partition_host_is_same_site():
+    """iCloud: вход на caldav.icloud.com, календари — на узле pNN-caldav.icloud.com (calendar-home-set)."""
+    root = "https://caldav.icloud.com/"
+    assert cal._same_site("https://p52-caldav.icloud.com:443/123/calendars/", root)
+    assert cal._same_site("https://caldav.icloud.com:443/x", root)          # порт по умолчанию — тот же сервер
+    assert not cal._same_site("http://p52-caldav.icloud.com/123/", root)    # без шифрования — нет
+    assert not cal._same_site("https://p52-caldav.icloud.com:8443/123/", root)
+    assert not cal._same_site("https://bad-icloud.com/123/", root)          # чужой домен с похожим именем
+    assert not cal._same_site("https://icloud.com.bad.example/123/", root)
+    assert not cal._same_site("https://caldav.yandex.ru/x", root)
+    assert not cal._same_site("https://other.yandex.ru/x", "https://caldav.yandex.ru/")   # только _SITES
+
+
+def test_apply_writes_to_collection_host(env):
+    """Событие пишется на узел календаря (url из черновика), а не на адрес входа; путь — тот, что показан."""
+    (r,) = rpc([call("calendar_propose_event", {"calendar": "yandex", "summary": "Узел",
+                                                "start": "2026-11-25T10:00"})], env)
+    d = body(r)
+    assert d["params"]["url"].endswith(d["params"]["href"])
+    _confirm(d["id"], env)
+    (r,) = rpc([call("calendar_apply", {"id": d["id"]})], env | {"GAS_CAL_WRITE": "1"})
+    assert body(r)["uid"] == d["params"]["uid"] and writes()[-1]["path"] == d["params"]["href"]
