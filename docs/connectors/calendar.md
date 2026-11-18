@@ -77,8 +77,43 @@ RFC 5397). Яндекс Календарь, Nextcloud, iCloud и Google — **н
 3. Скопируйте пароль: он показывается один раз. Положите его в KeePassXC и в `app_password`.
 4. Адрес: `https://caldav.yandex.ru/`, `user` — полный адрес почты Яндекса.
 
-**Nextcloud** — Настройки → Безопасность → «Создать пароль приложения»; `url` — `https://<сервер>/remote.php/dav/`.
-**iCloud** — appleid.apple.com → «Пароли приложений»; `url` — `https://caldav.icloud.com/`. Оба — **не проверял**.
+**Nextcloud** — Настройки → Безопасность → «Создать пароль приложения»; `url` — `https://<сервер>/remote.php/dav/`
+(**не проверял**).
+
+### iCloud (GAS-15)
+
+**Статус: не проверено на живом аккаунте iCloud.** Тесты — на фейковом сервере; узел iCloud проверен только юнит-тестом.
+
+Проще всего — из панели: «Интеграции» → «Календарь iCloud» → Apple ID и пароль приложения → «Подключить». Пульт сам
+кладёт файл `calendar-icloud.json` (0600) в папку `integrations/<имя>.calendar/` (0700) и подключает коннектор к
+Claude Code: в настройки попадает только путь к папке. «Убрать» удаляет и файл с паролем.
+
+Пароль приложения Apple (по справке Apple https://support.apple.com/en-us/102654; в интерфейсе **не проверял**):
+1. Включите двухфакторную аутентификацию Apple ID — без неё паролей приложений нет.
+2. Откройте account.apple.com → «Вход и безопасность» → «Пароли приложений».
+3. Нажмите «+» → название «пульт» → «Создать» → подтвердите паролем Apple ID.
+4. Скопируйте пароль (вида `abcd-efgh-ijkl-mnop`, показывается один раз). Положите его в KeePassXC и в панель.
+   Обычный пароль Apple ID не подходит. Паролей приложений — до 25; отозвать — там же.
+
+Вручную — тот же файл:
+```json
+{"kind": "caldav", "url": "https://caldav.icloud.com/", "user": "<Apple ID>", "app_password": "<пароль приложения>"}
+```
+
+- Узел: iCloud принимает вход на `caldav.icloud.com`, а календари отдаёт с узла аккаунта `pNN-caldav.icloud.com`
+  (calendar-home-set; адрес у каждого свой). Коннектор доверяет узлам `*.icloud.com` только по https:443 — пароль
+  на другие домены не уходит (`_same_site`, тест `test_icloud_partition_host_is_same_site`). Пример узла — форум
+  Apple https://developer.apple.com/forums/thread/129740 (у Apple в справке адреса CalDAV нет).
+- Новые события — «Новые события → Можно создавать» в панели (`GAS_CAL_WRITE=1`), каждое — после «Да».
+- **Напоминания iCloud по CalDAV — не делаем.** После «обновления Напоминаний» (iOS 13, macOS 10.15) Apple пишет:
+  «your reminders aren't compatible with earlier versions of iOS and macOS» и «You can't see iCloud reminders in
+  Outlook when using iCloud for Windows» (https://support.apple.com/en-us/102457). Прямо «CalDAV не отдаёт обновлённые
+  напоминания» Apple не пишет; на форуме Apple разработчик видит по CalDAV только старые списки, ответа нет
+  (https://developer.apple.com/forums/thread/129740). Вывод: по CalDAV обновлённые напоминания недоступны — по
+  косвенным данным, не проверено вживую. Напоминания — через мост на Маке (`docs/BRIDGE.md`).
+- **Контакты (CardDAV) — следующий шаг**, не в этом PR: нужен свой разбор vCard и поиск адресной книги
+  (`addressbook-home-set`, RFC 6352) — больше часа. Адрес сервера CardDAV iCloud — **не проверял**.
+- Заметки iCloud по CalDAV/CardDAV недоступны — только мост на Маке.
 
 **Google Календарь — секретная ссылка iCal** (только чтение; в интерфейсе **не проверял**):
 1. Откройте calendar.google.com на компьютере → шестерёнка → «Настройки».

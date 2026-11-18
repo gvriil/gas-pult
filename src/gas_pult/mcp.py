@@ -7,8 +7,9 @@
 2. **По ключу** (``PRESETS`` с полями): кнопка открывает страницу, где сервис выдаёт ключ, ключ — в одно поле.
 3. **Для продвинутых**: свой адрес или своя программа (``add-json -s user``).
 4. **Свои серверы пульта** (``type: builtin``, ``base_mcp.py``): веб-поиск и Google Диск через rclone — stdio, только
-   стандартная библиотека Python. Ключ или токен rclone — в файл 0600 (``secrets_dir``), в настройки Claude Code —
-   команда и путь к файлу, сам ключ туда не попадает.
+   стандартная библиотека Python. Календарь iCloud — коннектор ``connectors/calendar_mcp.py`` (CalDAV).
+   Ключ или токен rclone — в файл 0600 (``secrets_dir``), в настройки Claude Code — команда и путь
+   к файлу, сам ключ туда не попадает.
 Пути 2 и 3 — MCP-серверы в папке Claude Code человека: Claude Code сам MCP-клиент, поэтому они работают на любом
 поставщике модели (GLM, DeepSeek, OpenRouter…). Коннекторы claude.ai — только в сессиях Claude: с чужим ключом
 Claude Code их выключает (ADR-0002, ``docs/PROVIDERS.md``). Поле ``providers``: «all» или «claude».
@@ -76,6 +77,9 @@ SEARCH_ENGINES = [
     {"v": "exa", "t": "Exa — поиск по смыслу", "key_url": "https://dashboard.exa.ai/api-keys"},
 ]
 BASE_SERVER = Path(__file__).with_name("base_mcp.py")
+CAL_SERVER = Path(__file__).with_name("connectors") / "calendar_mcp.py"
+# Пароль приложения Apple: 16 строчных латинских букв, на странице Apple — четыре группы через дефис
+APPLE_PW = re.compile(r"^[a-z]{4}-?[a-z]{4}-?[a-z]{4}-?[a-z]{4}$")
 
 # Шаблоны: что это, куда подключаемся и какие поля спросить у человека (с подсказкой, где взять значение).
 PRESETS = [
@@ -144,6 +148,22 @@ PRESETS = [
                          "rclone authorize \"drive\" — войдите в Google, вставьте сюда то, что rclone напечатает "
                          "между ---> и <---End paste. Хранится в своём rclone.conf (0600) на сервере."}],
      "after": "Перезапустите открытые сессии — появятся drive_list, drive_download, drive_upload."},
+    {"id": "icloud", "title": "Календарь iCloud", "icon": "📅", "about": "События календарей iCloud — читать; новое "
+     "событие — только после вашего «Да». По паролю приложения Apple, без программ на Маке",
+     "type": "builtin", "server": "calendar", "key_url": "https://account.apple.com",
+     "fields": [{"key": "user", "label": "Apple ID (почта)", "placeholder": "name@icloud.com",
+                 "hint": "Почта, с которой входите в iCloud."},
+                {"key": "token", "label": "Пароль приложения Apple", "secret": True,
+                 "placeholder": "abcd-efgh-ijkl-mnop",
+                 "hint": "account.apple.com → «Вход и безопасность» → «Пароли приложений» → «+» → название «пульт» "
+                         "→ скопируйте пароль. Нужна двухфакторная аутентификация. Обычный пароль Apple ID сюда не "
+                         "подходит. Хранится в файле 0600 на сервере."},
+                {"key": "write", "label": "Новые события", "options": [
+                    {"v": "0", "t": "Только чтение"},
+                    {"v": "1", "t": "Можно создавать — каждое после «Да» в пульте"}],
+                 "hint": "Изменять и удалять события коннектор не умеет."}],
+     "after": "Перезапустите открытые сессии — появятся calendar_list_events и calendar_list_calendars. Напоминания "
+              "и Заметки iCloud так не видны — для них мост на Маке (docs/BRIDGE.md)."},
     {"id": "http", "title": "Свой сервер (адрес)", "about": "Любой MCP-сервер по адресу HTTPS", "type": "http",
      "url": "{url}",
      "fields": [{"key": "url", "label": "Адрес сервера", "placeholder": "https://mcp.example.com/mcp",
@@ -233,6 +253,22 @@ def builtin(p: dict, name: str, vals: dict, home: Path | None) -> dict:
         f = d / f"{name}.key"
         config.write_private(f, key + "\n")
         env |= {"GAS_SEARCH_ENGINE": engine, "GAS_SEARCH_KEY_FILE": str(f)}
+    elif p["server"] == "calendar":
+        user, pw = vals["user"], vals["token"].lower().replace(" ", "")
+        if not re.match(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,}$", user, re.I):
+            raise ValueError("Apple ID — адрес почты, например name@icloud.com")
+        if not APPLE_PW.match(pw):
+            raise ValueError("пароль приложения Apple — 16 латинских букв (abcd-efgh-ijkl-mnop); обычный пароль "
+                             "Apple ID не подходит")
+        if vals.get("write") not in ("0", "1"):
+            raise ValueError("выберите: только чтение или можно создавать")
+        kd = d / f"{name}.calendar"
+        kd.mkdir(exist_ok=True, mode=0o700)
+        kd.chmod(0o700)
+        config.write_private(kd / "calendar-icloud.json", json.dumps(
+            {"kind": "caldav", "url": "https://caldav.icloud.com/", "user": user, "app_password": pw}) + "\n")
+        return {"type": "stdio", "command": sys.executable or "python3", "args": [str(CAL_SERVER)],
+                "env": {"GAS_CAL_KEY_DIR": str(kd), "GAS_CAL_WRITE": vals["write"]}}
     else:
         exe = rclone_bin()
         if not exe:
@@ -329,4 +365,12 @@ class Mcp:
             raise ValueError((r.stderr or r.stdout).strip() or "не удалось удалить")
         for f in (f"{name}.key", f"{name}.rclone.conf"):        # ключ своего сервера пульта — вместе с ним
             (secrets_dir(home) / f).unlink(missing_ok=True)
+        kd = secrets_dir(home) / f"{name}.calendar"              # календарь iCloud: папка с файлом пароля
+        if kd.is_dir() and not kd.is_symlink():
+            for x in kd.glob("calendar-*.json"):
+                x.unlink(missing_ok=True)
+            try:
+                kd.rmdir()
+            except OSError:
+                pass
         return "удалён"

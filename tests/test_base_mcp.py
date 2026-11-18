@@ -329,3 +329,34 @@ def test_add_drive_writes_own_rclone_conf(claude, tmp_path, monkeypatch):
     monkeypatch.setattr(mcp, "rclone_bin", lambda: "")
     with pytest.raises(ValueError, match="нет rclone"):
         mcp.Mcp().add("drive", "drive", {"token": json.dumps(TOKEN)})
+
+
+APW = "abcd" + "-efgh-" + "ijkl-mnop"                       # формат пароля приложения Apple, не настоящий
+
+
+def test_add_icloud_calendar_password_in_file(claude, tmp_path):
+    res = mcp.Mcp().add("icloud", "icloud", {"user": "name@icloud.com", "token": APW.upper()})
+    args = claude.calls[0]
+    cfg = json.loads(args[2])
+    assert APW not in " ".join(args) and APW.upper() not in " ".join(args)
+    assert cfg["args"] == [str(mcp.CAL_SERVER)] and mcp.CAL_SERVER.is_file()
+    assert cfg["env"]["GAS_CAL_WRITE"] == "0"                # по умолчанию — только чтение
+    kd = Path(cfg["env"]["GAS_CAL_KEY_DIR"])
+    f = kd / "calendar-icloud.json"
+    assert json.loads(f.read_text()) == {"kind": "caldav", "url": "https://caldav.icloud.com/",
+                                         "user": "name@icloud.com", "app_password": APW}
+    assert f.stat().st_mode & 0o777 == 0o600 and kd.stat().st_mode & 0o777 == 0o700 and "Напоминания" in res
+    mcp.Mcp().remove("icloud")
+    assert not f.exists() and not kd.exists()
+
+
+def test_add_icloud_validates(claude):
+    with pytest.raises(ValueError, match="Apple ID"):
+        mcp.Mcp().add("icloud", "icloud", {"user": "name", "token": APW})
+    with pytest.raises(ValueError, match="16 латинских"):
+        mcp.Mcp().add("icloud", "icloud", {"user": "name@icloud.com", "token": "my-apple-id-password"})
+    with pytest.raises(ValueError, match="только чтение"):
+        mcp.Mcp().add("icloud", "icloud", {"user": "name@icloud.com", "token": APW, "write": "2"})
+    assert claude.calls == []
+    mcp.Mcp().add("icloud", "ic2", {"user": "name@icloud.com", "token": APW.replace("-", ""), "write": "1"})
+    assert json.loads(claude.calls[0][2])["env"]["GAS_CAL_WRITE"] == "1"
