@@ -464,6 +464,13 @@ function demoApi(path, body) {
   if (key === "/api/persona") return Promise.resolve(demoUi(body));
   if (key === "/api/team") return Promise.resolve(demoTeam(body));
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
+  if (key === "/api/stt" && path.includes("job=1")) { demoApi.sttAt = Date.now(); return Promise.resolve({ job: "demo" }); }   // GAS-34
+  if (key === "/api/stt/job") {
+    const m = params.get("stt"), done = Date.now() - (demoApi.sttAt || 0) > 2500;
+    if (!done || m === "slow") return Promise.resolve({ state: "work" });
+    if (m === "fail" || m === "empty") return Promise.resolve({ state: "fail", error: m === "empty" ? "Ничего не расслышал — попробуйте ещё раз" : "распознавание не удалось", kept: true });
+    return Promise.resolve({ state: "done", text: "Покажи, что изменилось за сегодня" });
+  }
   if (key === "/api/stt") {                          // как на сервере: распознавание занимает секунды; ?stt=empty|slow|fail — ошибки
     const m = params.get("stt"), text = m === "empty" ? "" : "Покажи, что изменилось за сегодня";
     if (m === "slow") return new Promise(() => {});  // ответа нет — сработает таймаут 90 с

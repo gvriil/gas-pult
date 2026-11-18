@@ -274,6 +274,8 @@ CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
 AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
 STT_TIMEOUT = 85                                          # с; панель ждёт ответа 90 с
+STT_JOB_TIMEOUT = 40 * 60                                 # с: фоновое распознавание длинной записи (GAS-34)
+STT_KEEP_DAYS = 7                                         # нераспознанная запись хранится, чтобы повторить
 STT_EMPTY = "Ничего не расслышал — попробуйте ещё раз"   # распознавание вернуло пустой текст
 EL_PAUSE = 600                                            # ElevenLabs отказал — столько секунд к нему не ходим
 STT_STREAM = "/api/stt/stream"                            # голос потоком: WebSocket → служба T-one (задача 46)
@@ -410,6 +412,7 @@ class Panel:
         self.mod_sections: tuple[float, dict] = (0.0, {})    # модуль → разделы чата (sections_of)
         self.mod_sched: tuple[float, dict] = (0.0, {})       # модуль → описание (schedule_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
+        self.stt_jobs: dict[str, dict] = {}              # фоновое распознавание (GAS-34): id → состояние
         self.repeat = router.Repeat()                    # тот же длинный вопрос в ту же сессию за 10 минут (GAS-16)
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
@@ -2762,6 +2765,72 @@ class Panel:
             raise ValueError(STT_EMPTY)
         return text
 
+    # ---------- фоновое распознавание: запись не теряется (GAS-34, владелец 18.11) ----------
+    # Запись сначала ложится на сервер (``voice-keep``, 0600), потом распознаётся в фоне без лимита 90 с; панель
+    # опрашивает ``/api/stt/job``. Готово — файл удаляется; не вышло — остаётся на ``STT_KEEP_DAYS`` дней для повтора.
+    def _keep_dir(self) -> Path:
+        d = self.cfg.data / "voice-keep"
+        d.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return d
+
+    def stt_job(self, data: bytes, ctype: str, uid, cloud: bool = True) -> dict:
+        if not data:
+            raise ValueError(STT_EMPTY)
+        ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
+        d, jid = self._keep_dir(), uuid.uuid4().hex[:16]
+        old = time.time() - STT_KEEP_DAYS * 86400
+        for f in d.iterdir():                             # старые нераспознанные — прочь
+            if f.stat().st_mtime < old:
+                f.unlink(missing_ok=True)
+        f = d / f"{jid}.{ext}"
+        f.write_bytes(data)
+        f.chmod(0o600)
+        self.stt_jobs[jid] = {"state": "work", "uid": uid, "at": time.time(), "file": f.name, "cloud": cloud}
+        threading.Thread(target=self._stt_run, args=(jid,), daemon=True, name=f"stt-{jid}").start()
+        return {"job": jid}
+
+    def _stt_run(self, jid: str):
+        job = self.stt_jobs[jid]
+        f = self._keep_dir() / job["file"]
+        before = self.fallback_note()
+        try:
+            data = f.read_bytes()
+            ext = f.suffix.lstrip(".")
+            text = ""
+            if job["cloud"] and self.voice_settings()["stt"] == "elevenlabs" and self.el_ok():
+                try:
+                    text = (providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}") or "").strip()
+                except (providers.ProviderError, KeyError) as e:
+                    self.voice_fallback("распознавание", e)
+            if not text:
+                text = (voice.transcribe_any(f, self.cfg.whisper_model, STT_JOB_TIMEOUT, self.cfg.data) or "").strip()
+            if not text:
+                raise ValueError(STT_EMPTY)
+            now = self.fallback_note()
+            job.update(state="done", text=text, fallback=now if now and now != before else "")
+            f.unlink(missing_ok=True)                     # текст есть — голос не храним
+        except Exception as e:                            # запись остаётся: «Повторить» возьмёт её с сервера
+            job.update(state="fail", error=str(e) or type(e).__name__, kept=f.exists())
+            print(f"распознавание {jid}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+
+    def stt_job_get(self, jid: str, uid) -> dict:
+        job = self.stt_jobs.get(str(jid))
+        if not job or job["uid"] != uid:
+            raise LookupError("распознавания нет — запишите ещё раз")
+        out = {"state": job["state"], "sec": round(time.time() - job["at"])}
+        out.update({k: job[k] for k in ("text", "error", "fallback", "kept") if k in job})
+        return out
+
+    def stt_retry(self, jid: str, uid) -> dict:
+        job = self.stt_jobs.get(str(jid))
+        if not job or job["uid"] != uid or job["state"] != "fail" or not (self._keep_dir() / job["file"]).exists():
+            raise LookupError("записи для повтора нет")
+        job.update(state="work", at=time.time())
+        for k in ("error", "kept"):
+            job.pop(k, None)
+        threading.Thread(target=self._stt_run, args=(jid,), daemon=True, name=f"stt-{jid}").start()
+        return {"job": jid}
+
     def stt_stream(self, rate: int) -> asr.Stream:
         """Поток в службу распознавания; её нет или занята — ``asr.Unavailable`` (панель уйдёт на ``/api/stt``).
         Служба ушла после простоя — поднимаем её (до ``asr.START_WAIT`` с; звук панель копит, пока нет ``ready``)."""
@@ -3092,11 +3161,16 @@ FOCUS_GET = {"/api/meta", "/api/sessions", "/api/history", "/api/screen", "/api/
 FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/command", "/api/revive", "/api/upload",
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
+STT_JOB = ("/api/stt/job", "/api/stt/retry")       # фоновое распознавание (GAS-34): там же, где /api/stt
+SPACE_OK |= set(STT_JOB)
+FOCUS_GET |= {"/api/stt/job"}
+FOCUS_POST |= {"/api/stt/retry"}
 FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
 FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke",
               "/api/mcp/connected", "/api/uses"}   # без окна в запросе
+FOCUS_NO_W |= set(STT_JOB)
 # Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,
 # экран, статус, «Прослушать») и отвечать на вопрос Claude кнопками (/api/select, /api/key — стрелки и Enter, только
 # когда на экране вопрос: ``Panel.demo_answer``). Нет: текста, файлов, голоса, модели, усилий, перезапуска,
@@ -3569,6 +3643,8 @@ def handler(panel: Panel):
                 return panel.oidc.info(self.terms_uid())
             if path == "/api/people":
                 return {"people": panel.people_list(), **panel.geo.info()}
+            if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
+                return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
                 return {"calendars": calkeys.status()}
             if path == "/api/setup/status":
@@ -4240,12 +4316,17 @@ def handler(panel: Panel):
                 out = {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
                 upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
                 return out
+            if path == "/api/stt" and "job=1" in urllib.parse.urlparse(self.path).query:   # фоново, GAS-34
+                return panel.stt_job(self.body(), self.headers.get("Content-Type", ""), self.terms_uid(),
+                                     cloud=not self.space())
             if path == "/api/stt":
                 before = panel.fallback_note()
                 text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/stt/retry":                   # повтор нераспознанной записи — с сервера (GAS-34)
+                return panel.stt_retry(str(b.get("id", "")), self.terms_uid())
             if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
                 return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои

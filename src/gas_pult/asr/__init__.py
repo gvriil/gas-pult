@@ -40,6 +40,7 @@ RATES = (8000, 16000, 48000)               # частоты, которые сл
 CHUNK = 32000                              # по столько байт файл уходит в службу (1 с при 16 кГц)
 PARALLEL = 2                               # готовую запись — в столько потоков службы сразу (из её 3; один — панели)
 PART_MIN_S = 8.0                           # кусок готовой записи не короче, с
+SEG_MAX_S = 300                            # и не длиннее, с: лимит службы — 10 минут на поток (MAX_AUDIO_S)
 START_WAIT = 8.0                           # с: сколько ждать сокет после запуска службы (модель грузится 1–4 с)
 QUIET_S = 0.3                              # разрез — посреди самого тихого окна такой длины, с
 
@@ -253,51 +254,58 @@ def cuts(pcm: bytes, rate: int = 16000, parts: int = PARALLEL) -> list[int]:
 
 def transcribe_pcm(pcm: bytes, rate: int = 16000, path: Path | None = None, timeout: float = 60,
                    parts: int = PARALLEL) -> str:
-    """Готовая запись целиком → текст (бот, запасной ``/api/stt``).
+    """Готовая запись целиком → текст (бот, ``/api/stt``).
 
-    Служба считает в темпе ~0,2 с на секунду записи, а готовый файл приходит сразу целиком — ждать пришлось бы всё
-    это время после конца записи. Поэтому длинную запись режем в тихих местах (``cuts``) и шлём куски в ``parts``
-    потоков службы одновременно; запись короткая или свободного потока нет — одним потоком, как раньше."""
-    edges = [0, *cuts(pcm, rate, parts), len(pcm)]
+    Служба считает в темпе ~0,2 с на секунду записи и берёт не больше ``SEG_MAX_S``·2 звука на поток. Поэтому запись
+    режем в тихих местах (``cuts``) на куски не длиннее ``SEG_MAX_S`` (кусков не меньше ``parts``) и
+    распознаём их ``parts`` потоками; кусков больше, чем потоков, — по очереди. 18.11 запись длиннее 20 минут резалась
+    на 2 куска больше лимита службы (10 минут) — «Broken pipe» и потеря записи (GAS-34). ``timeout`` — на кусок."""
+    n = max(parts, -(-len(pcm) // (2 * rate * SEG_MAX_S)))
+    edges = [0, *cuts(pcm, rate, n), len(pcm)]
     segs = [pcm[a:b] for a, b in itertools.pairwise(edges)]
-    streams: list[Stream] = []
-    try:
-        for _ in segs:
-            try:
-                streams.append(Stream(rate, partials=False, path=path))
-            except Unavailable:
-                if not streams:
-                    raise
-                break                                 # служба занята другим — оставшееся одним потоком
-        if len(streams) < len(segs):
-            for st in streams[1:]:
-                st.close()
-            streams, segs = streams[:1], [pcm]
-        if len(segs) == 1:
-            return _whole(streams[0], pcm, timeout)
-        out: list[str | BaseException] = [""] * len(segs)
+    if len(segs) == 1:
+        st = Stream(rate, partials=False, path=path)
+        try:
+            return _whole(st, pcm, timeout)
+        except OSError as e:
+            raise Unavailable(f"служба распознавания: {e}") from None
+        finally:
+            st.close()
+    out: list[str | BaseException | None] = [None] * len(segs)
+    todo = list(range(len(segs)))
+    lock = threading.Lock()
 
-        def run(i: int):
+    def worker():
+        while True:
+            with lock:
+                if not todo:
+                    return
+                i = todo.pop(0)
             try:
-                out[i] = _whole(streams[i], segs[i], timeout)
+                st = Stream(rate, partials=False, path=path)
+            except Unavailable as e:
+                with lock:
+                    todo.insert(0, i)                 # поток службы занят — кусок вернётся другому работнику
+                out[i] = e if out[i] is None else out[i]
+                return
+            try:
+                out[i] = _whole(st, segs[i], timeout)
             except (Unavailable, OSError, ValueError) as e:
                 out[i] = e
+            finally:
+                st.close()
 
-        threads = [threading.Thread(target=run, args=(i,), daemon=True) for i in range(1, len(segs))]
-        for t in threads:
-            t.start()
-        run(0)
-        for t in threads:
-            t.join(timeout + 5)
-        for r in out:
-            if isinstance(r, BaseException):
-                raise Unavailable(f"служба распознавания: {r}")
-        return " ".join(r for r in out if r)
-    except OSError as e:                      # оборвалось посреди записи — тоже запасной путь
-        raise Unavailable(f"служба распознавания: {e}") from None
-    finally:
-        for st in streams:
-            st.close()
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(min(parts, len(segs)))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout * len(segs) + 5)
+    if todo:                                      # потоков не досталось ни одному оставшемуся куску
+        raise Unavailable(f"служба распознавания занята: не распознано кусков {len(todo)} из {len(segs)}")
+    for r in out:
+        if isinstance(r, BaseException) or r is None:
+            raise Unavailable(f"служба распознавания: {r}")
+    return " ".join(r for r in out if r)
 
 
 def ffmpeg() -> str | None:
