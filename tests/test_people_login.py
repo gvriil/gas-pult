@@ -124,3 +124,18 @@ def test_bot_asks_confirmation_or_owner(monkeypatch, tmp_path):
     assert bot.public({"message": {"text": "/start login_x"}}) and not bot.public({"message": {"text": "привет"}})
     assert bot.public({"callback_query": {"data": "lg:ok:x"}})
     assert not bot.public({"callback_query": {"data": "pp:member:1"}})          # раздавать доступ — только владелец
+
+
+def test_repeat_question_and_route(server):
+    """GAS-16, слой 6: тот же длинный вопрос в ту же сессию — предупреждение, повтор после него и обрыв связи (тот же
+    id) — уходят; подсказка модели — по первому сообщению."""
+    panel, base = server
+    owner = panel.auth.issue(1)
+    q = "Посчитай выручку за ноябрь по всем магазинам и пришли таблицу"
+    assert call(base, "/api/send", {"w": "@1", "text": q, "id": "m1"}, owner)[0] == 200
+    assert call(base, "/api/send", {"w": "@1", "text": q, "id": "m1"}, owner)[0] == 200   # обрыв связи — тот же id
+    st, d = call(base, "/api/send", {"w": "@1", "text": q, "id": "m2"}, owner)[:2]
+    assert st == 400 and "уже отправлен" in d["error"]
+    assert call(base, "/api/send", {"w": "@1", "text": q, "id": "m3"}, owner)[0] == 200   # человек повторил — уходит
+    st, d = call(base, "/api/route", {"text": "Зайди на сайт и выгрузи прайс"}, owner)[:2]
+    assert st == 200 and (d["route"] is None or d["route"]["type"] == "browser")
