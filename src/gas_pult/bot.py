@@ -36,6 +36,7 @@ from typing import ClassVar
 from gas_pult import (
     activity,
     ago,
+    brief,
     country,
     ctxsnap,
     deliveries,
@@ -215,6 +216,9 @@ class Pult:
         self.hint_wait: dict[str, dict] = {}               # окно → ответ, к которому ждём подсказку Claude (90 с)
         self.hints: dict[int, tuple[str, str]] = {}        # n → (окно, текст подсказки) для кнопки 💡
         self.digest = digest.Digest(cfg.data / "digest.json")
+        self.brief_prefs = brief.Prefs(cfg.data / "brief_prefs.json")   # брифинг (GAS-18): источники — у каждого свои
+        self.alerts = brief.Alerts(cfg.data / "brief_alerts.json")      # срочное вне утра: что уже присылали
+        self.urgent_at = 0.0
         self.schedule = modules.Schedule(cfg.data / "modules.json")   # расписание пространств из модулей
         self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")     # демо предложений: токены от панели
         self.demo_seen: dict[int, list[float]] = {}                    # кто запускал демо — только в памяти, час
@@ -1333,6 +1337,46 @@ class Pult:
         text, kbd = digest.render(items)
         return self.send(chat, text, reply_markup=kbd) if chat else self.broadcast(text, reply_markup=kbd)
 
+    # ---------- утренний брифинг первого лица (brief.py, GAS-18) ----------
+    def brief_now(self, now: datetime | None = None, uid: int | None = None) -> dict:
+        """Брифинг человека по его выбору источников; решения — пункты сводки и письма (кнопки dg:…)."""
+        now = now or datetime.now()
+        sel = brief.chosen(self.brief_prefs.get(uid or self.cfg.owners[0]), brief.available(self.cfg))
+        return brief.collect(self.cfg, sel=sel, digest_items=self.digest_items(), tasks_list=self.tasks.list(),
+                             now=now, night=self.alerts.night(now),
+                             fresh=lambda xs: self.digest.fresh(xs, now.timestamp()))
+
+    def send_brief(self, chat: int | None = None):
+        """Брифинг: текстом, затем решения по одному с «Да / Нет / Позже» и «📱 Открыть в пульте».
+        ``chat`` — кому (команда /brief или расписание этого владельца); без него — всем владельцам."""
+        if not chat:
+            return [self.send_brief(c) for c in self.cfg.owners][-1:] or None
+        b = self.brief_now(uid=chat)
+        self.alerts.new([r["key"] for r in brief.hot(b)], time.time(), woke=False)   # показали — ночью не будить
+        panel = self.panel_url("brief")
+        for c in [chat]:
+            try:
+                self.send(c, brief.telegram(b), parse_mode="HTML", disable_web_page_preview=True,
+                          **({"reply_markup": {"inline_keyboard": [[{"text": "📱 Открыть в пульте",
+                                                                     "web_app": {"url": panel}}]]}}
+                             if panel and not b["decisions"] else {}))
+                for i, r in enumerate(b["decisions"], 1):
+                    text, kbd = brief.decision_msg(i, r, panel)
+                    self.send(c, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kbd)
+            except TelegramError as e:
+                print("brief:", e, flush=True)
+        return b
+
+    def check_urgent(self, now: datetime):
+        """Вне утра — только срочное (деньги, безопасность, срыв срока: ``notifylevel.wakes``), каждое — один раз."""
+        b = self.brief_now(now)
+        new = set(self.alerts.new([r["key"] for r in brief.hot(b)], now.timestamp()))
+        for r in brief.hot(b):
+            if r["key"] in new:
+                text, kbd = brief.decision_msg(1, r, self.panel_url("brief"))
+                self.broadcast("🚨 Срочно:" + text[2:], parse_mode="HTML", disable_web_page_preview=True,
+                               reply_markup=kbd)
+
     def send_features(self, now: datetime):
         """Раз в месяц: что в панели не открывали 30 дней и что в ходу — владельцам и файлом usage-ГГГГ-ММ.md."""
         r = features.report(features.Uses(self.cfg.data / "features.json"), now.timestamp(),
@@ -1340,14 +1384,31 @@ class Pult:
         path = features.write(self.cfg.data, r)
         self.broadcast(features.telegram(r, path))
 
+    def morning_tick(self, now: datetime):
+        """Утро — одно сообщение: брифинг по расписанию каждого владельца (время, дни, пояс — его выбор; по
+        умолчанию ``brief_at`` по рабочим дням) или прежняя сводка, если ``brief_at = ""``; вне утра — срочное."""
+        sent = False
+        if self.cfg.brief_at:
+            for uid in self.cfg.owners:
+                rec = self.brief_prefs.get(uid)
+                if day := brief.due(brief.schedule(rec, self.cfg.brief_at), now, rec.get("sent", "")):
+                    self.brief_prefs.mark_sent(uid, day)         # сначала отметка — не слать дважды
+                    self.send_brief(uid)
+                    sent = True
+        if self.digest.due(self.cfg.brief_at or self.cfg.digest_at, now):
+            self.digest.mark_sent(now.strftime("%Y-%m-%d"))
+            if not self.cfg.brief_at:
+                self.send_digest()
+            self.send_testers()                                  # и сводка по тестировщикам (п. 8 задачи 31)
+        elif not sent and self.cfg.brief_at and now.timestamp() - getattr(self, "urgent_at", 0) >= brief.URGENT_EVERY:
+            self.urgent_at = now.timestamp()                     # правило тишины: срочное — раз в полчаса
+            self.check_urgent(now)
+
     def digest_loop(self):
         while True:
             try:
                 now = datetime.now()
-                if self.digest.due(self.cfg.digest_at, now):
-                    self.digest.mark_sent(now.strftime("%Y-%m-%d"))      # сначала отметка — не слать дважды
-                    self.send_digest()
-                    self.send_testers()                          # и сводка по тестировщикам (п. 8 задачи 31)
+                self.morning_tick(now)
                 if features.due(self.cfg.data, now):             # 1-го числа — отчёт по функциям панели
                     features.mark_sent(self.cfg.data, now)
                     self.send_features(now)
@@ -1392,6 +1453,8 @@ class Pult:
         if act == "l":
             self.digest.snooze(k, digest.LATER)
             return send("Напомню в следующей сводке.")
+        if x["kind"] == "mail":                            # письмо: «Да» — открыть его (отправки отсюда нет)
+            return send(f"Письмо: {x['url']}" if x.get("url") else f"Письмо в ящике {x['box']}: «{x['subject']}».")
         if x["kind"] == "win":
             w = self.tmux.window(x["id"])
             return self.send_screen(chat, w, "Claude ждёт ответа:") if w else send("Этого окна уже нет.")
@@ -2621,6 +2684,9 @@ class Pult:
                 return fn(chat)
         if t == "/digest":
             return self.send_digest(chat)
+        if t == "/brief":
+            self.send_brief(chat)
+            return None
         if t == "/testers":
             return self.send_testers(chat)
         if t == "/selftest":

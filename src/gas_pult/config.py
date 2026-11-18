@@ -76,7 +76,8 @@ class Config:
     task_pattern: str = r"[A-Z]{2,10}-\d+"                  # номер задачи трекера: GAS-123, PROJ-7
     task_prompt: str = "Возьми задачу {task} из трекера: прочитай описание и комментарии, составь план и приступай."
     commands: list[list[str]] = field(default_factory=list)  # свои кнопки ⚡: [["▶️ Старт", "/shtab start"]]
-    digest_at: str = "09:00"                                # утренняя сводка «ждёт владельца» (ЧЧ:ММ; "" — выкл.)
+    brief_at: str = "07:30"                                 # утренний брифинг первого лица (GAS-18); "" — выкл.
+    digest_at: str = "09:00"                                # сводка «ждёт владельца», если brief_at = ""
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
