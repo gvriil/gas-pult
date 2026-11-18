@@ -1449,9 +1449,11 @@ class Pult:
             return send("Этот пункт уже не в сводке — пришлите /digest.")
         if act == "c":
             self.digest.snooze(k, digest.GONE)
+            brief.log(self.cfg.data, chat, k, "no", x["kind"], "убрано на месяц")
             return send("Убрал из сводок на месяц.")
         if act == "l":
             self.digest.snooze(k, digest.LATER)
+            brief.log(self.cfg.data, chat, k, "later", x["kind"], "до следующего брифинга")
             return send("Напомню в следующей сводке.")
         if x["kind"] == "mail":                            # письмо: «Да» — открыть его (отправки отсюда нет)
             return send(f"Письмо: {x['url']}" if x.get("url") else f"Письмо в ящике {x['box']}: «{x['subject']}».")
@@ -1464,13 +1466,14 @@ class Pult:
             return send(ask,
                         reply_markup=kb([[("✅ Да", f"dg:Y:{k}"), ("Нет", "noop")]]))
         if x["kind"] == "pr":
-            send(digest.merge(x["repo"], x["n"]))
+            send(done := digest.merge(x["repo"], x["n"]))
         elif w := self.project_window(x["path"]):
             self.to_claude(w, f"Владелец отвечает «да» на пункт из HANDOFF.md: {x['text']}")
-            send(f"Передал «да» в «{w['name']}».")
+            send(done := f"Передал «да» в «{w['name']}».")
         else:
             return send(f"Окна с Claude в {x['project']} нет — откройте сессию (🆕 Новая) и повторите.")
         self.digest.snooze(k, digest.GONE)
+        brief.log(self.cfg.data, chat, k, "yes", x["kind"], done)
 
     # ---------- модули-агенты (modules.py) ----------
     def module_root(self) -> Path:

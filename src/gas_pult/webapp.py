@@ -97,6 +97,7 @@ from gas_pult import (
     webauth,
     wsock,
 )
+from gas_pult import brief as morning_brief  # «brief» ниже — «Кратко» для озвучки
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space
 from gas_pult.config import Config
@@ -2925,6 +2926,41 @@ class Panel:
         return next((w for w in wins if sid and w.get("sid") == sid), None) or \
             next((w for w in wins if t.get("chat") and w["id"] == t["chat"]), None)
 
+    # ---------- брифинг первого лица (brief.py, GAS-18) ----------
+    def brief_get(self, uid, fresh: bool = False) -> dict:
+        """Выбор источников и расписание человека; сам брифинг — только после выбора (первый вход — экран выбора).
+        Сборка — несколько секунд (почта): 5 минут держим готовый, ``fresh`` — собрать заново."""
+        rec = self.pult.brief_prefs.get(uid)
+        avail = morning_brief.available(self.cfg)
+        sel = morning_brief.chosen(rec, avail)
+        out = {"sel": sel, "schedule": morning_brief.schedule(rec, self.cfg.brief_at), "avail": avail,
+               "tour": self.people.tour(uid).get("brief")}
+        if sel["chosen"]:
+            cache = self.__dict__.setdefault("brief_cache", {})
+            got = cache.get(uid)
+            if fresh or not got or time.time() - got[0] > 300:
+                got = cache[uid] = (time.time(), self.pult.brief_now(uid=uid))
+            out["brief"] = got[1]
+        return out
+
+    def brief_set(self, uid, b: dict) -> dict:
+        prefs = self.pult.brief_prefs
+        prefs.set(uid, list(b.get("sources") or []), b.get("boxes"), b.get("calendars"))
+        if b.get("time"):
+            prefs.set_schedule(uid, str(b["time"]), str(b.get("every") or "workdays"), b.get("days"),
+                               str(b.get("tz") or ""))
+        self.__dict__.get("brief_cache", {}).pop(uid, None)
+        rec = prefs.get(uid)
+        return {"sel": morning_brief.chosen(rec, morning_brief.available(self.cfg)),
+                "schedule": morning_brief.schedule(rec, self.cfg.brief_at)}
+
+    def brief_act(self, uid, b: dict) -> dict:
+        out = morning_brief.act(self.pult, uid, str(b.get("key") or ""), str(b.get("act") or ""),
+                                b.get("confirm") is True)
+        if "ask" not in out:
+            self.__dict__.get("brief_cache", {}).pop(uid, None)
+        return out
+
     def task_list(self) -> list[dict]:
         """Задачи с живым окном (``chat_now`` — куда «провалиться», ``chat_name``); окна нет — без него."""
         out = []
@@ -3107,6 +3143,9 @@ OWNER_ONLY |= {SELFTEST}
 OWNER_ONLY |= {"/api/desktop/url", "/api/links/prefs", "/api/shell/open"}
 OWNER_ONLY |= {"/api/calendars/keys", "/api/calendars/key", "/api/calendars/key/remove"}   # секреты календарей
 OWNER_ONLY |= {"/api/project/update"}               # название и архив проекта — владельцу (GAS-24)
+# Брифинг первого лица (GAS-18, brief.py): почта и календарь владельца — только ему
+BRIEF = ("/api/brief", "/api/brief/prefs", "/api/brief/act")
+OWNER_ONLY |= set(BRIEF)
 CONFIRM |= {"/api/desktop/url", "/api/shell/open"}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
@@ -3602,6 +3641,8 @@ def handler(panel: Panel):
             if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
                 before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
+            if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
+                return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
             if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
                 etag = panel.tasks.etag()
                 body = json.dumps({"tasks": panel.task_list()}, ensure_ascii=False).encode()
@@ -4541,6 +4582,10 @@ def handler(panel: Panel):
                 uid = uid if uid is not None else webauth.LEGACY
                 return ("cookie", desk_cookie(desk_pass(uid)),
                         {"url": DESKTOP_URL, "tab": "/desktop-enter?t=" + desk_ticket(uid)})
+            if path == "/api/brief/prefs":                # брифинг: источники, время, дни, пояс — у каждого свои
+                return panel.brief_set(self.terms_uid(), b)
+            if path == "/api/brief/act":                  # «Да / Нет / Позже»; «Да» с действием — после confirm
+                return panel.brief_act(self.terms_uid(), b)
             if path == "/api/tasks/add":                  # задача владельца руками (#203)
                 return panel.tasks.add(b, by="owner")
             if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
