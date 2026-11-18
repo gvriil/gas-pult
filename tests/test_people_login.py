@@ -152,3 +152,10 @@ def test_calendar_keys_owner_only(server, monkeypatch, tmp_path):
     assert st == 200 and {x["kind"] for x in d["calendars"]} == {"google"}
     st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
     assert st == 400 and "Секретный адрес" in d["error"]
+
+def test_set_menu_survives_network_timeout(capsys):
+    """18.11: Telegram не ответил при запуске — панель всё равно запускается (кнопку поставит следующий запуск)."""
+    def api(method, **kw):
+        raise TimeoutError("The read operation timed out")
+    webapp.set_menu(api, [1, 2], "https://panel.example")
+    assert capsys.readouterr().out.count("TimeoutError") == 2
