@@ -4754,8 +4754,8 @@ def set_menu(api: Api, owners: list[int], url: str):
         try:
             api("setChatMenuButton", chat_id=chat,
                 menu_button={"type": "web_app", "text": "📱 Панель", "web_app": {"url": url}})
-        except TelegramError as e:
-            print(f"menu: {chat}: {e}", flush=True)
+        except (TelegramError, OSError) as e:        # и таймаут сети: панель запускается без кнопки (18.11)
+            print(f"menu: {chat}: {type(e).__name__}: {e}", flush=True)
 
 
 WINDOWS_TTL = 2.0                                   # с: см. Tmux.ttl
