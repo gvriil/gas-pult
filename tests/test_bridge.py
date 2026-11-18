@@ -103,7 +103,9 @@ def test_bridge_end_to_end(server, tmp_path):
         assert devs[0]["online"] and devs[0]["id"] == conf["id"]
         tools = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         assert tools["id"] == 1 and [t["name"] for t in tools["result"]["tools"]] == [
-            "browser_navigate", "browser_snapshot", "save_to_computer", "list_dir", "open_app", "screenshot"]
+            "browser_navigate", "browser_snapshot", "save_to_computer", "list_dir", "open_app", "screenshot",
+            "notes_list", "notes_get", "notes_create", "reminders_lists", "reminders_list", "reminders_create",
+            "mac_calendar_events"]
         ok = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                                     "params": {"name": "browser_snapshot", "arguments": {}}})
         assert ok["result"]["content"][0]["text"] == "ok browser_snapshot"

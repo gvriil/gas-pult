@@ -9,7 +9,8 @@
 // Мост сам подключается к пульту (исходящий WebSocket, wss) и локально запускает Playwright MCP в режиме
 // --extension (Microsoft, Apache-2.0): управление уже открытым Chrome/Edge, где вы вошли в свои сервисы. Нужно
 // расширение «Playwright Extension» в браузере. Команды агентов пульта приходят сюда, ответы уходят обратно.
-// «Сохранить на компьютер» — файл в папку Загрузки (save_to_computer). Банки и госуслуги — выключены, пока вы сами их
+// «Сохранить на компьютер» — файл в папку Загрузки (save_to_computer). Заметки, Напоминания, Календарь Мака — через
+// osascript; новая заметка или напоминание — только после «Да» человека в пульте. Банки и госуслуги — выключены, пока вы сами их
 // не разрешите командой allow (прочитав правила сервиса: автоматизация там может быть запрещена).
 // Настройки — ~/.gas-pult-bridge.json (только для вас: 0600).
 
@@ -43,6 +44,123 @@ const MAC_TOOLS = [
     inputSchema: { type: "object", properties: { display: { type: "integer", minimum: 1, maximum: 9, description: "номер дисплея; нет — основной" } } } },
 ];
 const exec = (cmd, args) => new Promise((ok, no) => execFile(cmd, args, { timeout: 20000 }, (e, out) => (e ? no(e) : ok(out))));
+
+// Заметки, Напоминания, Календарь на Маке (GAS-15, владелец 18.11) — через osascript (JXA), без чужих программ.
+// Аргументы уходят в скрипт строкой JSON (argv), в текст скрипта ничего не подставляется. Запись (notes_create,
+// reminders_create) мост выполняет только с отметкой пульта _confirmed: её ставит сервер после «Да» человека.
+// Права macOS «Автоматизация» спрашиваются по одной программе при первом обращении к ней.
+export const APPLE_JS = {
+  notes_list: `function run(argv){const a=JSON.parse(argv[0]);const N=Application("Notes");const q=(a.query||"").toLowerCase();
+const folders=[],rows=[];N.folders().forEach(f=>{const fn=f.name();folders.push(fn);if(a.folder&&fn!==a.folder)return;
+const ids=f.notes.id(),names=f.notes.name(),mods=f.notes.modificationDate();const txt=q?f.notes.plaintext():null;
+for(let i=0;i<ids.length;i++){if(q&&names[i].toLowerCase().indexOf(q)<0&&String(txt[i]||"").toLowerCase().indexOf(q)<0)continue;
+rows.push({id:ids[i],name:names[i],folder:fn,modified:mods[i].toISOString()});}});
+rows.sort((x,y)=>y.modified<x.modified?-1:1);return JSON.stringify({folders:folders,total:rows.length,notes:rows.slice(0,a.limit)});}`,
+  notes_get: `function run(argv){const a=JSON.parse(argv[0]);const n=Application("Notes").notes.byId(a.id);
+let folder="";try{folder=n.container().name();}catch(e){}
+return JSON.stringify({id:n.id(),name:n.name(),folder:folder,modified:n.modificationDate().toISOString(),text:String(n.plaintext()).slice(0,a.max)});}`,
+  notes_create: `function run(argv){const a=JSON.parse(argv[0]);const N=Application("Notes");
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const body="<div><b>"+esc(a.title)+"</b></div>"+String(a.body||"").split("\\n").map(l=>"<div>"+(esc(l)||"<br>")+"</div>").join("");
+const f=a.folder?N.folders.byName(a.folder):N.defaultAccount().defaultFolder();const n=N.Note({body:body});f.notes.push(n);
+return JSON.stringify({id:n.id(),name:n.name(),folder:f.name()});}`,
+  reminders_lists: `function run(argv){const R=Application("Reminders");
+return JSON.stringify({lists:R.lists().map(l=>({name:l.name(),open:l.reminders.completed().filter(c=>!c).length}))});}`,
+  reminders_list: `function run(argv){const a=JSON.parse(argv[0]);const R=Application("Reminders");const q=(a.query||"").toLowerCase();const rows=[];
+R.lists().forEach(l=>{const ln=l.name();if(a.list&&ln!==a.list)return;const r=l.reminders;
+const ids=r.id(),names=r.name(),done=r.completed(),due=r.dueDate(),body=r.body();
+for(let i=0;i<ids.length;i++){if(done[i]&&!a.include_completed)continue;
+if(q&&names[i].toLowerCase().indexOf(q)<0&&String(body[i]||"").toLowerCase().indexOf(q)<0)continue;
+rows.push({id:ids[i],name:names[i],list:ln,done:!!done[i],due:due[i]?due[i].toISOString():null,notes:String(body[i]||"").slice(0,200)});}});
+return JSON.stringify({total:rows.length,reminders:rows.slice(0,a.limit)});}`,
+  reminders_create: `function run(argv){const a=JSON.parse(argv[0]);const R=Application("Reminders");
+const l=a.list?R.lists.byName(a.list):R.defaultList();const p={name:a.title};if(a.notes)p.body=a.notes;if(a.due)p.dueDate=new Date(a.due);
+const r=R.Reminder(p);l.reminders.push(r);return JSON.stringify({id:r.id(),name:r.name(),list:l.name()});}`,
+  mac_calendar_events: `function run(argv){const a=JSON.parse(argv[0]);const C=Application("Calendar");const s=new Date(a.from),e=new Date(a.to);const rows=[];
+C.calendars().forEach(c=>{const cn=c.name();if(a.calendar&&cn!==a.calendar)return;
+const ev=c.events.whose({_and:[{startDate:{_lessThan:e}},{endDate:{_greaterThan:s}}]});
+const t=ev.summary(),st=ev.startDate(),en=ev.endDate(),loc=ev.location(),ad=ev.alldayEvent();
+for(let i=0;i<t.length;i++)rows.push({calendar:cn,summary:t[i],start:st[i].toISOString(),end:en[i].toISOString(),all_day:!!ad[i],location:loc[i]||""});});
+rows.sort((x,y)=>x.start<y.start?-1:1);return JSON.stringify({total:rows.length,events:rows.slice(0,a.limit),
+note:"повторяющиеся события — по первому событию серии (ограничение AppleScript)"});}`,
+};
+
+const LIM = { type: "integer", minimum: 1, maximum: 200, description: "сколько показать, по умолчанию 50" };
+const DRAFT = { type: "string", description: "id черновика — только после «Да» человека; первый вызов — без него" };
+export const APPLE_TOOLS = [
+  { name: "notes_list", description: "Заметки на Маке (приложение «Заметки», в т. ч. iCloud): папки и заметки — название, папка, когда изменена; поиск query — по названию и тексту. Ничего не меняет. При первом вызове macOS спросит разрешение «Терминал → Заметки».",
+    inputSchema: { type: "object", properties: { folder: { type: "string" }, query: { type: "string" }, limit: LIM } } },
+  { name: "notes_get", description: "Текст одной заметки по id из notes_list (до 20000 знаков). Ничего не меняет.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
+  { name: "notes_create", description: "Новая заметка на Маке. Только после «Да» человека: первый вызов вернёт черновик (на Маке ничего не пишется) — покажите его человеку; после его подтверждения вызовите снова с draft. Изменять и удалять заметки нельзя.",
+    inputSchema: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, folder: { type: "string", description: "папка; нет — по умолчанию" }, draft: DRAFT }, required: ["title"] } },
+  { name: "reminders_lists", description: "Списки «Напоминаний» на Маке и сколько в каждом невыполненных. Ничего не меняет. При первом вызове macOS спросит разрешение «Терминал → Напоминания».",
+    inputSchema: { type: "object", properties: {} } },
+  { name: "reminders_list", description: "Напоминания: невыполненные (include_completed — и выполненные), поиск query по названию и заметке, срок. Ничего не меняет.",
+    inputSchema: { type: "object", properties: { list: { type: "string" }, query: { type: "string" }, include_completed: { type: "boolean" }, limit: LIM } } },
+  { name: "reminders_create", description: "Новое напоминание на Маке (через iCloud появится и на iPhone). Только после «Да» человека: первый вызов вернёт черновик — покажите его человеку; после подтверждения вызовите снова с draft. due — ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ по часам Мака (дата без времени — 09:00).",
+    inputSchema: { type: "object", properties: { title: { type: "string" }, list: { type: "string" }, due: { type: "string" }, notes: { type: "string" }, draft: DRAFT }, required: ["title"] } },
+  { name: "mac_calendar_events", description: "События приложения «Календарь» на Маке (все его календари, в т. ч. iCloud) за период: from–to ГГГГ-ММ-ДД включительно, по умолчанию сегодня и 6 дней; до 62 дней. Повторяющиеся — по первому событию серии. Ничего не меняет. При первом вызове macOS спросит «Терминал → Календарь».",
+    inputSchema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, calendar: { type: "string" }, limit: LIM } } },
+];
+export const APPLE_WRITE = ["notes_create", "reminders_create"];
+const APP_RU = (name) => (name.startsWith("notes") ? "Заметки" : name.startsWith("reminders") ? "Напоминания" : "Календарь");
+export const automationHint = (app) => `macOS не дал пульту доступ к программе «${app}». На Маке: меню Apple → Системные ` +
+  `настройки → Защита и безопасность → Конфиденциальность → «Автоматизация» → «Терминал» → включить «${app}». ` +
+  `Окна с вопросом не было или нажали «Не разрешать» — включите там же и повторите.`;
+
+const day = (s, what) => {
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s));
+  if (!m) throw new Error(`${what} — дата ГГГГ-ММ-ДД`);
+  return new Date(+m[1], +m[2] - 1, +m[3]);
+};
+
+// Аргументы скрипта: только известные поля, пределы — здесь (скрипт JXA им доверяет).
+export function appleArgs(name, a = {}) {
+  const lim = Math.min(200, Math.max(1, parseInt(a.limit, 10) || 50)), str = (v, n) => String(v ?? "").slice(0, n);
+  if (name === "notes_list") return { folder: str(a.folder, 100), query: str(a.query, 200), limit: lim };
+  if (name === "notes_get") { if (!a.id) throw new Error("id — из notes_list"); return { id: str(a.id, 300), max: 20000 }; }
+  if (name === "notes_create") return { title: str(a.title, 200), body: str(a.body, 20000), folder: str(a.folder, 100) };
+  if (name === "reminders_lists") return {};
+  if (name === "reminders_list") return { list: str(a.list, 100), query: str(a.query, 200), include_completed: !!a.include_completed, limit: lim };
+  if (name === "reminders_create") {
+    let due = str(a.due, 16);
+    if (due && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(due)) throw new Error("due — ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(due)) due += "T09:00";
+    return { title: str(a.title, 200), list: str(a.list, 100), due, notes: str(a.notes, 5000) };
+  }
+  if (name === "mac_calendar_events") {
+    const now = new Date(), from = day(a.from, "from") || new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const last = day(a.to, "to") || new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6);
+    const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
+    if (to <= from) throw new Error("to раньше from");
+    if ((to - from) / 86400000 > 62) throw new Error("период не больше 62 дней");
+    return { from: from.toISOString(), to: to.toISOString(), calendar: str(a.calendar, 100), limit: lim };
+  }
+  throw new Error("нет такого инструмента");
+}
+
+const execLong = (cmd, args) => new Promise((ok, no) => execFile(cmd, args, { timeout: 90000, maxBuffer: 20 << 20 },
+  (e, out, err) => (e ? no(Object.assign(e, { stderr: String(err || "") })) : ok(out))));
+
+// Вызов инструмента Мака: запись — только с отметкой пульта _confirmed (сервер ставит её после «Да» человека).
+export async function appleTool(name, args = {}, run = execLong) {
+  if (!APPLE_JS[name]) throw new Error("нет такого инструмента");
+  if (APPLE_WRITE.includes(name) && !args._confirmed) throw new Error("запись — только после «Да» человека в пульте: сначала черновик");
+  const a = appleArgs(name, args);
+  if (APPLE_WRITE.includes(name) && !a.title.trim()) throw new Error("укажите title");
+  try {
+    return String(await run("osascript", ["-l", "JavaScript", "-e", APPLE_JS[name], JSON.stringify(a)])).trim();
+  } catch (e) {
+    const m = `${e?.message || e}\n${e?.stderr || ""}`;
+    if (e?.code === "ENOENT") throw new Error("Заметки, Напоминания и Календарь — только на Маке (нет osascript)");
+    if (/-1743|not authori[sz]ed to send apple events/i.test(m)) throw new Error(automationHint(APP_RU(name)));
+    if (/-1728|can.t get|не удается получить/i.test(m)) throw new Error(`${APP_RU(name)}: не найдено (проверьте id, папку или список)`);
+    if (e?.killed) throw new Error(`${APP_RU(name)}: не ответили за 90 с — сузьте папку, список или период`);
+    throw new Error(`${APP_RU(name)}: ${m.trim().split("\n").slice(-1)[0].slice(0, 300)}`);
+  }
+}
 
 export function listDir(args, home = homedir()) {
   const want = String(args.path || "").replace(/^~\/?/, "");
@@ -129,7 +247,7 @@ function run() {
     mcp = spawn(cmd, { shell: true, stdio: ["pipe", "pipe", "inherit"] });
     createInterface({ input: mcp.stdout }).on("line", (line) => {
       let m; try { m = JSON.parse(line); } catch { return; }
-      if (m?.result?.tools && Array.isArray(m.result.tools)) m.result.tools.push(SAVE_TOOL, ...MAC_TOOLS);   // ответ на tools/list
+      if (m?.result?.tools && Array.isArray(m.result.tools)) m.result.tools.push(SAVE_TOOL, ...MAC_TOOLS, ...APPLE_TOOLS);   // ответ на tools/list
       if (ws?.readyState === 1) ws.send(JSON.stringify(m));
     });
     mcp.on("exit", (c) => { log("Playwright MCP завершился:", c); mcp = null; });
@@ -151,6 +269,10 @@ function run() {
         if (p.name === "list_dir") { try { return reply(m.id, { content: [{ type: "text", text: listDir(a) }] }); } catch (err) { return fail(err); } }
         if (p.name === "open_app") return openApp(a).then((t) => reply(m.id, { content: [{ type: "text", text: t }] }), fail);
         return screenshot(platform(), exec, a.display).then((b64) => reply(m.id, { content: [{ type: "image", data: b64, mimeType: "image/jpeg" }] }), fail);
+      }
+      if (m.method === "tools/call" && APPLE_TOOLS.some((t) => t.name === p.name)) {
+        return appleTool(p.name, p.arguments || {}).then((t) => reply(m.id, { content: [{ type: "text", text: t }] }),
+          (err) => reply(m.id, null, { code: -32013, message: err.message }));
       }
       if (m.method === "tools/call" && String(p.name || "").endsWith("navigate")) {
         const d = blockedHost((p.arguments || {}).url, allowed);
