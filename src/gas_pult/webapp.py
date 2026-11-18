@@ -3140,6 +3140,10 @@ def handler(panel: Panel):
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
     terms_page = resources.files("gas_pult").joinpath("web/terms.html").read_bytes()   # /terms — без входа (17.11)
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
+    icons = {f"/{n}": (resources.files("gas_pult").joinpath(f"web/{n}").read_bytes(), t)   # значок вкладки (GAS-20)
+             for n, t in (("favicon.svg", "image/svg+xml"), ("favicon-32.png", "image/png"),
+                          ("apple-touch-icon.png", "image/png"))}
+    icons["/favicon.ico"] = icons["/favicon-32.png"]          # браузеры просят /favicon.ico сами — PNG они понимают
     i18n = {f"/i18n/{x}.json": resources.files("gas_pult").joinpath(f"web/i18n/{x}.json").read_bytes()
             for x in ("ru", "en")}                       # словари простого режима и первого экрана — и до входа
     scripts = re.findall(rb"<script>(.*?)</script>", offer_page, re.S)
@@ -3437,6 +3441,9 @@ def handler(panel: Panel):
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
                 body, gz, etag = parts[m.group(1)]
                 return self.reply(200, body, "text/javascript; charset=utf-8", packed=gz, etag=etag)
+            if url.path in icons:                        # значок вкладки и экрана «Домой» — без входа, кэш на сутки
+                body, ctype = icons[url.path]
+                return self.reply(200, body, ctype, headers={"Cache-Control": "public, max-age=86400"})
             if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
                 return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
