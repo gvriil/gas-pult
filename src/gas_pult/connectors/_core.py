@@ -166,10 +166,11 @@ def _load(svc: str, pid: str) -> dict:
         raise ToolError("черновик не найден (или уже выполнен)") from None
 
 
-def take_confirmed(svc: str, pid: str) -> dict:
+def take_confirmed(svc: str, pid: str, need_flag: bool = True) -> dict:
     """Черновик к выполнению — только если запись включена (``GAS_<SVC>_WRITE=1``) и человек подтвердил ровно его.
-    Одноразово: после выдачи черновик помечается выполненным."""
-    if os.environ.get(f"GAS_{svc.upper()}_WRITE", "0") != "1":
+    Одноразово: после выдачи черновик помечается выполненным. ``need_flag=False`` — без флага записи: мост на Маке
+    (запись включает сам человек разрешением macOS, каждое действие — его «Да»)."""
+    if need_flag and os.environ.get(f"GAS_{svc.upper()}_WRITE", "0") != "1":
         raise ToolError(f"запись выключена (GAS_{svc.upper()}_WRITE=0): коннектор работает только на чтение")
     rec = _load(svc, pid)
     ok = _dir(svc) / f"{pid}.ok"

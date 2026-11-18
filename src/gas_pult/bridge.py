@@ -14,6 +14,9 @@
   id (``focus``). Его видит только агент окна этой ссылки; агенты остальных окон — только устройства владельца.
   Ссылка отозвана, истекла, сессия завершена — устройство не работает (проверка при подключении и каждом вызове).
 - Журнал по устройству — ``bridge_log.jsonl`` (0600, 30 дней): время, инструмент, адрес, итог; без содержимого страниц.
+- Заметки, Напоминания, Календарь Мака (GAS-15) — чтение мостом сразу; запись (``APPLE_WRITE``) — только черновиком:
+  первый вызов возвращает черновик, человек говорит «Да» в пульте (``gas-pult bridge-confirm <id>``, кнопка
+  «▶️ Выполнить»), второй вызов с ``draft`` уходит на мост с отметкой ``_confirmed``. Без «Да» мост не вызывается.
 - Банки и госуслуги — запрет по умолчанию (``BLOCKED``), разрешает пользователь у себя в мосте; сервер тоже не
   пропускает переход на них, пока устройство не сообщило, что пользователь их разрешил.
 """
@@ -27,6 +30,8 @@ import secrets
 import threading
 import time
 from pathlib import Path
+
+from gas_pult.connectors import _core
 
 PAIR_TTL = 600
 LOG_KEEP = 30 * 86400
@@ -50,6 +55,46 @@ def blocked_host(url: str, allowed: list[str] | tuple = ()) -> str:
         if (host == d or host.endswith("." + d)) and d not in allowed:
             return d
     return ""
+
+
+# ---------- запись на Маке: черновик → «Да» человека в пульте → выполнение (GAS-15) ----------
+CONFIRM_SVC = "mac"                                    # папка подтверждений confirm/mac (как у коннекторов)
+APPLE_WRITE = {"notes_create": "заметку", "reminders_create": "напоминание"}
+_DUE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
+
+
+def _one(v, n: int, what: str, need: bool = False) -> str:
+    s = " ".join(str(v or "").split())
+    if need and not s:
+        raise ValueError(f"укажите {what}")
+    if len(s) > n:
+        raise ValueError(f"{what} длиннее {n} знаков")
+    return s
+
+
+def write_draft(tool: str, args: dict) -> tuple[dict, str]:
+    """Проверенные аргументы записи и строка для человека. Ошибка — ValueError с понятным текстом."""
+    title = _one(args.get("title"), 200, "title (название)", need=True)
+    if tool == "notes_create":
+        body = str(args.get("body") or "").replace("\r\n", "\n").strip()
+        if len(body) > 20000:
+            raise ValueError("body длиннее 20000 знаков")
+        folder = _one(args.get("folder"), 100, "folder")
+        clean = {"title": title, "body": body, **({"folder": folder} if folder else {})}
+        text = f"СОЗДАТЬ заметку «{title}» в папке «{folder or 'по умолчанию'}»" + \
+               (f"; текст ({len(body)} зн.): {body[:200]}{'…' if len(body) > 200 else ''}" if body else "")
+        return clean, text
+    lst, due = _one(args.get("list"), 100, "list"), str(args.get("due") or "").strip()
+    if due and not _DUE.match(due):
+        raise ValueError("due — ГГГГ-ММ-ДД или ГГГГ-ММ-ДДTЧЧ:ММ (время Мака)")
+    notes = str(args.get("notes") or "").strip()
+    if len(notes) > 5000:
+        raise ValueError("notes длиннее 5000 знаков")
+    clean = {"title": title, **({"list": lst} if lst else {}), **({"due": due} if due else {}),
+             **({"notes": notes} if notes else {})}
+    text = f"СОЗДАТЬ напоминание «{title}» в списке «{lst or 'по умолчанию'}»" + \
+           (f", срок {due.replace('T', ' ')}" if due else "") + (f"; заметка: {notes[:200]}" if notes else "")
+    return clean, text
 
 
 class Devices:
@@ -197,6 +242,39 @@ class Hub:
             rows = []
         return [r for r in rows if r.get("dev") == did][-n:][::-1]
 
+    @staticmethod
+    def _gate(did: str, msg: dict) -> tuple[dict | None, dict]:
+        """Запись на Маке: без ``draft`` — черновик (мост не вызывается); с ``draft`` — только подтверждённый человеком
+        черновик этого инструмента и этого устройства, аргументы — из черновика, не от агента."""
+        p = msg.get("params") or {}
+        tool, args = str(p.get("name")), dict(p.get("arguments") or {})
+
+        def fail(text: str) -> tuple[dict, dict]:
+            return {"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32012, "message": text}}, msg
+
+        if "_confirmed" in args:
+            return fail("отметку _confirmed ставит только пульт после «Да» человека")
+        draft = str(args.pop("draft", "") or "").strip()
+        if not draft:
+            try:
+                clean, text = write_draft(tool, args)
+            except ValueError as e:
+                return fail(str(e))
+            d = _core.propose(CONFIRM_SVC, tool, {"device": did, "args": clean}, text)
+            return {"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": (
+                f"Черновик {d['id']}: {text}. На Маке ничего не записано. Покажите это человеку дословно. Если он "
+                f"скажет «Да» — он подтверждает командой (кнопка «▶️ Выполнить» в пульте):\n\n"
+                f"gas-pult bridge-confirm {d['id']}\n\n"
+                f"Затем вызовите {tool} с draft=\"{d['id']}\". Без его «Да» запись не выполнится.")}]}}, msg
+        try:
+            rec = _core.take_confirmed(CONFIRM_SVC, draft, need_flag=False)
+        except _core.ToolError as e:
+            return fail(str(e))
+        if rec.get("action") != tool or (rec.get("params") or {}).get("device") != did:
+            return fail("черновик для другого действия или другого компьютера — сделайте новый")
+        args = {**rec["params"]["args"], "_confirmed": draft}
+        return None, {**msg, "params": {**p, "arguments": args}}
+
     def call(self, msg: dict, did: str = "", timeout: float = RPC_TIMEOUT, allowed: set | None = None) -> dict | None:
         """JSON-RPC от агента → мост; запрос — ждём ответ, уведомление — None. ``allowed`` — устройства, доступные
         этому агенту (None — любые); ``did`` не из них — как будто не подключено."""
@@ -218,6 +296,11 @@ class Hub:
             return {"jsonrpc": "2.0", "id": msg.get("id"), "error": {
                 "code": -32001, "message": f"сайт {d} (банк или госуслуги) выключен: включить его может только "
                                            f"пользователь в мосте на своём компьютере, прочитав правила сервиса"}}
+        if msg.get("method") == "tools/call" and p.get("name") in APPLE_WRITE:
+            out, msg = self._gate(did, msg)
+            if out is not None:
+                self.journal(did, msg, out)
+                return out
         if "id" not in msg:
             c["ws"].send_text(json.dumps(msg, ensure_ascii=False))
             return None
