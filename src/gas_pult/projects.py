@@ -250,6 +250,20 @@ class Store:
             self.write(d)
             return rec
 
+    def set_project(self, pid: str, name=None, archived=None) -> dict:
+        """Название и архив проекта — только в ``projects.json``: папку на диске и журналы Claude Code не трогаем."""
+        with _lock:
+            d = self.read()
+            p = d["projects"].get(pid)
+            if p is None:
+                raise LookupError("проекта нет — обновите список")
+            if name is not None:
+                p["name"] = name
+            if archived is not None:
+                p["archived"] = bool(archived)
+            self.write(d)
+            return p
+
     def set_pin(self, who: str, on: bool, pid: str = "", key: str = "") -> int:
         """«Закрепить» / «Открепить» — свои у каждого человека (``who``: «owner» или Telegram ID участника):
         ``pins[who]["projects"][pid]`` или ``pins[who]["chats"][key]`` (``sid:<id сессии>`` или ``path:<папка с ~>``
