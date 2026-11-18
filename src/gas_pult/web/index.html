@@ -4466,7 +4466,9 @@ function renderChat(toBottom) {
   const cut = Math.max(0, hist.length - VK.keep), vis = cut ? hist.slice(cut) : hist;
   if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div></div>`); return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
-  pending = pending.filter((p) => !hist.some((m) => m.role === "user" && norm(m.text) === norm(p.text)));
+  const head = (t) => norm(t).slice(0, 60);               // журнал мог дописать вложения/вставку — сверяем начало
+  pending = pending.filter((p) => !hist.some((m) => m.role === "user" && (norm(m.text) === norm(p.text) || head(m.text) === head(p.text)))
+    && !(p.state === "sent" && Date.now() - (p.at || 0) > 120000));     // GAS-21: не висит вечно
   const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
@@ -4481,11 +4483,11 @@ function renderChat(toBottom) {
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
     : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
         <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`).join("")
-    + pending.map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
+    + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
-        fail: "не отправлено — " + esc(p.err || ""),
-        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Повторить</button>` }[p.state]}</div><div class="macts">${mCopyBtn()}</div></div>`).join("")
+        fail: "не отправлено — " + esc(p.err || "") + ` <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>`,
+        lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>` }[p.state]}</div><div class="macts">${mCopyBtn()}</div></div>`).join("")
     + (lastAi == null ? "" : `<div class="cmds" data-key="cmds:${lastAi}"></div>`)       // команды из последнего ответа (renderCmds)
     + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   voiceUi();
@@ -5237,6 +5239,7 @@ async function sendText() {
   // файл ещё грузится — сообщение не ждёт в поле: оно уже в переписке «отправляется», путь подставим по готовности
   const sent = files, body = (typed && window.editFix ? editFix(typed) : typed) || "Посмотри файл.";   // правка (#258)
   const withPaths = () => body + (sent.some((f) => f.path) ? "\n\n" + sent.filter((f) => f.path).map((f) => "Файл из панели: " + f.path).join("\n") : "");
+  pending = pending.filter((x) => !(x.state === "fail" && x.w === current && x.text === body));   // тот же текст из поля — вместо старого
   const p = { text: withPaths(), state: "sending", id: msgId(), w: current }; pending.push(p);
   $("input").value = ""; files = []; renderFiles(); grow();
   if (tab === "chat") renderChat(true); else toast("Отправлено в «" + (cur()?.name || "сессию") + "»");
@@ -5261,7 +5264,7 @@ async function deliver(p, restore) {
       await api("/api/send", { w: p.w, text: p.text, id: p.id });
       actLocal = null; liveAct = { phase: "delivered", text: "Доставлено в сессию", since: Date.now() / 1000 + actSkew, w: p.w };
       paintAct(); setTimeout(() => pollAct(true), 300);                // дальше — сервер: ход, инструменты, «Готово»
-      p.state = "sent"; haptic("notificationOccurred", "success");
+      p.state = "sent"; p.at = Date.now(); haptic("notificationOccurred", "success");
       if (cur()?.status !== "busy") lastStatus = "busy";
       setTimeout(() => { if (tab === "chat") hist = []; loadContent(); }, tab === "chat" ? 2000 : 1200);
       return renderChat(true);
@@ -5273,9 +5276,16 @@ async function deliver(p, restore) {
   p.state = "lost"; haptic("notificationOccurred", "warning"); renderChat(true);
 }
 $("content").addEventListener("click", (e) => {
+  const u = e.target.closest("[data-unsend]");          // GAS-21: «Удалить» неотправленное
+  if (u) { pending = pending.filter((x) => x.id !== u.dataset.unsend); return renderChat(false); }
   const b = e.target.closest("[data-resend]"), p = b && pending.find((x) => x.id === b.dataset.resend);
-  if (p) deliver(p);                                // тот же id — даже если первое дошло, второй раз не вставится
+  if (p) { if ($("input").value.trim() === p.text) $("input").value = ""; p.state = "sending"; p.err = ""; renderChat(true); deliver(p); }   // тот же id — дважды не вставится
 });
+function retryLost() {                               // GAS-21: связь вернулась / вкладка снова видна — «нет связи» повторяем сами
+  pending.filter((p) => p.state === "lost").forEach((p) => { p.state = "sending"; deliver(p); });
+}
+addEventListener("online", retryLost);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) retryLost(); });
 $("plus").onclick = () => helpSheet("sheet.attach") || sheet("Прикрепить", [
   { label: "Сфотографировать", icon: "camera", run: () => $("fCam").click() },
   { label: "Фото или видео из галереи", icon: "image", sub: "фото сжимаем до 1920 px — быстрее загрузка", run: () => $("fPhoto").click() },
