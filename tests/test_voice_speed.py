@@ -138,7 +138,15 @@ def test_transcribe_pcm_parallel_keeps_order(svc):
 def test_transcribe_pcm_busy_service_falls_back_to_one_stream(svc):
     path = svc(1)                                                         # свободен один поток
     pcm = tone(11) + b"\0" * 16000 + tone(9)
-    assert asr.transcribe_pcm(pcm, 16000, path) == "кусок20"
+    assert asr.transcribe_pcm(pcm, 16000, path) == "кусок11 кусок9"      # куски — по очереди одним потоком (GAS-34)
+
+
+def test_transcribe_pcm_long_record_fits_service_limit(svc, monkeypatch):
+    """GAS-34: запись длиннее 2·SEG_MAX_S режется на куски не длиннее SEG_MAX_S (лимит службы — 10 минут на поток)."""
+    monkeypatch.setattr(asr, "SEG_MAX_S", 10)                            # 10 с вместо 5 минут — тест быстрый
+    path = svc(2)
+    pcm = b"".join(tone(9) + b"\0" * 16000 for _ in range(4))           # 40 с: 4 куска по ≤10 с, 2 потока
+    assert asr.transcribe_pcm(pcm, 16000, path).split() == ["кусок9"] * 4
 
 
 # ---------- ElevenLabs отказал — не ждём его снова ----------

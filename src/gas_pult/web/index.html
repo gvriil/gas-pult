@@ -2606,6 +2606,7 @@ function saveDraft() {
 }
 addEventListener("pagehide", saveDraft);
 function restoreDraft() {
+  if (store("vj")) part("voicejob").then((m) => m.leftover()).catch(() => {});   // нераспознанная запись (GAS-34)
   let d = null;
   try { d = JSON.parse(sessionStorage.getItem("draft") || "null"); sessionStorage.removeItem("draft"); } catch (e) {}
   if (!d) return;
@@ -5508,12 +5509,12 @@ async function sttRun(blob, sendNow, where = MIC_FULL) {
     const ms = Date.now() - t0; bar.querySelector(".t").textContent = mmss(ms / 1000);
     if (ms > 15000) bar.querySelector(".msg").textContent = "Распознаю… ещё немного";
   }, 500);
-  const timer = setTimeout(() => ctl.abort("timeout"), STT_TIMEOUT);
+  const timer = 0;                                    // GAS-34: длинная запись — фоновое задание, без лимита 90 с
   let gone = false;
   bar.querySelector(".no").onclick = () => { gone = true; ctl.abort("cancel"); };
   try {
     const stop = new Promise((_, no) => ctl.signal.addEventListener("abort", () => no(new Error("прервано"))));
-    const d = await Promise.race([api("/api/stt", blob, blob.type, null, ctl.signal), stop]);
+    const d = await Promise.race([part("voicejob").then((m) => m.sttJob(blob, ctl.signal)), stop]);
     const text = (d.text || "").trim();
     if (!text) throw Object.assign(new Error("Ничего не расслышал — попробуйте ещё раз"), { empty: true });
     micBarClose();
@@ -5532,7 +5533,7 @@ async function sttRun(blob, sendNow, where = MIC_FULL) {
 function sttFail(text, blob, sendNow, where = MIC_FULL) {
   const bar = micBarOpen(where); bar.className = "recbar err"; haptic("notificationOccurred", "error");
   bar.innerHTML = `${ic("warn", "s16")}<span class="msg" role="alert">${esc(text)}</span>
-    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>
+    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>${blob ? `<a class="txt" download="запись.webm" href="${URL.createObjectURL(blob)}">${ic("down", "s16")}Скачать</a>` : ""}
     <button class="no" aria-label="Закрыть" title="Закрыть">${ic("x", "s16")}</button>`;
   bar.querySelector(".no").onclick = micBarClose;
   bar.querySelector(".again").onclick = () => { if (blob) return sttRun(blob, sendNow, where); micBarClose(); micTap(where); };
