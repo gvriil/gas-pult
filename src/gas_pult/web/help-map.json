@@ -2510,6 +2510,24 @@
    "title": "Действия с проектом",
    "where": "panel"
   },
+  "sheet.project-archive": {
+   "chips": [],
+   "faq": [],
+   "id": "sheet.project-archive",
+   "next": [
+    "go:sessions"
+   ],
+   "purpose": "Проекты, убранные из списка. Папки и чаты на месте — вернуть можно в одно нажатие.",
+   "roles": [
+    "owner"
+   ],
+   "steps": [
+    "Нажмите проект — он вернётся в список.",
+    "Убрать проект в архив — «⋯» у проекта в панели чатов → «Убрать в архив»."
+   ],
+   "title": "Архив проектов",
+   "where": "panel"
+  },
   "sheet.project-chat": {
    "chips": [
     "agent"

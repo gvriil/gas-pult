@@ -1931,6 +1931,7 @@ function projRename(p) {
 async function projArchive() {                       // «⋯» → «Архив проектов»: вернуть в список
   let d; try { d = await api("/api/projects?archived=1"); } catch (e) { return toast(e.message, 4000); }
   const ps = (d.projects || []).filter((p) => p.archived);
+  helpSheet("sheet.project-archive");
   sheet("Архив проектов", ps.length ? ps.map((p) => ({ label: p.name, icon: "folder", sub: "вернуть в список", run: () => projUpdate(p.id, { archived: false }, "«" + p.name + "» — снова в списке") }))
     : [{ info: true, icon: "file", label: "Архив пуст", sub: "убрать проект — «⋯» у проекта в панели чатов → «Убрать в архив»" }]);
 }
