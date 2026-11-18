@@ -1,0 +1,52 @@
+{
+ "_source": "не проверено на песочнице: собрано по примеру ответа из OpenAPI WB (https://dev.wildberries.ru/api/swagger/yaml/ru/02-items.yaml, GET /api/v2/list/goods/filter (схема ItemsList)), скачан 18.11.2026; тексты и названия выдуманные",
+ "data": {
+  "listGoods": [
+   {
+    "nmID": 987654321,
+    "vendorCode": "PL-150",
+    "sizes": [
+     {
+      "sizeID": 3123515574,
+      "price": 2490,
+      "discountedPrice": 1743,
+      "clubDiscountedPrice": 1655.85,
+      "techSizeName": "0"
+     }
+    ],
+    "currencyIsoCode4217": "RUB",
+    "discount": 30,
+    "clubDiscount": 5,
+    "editableSizePrice": false,
+    "wholesaleDiscountThreshold": []
+   },
+   {
+    "nmID": 987654323,
+    "vendorCode": "FT-POLO",
+    "sizes": [
+     {
+      "sizeID": 3123515575,
+      "price": 1500,
+      "discountedPrice": 1050,
+      "clubDiscountedPrice": 997.5,
+      "techSizeName": "42"
+     },
+     {
+      "sizeID": 3123515576,
+      "price": 1700,
+      "discountedPrice": 1190,
+      "clubDiscountedPrice": 1130.5,
+      "techSizeName": "48"
+     }
+    ],
+    "currencyIsoCode4217": "RUB",
+    "discount": 30,
+    "clubDiscount": 5,
+    "editableSizePrice": true,
+    "wholesaleDiscountThreshold": []
+   }
+  ]
+ },
+ "error": false,
+ "errorText": ""
+}
