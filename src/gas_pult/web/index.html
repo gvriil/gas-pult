@@ -6028,11 +6028,15 @@ function renderMcp() {
       ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${isOn(c) ? "подключено" : esc(c.about)}</small><small class="chip space">${esc(T("int.claude.chip"))}</small></button>`).join("")}
       <button class="tile" data-more="1"><span class="mono">${ic("plus")}</span><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
     </div>
+    <div id="calKeys"></div>
     <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">${ic("refresh")}Обновить список</button>`;
+  if (meta?.role === "owner" && !FOCUS) paintCalKeys();              // «Календари»: секреты — полем, не в чат (js/calkeys.js)
 }
+function paintCalKeys() { part("calkeys").then(async (m) => { const h = await m.calendarsSection(); if ($("calKeys")) $("calKeys").innerHTML = h; }).catch(() => {}); }
 $("integrationsView").addEventListener("click", (e) => {
   const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), c = e.target.closest("[data-c]"), more = e.target.closest("[data-more]");
   const rf = e.target.closest("#mcpRefresh"); if (rf) return busy(rf, "Проверяю…", () => loadMcp(true));
+  const ck = e.target.closest("[data-calkey]"); if (ck) return part("calkeys").then((m) => m.calendarSheet(ck.dataset.calkey, ck.classList.contains("on"), paintCalKeys));
   if (rm) {
     const s = mcpData.servers[+rm.dataset.rm];
     return confirmDanger(`Убрать «${pname(s)}»?`, () => busy(rm, "Убираю…", async () => { try { await api("/api/mcp/remove", { name: s.name }); toast("«" + pname(s) + "» убран"); loadMcp(true); } catch (err) { toast(err.message, 4500); } }));

@@ -139,3 +139,16 @@ def test_repeat_question_and_route(server):
     assert call(base, "/api/send", {"w": "@1", "text": q, "id": "m3"}, owner)[0] == 200   # человек повторил — уходит
     st, d = call(base, "/api/route", {"text": "Зайди на сайт и выгрузи прайс"}, owner)[:2]
     assert st == 200 and (d["route"] is None or d["route"]["type"] == "browser")
+
+
+def test_calendar_keys_owner_only(server, monkeypatch, tmp_path):
+    monkeypatch.setenv("GAS_CAL_KEY_DIR", str(tmp_path / "keys"))
+    panel, base = server
+    member = panel.auth.issue(2)
+    assert call(base, "/api/calendars/keys", None, member)[0] == 403
+    assert call(base, "/api/calendars/key", {"kind": "google", "url": "x"}, member)[0] == 403
+    owner = panel.auth.issue(1)
+    st, d = call(base, "/api/calendars/keys", None, owner)[:2]
+    assert st == 200 and {x["kind"] for x in d["calendars"]} == {"google", "icloud"}
+    st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
+    assert st == 400 and "Секретный адрес" in d["error"]

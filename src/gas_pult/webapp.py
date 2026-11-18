@@ -50,6 +50,7 @@ from gas_pult import (
     asr,
     balance,
     bridge,
+    calkeys,
     chat_trash,
     country,
     ctxsnap,
@@ -3020,6 +3021,7 @@ SELFTEST = "/api/selftest"               # автотест поставщико
 OWNER_ONLY |= {SELFTEST}
 # Ссылки и терминал (владелец 17.11): вкладка в Chrome рабочего стола, выбор «где открыть» по сайту, окно ubuntu-shell
 OWNER_ONLY |= {"/api/desktop/url", "/api/links/prefs", "/api/shell/open"}
+OWNER_ONLY |= {"/api/calendars/keys", "/api/calendars/key", "/api/calendars/key/remove"}   # секреты календарей
 CONFIRM |= {"/api/desktop/url", "/api/shell/open"}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
@@ -3544,6 +3546,8 @@ def handler(panel: Panel):
                 return panel.oidc.info(self.terms_uid())
             if path == "/api/people":
                 return {"people": panel.people_list(), **panel.geo.info()}
+            if path == "/api/calendars/keys":             # что подключено — без значений секретов
+                return {"calendars": calkeys.status()}
             if path == "/api/setup/status":
                 return panel.setup_status(q.get("fresh") == "1")
             if path == "/api/mcp":
@@ -4315,6 +4319,10 @@ def handler(panel: Panel):
                 return {"result": panel.mcp.remove(str(b.get("name", "")), home=self.home())}
             if path == "/api/keys":
                 return panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))
+            if path == "/api/calendars/key":              # секрет календаря → файл 0600 и проверка (calkeys.py)
+                return calkeys.save(str(b.get("kind", "")), b)
+            if path == "/api/calendars/key/remove":
+                return calkeys.remove(str(b.get("kind", "")))
             if path == "/api/keys/remove":
                 panel.remove_key(str(b.get("provider", "")))
                 return {"ok": True}
