@@ -1914,6 +1914,26 @@ $("navBg").onclick = () => navOpen(false);
 $("navNew").onclick = () => newChat();
 $("navHome").onclick = () => { navOpen(false); current = null; show("home"); setHome("sessions"); };
 $("composeBtn").onclick = () => newChat();
+// Проект: название и архив (GAS-24) — только projects.json; удаление папки отсюда не делаем (необратимо).
+async function projUpdate(id, body, done) {
+  try { await api("/api/project/update", { id, ...body }); toast(done, 3000); projData = null; await refresh(); }
+  catch (e) { toast("Не вышло: " + e.message, 4500); }
+}
+function projRename(p) {
+  const bg = sSheet(hv("sheet.project-rename"), "Переименовать проект", `<div class="field"><input id="prName" maxlength="60" autocomplete="off" value="${esc(p.name)}"></div>
+    <p class="note">До 60 знаков. Папка на диске не меняется.</p><button class="btn wide" type="button" data-prok="1">Сохранить</button>`, (b) => {
+    const name = $("prName").value.trim().replace(/\s+/g, " ");
+    if (b.dataset.prok && name) { bg.remove(); projUpdate(p.id, { name }, "Теперь: " + name); }
+  });
+  $("prName").onkeydown = (e) => { if (e.key === "Enter") bg.querySelector("[data-prok]").click(); };
+  setTimeout(() => $("prName").select(), 60);
+}
+async function projArchive() {                       // «⋯» → «Архив проектов»: вернуть в список
+  let d; try { d = await api("/api/projects?archived=1"); } catch (e) { return toast(e.message, 4000); }
+  const ps = (d.projects || []).filter((p) => p.archived);
+  sheet("Архив проектов", ps.length ? ps.map((p) => ({ label: p.name, icon: "folder", sub: "вернуть в список", run: () => projUpdate(p.id, { archived: false }, "«" + p.name + "» — снова в списке") }))
+    : [{ info: true, icon: "file", label: "Архив пуст", sub: "убрать проект — «⋯» у проекта в панели чатов → «Убрать в архив»" }]);
+}
 $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   // В меню «⋯» — глаголы (план UX, пункт 9): что произойдёт, а не куда попадёте
   ...(meta?.role !== "viewer" ? [{ label: "Начать новый чат", icon: "compose", run: () => newChat() },
@@ -1921,6 +1941,7 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Создать из модуля", icon: "puzzle", run: () => modulesView() }] : []),
   ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
   ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),   // владелец и админ
+  ...(meta?.role === "owner" && projOn() ? [{ label: "Показать архив проектов", icon: "file", run: projArchive }] : []),
   { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
@@ -1956,6 +1977,8 @@ function navItems(row) {
     return [...(canPin() ? [{ label: p.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!p.pinned, run: () => pinSet({ project: p.id }, !p.pinned, p.name) }] : []),
       ...(meta?.role !== "viewer" ? [{ label: "Начать чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
       { label: "Открыть проект", icon: "folder", run: () => navProject(p.id) },
+      ...(meta?.role === "owner" && !FOCUS ? [{ label: "Переименовать", icon: "edit", sub: "название в списке; папка на диске не меняется", run: () => projRename(p) },
+        { label: "Убрать в архив", icon: "file", sub: "скрыть из списка; папка и чаты не меняются", run: () => projUpdate(p.id, { archived: true }, "«" + p.name + "» — в архиве") }] : []),
       ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку на проект", icon: "qr", run: () => focusLink(null, p.id) },
         { label: "Создать демо-ссылку", icon: "eye", sub: "несколько устройств, только просмотр и выбор вариантов", run: () => focusLink(null, p.id, "demo") }] : [])];
   }

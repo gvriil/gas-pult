@@ -699,6 +699,17 @@ class Panel:
         self._proj = (0.0, {})
         return {"id": pid, "name": name, "folder": path.name, "path": projects.tilde(str(path), self.pult.home)}
 
+    def project_update(self, pid: str, name=None, archived=None) -> dict:
+        """Меню проекта «⋯» (GAS-24, перенесено из папки фокуса): название и архив — только в ``projects.json``."""
+        p = self.project(pid)
+        if name is not None:
+            name = " ".join(str(name).split())[:projects.TITLE_MAX]
+            if not name:
+                raise ValueError("название пустое")
+        rec = self.projects.set_project(p["id"], name=name, archived=None if archived is None else bool(archived))
+        self._proj = (0.0, {})
+        return {"id": p["id"], "name": rec.get("name"), "archived": bool(rec.get("archived"))}
+
     # ---------- «Закрепить» проект, сессию и чат — свои у каждого человека (projects.json → pins[кто]) ----------
     def pin_key(self, w: dict, sid: str = "") -> str:
         """Ключ закрепления окна: id сессии Claude Code (переживает перезапуск с продолжением и «Продолжить»);
@@ -3026,6 +3037,7 @@ OWNER_ONLY |= {SELFTEST}
 # Ссылки и терминал (владелец 17.11): вкладка в Chrome рабочего стола, выбор «где открыть» по сайту, окно ubuntu-shell
 OWNER_ONLY |= {"/api/desktop/url", "/api/links/prefs", "/api/shell/open"}
 OWNER_ONLY |= {"/api/calendars/keys", "/api/calendars/key", "/api/calendars/key/remove"}   # секреты календарей
+OWNER_ONLY |= {"/api/project/update"}               # название и архив проекта — владельцу (GAS-24)
 CONFIRM |= {"/api/desktop/url", "/api/shell/open"}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
@@ -4423,6 +4435,8 @@ def handler(panel: Panel):
             if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
                 return panel.pin(self.pinner(), b.get("on", True) is not False, str(b.get("project") or ""),
                                  str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
+            if path == "/api/project/update":            # меню проекта: название и архив (projects.json)
+                return panel.project_update(str(b.get("id", "")), b.get("name"), b.get("archived"))
             if path == "/api/project/chat":              # переименовать / скрыть чат проекта
                 return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
                                           b.get("hidden"))

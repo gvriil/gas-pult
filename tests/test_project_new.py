@@ -141,3 +141,21 @@ def test_e2e_newproj_demo():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
     finally:
         srv.shutdown()
+
+
+def test_project_rename_and_archive(server, tmp_path):
+    """GAS-24 (меню проекта из папки фокуса): название и архив — только в projects.json, папка на месте; владельцу."""
+    p, base = server
+    owner, member = p.auth.issue(1), p.auth.issue(2)
+    d = call(base, "/api/project/new", {"name": "Магазин книг"}, owner)[1]
+    folder = tmp_path / "projects" / d["folder"]
+    assert call(base, "/api/project/update", {"id": d["id"], "name": "  Книги  онлайн "}, member)[0] == 403
+    st, r = call(base, "/api/project/update", {"id": d["id"], "name": "  Книги  онлайн "}, owner)[:2]
+    assert st == 200 and r["name"] == "Книги онлайн" and folder.is_dir()
+    assert call(base, "/api/project/update", {"id": d["id"], "name": "   "}, owner)[0] == 400
+    assert call(base, "/api/project/update", {"id": d["id"], "archived": True}, owner)[1]["archived"] is True
+    names = lambda q: [x["name"] for x in call(base, "/api/projects" + q, None, owner)[1]["projects"]]   # noqa: E731
+    assert "Книги онлайн" not in names("") and "Книги онлайн" in names("?archived=1")
+    call(base, "/api/project/update", {"id": d["id"], "archived": False}, owner)
+    assert "Книги онлайн" in names("") and folder.is_dir()
+    assert 'label: "Убрать в архив"' in INDEX and "function projArchive()" in INDEX
