@@ -4160,8 +4160,25 @@ async function openSession(id, startTab) {
   lastStatus = cur()?.status;
   if (cur()) paintSession(cur());
   $("content").className = "chat"; $("content").innerHTML = skelMsgs(); setAsk("");
+  wakeOnOpen(id);                                   // до setTab: экран сразу «просыпается», а не «остановлен»
   hist = []; NEWI.k = ""; setTab(startTab || "chat"); refreshShared(); haptic("selectionChanged"); padDock();
   if (matchMedia("(pointer: fine)").matches) setTimeout(() => $("input").focus(), 300);   // на компьютере — сразу печатать
+}
+// Открыли спящую или остановленную сессию — она просыпается сама, без вопросов и кнопок (владелец 18.11: «кликнул —
+// значит пробуждается»). Спящая — пустой Enter заглушке claude-sleep; остановленная — Claude заново с продолжением.
+const WAKING = new Set();
+async function wakeOnOpen(id) {
+  const st = cur()?.status;
+  if ((st !== "sleep" && st !== "stopped") || meta?.role === "viewer" || DEMO || WAKING.has(id)) return;
+  WAKING.add(id);
+  try {
+    await api("/api/revive", { w: id });
+    for (const ms of [1500, 3000, 6000]) {             // Claude поднимается несколько секунд — показать, как проснётся
+      await new Promise((r) => setTimeout(r, ms)); await refresh();
+      if (current === id && !["sleep", "stopped"].includes(cur()?.status)) { loadContent(); break; }
+    }
+  } catch (err) { if (current === id) toast(err.message, 5000); }
+  finally { WAKING.delete(id); }
 }
 function setTab(t) {
   tab = t;
@@ -4179,6 +4196,11 @@ async function revive(id, btn) {
 }
 async function loadContent() {
   if (!current) return;
+  if (cur()?.status === "stopped" && WAKING.has(current)) {   // просыпается сама (wakeOnOpen) — без кнопок
+    $("content").className = ""; setAsk("");
+    $("content").innerHTML = `<div class="panel"><p style="margin:0">Сессия просыпается — разговор продолжится через несколько секунд.</p></div>`;
+    return;
+  }
   if (cur()?.status === "stopped") {
     $("content").className = ""; setAsk("");
     $("content").innerHTML = `<div class="panel"><p style="margin-top:0"><b>Claude в этой сессии остановлен.</b> В окне осталась командная строка — сообщения туда не отправляются, чтобы не выполнить их как команды.</p>
