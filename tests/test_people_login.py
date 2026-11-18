@@ -149,6 +149,6 @@ def test_calendar_keys_owner_only(server, monkeypatch, tmp_path):
     assert call(base, "/api/calendars/key", {"kind": "google", "url": "x"}, member)[0] == 403
     owner = panel.auth.issue(1)
     st, d = call(base, "/api/calendars/keys", None, owner)[:2]
-    assert st == 200 and {x["kind"] for x in d["calendars"]} == {"google", "icloud"}
+    assert st == 200 and {x["kind"] for x in d["calendars"]} == {"google"}
     st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
     assert st == 400 and "Секретный адрес" in d["error"]

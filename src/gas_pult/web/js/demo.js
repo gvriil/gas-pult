@@ -485,7 +485,7 @@ function demoApi(path, body) {
   if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: { "7d": 604800, "30d": 2592000, "90d": 7776000, "365d": 31536000 }[body?.ttl] || 86400,
     ...(key === "/api/invite/new" && body?.uses !== undefined ? { uses: body.uses, access: body.access } : {}) });
   if (key === "/api/route") return Promise.resolve({ route: /сайт|браузер|форм/i.test(body?.text || "") ? { type: "browser", title: "рутина в браузере", profile: "claude", model: "haiku", name: "Haiku 5.5", why: "80/80 и 16/16, ≈ $0.04 за 8 задач" } : null });
-  if (key === "/api/calendars/keys") return Promise.resolve({ calendars: [{ kind: "google", title: "Google Календарь", on: false }, { kind: "icloud", title: "iCloud (Apple)", on: true, user: "me…@icloud.com" }] });
+  if (key === "/api/calendars/keys") return Promise.resolve({ calendars: [{ kind: "google", title: "Google Календарь", on: false }] });
   if (key === "/api/calendars/key") return Promise.resolve({ ok: true, checked: "событий в календаре: 12" });
   if (key === "/api/link/tg") return Promise.resolve({ id: "demo", link: "https://t.me/", ttl: 300 });
   if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });

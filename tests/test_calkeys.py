@@ -26,7 +26,7 @@ def test_google_saved_0600_and_checked(keydir, monkeypatch):
     assert r["checked"] == "событий в календаре: 1" and URL not in json.dumps(r)
     f = keydir / "calendar-google.json"
     assert stat.S_IMODE(f.stat().st_mode) == 0o600 and json.loads(f.read_text())["kind"] == "ics"
-    assert [x["on"] for x in calkeys.status()] == [True, False]
+    assert [x["on"] for x in calkeys.status()] == [True]
 
 
 @pytest.mark.parametrize("url,err", [("https://calendar.google.com/calendar/ical/me/public/basic.ics", "секретный"),
@@ -36,26 +36,16 @@ def test_google_bad_address(url, err):
         calkeys.save("google", {"url": url})
 
 
-def test_icloud_check_fail_removes_file_and_hides_secret(keydir, monkeypatch):
+def test_icloud_is_not_here():
+    with pytest.raises(ValueError, match="Календарь iCloud"):
+        calkeys.save("icloud", {"user": "me@icloud.com", "password": "x"})
+
+
+def test_check_fail_removes_file_and_hides_address(keydir, monkeypatch):
     def boom(cfg):
-        raise _core.ToolError(f"401 для {cfg['user']} с паролем {cfg['app_password']}")
-    monkeypatch.setattr(cal, "_collections", boom)
+        raise _core.ToolError(f"404 для {cfg['url']}")
+    monkeypatch.setattr(cal, "_ics", boom)
     with pytest.raises(ValueError) as e:
-        calkeys.save("icloud", {"user": "me@icloud.com", "password": "abcd efgh ijkl mnop"})
-    assert "abcd-efgh-ijkl-mnop" not in str(e.value) and "me@icloud.com" not in str(e.value)
-    assert not (keydir / "calendar-icloud.json").exists()
-
-
-def test_icloud_ok_and_masked_status(keydir, monkeypatch):
-    cols = [{"name": "Дом", "href": "/1/"}, {"name": "Работа", "href": "/2/"}]
-    monkeypatch.setattr(cal, "_collections", lambda cfg: cols)
-    r = calkeys.save("icloud", {"user": "me@icloud.com", "password": "abcdefghijklmnop"})
-    assert r["checked"] == "календарей в iCloud: 2"
-    rec = json.loads((keydir / "calendar-icloud.json").read_text())
-    assert rec["app_password"] == "abcd-efgh-ijkl-mnop" and rec["url"] == calkeys.ICLOUD
-    st = next(x for x in calkeys.status() if x["kind"] == "icloud")
-    assert st["on"] and st["user"] == "me…@icloud.com"
-    with pytest.raises(ValueError, match="пароль приложения"):
-        calkeys.save("icloud", {"user": "me@icloud.com", "password": "MyRealPassword1"})
-    calkeys.remove("icloud")
-    assert not (keydir / "calendar-icloud.json").exists()
+        calkeys.save("google", {"url": URL})
+    assert URL not in str(e.value) and "[скрыто]" in str(e.value)
+    assert not (keydir / "calendar-google.json").exists()

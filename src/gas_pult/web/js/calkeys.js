@@ -1,29 +1,24 @@
 // «Интеграции» → «Календари» (владелец): секрет вставляют в поле — сервер кладёт его в файл 0600 коннектора
 // календаря и сразу проверяет (calkeys.py). Значение обратно не приходит: только «подключено» и что проверено.
-// Google — «Секретный адрес в формате iCal» (только чтение); iCloud — Apple ID и пароль приложения.
+// Google — «Секретный адрес в формате iCal» (только чтение). iCloud — пресет «Календарь iCloud» выше (одно место).
 
 const HOW = {
   google: "Google Календарь на компьютере → ⚙ Настройки → слева ваш календарь → «Интеграция календаря» → «Секретный адрес в формате iCal» → скопировать.",
-  icloud: "appleid.apple.com → «Вход и безопасность» → «Пароли приложений» → «+» → название «Пульт» → скопировать пароль (16 букв). Нужна двухфакторная защита Apple ID.",
 };
 
 export async function calendarsSection() {
   let d; try { d = await api("/api/calendars/keys"); } catch (e) { return ""; }
-  return `<div class="section">Календари</div><p class="note">Для утреннего брифинга и агентов. Секрет хранится на сервере в закрытом файле и больше нигде не показывается.</p>
-    <div class="tiles">${d.calendars.map((c) => `<button class="tile${c.on ? " on" : ""}" data-calkey="${esc(c.kind)}"><span class="mono">${ic("cal")}</span><span>${esc(c.title)}</span><small>${c.on ? "подключено" + (c.user ? " · " + esc(c.user) : "") : "не подключено"}</small></button>`).join("")}</div>`;
+  return `<div class="section">Календари</div><p class="note">Для утреннего брифинга и агентов. iCloud — сервис «Календарь iCloud» выше. Секрет хранится на сервере в закрытом файле и больше нигде не показывается.</p>
+    <div class="tiles">${d.calendars.map((c) => `<button class="tile${c.on ? " on" : ""}" data-calkey="${esc(c.kind)}"><span class="mono">${ic("cal")}</span><span>${esc(c.title)}</span><small>${c.on ? "подключено" : "не подключено"}</small></button>`).join("")}</div>`;
 }
 
 export function calendarSheet(kind, on, done) {
-  const google = kind === "google";
-  const fields = google
-    ? `<div class="field"><label for="ckUrl">Секретный адрес в формате iCal</label><input id="ckUrl" type="password" autocomplete="off" spellcheck="false" placeholder="https://calendar.google.com/…/basic.ics"></div>`
-    : `<div class="field"><label for="ckUser">Apple ID</label><input id="ckUser" type="email" autocomplete="off" spellcheck="false" placeholder="name@icloud.com"></div>
-       <div class="field"><label for="ckPw">Пароль приложения</label><input id="ckPw" type="password" autocomplete="off" spellcheck="false" placeholder="abcd-efgh-ijkl-mnop"></div>`;
-  const bg = sSheet(hv("int.calendar"), google ? "Google Календарь" : "iCloud (Apple)", `<p class="note">${esc(HOW[kind])}</p>${fields}
+  const fields = `<div class="field"><label for="ckUrl">Секретный адрес в формате iCal</label><input id="ckUrl" type="password" autocomplete="off" spellcheck="false" placeholder="https://calendar.google.com/…/basic.ics"></div>`;
+  const bg = sSheet(hv("int.calendar"), "Google Календарь", `<p class="note">${esc(HOW[kind])}</p>${fields}
     <button class="btn wide" type="button" data-cksave="1">${ic("check")}${on ? "Заменить и проверить" : "Подключить и проверить"}</button>
     ${on ? `<button class="btn ghost wide" type="button" data-ckdel="1" style="margin-top:8px">${ic("trash")}Отключить</button>` : ""}
     <div id="ckOut"></div>
-    <p class="note">${google ? "Только чтение: пульт видит события, но не меняет их." : "Чтение событий; новое событие — только черновиком и после вашего «Да»."} Данные календаря получают только модели, которые на них не учатся.</p>`,
+    <p class="note">Только чтение: пульт видит события, но не меняет их. Данные календаря получают только модели, которые на них не учатся.</p>`,
     async (b) => {
       const out = $("ckOut");
       if (b.dataset.ckdel) {
@@ -31,7 +26,7 @@ export function calendarSheet(kind, on, done) {
         return;
       }
       if (!b.dataset.cksave) return;
-      const body = google ? { kind, url: $("ckUrl").value } : { kind, user: $("ckUser").value, password: $("ckPw").value };
+      const body = { kind, url: $("ckUrl").value };
       b.disabled = true; out.innerHTML = `<div class="result wait">${ic("wait")}<span>Проверяю подключение…</span></div>`;
       try {
         const r = await api("/api/calendars/key", body);
