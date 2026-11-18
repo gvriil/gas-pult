@@ -2362,8 +2362,12 @@ class Panel:
         return {**out, "path": self.pult.short(str(path)), "folder": path.name}
 
     def revive(self, wid: str, uid=None) -> dict:
-        """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора."""
+        """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора.
+        Спящая (claude-sleep) — просто будим: человек её открыл, этого достаточно (владелец 18.11)."""
         w = self.tmux.window(wid)
+        if w and w.get("sleep"):
+            self.tmux.wake_open(wid)
+            return {"id": wid, "woke": True}
         if not w or not w.get("stopped"):
             raise ValueError("сессия не остановлена — перезапускать нечего")
         if w.get("space"):                              # окно пространства — его команда: свой PATH, профиль, ключ

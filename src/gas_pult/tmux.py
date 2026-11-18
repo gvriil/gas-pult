@@ -18,6 +18,47 @@ from gas_pult.models import profile_of
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
+# Вопрос Claude Code «доверять папке?» в новой сессии. Папку выбрал или создал сам человек через пульт — это
+# техническая подробность, человека ею не грузим (владелец 18.11): пульт отвечает «да» сам. Жмём Enter, только если
+# курсор стоит на пункте «Yes, I trust…» — другой диалог или другой пункт не трогаем.
+TRUST_ASK = re.compile(r"Do you trust the files in this folder\?|Is this a project you (created|trust)|"
+                       r"Quick safety check", re.I)
+TRUST_YES = re.compile(r"^\s*❯\s*1\.\s*Yes, I trust", re.I | re.M)
+TRUST_WAIT = 30.0                  # с: столько после запуска окна ждём вопрос о доверии
+
+# Мало свободной памяти — перед новой или проснувшейся сессией усыпить простаивающие (claude-sleep, если стоит).
+LOW_MB = int(os.environ.get("GAS_PULT_LOW_MB", "2000"))
+ROOM_IDLE_H = "0.25"               # ч: при нехватке памяти спят сессии без активности дольше 15 минут (обычно — 2 ч)
+
+
+def free_mb(meminfo: str = "/proc/meminfo") -> int | None:
+    """Доступная память (MemAvailable), МБ; не Linux или не прочитать — None."""
+    try:
+        for line in Path(meminfo).read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def sleeper() -> str:
+    """Путь к claude-sleep (спящий режим простаивающих сессий) или ""."""
+    p = shutil.which("claude-sleep") or os.path.expanduser("~/.local/bin/claude-sleep")
+    return p if os.access(p, os.X_OK) else ""
+
+
+def make_room(low_mb: int | None = None) -> bool:
+    """Памяти меньше порога — в фоне усыпить сессии, которые простаивают дольше 15 минут (не те, что в списке
+    «не усыплять» claude-sleep). Ничего не спрашиваем: сессия проснётся от клика или сообщения. True — запустили."""
+    free, exe = free_mb(), sleeper()
+    if free is None or free >= (LOW_MB if low_mb is None else low_mb) or not exe:
+        return False
+    subprocess.Popen([exe, "auto"], env={**os.environ, "CLAUDE_SLEEP_HOURS": ROOM_IDLE_H},
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    return True
+
 
 def live_sid(pid: int | str, proc: str = "/proc") -> str:
     """id сессии, которую ведёт работающий процесс Claude Code: он сам пишет ``<папка Claude>/sessions/<pid>.json``
@@ -346,6 +387,31 @@ class Tmux:
         self.run("send-keys", "-t", wid, "-l", text)
         self.run("send-keys", "-t", wid, "Enter")
 
+    def owner_tmux(self) -> bool:
+        """Обычный tmux владельца (не пространство и не отдельный сокет тестов) — только тут трогаем чужие окна."""
+        return not self.socket and not self.user
+
+    def wake_open(self, wid: str):
+        """Человек открыл спящую сессию — будим её без сообщения (пустой Enter заглушке claude-sleep)."""
+        if self.owner_tmux():
+            make_room()
+        self.run("send-keys", "-t", wid, "Enter")
+        self.watch_trust(wid)
+
+    def accept_trust(self, wid: str, wait: float = TRUST_WAIT, step: float = 1.0) -> bool:
+        """Ждать до ``wait`` с вопрос «доверять папке?» в окне и ответить «да». True — ответили."""
+        end = time.monotonic() + wait
+        while time.monotonic() < end:
+            text = "\n".join(self.screen(wid, 30))
+            if TRUST_ASK.search(text) and TRUST_YES.search(text):
+                self.run("send-keys", "-t", wid, "Enter")
+                return True
+            time.sleep(step)
+        return False
+
+    def watch_trust(self, wid: str):
+        threading.Thread(target=self.accept_trust, args=(wid,), daemon=True, name=f"trust-{wid}").start()
+
     def type(self, wid: str, text: str):
         self.run("send-keys", "-t", wid, "-l", text)
 
@@ -374,7 +440,10 @@ class Tmux:
 
         ``mark`` (поставщик модели) пишется в опцию окна ``@gas_pult``: по ней видно, что окно — сессия пульта, даже
         когда Claude в нём завершился (тогда сессия «остановлена», а не пропадает). ``by`` — Telegram ID человека,
-        открывшего окно со своей папкой Claude Code (``@gas_pult_by``); пусто — окно владельца."""
+        открывшего окно со своей папкой Claude Code (``@gas_pult_by``); пусто — окно владельца.
+        Памяти мало — сначала усыпляем простаивающие сессии; вопрос «доверять папке?» пульт закрывает сам."""
+        if self.owner_tmux():
+            make_room()
         self.ensure_session()
         shell = self.shell()
         self.forget()
@@ -390,6 +459,7 @@ class Tmux:
             self.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(by))
         if sid:
             self.set_sid(wid, sid)
+        self.watch_trust(wid)
         return wid
 
     def set_sid(self, wid: str, sid: str):
@@ -401,6 +471,8 @@ class Tmux:
 
     def respawn(self, wid: str, path: str, command: str, mark: str = "claude", sid: str | None = None):
         """Запустить Claude заново в том же окне (то же имя и id): оболочку — закрыть, команду — запустить."""
+        if self.owner_tmux():
+            make_room()
         shell = self.shell()
         self.forget()
         r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path,
