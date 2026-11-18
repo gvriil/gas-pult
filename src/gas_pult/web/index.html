@@ -308,6 +308,9 @@
   .net > .i { color: var(--status-approval); } .net span { flex: 1; min-width: 0; }
   .net button { border: 0; background: var(--bg-surface); border-radius: var(--radius-pill); padding: 7px 12px; font-weight: 600; font-size: calc(13px * var(--fz, 1)); display: inline-flex; gap: 6px; align-items: center; flex: none; }
   .chat .msg { margin: 0 0 14px; }
+  /* GAS-29: своя привязка прокрутки браузера в ленте выключена — она «прыгала» вместе с растущим ответом. Место чтения
+     держит mergeChat (якорь — первое видимое сообщение), низ — follow/stickRO. */
+  #content.chat { overflow-anchor: none; }
   /* Появление нового сообщения (план UX, пункт 6): только у новых — morph отличает новые узлы от прежних и
      заменённых (.mupd); первая отрисовка ленты — без анимации. transform + opacity, 150 мс. */
   .chat .msg.enter { animation: msgin .15s ease-out; }
@@ -2441,7 +2444,7 @@ let atBot = false;                                   // лента была у �
 function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); SC.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
 SC.addEventListener("scroll", () => {
   const max = SC.scrollHeight - SC.clientHeight, y = SC.scrollTop;
-  const far = !atEnd(200);                           // пролистали вверх — кнопка «к последнему»
+  const far = !atEnd(200) && Date.now() >= glideT;   // пролистали вверх — кнопка «к последнему» (не на ходу follow)
   atBot = atEnd(24);
   $("toBottom").hidden = !(view === "session" && far);
   if (!far) $("toBottom").classList.remove("new");
@@ -4235,7 +4238,9 @@ async function loadContent() {
   }
   try {
     if (tab === "chat") histLoading = true;           // опрос (liveChat) не дублирует эту загрузку
-    const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current))]).finally(() => { histLoading = false; });
+    const [h, scr] = await Promise.all([tab === "chat" ? api("/api/history?w=" + encodeURIComponent(current)) : null, api("/api/screen?w=" + encodeURIComponent(current)),
+      // GAS-29: разметка ещё грузится — скелетон до 1,5 с, а не простой текст, который на глазах станет разметкой
+      tab === "chat" && !mdReady() && Promise.race([mdLoad(), new Promise((ok) => setTimeout(ok, 1500))])]).finally(() => { histLoading = false; });
     renderAsk(scr.lines, scr.auth, scr.ask); loginNotice(scr.login, current);
     $("keys").hidden = tab !== "screen";                    // клавиши — на «Экране»; в переписке вопрос — карточкой
     if (tab === "chat") {
@@ -4283,8 +4288,9 @@ function mergeChat(h) {   // свежий хвост переписки — к �
   const off = k >= 0 ? ms[k].getBoundingClientRect().top : 0;
   hist = [...hist.filter((m) => m.i < first), ...h.items];
   if (!hist.some((m) => m.i < first)) histMore = h.more;
-  renderChat(atBottom);
-  if (atBottom) return;
+  const h0 = SC.scrollHeight;
+  chatGrow = true; newY = Infinity; try { renderChat(false); } finally { chatGrow = false; }
+  if (atBottom) return follow(h0);
   const el = anchor != null ? $("content").querySelector(`.msg[data-i="${anchor}"]`) : null;
   if (el) SC.scrollTop += el.getBoundingClientRect().top - off;
   autoUntil = Date.now() + 300;
@@ -4294,14 +4300,43 @@ function mergeChat(h) {   // свежий хвост переписки — к �
 // (padDock), таблицы, шрифты. Одна прокрутка в rAF попадала не в конец. Пока человек сам не тронул ленту (палец,
 // колесо, клавиши) — 4 с держим низ при каждом изменении размера. Дальше (#189): были внизу (atBot) — клавиатура,
 // длинный черновик, поворот, строка статуса не сдвигают от последнего сообщения.
-let stick = 0;
-const stickRO = typeof ResizeObserver === "function" ? new ResizeObserver(() => { if (Date.now() < stick || view === "session" && atBot) SC.scrollTop = SC.scrollHeight; }) : null;
+let stick = 0, glideT = 0, glideCap = 0, chatGrow = false, newY = Infinity;
+// GAS-29: ответ дорос, а человек внизу — лента идёт за ним кадр за кадром (≤ 56 px за кадр), без перескока. Не дальше
+// 0,7 экрана за раз: начало нового куска (newY) — не выше 30 % экрана, длинное не пролетает мимо; не доехали — «новое ↓».
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function follow(h0) {
+  const run = Date.now() < glideT;
+  stick = 0; glideT = Date.now() + 900;
+  const top = newY - SC.clientHeight * .3;            // начало нового уже выше (человек смотрит ниже, на команды) — за низом
+  glideCap = Math.min(Math.max(SC.scrollTop, h0 - SC.clientHeight) + SC.clientHeight * .7, top < SC.scrollTop ? Infinity : top);
+  const step = () => {
+    if (Date.now() > glideT) {                       // доехали (или человек сам тронул ленту) — кнопка «к последнему»
+      glideT = 0; const far = !atEnd(200); $("toBottom").hidden = !(view === "session" && far);
+      if (far) $("toBottom").classList.add("new");
+      return;
+    }
+    const d = Math.min(glideCap, SC.scrollHeight - SC.clientHeight) - SC.scrollTop;
+    if (d > .5) { autoUntil = Date.now() + 300; SC.scrollTop += calm() ? d : Math.min(d, Math.max(16, d * .25), 56); }
+    requestAnimationFrame(step);
+  };
+  if (!run) requestAnimationFrame(step);
+}
+// Растущий пузырь и новое сообщение в конце — высота от прежней к новой за 160–450 мс (текст «разворачивается»).
+function unroll(el, h1) {
+  const h2 = el?.offsetHeight; if (!el || h2 - h1 < 8) return;
+  const st = el.style; st.boxSizing = "border-box"; st.overflow = "hidden"; st.height = h1 + "px"; void el.offsetHeight;
+  st.transition = `height ${Math.round(Math.min(450, 160 + (h2 - h1) / 4))}ms ease-out`; st.height = h2 + "px";
+  clearTimeout(el.__gt); el.__gt = setTimeout(() => { st.height = st.overflow = st.transition = st.boxSizing = ""; }, 500);
+}
+const stickRO = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
+  if (Date.now() < glideT) return;                   // за ростом ответа идёт follow
+  if (Date.now() < stick || view === "session" && atBot) SC.scrollTop = SC.scrollHeight; }) : null;
 function stickBottom() {
   stick = Date.now() + 4000; SC.scrollTop = SC.scrollHeight;
   requestAnimationFrame(() => { if (Date.now() < stick) SC.scrollTop = SC.scrollHeight; });
   if (stickRO) { stickRO.disconnect(); stickRO.observe($("content")); stickRO.observe(SC); $("dock") && stickRO.observe($("dock")); }
 }
-["wheel", "touchmove", "keydown"].forEach((ev) => addEventListener(ev, (e) => { if (ev !== "keydown" || /^(Arrow|Page|Home|End)/.test(e.key)) stick = 0; }, { passive: true, capture: true }));
+["wheel", "touchmove", "keydown"].forEach((ev) => addEventListener(ev, (e) => { if (ev !== "keydown" || /^(Arrow|Page|Home|End)/.test(e.key)) stick = glideT = 0; }, { passive: true, capture: true }));
 // Связь есть — индикатор у поля скрыт (план UX, пункт 9); виден только «нет связи · N с» (netTick).
 function markFresh() { const sp = $("live").querySelector("span"); if (!$("live").classList.contains("stale") && sp.textContent) sp.textContent = ""; }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { lastOk = Math.max(lastOk, Date.now() - 5000); refresh(); keepAwake(); } });
@@ -4525,12 +4560,21 @@ function renderChat(toBottom) {
   const jk = "seenI:" + current + ":" + journalOf(histRev);
   if (NEWI.k !== jk) { const s = store(jk); NEWI.k = jk; NEWI.at = s == null ? null : hist.find((m) => m.role === "assistant" && m.i > +s)?.i ?? null; }
   if (!document.hidden && hist.length) store(jk, hist.at(-1).i);
+  const aiMsg = (m) => `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
+        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`;
+  // GAS-29: ход Claude дописывается в журнал по блоку — последний ответ растёт. Тот же узел, новое содержимое на месте:
+  // morph его не пересоздаёт (не «появляется» заново, не мигает), дообработка — как у новых.
+  const gm = lastAi != null && box.querySelector(`.msg.ai[data-i="${lastAi}"]`), grown = [];
+  if (gm?.__s) {
+    const t = document.createElement("template"); t.innerHTML = aiMsg(hist.at(-1));
+    const n = t.content.firstElementChild, src = n.outerHTML.replace(AGO_TXT, "$1");
+    if (gm.__s !== src) { gm.__h1 = gm.querySelector(".bubble")?.offsetHeight || 0; gm.replaceChildren(...n.childNodes); gm.__s = src; grown.push(gm); }
+  }
   const had =!!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
   const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
-    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + `<div class="msg ai" data-i="${m.i}"><div class="bubble md">${md(m.text)}</div>
-        <div class="acts">${canSay ? `<button data-say="${m.i}">${ic("vol", "s16")}Прослушать</button>` : ""}<span class="when" style="margin-left:auto">${esc(localTs(m.ts))}</span><button type="button" data-mcopy="1">${ic("copy", "s16")}${esc(copyLbl())}</button></div>${voiceRow(m)}</div>`).join("")
+    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + aiMsg(m)).join("")
     + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
@@ -4541,6 +4585,7 @@ function renderChat(toBottom) {
   voiceUi();
   const msgs = fresh.filter((el) => el.classList.contains("msg"));   // дообработка — только новых и изменившихся
   if (had) msgs.forEach((el) => !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
+  msgs.push(...grown);
   msgs.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
   msgs.filter((el) => el.classList.contains("ai")).forEach((el) => el.querySelectorAll(".md pre").forEach((pre, j) => {   // длинный код в ответе — свёрнут
     const text = pre.textContent.replace(/\n$/, ""), n = text.split("\n").length;
@@ -4551,6 +4596,11 @@ function renderChat(toBottom) {
   msgs.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // и в свёрнутом коде, и в «Терминал»
   msgs.forEach(codeCopy);                                  // короткие блоки кода — с кнопкой «Копировать» справа сверху
   if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
+  if (chatGrow) {                                       // где начинается новое (для follow) — и плавный рост
+    const ys = (el, h) => SC.scrollTop + el.getBoundingClientRect().top - SC.getBoundingClientRect().top + h, add = msgs.filter((el) => el.classList.contains("enter"));
+    newY = Math.min(...grown.map((el) => ys(el.querySelector(".bubble"), el.__h1)), ...add.map((el) => ys(el, 0)));
+    if (!calm()) { grown.forEach((el) => unroll(el.querySelector(".bubble"), el.__h1)); add.forEach((el) => unroll(el, 0)); }
+  }
   paintAct();
   if (toBottom && !params.has("noscroll")) stickBottom();   // с конца, как в ChatGPT/Claude
 }
