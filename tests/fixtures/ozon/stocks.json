@@ -1,0 +1,41 @@
+{
+ "_source": "POST /v4/product/info/stocks — docs.ozon.ru/api/seller (через Context7 /websites/ozon_ru_api_seller и зеркало github.com/etozhearut/ozon-seller-api), 19.11.2026 — пример ответа из документации, данные выдуманные; не проверено на песочнице",
+ "items": [
+  {
+   "offer_id": "TERMO-500",
+   "product_id": 1000123456,
+   "stocks": [
+    {
+     "sku": 1000123456,
+     "type": "fbs",
+     "present": 150,
+     "reserved": 25,
+     "shipment_type": "SHIPMENT_TYPE_GENERAL"
+    },
+    {
+     "sku": 1000123456,
+     "type": "fbo",
+     "present": 75,
+     "reserved": 10,
+     "shipment_type": "SHIPMENT_TYPE_GENERAL"
+    }
+   ]
+  },
+  {
+   "offer_id": "ORG-30",
+   "product_id": 1000123457,
+   "stocks": [
+    {
+     "sku": 1000123457,
+     "type": "fbs",
+     "present": 45,
+     "reserved": 5,
+     "shipment_type": "SHIPMENT_TYPE_BOX"
+    }
+   ]
+  }
+ ],
+ "cursor": "next-cursor-12345",
+ "total": 2,
+ "total_items": 2
+}

@@ -1,0 +1,68 @@
+{
+ "_source": "POST /v4/posting/fbs/list (поля отправления — по примеру ответа списка отправлений) — docs.ozon.ru/api/seller (через Context7 /websites/ozon_ru_api_seller и зеркало github.com/etozhearut/ozon-seller-api), 19.11.2026 — пример ответа из документации, данные выдуманные; не проверено на песочнице",
+ "postings": [
+  {
+   "order_id": 29137896277,
+   "order_number": "42776709-0200",
+   "posting_number": "42776709-0200-5",
+   "status": "awaiting_packaging",
+   "substatus": "posting_created",
+   "cancel_reason_id": 0,
+   "created_at": "2026-11-18T06:49:31.474Z",
+   "in_process_at": "2026-11-18T06:49:29.108Z",
+   "shipment_date": "2026-11-19T09:00:00Z",
+   "legal_info": {
+    "company_name": "ООО Покупатель (выдумано)",
+    "inn": "7700000000",
+    "kpp": "770001001"
+   },
+   "addressee": {
+    "name": "Иван Покупателев",
+    "phone": "+70000000000"
+   },
+   "products": [
+    {
+     "sku": 1000123456,
+     "name": "Термокружка 500 мл",
+     "offer_id": "TERMO-500",
+     "price": {
+      "amount": "1461.00",
+      "currency": "RUB"
+     },
+     "quantity": 2
+    }
+   ],
+   "cancellation": null
+  },
+  {
+   "order_id": 29137896278,
+   "order_number": "42776710-0201",
+   "posting_number": "42776710-0201-1",
+   "status": "cancelled",
+   "substatus": "posting_canceled",
+   "cancel_reason_id": 402,
+   "created_at": "2026-11-18T05:10:00.000Z",
+   "in_process_at": "2026-11-18T05:10:01.000Z",
+   "shipment_date": "2026-11-19T09:00:00Z",
+   "legal_info": null,
+   "products": [
+    {
+     "sku": 1000123457,
+     "name": "Органайзер",
+     "offer_id": "ORG-30",
+     "price": {
+      "amount": "590",
+      "currency": "RUB"
+     },
+     "quantity": 1
+    }
+   ],
+   "cancellation": {
+    "cancellation_type": "Client",
+    "cancellation_initiator": "Клиент"
+   }
+  }
+ ],
+ "has_next": true,
+ "cursor": "fbs-cursor-2"
+}
