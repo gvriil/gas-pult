@@ -4129,6 +4129,7 @@ function sessionSheet(id) {
   helpSheet("sheet.session");
   sheet(s.name, [
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
+    { label: "Что здесь умеет", icon: "help", sub: "коротко, тур по экрану или прослушать", run: () => part("about").then((m) => m.aboutSession(id)) },
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этой сессии" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
