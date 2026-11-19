@@ -3715,7 +3715,7 @@ function paintSession(s) {
   if (split()) setText($("title"), s.name);
   else {                                            // телефон: имя ▾ — шторка сессий; точка — что-то ждёт в другой сессии
     const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
-    setHTML($("title"), `<span class="nm">${esc(s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`);
+    setHTML($("title"), `<span class="nm">${esc(FOCUS && s.title || s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`);
   }
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
@@ -5270,24 +5270,7 @@ function openSwitcher() {
 }
 const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
 // Переименовать: своё поле ввода (prompt() в Telegram на iPhone ненадёжен). Имя — как в tmux: без «:» и «.».
-function renameSession(s) {
-  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.rename");
-  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Переименовать сессию</h3>
-    <div class="field" style="margin:4px 16px 0"><input id="renName" maxlength="40" autocomplete="off" value="${esc(s.name)}"></div>
-    <p class="note" id="renErr" style="margin:6px 16px 0">До 40 знаков, без «:» и «.»</p>
-    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="renOk">Сохранить</button></div></div>`;
-  document.body.append(bg);
-  const inp = $("renName"); inp.focus(); inp.select();
-  const save = async () => {
-    const name = inp.value.trim().replace(/\s+/g, " ");
-    if (!name || /[:.]/.test(name)) { $("renErr").style.color = "var(--status-danger)"; return; }
-    try { await api("/api/rename", { w: s.id, name }); bg.remove(); toast("Теперь: " + name); haptic("notificationOccurred", "success"); await refresh(); if (s.id === current) paintSession(cur()); }
-    catch (e) { $("renErr").textContent = e.message; $("renErr").style.color = "var(--status-danger)"; }
-  };
-  $("renOk").onclick = save;
-  inp.onkeydown = (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") bg.remove(); };
-  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
-}
+function renameSession(s) { part("rename").then((m) => m.rename(s)); }   // название чата и имя окна (js/rename.js)
 $("switchBtn").onclick = openSwitcher;
 $("title").onclick = () => { if (view !== "session" || split()) return; if (FOCUS && !FOCUS_DEMO() && !meta.focus.proj && cur()) renameSession(cur()); else openSwitcher(); };
 $("screenBtn").onclick = () => setTab(tab === "chat" ? "screen" : "chat");
@@ -6813,7 +6796,7 @@ function focusProjSheet() {
   const f = meta.focus, list = [...sessions].sort(byLast);
   helpSheet("sheet.focus-proj");
   sheet(`Проект «${f.name}»`, [
-    ...list.map((x) => ({ label: x.title && x.title !== x.name ? `${x.name} · ${x.title}` : x.name, dot: (ST[x.status] || ST.idle).cls, on: x.id === current,
+    ...list.map((x) => ({ label: x.title || x.name, dot: (ST[x.status] || ST.idle).cls, on: x.id === current,
       sub: (ST[x.status] || ST.idle).label + (isNew(x) ? " · новый ответ" : "") + (lastMsg(x) ? " · " + agoText(lastMsg(x)) : ""), run: () => openSession(x.id) })),
     ...(list.length ? [] : [{ info: true, icon: "chat", label: "Открытых сессий нет", sub: FOCUS_DEMO() ? "демо — только просмотр" : "начните новую или продолжите завершённую" }]),
     ...(FOCUS_DEMO() ? [] : [{ label: "Новая сессия в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },

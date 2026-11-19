@@ -54,6 +54,7 @@ function demoTty(key, path, body) {
 }
 // Демо «Проектов»: проекты — папки сессий демо и ещё два без окон; завершённые чаты — с поиском и «Продолжить».
 function demoTitle(id) {                              // простой режим на английском — без русских слов и в демо-данных
+  if (demoApi.titles?.[id]) return demoApi.titles[id];  // своё название чата (/api/title)
   return (LANG === "en" ? { "@1": "Room tests and report check", "@2": "Icons for the storefront", "@3": "Panel: dark theme", "@4": "Weekly digest" }
     : { "@1": "Тесты комнат и сверка П8", "@2": "Иконки для витрины", "@3": "Панель: тёмная тема", "@4": "Дайджест за неделю" })[id] || "";
 }
@@ -191,6 +192,9 @@ function demoApi(path, body) {
   const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
+  const TT = demoApi.titles ||= {};                   // «Название чата» (/api/title) — живёт до перезагрузки
+  for (const x of S) if (x.id in TT) { x.title = TT[x.id] || x.title; x.title_own = !!TT[x.id]; }
+  if (path.split("?")[0] === "/api/title") { TT[body.w] = body.title || ""; return Promise.resolve({ title: body.title || "", own: !!body.title }); }
   const R = {
     "/api/meta": { desktop: true, agents: [{ id: "pi", title: "Pi", model: "deepseek/deepseek-v4-pro" }], ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
                    keys: [["1","1"],["2","2"],["3","3"],["↑","Up"],["↓","Down"],["⏎","Enter"],["Esc","Escape"],["Ctrl+C","C-c"]].map(([label, key]) => ({ label, key })),
