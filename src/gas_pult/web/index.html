@@ -2116,11 +2116,13 @@ function newChat(pid) {
   show("session");
   $("tabsBar").hidden = true; $("screenBtn").hidden = true; $("keys").hidden = true; setAsk("");
   $("content").className = "";
-  $("content").innerHTML = `<div class="draft">${ic("compose")}<h2 class="serif">Новый чат</h2><p id="draftNote"></p></div>`;
-  paintDraft(); renderNav(); padDock(); sync();
+  $("content").innerHTML = `<div class="draft">${ic("compose")}<h2 class="serif">Новый чат</h2><p id="draftNote"></p><div id="starters"></div></div>`;
+  starters(); paintDraft(); renderNav(); padDock(); sync();
   setTimeout(() => $("input").focus(), 60);
 }
 const readyProfiles = () => (meta?.profiles || []).filter((x) => (!x.needs_key || x.key) && !x.not_ready && !x.no_balance && x.allowed !== false);
+// Первый разговор: бейджики-сценарии (GAS-37, js/starters.js) — в пустой сессии и новом чате
+const starters = () => { if (!FOCUS_DEMO?.() && meta?.role !== "viewer") part("starters").then((m) => m.paint()).catch(() => {}); };
 function paintDraft() {
   const on = !!DRAFT; document.body.classList.toggle("drafting", on);
   $("draftBar").hidden = !on;
@@ -4560,7 +4562,7 @@ function renderChat(toBottom) {
   const box = $("content"); if (box.className !== "chat") box.className = "chat";
   if (VK.w !== current) Object.assign(VK, { w: current, keep: VMAX });
   const cut = Math.max(0, hist.length - VK.keep), vis = cut ? hist.slice(cut) : hist;
-  if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div></div>`); return; }
+  if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div><div id="starters"></div></div>`); starters(); return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
   const head = (t) => norm(t).slice(0, 60);               // журнал мог дописать вложения/вставку — сверяем начало
   pending = pending.filter((p) => !hist.some((m) => m.role === "user" && (norm(m.text) === norm(p.text) || head(m.text) === head(p.text)))

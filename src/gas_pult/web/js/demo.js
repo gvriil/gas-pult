@@ -504,6 +504,9 @@ function demoApi(path, body) {
     for (let i = 0; i < n; i++) b.setUint8(44 + i, 128);
     return Promise.resolve(new Blob([b.buffer], { type: "audio/wav" }));
   }
+  if (key === "/api/starters") return Promise.resolve({ starters: [["day-plan", "План на день"], ["meeting", "Назначить встречу"], ["mail", "Разобрать почту"],
+    ["client-reply", "Ответить клиенту"], ["business-plan", "Бизнес-план"], ["find-doc", "Найти документ"], ["reminder", "Напомнить о деле"]].map(([id, title]) => ({ id, title })) });
+  if (key === "/api/starter") return Promise.resolve({ prompt: "«План на день». Помоги составить мне план на сегодня. Сначала расспроси меня — по одному вопросу за раз…" });
   if (key === "/api/link/tg") return Promise.resolve({ id: "demo", link: "https://t.me/", ttl: 300 });
   if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
   if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет

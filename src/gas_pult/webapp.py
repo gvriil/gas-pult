@@ -87,6 +87,7 @@ from gas_pult import (
     space_sessions,
     spaces,
     speech,
+    starters,
     tasks,
     tenants,
     terms,
@@ -2941,6 +2942,14 @@ class Panel:
         steps = " ".join(f"{i}. {x}" for i, x in enumerate(s.get("steps") or [], 1))
         return f"{s['title']}. {s.get('purpose', '')} {steps}".strip()[:self.ABOUT_MAX]
 
+    def starters_for(self, role: str | None, space: bool) -> list[dict]:
+        """Бейджики первого разговора: что подключено — почта (ящики коннектора), календарь (файлы календарей)."""
+        from gas_pult.connectors import calendar_mcp, mail_mcp
+        have = {"mail"} if mail_mcp.boxes() else set()
+        if calendar_mcp.calendars():
+            have.add("calendar")
+        return starters.listing(have, role, space)
+
     def tts_text(self, text: str, personal: bool = False, cloud: bool = True) -> bytes:
         """Озвучить готовый текст: ElevenLabs (если выбран и отвечает) или локальный голос."""
         vs = self.voice_settings()
@@ -3287,7 +3296,7 @@ FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/comma
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 STT_JOB = ("/api/stt/job", "/api/stt/retry")       # фоновое распознавание (GAS-34): там же, где /api/stt
-SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog"}
+SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog", "/api/starters", "/api/starter"}
 FOCUS_GET |= {"/api/tts/about"}
 FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
@@ -3776,6 +3785,8 @@ def handler(panel: Panel):
                 return ("audio/mpeg", panel.tts_text(panel.about_text(q.get("screen", "")),
                                                      panel.cfg.personal_voices and self.who()[1] == "owner",
                                                      cloud=not self.space()))
+            if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
+                return {"starters": panel.starters_for(self.who()[1], bool(self.space()))}
             if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
                 return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
@@ -4458,6 +4469,10 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
+                sid = str(b.get("id", ""))[:40]
+                panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
+                return {"prompt": starters.prompt(sid)}
             if path == "/api/clientlog":                   # ошибка JS в браузере (GAS-31): тип, экран, место
                 panel.events.event("js_error", str(b.get("mid") or ""), kind=str(b.get("kind") or "")[:40],
                                    msg=str(b.get("msg") or "")[:160], at=str(b.get("at") or "")[:120],
