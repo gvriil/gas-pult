@@ -653,6 +653,16 @@
   .sheet .sback { display: inline-flex; align-items: center; gap: 4px; width: auto; min-height: 36px; margin: 4px 8px 0; padding: 6px 10px;
                   border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--accent-primary); font: inherit; font-size: calc(15px * var(--fz, 1)); }
   .sheet h3.sub { margin-top: 14px; }
+  /* шторка: ПК — окно по центру, телефон — снизу (19.11) */
+  .sheet button[data-i]:not(:has(> .i:first-child, > .sdot, > .vis)) { padding-left: 48px; }
+  @media (pointer: coarse) { .pop button { min-height: 44px; } }
+  @media (min-width: 900px) {
+    .sheet-bg { align-items: center; justify-content: center; padding: 24px; }
+    .sheet { width: min(480px, 100%); max-height: min(80vh, 760px); border-radius: var(--radius-lg); padding-bottom: 8px; box-shadow: 0 24px 64px rgba(0,0,0,.28); animation: popin .14s ease; }
+    .sheet::before { display: none; }
+    .sheet button[data-i] { border-radius: var(--radius-sm); margin: 0 6px; width: calc(100% - 12px); }
+    .sheet button.cancel { margin-top: 4px; }
+  }
   .sheet button.info { cursor: default; }
   .sheet .vis { width: 44px; flex: none; display: flex; justify-content: center; align-items: center; }
   .sheet .vis .sdot, .sheet button.info > .sdot { width: 10px; height: 10px; }
