@@ -78,6 +78,7 @@ SEARCH_ENGINES = [
 ]
 BASE_SERVER = Path(__file__).with_name("base_mcp.py")
 CAL_SERVER = Path(__file__).with_name("connectors") / "calendar_mcp.py"
+DOCS_SERVER = Path(__file__).with_name("connectors") / "docs_mcp.py"     # «Документы» (GAS-16, RAG)
 # Пароль приложения Apple: 16 строчных латинских букв, на странице Apple — четыре группы через дефис
 APPLE_PW = re.compile(r"^[a-z]{4}-?[a-z]{4}-?[a-z]{4}-?[a-z]{4}$")
 
@@ -148,6 +149,13 @@ PRESETS = [
                          "rclone authorize \"drive\" — войдите в Google, вставьте сюда то, что rclone напечатает "
                          "между ---> и <---End paste. Хранится в своём rclone.conf (0600) на сервере."}],
      "after": "Перезапустите открытые сессии — появятся drive_list, drive_download, drive_upload."},
+    {"id": "docs", "title": "Документы", "icon": "📄", "about": "Поиск по вашим файлам — договоры, инструкции, "
+     "прайсы: агент отвечает цитатой с файлом и страницей, а не выдумывает. Файлы не уходят никуда, кроме модели чата",
+     "type": "builtin", "server": "docs",
+     "fields": [{"key": "folder", "label": "Папка с документами", "optional": True, "placeholder": "~/Документы",
+                 "hint": "Папка на сервере. Можно папку Google Диска, если он подключён к серверу (~/drive/…). "
+                         "Новые файлы найдутся сами. Форматы: PDF, Word, Excel, текст, таблицы CSV."}],
+     "after": "Перезапустите открытые сессии — появится find_in_docs. Положите файлы в папку и спросите агента."},
     {"id": "icloud", "title": "Календарь iCloud", "icon": "📅", "about": "События календарей iCloud — читать; новое "
      "событие — только после вашего «Да». По паролю приложения Apple, без программ на Маке",
      "type": "builtin", "server": "calendar", "key_url": "https://account.apple.com",
@@ -253,6 +261,13 @@ def builtin(p: dict, name: str, vals: dict, home: Path | None) -> dict:
         f = d / f"{name}.key"
         config.write_private(f, key + "\n")
         env |= {"GAS_SEARCH_ENGINE": engine, "GAS_SEARCH_KEY_FILE": str(f)}
+    elif p["server"] == "docs":
+        folder = " ".join(str(vals.get("folder") or "~/Документы").split())
+        if len(folder) > 300 or "\n" in folder or ".." in Path(folder).parts:
+            raise ValueError("папка — путь на сервере, например ~/Документы")
+        Path(os.path.expanduser(folder)).mkdir(parents=True, exist_ok=True)
+        return {"type": "stdio", "command": sys.executable or "python3", "args": [str(DOCS_SERVER)],
+                "env": {"GAS_DOCS_DIRS": folder, "GAS_DOCS_INDEX": str(d / f"{name}.docs.sqlite")}}
     elif p["server"] == "calendar":
         user, pw = vals["user"], vals["token"].lower().replace(" ", "")
         if not re.match(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,}$", user, re.I):
@@ -363,7 +378,7 @@ class Mcp:
         self._store(home, (0, []))
         if r.returncode != 0:
             raise ValueError((r.stderr or r.stdout).strip() or "не удалось удалить")
-        for f in (f"{name}.key", f"{name}.rclone.conf"):        # ключ своего сервера пульта — вместе с ним
+        for f in (f"{name}.key", f"{name}.rclone.conf", f"{name}.docs.sqlite"):   # ключ и индекс — вместе с ним
             (secrets_dir(home) / f).unlink(missing_ok=True)
         kd = secrets_dir(home) / f"{name}.calendar"              # календарь iCloud: папка с файлом пароля
         if kd.is_dir() and not kd.is_symlink():

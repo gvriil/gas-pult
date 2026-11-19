@@ -47,3 +47,11 @@ def test_api_and_event_without_text(server, monkeypatch):  # noqa: F811
 def test_hooks_in_page():
     page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
     assert page.count('<div id="starters"></div>') == 2 and 'part("starters")' in page
+
+
+def test_docs_badge_by_connection():
+    ids = [x["id"] for x in starters.listing({"docs"}, "owner")]
+    assert "docs" in ids and "connect-docs" not in ids
+    ids = [x["id"] for x in starters.listing(set(), "owner")]
+    assert "connect-docs" in ids and "docs" not in ids
+    assert "find_in_docs" in starters.prompt("docs")
