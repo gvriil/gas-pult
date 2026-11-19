@@ -1125,6 +1125,7 @@ class Panel:
                 self.people.remove(uid)
                 self.invite_miss(code, ip)
             how = "по приглашению, без Telegram"
+            self.space_welcome(uid, rec["tenant"])
         self.people.seen(uid, dev)
         p = next((x for x in self.people.list() if x["id"] == uid), {})
         emailcode.log("invite_ok", uid=uid, ip=ip, hint=rec.get("hint", ""), kind="device" if "uid" in rec else "guest")
@@ -1708,12 +1709,20 @@ class Panel:
         rec = self.people.ui(uid)
         if self.is_owner(uid):
             rec = {**rec, "persona": personas.DEFAULT, "onboarded": True}
-        if sp := self.space_info(uid):                 # тестировщик: вид — тот, что задан пространству
-            rec = {**rec, "persona": sp["persona"], "onboarded": True}
-        out = personas.view(rec, personas.access(role), self.team, uid, self.people.prefs(uid)["lang"])
+        access = personas.access(role)
+        if sp := self.space_info(uid):
+            # тестировщик пространства — та же панель пульта, что у владельца, без его функций (владелец 19.11:
+            # «интерфейс должен быть точно такой же, как у нас в пульте, только без заморочек»): сессии и проекты,
+            # без терминала, расхода и журнала; модели и MCP — по потолку гостя (закрыты)
+            rec = {**rec, "persona": personas.DEFAULT, "onboarded": True, "added": [],
+                   "hidden": sorted(self.SPACE_HIDE)}
+            access = "guest"
+        out = personas.view(rec, access, self.team, uid, self.people.prefs(uid)["lang"])
         own = self.is_owner(uid)                       # fixed — что владелец у себя не прячет (иначе ушёл бы в чат)
         return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else [],
                 **({"space": sp} if sp else {})}
+
+    SPACE_HIDE = frozenset({"cap.dev_terminal", "cap.dev_cost_tokens", "cap.audit_journal"})
 
     def space_info(self, uid) -> dict | None:
         """Пространство тестировщика для панели: имя, название, вид. Не тестировщик — None."""
@@ -1748,8 +1757,8 @@ class Panel:
     def prefs(self, uid, role: str | None) -> dict:
         """Настройки панели; ``simple`` — по виду, если человек выбрал роль или владелец закрыл ему инженерное."""
         p, v = self.people.prefs(uid), self.ui(uid, role)
-        if self.is_owner(uid):
-            return {**p, "simple": False}              # владелец — всегда полный пульт в своём пространстве
+        if self.is_owner(uid) or self.people.tenant(uid):
+            return {**p, "simple": False}              # владелец и тестировщик пространства — полный пульт (19.11)
         return {**p, "simple": v["simple"] if v["chosen"] or "cap.dev_sessions" not in v["ceiling"]
                 else p["simple"]}
 
@@ -2301,6 +2310,27 @@ class Panel:
             self.pult.set_state(window_models={**(st.get("window_models") or {}), wid: model})
         return {"id": wid, "sid": sid}
 
+    FIRST_PROJECT = "Мой проект"
+
+    def space_welcome(self, uid: int, slug: str):
+        """Вход по приглашению в пространство — сразу внутри (владелец 19.11: «онбординг простой — не спрашивать ни про
+        страну, ни про что: если человек по ссылке попал — он уже проверен; он должен сразу начинать пользоваться»):
+        условия отмечены приглашением владельца, страна — юрисдикция пространства (нет — регион сервера), первая
+        сессия «Мой проект» — если в пространстве ещё нет ни одной. Сбой сессии не мешает входу."""
+        t = tenants.load(slug) or {}
+        self.people.accept(uid)
+        code = country.norm(t.get("jurisdiction")) or country.norm(self.cfg.region) or "NL"
+        self.people.set_country(uid, chosen=code)
+        try:
+            with self.tmux.all_spaces():
+                if not self.space_windows(slug) and not space_sessions.listing(slug):
+                    self.new_in_space(slug, self.FIRST_PROJECT)
+        except Exception as e:                          # sudo, tmux, диск — вход всё равно состоялся
+            print(f"пространство {slug}: первая сессия не открылась: {e}", file=sys.stderr, flush=True)
+
+    CLAUDE_MISSING = ("В пространстве ещё не установлен Claude Code — сессия не запустится. Владелец пульта уже "
+                      "знает; попробуйте через несколько минут.")
+
     def new_in_space(self, slug: str, name: str = "") -> dict:
         """Новая сессия в демо-пространстве: своя папка ``home/projects/<имя>`` (``space_sessions.create``) и окно
         ``tenants.new_window`` в ней — от пользователя пространства, с его CLAUDE_CONFIG_DIR и моделью. Функция
@@ -2310,7 +2340,25 @@ class Panel:
         name = space_sessions.folder_name(name) if str(name or "").strip() else f"Сессия {time.strftime('%d.%m %H-%M')}"
         path = space_sessions.create(slug, name)
         raw = tenants.new_window(slug, path.name, str(path))
+        self.space_claude_check(slug, raw)
         return {"id": spaces.wid_of(slug, raw), "name": path.name, "folder": path.name}
+
+    def space_claude_check(self, slug: str, raw: str, wait: float = 2.0):
+        """Claude Code в пространстве не установлен — окно с «command not found»: закрыть и сказать понятно
+        (диагноз lexx 19.11: сессии «создавались», а в окне была пустая оболочка)."""
+        time.sleep(wait)
+        try:
+            tm = tenants.tmux_of(slug)
+            text = "\n".join(tm.screen(raw, 10))
+        except (RuntimeError, OSError):
+            return
+        if "claude: command not found" in text or "claude: not found" in text:
+            try:
+                tm.run("kill-window", "-t", raw)
+            except (RuntimeError, OSError):
+                pass
+            print(f"пространство {slug}: claude не установлен (docs/TENANTS.md, шаг 4)", file=sys.stderr, flush=True)
+            raise ValueError(self.CLAUDE_MISSING)
 
     # ---------- сессии пространства: закрыть, продолжить, удалить в корзину (space_sessions.py) ----------
     def space_windows(self, slug: str) -> list[dict]:
