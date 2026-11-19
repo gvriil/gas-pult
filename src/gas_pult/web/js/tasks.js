@@ -27,18 +27,32 @@ async function tasksOpen() {
 
 // Цвет задачи (владелец 17.11): красный — срочно и важно, оранжевый — ждёт вас, жёлтый — в работе, зелёный — готово
 const tqDot = (t, q) => (t.status === "done" ? "tq-g" : q === 1 ? "tq-r" : t.status === "waiting" ? "tq-o" : t.status === "doing" ? "tq-y" : "");
+// Группы сворачиваются по нажатию на заголовок (владелец 19.11: «таски удобно сворачивать по группировкам срочно-важно»);
+// состояние запоминается в браузере. «Ждут вас» — всегда первой группой; по умолчанию все открыты («как было»).
+const FOLD_KEY = "tq:fold";
+function folds() { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch (e) { return {}; } }
+function fold(k) {
+  const f = folds(); f[k] ? delete f[k] : (f[k] = 1);
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(f)); } catch (e) { /* без памяти — свернётся на этот раз */ }
+  document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+  tasksSheet();
+}
+const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
+  sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
+    t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
+  run: () => taskGo(t) });
 function tasksSheet() {
   const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
-  const rows = [];
-  for (const q of [1, 0, 2, 3, 4]) {                    // сервер уже отсортировал: внутри квадранта — «ждёт вас» первыми
-    const g = open.filter((t) => (t.q || 0) === q);
-    if (!g.length) continue;
-    rows.push({ head: `${Q_T[q]} · ${g.length}` });
-    rows.push(...g.map((t) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
-      sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
-        t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
-      run: () => taskGo(t) })));
-  }
+  const f = folds(), rows = [];
+  const group = (k, title, list, q) => {
+    if (!list.length) return;
+    rows.push({ label: `${title} · ${list.length}`, icon: f[k] ? "plus" : "chev", sub: f[k] ? "свёрнуто — нажмите, чтобы открыть" : "",
+      fold: 1, run: () => fold(k) });
+    if (!f[k]) rows.push(...list.map((t) => taskRow(t, q ?? (t.q || 0))));
+  };
+  const waiting = open.filter((t) => t.status === "waiting");
+  group("w", "Ждут вас", waiting);
+  for (const q of [1, 0, 2, 3, 4]) group(q, Q_T[q], open.filter((t) => (t.q || 0) === q && t.status !== "waiting"), q);
   helpSheet("sheet.tasks");
   sheet(`Задачи · не решено ${open.length}`, [
     ...(open.length ? [] : [{ info: true, icon: "check", label: "Всё решено", sub: "агенты ставят задачи командой gas-pult task add" }]),
