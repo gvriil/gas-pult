@@ -1081,7 +1081,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
-  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu" title="Рабочий стол Ubuntu"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал Ubuntu" title="Терминал Ubuntu"></button></div>
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-brief" data-space="brief" hidden></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu" title="Рабочий стол Ubuntu"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал Ubuntu" title="Терминал Ubuntu"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
@@ -1946,6 +1946,7 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   ...(meta?.role === "owner" ? [{ label: "Начать сессию в фокусе", icon: "qr", run: () => { focusNext = true; newSession(); } }] : []),
   ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),   // владелец и админ
   ...(meta?.role === "owner" && projOn() ? [{ label: "Показать архив проектов", icon: "file", run: projArchive }] : []),
+  ...(meta?.role === "owner" ? [{ label: "Открыть брифинг", icon: "spark", run: briefGo }] : []),
   { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
@@ -6631,6 +6632,7 @@ $("settingsBtn").onclick = () => {
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     ...(deskLinks() ? [{ label: "Ссылки: где открывать", icon: "globe", sub: "запомненные сайты — в Ubuntu или здесь", run: () => part("links").then(() => linkPrefsSheet()) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Компьютеры — ваш браузер", icon: "monitor", sub: "пульт управляет Chrome на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
+    ...(meta?.role === "owner" ? [{ label: "Брифинг: источники и время", icon: "spark", run: () => briefGo("prefs") }] : []),
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: () => part("email").then(() => emailSheet()) },
     { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ...(canNotify() ? [{ label: "Уведомления", icon: "bell", sub: Notification.permission === "granted" ? "включены — о готово и «ждёт ответа»" : "выключены — нажмите, чтобы включить", run: askNotify }] : []),
@@ -7387,6 +7389,7 @@ async function start() {
   if (DEMO && params.get("pick")) pickProfile(() => {});
   if (DEMO && params.has("prov")) providersView();
   if (DEMO && params.get("gaps")) gapsView(profileOf(params.get("gaps")));
+  if (params.get("view") === "brief") briefGo();
   if (params.get("view") === "scenarios") {          // из бота «📱 Примерить в панели» (?view=scenarios&role=…); в демо — &step=N
     await scenariosView(params.get("role") || null);
     if (scn && params.get("step")) { scn.step = Math.min(+params.get("step") || 0, scn.r.timeline_steps.length + 1); scnRender(); }
@@ -7472,8 +7475,10 @@ function paintSpaces() {
   dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + '<span class="lbl">Ubuntu</span>';   // владелец: «открыть Ubuntu сразу»
   const tm = $("spaces").querySelector(".sp-term");     // «Терминал» (17.11): окно ubuntu-shell в живом терминале
   tm.hidden = !(meta?.role === "owner" && (meta?.desktop || meta?.tty)); tm.innerHTML = ic("term") + '<span class="lbl">Терминал</span>';
+  const br = $("spaces").querySelector(".sp-brief"); br.hidden = meta?.role !== "owner"; br.innerHTML = ic("spark") + "Брифинг";
   tasksCount();
 }
+const briefGo = (m) => part("brief").then((x) => x.briefOpen(m), (e) => toast(e.message));   // GAS-18, js/brief.js
 function tasksCount() {
   // На кнопке — сколько «срочно и важно» (квадрант 1 матрицы Эйзенхауэра, решение владельца 14.11), иначе — сколько открыто
   // сводка (владелец 17.11): красный — срочно, оранжевый — ждут вас, жёлтый — в работе; нет открытых — зелёный
@@ -7487,6 +7492,7 @@ function tasksCount() {
 $("spaces").addEventListener("click", (e) => {
   if (e.target.closest("[data-space=term]")) return part("links").then(() => shellOpen());
   if (e.target.closest("[data-space=desk]")) return part("desktop").then(() => deskOpen(), (er) => toast("Рабочий стол не загрузился: " + er.message, 4500));
+  if (e.target.closest("[data-space=brief]")) return briefGo();
   if (e.target.closest("[data-space=tasks]")) part("tasks").then(() => tasksOpen(), (er) => toast("Задачи не загрузились: " + er.message, 4500));
 });
 function demoSheet() {

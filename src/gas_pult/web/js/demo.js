@@ -261,6 +261,7 @@ function demoApi(path, body) {
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
+  if (path.startsWith("/api/brief")) return demoBrief(path, body);
   if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)
   if (path === "/api/notify/level") { (demoApi.nl ||= {})[body.w] = body.level; R["/api/notify/level"] = { notify: body.level === "inherit" ? "all" : body.level }; }
   if (path === "/api/stopped/clear") { const st = (R["/api/sessions"]?.sessions || []).filter((x) => x.status === "stopped"); st.forEach((x) => { (demoApi.gone ||= {})[x.id] = 1; }); R["/api/stopped/clear"] = { closed: st.length, names: st.map((x) => x.name) }; }
@@ -564,3 +565,35 @@ function demoTasks(path, body) {
 }
 
 Object.assign(window, { demoTasks, demoTaskCount, DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
+
+// Брифинг (GAS-18): ?demo&brief=first — первый вход с выбором источников; иначе — готовый брифинг на сегодня
+function demoBrief(path, body) {
+  const g = (demoApi.brief ||= {
+    chosen: params.get("brief") !== "first", sources: ["mail", "calendar", "github", "pult"], boxes: ["gmail"], calendars: ["work"],
+    schedule: { time: "07:30", days: [0, 1, 2, 3, 4], tz: "", every: "workdays" }, tour: params.get("brief") === "tour" ? null : "done",
+    decisions: [
+      { text: "[деньги] Ответить ООО «Ромашка»: «Счёт на оплату №118 — срок пятница»", source: { kind: "mail", label: "Gmail · gmail", url: "https://mail.google.com/" }, key: "d1", cat: "money", yes: "откроет письмо в Gmail", act: "open" },
+      { text: "PR shop/site#42 — Витрина: новые цены (открыт 3 дн.)", source: { kind: "github", label: "GitHub · shop/site#42", url: "https://github.com/" }, key: "d2", yes: "сольёт PR (после подтверждения)", act: "confirm" },
+      { text: "Ждут «да»: выкатить рассылку клиентам в четверг", source: { kind: "handoff", label: "HANDOFF.md · shop" }, key: "d3", yes: "передаст «да» в окно проекта (после подтверждения)", act: "confirm" },
+    ],
+  });
+  if (path === "/api/brief/prefs") { Object.assign(g, { chosen: true, sources: body.sources, boxes: body.boxes, calendars: body.calendars, schedule: { time: body.time, days: body.every === "custom" ? body.days : body.every === "daily" ? [0, 1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4], tz: body.tz, every: body.every } }); return Promise.resolve({}); }
+  if (path === "/api/brief/act") {
+    const d = g.decisions.find((x) => x.key === body.key);
+    if (body.act === "yes" && d?.act === "confirm" && !body.confirm) return Promise.resolve({ ask: "(демо) " + d.text + "?" });
+    g.decisions = g.decisions.filter((x) => x.key !== body.key);
+    return Promise.resolve({ done: body.act === "yes" ? "(демо) сделано" : body.act === "no" ? "Убрал на месяц" : "Вернётся в следующем брифинге", headline: `Ждут вас ${g.decisions.length} реш. Ночью срочного не было.` });
+  }
+  const n = g.decisions.length;
+  return Promise.resolve({
+    sel: { sources: g.sources, boxes: g.boxes, calendars: g.calendars, chosen: g.chosen }, schedule: g.schedule, tour: g.tour,
+    avail: { boxes: [{ id: "gmail", gmail: true }, { id: "yandex", gmail: false }], calendars: ["work"], linear: true, github: true },
+    brief: { at: new Date().toISOString().slice(0, 11) + "07:30", headline: `Ждут вас ${n} ${n === 1 ? "решение" : n < 5 && n ? "решения" : "решений"}. Ночью срочного не было.`,
+      today: [{ text: "10:00–10:30 · Планёрка с командой", source: { kind: "calendar", label: "Календарь · work", url: "https://calendar.google.com/" } },
+        { text: "15:00–16:00 · Встреча с поставщиком · офис", source: { kind: "calendar", label: "Календарь · work" } }],
+      done: [{ text: "Слит PR shop/site#40 — Оплата картой", source: { kind: "github", label: "GitHub · shop/site#40", url: "https://github.com/" } },
+        { text: "GAS-12 — Прайс-лист на сайте", source: { kind: "linear", label: "Linear · GAS-12", url: "https://linear.app/" } }],
+      failed: [{ text: "PR shop/site#41 — Корзина", why: "CI красный — проверки не прошли", source: { kind: "github", label: "GitHub · shop/site#41", url: "https://github.com/" } }],
+      decisions: g.decisions, more: {}, sources: [{ id: "linear", label: "Задачи Linear", state: "none", note: "нет ключа" }] },
+  });
+}

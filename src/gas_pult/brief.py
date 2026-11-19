@@ -178,7 +178,12 @@ def available(cfg) -> dict:
         except Exception:                        # файл ящика испорчен — покажем, но без «Gmail»
             host = ""
         boxes.append({"id": b, "gmail": host == "imap.gmail.com"})
-    return {"boxes": boxes, "calendars": calendar_mcp.calendars(),
+    try:                                         # «Интеграции» → «Календари» (calkeys.py): что подключено, без значений
+        from gas_pult import calkeys
+        keys = calkeys.status()
+    except Exception:
+        keys = []
+    return {"boxes": boxes, "calendars": calendar_mcp.calendars(), "calkeys": keys,
             "linear": (_core.SECRETS_DIR / "linear.token").is_file(), "github": bool(getattr(cfg, "digest_github", ""))}
 
 
@@ -408,7 +413,7 @@ def collect(cfg, *, sel: dict, digest_items: list[dict], tasks_list: list[dict],
         status += st
     elif "calendar" in src:
         status.append({"id": "calendar", "label": SOURCES["calendar"], "state": "none",
-                       "note": "календарь не подключён — нужна секретная ссылка iCal"})
+                       "note": "календарь не подключён — «Интеграции» → «Календари»"})
     pr_items = [x for x in digest_items if x["kind"] == "pr"]
     if "github" in src:
         owner = getattr(cfg, "digest_github", "")
@@ -537,3 +542,52 @@ def hot(b: dict) -> list[dict]:
     """Срочные решения брифинга (деньги, безопасность, срок) — по ним можно будить вне утра."""
     from gas_pult import notifylevel
     return [r for r in b.get("decisions", []) if notifylevel.wakes(r.get("cat"))]
+
+
+# ---------- решения из панели: «Да» — только после подтверждения; всё — в журнал ----------
+def log(data: Path, uid, key: str, act: str, kind: str, result: str):
+    """``brief_log.jsonl`` (0600): кто, что и с каким итогом решил в брифинге — без текста писем."""
+    path = data / "brief_log.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    new = not path.exists()
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"t": int(time.time()), "uid": uid, "key": key, "act": act, "kind": kind,
+                            "result": result[:200]}, ensure_ascii=False) + "\n")
+    if new:
+        path.chmod(0o600)
+
+
+def act(pult, uid, key: str, what: str, sure: bool = False) -> dict:
+    """«Да» / «Нет» / «Позже» по пункту брифинга. ``pult`` — бот (digest, project_window, to_claude).
+    Ответ: {done} — сделано; {ask} — спросить подтверждение и прислать снова с ``sure``; {url} / {window} — открыть."""
+    x = pult.digest.item(key)
+    if not x:
+        raise ValueError("этого пункта уже нет в брифинге — обновите")
+    data = pult.cfg.data
+    if what in ("no", "later"):
+        pult.digest.snooze(key, digest.GONE if what == "no" else digest.LATER)
+        log(data, uid, key, what, x["kind"], "убрано на месяц" if what == "no" else "до следующего брифинга")
+        return {"done": "Убрал на месяц" if what == "no" else "Вернётся в следующем брифинге"}
+    if what != "yes":
+        raise ValueError("действие: yes, no или later")
+    if x["kind"] == "mail" or (x["kind"] == "pr" and not x.get("ok")):
+        if not x.get("url"):
+            raise ValueError("ссылки нет — откройте письмо в почте")
+        log(data, uid, key, "open", x["kind"], "открыто")
+        return {"url": x["url"]}
+    if x["kind"] == "win":
+        log(data, uid, key, "open", "win", "открыт экран")
+        return {"window": x["id"]}
+    if not sure:
+        return {"ask": f"Слить {x['repo']}#{x['n']} «{x['title']}»?" if x["kind"] == "pr"
+                else f"Передать «да» в окно {x['project']}: {x['text']}?"}
+    if x["kind"] == "pr":
+        done = digest.merge(x["repo"], x["n"])
+    elif w := pult.project_window(x["path"]):
+        pult.to_claude(w, f"Владелец отвечает «да» на пункт из HANDOFF.md: {x['text']}")
+        done = f"Передал «да» в «{w['name']}»"
+    else:
+        raise ValueError(f"окна с Claude в {x['project']} нет — откройте сессию и повторите")
+    pult.digest.snooze(key, digest.GONE)
+    log(data, uid, key, "yes", x["kind"], done)
+    return {"done": done}

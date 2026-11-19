@@ -77,7 +77,7 @@ def test_render_buttons():
 
 def make(tmp_path, monkeypatch):
     p = bot.Pult.__new__(bot.Pult)
-    p.cfg = type("C", (), {"owners": [1]})()
+    p.cfg = type("C", (), {"owners": [1], "data": tmp_path})()
     p.digest = digest.Digest(tmp_path / "digest.json")
     p.sent = []
     p.send = lambda chat, text, **kw: p.sent.append((text, kw))

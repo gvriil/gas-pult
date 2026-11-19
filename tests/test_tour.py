@@ -30,7 +30,7 @@ def dirs(monkeypatch, tmp_path):
 
 # ---------- шаги и тексты ----------
 def test_two_tours_with_texts():
-    assert set(TOURS) == set(people.TOURS) == {"business", "dev"}
+    assert set(TOURS) == set(people.TOURS) - {"brief"} == {"business", "dev"}     # тур брифинга — в js/brief.js
     for kind, t in TOURS.items():
         assert t["title"] and len(t["steps"]) >= 5, kind
         for s in t["steps"]:
@@ -81,7 +81,7 @@ def test_tour_reachable_from_menu_and_helper():
 def test_people_store_tour_per_person(tmp_path):
     p = people.People(tmp_path / "people.json", [1])
     p.add(2, "member", "Иван")
-    assert p.tour(1) == {"business": None, "dev": None, "at": None} == p.tour("мусор")
+    assert p.tour(1) == {"business": None, "dev": None, "brief": None, "at": None} == p.tour("мусор")
     p.set_tour(1, "dev", "dismissed")
     p.set_tour(2, "business", "done")
     assert p.tour(1)["dev"] == "dismissed" and p.tour(1)["business"] is None and p.tour(1)["at"]
@@ -130,7 +130,7 @@ def test_api_tour_rights_and_per_person(server):
     toks = {uid: panel.auth.issue(uid) for uid in (1, 2, 3)}
     for uid, tok in toks.items():
         st, d = call(base, "/api/tour", token=tok)
-        assert st == 200 and d == {"business": None, "dev": None, "at": None}, uid
+        assert st == 200 and d == {"business": None, "dev": None, "brief": None, "at": None}, uid
     st, d = call(base, "/api/tour", {"tour": "dev", "state": "done"}, toks[1])
     assert st == 200 and d["dev"] == "done" and d["at"]
     st, d = call(base, "/api/tour", {"tour": "business", "state": "dismissed"}, toks[3])   # наблюдатель — тоже
