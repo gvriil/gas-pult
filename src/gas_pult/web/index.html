@@ -1536,7 +1536,8 @@ function paintIcons() {
     .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
     + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Интеграции</button>`            // фокус: интеграции сессии
-    + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`;        // фокус: репозитории сессии (задача 43)
+    + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`
+    + `<button data-act="ease" class="focus-only">${ic("settings")}Удобства</button>`;          // фокус: имя, тема, шрифт (js/ease.js)        // фокус: репозитории сессии (задача 43)
 }
 
 // ---------- тема ----------
@@ -5184,6 +5185,7 @@ $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o
 
 const ACTIONS = {
   sos: () => callHelp(current),
+  ease: () => part("ease").then((m) => m.ease()),
   say: (b) => say(true, b),
   commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
     label: clean(label), icon: "bolt", run: async () => { const d = await act("/api/command", { i }); if (d?.models) ACTIONS.models(); else if (d?.sent) { toast("Отправлено"); lastStatus = "busy"; setTab("screen"); } },
@@ -5287,7 +5289,7 @@ function renameSession(s) {
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
 }
 $("switchBtn").onclick = openSwitcher;
-$("title").onclick = () => { if (view === "session" && !split()) openSwitcher(); };
+$("title").onclick = () => { if (view !== "session" || split()) return; if (FOCUS && !FOCUS_DEMO() && !meta.focus.proj && cur()) renameSession(cur()); else openSwitcher(); };
 $("screenBtn").onclick = () => setTab(tab === "chat" ? "screen" : "chat");
 // Жесты (телефон, в сессии): по шапке влево-вправо — соседняя сессия. От левого края — назад (backDrag); панель чатов — ☰.
 let swipe = null;

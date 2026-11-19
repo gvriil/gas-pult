@@ -3297,7 +3297,9 @@ FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/comma
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 STT_JOB = ("/api/stt/job", "/api/stt/retry")       # фоновое распознавание (GAS-34): там же, где /api/stt
 SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog", "/api/starters", "/api/starter"}
-FOCUS_GET |= {"/api/tts/about"}
+FOCUS_GET |= {"/api/tts/about", "/api/starters"}
+# Фокус-ссылка — удобства своей сессии (владелец 19.11: «переименования, тёмный/светлый и все остальные»; GAS-13 п.4)
+FOCUS_POST |= {"/api/rename", "/api/starter"}
 FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
 FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
@@ -3305,7 +3307,7 @@ FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke",
               "/api/mcp/connected", "/api/uses"}   # без окна в запросе
-FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about"}
+FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about", "/api/starters"}
 # Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,
 # экран, статус, «Прослушать») и отвечать на вопрос Claude кнопками (/api/select, /api/key — стрелки и Enter, только
 # когда на экране вопрос: ``Panel.demo_answer``). Нет: текста, файлов, голоса, модели, усилий, перезапуска,
@@ -3786,7 +3788,8 @@ def handler(panel: Panel):
                                                      panel.cfg.personal_voices and self.who()[1] == "owner",
                                                      cloud=not self.space()))
             if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
-                return {"starters": panel.starters_for(self.who()[1], bool(self.space()))}
+                # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
+                return {"starters": panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None)}
             if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
                 return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов

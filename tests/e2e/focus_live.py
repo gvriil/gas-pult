@@ -266,7 +266,7 @@ def run(shots: str = ""):
                                ("/api/new", {"i": 0}), ("/api/people", None), ("/api/focus/list", None),
                                ("/api/focus/new", {"w": shop, "base": base}),
                                ("/api/keys", {"provider": "x", "key": "y"}),
-                               ("/api/rename", {"w": shop, "name": "x"}), ("/api/active", {"w": shop}),
+                               ("/api/rename", {"w": other, "name": "x"}), ("/api/active", {"w": shop}),
                                ("/api/mcp/add", {"preset": "http"}), ("/api/tty", None), ("/api/term", None),
                                ("/api/run", {"w": shop, "i": 0, "sha": "x"}),
                                ("/api/run/term", {"w": shop, "i": 0, "sha": "x"})):
