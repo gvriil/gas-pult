@@ -111,7 +111,7 @@
   body:not(.focus) .focus-only { display: none; }
   body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus #rail, body.focus #home, body.focus #homeBar,
   body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
-  body.focus #menu [data-act=switch], body.focus #menu [data-act=active] { display: none !important; }
+  body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew { display: none !important; }
   /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
   body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
   body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
@@ -1456,7 +1456,7 @@ let histRev = "", BUILD = null, pending = [], sessions = [], meta = null, curren
     termWrap = false, lastOk = Date.now(), openLogs = new Set(),
     lastTouch = Date.now(), lastPoll = 0;      // зритель: последнее касание и последний опрос (pollDue)
 const wideMQ = matchMedia("(min-width: 1024px)");
-const split = () => !FOCUS && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
+const split = () => (!FOCUS || meta?.focus?.mode !== "demo") && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
 // Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
@@ -1826,7 +1826,8 @@ $("sideBtn").onclick = () => setMini(!sideMini);
 // (плашка «Отменить» 5 с — до неё на сервере ничего не удаляется). Телефон: панель выезжает слева (☰ или свайп).
 const NAV = { open: false, q: "", html: "", gone: new Set(), held: false, exp: new Set((() => { try { return JSON.parse(store("navExp") || "[]"); } catch (e) { return []; } })()) };
 let DRAFT = null;                                     // новый чат до первой отправки: { proj, profile }
-const navOn = () => !FOCUS && !SIM.on && !!meta && !["login", "terms", "country", "persona"].includes(view);
+const dn = (s) => FOCUS && s.title || s.name;            // фокус: название чата, не служебное имя окна (19.11)
+const navOn = () => (!FOCUS || meta?.focus?.mode !== "demo") && !SIM.on && !!meta && !["login", "terms", "country", "persona"].includes(view);
 const lastMsg = (s) => Math.max(+s.said || 0, +s.asked || 0) || +s.changed || 0;
 const canPin = (s) => meta?.role !== "viewer" && !FOCUS && !s?.space;
 function navTime(ts) {                                 // сегодня — время, вчера — «вчера», раньше — дата
@@ -1840,7 +1841,7 @@ const navBtns = (x, pinOk) => (pinOk ? `<button class="nb npin" type="button" da
 // строка под названием (#189): модель · усилия · контекст; точка справа — новый ответ, который вы не открывали
 const navMeta = (s) => [s.model, s.effort && "усилия " + (EFFORT_RU[s.effort] || s.effort), ctxUsed(s) == null ? "" : "контекст " + ctxUsed(s) + "%"].filter(Boolean).join(" · ");
 function navRow(s, sub) {
-  const st = ST[s.status] || ST.idle, name = s.name, nw = isNew(s), mt = navMeta(s), tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label + (nw ? " · новый ответ" : "");
+  const st = ST[s.status] || ST.idle, name = dn(s), nw = isNew(s), mt = navMeta(s), tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label + (nw ? " · новый ответ" : "");
   return `<div class="nrow${s.id === current && view === "session" ? " on" : ""}${s.pinned ? " pinned" : ""}${sub ? " sub" : ""}${nw ? " new" : ""}" data-nw="${esc(s.id)}" role="listitem" tabindex="0" title="${esc(tip)}">`
     + `<span class="sdot ${st.cls}"></span><span class="ntx"><span class="nm">${esc(name)}</span>${mt ? `<span class="nmeta">${esc(mt)}</span>` : ""}</span>${nw ? '<span class="nnew"></span>' : ""}<span class="tm">${esc(navTime(lastMsg(s)))}</span>${navBtns(s, canPin(s))}</div>`;
 }
@@ -1994,6 +1995,8 @@ function navItems(row) {
         { label: "Создать демо-ссылку", icon: "eye", sub: "несколько устройств, только просмотр и выбор вариантов", run: () => focusLink(null, p.id, "demo") }] : [])];
   }
   const s = sessions.find((x) => x.id === row.dataset.nw); if (!s) return [];
+  if (FOCUS) return [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }, ...(s.title_own ? [{ label: "Сбросить название", icon: "refresh", run: () => api("/api/title", { w: s.id, title: "" }).then(refresh) }] : []),
+    { label: "Тема, размер текста…", icon: "settings", run: () => ACTIONS.ease() }];   // фокус: своё (владелец 19.11)
   const name = s.title || s.name;
   return [...(canPin(s) ? [{ label: s.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!s.pinned, run: () => pinSet({ w: s.id }, !s.pinned, name) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
@@ -3717,18 +3720,18 @@ async function refresh() {
 function paintSession(s) {
   moneyBar(s);
   const st = ST[s.status];
-  if (split()) setText($("title"), s.name);
+  if (split()) setText($("title"), dn(s));
   else {                                            // телефон: имя ▾ — шторка сессий; точка — что-то ждёт в другой сессии
     const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
-    setHTML($("title"), `<span class="nm">${esc(FOCUS && s.title || s.name)}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`);
+    setHTML($("title"), `<span class="nm">${esc(dn(s))}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`);
   }
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
   const ag = agoSpan(s, true);
   setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}${spaceChips(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd) + (s.cost.cost_source === "estimate" ? " (оценка)" : "")) : ""}</span>${split() ? ag : ""}`);
   const cb = costBar(s); setHidden($("costPause"), !cb); setHTML($("costPause"), cb);     // пауза по расходу — над полем ввода
-  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(s.name)}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`);
-  const ph = hint || "Сообщение для " + s.name + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
+  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`);
+  const ph = hint || "Сообщение для " + dn(s) + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
   if ($("input").placeholder !== ph) $("input").placeholder = ph;
   sinfo(s);                                         // модель · усилия · контекст · лимиты — под полем ввода
   paintWorking(s);
@@ -5428,7 +5431,7 @@ function sync() { const has = !!$("input").value.trim() || files.length > 0; $("
 function setHint(h) {
   if (h === hint) return;
   hint = h; sync();
-  const s = cur(); if (s) $("input").placeholder = hint || "Сообщение для " + s.name + "…";
+  const s = cur(); if (s) $("input").placeholder = hint || "Сообщение для " + dn(s) + "…";
 }
 async function loadHint(s) {
   if (s.status !== "idle" || tab !== "chat" || meta?.role === "viewer") return setHint("");
