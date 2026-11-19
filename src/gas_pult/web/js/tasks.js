@@ -28,9 +28,9 @@ async function tasksOpen() {
 // Цвет задачи (владелец 17.11): красный — срочно и важно, оранжевый — ждёт вас, жёлтый — в работе, зелёный — готово
 const tqDot = (t, q) => (t.status === "done" ? "tq-g" : q === 1 ? "tq-r" : t.status === "waiting" ? "tq-o" : t.status === "doing" ? "tq-y" : "");
 // Группы сворачиваются по нажатию на заголовок (владелец 19.11: «таски удобно сворачивать по группировкам срочно-важно»);
-// состояние запоминается в браузере. «Ждут вас» — всегда первой группой; по умолчанию открыты она и «срочно и важно».
+// состояние запоминается в браузере. «Ждут вас» — всегда первой группой; по умолчанию все открыты («как было»).
 const FOLD_KEY = "tq:fold";
-function folds() { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || "null") ?? { 0: 1, 2: 1, 3: 1, 4: 1 }; } catch (e) { return { 0: 1, 2: 1, 3: 1, 4: 1 }; } }
+function folds() { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch (e) { return {}; } }
 function fold(k) {
   const f = folds(); f[k] ? delete f[k] : (f[k] = 1);
   try { localStorage.setItem(FOLD_KEY, JSON.stringify(f)); } catch (e) { /* без памяти — свернётся на этот раз */ }
