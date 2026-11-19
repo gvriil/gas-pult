@@ -1,0 +1,79 @@
+// Новый чат (владелец 19.11: «новая сессия по сути — это новый чат… вместо „новой сессии“ должно быть просто поле для
+// ввода текста и выбора каких-то настроек; мне очень нравится, как у Claude это сделано»). Одно поле, под ним —
+// бейджики-сценарии; в поле — строка настроек: папка (проект), модель или другой агент, усилие, интеграции. Значения
+// по умолчанию — последние использованные; обязательного нет. Первая отправка создаёт чат и отправляет сообщение —
+// без отдельного шага «создать сессию». Название чат получит по смыслу (projects.title_of, js/nametip.js).
+
+const EFFORT = [["", "Обычные", "как настроено"], ["low", "Низкие", "быстро и дёшево"], ["medium", "Средние", "обычные задачи"],
+  ["high", "Высокие", "сложные задачи"], ["xhigh", "Очень высокие", "архитектура, сложный разбор"], ["max", "Максимальные", "дольше и дороже всего"]];
+let MCP = null;                                         // подключённые интеграции — один раз за показ
+
+const agents = () => meta?.agents || [];
+const choices = () => readyProfiles().length + agents().length;
+const profTitle = (id) => agents().find((a) => a.id === id)?.title || profileOf(id || "claude")?.title || "Claude";
+const okProfile = (id) => !id || agents().some((a) => a.id === id) || readyProfiles().some((p) => p.id === id);
+const chip = (attr, icon, text, title, on) => `<button class="dchip${on ? " on" : ""}" type="button" ${attr} title="${esc(title)}">${ic(icon)}<span>${esc(text)}</span>${ic("chev", "s16")}</button>`;
+
+export function paint() {
+  if (!DRAFT) return;
+  if (!okProfile(DRAFT.profile)) DRAFT.profile = "";    // прежний выбор больше недоступен — по умолчанию проекта
+  const p = projOf(DRAFT.proj), prof = DRAFT.profile || p?.profile || "claude", claude = !agents().some((a) => a.id === prof) && prof === "claude";
+  $("title").textContent = "Новый чат"; $("title").classList.remove("sw");
+  setSub(`<span>${esc([p?.name, profTitle(prof)].filter(Boolean).join(" · "))}</span>`);
+  if ($("draftNote")) $("draftNote").textContent = "Напишите, что нужно, — чат начнётся с первого сообщения. Настройки — в поле ввода, их можно не трогать.";
+  const eff = EFFORT.find(([v]) => v === (DRAFT.effort || "")) || EFFORT[0];
+  $("draftBar").innerHTML = (p ? chip("data-dfold", "folder", p.name, "Проект: куда положить чат") : "")
+    + (DRAFT.route ? `<button class="dchip${DRAFT.model ? " on" : ""}" type="button" data-droute aria-pressed="${!!DRAFT.model}" title="${esc("Почему: " + DRAFT.route.why)}">${ic(DRAFT.model ? "check" : "spark")}<span>${esc((DRAFT.model ? "" : "Подходит: ") + DRAFT.route.label)}</span></button>` : "")
+    + (choices() > 1 ? chip("data-dmodel", "chip", profTitle(prof), "Модель или другой агент") : "")
+    + (claude ? chip("data-deffort", "bolt", "Усилия: " + eff[1].toLowerCase(), "Сколько думать над ответом", !!DRAFT.effort) : "")
+    + (MCP?.length ? chip("data-dmcp", "puzzle", "Интеграции: " + MCP.filter((x) => x.ok).length, "Что подключено к чату") : "");
+  $("input").placeholder = "Напишите, что нужно…";
+  if (MCP === null) { MCP = []; api("/api/mcp").then((d) => { MCP = d.servers || []; if (DRAFT) paint(); }).catch(() => {}); }
+}
+
+$("draftBar").onclick = (e) => {
+  if (!DRAFT) return;
+  const f = e.target.closest("[data-dfold]"), m = e.target.closest("[data-dmodel]"), r = e.target.closest("[data-droute]");
+  const ef = e.target.closest("[data-deffort]"), mc = e.target.closest("[data-dmcp]");
+  const back = () => { paint(); $("input").focus(); };
+  if (r && DRAFT.route) {                              // роутер (router.py): подсказка — нажал, чат запустится с этой моделью
+    const on = !DRAFT.model; Object.assign(DRAFT, on ? { profile: DRAFT.route.profile, model: DRAFT.route.model } : { profile: "", model: "" });
+    return back();
+  }
+  if (f) return popMenu(f, [...(projData?.projects || []).filter((p) => !p.archived).map((p) => ({ label: p.name, icon: "folder", on: p.id === DRAFT.proj, run: () => { DRAFT.proj = p.id; back(); } })),
+    { sep: true }, { label: "Новая папка…", icon: "plus", run: () => newFolder() }]);
+  if (m) return pickProfile((pid) => { if (DRAFT) { DRAFT.profile = pid; DRAFT.model = ""; back(); } });
+  if (ef) return popMenu(ef, EFFORT.map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: (DRAFT.effort || "") === v, run: () => { DRAFT.effort = v; back(); } })));
+  if (mc) return popMenu(mc, [...MCP.map((x) => ({ icon: x.ok ? "check" : "warn", label: x.name, sub: x.ok ? "подключено — чат может пользоваться" : "не отвечает", run: () => {} })),
+    { sep: true }, { label: "Подключить или настроить…", icon: "puzzle", run: () => { setHome("integrations"); } }]);
+};
+
+let routeT = 0;                                         // подсказка модели по первому сообщению — после паузы в наборе
+$("input").addEventListener("input", () => {
+  if (!DRAFT) return;
+  clearTimeout(routeT);
+  routeT = setTimeout(async () => {
+    const text = $("input").value.trim(); if (!DRAFT || text.length < 12) return;
+    try { const r = (await api("/api/route", { text })).route; if (DRAFT && !DRAFT.model && r?.type !== DRAFT.route?.type) { DRAFT.route = r; paint(); } } catch (e) { /* без подсказки */ }
+  }, 700);
+});
+
+export async function send() {
+  const text = $("input").value.trim();
+  if (!text && !files.length) return toast("Напишите первое сообщение");
+  if (files.some((f) => !f.path)) { toast("Дождусь загрузки файла и начну чат", 2500); await Promise.all(files.map((f) => f.done)); }
+  const dr = DRAFT, p = projOf(dr.proj), keep = files;
+  $("send").disabled = true;
+  toast(p ? "Начинаю чат в «" + p.name + "»…" : "Начинаю чат…", 4000);
+  try {
+    const d = p ? await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "" })
+      : await api("/api/new", { name: "" });          // пространство клиента: своя папка, без проектов
+    if (p) store("lastProj", dr.proj);
+    store("lastProfile", dr.model ? "" : dr.profile || ""); store("lastEffort", dr.effort || "");
+    await openSession(d.id);                          // черновик гаснет в show()
+    if (dr.effort) await api("/api/effort", { w: d.id, level: dr.effort }).catch(() => toast("Усилия не выставились — поменяйте в меню чата", 3500));
+    $("input").value = text; files = keep; renderFiles(); grow();
+    await sendText();
+  } catch (e) { toast("Не вышло: " + e.message, 5000); }
+  finally { $("send").disabled = false; }
+}

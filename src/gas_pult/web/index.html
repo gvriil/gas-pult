@@ -1046,6 +1046,11 @@
            background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: calc(13px * var(--fz, 1)); cursor: pointer; }
   .dchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dchip .i { width: 15px; height: 15px; color: var(--text-secondary); flex: none; }
   body.drafting #target, body.drafting #live, body.drafting #menuBtn, body.drafting #hintBtn { display: none !important; }
+  /* Новый чат как у claude.ai (19.11): на компьютере поле — посередине, бейджики под ним; на телефоне — внизу у клавиатуры */
+  body.drafting #sinfo { display: none !important; }
+  @media (max-width: 899px) { body.drafting #draftBar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } }
+  @media (min-width: 900px) { body.drafting .draft { padding-top: 8vh; } body.drafting #draftNote { display: none; }
+    body.drafting .dock { bottom: auto; top: calc(12vh + 160px); } body.drafting #starters { margin-top: 224px; } body.drafting #input { min-height: 72px; } }
   /* что работает у поставщика (задача 38): плашка сессии, списки, автотест */
   .gapbar { display: flex; align-items: center; gap: 4px; margin: 6px 12px 0; padding: 2px 4px 2px 0; border-radius: 10px;
     background: var(--status-approval-bg); color: var(--text-primary); }
@@ -1276,7 +1281,7 @@
     "steps": [
       {"target": "sessions", "screen": "home", "title": "Ваши агенты", "text": "Сколько агентов работает и ждёт вас; ниже — карточка на каждого. Зелёная точка — работает, жёлтая — ждёт вашего ответа, серая — свободен. Нажмите карточку — откроется переписка."},
       {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — колонкой значков: цифра — сколько агентов работает, жёлтая точка — кто-то ждёт ответа. Нажмите значок — чаты проекта; развернуть панель — кнопкой сверху."},
-      {"target": "new", "screen": "home", "title": "Новый агент", "text": "«Новая сессия» → «Из модуля» — готовый агент под задачу: правила и навыки уже настроены, нужно только имя папки."},
+      {"target": "new", "screen": "home", "title": "Новый агент", "text": "«Новый чат» → «Из модуля» — готовый агент под задачу: правила и навыки уже настроены, нужно только имя папки."},
       {"target": "try", "screen": "home", "title": "Примерить на себя", "text": "День с агентом в вашей роли и польза в цифрах — до того, как что-то создавать и платить."},
       {"target": "cost", "screen": "home", "title": "Расход", "text": "Сколько стоила работа агентов сегодня. Нажмите — подробности по агентам и лимиты, чтобы не выйти за бюджет."},
       {"target": "help", "screen": "any", "title": "? Подсказать", "text": "Есть на каждом экране: что здесь делать и куда перейти. Там же — «Показать тур по этому экрану»."},
@@ -1289,7 +1294,7 @@
       {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, интеграции", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
       {"target": "sessions", "screen": "home", "title": "Сессии", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
       {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — квадратами: цифра — активные чаты, точка — ждёт ответа или новое. Нажатие — чаты проекта; сверху — развернуть, новый чат, поиск."},
-      {"target": "new", "screen": "home", "title": "Новая сессия", "text": "В папке проекта; «Новая папка» — пустой проект с git init; «Из модуля» — агент с готовыми правилами и навыками."},
+      {"target": "new", "screen": "home", "title": "Новый чат", "text": "В папке проекта; «Новая папка» — пустой проект с git init; «Из модуля» — агент с готовыми правилами и навыками."},
       {"target": "cost", "screen": "home", "title": "Расход и лимиты", "text": "Токены и деньги за день. Лимит на сессию и на день — «Настройки» → «Расход и лимиты»: дошли — сессия встанет на паузу."},
       {"target": "commands", "screen": "home", "title": "Команды", "text": "Команды из ответов всех сессий. «Выполнить» запускает на сервере пульта; опасные — с подтверждением."},
       {"target": "tabs", "screen": "session", "title": "Переписка и экран", "text": "«Переписка» — чат с Claude; «Экран» — терминал tmux как есть, с клавишами 1/2/3, Esc, Ctrl+C."},
@@ -1530,7 +1535,7 @@ function paintIcons() {
   $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
   $("netIcon").innerHTML = ic("warn"); $("updateBar").insertAdjacentHTML("afterbegin", ic("refresh", "s16")); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
-  $("newBtn").innerHTML = ic("newsess") + "Новая сессия";
+  $("newBtn").innerHTML = ic("compose") + "Новый чат";
   $("navBtn").innerHTML = ic("burger"); $("composeBtn").innerHTML = ic("compose"); $("navSearchBtn").innerHTML = ic("search");
   $("navMoreBtn").innerHTML = ic("more"); $("navCloseBtn").innerHTML = ic("x"); $("navNew").innerHTML = ic("compose") + "<span>Новый чат</span>";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
@@ -2120,67 +2125,25 @@ function newChat(pid) {
   if (meta?.role === "viewer") return;
   const ps = projOn() ? projData?.projects || [] : [];
   const want = pid || cur()?.project || store("lastProj"), p = ps.find((x) => x.id === want) || ps[0];
-  if (!p) return newSession();                       // без проектов (пространство, старый сервер) — прежний выбор папки
-  current = null; closeMenu(); hint = ""; DRAFT = { proj: p.id, profile: "" };
+  if (!p && !meta?.space) return newSession();        // без проектов (старый сервер) — прежний выбор папки
+  current = null; closeMenu(); hint = ""; DRAFT = { proj: p?.id || "", profile: store("lastProfile") || "", effort: store("lastEffort") || "" };
   show("session");
   $("tabsBar").hidden = true; $("screenBtn").hidden = true; $("keys").hidden = true; setAsk("");
   $("content").className = "";
-  $("content").innerHTML = `<div class="draft">${ic("compose")}<h2 class="serif">Новый чат</h2><p id="draftNote"></p><div id="starters"></div></div>`;
+  $("content").innerHTML = `<div class="draft"><h2 class="serif">Чем займёмся?</h2><p id="draftNote"></p><div id="starters"></div></div>`;
   starters(); paintDraft(); renderNav(); padDock(); sync();
   setTimeout(() => $("input").focus(), 60);
 }
 const readyProfiles = () => (meta?.profiles || []).filter((x) => (!x.needs_key || x.key) && !x.not_ready && !x.no_balance && x.allowed !== false);
 // Первый разговор: бейджики-сценарии (GAS-37, js/starters.js) — в пустой сессии и новом чате
 const starters = () => { if (!FOCUS_DEMO?.() && meta?.role !== "viewer") part("starters").then((m) => m.paint()).catch(() => {}); };
+// Новый чат (владелец 19.11: «новая сессия — это новый чат… просто поле для ввода текста и выбора настроек, как у
+// Claude»): строка настроек, подсказка модели, первая отправка — js/newchat.js
 function paintDraft() {
-  const on = !!DRAFT; document.body.classList.toggle("drafting", on);
-  $("draftBar").hidden = !on;
-  if (!on) return;
-  const p = projOf(DRAFT.proj), prof = profileOf(DRAFT.profile || p?.profile || "claude");
-  $("title").textContent = "Новый чат"; $("title").classList.remove("sw");
-  setSub(`<span>${esc(p?.name || "")}${prof?.title ? " · " + esc(prof.title) : ""}</span>`);
-  if ($("draftNote")) $("draftNote").textContent = `Напишите первое сообщение — чат запустится в папке «${p?.name || ""}». Папку${readyProfiles().length > 1 ? " и модель" : ""} можно сменить над полем ввода.`;
-  $("draftBar").innerHTML = `<button class="dchip" type="button" data-dfold aria-haspopup="menu" title="Папка нового чата">${ic("folder")}<span>${esc(p?.name || "Папка")}</span>${ic("chev", "s16")}</button>`
-    + (DRAFT.route ? `<button class="dchip${DRAFT.model ? " on" : ""}" type="button" data-droute aria-pressed="${!!DRAFT.model}" title="${esc("Почему: " + DRAFT.route.why)}">${ic(DRAFT.model ? "check" : "spark")}<span>${esc((DRAFT.model ? "" : "Подходит: ") + DRAFT.route.name + " — " + DRAFT.route.title)}</span></button>` : "")
-    + (readyProfiles().length > 1 ? `<button class="dchip" type="button" data-dmodel title="Модель нового чата">${ic("chip")}<span>${esc(prof?.title || "Claude")}</span>${ic("chev", "s16")}</button>` : "");
-  $("input").placeholder = "Сообщение — новый чат в «" + (p?.name || "") + "»…";
+  const on = !!DRAFT; document.body.classList.toggle("drafting", on); $("draftBar").hidden = !on;
+  if (on) part("newchat").then((m) => m.paint()).catch(() => {});
 }
-$("draftBar").onclick = (e) => {
-  if (!DRAFT) return;
-  const f = e.target.closest("[data-dfold]"), m = e.target.closest("[data-dmodel]"), r = e.target.closest("[data-droute]");
-  if (r && DRAFT.route) {                            // роутер (router.py): подсказка — нажал, чат запустится с этой моделью
-    const on = !DRAFT.model; Object.assign(DRAFT, on ? { profile: DRAFT.route.profile, model: DRAFT.route.model } : { profile: "", model: "" });
-    paintDraft(); return $("input").focus();
-  }
-  if (f) return popMenu(f, [...(projData?.projects || []).map((p) => ({ label: p.name, icon: "folder", on: p.id === DRAFT.proj, run: () => { DRAFT.proj = p.id; paintDraft(); $("input").focus(); } })),
-    { sep: true }, { label: "Новая папка…", icon: "plus", run: () => newFolder() }]);
-  if (m) return pickProfile((pid) => { if (DRAFT) { DRAFT.profile = pid; DRAFT.model = ""; paintDraft(); } });
-};
-let routeT = 0;                                       // подсказка модели по первому сообщению — после паузы в наборе
-$("input").addEventListener("input", () => {
-  if (!DRAFT) return;
-  clearTimeout(routeT);
-  routeT = setTimeout(async () => {
-    const text = $("input").value.trim(); if (!DRAFT || text.length < 12) return;
-    try { const r = (await api("/api/route", { text })).route; if (DRAFT && !DRAFT.model && r?.type !== DRAFT.route?.type) { DRAFT.route = r; paintDraft(); } } catch (e) { /* без подсказки */ }
-  }, 700);
-});
-async function draftSend() {
-  const text = $("input").value.trim();
-  if (!text && !files.length) return toast("Напишите первое сообщение");
-  if (files.some((f) => !f.path)) { toast("Дождусь загрузки файла и запущу чат", 2500); await Promise.all(files.map((f) => f.done)); }
-  const dr = DRAFT, p = projOf(dr.proj), keep = files;
-  $("send").disabled = true;
-  toast("Запускаю новый чат в «" + (p?.name || "папке") + "»…", 4000);
-  try {
-    const d = await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "" });
-    store("lastProj", dr.proj);
-    await openSession(d.id);                          // черновик гаснет в show()
-    $("input").value = text; files = keep; renderFiles(); grow();
-    await sendText();
-  } catch (e) { toast("Не вышло: " + e.message, 5000); }
-  finally { $("send").disabled = false; }
-}
+const draftSend = () => part("newchat").then((m) => m.send());
 {
   const g = $("sideGrip"); let drag = null;
   g.addEventListener("pointerdown", (e) => {
@@ -2966,7 +2929,7 @@ function setHome(v) {
   $("projSegBtn").hidden = !projOn();
   document.querySelectorAll("#homeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === (pm ? "projects" : v)));
   $("sessionsView").hidden = v !== "sessions" || pm; $("projectsView").hidden = !pm; $("integrationsView").hidden = v !== "integrations";
-  $("newBtn").innerHTML = ic("newsess") + (inProj ? "Новая сессия в проекте" : "Новая сессия");
+  $("newBtn").innerHTML = ic("compose") + (inProj ? "Новый чат в проекте" : "Новый чат");
   renderSetup();
   $("commandsView").hidden = v !== "commands";
   $("homeBar").hidden = !(view === "home" && v === "sessions");
@@ -3696,7 +3659,7 @@ async function refresh() {
         morph($("sessionsView"), notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
-            + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новая сессия».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
+            + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новый чат».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
       }
       if (homeView === "sessions" && projMode()) {
         if (!projData) { projData = await api("/api/projects"); }
@@ -3757,7 +3720,7 @@ $("sessionsView").addEventListener("click", sessionsClick);
 // До первого ответа сервера — скелетоны (план UX, пункт 3); первая отрисовка (morph / innerHTML) их заменит.
 morph($("sessionsView"), skelCards(3)); $("projectsView").innerHTML = skelCards(3);
 $("navList").innerHTML = `<div class="skel nav-skel" aria-hidden="true">${[70, 52, 64, 45].map((w) => `<i style="width:${w}%"></i>`).join("")}</div>`;
-$("newBtn").onclick = () => navOn() && projOn() && meta?.role !== "viewer" ? newChat(projMode() && proj ? proj : undefined)   // как ✎ в панели чатов
+$("newBtn").onclick = () => (navOn() && projOn() || meta?.space) && meta?.role !== "viewer" ? newChat(projMode() && proj ? proj : undefined)   // как ✎ в панели чатов
   : projMode() && proj ? projectNew() : newSession();
 // ---------- «Проекты» (задача 49, docs/PROJECTS.md): главная — проекты, внутри — их чаты ----------
 // Проект — папка со своими инструкциями (CLAUDE.md) и файлами; внутри — много чатов: активные (окна) и завершённые
@@ -3804,7 +3767,7 @@ function renderProjects() {                           // список проек
   const list = all.filter((p) => (projFilter !== "wait" || p.waiting) && projMatch(p, q));
   const mine = (x) => meta?.role === "owner" && x.space;
   morph($("projList"), notifyCard() + (list.length ? pinGroups(list, projCard)
-    : `<div class="empty">${all.length ? "Ничего не нашлось" : "Проектов пока нет — нажмите «Новая сессия»: папка станет проектом."}</div>`)
+    : `<div class="empty">${all.length ? "Ничего не нашлось" : "Проектов пока нет — нажмите «Новый чат»: папка станет проектом."}</div>`)
     + spacesGroup([...sessions].sort(byChange).filter(mine)));
 }
 async function openProject(id, t) {
@@ -3837,7 +3800,7 @@ function renderProject() {
   if (projTab === "active") {
     const shown = act.filter((s) => !q || [s.title, s.name, s.preview].some((x) => String(x || "").toLowerCase().includes(q)));
     morph($("projChats"), shown.length ? pinGroups(shown, (s) => card(s, true))
-      : `<div class="empty">${act.length ? "Ничего не нашлось" : "Активных чатов нет — «Новая сессия в проекте» внизу или «Завершённые»."}</div>`);
+      : `<div class="empty">${act.length ? "Ничего не нашлось" : "Активных чатов нет — «Новый чат в проекте» внизу или «Завершённые»."}</div>`);
     return;
   }
   const d = projDone;
@@ -3994,7 +3957,7 @@ function newSession(profile) {
     { label: T("ss.new.title"), sub: T("ss.new.sub"), icon: "plus", run: () => ssNew() },
     { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed() }]);
   helpSheet("sheet.new-session");
-  sheet(f ? "Новая сессия в фокусе — в какой папке?" : "Новая сессия — в какой папке?", [
+  sheet(f ? "Новый чат в фокусе — в какой папке?" : "Новый чат — в какой папке?", [
     ...(meta?.role === "owner" && !f ? [{ label: "В фокусе", sub: "сразу фокус-ссылка: только эта сессия на другом устройстве", icon: "qr", run: () => { focusNext = true; newSession(profile); } }] : []),
     { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => { focusWant = f; newFolder(profile); } },
     ...(profile || f ? [] : [{ label: "Из модуля", sub: "готовый агент под задачу: новая папка с правилами и навыками", icon: "puzzle", run: () => modulesView() }]),
@@ -5027,7 +4990,7 @@ function voiceTick() {                              // прогресс — бе
   document.querySelectorAll(".voice .t").forEach((x) => { x.textContent = clock(t, dur); });
   if (!drag) voicePos();
 }
-function placeMini() {                              // над нижней панелью или кнопкой «Новая сессия»
+function placeMini() {                              // над нижней панелью или кнопкой «Новый чат»
   const h = !$("dock").hidden ? ($("dock").classList.contains("hide") ? 0 : $("dock").offsetHeight) : !$("homeBar").hidden ? $("homeBar").offsetHeight : 0;
   document.documentElement.style.setProperty("--mini-b", (h + 12) + "px");
 }
@@ -5272,7 +5235,7 @@ function openSwitcher() {
   sheet("Сессии", [...pinFirst([...sessions].sort(byChange)).map((s) => ({
     label: s.name, sub: `${s.pinned ? "закреплена · " : ""}${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
-    ...(meta?.role !== "viewer" ? [{ label: "Новая сессия", icon: "plus", run: () => newSession() }] : []),
+    ...(meta?.role !== "viewer" ? [{ label: "Новый чат", icon: "plus", run: () => newSession() }] : []),
     { label: "Команды из всех сессий", icon: "term", run: () => { back(); setHome("commands"); } },
     { label: "Все сессии и интеграции", icon: "menu", run: back },
     { label: "Обозначения", icon: "help", sub: "что значат цвета точек", run: legend }]);
@@ -5892,7 +5855,7 @@ function profileForm(p, connected) {
   $("mcpForm").innerHTML = `<div class="panel">
     <div class="hero">${mono(p.title, p.id)}<h2 class="serif">${esc(p.title)}</h2><p>${esc(p.about)}</p></div>
     ${connected ? `<div class="result ok">${ic("check")}<span>${esc(p.title)} подключён — ключ сохранён на сервере.</span></div>
-      <button class="btn" id="profStart0">${ic("newsess")}Новая сессия с ${esc(p.title)}</button>` : ""}
+      <button class="btn" id="profStart0">${ic("newsess")}Новый чат с ${esc(p.title)}</button>` : ""}
     <div class="result wait">${ic("warn")}<span>${p.gateway ? `Код и переписка сессий уходят на ваш шлюз и дальше — ${esc(p.short)}; оплата — по тарифу поставщика. Только для России: шлюз и сервер пульта — в России.`
       : `Код и переписка сессий с ${esc(p.title)} уходят ${esc(p.title)}; оплата — по их тарифу.`}</span></div>
     ${gapsHtml(p)}
@@ -5937,7 +5900,7 @@ function profileForm(p, connected) {
       const d = await api("/api/keys", { provider: p.id, key: $("profKey").value });
       await reloadProfiles(); haptic("notificationOccurred", "success");
       $("profResult").innerHTML = `<div class="result ok">${ic("check")}<span>${d.checked ? "Ключ работает" : "Ключ сохранён — проверится при первом запуске сессии"}.</span></div>
-        <button class="btn" id="profStart">${ic("newsess")}Новая сессия с ${esc(p.title)}</button>`;
+        <button class="btn" id="profStart">${ic("newsess")}Новый чат с ${esc(p.title)}</button>`;
       $("profStart").onclick = () => newSession(p.id); $("profKey").value = "";
     } catch (err) { $("profResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
   });
@@ -6261,7 +6224,7 @@ function mcpForm(p) {
   });
 }
 
-// ---------- модули-агенты: «Новая сессия» → «Из модуля» ----------
+// ---------- модули-агенты: «Новый чат» → «Из модуля» ----------
 // Каталог модулей (/api/modules) → экран модуля: интеграции с состоянием и «Подключить» (тот же мастер, что в
 // «Интеграциях»), источники данных, расписание, решения кнопками → имя папки → «Создать» → открывается сессия.
 let formBack = null, modData = null;               // formBack — куда «‹ Назад» с экрана формы (модуль → подключение)
@@ -6661,7 +6624,7 @@ $("settingsBtn").onclick = () => {
   ]);
 };
 // ---------- фокус (задача 41): одна сессия на любом устройстве по ссылке ----------
-// Владелец: меню сессии → «Фокус-ссылка» (или «Новая сессия» → «В фокусе») — ссылка, QR, «Отправить себе в Telegram».
+// Владелец: меню сессии → «Фокус-ссылка» (или «Новый чат» → «В фокусе») — ссылка, QR, «Отправить себе в Telegram».
 // На устройстве по ссылке — только чат этой сессии и её настройки (модель, усилия, файлы, интеграции); ни списка
 // сессий, ни создания, ни общих настроек. «Завершить» закрывает сессию и гасит ссылку. Список и «Отозвать» —
 // «Настройки» → «Фокус-ссылки».
@@ -6780,7 +6743,7 @@ async function focusMcp() {                         // интеграции се
     ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
     ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Интеграций нет" }])]);
 }
-// Фокус на проект (меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новая сессия в проекте», завершённые
+// Фокус на проект (меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новый чат в проекте», завершённые
 // чаты — и ничего вне проекта (сервер отвечает 403). Под шапкой — имя проекта (шторка сессий) и срок входа.
 const FOCUS_PROJ = () => FOCUS && !!meta?.focus?.proj;
 const FOCUS_DEMO = () => FOCUS && meta?.focus?.mode === "demo";   // демо-ссылка: только просмотр и выбор вариантов
@@ -6808,7 +6771,7 @@ function focusProjSheet() {
     ...list.map((x) => ({ label: x.title || x.name, dot: (ST[x.status] || ST.idle).cls, on: x.id === current,
       sub: (ST[x.status] || ST.idle).label + (isNew(x) ? " · новый ответ" : "") + (lastMsg(x) ? " · " + agoText(lastMsg(x)) : ""), run: () => openSession(x.id) })),
     ...(list.length ? [] : [{ info: true, icon: "chat", label: "Открытых сессий нет", sub: FOCUS_DEMO() ? "демо — только просмотр" : "начните новую или продолжите завершённую" }]),
-    ...(FOCUS_DEMO() ? [] : [{ label: "Новая сессия в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
+    ...(FOCUS_DEMO() ? [] : [{ label: "Новый чат в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
       { label: "Завершённые чаты", icon: "file", sub: "продолжить разговор, который закрыли", run: () => focusProjDone() }])]);
 }
 async function focusProjNew(btn) {
@@ -6831,7 +6794,7 @@ function focusEmpty() {                             // в проекте нет 
   setText($("title"), meta.focus.name); setSub("<span>проект · открытых сессий нет</span>");
   const h = FOCUS_DEMO() ? `<div class="panel focus-proj-empty" data-key="fempty">${ic("folder")}<h2 class="serif">Проект «${esc(meta.focus.name)}»</h2><p class="note">Открытых сессий сейчас нет — страница обновится сама.</p></div>`
     : `<div class="panel focus-proj-empty" data-key="fempty">${ic("folder")}<h2 class="serif">Проект «${esc(meta.focus.name)}»</h2><p class="note">Открытых сессий нет — начните новую или продолжите завершённую.</p>
-    <button class="btn" type="button" data-fnew>${ic("plus", "s16")}Новая сессия в проекте</button><button class="btn ghost" type="button" data-fdone>${ic("file", "s16")}Завершённые чаты</button></div>`;
+    <button class="btn" type="button" data-fnew>${ic("plus", "s16")}Новый чат в проекте</button><button class="btn ghost" type="button" data-fdone>${ic("file", "s16")}Завершённые чаты</button></div>`;
   if (!$("content").querySelector("[data-key=fempty]")) $("content").innerHTML = h;
 }
 $("content").addEventListener("click", (e) => { const b = e.target.closest("[data-fnew], [data-fdone]"); if (!b || !FOCUS_PROJ() || FOCUS_DEMO()) return; b.dataset.fnew != null ? focusProjNew(b) : focusProjDone(); });

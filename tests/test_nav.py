@@ -42,7 +42,8 @@ def test_delete_goes_right_away_and_new_chat_waits_for_send():
     # #179 P1.4: запрос — сразу (через 5 с закрытая панель не удаляла ничего), «Отменить» — из корзины
     assert d.index("/api/chat/delete") < d.index("undoBar("), "запрос уходит сразу, плашка — после"
     assert "/api/project/session" not in fn("newChat") and "/api/new" not in fn("newChat")
-    assert "/api/project/session" in fn("draftSend")
+    nc = (WEB.parent / "js/newchat.js").read_text(encoding="utf-8")   # черновик — часть js/newchat.js (19.11)
+    assert "export async function send()" in nc and "/api/project/session" in nc
     assert "if (DRAFT) return draftSend();" in fn("sendText")
 
 
@@ -83,3 +84,14 @@ def test_rail_is_beside_nav_with_projects():
     assert "pinned" in fn("railProjects")
     for n in range(1, 7):
         assert PAGE.count(f"--pj{n}-bg:") == 2 and PAGE.count(f"--pj{n}-fg:") == 2, n     # светлая и тёмная тема
+
+
+def test_new_chat_like_claude():
+    """Владелец 19.11: «Новый чат» — одно поле и настройки в нём; первая отправка создаёт чат; в пространстве — тоже."""
+    nc = (WEB.parent / "js/newchat.js").read_text(encoding="utf-8")
+    for x in ("data-dfold", "data-dmodel", "data-deffort", "data-dmcp", 'store("lastProfile"', 'store("lastEffort"',
+              '"/api/new", { name: "" }', '"/api/effort"'):
+        assert x in nc, x
+    assert 'ic("compose") + "Новый чат"' in PAGE
+    assert "if (!p && !meta?.space) return newSession();" in fn("newChat")
+    assert "body.drafting .dock { bottom: auto;" in PAGE                       # на компьютере — поле посередине
