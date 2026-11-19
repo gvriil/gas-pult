@@ -656,6 +656,42 @@ def set_mcp(lay: Layout, s: Sys, slug: str, kind: str, secret: str, engine: str 
     s.out(f"Интеграция {kind} в {slug} подключена; открытые сессии пространства увидят её после перезапуска.")
 
 
+def set_docs(lay: Layout, s: Sys, slug: str, folder: str = "Документы"):
+    """«Документы» в пространстве (GAS-16, RAG): поиск по файлам клиента. Копия сервера ``docs_mcp.py`` (+ ``_core``)
+    — в ``config/mcp`` пространства, папка — внутри его домашней папки (по умолчанию ``Документы``), индекс — там же,
+    в ``config/mcp`` (0600). Запись в ``.claude.json`` пространства и пометка ``docs`` в описании — пульт покажет
+    бейджик «Спросить по документам». Чужие папки и папки владельца — нельзя."""
+    from gas_pult import mcp
+    slug = tenants.check_slug(slug)
+    t = tenants.load(slug, lay.tenants)
+    if not t:
+        raise SystemExit(f"нет пространства {slug}")
+    folder = " ".join(str(folder or "Документы").split())
+    rel = Path(folder)
+    if not folder or rel.is_absolute() or ".." in rel.parts or len(folder) > 120:
+        raise ValueError("папка — внутри пространства, без «/» в начале и без «..», например Документы")
+    p, u = tenants.paths(slug, lay.tenants), tenants.user_of(slug)
+    d, docs = p["config"] / "mcp", p["home"] / rel
+    s.mkdir(d, 0o700, u, u)
+    s.mkdir(docs, 0o700, u, u)
+    for src in (mcp.DOCS_SERVER, mcp.DOCS_SERVER.with_name("_core.py")):
+        s.write(d / src.name, src.read_text(encoding="utf-8"), 0o644, u, u)
+    cj = p["claude"] / ".claude.json"
+    try:
+        cfg = json.loads(cj.read_text()) if cj.exists() else {}
+    except ValueError:
+        cfg = {}
+    env = {"GAS_DOCS_DIRS": str(docs), "GAS_DOCS_INDEX": str(d / "docs.sqlite")}
+    cfg.setdefault("mcpServers", {})["docs"] = {"type": "stdio", "command": "/usr/bin/python3",
+                                                "args": [str(d / "docs_mcp.py")], "env": env}
+    s.write(cj, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", 0o600, u, u)
+    meta = {k: v for k, v in t.items() if k not in ("slug", "budget_usd", "budget")} | {"docs": folder}
+    s.write(p["meta"], json.dumps(meta, ensure_ascii=False, indent=1) + "\n", 0o644)
+    audit(s, p, "docs", folder=folder)
+    s.out(f"«Документы» в {slug}: папка {folder} в пространстве; открытые сессии увидят find_in_docs после "
+          "перезапуска.")
+
+
 BRIDGE_HASH = "bridge.sha256"                    # хэш токена моста пространства: пульт читает (root:pult-ro 0640)
 
 
@@ -759,6 +795,9 @@ def parser() -> argparse.ArgumentParser:
     m.add_argument("--engine", default="yandex", help="сервис поиска: yandex, brave, tavily, exa")
     m.add_argument("--folder", default="", help="ID каталога Yandex Cloud (для yandex)")
     m.add_argument("--rclone", default="", help="путь к rclone (для drive; копируется в пространство)")
+    dc = sub.add_parser("docs", help="«Документы»: поиск по файлам пространства (папка внутри него)")
+    dc.add_argument("slug")
+    dc.add_argument("folder", nargs="?", default="Документы", help="папка внутри пространства (по умолчанию Документы)")
     br = sub.add_parser("bridge", help="мост к браузерам фокус-ссылок пространства (MCP browser-local)")
     br.add_argument("slug")
     br.add_argument("--panel", default="http://127.0.0.1:8765", help="адрес панели с сервера")
@@ -804,6 +843,8 @@ def main(argv: list[str] | None = None) -> int:
             secret = (sys.stdin.read() if not sys.stdin.isatty() else
                       getpass.getpass(ask) if ask else input("Ответ rclone authorize \"drive\" (одной строкой): "))
             set_mcp(lay, s, a.slug, a.kind, secret, a.engine, a.folder, a.rclone)
+        elif a.cmd == "docs":
+            set_docs(lay, s, a.slug, a.folder)
         elif a.cmd == "bridge":
             (bridge_off(lay, s, a.slug) if a.off else set_bridge(lay, s, a.slug, a.panel))
         elif a.cmd == "login":

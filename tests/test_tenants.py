@@ -551,3 +551,30 @@ def test_mcp_base_integrations_in_tenant_folder(tmp_path, monkeypatch):
     assert not owner_cfg.exists()                                         # ключи владельца не тронуты
     with pytest.raises(ValueError, match="каталога"):
         tenant_admin.set_mcp(lay, s, "demo", "websearch", key, engine="yandex")
+
+
+def test_docs_in_tenant_folder(tmp_path, monkeypatch):
+    """«Документы» в пространстве (GAS-16): сервер — копией в config/mcp, папка — внутри пространства, пометка docs."""
+    fs = FakeSystem(monkeypatch)
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    s = tenant_admin.Sys(out=lambda *_: None, runner=fs.runner)
+    tenant_admin.create(lay, s, "demo")
+    tenant_admin.set_docs(lay, s, "demo")
+    p = tenants.paths("demo", lay.tenants)
+    d = p["config"] / "mcp"
+    assert (d / "docs_mcp.py").exists() and (d / "_core.py").exists() and (p["home"] / "Документы").is_dir()
+    srv = json.loads((p["claude"] / ".claude.json").read_text())["mcpServers"]["docs"]
+    assert srv["args"] == [str(d / "docs_mcp.py")] and srv["env"]["GAS_DOCS_DIRS"] == str(p["home"] / "Документы")
+    assert srv["env"]["GAS_DOCS_INDEX"] == str(d / "docs.sqlite")
+    assert tenants.load("demo", lay.tenants)["docs"] == "Документы"
+    for bad in ("../чужое", "/etc"):
+        with pytest.raises(ValueError):
+            tenant_admin.set_docs(lay, s, "demo", bad)
+
+
+def test_space_starters_only_own_connections():
+    from gas_pult import starters
+    assert "docs" in [x["id"] for x in starters.listing({"docs"}, "member", space=True)]
+    ids = [x["id"] for x in starters.listing(set(), "member", space=True)]
+    assert "docs" not in ids and "connect-docs" not in ids and "mail" not in ids

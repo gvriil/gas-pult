@@ -16,7 +16,7 @@ def test_listing_by_connected_and_role():
     none = [x["id"] for x in starters.listing(set(), "member")]
     assert "connect-calendar" in none and "mail" not in none and none.count("connect-mail") == 1
     assert starters.listing({"mail"}, "viewer") == [] and starters.listing({"mail"}, None) == []
-    space = [x["id"] for x in starters.listing({"mail", "calendar"}, "member", space=True)]
+    space = [x["id"] for x in starters.listing(set(), "member", space=True)]   # пространство: подключения — его
     assert "mail" not in space and "connect-mail" not in space and "day-plan" in space
     assert all(1 <= len(x["title"].split()) <= 4 for x in starters.load())   # коротко: до 4 слов («Бизнес-план»)
 
