@@ -7,6 +7,7 @@
 const EFFORT = [["", "Обычные", "как настроено"], ["low", "Низкие", "быстро и дёшево"], ["medium", "Средние", "обычные задачи"],
   ["high", "Высокие", "сложные задачи"], ["xhigh", "Очень высокие", "архитектура, сложный разбор"], ["max", "Максимальные", "дольше и дороже всего"]];
 let MCP = null;                                         // подключённые интеграции — один раз за показ
+const lastOff = () => { try { return JSON.parse(store("lastMcpOff") || "[]"); } catch (e) { return []; } };
 
 const agents = () => meta?.agents || [];
 const choices = () => readyProfiles().length + agents().length;
@@ -16,6 +17,7 @@ const chip = (attr, icon, text, title, on) => `<button class="dchip${on ? " on" 
 
 export function paint() {
   if (!DRAFT) return;
+  DRAFT.mcpOff ??= lastOff();                          // интеграции, выключенные для нового чата (по умолчанию — как в прошлый раз)
   if (!okProfile(DRAFT.profile)) DRAFT.profile = "";    // прежний выбор больше недоступен — по умолчанию проекта
   const p = projOf(DRAFT.proj), prof = DRAFT.profile || p?.profile || "claude", claude = !agents().some((a) => a.id === prof) && prof === "claude";
   $("title").textContent = "Новый чат"; $("title").classList.remove("sw");
@@ -26,9 +28,24 @@ export function paint() {
     + (DRAFT.route ? `<button class="dchip${DRAFT.model ? " on" : ""}" type="button" data-droute aria-pressed="${!!DRAFT.model}" title="${esc("Почему: " + DRAFT.route.why)}">${ic(DRAFT.model ? "check" : "spark")}<span>${esc((DRAFT.model ? "" : "Подходит: ") + DRAFT.route.label)}</span></button>` : "")
     + (choices() > 1 ? chip("data-dmodel", "chip", profTitle(prof), "Модель или другой агент") : "")
     + (claude ? chip("data-deffort", "bolt", "Усилия: " + eff[1].toLowerCase(), "Сколько думать над ответом", !!DRAFT.effort) : "")
-    + (MCP?.length ? chip("data-dmcp", "puzzle", "Интеграции: " + MCP.filter((x) => x.ok).length, "Что подключено к чату") : "");
+    + (MCP?.length ? chip("data-dmcp", "puzzle", "Интеграции: " + onCount(DRAFT.mcpOff) + (DRAFT.mcpOff.length ? " из " + okCount() : ""),
+      claude ? "Какие интеграции доступны этому чату" : "У другого агента интеграции — в его настройках", DRAFT.mcpOff.length > 0) : "");
   $("input").placeholder = "Напишите, что нужно…";
   if (MCP === null) { MCP = []; api("/api/mcp").then((d) => { MCP = d.servers || []; if (DRAFT) paint(); }).catch(() => {}); }
+}
+
+const okCount = () => (MCP || []).filter((x) => x.ok).length;
+const onCount = (off) => (MCP || []).filter((x) => x.ok && !off.includes(x.name)).length;
+const isClaude = () => { const prof = DRAFT?.profile || projOf(DRAFT?.proj)?.profile || "claude"; return prof === "claude" || !agents().some((a) => a.id === prof); };
+// Переключатели: нажатие — включить или выключить для этого чата, меню остаётся открытым (после действия — на месте)
+function mcpMenu(anchor) {
+  const claude = isClaude();
+  popMenu(anchor, [...MCP.map((x) => {
+    const on = x.ok && !DRAFT.mcpOff.includes(x.name);
+    return { icon: !x.ok ? "warn" : on ? "check" : "x", on, label: x.name,
+      sub: !x.ok ? "не отвечает" : !claude ? "у другого агента — в его настройках" : on ? "включена — нажмите, чтобы выключить в этом чате" : "выключена в этом чате — нажмите, чтобы включить",
+      run: () => { if (x.ok && claude) { DRAFT.mcpOff = on ? [...DRAFT.mcpOff, x.name] : DRAFT.mcpOff.filter((n) => n !== x.name); paint(); } mcpMenu($("draftBar").querySelector("[data-dmcp]") || anchor); } };
+  }), { sep: true }, { label: "Подключить новую или настроить…", icon: "puzzle", run: () => setHome("integrations") }]);
 }
 
 $("draftBar").onclick = (e) => {
@@ -44,8 +61,7 @@ $("draftBar").onclick = (e) => {
     { sep: true }, { label: "Новая папка…", icon: "plus", run: () => newFolder() }]);
   if (m) return pickProfile((pid) => { if (DRAFT) { DRAFT.profile = pid; DRAFT.model = ""; back(); } });
   if (ef) return popMenu(ef, EFFORT.map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: (DRAFT.effort || "") === v, run: () => { DRAFT.effort = v; back(); } })));
-  if (mc) return popMenu(mc, [...MCP.map((x) => ({ icon: x.ok ? "check" : "warn", label: x.name, sub: x.ok ? "подключено — чат может пользоваться" : "не отвечает", run: () => {} })),
-    { sep: true }, { label: "Подключить или настроить…", icon: "puzzle", run: () => { setHome("integrations"); } }]);
+  if (mc) return mcpMenu(mc);
 };
 
 let routeT = 0;                                         // подсказка модели по первому сообщению — после паузы в наборе
@@ -66,14 +82,42 @@ export async function send() {
   $("send").disabled = true;
   toast(p ? "Начинаю чат в «" + p.name + "»…" : "Начинаю чат…", 4000);
   try {
-    const d = p ? await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "" })
+    const off = isClaude() ? (dr.mcpOff || []) : [];
+    const d = p ? await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "", mcp_off: off })
       : await api("/api/new", { name: "" });          // пространство клиента: своя папка, без проектов
     if (p) store("lastProj", dr.proj);
-    store("lastProfile", dr.model ? "" : dr.profile || ""); store("lastEffort", dr.effort || "");
+    store("lastProfile", dr.model ? "" : dr.profile || ""); store("lastEffort", dr.effort || ""); store("lastMcpOff", JSON.stringify(off));
     await openSession(d.id);                          // черновик гаснет в show()
     if (dr.effort) await api("/api/effort", { w: d.id, level: dr.effort }).catch(() => toast("Усилия не выставились — поменяйте в меню чата", 3500));
     $("input").value = text; files = keep; renderFiles(); grow();
     await sendText();
   } catch (e) { toast("Не вышло: " + e.message, 5000); }
   finally { $("send").disabled = false; }
+}
+
+// Интеграции открытого чата (владелец и админ): выбор → плашка «Перезапущу чат с новыми подключениями» 5 с с
+// «Отменить» → /api/chat/mcp (запомнить у разговора и перезапустить окно с --resume — переписка та же).
+export async function chatMcp(s) {
+  try { MCP = (await api("/api/mcp")).servers || []; } catch (e) { return toast("Интеграции: " + e.message, 4000); }
+  let off = [...(s.mcp_off || [])];
+  const items = () => [...MCP.map((x) => {
+    const on = x.ok && !off.includes(x.name);
+    return { label: x.name, icon: !x.ok ? "warn" : on ? "check" : "x", on, sub: !x.ok ? "не отвечает" : on ? "включена" : "выключена в этом чате",
+      run: () => { if (x.ok) off = on ? [...off, x.name] : off.filter((n) => n !== x.name); show(); } };
+  }), { label: "Применить", icon: "refresh", sub: "чат перезапустится, переписка та же", run: apply }];
+  const show = () => { helpSheet("sheet.chat-mcp"); sheet("Интеграции чата", items()); };
+  const apply = () => {
+    const same = JSON.stringify([...off].sort()) === JSON.stringify([...(s.mcp_off || [])].sort());
+    if (same) return toast("Без изменений");
+    let undone = false;
+    const el = document.createElement("div"); el.className = "toast"; el.textContent = "Перезапущу чат с новыми подключениями через 5 с ";
+    const b = document.createElement("button"); b.type = "button"; b.className = "toast-undo"; b.textContent = "Отменить";
+    b.onclick = () => { undone = true; el.remove(); toast("Отменено"); }; el.append(b); notice(el);
+    setTimeout(async () => {
+      el.remove(); if (undone) return;
+      try { const d = await api("/api/chat/mcp", { w: s.id, off }); toast("Чат перезапущен: " + (off.length ? "выключено " + off.length : "все интеграции включены")); await refresh(); if (d.id) openSession(d.id); }
+      catch (e) { toast("Не вышло: " + e.message, 5000); }
+    }, 5000);
+  };
+  show();
 }
