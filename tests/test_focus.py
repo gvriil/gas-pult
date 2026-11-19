@@ -653,3 +653,37 @@ def test_focus_desktop_nav_and_chat_names():
     for use in ('"Сообщение для " + dn(s)', "<b>${esc(dn(s))}</b>", 'setText($("title"), dn(s))'):
         assert use in page, use
     assert 'if (FOCUS) return [{ label: "Переименовать"' in page and "body.focus #navMoreBtn" in page
+
+
+def test_focus_media_only_from_link_folders(server, tmp_path, monkeypatch):
+    """papasan 19.11: в фокусе картинки переписки не грузились (403). Теперь — только из папки чата или проекта
+    ссылки и его папки на Диске; inbox пульта и чужие папки — нет."""
+    s = server
+    proj = tmp_path / "shop"
+    (proj / "img").mkdir(parents=True)
+    (proj / "img" / "a.png").write_bytes(b"\x89PNG\r\n\x1a\nx")
+    other = tmp_path / "Pictures"
+    other.mkdir()
+    (other / "me.png").write_bytes(b"\x89PNG\r\n\x1a\ny")
+    rec = {"path": str(proj)}
+    monkeypatch.setattr(s["p"].cfg, "drive_folder", lambda path: None, raising=False)
+    roots = s["p"].focus_roots(rec)
+    assert roots == [str(proj.resolve())]
+    ctype, data, _ = s["p"].media(str(proj / "img" / "a.png"), roots=roots)
+    assert ctype == "image/png" and data.endswith(b"x")
+    import pytest as _p
+    with _p.raises(LookupError):
+        s["p"].media(str(other / "me.png"), roots=roots)
+    with _p.raises(LookupError):
+        s["p"].media(str(proj / ".." / "Pictures" / "me.png"), roots=roots)
+    assert "/api/media" in webapp.FOCUS_GET and "/api/media" in webapp.FOCUS_NO_W
+
+
+def test_focus_rail_back_after_collapse():
+    """Selivan 19.11: свернул панель в фокусе — после обновления полосы с ⇥ не было. Полоса в фокусе видна (кроме
+    демо), без «Новый чат» и «Настройки»; панель свёрнута, а полосы нет — разворачиваем."""
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    assert "body.focus #rail," not in page and "body.focus-demo #rail" in page
+    assert "body.focus #railNew, body.focus #railSettings" in page
+    assert "if (sideMini && split() && !$(\"rail\").offsetWidth) setMini(false);" in page

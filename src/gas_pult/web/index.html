@@ -109,7 +109,7 @@
   body:not(.tester) .tester-only { display: none; }
   /* Фокус (задача 41): одна сессия — без списка, переключения, создания и общих настроек */
   body:not(.focus) .focus-only { display: none; }
-  body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus #rail, body.focus #home, body.focus #homeBar,
+  body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus-demo #rail, body.focus #railNew, body.focus #railSettings, body.focus #home, body.focus #homeBar,
   body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
   body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew { display: none !important; }
   /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
@@ -1742,6 +1742,9 @@ function applyWide() {
   document.body.classList.toggle("side-mini", two && sideMini);
   if (fontPx !== FONT.def) root.setProperty("--fz", String(fontPx / FONT.def)); else root.removeProperty("--fz");
   const g = $("sideGrip"); g.setAttribute("aria-valuenow", sideW); g.setAttribute("aria-valuetext", sideW + " пикселей");
+  // страховка (Selivan 19.11: свернул панель в фокусе — после обновления полосы с ⇥ не было, вернуть нельзя):
+  // панель свёрнута, а полосы не видно — разворачиваем
+  if (two && sideMini) requestAnimationFrame(() => { if (sideMini && split() && !$("rail").offsetWidth) setMini(false); });
   const b = $("sideBtn"), t = sideMini ? "Развернуть список" : "Свернуть список";
   b.innerHTML = ic(sideMini ? "sideopen" : "sidebar"); b.setAttribute("aria-label", t); b.title = t; b.setAttribute("aria-expanded", String(!sideMini));
 }
