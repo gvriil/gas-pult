@@ -6616,6 +6616,7 @@ $("settingsBtn").onclick = () => {
     ...(tgBig() ? [{ label: "Во весь экран на планшете: " + (store("tgFull") === "0" ? "нет" : "да"), icon: "expand", run: () => {
       const on = store("tgFull") === "0"; store("tgFull", on ? "1" : "0"); try { on ? tg.requestFullscreen() : tg.exitFullscreen(); } catch (e) {} } }] : []),
     { label: `Размер текста: ${Math.round(fontPx / FONT.def * 100)} %`, icon: "edit", sub: "A− / A+", run: () => part("zoom").then(() => fontSheet()) },
+    ...(meta?.role === "owner" && !FOCUS ? [{ label: "Анкеты клиентов", icon: "file", sub: "ссылка клиенту — ответы сюда и в бот", run: () => part("forms").then((m) => m.open()) }] : []),
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
     ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
