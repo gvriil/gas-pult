@@ -301,8 +301,8 @@ def run(shots: str = ""):
             assert code == 200 and any("effort level to high" in x for x in d["lines"]), d
             pa.click("#menuBtn")
             pa.click("#menu [data-act=models]")
-            sheet_click(pa, "sonnet")
-            sheet_click(pa, "Высокий")                    # 19.11: после модели — сразу усилие, один перезапуск
+            pa.locator(".mpick #mpModels [data-m='sonnet']").click()   # 19.11: модель и усилие — одно окно
+            pa.locator(".mpick #mpEff [data-e='high']").click()
             pa.wait_for_function(f"current && current !== {json.dumps(shop)}", timeout=40000)
             moved = pa.evaluate("current")
             pa.fill("#input", "после смены модели")

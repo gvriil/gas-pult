@@ -117,7 +117,7 @@ def test_panel_has_new_project_button():
     nav = INDEX[INDEX.index("function renderNav("):INDEX.index("function navOpen(")]
     assert "data-nnewp" in nav                                       # «+» у заголовка «Проекты»
     assert 'api("/api/project/new"' in INDEX and 'hv("sheet.new-project")' in INDEX
-    sheet = INDEX[INDEX.index("function newProject("):INDEX.index("// Модель этого чата")]
+    sheet = INDEX[INDEX.index("function newProject("):INDEX.index("// Модель Claude по умолчанию для новых сессий")]
     assert "newChat(d.id)" in sheet and "/api/project/session" not in sheet     # окно — при первой отправке
 
 
