@@ -37,6 +37,7 @@ from gas_pult import (
     activity,
     ago,
     brief,
+    chainfuse,
     chatlog,
     country,
     ctxsnap,
@@ -1415,6 +1416,49 @@ class Pult:
             self.urgent_at = now.timestamp()                     # правило тишины: срочное — раз в полчаса
             self.check_urgent(now)
 
+    # ---------- предохранитель цепочек (GAS-25 п.3, chainfuse.py) ----------
+    FUSE_EVERY, FUSE_QUIET = 60, 1800            # с: как часто смотреть; одну пару второй раз — не раньше чем через
+
+    def fuse_tick(self, now: float):
+        """Пинг-понг двух окон без человека — Escape в окно-получатель, штабу — текст в его окно (если он не в паре),
+        и задача пульта «ждёт вас» (срочно и важно) со ссылкой на окна."""
+        ws = {w["id"]: w for w in self.tmux.windows() if harness.of(w).name == "claude"}
+        if len(ws) < 2:
+            return
+        since = now - chainfuse.GAP * (chainfuse.LIMIT + 2)
+        human = {r.get("sha") for r in self.deliv.recent(now - since + 60) if r.get("src") in chainfuse.HUMAN_SRC}
+        events = []
+        for w in ws.values():
+            f = transcripts.current(w["path"], sid=w.get("sid") or "")
+            if f:
+                events += chainfuse.read_events(f, w["id"], since, human)
+        quiet = getattr(self, "fuse_quiet", {})
+        self.fuse_quiet = quiet
+        for c in chainfuse.detect(events):
+            key = "|".join(sorted((c["a"], c["b"])))
+            if now - quiet.get(key, 0) < self.FUSE_QUIET:
+                continue
+            quiet[key] = now
+            a, b = ws.get(c["a"], {}), ws.get(c["b"], {})
+            names = f"«{a.get('name', c['a'])}» ({c['a']}) и «{b.get('name', c['b'])}» ({c['b']})"
+            self.tmux.keys(c["last"], "Escape")                  # прервать ход получателя; отправителя не трогаем
+            text = (f"Предохранитель цепочек: окна {names} пишут друг другу по кругу — {c['n']} сообщений подряд, "
+                    f"каждое меньше чем через {chainfuse.GAP // 60} мин, без человека. Ход в {c['last']} прерван "
+                    "(Escape). Посмотрите, что они делают.")
+            print("цепочка:", names, c["n"], flush=True)
+            self.ev("chain_stop", w=c["last"], pair=key, n=c["n"])
+            shtab = [w for w in ws.values() if str(w.get("name", "")).startswith("shtap")]
+            if shtab and shtab[0]["id"] not in (c["a"], c["b"]):
+                try:
+                    self.to_claude(shtab[0], text, src="fuse")
+                except Exception as e:                           # штаб занят — задача ниже всё равно будет
+                    print("цепочка → штаб:", e, flush=True)
+            try:
+                self.tasks.add({"title": f"Цепочка агентов: {names}", "kind": "other", "status": "waiting", "q": 1,
+                                "next": "открыть окна и решить, продолжать ли", "chat": c["last"]}, by="pult")
+            except (ValueError, KeyError) as e:
+                print("цепочка → задача:", e, flush=True)
+
     def digest_loop(self):
         while True:
             try:
@@ -1423,6 +1467,12 @@ class Pult:
                 if now.timestamp() - getattr(self, "slept_at", 0) >= tmux_mod.SLEEP_EVERY:   # ждут ответа — спать
                     self.slept_at = now.timestamp()
                     tmux_mod.sleep_waiting(self.cfg.sleep_after_min)
+                if now.timestamp() - getattr(self, "fused_at", 0) >= self.FUSE_EVERY:    # цепочки агентов
+                    self.fused_at = now.timestamp()
+                    try:
+                        self.fuse_tick(now.timestamp())
+                    except Exception as e:                       # предохранитель не мешает утру и отчётам
+                        print("цепочки:", e, flush=True)
                 if features.due(self.cfg.data, now):             # 1-го числа — отчёт по функциям панели
                     features.mark_sent(self.cfg.data, now)
                     self.send_features(now)
