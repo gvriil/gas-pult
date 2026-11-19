@@ -146,7 +146,7 @@ def test_focus_sees_only_its_session(server):
     assert code == 200 and s["sent"] == [("@1", "привет")]
     for path, body in (("/api/send", {"w": "@2", "text": "x"}), ("/api/key", {"w": "@2", "key": "Enter"}),
                        ("/api/new", {"i": 0}), ("/api/people", None), ("/api/focus/list", None),
-                       ("/api/rename", {"w": "@1", "name": "x"}), ("/api/active", {"w": "@1"}),
+                       ("/api/rename", {"w": "@2", "name": "x"}), ("/api/active", {"w": "@1"}),
                        ("/api/keys", {"provider": "x", "key": "y"}), ("/api/mcp/add", {"preset": "http"})):
         code, r, _ = call(s["base"], path, body, cookie, FX)
         assert code == 403 and r["code"] == "focus_scope", (path, code, r)
@@ -602,3 +602,41 @@ def test_e2e_focus_demo_live():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert len(mod.run()) == 5
+
+
+def test_focus_renames_own_session_demo_cannot(server, monkeypatch):
+    """Владелец 19.11 (GAS-13 п.4): по фокус-ссылке можно переименовать свою сессию; чужую — нет; демо — 403."""
+    s = server
+    names = []
+    monkeypatch.setattr(s["wins"], "rename", lambda wid, name: names.append((wid, name)) or name, raising=False)
+    _, _, cookie = open_link(s)
+    code, r, _ = call(s["base"], "/api/rename", {"w": "@1", "name": "Смета клиента"}, cookie, FX)
+    assert code == 200 and r["name"] == "Смета клиента" and names == [("@1", "Смета клиента")]
+    assert call(s["base"], "/api/rename", {"w": "@2", "name": "x"}, cookie, FX)[0] == 403
+    _, token = demo_link(s)
+    dc = demo_open(s, token)
+    code, r, _ = call(s["base"], "/api/rename", {"w": "@1", "name": "y"}, dc, FX)
+    assert code == 403 and r["code"] == "focus_scope" and names == [("@1", "Смета клиента")]
+
+
+def test_focus_starters_without_owner_connectors(server, monkeypatch):
+    """Бейджики в фокусе — только сценарии без почты и календаря владельца."""
+    from gas_pult.connectors import calendar_mcp, mail_mcp
+    s = server
+    monkeypatch.setattr(mail_mcp, "boxes", lambda: ["x"])
+    monkeypatch.setattr(calendar_mcp, "calendars", lambda: ["y"])
+    _, _, cookie = open_link(s)
+    code, d, _ = call(s["base"], "/api/starters", None, cookie, FX)
+    ids = [x["id"] for x in d["starters"]]
+    assert code == 200 and "day-plan" in ids and "mail" not in ids and "meeting" not in ids
+    code, d, _ = call(s["base"], "/api/starter", {"id": "day-plan", "w": "@1"}, cookie, FX)
+    assert code == 200 and d["prompt"].startswith("«План на день»")
+
+
+def test_focus_ease_menu_in_page():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
+    page = (root / "index.html").read_text(encoding="utf-8")
+    assert 'data-act="ease" class="focus-only"' in page and 'part("ease")' in page
+    ease = (root / "js/ease.js").read_text(encoding="utf-8")
+    assert 'store("theme", m)' in ease and "renameSession" in ease and "!FOCUS_DEMO()" in ease
