@@ -182,7 +182,11 @@ def test_tester_meta_and_view(world):
     w = world
     m = call(w, "/api/meta")[1]
     assert m["projects"] == [] and m["host"] == "Демо для кафе" and m["profiles"] == []
-    assert m["space"]["slug"] == "demo" and m["ui"]["persona"] == "point_admin" and m["ui"]["space"]["slug"] == "demo"
+    # владелец 19.11: в пространстве — та же панель пульта (вид разработчика) без терминала, расхода и журнала
+    assert m["space"]["slug"] == "demo" and m["ui"]["persona"] == "developer" and m["ui"]["space"]["slug"] == "demo"
+    caps = set(m["ui"]["caps"])
+    assert "cap.dev_sessions" in caps and not {"cap.dev_terminal", "cap.dev_cost_tokens"} & caps
+    assert m["ui"]["simple"] is False
     assert m["ui"]["onboarded"] is True
     assert call(w, "/api/persona", {"persona": "developer"})[0] == 400          # вид задаёт владелец
     s = call(w, "/api/sessions")[1]
@@ -342,12 +346,14 @@ def test_guest_without_telegram_sees_only_own_space(world):
         tok = r.headers["Set-Cookie"].split(";")[0].split("=", 1)[1]
     uid = w["p"].auth.uid(tok)
     assert people.is_guest(uid) and w["p"].people.tenant(uid) == "demo"
-    w["p"].people.accept(uid)
-    w["p"].people.set_country(uid, chosen="NL")
+    # владелец 19.11: по приглашению — без условий и страны, сразу первая сессия «Мой проект»
+    assert w["p"].people.accepted(uid) and w["p"].people.country(uid).get("chosen")
     w["tok"]["guest"] = tok
+    assert wait(lambda: [s["name"] for s in call(w, "/api/sessions", who="guest")[1]["sessions"]] == ["Мой проект"])
+    first = call(w, "/api/sessions", who="guest")[1]["sessions"][0]["id"]
     code, d = call(w, "/api/new", {"i": 0}, who="guest")
     assert code == 200 and d["id"].startswith("t:demo:@")
-    assert wait(lambda: [s["id"] for s in call(w, "/api/sessions", who="guest")[1]["sessions"]] == [d["id"]])
+    assert wait(lambda: {s["id"] for s in call(w, "/api/sessions", who="guest")[1]["sessions"]} == {first, d["id"]})
     for wid in (w["owner_w"], w["other_w"]):
         assert call(w, f"/api/screen?w={q(wid)}", who="guest")[0] == 404
         assert call(w, "/api/send", {"w": wid, "text": "x"}, who="guest")[0] == 404
