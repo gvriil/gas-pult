@@ -2704,12 +2704,23 @@ class Panel:
                              ".gif": "image/gif", ".heic": "image/heic"}
     MEDIA_MAX = 25 * 1024 * 1024
 
-    def media(self, path: str) -> tuple:
+    def focus_roots(self, rec: dict) -> list[str]:
+        """Откуда фокус-ссылке можно брать картинки ленты: папка её чата или проекта и папка этого проекта на Google
+        Диске (``<проект>/Входящие``, #217). inbox пульта и Диск целиком — нет: там файлы других чатов владельца."""
+        roots = []
+        if p := rec.get("path"):
+            roots.append(os.path.realpath(os.path.expanduser(p)))
+            if (d := self.cfg.drive_folder(p)) is not None:
+                roots.append(os.path.realpath(d))
+        return roots
+
+    def media(self, path: str, roots: list[str] | None = None) -> tuple:
         """Картинка для ленты: только из inbox пульта и папок Google Диска (``drive_root``) — туда кладутся файлы
         владельца (#217); ничего другого с сервера не отдаём (путь проверяем после realpath — без «..» и ссылок)."""
-        roots = [os.path.realpath(self.cfg.data / "inbox")]
-        if (d := drive_inbox.drive_root(self.cfg.drive_root)) is not None:
-            roots.append(os.path.realpath(d))
+        if roots is None:
+            roots = [os.path.realpath(self.cfg.data / "inbox")]
+            if (d := drive_inbox.drive_root(self.cfg.drive_root)) is not None:
+                roots.append(os.path.realpath(d))
         real = os.path.realpath(os.path.expanduser(path or ""))
         if not path or not any(real == r or real.startswith(r + os.sep) for r in roots):
             raise LookupError("файл не найден")
@@ -3405,7 +3416,8 @@ FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke",
               "/api/mcp/connected", "/api/uses"}   # без окна в запросе
-FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about", "/api/starters"}
+FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about", "/api/starters", "/api/media"}
+FOCUS_GET |= {"/api/media"}           # картинки в переписке по фокус-ссылке (papasan 19.11): только папки ссылки
 # Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,
 # экран, статус, «Прослушать») и отвечать на вопрос Claude кнопками (/api/select, /api/key — стрелки и Enter, только
 # когда на экране вопрос: ``Panel.demo_answer``). Нет: текста, файлов, голоса, модели, усилий, перезапуска,
@@ -4286,6 +4298,8 @@ def handler(panel: Panel):
 
         def focus_do(self, method: str, path: str, q: dict, b: dict, rec: dict):
             demo = focus.Focus.is_demo(rec)
+            if path == "/api/media":                       # картинки ленты — только из папок этой ссылки (19.11)
+                return panel.media(str(q.get("p") or ""), roots=panel.focus_roots(rec))
             if path == "/api/meta":                        # демо — роль «наблюдатель»: интерфейс прячет действия
                 return {**panel.focus_meta(rec), "via": "focus", "role": "viewer" if demo else "owner", "uid": None,
                         "build": build}
