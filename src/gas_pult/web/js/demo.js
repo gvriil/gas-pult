@@ -372,6 +372,8 @@ function demoApi(path, body) {
   if (key.startsWith("/api/repos")) return demoRepos(key, path, body);
   if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
+  // rev — как у сервера: меняется и когда растёт последний ответ (ход Claude дописывается в журнал по блоку)
+  const demoRev = () => "demo0000-" + demoApi.h.length + "-" + (demoApi.h.at(-1)?.text.length || 0);
   if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
@@ -390,7 +392,7 @@ function demoApi(path, body) {
     return Promise.resolve({ result: "Отправлено." });
   }
   if (key === "/api/activity") {                     // демо: фазы по времени после отправки; без отправки — по сессии
-    const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: "demo0000-" + demoApi.h.length, spinner: "", action: "", tool: "" };
+    const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: demoRev(), spinner: "", action: "", tool: "" };
     if (r && r.w === w) {
       const t = (Date.now() - r.t) / 1000, at = r.t / 1000;
       const P = r.unsent ? [[0, "delivered", "Доставлено в сессию"], [3, "unsent", "Не отправлено — текст в поле ввода", { action: "enter" }]]
@@ -408,11 +410,11 @@ function demoApi(path, body) {
   }
   if (key === "/api/history" && new URLSearchParams(path.split("?")[1]).get("before")) {   // раньше — по номеру сообщения
     const xs = demoApi.h.filter((m) => m.i < +new URLSearchParams(path.split("?")[1]).get("before"));
-    return Promise.resolve({ more: xs.length > 30, rev: "demo0000-" + demoApi.h.length, items: xs.slice(-30) });
+    return Promise.resolve({ more: xs.length > 30, rev: demoRev(), items: xs.slice(-30) });
   }
   if (key.startsWith("/api/tty")) return demoTty(key, path, body);
-  if (key === "/api/history") return Promise.resolve({ more: true, rev: "demo0000-" + demoApi.h.length, items: demoApi.h.slice(-30),
-    ...(new URLSearchParams(path.split("?")[1]).get("rev") === "demo0000-" + demoApi.h.length ? { same: true } : {}) });
+  if (key === "/api/history") return Promise.resolve({ more: true, rev: demoRev(), items: demoApi.h.slice(-30),
+    ...(new URLSearchParams(path.split("?")[1]).get("rev") === demoRev() ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
     if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;
     if (body.go) demoApi.toolDone = true;            // карточка инструмента (#258) — вопрос закрыт
