@@ -76,6 +76,7 @@ from gas_pult import (
     usage,
     voice,
 )
+from gas_pult import tmux as tmux_mod
 from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
 from gas_pult.config import Config, write_private
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
@@ -1419,6 +1420,9 @@ class Pult:
             try:
                 now = datetime.now()
                 self.morning_tick(now)
+                if now.timestamp() - getattr(self, "slept_at", 0) >= tmux_mod.SLEEP_EVERY:   # ждут ответа — спать
+                    self.slept_at = now.timestamp()
+                    tmux_mod.sleep_waiting(self.cfg.sleep_after_min)
                 if features.due(self.cfg.data, now):             # 1-го числа — отчёт по функциям панели
                     features.mark_sent(self.cfg.data, now)
                     self.send_features(now)
