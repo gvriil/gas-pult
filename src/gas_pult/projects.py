@@ -394,21 +394,58 @@ def title_of(f: Path, head: int = 262144) -> str:
         st = f.stat()
     except OSError:
         return ""
-    t = tail_info(f)["ai"] or _head_title(f, st, head)
+    ai = tail_info(f)["ai"]
+    if ai and not is_status(ai):
+        t = ai
+    else:                       # название-статус («Ожидание формулировки задачи») — не название (владелец 19.11)
+        h = _head_title(f, st, head)
+        good = next((x for x in (h["ai"], h["summary"]) if x and not is_status(x)), "")
+        status = ai or h["ai"]                      # Claude Code назвал чат статусом — смысл из сообщений человека
+        t = good or ((first_words(h["meaning"]) or status) if status else h["summary"] or h["first"])
+    t = " ".join(t.split())
     return t[:TITLE_MAX - 1].rstrip() + "…" if len(t) > TITLE_MAX else t
 
 
-def _head_title(f: Path, st, head: int) -> str:
+# Название по смыслу, а не состояние (владелец 19.11: «никаких непонятных автонаименований — по общему смыслу
+# присваивать название»; пользователь фокус-ссылки: «Ожидание формулировки задачи» — это не название чата).
+# Claude Code сам называет чат (``ai-title``) и переименовывает по ходу — пока задачи нет, получается статус.
+STATUS = re.compile(r"^\W*(ожидани|ожида[ею]т|жд[её]т|приветстви|знакомств|начало (разговора|работы|сессии)|"
+                    r"нов(ый|ая) (чат|разговор|сессия)|без (темы|названия)|пустой|greeting|waiting|awaiting|"
+                    r"new (chat|conversation|session)|untitled|hello|introduction)", re.I)
+
+
+def is_status(t: str) -> bool:
+    return bool(STATUS.match(str(t or "")))
+
+
+SMALL = frozenset({"и", "в", "во", "на", "с", "со", "к", "ко", "о", "об", "от", "для", "по", "за", "из", "у", "а",
+                   "но", "или", "что", "как", "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with"})
+
+
+def first_words(t: str, n: int = 5) -> str:
+    """Первое сообщение человека — 3–5 слов, если в нём есть смысл (3 слова и больше): «привет» — не название.
+    Предлог или союз в конце обрезаем («…кухни для» → «…кухни»)."""
+    w = str(t or "").split()
+    if len(w) < 3:
+        return ""
+    cut = w[:n]
+    while len(cut) > 2 and cut[-1].lower().strip(".,:;!?") in SMALL:
+        cut.pop()
+    out = " ".join(cut).rstrip(".,:;!?")
+    return out[:1].upper() + out[1:] + ("…" if len(w) > n else "")
+
+
+def _head_title(f: Path, st, head: int) -> dict:
     key = str(f)
     old = _titles.get(key)
     if old and (old[0] == st.st_mtime_ns or (old[2] and st.st_size >= old[1])):
         return old[2]                               # журнал только дописывается — начало, а с ним название, то же
-    summary, first, ai = "", "", ""
+    summary, first, ai, meaning = "", "", "", ""
     try:
         with open(f, "rb") as fh:
             chunk = fh.read(head).decode("utf-8", "replace")
     except OSError:
-        return ""
+        return {"ai": "", "summary": "", "first": ""}
     for line in chunk.splitlines():
         if '"summary"' not in line and '"user"' not in line and '"ai-title"' not in line:
             continue
@@ -417,12 +454,15 @@ def _head_title(f: Path, st, head: int) -> str:
         except ValueError:
             continue
         if e.get("type") == "ai-title" and e.get("aiTitle"):
-            ai = str(e["aiTitle"])
+            if not ai or not is_status(e["aiTitle"]):  # последнее название по смыслу; статус — только если другого нет
+                ai = str(e["aiTitle"])
         elif e.get("type") == "summary" and e.get("summary"):
             summary = str(e["summary"])
-        elif not first and e.get("type") == "user" and not e.get("isSidechain") and transcripts.is_real_prompt(e):
-            first = transcripts.PASTED.sub("", transcripts.text_of(e["message"]["content"]))
-    t = " ".join((ai or summary or first).split())
+        elif not meaning and e.get("type") == "user" and not e.get("isSidechain") and transcripts.is_real_prompt(e):
+            text = transcripts.PASTED.sub("", transcripts.text_of(e["message"]["content"]))
+            first = first or text
+            meaning = text if len(text.split()) >= 3 else ""     # первое сообщение со смыслом («привет» — нет)
+    t = {k: " ".join(v.split()) for k, v in (("ai", ai), ("summary", summary), ("first", first), ("meaning", meaning))}
     if len(_titles) > 5000:
         _titles.clear()
     _titles[key] = (st.st_mtime_ns, st.st_size, t)
