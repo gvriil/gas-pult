@@ -542,6 +542,7 @@ class Panel:
                         "retry_at": ((st.get("limit_retries") or {}).get(w["id"]) or {}).get("at"),
                         "notify_own": bool(notifylevel.own(st, w["id"])),
                         "title": self.chat_title(pd, w["path"], home, sid),   # название чата («Проекты»)
+                        "title_own": bool(sid and ((pd.get("sessions") or {}).get(sid) or {}).get("title")),
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
                         "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
@@ -870,6 +871,20 @@ class Panel:
             self.check(profile, uid)
         return {**self.open_in(folder, profile, person, uid, resume=f.stem, model=p.get("model") or ""),
                 "project": p["id"]}
+
+    def set_title(self, w: dict, title) -> dict:
+        """Своё название чата окна (GAS-13 п.3; фокус-пользователь 19.11: «мне нужно переименовать вторую часть»):
+        хранится в ``projects.json`` по id разговора, автоматика его не перетирает; пустое — снова авто (summary
+        журнала). Имя окна tmux не меняется."""
+        sid = transcripts.valid_sid(self.follow_sid(w, self.tmux.windows(), self.pult.home_of(w)))
+        if not sid:
+            raise ValueError("у этой сессии ещё нет разговора — напишите первое сообщение, потом переименуйте")
+        title = " ".join(str(title or "").split())[:projects.TITLE_MAX]
+        pd = self.project_data()
+        self.projects.set_chat(sid, self.project_of(pd, w), title=title)
+        self._proj = (0.0, {})
+        return {"title": title or self.chat_title(self.project_data(fresh=True), w["path"], self.pult.home_of(w), sid),
+                "own": bool(title)}
 
     def project_chat(self, pid: str, sid: str, title=None, hidden=None) -> dict:
         """Переименовать или скрыть чат проекта — только в ``projects.json``; журнал Claude Code не меняется."""
@@ -3344,10 +3359,10 @@ FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/comma
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 STT_JOB = ("/api/stt/job", "/api/stt/retry")       # фоновое распознавание (GAS-34): там же, где /api/stt
-SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog", "/api/starters", "/api/starter"}
+SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog", "/api/starters", "/api/starter", "/api/title"}
 FOCUS_GET |= {"/api/tts/about", "/api/starters"}
 # Фокус-ссылка — удобства своей сессии (владелец 19.11: «переименования, тёмный/светлый и все остальные»; GAS-13 п.4)
-FOCUS_POST |= {"/api/rename", "/api/starter"}
+FOCUS_POST |= {"/api/rename", "/api/starter", "/api/title"}
 FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
 FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
@@ -4889,6 +4904,8 @@ def handler(panel: Panel):
                 return {"result": panel.pult.push_enter(w["id"], str(b.get("sha", ""))[:12])}
             if path == "/api/rename":
                 return {"name": panel.tmux.rename(w["id"], str(b.get("name", "")))}
+            if path == "/api/title":                      # название чата (вторая часть), не имя окна; "" — авто
+                return panel.set_title(w, b.get("title"))
             if path == "/api/active" and w.get("space"):
                 raise ValueError("сессия демо-пространства не бывает активной в чате бота — откройте её в панели")
             if path == "/api/active":

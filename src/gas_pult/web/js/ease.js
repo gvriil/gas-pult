@@ -8,7 +8,7 @@ export function ease() {
   const theme = (m) => () => { store("theme", m); applyTheme(); ease(); };
   helpSheet("sheet.focus-ease");
   sheet("Удобства", [
-    ...(s && !FOCUS_DEMO() ? [{ label: "Переименовать сессию", icon: "edit", sub: s.name, run: () => renameSession(s) }] : []),
+    ...(s && !FOCUS_DEMO() ? [{ label: "Переименовать чат", icon: "edit", sub: s.title || s.name, run: () => renameSession(s) }] : []),
     { label: "Тема: как в системе", on: mode === "auto", run: theme("auto") },
     { label: "Тема: светлая", on: mode === "light", run: theme("light") },
     { label: "Тема: тёмная", on: mode === "dark", run: theme("dark") },

@@ -265,3 +265,25 @@ def test_api_projects_who(server):
         assert call(base, "/api/projects", p.auth.issue(5))[1].get("code") == "space"   # тестировщик — позже
     finally:
         people_mod.People.tenant = orig
+
+
+def test_chat_title_own_not_window_name(server, home, monkeypatch):
+    """GAS-13 п.3 (фокус-пользователь 19.11): «Переименовать» меняет название чата, не имя окна; «Сбросить» — авто."""
+    p, _ = server
+    sid = "0b6a2f4e-1c2d-4e5f-8a9b-0c1d2e3f4a5b"
+    monkeypatch.setattr(p, "follow_sid", lambda w, wins, home: sid)
+    monkeypatch.setattr(p.pult, "home_of", lambda w: None, raising=False)
+    w = p.tmux.window("@1")
+    d = p.set_title(w, "  Смета   для клиента ")
+    assert d == {"title": "Смета для клиента", "own": True}
+    assert p.projects.read()["sessions"][sid]["title"] == "Смета для клиента"
+    assert p.chat_title(p.project_data(fresh=True), w["path"], None, sid) == "Смета для клиента"
+    assert w["name"] == "shop-1"                                     # имя окна не тронуто
+    assert p.set_title(w, "")["own"] is False and "title" not in p.projects.read()["sessions"][sid]
+    monkeypatch.setattr(p, "follow_sid", lambda w, wins, home: "")
+    with pytest.raises(ValueError):
+        p.set_title(w, "x")
+
+
+def test_title_allowed_in_focus_and_space():
+    assert "/api/title" in webapp.FOCUS_POST and "/api/title" in webapp.SPACE_OK
