@@ -380,7 +380,7 @@ def test_closed_with_pause_waits_until_enabled(server, tmp_path, monkeypatch):
     assert call(base, "/api/module/delete", {"w": "@5", "confirm": "morning-numbers"}, member)[0] == 403
 
 
-# ---------- «Новая папка»: в боте (🆕 → 📁) и в панели («Новая сессия» → «Новая папка») ----------
+# ---------- «Новая папка»: в боте (🆕 → 📁) и в панели («Новый чат» → «Новая папка») ----------
 INDEX = (Path(__file__).parent.parent / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
 
 

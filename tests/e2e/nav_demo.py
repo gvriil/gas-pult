@@ -138,6 +138,7 @@ def one(br, base: str, sep: str, w: int, h: int, mob: bool, th: str, shots, errs
         assert opened()
     pg.click("#navNew")
     pg.wait_for_selector("#content .draft")
+    pg.wait_for_selector("#draftBar [data-dfold]", timeout=5000)        # строка настроек — часть js/newchat.js
     assert pg.is_visible("#draftBar [data-dfold]"), f"{tag}: над полем нет выбора папки"
     assert not pg.evaluate(CALLS, "/api/project/session") and not pg.evaluate(CALLS, "/api/new"), \
         f"{tag}: окно создано до отправки"

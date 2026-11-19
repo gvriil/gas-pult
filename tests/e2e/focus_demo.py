@@ -3,7 +3,7 @@
     python tests/e2e/focus_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
 
 Владелец: меню сессии → «Создать фокус-ссылку» — шторка со ссылкой (токен после «#»), «Отправить себе в Telegram»,
-«Отозвать»; «Новая сессия» → «В фокусе»; «Настройки» → «Фокус-ссылки». Устройство по ссылке (``&focus``): только чат
+«Отозвать»; «Новый чат» → «В фокусе»; «Настройки» → «Фокус-ссылки». Устройство по ссылке (``&focus``): только чат
 одной сессии — нет «Назад», «Настроек», переключателя, списка сессий; в меню — «Интеграции» и «Модель», нет «Сессии» и
 «Активная»; «Завершить» → «Сессия завершена». Погасшая ссылка (``&focus=gone``) — сразу «Сессия завершена». Ширина 390
 и 1366, светлая и тёмная тема, консоль без ошибок.
@@ -54,9 +54,9 @@ def run(base: str, shots: str = ""):
             pg.keyboard.press("Escape")
             pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove()); newSession()")
             item = pg.locator(".sheet button", has_text="В фокусе")
-            assert item.count() == 1, f"{where}: нет «Новая сессия → В фокусе»"
+            assert item.count() == 1, f"{where}: нет «Новый чат → В фокусе»"
             item.click()
-            pg.wait_for_selector("text=Новая сессия в фокусе — в какой папке?")
+            pg.wait_for_selector("text=Новый чат в фокусе — в какой папке?")
             assert pg.get_by_text("Из модуля").count() == 0
             pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove()); focusList()")
             pg.wait_for_selector("text=iPhone · Safari", timeout=3000)

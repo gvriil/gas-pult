@@ -10,7 +10,7 @@ HOME, GAS_PULT_DATA_DIR, GAS_PULT_CONFIG_DIR, свой сервер tmux по к
   (а) владелец: панель чатов → «⋯» проекта «shop» → «Создать фокус-ссылку на проект» — ссылка ``…/#focus=<токен>``;
   (б) телефон (390, светлая) по ссылке: видны только сессии «shop», под шапкой — проект и «Вход действует до ДД.ММ
       (через 7 дн.)»; API проекта «other», его окна, список проектов, люди — 403;
-  (в) шторка проекта → «Новая сессия в проекте» — новое окно в папке «shop», сообщение уходит и приходит ответ;
+  (в) шторка проекта → «Новый чат в проекте» — новое окно в папке «shop», сообщение уходит и приходит ответ;
   (г) «Завершить» одну сессию — ссылка живёт, устройство переходит в другую сессию проекта;
   (д) до конца срока меньше двух дней — «Перезайти через 2 дня» (заметно); компьютер (1366, тёмная) по второй
       ссылке — то же, без ошибок консоли;
@@ -117,14 +117,14 @@ def run(shots: str = ""):
                 pa.screenshot(path=f"{shots}/focus-proj-390.png")
             log(f"(б) телефон: только сессии проекта, срок «{exp.splitlines()[-1]}»; чужой проект — 403")
 
-            # ---------- (в) «Новая сессия в проекте» ----------
+            # ---------- (в) «Новый чат в проекте» ----------
             pa.click("#focusExp [data-fproj]")
             pa.wait_for_selector(".sheet h3:has-text('Проект')")
             sheet = pa.inner_text(".sheet")
             assert "shop" in sheet and "other" not in sheet, sheet
             if shots:
                 pa.screenshot(path=f"{shots}/focus-proj-sheet-390.png")
-            pa.locator(".sheet button", has_text="Новая сессия в проекте").click()
+            pa.locator(".sheet button", has_text="Новый чат в проекте").click()
             pa.wait_for_function(f"current && current !== {json.dumps(shop)}", timeout=30000)
             fresh = pa.evaluate("current")
             pa.wait_for_function(f"sessions.length === 2 && sessions.some((s) => s.id === {json.dumps(fresh)})",
@@ -140,7 +140,7 @@ def run(shots: str = ""):
             code, d = pa.evaluate(FETCH, ["/api/sessions", None])
             assert sorted(x["id"] for x in d["sessions"]) == sorted([shop, fresh]) and \
                 all(x["project"] == pid for x in d["sessions"]), d
-            log(f"(в) «Новая сессия в проекте» → окно {fresh} в папке проекта, ответ пришёл")
+            log(f"(в) «Новый чат в проекте» → окно {fresh} в папке проекта, ответ пришёл")
 
             # ---------- (г) «Завершить» одну сессию — ссылка живёт ----------
             code, d = pa.evaluate(FETCH, ["/api/close", {"w": fresh}])
