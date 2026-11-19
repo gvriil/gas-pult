@@ -194,6 +194,7 @@ function demoApi(path, body) {
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
   const TT = demoApi.titles ||= {};                   // «Название чата» (/api/title) — живёт до перезагрузки
   for (const x of S) if (x.id in TT) { x.title = TT[x.id] || x.title; x.title_own = !!TT[x.id]; }
+  if (path.split("?")[0] === "/api/chat/mcp") return Promise.resolve({ id: body.w, off: body.off || [] });
   if (path.split("?")[0] === "/api/title") { TT[body.w] = body.title || ""; return Promise.resolve({ title: body.title || "", own: !!body.title }); }
   const R = {
     "/api/meta": { desktop: true, agents: [{ id: "pi", title: "Pi", model: "deepseek/deepseek-v4-pro" }], ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],

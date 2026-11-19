@@ -53,6 +53,7 @@ from gas_pult import (
     calkeys,
     chat_trash,
     chatlog,
+    chatmcp,
     country,
     ctxsnap,
     drive_inbox,
@@ -543,6 +544,7 @@ class Panel:
                         "notify_own": bool(notifylevel.own(st, w["id"])),
                         "title": (ttl := self.chat_title(pd, w["path"], home, sid)),   # название чата («Проекты»)
                         "title_status": projects.is_status(ttl),          # название-статус, смысла ещё нет
+                        "mcp_off": chatmcp.get(self.CHAT_MCP, sid),        # интеграции, выключенные в этом чате
                         "title_own": bool(sid and ((pd.get("sessions") or {}).get(sid) or {}).get("title")),
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
@@ -665,7 +667,7 @@ class Panel:
         return {"route": router.route(text, ready)}
 
     def project_session(self, pid: str, profile: str = "", person: int | None = None, uid=None,
-                        model: str = "") -> dict:
+                        model: str = "", mcp_off: list | None = None) -> dict:
         """«Новая сессия в проекте»: ещё одно окно в главной папке проекта, даже если там уже работает чат — у каждого
         свой журнал (``--session-id``). Поставщик и модель — по умолчанию проекта, если не выбраны."""
         p = self.project(pid)
@@ -675,7 +677,8 @@ class Panel:
         profile = profile or p.get("profile") or ""
         if uid is not None:
             self.check(profile, uid)
-        out = self.open_in(path, profile, person, uid, model=router.valid_model(model) or p.get("model") or "")
+        out = self.open_in(path, profile, person, uid, model=router.valid_model(model) or p.get("model") or "",
+                           mcp_off=chatmcp.norm(mcp_off) if mcp_off else None)
         return {**out, "project": p["id"]}
 
     INSTR_MAX = 20000
@@ -2291,12 +2294,13 @@ class Panel:
                 print(f"память: сообщение {chat}: {e}", file=sys.stderr, flush=True)
 
     def open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
-                model: str = "", name: str = "") -> dict:
+                model: str = "", name: str = "", mcp_off: list | None = None) -> dict:
         label = name or (os.path.basename(path) if path != self.pult.home else "home")
-        return self.mem_gate(lambda: self._open_in(path, profile, person, uid, resume, model, name), label, uid)
+        return self.mem_gate(lambda: self._open_in(path, profile, person, uid, resume, model, name, mcp_off), label,
+                             uid)
 
     def _open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
-                 model: str = "", name: str = "") -> dict:
+                 model: str = "", name: str = "", mcp_off: list | None = None) -> dict:
         """Новое окно с Claude в папке — без правила «одно окно на папку»: у окна свой журнал (``--session-id`` и
         метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
         этого чата (``window_models``), как у «Модель» в меню."""
@@ -2317,6 +2321,9 @@ class Panel:
             cmd += f" --model {shlex.quote(model)}"
         cmd += repos.flags(st, path)                                 # подключённые к папке репозитории (задача 43)
         sid = transcripts.valid_sid(resume) or str(uuid.uuid4())     # свой журнал окна: --session-id или --resume
+        if mcp_off is not None:                                      # интеграции, выключенные для этого чата
+            chatmcp.put(self.CHAT_MCP, sid, mcp_off)
+        cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, sid))
         cmd += f" --resume {sid}" if resume else f" --session-id {sid}"
         wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
                                    mark=profile or "claude", by=str(person) if home else "", sid=sid)
@@ -2536,12 +2543,27 @@ class Panel:
         st = self.pult.state()
         cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w))  # нет ключа — тут
         cmd += repos.flags(st, w["path"])                                    # подключённые репозитории (задача 43)
+        cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, w.get("sid") or ""))   # выключенные интеграции чата
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
             cmd += f" --model {shlex.quote(own)}"
         self.busy_sid(w.get("sid"), wid)                                     # тот же разговор уже идёт рядом
         # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
         self.tmux.respawn(wid, w["path"], cmd + harness.of(w).resume_args(w.get("sid")), mark=profile)
         return {"id": wid}
+
+    @property
+    def CHAT_MCP(self) -> Path:
+        return self.cfg.data / "chat-mcp.json"
+
+    def chat_mcp(self, w: dict, off, uid=None) -> dict:
+        """Сменить набор интеграций посреди чата: только Claude Code; разговор продолжается (--resume)."""
+        if harness.of(w).name != "claude":
+            raise ValueError("интеграции на чат — только у Claude Code; у этого агента — в его настройках")
+        if not transcripts.valid_sid(w.get("sid")):
+            raise ValueError("у чата ещё нет разговора — напишите первое сообщение")
+        chatmcp.put(self.CHAT_MCP, w["sid"], off)
+        return {**self.restart(w, w.get("profile") or w.get("mark") or "claude", True, uid), "off": chatmcp.get(
+            self.CHAT_MCP, w["sid"])}
 
     def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None) -> dict:
         """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
@@ -2578,11 +2600,14 @@ class Panel:
         cmd += repos.flags(st, w["path"])                # подключённые репозитории — снова в сессии (задача 43)
         cmd += f" --model {shlex.quote(model)}" if model else ""
         sid = transcripts.valid_sid(w.get("sid"))
+        off = chatmcp.get(self.CHAT_MCP, w.get("sid") or "")   # выключенные интеграции чата — и после перезапуска
+        cmd += chatmcp.flags(off)
         if keep:                                        # свой журнал окна — тот же разговор (--resume), иначе последний
             self.busy_sid(w.get("sid"), w["id"])        # метка окна могла указывать на чужой живой разговор
             cmd += harness.of(w).resume_args(w.get("sid"))
         else:                                           # чистый лист — новый журнал со своей меткой
             sid = str(uuid.uuid4())
+            chatmcp.put(self.CHAT_MCP, sid, off)
             cmd += f" --session-id {sid}"
         result = self.close(w)
         if result != "закрыто":
@@ -3280,6 +3305,9 @@ OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "
 ADMIN_OK = {"/api/people", "/api/people/role", "/api/people/remove", "/api/people/access", "/api/spaces",
             "/api/invite/new", "/api/space/connect", "/api/restart"}
 OWNER_ONLY |= {"/api/people/access"}
+# Интеграции на чат посреди чата — перезапуск окна, как /api/restart: владелец и админ (включить выключенное = доступ)
+OWNER_ONLY |= {"/api/chat/mcp"}
+ADMIN_OK |= {"/api/chat/mcp"}
 # Подтверждение кодом (аудит 09.11): сессия браузера моложе суток (``webauth.CONFIRM_FRESH``) выполняет команды на
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
 # «Подтвердите кодом» и повторит запрос. Mini App в Telegram — доверенное устройство (код ушёл бы в тот же Telegram);
@@ -4727,7 +4755,8 @@ def handler(panel: Panel):
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
             if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
                 return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
-                                             self.terms_uid(), model=str(b.get("model") or ""))
+                                             self.terms_uid(), model=str(b.get("model") or ""),
+                                             mcp_off=b.get("mcp_off") if isinstance(b.get("mcp_off"), list) else None)
             if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
                 return panel.route(str(b.get("text", ""))[:2000], self.terms_uid())
             if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
@@ -4929,6 +4958,8 @@ def handler(panel: Panel):
                 return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
+            if path == "/api/chat/mcp":                  # интеграции посреди чата: запомнить и перезапустить с --resume
+                return panel.chat_mcp(w, b.get("off"), self.terms_uid())
             if path == "/api/restart":
                 if self.who()[1] == "admin" and str(b.get("profile", "")) not in ("", w.get("profile") or ""):
                     raise ValueError("админ перезапускает сессию без смены модели: модель и расход — у владельца")

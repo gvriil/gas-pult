@@ -196,3 +196,25 @@ def test_tmux_label_roundtrip(tmp_path, monkeypatch):
     finally:
         subprocess.run(["tmux", "-S", sock, "kill-server"], capture_output=True)
         shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
+def test_chat_mcp_off_survives_open_restart_revive(panel, monkeypatch, tmp_path):
+    """Интеграции на чат (19.11): выключенные — в команде при запуске, перезапуске, чистом листе и «оживлении»."""
+    from gas_pult import chatmcp
+    monkeypatch.setattr(type(panel), "CHAT_MCP", property(lambda self: tmp_path / "chat-mcp.json"))
+    deny = " --disallowedTools mcp__claude_ai_Gmail"
+    panel._open_in("/p/shop", mcp_off=["claude.ai Gmail"])
+    cmd, sid = panel.t["opened"][-1]
+    assert cmd == f"claude{deny} --session-id {sid}" and chatmcp.get(tmp_path / "chat-mcp.json", sid)
+    w = {"id": "@1", "name": "a", "path": "/p/shop", "profile": "claude", "sid": sid}
+    panel.restart(w, "claude")
+    assert panel.t["opened"][-1] == (f"claude{deny} --resume {sid}", sid)
+    panel.restart(w, "claude", keep=False)
+    cmd2, sid2 = panel.t["opened"][-1]
+    assert cmd2 == f"claude{deny} --session-id {sid2}"                         # чистый лист — тот же набор
+    monkeypatch.setattr(panel.tmux, "window", lambda wid: {"id": wid, "stopped": True, "mark": "claude",
+                                                           "path": "/p/shop", "sid": sid})
+    monkeypatch.setattr(panel.pult, "home_of", lambda w: None)
+    panel.revive("@7")
+    assert panel.t["respawned"][-1] == f"claude{deny} --resume {sid}"
