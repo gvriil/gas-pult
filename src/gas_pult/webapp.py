@@ -3038,6 +3038,8 @@ class Panel:
         have = {"mail"} if mail_mcp.boxes() else set()
         if calendar_mcp.calendars():
             have.add("calendar")
+        if any("docs_mcp" in str(x.get("target", "")) for x in self.mcp._cached(None)[1]):   # кэш: без ожидания
+            have.add("docs")
         return starters.listing(have, role, space)
 
     def tts_text(self, text: str, personal: bool = False, cloud: bool = True) -> bytes:
