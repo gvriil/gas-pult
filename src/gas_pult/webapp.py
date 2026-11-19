@@ -275,6 +275,13 @@ MAX_AGE = 24 * 3600                     # initData старше суток не 
 MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 EFFORTS = ("auto", "low", "medium", "high", "xhigh", "max")   # /effort <уровень> — Claude Code принимает аргументом
+
+
+def effort_flag(level: str | None) -> str:
+    """Усилие чата — флагом запуска ``--effort`` (Claude Code 2.1.328: low, medium, high, xhigh, max). «auto» и пусто —
+    без флага: решает Claude Code. Флаг, а не ``/effort`` после запуска: команда в только что запущенное окно
+    терялась (владелец 19.11: «усилия не выбираются»)."""
+    return f" --effort {level}" if level in EFFORTS and level != "auto" else ""
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
@@ -668,7 +675,7 @@ class Panel:
         return {"route": router.route(text, ready)}
 
     def project_session(self, pid: str, profile: str = "", person: int | None = None, uid=None,
-                        model: str = "", mcp_off: list | None = None) -> dict:
+                        model: str = "", mcp_off: list | None = None, effort: str = "") -> dict:
         """«Новая сессия в проекте»: ещё одно окно в главной папке проекта, даже если там уже работает чат — у каждого
         свой журнал (``--session-id``). Поставщик и модель — по умолчанию проекта, если не выбраны."""
         p = self.project(pid)
@@ -679,7 +686,8 @@ class Panel:
         if uid is not None:
             self.check(profile, uid)
         out = self.open_in(path, profile, person, uid, model=router.valid_model(model) or p.get("model") or "",
-                           mcp_off=chatmcp.norm(mcp_off) if mcp_off else None)
+                           mcp_off=chatmcp.norm(mcp_off) if mcp_off else None,
+                           effort=effort if effort in EFFORTS else "")
         return {**out, "project": p["id"]}
 
     INSTR_MAX = 20000
@@ -2031,9 +2039,12 @@ class Panel:
     def effort(self, w: dict, level: str) -> list[str]:
         if level not in EFFORTS:
             raise ValueError("такого уровня усилий нет")
+        st = self.pult.state()                          # запомнить у чата: перезапуск и «Продолжить» — с ним же
+        ef = {k: v for k, v in (st.get("window_efforts") or {}).items() if k != w["id"]}
+        self.pult.set_state(window_efforts={**ef, **({w["id"]: level} if effort_flag(level) else {})})
         return self.slash(w, f"/effort {level}")
 
-    def model(self, w: dict, name: str, uid=None) -> dict:
+    def model(self, w: dict, name: str, uid=None, effort: str | None = None) -> dict:
         """Модель — только для этого чата (задача 37): окно перезапускается с ``--model`` у того же поставщика, разговор
         продолжается. ``/model`` Claude Code не шлём: он сохраняет выбор в общие настройки (``~/.claude/settings.json``)
         — модель менялась во всех сессиях. Модель по умолчанию для новых — отдельно: ``default_model``."""
@@ -2041,8 +2052,10 @@ class Panel:
             raise ValueError("такой модели нет в настройках (models)")
         if w.get("space"):
             raise ValueError("в сессии пространства модель задаёт его профиль")
+        if effort is not None and effort not in EFFORTS:
+            raise ValueError("такого уровня усилий нет")
         return self.restart(w, w.get("profile") or (w.get("mark") if w.get("mark") in models.BY_ID else "claude"),
-                            keep=True, uid=uid, model=name)
+                            keep=True, uid=uid, model=name, effort=effort)
 
     def money_of(self, w: dict, lines: list[str]) -> dict:
         """Поставщик окна ответил «нет денег» (Z.ai 1113, DeepSeek 402) — в карточку и отметку на час (balance.py)."""
@@ -2295,13 +2308,13 @@ class Panel:
                 print(f"память: сообщение {chat}: {e}", file=sys.stderr, flush=True)
 
     def open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
-                model: str = "", name: str = "", mcp_off: list | None = None) -> dict:
+                model: str = "", name: str = "", mcp_off: list | None = None, effort: str = "") -> dict:
         label = name or (os.path.basename(path) if path != self.pult.home else "home")
-        return self.mem_gate(lambda: self._open_in(path, profile, person, uid, resume, model, name, mcp_off), label,
-                             uid)
+        return self.mem_gate(lambda: self._open_in(path, profile, person, uid, resume, model, name, mcp_off, effort),
+                             label, uid)
 
     def _open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
-                 model: str = "", name: str = "", mcp_off: list | None = None) -> dict:
+                 model: str = "", name: str = "", mcp_off: list | None = None, effort: str = "") -> dict:
         """Новое окно с Claude в папке — без правила «одно окно на папку»: у окна свой журнал (``--session-id`` и
         метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
         этого чата (``window_models``), как у «Модель» в меню."""
@@ -2320,6 +2333,7 @@ class Panel:
         cmd = models.command(self.cfg.claude, profile, st, home=home)
         if model:
             cmd += f" --model {shlex.quote(model)}"
+        cmd += effort_flag(effort)                                   # усилие нового чата — сразу при запуске
         cmd += repos.flags(st, path)                                 # подключённые к папке репозитории (задача 43)
         sid = transcripts.valid_sid(resume) or str(uuid.uuid4())     # свой журнал окна: --session-id или --resume
         if mcp_off is not None:                                      # интеграции, выключенные для этого чата
@@ -2332,6 +2346,8 @@ class Panel:
             self.mark_by(wid, uid)
         if model:                                   # активное окно бота не трогаем — только явным выбором (#179)
             self.pult.set_state(window_models={**(st.get("window_models") or {}), wid: model})
+        if effort_flag(effort):
+            self.pult.set_state(window_efforts={**(self.pult.state().get("window_efforts") or {}), wid: effort})
         return {"id": wid, "sid": sid}
 
     FIRST_PROJECT = "Мой проект"
@@ -2547,6 +2563,7 @@ class Panel:
         cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, w.get("sid") or ""))   # выключенные интеграции чата
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
             cmd += f" --model {shlex.quote(own)}"
+        cmd += effort_flag((st.get("window_efforts") or {}).get(wid))       # и усилие
         self.busy_sid(w.get("sid"), wid)                                     # тот же разговор уже идёт рядом
         # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
         self.tmux.respawn(wid, w["path"], cmd + harness.of(w).resume_args(w.get("sid")), mark=profile)
@@ -2566,7 +2583,8 @@ class Panel:
         return {**self.restart(w, w.get("profile") or w.get("mark") or "claude", True, uid), "off": chatmcp.get(
             self.CHAT_MCP, w["sid"])}
 
-    def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None) -> dict:
+    def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None,
+                effort: str | None = None) -> dict:
         """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
 
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
@@ -2595,11 +2613,15 @@ class Panel:
         st = self.pult.state()
         cmd = models.command(self.cfg.claude, profile, st, home=home)   # нет ключа — ошибка до закрытия
         own = dict(st.get("window_models") or {})
+        efforts = dict(st.get("window_efforts") or {})
         same = profile == (w.get("profile") or w.get("mark") or "claude")
+        if effort is None:                              # усилие этого чата — прежнее (у того же поставщика)
+            effort = efforts.get(w["id"], "") if same else ""
         if model is None:                               # смена поставщика: модель этого чата — его по умолчанию;
             model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
         cmd += repos.flags(st, w["path"])                # подключённые репозитории — снова в сессии (задача 43)
         cmd += f" --model {shlex.quote(model)}" if model else ""
+        cmd += effort_flag(effort) if profile in ("", "claude") else ""
         sid = transcripts.valid_sid(w.get("sid"))
         off = chatmcp.get(self.CHAT_MCP, w.get("sid") or "")   # выключенные интеграции чата — и после перезапуска
         cmd += chatmcp.flags(off)
@@ -2623,7 +2645,10 @@ class Panel:
             routes.moved(w["id"], wid)
         if model:
             own[wid] = model                            # выбор — только этого чата: «Продолжить» и перезапуск — с ним
-        upd = {"window_models": own, "notify_levels": notifylevel.moved(st, w["id"], wid)}
+        efforts.pop(w["id"], None)
+        if effort_flag(effort):
+            efforts[wid] = effort
+        upd = {"window_models": own, "window_efforts": efforts, "notify_levels": notifylevel.moved(st, w["id"], wid)}
         if st.get("active") == w["id"]:                 # активная в боте — та же сессия, но чужую не делаем активной
             upd["active"] = wid
         self.pult.set_state(**upd)
@@ -4782,7 +4807,8 @@ def handler(panel: Panel):
             if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
                 return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
                                              self.terms_uid(), model=str(b.get("model") or ""),
-                                             mcp_off=b.get("mcp_off") if isinstance(b.get("mcp_off"), list) else None)
+                                             mcp_off=b.get("mcp_off") if isinstance(b.get("mcp_off"), list) else None,
+                                             effort=str(b.get("effort") or ""))
             if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
                 return panel.route(str(b.get("text", ""))[:2000], self.terms_uid())
             if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
@@ -4974,7 +5000,8 @@ def handler(panel: Panel):
             if path == "/api/command":
                 return panel.command(w, int(b.get("i", -1)))
             if path == "/api/model":                     # модель — только этого чата (перезапуск с --model)
-                return panel.model(w, str(b.get("name", "")), self.terms_uid())
+                return panel.model(w, str(b.get("name", "")), self.terms_uid(),
+                                   effort=str(b["effort"]) if b.get("effort") is not None else None)
             if path == "/api/effort":
                 return {"lines": panel.effort(w, str(b.get("level", "")))}
             if path == "/api/key":

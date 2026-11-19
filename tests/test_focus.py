@@ -343,7 +343,7 @@ def proj_server(s, monkeypatch):
         {"id": w["id"], "name": w["name"], "project": of.get(w["path"], "")} for w in wins.windows()])
     made = []
 
-    def project_session(pid, profile="", person=None, uid=None, model="", mcp_off=None):
+    def project_session(pid, profile="", person=None, uid=None, model="", mcp_off=None, effort=""):
         wid = f"@{len(wins.w) + 1}"
         wins.w[wid] = {"id": wid, "name": "shop-2", "path": data["projects"][pid]["path"], "cmd": "claude"}
         made.append((pid, wid))
