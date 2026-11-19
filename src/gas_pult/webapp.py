@@ -282,6 +282,12 @@ def effort_flag(level: str | None) -> str:
     без флага: решает Claude Code. Флаг, а не ``/effort`` после запуска: команда в только что запущенное окно
     терялась (владелец 19.11: «усилия не выбираются»)."""
     return f" --effort {level}" if level in EFFORTS and level != "auto" else ""
+
+
+def effort_ok(profile: str | None, model: str | None = "") -> bool:
+    """Усилие — только у Claude Code со своей подпиской или ключом Anthropic и не у Haiku (у Haiku усилий нет);
+    другим программам (Pi, OpenCode) и поставщикам с чужим ключом флаг не передаём."""
+    return (profile or "claude") == "claude" and "haiku" not in str(model or "").lower()
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
@@ -538,7 +544,8 @@ class Panel:
                             mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid)),
                         "harness": harness.of(w).name if harness.is_agent(w) else "",     # какой агент (добавлено)
                         "usage": pi["usage"] if pi else None,     # окно Pi: ↑↓ токены, $, контекст (добавлено)
-                        "effort": (snap or {}).get("effort", ""),        # уровень усилий (добавлено)
+                        # уровень усилий: выбранный в пульте (и «авто») важнее того, что Claude Code показал в строке
+                        "effort": (st.get("window_efforts") or {}).get(w["id"]) or (snap or {}).get("effort", ""),
                         "effort_guess": bool((snap or {}).get("effort_guess")),
                         "ctx_at": (snap or {}).get("at"),                # когда строка статуса обновлялась
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
@@ -2041,7 +2048,7 @@ class Panel:
             raise ValueError("такого уровня усилий нет")
         st = self.pult.state()                          # запомнить у чата: перезапуск и «Продолжить» — с ним же
         ef = {k: v for k, v in (st.get("window_efforts") or {}).items() if k != w["id"]}
-        self.pult.set_state(window_efforts={**ef, **({w["id"]: level} if effort_flag(level) else {})})
+        self.pult.set_state(window_efforts={**ef, w["id"]: level})      # и «авто»: панель покажет выбор человека
         return self.slash(w, f"/effort {level}")
 
     def model(self, w: dict, name: str, uid=None, effort: str | None = None) -> dict:
@@ -2333,6 +2340,8 @@ class Panel:
         cmd = models.command(self.cfg.claude, profile, st, home=home)
         if model:
             cmd += f" --model {shlex.quote(model)}"
+        if not effort_ok(profile, model):
+            effort = ""
         cmd += effort_flag(effort)                                   # усилие нового чата — сразу при запуске
         cmd += repos.flags(st, path)                                 # подключённые к папке репозитории (задача 43)
         sid = transcripts.valid_sid(resume) or str(uuid.uuid4())     # свой журнал окна: --session-id или --resume
@@ -2371,7 +2380,7 @@ class Panel:
     CLAUDE_MISSING = ("В пространстве ещё не установлен Claude Code — сессия не запустится. Владелец пульта уже "
                       "знает; попробуйте через несколько минут.")
 
-    def new_in_space(self, slug: str, name: str = "") -> dict:
+    def new_in_space(self, slug: str, name: str = "", effort: str = "") -> dict:
         """Новая сессия в демо-пространстве: своя папка ``home/projects/<имя>`` (``space_sessions.create``) и окно
         ``tenants.new_window`` в ней — от пользователя пространства, с его CLAUDE_CONFIG_DIR и моделью. Функция
         выключена (нет настройки) — понятный отказ."""
@@ -2379,7 +2388,7 @@ class Panel:
             raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
         name = space_sessions.folder_name(name) if str(name or "").strip() else f"Сессия {time.strftime('%d.%m %H-%M')}"
         path = space_sessions.create(slug, name)
-        raw = tenants.new_window(slug, path.name, str(path))
+        raw = tenants.new_window(slug, path.name, str(path), args=effort_flag(effort).strip())
         self.space_claude_check(slug, raw)
         return {"id": spaces.wid_of(slug, raw), "name": path.name, "folder": path.name}
 
@@ -2563,7 +2572,8 @@ class Panel:
         cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, w.get("sid") or ""))   # выключенные интеграции чата
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
             cmd += f" --model {shlex.quote(own)}"
-        cmd += effort_flag((st.get("window_efforts") or {}).get(wid))       # и усилие
+        if effort_ok(profile, own):
+            cmd += effort_flag((st.get("window_efforts") or {}).get(wid))   # и усилие
         self.busy_sid(w.get("sid"), wid)                                     # тот же разговор уже идёт рядом
         # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
         self.tmux.respawn(wid, w["path"], cmd + harness.of(w).resume_args(w.get("sid")), mark=profile)
@@ -2621,7 +2631,9 @@ class Panel:
             model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
         cmd += repos.flags(st, w["path"])                # подключённые репозитории — снова в сессии (задача 43)
         cmd += f" --model {shlex.quote(model)}" if model else ""
-        cmd += effort_flag(effort) if profile in ("", "claude") else ""
+        if not effort_ok(profile, model):               # Haiku и чужие поставщики — без усилия, и не запоминаем
+            effort = ""
+        cmd += effort_flag(effort)
         sid = transcripts.valid_sid(w.get("sid"))
         off = chatmcp.get(self.CHAT_MCP, w.get("sid") or "")   # выключенные интеграции чата — и после перезапуска
         cmd += chatmcp.flags(off)
@@ -2703,16 +2715,29 @@ class Panel:
         принудительно» (``force``) — окно закрывается, фоновые задачи останавливаются, переписка остаётся в журнале."""
         if w.get("stopped"):                            # остановленная: Claude уже вышел — окно с оболочкой закрыть
             self.tmux.kill(w["id"])
+            self.forget_window(w["id"])
             return {"result": "закрыто", "draft": ""}
         r = self.pult.quit_ex(w)
         if r["result"] in ("background", "busy") and force:
             if self.tmux.window(w["id"]):
                 self.tmux.kill(w["id"])
+            self.forget_window(w["id"])
             return {"result": "закрыто", "draft": r["draft"], "forced": True}
+        if r["result"] not in ("background", "busy"):
+            self.forget_window(w["id"])
         text = {"background": "не закрыл: у сессии есть фоновые задачи — их можно остановить, закрыв принудительно",
                 "busy": "Claude не вышел за 20 с (возможно, занят) — можно закрыть принудительно"}.get(r["result"],
                                                                                                     "закрыто")
         return {"result": text, "draft": r["draft"], **({"code": r["result"]} if text != "закрыто" else {})}
+
+    def forget_window(self, wid: str):
+        """Окно закрыто — его модель и усилие из состояния прочь: id окон tmux после перезапуска сервера начинаются
+        заново, и новое окно не должно подхватить чужой выбор (слепая проверка #323)."""
+        st = self.pult.state()
+        upd = {k: {i: v for i, v in (st.get(k) or {}).items() if i != wid}
+               for k in ("window_models", "window_efforts") if wid in (st.get(k) or {})}
+        if upd:
+            self.pult.set_state(**upd)
 
     def clear_stopped(self) -> dict:
         """«Убрать все остановленные»: закрыть окна сессий пульта, где Claude уже вышел (осталась оболочка).
@@ -2722,6 +2747,7 @@ class Panel:
             if w.get("stopped") and not w.get("space"):
                 self.tmux.kill(w["id"])
                 self.focus.end_window(w["id"])
+                self.forget_window(w["id"])
                 gone.append(w["name"])
         return {"closed": len(gone), "names": gone}
 
@@ -4755,7 +4781,7 @@ def handler(panel: Panel):
                 panel.login.cancel()
                 return {"ok": True}
             if path == "/api/new" and (slug := self.space()):
-                return panel.new_in_space(slug, str(b.get("name", "")))
+                return panel.new_in_space(slug, str(b.get("name", "")), str(b.get("effort") or ""))
             if path == "/api/model/default":             # только явной настройкой — не из чата
                 return panel.default_model(str(b.get("model") or ""))
             if path == "/api/commands/term":             # вкладка «Команды»: нужен ввод — в окне терминала

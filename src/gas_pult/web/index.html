@@ -5221,7 +5221,13 @@ function effortSheet(model, pick) {
   helpSheet("sheet.effort");
   sheet(model ? `«${model}» — сколько думать?` : "Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
     ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
-    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: s?.effort === v, run: () => pick ? pick(v) : act("/api/effort", { level: v }, "Усилия: " + label) })));
+    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: s?.effort === v, run: () => pick ? pick(v) : setEffort(v, label) })));
+}
+// Усилие без смены модели (владелец 19.11: «не должно само открываться окно терминала»): один шаг, итог — тостом,
+// чат остаётся на месте; `/effort <уровень>` с уровнем не спрашивает ничего на экране.
+async function setEffort(v, label) {
+  try { await api("/api/effort", { w: current, level: v }); toast("Усилия: " + label.toLowerCase()); haptic("impactOccurred", "light"); refresh(); }
+  catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
 async function closeSession(id = current, schedule = "", force = false) {
   try {
