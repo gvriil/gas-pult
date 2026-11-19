@@ -628,7 +628,7 @@
   .scn-when .t { font-weight: 700; font-size: calc(17px * var(--fz, 1)); font-variant-numeric: tabular-nums; }
   .scn-msg { background: var(--bg-subtle); border-radius: 14px 14px 14px 4px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: calc(14px * var(--fz, 1)); }
   .scn-opts { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
-  .scn-opt { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-pill); padding: 8px 14px; font-size: calc(14px * var(--fz, 1)); color: var(--text-primary); min-height: 40px; }
+  .scn-opt { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-pill); padding: 8px 14px; font-size: calc(14px * var(--fz, 1)); color: var(--text-primary); min-height: 44px; }
   .scn-opt.on { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--accent-soft); }
   .scn-res { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); font-size: calc(14px * var(--fz, 1)); }
   .scn-res > .i { color: var(--accent-primary); margin-top: 1px; }
@@ -663,6 +663,11 @@
   .sheet button span { flex: 1; min-width: 0; } .sheet button small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
   .sheet button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* долгое нажатие — меню, не выделение */
   .sheet button .sdot { margin: 0 3px; }
+  /* Видно, где курсор (владелец 19.11): наведение и фокус с клавиатуры — подложка и кольцо --border-focus */
+  @media (hover: hover) { .sheet button[data-i]:not(.info):hover, .scn-opt:hover { background: var(--bg-subtle); } }
+  .sheet button:focus-visible, .scn-opt:focus-visible, #navList .nrow:focus-visible, .toast-undo:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+  .sheet button.just { background: color-mix(in srgb, var(--accent-primary) 14%, transparent); }
+  .toast-undo { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; padding: 8px; min-height: 44px; }
   .sheet .row2 { display: flex; gap: 8px; padding: 12px 16px 4px; }
   .sheet .row2 .btn { flex: 1; margin: 0; min-height: 0; justify-content: center; font-size: calc(15px * var(--fz, 1)); }   /* .btn, а не пункт шторки */
   .sheet .row2 .btn:not(.ghost) { background: var(--accent-primary); color: var(--on-accent); }

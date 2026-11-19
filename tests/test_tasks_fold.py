@@ -7,7 +7,7 @@ JS = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/tasks.js").read
 
 
 def test_groups_fold_and_waiting_first():
-    body = JS[JS.index("function tasksSheet() {"):JS.index('helpSheet("sheet.tasks")')]
+    body = JS[JS.index("function tasksSheet(keep) {"):JS.index('helpSheet("sheet.tasks")')]
     assert body.index('group("w", "Ждут вас", waiting)') < body.index("for (const q of [1, 0, 2, 3, 4])")
     assert 't.status !== "waiting"' in body                                     # в квадрантах — без «ждут вас»
     assert "`${title} · ${list.length}`" in body and "run: () => fold(k)" in body # заголовок со счётчиком — кнопка
