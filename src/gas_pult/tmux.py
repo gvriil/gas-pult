@@ -48,6 +48,23 @@ def sleeper() -> str:
     return p if os.access(p, os.X_OK) else ""
 
 
+SLEEP_EVERY = 300                  # с: как часто проверять сессии, ждущие ответа (sleep_waiting)
+
+
+def sleep_waiting(minutes: int) -> bool:
+    """Сессии, которые ждут ответа человека дольше ``minutes`` минут (ход закончен, окно и журнал не менялись), —
+    уснуть: ``claude-sleep auto`` с этим порогом (GAS-25 п.2; владелец 19.11 — «идеи сейчас»). Сам claude-sleep не
+    трогает занятые сессии (ход, вопрос, дочерний процесс) и список «не усыплять»; проснётся сессия от первого
+    сообщения или открытия в панели (``claude --resume``, #298). True — запустили."""
+    exe = sleeper()
+    if minutes <= 0 or not exe:
+        return False
+    subprocess.Popen([exe, "auto"], env={**os.environ, "CLAUDE_SLEEP_HOURS": f"{minutes / 60:.3f}"},
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    return True
+
+
 def make_room(low_mb: int | None = None) -> bool:
     """Памяти меньше порога — в фоне усыпить сессии, которые простаивают дольше 15 минут (не те, что в списке
     «не усыплять» claude-sleep). Ничего не спрашиваем: сессия проснётся от клика или сообщения. True — запустили."""

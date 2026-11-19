@@ -78,6 +78,7 @@ class Config:
     commands: list[list[str]] = field(default_factory=list)  # свои кнопки ⚡: [["▶️ Старт", "/shtab start"]]
     brief_at: str = "07:30"                                 # утренний брифинг первого лица (GAS-18); "" — выкл.
     digest_at: str = "09:00"                                # сводка «ждёт владельца», если brief_at = ""
+    sleep_after_min: int = 30                               # ждёт ответа столько минут — спит (GAS-25); 0 — выкл.
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
