@@ -71,6 +71,12 @@ Claude Code делает большую работу — читает код, г
 (файл [src/gas_pult/web/terms.html](src/gas_pult/web/terms.html), без входа); юридический черновик —
 [docs/TERMS.md](docs/TERMS.md). Обе — до проверки юристом.
 
+## Архитектура
+
+Схемы пульта — общая и подробная, обновляются еженедельно: [docs/architecture](docs/architecture/README.md).
+
+![Архитектура пульта](docs/architecture/overview.png)
+
 ## Что можно делать — не только код
 
 Claude Code с подключёнными сервисами (MCP) — исполнитель для любой работы за компьютером. Пульт даёт к нему
