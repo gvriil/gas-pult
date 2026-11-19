@@ -2203,27 +2203,6 @@
    "title": "Скопируйте вручную",
    "where": "panel"
   },
-  "sheet.effort": {
-   "chips": [
-    "cost"
-   ],
-   "faq": [],
-   "id": "sheet.effort",
-   "next": [
-    "go:session.chat"
-   ],
-   "purpose": "Как глубоко Claude думает: выше — дольше и дороже, ниже — быстрее и дешевле.",
-   "roles": [
-    "owner",
-    "member"
-   ],
-   "steps": [
-    "«Авто» — Claude решает сам.",
-    "Для рутины — «Низкий», для архитектуры — «Очень высокий»."
-   ],
-   "title": "Уровень усилий",
-   "where": "panel"
-  },
   "sheet.el-voice": {
    "chips": [],
    "faq": [],

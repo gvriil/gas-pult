@@ -32,23 +32,23 @@ def test_e2e_effort_step_after_model():
                         " window.api = async (path, body) => path === '/api/model'"
                         " ? (__calls.push(body), { id: body.w }) : __api(path, body); cur().effort = 'high';"
                         " cur().profile = 'claude'; 0")
-            pg.evaluate("setModel(cur(), 'sonnet', 'sonnet')")
-            pg.wait_for_function("[...document.querySelectorAll('.sheet h3, .sheet .title, .sheet')]"
-                                 ".some((e) => e.textContent.includes('«sonnet» — сколько думать?'))", timeout=5000)
-            on = pg.evaluate("[...document.querySelectorAll('.sheet button.on')].map((b) => b.textContent)")
-            assert any("Высокий" in t for t in on), on                          # текущее отмечено
-            # 19.11: модель и усилие — одним запросом (до выбора усилия /api/model не уходит)
-            assert pg.evaluate("__calls.length") == 0
-            pg.locator(".sheet button", has_text="Максимальный").click()
+            # 19.11: модель и усилие — одно окно (js/picker.js): слева модели, справа усилия выбранной модели
+            pg.evaluate("ACTIONS.models()")
+            pg.wait_for_selector(".mpick #mpModels [data-m='sonnet']", timeout=5000)
+            pg.locator("#mpModels [data-m='haiku']").click()
+            assert pg.locator("#mpEff .mp-none").count() == 1                   # у Haiku усилий нет
+            pg.locator("#mpModels [data-m='sonnet']").click()
+            assert pg.evaluate("__calls.length") == 0                 # смена модели — по выбору усилия
+            pg.locator("#mpEff [data-e='max']").click()
             pg.wait_for_function("__calls.length === 1", timeout=5000)
             assert pg.evaluate("__calls[0]") == {"w": "@1", "name": "sonnet", "effort": "max"}
-            pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
-            # другой поставщик — шага нет
-            pg.evaluate("cur().profile = 'deepseek'; setModel(cur(), 'opus', 'opus')")
-            pg.wait_for_timeout(800)
-            assert not pg.evaluate("[...document.querySelectorAll('.sheet')]"
-                                   ".some((e) => e.textContent.includes('сколько думать'))")
-            assert pg.evaluate("__calls.at(-1)") == {"w": "@1", "name": "opus"}   # без усилия — сразу модель
+            assert pg.locator(".mpick").count() == 0 and pg.evaluate("tab") == "chat"   # «Экран» не открывается
+            # другой поставщик (свой ключ) — усилий нет, модель — кнопкой
+            pg.evaluate("cur().profile = 'deepseek'; ACTIONS.models()")
+            pg.wait_for_selector(".mpick #mpEff .mp-none", timeout=5000)
+            pg.locator("#mpEff [data-e]").click()
+            pg.wait_for_function("__calls.length === 2", timeout=5000)
+            assert "effort" not in pg.evaluate("__calls[1]")
             assert not errs, errs
             br.close()
     finally:

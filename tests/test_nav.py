@@ -89,7 +89,7 @@ def test_rail_is_beside_nav_with_projects():
 def test_new_chat_like_claude():
     """Владелец 19.11: «Новый чат» — одно поле и настройки в нём; первая отправка создаёт чат; в пространстве — тоже."""
     nc = (WEB.parent / "js/newchat.js").read_text(encoding="utf-8")
-    for x in ("data-dfold", "data-dmodel", "data-deffort", "data-dmcp", 'store("lastProfile"', 'store("lastEffort"',
+    for x in ("data-dfold", "data-dmodel", 'part("picker")', "data-dmcp", 'store("lastProfile"', 'store("lastEffort"',
               '"/api/new", { name: "", effort: dr.effort || "" }', 'effort: dr.effort'):
         assert x in nc, x
     assert 'ic("compose") + "Новый чат"' in PAGE

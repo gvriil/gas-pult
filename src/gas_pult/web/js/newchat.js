@@ -4,7 +4,7 @@
 // по умолчанию — последние использованные; обязательного нет. Первая отправка создаёт чат и отправляет сообщение —
 // без отдельного шага «создать сессию». Название чат получит по смыслу (projects.title_of, js/nametip.js).
 
-const EFFORT = [["", "Обычные", "как настроено"], ["low", "Низкие", "быстро и дёшево"], ["medium", "Средние", "обычные задачи"],
+const EFFORT = [["", "Обычные", "как настроено"], ["auto", "Авто", "Claude сам решает"], ["low", "Низкие", "быстро и дёшево"], ["medium", "Средние", "обычные задачи"],
   ["high", "Высокие", "сложные задачи"], ["xhigh", "Очень высокие", "архитектура, сложный разбор"], ["max", "Максимальные", "дольше и дороже всего"]];
 let MCP = null;                                         // подключённые интеграции — один раз за показ
 const lastOff = () => { try { return JSON.parse(store("lastMcpOff") || "[]"); } catch (e) { return []; } };
@@ -26,8 +26,8 @@ export function paint() {
   const eff = EFFORT.find(([v]) => v === (DRAFT.effort || "")) || EFFORT[0];
   $("draftBar").innerHTML = (p ? chip("data-dfold", "folder", p.name, "Проект: куда положить чат") : "")
     + (DRAFT.route ? `<button class="dchip${DRAFT.model ? " on" : ""}" type="button" data-droute aria-pressed="${!!DRAFT.model}" title="${esc("Почему: " + DRAFT.route.why)}">${ic(DRAFT.model ? "check" : "spark")}<span>${esc((DRAFT.model ? "" : "Подходит: ") + DRAFT.route.label)}</span></button>` : "")
-    + (choices() > 1 ? chip("data-dmodel", "chip", profTitle(prof), "Модель или другой агент") : "")
-    + (claude ? chip("data-deffort", "bolt", "Усилия: " + eff[1].toLowerCase(), "Сколько думать над ответом", !!DRAFT.effort) : "")
+    + chip("data-dmodel", "chip", (DRAFT.model || profTitle(prof)) + (claude && !/haiku/i.test(DRAFT.model || "") ? " · усилия: " + eff[1].toLowerCase() : ""),
+      "Модель и усилие — один выбор", !!(DRAFT.model || DRAFT.effort))
     + (MCP?.length ? chip("data-dmcp", "puzzle", "Интеграции: " + onCount(DRAFT.mcpOff) + (DRAFT.mcpOff.length ? " из " + okCount() : ""),
       claude ? "Какие интеграции доступны этому чату" : "У другого агента интеграции — в его настройках", DRAFT.mcpOff.length > 0) : "");
   $("input").placeholder = "Напишите, что нужно…";
@@ -51,7 +51,7 @@ function mcpMenu(anchor) {
 $("draftBar").onclick = (e) => {
   if (!DRAFT) return;
   const f = e.target.closest("[data-dfold]"), m = e.target.closest("[data-dmodel]"), r = e.target.closest("[data-droute]");
-  const ef = e.target.closest("[data-deffort]"), mc = e.target.closest("[data-dmcp]");
+  const mc = e.target.closest("[data-dmcp]");
   const back = () => { paint(); $("input").focus(); };
   if (r && DRAFT.route) {                              // роутер (router.py): подсказка — нажал, чат запустится с этой моделью
     const on = !DRAFT.model; Object.assign(DRAFT, on ? { profile: DRAFT.route.profile, model: DRAFT.route.model } : { profile: "", model: "" });
@@ -59,8 +59,7 @@ $("draftBar").onclick = (e) => {
   }
   if (f) return popMenu(f, [...(projData?.projects || []).filter((p) => !p.archived).map((p) => ({ label: p.name, icon: "folder", on: p.id === DRAFT.proj, run: () => { DRAFT.proj = p.id; back(); } })),
     { sep: true }, { label: "Новая папка…", icon: "plus", run: () => newFolder() }]);
-  if (m) return pickProfile((pid) => { if (DRAFT) { DRAFT.profile = pid; DRAFT.model = ""; back(); } });
-  if (ef) return popMenu(ef, EFFORT.map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: (DRAFT.effort || "") === v, run: () => { DRAFT.effort = v; back(); } })));
+  if (m) return part("picker").then((x) => x.open());                 // модель и усилие — одно окно (js/picker.js)
   if (mc) return mcpMenu(mc);
 };
 

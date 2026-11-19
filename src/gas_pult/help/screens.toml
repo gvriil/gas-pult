@@ -608,16 +608,6 @@ next = ["go:models", "go:session.chat"]
 chips = ["model", "cost"]
 
 [[screen]]
-id = "sheet.effort"
-where = "panel"
-title = "Уровень усилий"
-roles = ["owner", "member"]
-purpose = "Как глубоко Claude думает: выше — дольше и дороже, ниже — быстрее и дешевле."
-steps = ["«Авто» — Claude решает сам.", "Для рутины — «Низкий», для архитектуры — «Очень высокий»."]
-next = ["go:session.chat"]
-chips = ["cost"]
-
-[[screen]]
 id = "sheet.switch-provider"
 where = "panel"
 title = "Сменить поставщика"
