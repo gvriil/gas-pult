@@ -649,7 +649,7 @@ def test_focus_desktop_nav_and_chat_names():
     page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
     assert 'const navOn = () => (!FOCUS || meta?.focus?.mode !== "demo")' in page
     assert 'const split = () => (!FOCUS || meta?.focus?.mode !== "demo")' in page
-    assert "const dn = (s) => FOCUS && s.title || s.name;" in page
+    assert "const dn = (s) => s.name;" in page and "const named = (x) =>" in page   # имя — название по смыслу
     for use in ('"Сообщение для " + dn(s)', "<b>${esc(dn(s))}</b>", 'setText($("title"), dn(s))'):
         assert use in page, use
     assert 'if (FOCUS) return [{ label: "Переименовать"' in page and "body.focus #navMoreBtn" in page

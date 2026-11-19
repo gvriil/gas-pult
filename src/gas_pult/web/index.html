@@ -1844,7 +1844,10 @@ $("sideBtn").onclick = () => setMini(!sideMini);
 // (плашка «Отменить» 5 с — до неё на сервере ничего не удаляется). Телефон: панель выезжает слева (☰ или свайп).
 const NAV = { open: false, q: "", html: "", gone: new Set(), held: false, exp: new Set((() => { try { return JSON.parse(store("navExp") || "[]"); } catch (e) { return []; } })()) };
 let DRAFT = null;                                     // новый чат до первой отправки: { proj, profile }
-const dn = (s) => FOCUS && s.title || s.name;            // фокус: название чата, не служебное имя окна (19.11)
+const dn = (s) => s.name;
+// Служебное имя окна (gas-pult-1835) человеку не показываем нигде (владелец 19.11): name — название по смыслу (#317),
+// пока его нет — «Новый чат»; имя окна — wname (для «Имя окна · изменить» у владельца)
+const named = (x) => x.wname ? x : { ...x, wname: x.name, name: x.title && !x.title_status ? x.title : "Новый чат" };            // фокус: название чата, не служебное имя окна (19.11)
 const navOn = () => (!FOCUS || meta?.focus?.mode !== "demo") && !SIM.on && !!meta && !["login", "terms", "country", "persona"].includes(view);
 const lastMsg = (s) => Math.max(+s.said || 0, +s.asked || 0) || +s.changed || 0;
 const canPin = (s) => meta?.role !== "viewer" && !FOCUS && !s?.space;
@@ -1877,7 +1880,7 @@ function renderNav() {
   setHidden($("navCloseBtn"), two); syncBack(); $("nav").inert = !on || (!two && !NAV.open) || (two && sideMini);
   if (!on) { if (NAV.open) navOpen(false); return; }
   const q = NAV.q.trim().toLowerCase(), hit = (t) => !q || String(t || "").toLowerCase().includes(q);
-  const ss = sessions.filter((x) => !NAV.gone.has(x.id)), nm = (x) => x.name + " " + (x.title || "");
+  const ss = sessions.filter((x) => !NAV.gone.has(x.id)), nm = (x) => x.name + " " + (x.wname || "");
   const projs = projOn() ? projData?.projects || [] : [];
   const ofProj = (p) => ss.filter((x) => x.project === p.id).sort((a, b) => lastMsg(b) - lastMsg(a));
   const pv = (p) => { const l = ofProj(p).filter((x) => !q || hit(nm(x)) || hit(p.name)); return (hit(p.name) || l.length) ? navProj(p, l, !!q || NAV.exp.has(p.id)) : ""; };
@@ -3652,7 +3655,7 @@ async function refresh() {
     const d = boot || await api(pv ? "/api/projects" : "/api/sessions");
     if (pv) projData = d;
     await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
-    sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)); costInfo = d.cost || null; limitsInfo = d.limits || null;
+    sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)).map(named); costInfo = d.cost || null; limitsInfo = d.limits || null;
     if (d.tasks && JSON.stringify(d.tasks) !== JSON.stringify(tasksInfo)) { tasksInfo = d.tasks; if (!$("spaces").hidden) tasksCount(); } agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
@@ -7644,7 +7647,7 @@ async function sLoad(first) {
   SIM.projects = (d.projects || []).filter((x) => !x.archived);
   costInfo = d.cost || costInfo;                       // запас пространства (cost.budget) — в «Агенты»
   checkBuild(d);
-  sessions = d.sessions || [];
+  sessions = (d.sessions || []).map(named);
   SIM.list = sessions.filter((x) => x.status !== "stopped");
   if (!SIM.list.some((x) => x.id === SIM.w)) {
     const want = (DEMO && (params.get("open") || "@2")) || store("s:last");
