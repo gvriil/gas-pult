@@ -195,6 +195,17 @@ function demoApi(path, body) {
   const TT = demoApi.titles ||= {};                   // «Название чата» (/api/title) — живёт до перезагрузки
   for (const x of S) if (x.id in TT) { x.title = TT[x.id] || x.title; x.title_own = !!TT[x.id]; }
   if (path.split("?")[0] === "/api/chat/mcp") return Promise.resolve({ id: body.w, off: body.off || [] });
+  if (path.split("?")[0] === "/api/steps") { const t0 = Date.now() / 1000; const all = [
+    { at: t0 - 600, dur: 74, prompt: "Проверь сборку и запусти тесты", answer: "Тесты прошли: 58 из 58. Сборку можно запускать командой ниже.", steps: [
+      { at: t0 - 598, tool: "Bash", what: "Выполняет команду: npm run build", ok: true, out: "built in 4.2s", dur: 5 },
+      { at: t0 - 590, tool: "Read", what: "Читает файл rooms.test.ts", ok: true, out: "describe('rooms', …", dur: 0.1 },
+      { at: t0 - 580, tool: "Bash", what: "Выполняет команду: npm test", ok: true, out: "PASS 58 tests", dur: 52 }] },
+    { at: t0 - 300, dur: 21, prompt: "И добавь кнопку обновления", answer: "Добавил кнопку «Обновить» в шапку.", steps: [
+      { at: t0 - 298, tool: "Edit", what: "Правит файл Header.tsx", ok: true, out: "", dur: 0.3 },
+      { at: t0 - 290, tool: "Bash", what: "Выполняет команду: npm run lint", ok: false, out: "1 error: unused variable 'x'", dur: 6 },
+      { at: t0 - 280, tool: "Edit", what: "Правит файл Header.tsx", ok: true, out: "", dur: 0.2 }] }];
+    const q = (new URLSearchParams(path.split("?")[1] || "").get("q") || "").toLowerCase();
+    return Promise.resolve({ turns: all.filter((t) => !q || JSON.stringify(t).toLowerCase().includes(q)).reverse() }); }
   if (path.split("?")[0] === "/api/title") { TT[body.w] = body.title || ""; return Promise.resolve({ title: body.title || "", own: !!body.title }); }
   const R = {
     "/api/meta": { desktop: true, agents: [{ id: "pi", title: "Pi", model: "deepseek/deepseek-v4-pro" }], ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
