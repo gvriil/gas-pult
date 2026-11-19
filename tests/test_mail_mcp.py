@@ -282,6 +282,7 @@ def test_list_messages_newest_first_read_only(env):
     m = d["rows"][1]
     assert m["subject"] == "Протечка в подъезде" and m["from"] == "Сергей Иванов <s.ivanov@example.org>"
     assert m["date"] == "2026-11-12T18:40:00+03:00" and m["seen"] is False and m["size"] > 100
+    assert m["answered"] is False and "message_id" in m and "cc" in m          # для брифинга (GAS-18)
     assert [s["cmd"] for s in IMAP.seen if s["cmd"] in ("EXAMINE", "SELECT")] == ["EXAMINE"]
     fetch = next(s for s in IMAP.seen if s["sub"] == "FETCH")
     assert "BODY.PEEK[" in fetch["line"] and not imap_writes()

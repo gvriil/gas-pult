@@ -338,12 +338,16 @@ def list_messages(a: dict):
         uids = [u.decode() for u in found][-limit:]
         rows = []
         if uids:
-            got = _fetch(m, uids, "(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])")
+            got = _fetch(m, uids,
+                         "(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])")
             for r in got:
                 msg = email.message_from_bytes(r["data"] or b"", policy=email.policy.default)
                 rows.append({"uid": r["uid"], "date": _iso(msg.get("Date")), "from": _hdr(msg, "From"),
                              "to": _hdr(msg, "To"), "subject": _hdr(msg, "Subject"),
-                             "seen": "\\Seen" in r["flags"], "size": r["size"]})
+                             "seen": "\\Seen" in r["flags"], "size": r["size"],
+                             # для брифинга (GAS-18): копия, Message-ID (ссылка на письмо), «отвечено»
+                             "cc": _hdr(msg, "Cc"), "message_id": _hdr(msg, "Message-ID"),
+                             "answered": "\\Answered" in r["flags"]})
         rows.sort(key=lambda r: int(r["uid"]), reverse=True)
     out = {"box": name, "folder": folder, "total": len(found), "rows": rows}
     if len(found) > len(rows):

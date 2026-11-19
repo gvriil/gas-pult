@@ -60,3 +60,13 @@ def moved(st: dict, old: str, new: str) -> dict:
     if old in d:
         d[new] = d.pop(old)
     return d
+
+
+# ---------- правило тишины брифинга (GAS-18) ----------
+# Вне утра бот будит владельца только по деньгам, безопасности и срыву срока; остальное ждёт утреннего брифинга.
+URGENT = ("money", "security", "deadline")
+
+
+def wakes(cat: str | None) -> bool:
+    """Будить ли сейчас (вне утреннего брифинга) по событию категории ``cat`` (``brief.urgent``)."""
+    return cat in URGENT

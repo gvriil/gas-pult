@@ -645,7 +645,7 @@ def test_digest_and_selftest_loops_one_round(p, monkeypatch):
     p.api = type("A", (), {"redact": staticmethod(str)})()
     sent = []
     p.digest = type("D", (), {"due": lambda self, at, now: True, "mark_sent": lambda self, d: sent.append("mark")})()
-    p.cfg.digest_at = "09:00"
+    p.cfg.digest_at, p.cfg.brief_at = "09:00", ""                          # брифинг выключен — прежняя сводка
     monkeypatch.setattr(p, "send_digest", lambda chat=None: sent.append("digest"))
     monkeypatch.setattr(p, "send_testers", lambda chat=None: sent.append("testers"), raising=False)
     monkeypatch.setattr(bot.features, "due", lambda data, now: True)
