@@ -640,3 +640,16 @@ def test_focus_ease_menu_in_page():
     assert 'data-act="ease" class="focus-only"' in page and 'part("ease")' in page
     ease = (root / "js/ease.js").read_text(encoding="utf-8")
     assert 'store("theme", m)' in ease and "renameSession" in ease and "!FOCUS_DEMO()" in ease
+
+
+def test_focus_desktop_nav_and_chat_names():
+    """Владелец 19.11: фокус на компьютере — та же раскладка (боковая панель, правая кнопка и «⋯»); служебное имя
+    окна человеку не показывается — название чата; демо-ссылка — без панели."""
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    assert 'const navOn = () => (!FOCUS || meta?.focus?.mode !== "demo")' in page
+    assert 'const split = () => (!FOCUS || meta?.focus?.mode !== "demo")' in page
+    assert "const dn = (s) => FOCUS && s.title || s.name;" in page
+    for use in ('"Сообщение для " + dn(s)', "<b>${esc(dn(s))}</b>", 'setText($("title"), dn(s))'):
+        assert use in page, use
+    assert 'if (FOCUS) return [{ label: "Переименовать"' in page and "body.focus #navMoreBtn" in page
