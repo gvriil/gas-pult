@@ -497,6 +497,13 @@ function demoApi(path, body) {
   if (key === "/api/route") return Promise.resolve({ route: /сайт|браузер|форм/i.test(body?.text || "") ? { type: "browser", title: "рутина в браузере", profile: "claude", model: "haiku", name: "Haiku 5.5", why: "80/80 и 16/16, ≈ $0.04 за 8 задач" } : null });
   if (key === "/api/calendars/keys") return Promise.resolve({ calendars: [{ kind: "google", title: "Google Календарь", on: false }] });
   if (key === "/api/calendars/key") return Promise.resolve({ ok: true, checked: "событий в календаре: 12" });
+  if (key === "/api/tts/about") {                     // «Что здесь умеет» → «Прослушать»: в демо — секунда тишины (WAV)
+    const n = 8000, b = new DataView(new ArrayBuffer(44 + n)), w = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); b.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+    b.setUint32(24, 8000, true); b.setUint32(28, 8000, true); b.setUint16(32, 1, true); b.setUint16(34, 8, true); w(36, "data"); b.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) b.setUint8(44 + i, 128);
+    return Promise.resolve(new Blob([b.buffer], { type: "audio/wav" }));
+  }
   if (key === "/api/link/tg") return Promise.resolve({ id: "demo", link: "https://t.me/", ttl: 300 });
   if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
   if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет
