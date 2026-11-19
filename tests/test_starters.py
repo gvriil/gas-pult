@@ -74,3 +74,11 @@ def test_occupations_and_tailored_scenarios():
     for o in starters.occupations():                                     # у каждого занятия сценарии есть
         assert len(starters.for_occupation(o["id"], {"mail", "calendar", "docs"}, "owner")) >= 3
     assert "по одному вопросу" in starters.prompt("money-leaks")
+
+
+def test_groceries_by_vkusvill():
+    ids = [x["id"] for x in starters.for_occupation("personal", {"vkusvill"}, "owner")]
+    assert ids[0] == "groceries" and len(ids) == 4
+    ids = [x["id"] for x in starters.for_occupation("personal", set(), "owner")]
+    assert ids[0] == "connect-vkusvill" and "groceries" not in ids
+    assert "корзину" in starters.prompt("groceries") and "«Да / Нет / Позже»" in starters.prompt("groceries")

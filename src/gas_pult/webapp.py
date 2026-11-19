@@ -3145,8 +3145,11 @@ class Panel:
             have = {"mail"} if mail_mcp.boxes() else set()
             if calendar_mcp.calendars():
                 have.add("calendar")
-            if any("docs_mcp" in str(x.get("target", "")) for x in self.mcp._cached(None)[1]):   # кэш: без ожидания
-                have.add("docs")
+            for x in self.mcp._cached(None)[1]:            # кэш `claude mcp list`: без ожидания
+                if "docs_mcp" in str(x.get("target", "")):
+                    have.add("docs")
+                if "mcp.vkusvill.ru" in str(x.get("target", "")):   # ВкусВилл (#327)
+                    have.add("vkusvill")
         own = starters.for_occupation(occ, have, role, space) if occ else []
         return {"starters": own or starters.listing(have, role, space), "occ": occ if own else "",
                 "occupations": starters.occupations() if role not in (None, "viewer") else []}
