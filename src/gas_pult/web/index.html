@@ -3718,6 +3718,7 @@ async function refresh() {
 }
 // Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
 function paintSession(s) {
+  if (s?.sid && !s.title_own) part("nametip").then((m) => m.watch(s)).catch(() => {});   // название по смыслу (js/nametip.js)
   moneyBar(s);
   const st = ST[s.status];
   if (split()) setText($("title"), dn(s));

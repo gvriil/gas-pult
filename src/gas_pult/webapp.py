@@ -541,7 +541,8 @@ class Panel:
                         # один повтор после лимита подписки — когда (limitretry.py); нет — None
                         "retry_at": ((st.get("limit_retries") or {}).get(w["id"]) or {}).get("at"),
                         "notify_own": bool(notifylevel.own(st, w["id"])),
-                        "title": self.chat_title(pd, w["path"], home, sid),   # название чата («Проекты»)
+                        "title": (ttl := self.chat_title(pd, w["path"], home, sid)),   # название чата («Проекты»)
+                        "title_status": projects.is_status(ttl),          # название-статус, смысла ещё нет
                         "title_own": bool(sid and ((pd.get("sessions") or {}).get(sid) or {}).get("title")),
                         "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
                         "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
