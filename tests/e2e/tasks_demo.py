@@ -55,8 +55,10 @@ def run(base: str):
             pg.wait_for_selector(".sheet h3:has-text('Команда выполнена')")
             pg.locator(".sheet button", has_text="Отметить задачу выполненной").click()
             pg.wait_for_function("() => tasksInfo.open === 3")
+            # владелец 19.11: после действия — снова список задач на том же месте, задача подсвечена, «Отменить» 5 с
+            pg.wait_for_selector(".sheet[data-tasks] button.just")
+            assert pg.locator(".toast .toast-undo").count() == 1, f"{where}: нет «Отменить»"
             # решение: вариант уходит в чат задачи дословно
-            pg.click(".sp-tasks")
             pg.wait_for_selector(".sheet h3:has-text('Задачи')")
             pg.locator(".sheet button", has_text="Выбрать цену пилота для клиента").click()
             pg.wait_for_function("() => current === '@1'")
@@ -64,9 +66,8 @@ def run(base: str):
             pg.locator(".sheet button", has_text="80 тыс. ₽").click()
             pg.wait_for_function("() => (document.querySelector('.sp-tasks').getAttribute('aria-label') || '')"
                                  ".startsWith('Задачи: 1 срочно')")
-            # квадрант руками: «Написать Ивану» → «Срочно и важно»
-            pg.click(".sp-tasks")
-            pg.wait_for_selector(".sheet h3:has-text('Задачи')")
+            # квадрант руками: «Написать Ивану» → «Срочно и важно» (список уже открыт — остались на месте)
+            pg.wait_for_selector(".sheet[data-tasks] h3:has-text('Задачи')")
             pg.locator(".sheet button", has_text="Написать Ивану про доступ").click()
             pg.locator(".sheet button", has_text="Срочность и важность").click()
             pg.locator(".sheet button", has_text="Срочно и важно — сделать сейчас").click()

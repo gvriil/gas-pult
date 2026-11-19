@@ -14,6 +14,10 @@ const Q_T = { 1: "Срочно и важно — сделать сейчас", 0
   2: "Важно, не срочно — запланировать", 3: "Срочно, не важно — быстро или делегировать", 4: "Не срочно и не важно — потом или убрать" };
 const Q_SHORT = { 1: "срочно и важно", 2: "важно", 3: "срочно", 4: "ни то ни другое", 0: "не разобрано" };
 let TASKS = [];
+// Остаёмся на месте (владелец 19.11: «если я там нажал что-то — они не должны закрываться, главное — вернуться туда же,
+// где я был»): прокрутка списка запоминается, после действия список открывается на той же позиции, задача — с
+// подсветкой, 5 секунд можно «Отменить».
+let Y = 0, JUST = "";
 
 async function tasksLoad() {
   TASKS = (await api("/api/tasks")).tasks || [];
@@ -35,13 +39,13 @@ function fold(k) {
   const f = folds(); f[k] ? delete f[k] : (f[k] = 1);
   try { localStorage.setItem(FOLD_KEY, JSON.stringify(f)); } catch (e) { /* без памяти — свернётся на этот раз */ }
   document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
-  tasksSheet();
+  tasksSheet(true);
 }
 const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
   sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
     t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
   run: () => taskGo(t) });
-function tasksSheet() {
+function tasksSheet(keep) {
   const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
   const f = folds(), rows = [];
   const group = (k, title, list, q) => {
@@ -59,15 +63,28 @@ function tasksSheet() {
     ...rows,
     { label: "Добавить задачу", icon: "plus", run: () => taskNew() },
     ...(done.length ? [{ head: `Выполнено · ${done.length}` },
-      ...done.slice(0, 15).map((t) => ({ label: t.title, dot: "tq-g", sub: "выполнено" + (t.done_at ? " · " + when(t.done_at) : ""), run: () => taskSheet(t) }))] : []),
+      ...done.slice(0, 15).map((t) => ({ label: t.title, dot: "tq-g", sub: "выполнено" + (t.done_at ? " · " + when(t.done_at) : ""), run: () => taskGo(t) }))] : []),
   ]);
+  const sh = [...document.querySelectorAll(".sheet-bg .sheet")].pop();
+  if (!sh) return;
+  sh.dataset.tasks = "1";
+  if (keep) sh.scrollTop = Y;
+  sh.addEventListener("scroll", () => { Y = sh.scrollTop; }, { passive: true });
+  if (JUST) {                                          // только что изменённая задача — подсветка на месте
+    const b = [...sh.querySelectorAll("button[data-i]")].find((x) => x.querySelector("span")?.firstChild?.textContent === JUST);
+    JUST = "";
+    if (b) { b.classList.add("just"); if (b.offsetTop < sh.scrollTop || b.offsetTop > sh.scrollTop + sh.clientHeight - 40) b.scrollIntoView({ block: "center" }); }
+  }
 }
+const back = () => { document.querySelectorAll(".sheet-bg").forEach((x) => x.remove()); tasksSheet(true); };
 
 const when = (ts) => new Date(ts * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 async function taskGo(t) {                            // «провалиться»: чат задачи и карточка поверх него
+  const sh = document.querySelector(".sheet[data-tasks]"); if (sh) Y = sh.scrollTop;
   document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
   if (t.chat_now && t.chat_now !== current) await openSession(t.chat_now);
+  sheetFrom = null;                                    // своя кнопка «К списку задач» — на то же место, без второй «Назад»
   taskSheet(t);
 }
 
@@ -94,24 +111,40 @@ function taskSheet(t) {
   if (t.status !== "done") a.push({ label: "Срочность и важность…", icon: "bolt", sub: Q_SHORT[t.q || 0], run: () => taskQ(t) },
     { label: "Что сделать дальше…", icon: "edit", sub: t.next, run: () => taskNext(t) },
     ...(t.status !== "waiting" ? [{ label: "Ждёт меня", icon: "wait", run: () => taskSet(t, { status: "waiting" }, "Поставил первой в списке") }] : []));
-  a.push({ label: "Удалить задачу", icon: "trash", danger: true, run: () => taskSet(t, null, "Задача удалена") });
+  a.push({ label: "Удалить задачу", icon: "trash", danger: true, run: () => confirmDanger("Удалить задачу «" + t.title + "»?", () => taskSet(t, null, "Задача удалена")) });
   helpSheet("sheet.tasks");
-  sheet(t.title, [{ info: true, icon: KIND_IC[t.kind] || "tasks", label: "Дальше: " + (t.next || "—"),
+  sheet(t.title, [{ label: "К списку задач", icon: "back", sub: "на то же место", run: back }, { info: true, icon: KIND_IC[t.kind] || "tasks", label: "Дальше: " + (t.next || "—"),
     sub: [Q_SHORT[t.q || 0], ST_T[t.status], KIND_T[t.kind], t.due ? "срок " + t.due : "", t.by ? "поставил: " + t.by : "", t.result ? "последний запуск: код " + t.result.code : ""].filter(Boolean).join(" · ") }, ...a]);
 }
 
 function taskQ(t) {                                     // квадрант руками: 1–4
   helpSheet("sheet.tasks");
   sheet("Срочность и важность", [1, 2, 3, 4].map((q) => ({ label: Q_T[q], icon: q === (t.q || 0) ? "check" : "bolt",
-    run: () => taskSet(t, { q }, "Записал: " + Q_SHORT[q]).then(() => tasksSheet()) })));
+    run: () => taskSet(t, { q }, "Записал: " + Q_SHORT[q]) })));
 }
 
-async function taskSet(t, upd, ok) {
+async function taskSet(t, upd, ok, quiet) {
   try {
     if (upd) await api("/api/tasks/update", { id: t.id, ...upd }); else await api("/api/tasks/remove", { id: t.id });
-    toast(ok); haptic("notificationOccurred", "success");
+    haptic("notificationOccurred", "success");
     await tasksLoad(); tasksCount(); refreshShared();
+    if (quiet) return;
+    // обратно в список, на то же место; «Отменить» — 5 с (кроме удаления: его подтверждаем заранее)
+    const was = Object.fromEntries(Object.keys(upd || {}).map((k) => [k, t[k] ?? (k === "q" ? 0 : "")]));
+    if (upd) JUST = t.title;
+    back();
+    undoToast(ok, upd && ok !== "Отменено" ? () => taskSet(t, was, "Отменено") : null);
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
+}
+
+function undoToast(text, undo) {
+  document.querySelectorAll(".toast").forEach((x) => x.remove());
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = text;
+  if (undo) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "toast-undo"; b.textContent = "Отменить";
+    b.onclick = () => { el.remove(); undo(); }; el.append(" ", b);
+  }
+  notice(el); setTimeout(() => el.remove(), undo ? 5000 : 2600);
 }
 
 async function taskRun(t, confirmed) {
@@ -154,7 +187,7 @@ function taskNew() {
     textSheet("Что сделать дальше", "", "Первый шаг", async (next) => {
       try {
         await api("/api/tasks/add", { title, next, kind: "other", ...(current && view === "session" ? { chat: current, sid: cur()?.sid || "" } : {}) });
-        toast("Задача добавлена"); await tasksLoad(); tasksCount(); tasksSheet();
+        JUST = title; toast("Задача добавлена"); await tasksLoad(); tasksCount(); back();
       } catch (e) { toast("Не добавлено: " + e.message, 4500); }
     }));
 }
