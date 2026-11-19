@@ -73,6 +73,7 @@ def run(shots: str = ""):
             owner.add_cookies([{**ready["cookie"], "url": base}])
             po = page(owner, base + "/")
             po.wait_for_function("projData?.projects?.length >= 2", timeout=20000)
+            po.wait_for_function("DRAFT !== null", timeout=10000)   # 19.11: вход — сразу пустой чат
             pid = po.evaluate("projData.projects.find((p) => p.folder === 'shop').id")
             po.wait_for_selector(f'#navList [data-np="{pid}"]', timeout=10000)
             row = po.locator(f'#navList [data-np="{pid}"]')

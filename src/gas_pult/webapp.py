@@ -3135,17 +3135,21 @@ class Panel:
         steps = " ".join(f"{i}. {x}" for i, x in enumerate(s.get("steps") or [], 1))
         return f"{s['title']}. {s.get('purpose', '')} {steps}".strip()[:self.ABOUT_MAX]
 
-    def starters_for(self, role: str | None, space: bool, slug: str = "") -> list[dict]:
-        """Бейджики первого разговора: что подключено — почта (ящики коннектора), календарь (файлы календарей)."""
+    def starters_for(self, role: str | None, space: bool, slug: str = "", occ: str = "") -> dict:
+        """Бейджики первого разговора: что подключено — почта (ящики коннектора), календарь (файлы календарей),
+        документы. ``occ`` — ответ на «Чем вы занимаетесь?» (владелец 19.11): тогда 3–4 сценария под занятие."""
         from gas_pult.connectors import calendar_mcp, mail_mcp
-        if space:                                      # пространство: только его подключения, не владельца
-            return starters.listing({"docs"} if slug and (tenants.load(slug) or {}).get("docs") else set(), role, True)
-        have = {"mail"} if mail_mcp.boxes() else set()
-        if calendar_mcp.calendars():
-            have.add("calendar")
-        if any("docs_mcp" in str(x.get("target", "")) for x in self.mcp._cached(None)[1]):   # кэш: без ожидания
-            have.add("docs")
-        return starters.listing(have, role, space)
+        if space:                                      # пространство и фокус: только свои подключения, не владельца
+            have = {"docs"} if slug and (tenants.load(slug) or {}).get("docs") else set()
+        else:
+            have = {"mail"} if mail_mcp.boxes() else set()
+            if calendar_mcp.calendars():
+                have.add("calendar")
+            if any("docs_mcp" in str(x.get("target", "")) for x in self.mcp._cached(None)[1]):   # кэш: без ожидания
+                have.add("docs")
+        own = starters.for_occupation(occ, have, role, space) if occ else []
+        return {"starters": own or starters.listing(have, role, space), "occ": occ if own else "",
+                "occupations": starters.occupations() if role not in (None, "viewer") else []}
 
     def tts_text(self, text: str, personal: bool = False, cloud: bool = True) -> bytes:
         """Озвучить готовый текст: ElevenLabs (если выбран и отвечает) или локальный голос."""
@@ -3998,8 +4002,8 @@ def handler(panel: Panel):
                                                      cloud=not self.space()))
             if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
                 # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
-                return {"starters": panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
-                                                       self.space() or "")}
+                return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
+                                          self.space() or "", str(q.get("occ") or ""))
             if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
                 return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
