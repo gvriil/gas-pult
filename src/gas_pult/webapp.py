@@ -91,6 +91,7 @@ from gas_pult import (
     terms,
     termwin,
     testers,
+    tmux,
     transcripts,
     usage,
     voice,
@@ -414,7 +415,9 @@ class Panel:
         self.mod_sched: tuple[float, dict] = (0.0, {})       # модуль → описание (schedule_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.stt_jobs: dict[str, dict] = {}              # фоновое распознавание (GAS-34): id → состояние
-        self.repeat = router.Repeat()                    # тот же длинный вопрос в ту же сессию за 10 минут (GAS-16)
+        self.repeat = router.Repeat()
+        self.start_q: list[dict] = []                    # новые сессии, ждущие памяти (mem_gate)
+        self.lock_q, self.q_thread = threading.Lock(), None
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
@@ -2203,8 +2206,69 @@ class Panel:
             return {"id": w["id"], "existing": w["name"]}   # активное окно бота — только явным выбором (#179)
         return {"id": self.open_in(path, profile, person, uid)["id"]}
 
+    # ---------- пропуск новой сессии по памяти (GAS-25 п.1; зависание сервера 18.11, GAS-22) ----------
+    # Свободной памяти меньше ``tmux.LOW_MB`` и после усыпления простаивающих (``tmux.make_room``) — новое окно не
+    # открываем: запрос встаёт в очередь, человеку — понятный ответ; освободится память — окно откроется само и
+    # придёт сообщение в Telegram. Ждём не дольше ``MEM_WAIT`` с, потом — «не дождался».
+    MEM_WAIT = 30 * 60
+
+    def mem_gate(self, start, label: str, uid=None):
+        free = tmux.free_mb()
+        if free is None or free >= tmux.LOW_MB:
+            return start()
+        tmux.make_room()
+        time.sleep(3)                                     # усыпление освобождает память за секунды
+        free = tmux.free_mb()
+        if free is None or free >= tmux.LOW_MB:
+            return start()
+        with self.lock_q:
+            self.start_q.append({"start": start, "label": label, "uid": uid, "at": time.time()})
+            pos = len(self.start_q)
+            if not self.q_thread or not self.q_thread.is_alive():
+                self.q_thread = threading.Thread(target=self._start_queue, daemon=True, name="mem-queue")
+                self.q_thread.start()
+        print(f"память: свободно {free} МБ < {tmux.LOW_MB} — «{label}» в очереди ({pos})", file=sys.stderr, flush=True)
+        raise ValueError(f"На сервере мало памяти (свободно {free / 1024:.1f} ГБ). Сессия «{label}» в очереди"
+                         f"{f' — {pos}-я' if pos > 1 else ''}: откроется сама, когда память освободится, и придёт "
+                         "сообщение. Освободить сейчас — закройте или усыпите ненужные сессии.")
+
+    def _start_queue(self):
+        while True:
+            time.sleep(20)
+            with self.lock_q:
+                if not self.start_q:
+                    return
+                job = self.start_q[0]
+                if time.time() - job["at"] > self.MEM_WAIT:
+                    self.start_q.pop(0)
+                    self._q_tell(job, f"⏳ Сессия «{job['label']}» не открылась: памяти на сервере так и не хватило "
+                                      f"за {self.MEM_WAIT // 60} минут. Закройте ненужные сессии и откройте снова.")
+                    continue
+                free = tmux.free_mb()
+                if free is not None and free < tmux.LOW_MB:
+                    continue
+                self.start_q.pop(0)
+            try:
+                job["start"]()
+                self._q_tell(job, f"✅ Память освободилась — сессия «{job['label']}» открыта. Она в списке сессий.")
+            except Exception as e:
+                self._q_tell(job, f"Сессия «{job['label']}» не открылась: {e}")
+
+    def _q_tell(self, job: dict, text: str):
+        chats = [job["uid"]] if has_telegram(job.get("uid")) else list(self.cfg.owners)
+        for chat in chats:
+            try:
+                self.pult.api("sendMessage", chat_id=chat, text=text)
+            except (TelegramError, OSError) as e:
+                print(f"память: сообщение {chat}: {e}", file=sys.stderr, flush=True)
+
     def open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
                 model: str = "", name: str = "") -> dict:
+        label = name or (os.path.basename(path) if path != self.pult.home else "home")
+        return self.mem_gate(lambda: self._open_in(path, profile, person, uid, resume, model, name), label, uid)
+
+    def _open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
+                 model: str = "", name: str = "") -> dict:
         """Новое окно с Claude в папке — без правила «одно окно на папку»: у окна свой журнал (``--session-id`` и
         метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
         этого чата (``window_models``), как у «Модель» в меню."""
