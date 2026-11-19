@@ -28,19 +28,27 @@ def test_e2e_effort_step_after_model():
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
-            pg.evaluate("window.__api = api; window.api = async (path, body) => path === '/api/model'"
-                        " ? { id: body.w } : __api(path, body); cur().effort = 'high'; cur().profile = 'claude'; 0")
+            pg.evaluate("window.__api = api; window.__calls = [];"
+                        " window.api = async (path, body) => path === '/api/model'"
+                        " ? (__calls.push(body), { id: body.w }) : __api(path, body); cur().effort = 'high';"
+                        " cur().profile = 'claude'; 0")
             pg.evaluate("setModel(cur(), 'sonnet', 'sonnet')")
             pg.wait_for_function("[...document.querySelectorAll('.sheet h3, .sheet .title, .sheet')]"
-                                 ".some((e) => e.textContent.includes('Усилие для «sonnet»'))", timeout=5000)
+                                 ".some((e) => e.textContent.includes('«sonnet» — сколько думать?'))", timeout=5000)
             on = pg.evaluate("[...document.querySelectorAll('.sheet button.on')].map((b) => b.textContent)")
             assert any("Высокий" in t for t in on), on                          # текущее отмечено
+            # 19.11: модель и усилие — одним запросом (до выбора усилия /api/model не уходит)
+            assert pg.evaluate("__calls.length") == 0
+            pg.locator(".sheet button", has_text="Максимальный").click()
+            pg.wait_for_function("__calls.length === 1", timeout=5000)
+            assert pg.evaluate("__calls[0]") == {"w": "@1", "name": "sonnet", "effort": "max"}
             pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
             # другой поставщик — шага нет
             pg.evaluate("cur().profile = 'deepseek'; setModel(cur(), 'opus', 'opus')")
             pg.wait_for_timeout(800)
             assert not pg.evaluate("[...document.querySelectorAll('.sheet')]"
-                                   ".some((e) => e.textContent.includes('Усилие'))")
+                                   ".some((e) => e.textContent.includes('сколько думать'))")
+            assert pg.evaluate("__calls.at(-1)") == {"w": "@1", "name": "opus"}   # без усилия — сразу модель
             assert not errs, errs
             br.close()
     finally:

@@ -218,3 +218,60 @@ def test_chat_mcp_off_survives_open_restart_revive(panel, monkeypatch, tmp_path)
     monkeypatch.setattr(panel.pult, "home_of", lambda w: None)
     panel.revive("@7")
     assert panel.t["respawned"][-1] == f"claude{deny} --resume {sid}"
+
+
+@pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
+def test_model_and_effort_one_restart_and_kept(panel, monkeypatch):
+    """Владелец 19.11: «усилия не выбираются» — модель и усилие одним перезапуском (--model, --effort), усилие
+    живёт у чата: перезапуск, «оживление» и новый чат — с ним; «auto» — без флага."""
+    panel.cfg.models = ["opus", "sonnet", "haiku"]
+    w = {"id": "@1", "name": "a", "path": "/p/shop", "profile": "claude", "sid": A}
+    panel.model(w, "opus", effort="high")
+    cmd, _ = panel.t["opened"][-1]
+    assert " --model opus" in cmd and " --effort high" in cmd and cmd.endswith(f"--resume {A}")
+    wid = f"@{10 + len(panel.t['opened'])}"
+    st = panel.pult.state()
+    assert st["window_efforts"] == {wid: "high"} and st["window_models"][wid] == "opus"
+    panel.restart({**w, "id": wid}, "claude")                                         # обычный перезапуск
+    assert " --effort high" in panel.t["opened"][-1][0]
+    panel.model(w, "sonnet", effort="auto")
+    assert "--effort" not in panel.t["opened"][-1][0]
+    with pytest.raises(ValueError):
+        panel.model(w, "opus", effort="turbo")
+    panel._open_in("/p/shop", effort="max")
+    assert " --effort max" in panel.t["opened"][-1][0]
+
+
+def test_effort_flag():
+    assert webapp.effort_flag("xhigh") == " --effort xhigh" and webapp.effort_flag("auto") == ""
+    assert webapp.effort_flag("") == "" and webapp.effort_flag("x; rm") == ""
+
+
+@pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
+def test_effort_review_fixes(panel, monkeypatch):
+    """Слепая проверка #323: Haiku и чужой поставщик — без --effort; закрытое окно забывает модель и усилие."""
+    panel.cfg.models = ["opus", "haiku"]
+    w = {"id": "@1", "name": "a", "path": "/p/shop", "profile": "claude", "sid": A}
+    panel.model(w, "opus", effort="high")
+    wid = f"@{10 + len(panel.t['opened'])}"
+    panel.model({**w, "id": wid}, "haiku")                                  # на Haiku прежнее усилие не переносится
+    assert "--effort" not in panel.t["opened"][-1][0]
+    panel._open_in("/p/shop", profile="deepseek", effort="max")
+    assert "--effort" not in panel.t["opened"][-1][0]
+    st = panel.pult.state()
+    panel.pult.set_state(window_models={"@5": "opus"}, window_efforts={"@5": "max"})
+    panel.forget_window("@5")
+    st = panel.pult.state()
+    assert "@5" not in st["window_models"] and "@5" not in st["window_efforts"]
+
+
+def test_effort_ok():
+    assert webapp.effort_ok("claude", "opus") and webapp.effort_ok("", "")
+    assert not webapp.effort_ok("claude", "claude-haiku-5-5") and not webapp.effort_ok("pi", "")
+
+
+def test_effort_auto_remembered_for_display(panel, monkeypatch):
+    """Владелец 19.11: «сделал авто, всё равно пишет среднее» — выбор человека («авто») хранится и показывается."""
+    monkeypatch.setattr(panel, "slash", lambda w, cmd: ["Effort level set to auto"])
+    panel.effort({"id": "@3"}, "auto")
+    assert panel.pult.state()["window_efforts"]["@3"] == "auto" and webapp.effort_flag("auto") == ""

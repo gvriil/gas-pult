@@ -4051,12 +4051,19 @@ function newProject() {
   });
 }
 // Модель этого чата: окно перезапускается с --model у того же поставщика (разговор продолжается); другие не трогаем.
-async function setModel(s, alias, name) {
+// Модель → сразу усилие (владелец 19.11: «когда я модель выбираю, сразу и усилия выбирались»): один перезапуск с
+// --model и --effort. У модели без усилий (Haiku, свой ключ поставщика) — шаг пропускается.
+const hasEffort = (s, alias) => (s?.profile || "claude") === "claude" && !/haiku/i.test(alias || "");
+function setModel(s, alias, name) {
   if (!s) return;
+  if (hasEffort(s, alias)) return effortSheet(name, (lv) => applyModel(s, alias, name, lv));
+  applyModel(s, alias, name);
+}
+async function applyModel(s, alias, name, effort) {
   toast("Перезапускаю этот чат с " + name + "…", 6000);
   try {
-    const d = await api("/api/model", { w: s.id, name: alias }); await refresh(); openSession(d.id); toast(`Модель «${name}» — только для этого чата`, 4500);
-    if ((s.profile || "claude") === "claude") effortSheet(name);   // 17.11: после модели — усилие
+    const d = await api("/api/model", { w: s.id, name: alias, ...(effort != null ? { effort } : {}) }); await refresh(); openSession(d.id);
+    toast(`«${name}»${effort && effort !== "auto" ? " · усилия: " + (EFFORT_RU[effort] || effort) : ""} — только для этого чата`, 4500);
   }
   catch (e) { toast("Не вышло: " + e.message, 5000); }
 }
@@ -5209,12 +5216,18 @@ function switchProfile(s) {
 }
 // После смены модели — сразу уровень усилий (как глубоко думать): одно касание вместо второго меню.
 // Усилия — у моделей Claude (docs: model-config); у других поставщиков нет
-function effortSheet(model) {
-  const s = cur(); if ((s?.profile || "claude") !== "claude") return toast("У этого поставщика усилий нет", 3500);
+function effortSheet(model, pick) {
+  const s = cur(); if (!pick && (s?.profile || "claude") !== "claude") return toast("У этого поставщика усилий нет", 3500);
   helpSheet("sheet.effort");
-  sheet(model ? `Усилие для «${model}»` : "Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
+  sheet(model ? `«${model}» — сколько думать?` : "Уровень усилий", [["auto", "Авто", "Claude сам решает"], ["low", "Низкий", "быстро и дёшево"], ["medium", "Средний", "обычные задачи"],
     ["high", "Высокий", "сложные задачи"], ["xhigh", "Очень высокий", "архитектура, сложный разбор"], ["max", "Максимальный", "дольше и дороже всего"]]
-    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: s?.effort === v, run: () => act("/api/effort", { level: v }, "Усилия: " + label) })));
+    .map(([v, label, sub]) => ({ label, sub, icon: "bolt", on: s?.effort === v, run: () => pick ? pick(v) : setEffort(v, label) })));
+}
+// Усилие без смены модели (владелец 19.11: «не должно само открываться окно терминала»): один шаг, итог — тостом,
+// чат остаётся на месте; `/effort <уровень>` с уровнем не спрашивает ничего на экране.
+async function setEffort(v, label) {
+  try { await api("/api/effort", { w: current, level: v }); toast("Усилия: " + label.toLowerCase()); haptic("impactOccurred", "light"); refresh(); }
+  catch (e) { toast("Не вышло: " + e.message, 4500); }
 }
 async function closeSession(id = current, schedule = "", force = false) {
   try {

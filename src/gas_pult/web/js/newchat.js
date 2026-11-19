@@ -83,12 +83,11 @@ export async function send() {
   toast(p ? "Начинаю чат в «" + p.name + "»…" : "Начинаю чат…", 4000);
   try {
     const off = isClaude() ? (dr.mcpOff || []) : [];
-    const d = p ? await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "", mcp_off: off })
-      : await api("/api/new", { name: "" });          // пространство клиента: своя папка, без проектов
+    const d = p ? await api("/api/project/session", { id: dr.proj, profile: dr.profile, model: dr.model || "", mcp_off: off, effort: dr.effort || "" })
+      : await api("/api/new", { name: "", effort: dr.effort || "" });   // пространство: своя папка, усилие — при запуске
     if (p) store("lastProj", dr.proj);
     store("lastProfile", dr.model ? "" : dr.profile || ""); store("lastEffort", dr.effort || ""); store("lastMcpOff", JSON.stringify(off));
     await openSession(d.id);                          // черновик гаснет в show()
-    if (dr.effort) await api("/api/effort", { w: d.id, level: dr.effort }).catch(() => toast("Усилия не выставились — поменяйте в меню чата", 3500));
     $("input").value = text; files = keep; renderFiles(); grow();
     await sendText();
   } catch (e) { toast("Не вышло: " + e.message, 5000); }
