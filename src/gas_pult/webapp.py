@@ -89,6 +89,7 @@ from gas_pult import (
     spaces,
     speech,
     starters,
+    steps,
     tasks,
     tenants,
     terms,
@@ -3388,7 +3389,8 @@ FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/comma
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 STT_JOB = ("/api/stt/job", "/api/stt/retry")       # фоновое распознавание (GAS-34): там же, где /api/stt
-SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog", "/api/starters", "/api/starter", "/api/title"}
+SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog", "/api/starters", "/api/starter", "/api/title",
+                            "/api/steps"}
 FOCUS_GET |= {"/api/tts/about", "/api/starters"}
 # Фокус-ссылка — удобства своей сессии (владелец 19.11: «переименования, тёмный/светлый и все остальные»; GAS-13 п.4)
 FOCUS_POST |= {"/api/rename", "/api/starter", "/api/title"}
@@ -3996,6 +3998,11 @@ def handler(panel: Panel):
                                                  cloud=not self.space(), head=q.get("head") == "1"))
             if path == "/api/tts/warm":                   # открыли сессию — голос загрузится заранее (#190)
                 return panel.tts_warm(panel.cfg.personal_voices and self.who()[1] == "owner")
+            if path == "/api/steps":                    # «Шаги» (GAS-16, слой 7): сообщение → инструменты → ответ
+                if harness.of(w).name != "claude":
+                    return {"turns": [], "note": "шаги видны только у Claude Code"}
+                f = transcripts.current(w["path"], panel.pult.home_of(w), w.get("sid") or "")
+                return {"turns": steps.turns(f, q.get("q", ""))}
             if path == "/api/history":
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 sid = w.get("sid") or ""                   # окно со своим журналом — его переписка
