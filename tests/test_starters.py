@@ -55,3 +55,22 @@ def test_docs_badge_by_connection():
     ids = [x["id"] for x in starters.listing(set(), "owner")]
     assert "connect-docs" in ids and "docs" not in ids
     assert "find_in_docs" in starters.prompt("docs")
+
+
+def test_occupations_and_tailored_scenarios():
+    """Владелец 19.11: «спросить, чем человек занимается, и предложить 3–4 небанальных сценария под ответ»."""
+    occ = starters.occupations()
+    assert {o["id"] for o in occ} >= {"biz", "sales", "accounting", "it", "study", "personal"}
+    biz = [x["id"] for x in starters.for_occupation("biz", set(), "owner")]
+    assert biz[:2] == ["money-leaks", "partners-summary"]
+    assert "connect-mail" in biz and len(biz) <= 4
+    assert "mail" in [x["id"] for x in starters.for_occupation("biz", {"mail"}, "owner")]
+    assert starters.for_occupation("biz", set(), "viewer") == []
+    assert starters.for_occupation("нет", set(), "owner") == []
+    space = [x["id"] for x in starters.for_occupation("accounting", set(), "member", space=True)]
+    assert "docs" not in space and "connect-docs" not in space and len(space) == 3
+    general = [x["id"] for x in starters.listing(set(), "owner")]
+    assert "money-leaks" not in general                                  # под занятие — не в общем ряду
+    for o in starters.occupations():                                     # у каждого занятия сценарии есть
+        assert len(starters.for_occupation(o["id"], {"mail", "calendar", "docs"}, "owner")) >= 3
+    assert "по одному вопросу" in starters.prompt("money-leaks")

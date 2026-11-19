@@ -16,9 +16,40 @@ from importlib import resources
 MAX = 8
 
 
+def _file() -> dict:
+    return tomllib.loads(resources.files("gas_pult").joinpath("help/starters.toml").read_text(encoding="utf-8"))
+
+
 def load() -> list[dict]:
-    text = resources.files("gas_pult").joinpath("help/starters.toml").read_text(encoding="utf-8")
-    return list(tomllib.loads(text).get("starter", []))
+    return list(_file().get("starter", []))
+
+
+def occupations() -> list[dict]:
+    """«Чем вы занимаетесь?» (владелец 19.11): ответы кнопками — [{id, title}]."""
+    return [{"id": o["id"], "title": o["title"]} for o in _file().get("occupation", [])]
+
+
+OCC_MAX = 4
+
+
+def for_occupation(occ: str, have: set[str], role: str | None, space: bool = False) -> list[dict]:
+    """3–4 сценария под занятие: нужное не подключено — «Подключить …» вместо (в пространстве — пропуск)."""
+    if role in (None, "viewer"):
+        return []
+    o = next((x for x in _file().get("occupation", []) if x["id"] == occ), None)
+    if not o:
+        return []
+    by, out = {s["id"]: s for s in load()}, []
+    for sid in o.get("starters", []):
+        s = by.get(sid)
+        if not s:
+            continue
+        need = s.get("needs", "")
+        if need and need not in have:
+            s = None if space else by.get(s.get("instead", ""))
+        if s and s["id"] not in {x["id"] for x in out}:
+            out.append({"id": s["id"], "title": s["title"]})
+    return out[:OCC_MAX]
 
 
 def listing(have: set[str], role: str | None, space: bool = False) -> list[dict]:
@@ -28,8 +59,8 @@ def listing(have: set[str], role: str | None, space: bool = False) -> list[dict]
     by = {s["id"]: s for s in load()}
     out: list[dict] = []
     for s in load():
-        if s.get("connect"):
-            continue                                   # «Подключить …» — только вместо недостающего
+        if s.get("connect") or s.get("occ_only"):
+            continue                                   # «Подключить …» — только вместо недостающего; под занятие — там
         need = s.get("needs", "")
         pick = s
         if need and need not in have:                 # в пространстве — только то, что подключено ему самому

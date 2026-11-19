@@ -238,7 +238,7 @@
   .chatv-list .msg { margin: 0 0 10px; }
   .homebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
              background: linear-gradient(to top, var(--bg-canvas) 70%, transparent); }
-  #home { padding-bottom: 76px; }
+  #home { padding-bottom: 16px; }
 
   /* ===== Кнопки и формы ===== */
   .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-pill); padding: 13px 18px;
@@ -2321,7 +2321,7 @@ function show(v) {
   applyWide(); renderRail(); queueMicrotask(agoTick);   // «N назад» на открывшемся экране — сразу свежие
   $("pick").hidden = true;                           // компьютер: без открытой сессии — главная в основной колонке
   $("dock").hidden = v !== "session";
-  $("homeBar").hidden = !(v === "home" && !gate && homeView === "sessions");
+  $("homeBar").hidden = true;      // 19.11: «Новый чат» — в панели чатов и ✎ в шапке; нижняя кнопка закрывала карточки
   closePop(); navOpen(false); renderNav();
   placeNotices();
   syncBack();
@@ -2935,7 +2935,7 @@ function setHome(v) {
   $("newBtn").innerHTML = ic("compose") + (inProj ? "Новый чат в проекте" : "Новый чат");
   renderSetup();
   $("commandsView").hidden = v !== "commands";
-  $("homeBar").hidden = !(view === "home" && v === "sessions");
+  $("homeBar").hidden = true;
   const two = split();
   if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
     const sub = (v !== "sessions" || inProj) && !two;
@@ -7186,6 +7186,9 @@ function goFromLink() {                                // #go=<id> из бота
   if (id && /^go:[a-z0-9.\-]+$/.test(id)) setTimeout(() => go(id), 300);
   const sid = params.get("session");                  // «📱 Открыть сессию» из бота (зов тестировщика на помощь)
   if (sid && !DEMO && !SIM.on) setTimeout(async () => { await refresh(); if (sessions.some((x) => x.id === sid)) openSession(sid); }, 300);
+  // Вход — сразу пустой чат, как в claude.ai (владелец 19.11: «один чат с полем ввода и настройками»); список — в панели
+  else if (!id && !DEMO && !FOCUS && !SIM.on && !params.get("open") && meta?.role !== "viewer")
+    setTimeout(async () => { await refresh(); if (view === "home" && !current && (projOn() && projData?.projects?.length || meta?.space)) newChat(); }, 300);
 }
 
 // ---------- короткий тур (docs/MINI_APP.md#тур) ----------
