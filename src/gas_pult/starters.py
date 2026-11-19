@@ -32,7 +32,7 @@ def listing(have: set[str], role: str | None, space: bool = False) -> list[dict]
             continue                                   # «Подключить …» — только вместо недостающего
         need = s.get("needs", "")
         pick = s
-        if need and (space or need not in have):
+        if need and need not in have:                 # в пространстве — только то, что подключено ему самому
             pick = None if space else by.get(s.get("instead", ""))
         if pick and pick["id"] not in {x["id"] for x in out}:
             out.append({"id": pick["id"], "title": pick["title"]})

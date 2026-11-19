@@ -3032,9 +3032,11 @@ class Panel:
         steps = " ".join(f"{i}. {x}" for i, x in enumerate(s.get("steps") or [], 1))
         return f"{s['title']}. {s.get('purpose', '')} {steps}".strip()[:self.ABOUT_MAX]
 
-    def starters_for(self, role: str | None, space: bool) -> list[dict]:
+    def starters_for(self, role: str | None, space: bool, slug: str = "") -> list[dict]:
         """Бейджики первого разговора: что подключено — почта (ящики коннектора), календарь (файлы календарей)."""
         from gas_pult.connectors import calendar_mcp, mail_mcp
+        if space:                                      # пространство: только его подключения, не владельца
+            return starters.listing({"docs"} if slug and (tenants.load(slug) or {}).get("docs") else set(), role, True)
         have = {"mail"} if mail_mcp.boxes() else set()
         if calendar_mcp.calendars():
             have.add("calendar")
@@ -3885,7 +3887,8 @@ def handler(panel: Panel):
                                                      cloud=not self.space()))
             if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
                 # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
-                return {"starters": panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None)}
+                return {"starters": panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
+                                                       self.space() or "")}
             if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
                 return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
