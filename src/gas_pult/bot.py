@@ -37,6 +37,7 @@ from gas_pult import (
     activity,
     ago,
     brief,
+    chatlog,
     country,
     ctxsnap,
     deliveries,
@@ -233,6 +234,7 @@ class Pult:
         self.meter = usage.Meter()                         # расход сессий по журналам (usage.py)
         self.sends = activity.Sends()                      # что и когда отправили в окно — фазы до хода (activity.py)
         self.deliv = deliveries.Log(cfg.data / "sends.jsonl")   # журнал доставок без текста (deliveries.py)
+        self.events = chatlog.Log(cfg.data / "chat-events.jsonl")  # путь сообщения по id (GAS-31)
         self.drafts: dict[str, tuple[str, float]] = {}     # сторож черновиков: окно → (отпечаток, с какого времени)
         self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
         self.changes = ago.Screens()                       # когда менялся экран окна — «изменена N назад» (ago.py)
@@ -1019,6 +1021,11 @@ class Pult:
                 del self.answers[old]
             return self.counter
 
+    def ev(self, name: str, mid: str = "", **kw):
+        """Событие в журнал чата (chatlog); журнала нет (бот собран в тесте без __init__) — молча дальше."""
+        if (log := getattr(self, "events", None)) is not None:
+            log.event(name, mid, **kw)
+
     # ---------- монитор: ответы и диалоги всех окон ----------
     def deliver(self, w: dict, text: str):
         n = self.remember(w, text)
@@ -1027,8 +1034,11 @@ class Pult:
             try:
                 msgs[chat] = self.send_answer(chat, f"[{w['name']}]", text, wid=w["id"],
                                               reply_markup=kb(rows)).get("message_id")
+                self.ev("answer_tg", w=w["id"], len=len(text), sha=chatlog.sha(text))
             except TelegramError as e:
                 print("send:", e, flush=True)
+                self.ev("answer_tg_fail", w=w["id"], code=e.description[:60],
+                                  err=str(e)[:120])
         self.hint_wait[w["id"]] = {"t": time.time(), "msgs": msgs, "rows": rows}
         self.cmds.offer(w, text, self.broadcast, kb)
         if self.state()["voice_always"]:

@@ -2215,6 +2215,16 @@ function toast(text, ms = 2600) {
 // 403 {confirm: "code"} — шторка «Подтвердите кодом», после кода тот же запрос повторяется. Демо: &confirm, код 123456.
 const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/tasks/run", "/api/desktop/open", "/api/commands/run", "/api/commands/term", "/api/term/type",
   "/api/term/key", "/api/tty/type", "/api/tty/key"]);
+const PWA = matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+// Ошибки JS — в журнал событий сервера (GAS-31): тип, текст ошибки, файл:строка, экран; не чаще 10 в минуту
+let jsErrs = [];
+function logErr(kind, msg, at) {
+  const now = Date.now(); jsErrs = jsErrs.filter((t) => now - t < 60000); if (jsErrs.length >= 10 || DEMO) return; jsErrs.push(now);
+  fetch("/api/clientlog", { method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": tg?.initData || "" },
+    body: JSON.stringify({ kind, msg: String(msg || "").slice(0, 160), at, screen: (() => { try { return view; } catch (e) { return ""; } })() }) }).catch(() => {});
+}
+addEventListener("error", (e) => logErr("js", e.message, (e.filename || "").split("/").pop() + ":" + e.lineno));
+addEventListener("unhandledrejection", (e) => logErr("promise", e.reason?.message || e.reason, ""));
 async function api(path, body, raw, extra, signal) {
   if (DEMO && !window.demoApi) await part("demo");   // ответы демо — в своей части (js/demo.js)
   if (DEMO && params.has("offline") && start.done) throw Object.assign(new Error("нет сети"), { net: true });
@@ -2223,6 +2233,7 @@ async function api(path, body, raw, extra, signal) {
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
   if (FOCUS && $("focusEnd")) throw new Error("Сессия завершена");   // ссылка погасла — опросы больше не шлём
   const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
+  if (PWA) headers["X-Pult-Pwa"] = "1";                 // с экрана «Домой» — для журнала событий (GAS-31)
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
   let r;

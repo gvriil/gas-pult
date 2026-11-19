@@ -52,6 +52,7 @@ from gas_pult import (
     bridge,
     calkeys,
     chat_trash,
+    chatlog,
     country,
     ctxsnap,
     drive_inbox,
@@ -418,6 +419,7 @@ class Panel:
         self.repeat = router.Repeat()
         self.start_q: list[dict] = []                    # новые сессии, ждущие памяти (mem_gate)
         self.lock_q, self.q_thread = threading.Lock(), None
+        self.events = chatlog.Log(cfg.data / "chat-events.jsonl")   # путь сообщения по id (GAS-31, отладка)
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
@@ -2851,6 +2853,7 @@ class Panel:
         f.write_bytes(data)
         f.chmod(0o600)
         self.stt_jobs[jid] = {"state": "work", "uid": uid, "at": time.time(), "file": f.name, "cloud": cloud}
+        self.events.event("stt_start", "stt:" + jid, bytes=len(data))
         threading.Thread(target=self._stt_run, args=(jid,), daemon=True, name=f"stt-{jid}").start()
         return {"job": jid}
 
@@ -2872,10 +2875,14 @@ class Panel:
             if not text:
                 raise ValueError(STT_EMPTY)
             now = self.fallback_note()
-            job.update(state="done", text=text, fallback=now if now and now != before else "")
             f.unlink(missing_ok=True)                     # текст есть — голос не храним
+            fb = now if now and now != before else ""
+            self.events.event("stt_done", "stt:" + jid, secs=round(time.time() - job["at"], 1), len=len(text),
+                              fallback=bool(fb))
+            job.update(state="done", text=text, fallback=fb)      # последним: панель видит «готово» — файла уже нет
         except Exception as e:                            # запись остаётся: «Повторить» возьмёт её с сервера
             job.update(state="fail", error=str(e) or type(e).__name__, kept=f.exists())
+            self.events.event("stt_fail", "stt:" + jid, secs=round(time.time() - job["at"], 1), err=type(e).__name__)
             print(f"распознавание {jid}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
 
     def stt_job_get(self, jid: str, uid) -> dict:
@@ -3280,7 +3287,7 @@ FOCUS_POST = {"/api/send", "/api/resend", "/api/key", "/api/select", "/api/comma
               "/api/stt", "/api/space/upload", "/api/close", "/api/space/close", "/api/logout", "/api/model",
               "/api/effort", "/api/restart", "/api/mcp/finish", "/api/repos/add", "/api/repos/remove", "/api/uses"}
 STT_JOB = ("/api/stt/job", "/api/stt/retry")       # фоновое распознавание (GAS-34): там же, где /api/stt
-SPACE_OK |= set(STT_JOB) | {"/api/tts/about"}
+SPACE_OK |= set(STT_JOB) | {"/api/tts/about", "/api/clientlog"}
 FOCUS_GET |= {"/api/tts/about"}
 FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
@@ -3549,6 +3556,7 @@ def handler(panel: Panel):
                     self.json({"error": str(e), "code": "budget"}, 403)
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
+                    "/api/clientlog",
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN)   # и наблюдателю
             need = (("admin" if path in ADMIN_OK else "owner") if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
@@ -4450,6 +4458,11 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/clientlog":                   # ошибка JS в браузере (GAS-31): тип, экран, место
+                panel.events.event("js_error", str(b.get("mid") or ""), kind=str(b.get("kind") or "")[:40],
+                                   msg=str(b.get("msg") or "")[:160], at=str(b.get("at") or "")[:120],
+                                   screen=str(b.get("screen") or "")[:40], dev=webauth.device(self.client()[1]))
+                return {"ok": True}
             if path == "/api/stt/retry":                   # повтор нераспознанной записи — с сервера (GAS-34)
                 return panel.stt_retry(str(b.get("id", "")), self.terms_uid())
             if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
@@ -4790,11 +4803,20 @@ def handler(panel: Panel):
                 if not text:
                     raise ValueError("пустое сообщение")
                 mid = str(b.get("id", ""))[:64]           # повтор после обрыва связи — не «тот же вопрос»
+                panel.events.event("recv", mid, w=w["id"], src="focus" if self.focused is not None else "panel",
+                                   len=len(text), sha=chatlog.sha(text), dev=webauth.device(self.client()[1]),
+                                   via=self.via() + ("·pwa" if self.headers.get("X-Pult-Pwa") == "1" else ""))
                 if (ago := panel.repeat.check(w["id"], text, mid=mid)) is not None:
+                    panel.events.event("repeat_stop", mid, w=w["id"], ago=ago)
                     raise ValueError(f"Этот вопрос уже отправлен {max(1, ago // 60)} мин назад — ответ появится выше. "
                                      "Нужно ещё раз — отправьте снова в течение 2 минут.")
-                with panel.pult.via("focus" if self.focused is not None else "panel"):
-                    dup = panel.send(w, text, str(b.get("id", ""))[:64])
+                try:
+                    with panel.pult.via("focus" if self.focused is not None else "panel"):
+                        dup = panel.send(w, text, str(b.get("id", ""))[:64])
+                except Exception as e:
+                    panel.events.event("send_error", mid, w=w["id"], err=f"{type(e).__name__}: {e}")
+                    raise
+                panel.events.event("dup" if dup else "inserted", mid, w=w["id"])
                 panel.repeat.done(w["id"], text, mid=mid)
                 return {"ok": True, "dup": dup}
             if path == "/api/resend":                     # «Отправить» у строки «Не отправлено» — Enter после проверки
