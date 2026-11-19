@@ -72,6 +72,7 @@ from gas_pult import (
     offer_report,
     offers,
     oidc,
+    onboarding,
     passkeys,
     personas,
     pi_journal,
@@ -445,6 +446,8 @@ class Panel:
         self.ip_seen: dict[int, tuple[float, str]] = {}              # кого и когда сверяли по IP (только в памяти)
         self.offer_demos = offers.Demos()                            # демо-сессии страниц предложений (в памяти)
         self.offer_misses = offers.Misses()                          # перебор кодов предложений — по IP
+        self.forms_links = onboarding.Links(cfg.data)                # анкеты клиентов по ссылке (решение 0010)
+        self.q_misses = offers.Misses()                              # перебор кодов анкет — по IP
         self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")   # «Попробовать в Telegram» — токены для бота
         # дежурный помощник «? Подсказать» (helper.py): карта экранов, ответы без модели
         self.helper = helper.Helper(cfg.data)
@@ -2306,6 +2309,44 @@ class Panel:
             except Exception as e:
                 self._q_tell(job, f"Сессия «{job['label']}» не открылась: {e}")
 
+    # ---------- анкета клиента по ссылке (решение 0010, onboarding.py) ----------
+    def anketa(self, code: str) -> tuple[dict, dict]:
+        rec = self.forms_links.get(code)
+        form = onboarding.forms(self.cfg.data).get(rec["form"]) if rec else None
+        if not rec or not form:
+            raise LookupError("ссылка не найдена или устарела")
+        return rec, form
+
+    def anketa_submit(self, code: str, answers) -> dict:
+        rec, form = self.anketa(code)
+        answers = onboarding.clean(form, answers)
+        if miss := onboarding.missing(form, answers):
+            raise ValueError("Ответьте, пожалуйста, на обязательные вопросы: " + "; ".join(miss[:3]))
+        rec = self.forms_links.submit(code, answers)
+        onboarding.store_answers(self.cfg.data, form, rec, answers)
+        text = onboarding.summary(form, answers, rec["client"]) + "\nВсе ответы — панель → «Анкеты клиентов»."
+        for chat in self.cfg.owners:                      # владельцу — сразу: «прошёл — взяли в работу»
+            try:
+                self.pult.api("sendMessage", chat_id=chat, text=text)
+            except (TelegramError, OSError) as e:
+                print(f"анкета: сообщение владельцу: {e}", file=sys.stderr, flush=True)
+        return {"ok": True}
+
+    def anketa_answers(self, rid: str) -> dict:
+        """Владельцу: ответы анкеты по id ссылки — текстом вопросов, и описание клиента."""
+        rec = self.forms_links.by_id(rid)
+        if not rec:
+            raise LookupError("нет такой анкеты")
+        form = onboarding.forms(self.cfg.data).get(rec["form"])
+        ans = rec.get("draft") or {}
+        rows = [{"q": q["text"], "a": (", ".join(ans[q["id"]]["pick"] + ([f"свой: {ans[q['id']]['other']}"]
+                                       if ans[q["id"]].get("other") else [])) if isinstance(ans[q["id"]], dict)
+                                       else str(ans[q["id"]])) if q["id"] in ans else "—"}
+                for q in (onboarding.questions(form) if form else [])]
+        prof = self.cfg.data / "clients" / f"{rid}.json"
+        return {"client": rec["client"], "form": rec["form"], "sent": rec.get("sent"), "rows": rows,
+                "profile": json.loads(prof.read_text()) if prof.exists() else None}
+
     def _q_tell(self, job: dict, text: str):
         chats = [job["uid"]] if has_telegram(job.get("uid")) else list(self.cfg.owners)
         for chat in chats:
@@ -3372,6 +3413,7 @@ OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "
 ADMIN_OK = {"/api/people", "/api/people/role", "/api/people/remove", "/api/people/access", "/api/spaces",
             "/api/invite/new", "/api/space/connect", "/api/restart"}
 OWNER_ONLY |= {"/api/people/access"}
+OWNER_ONLY |= {"/api/q/new", "/api/q/list", "/api/q/answers"}   # анкеты клиентов (0010) — только владелец
 # Интеграции на чат посреди чата — перезапуск окна, как /api/restart: владелец и админ (включить выключенное = доступ)
 OWNER_ONLY |= {"/api/chat/mcp"}
 ADMIN_OK |= {"/api/chat/mcp"}
@@ -3522,6 +3564,7 @@ def handler(panel: Panel):
     page_gz = gzip.compress(page, 9)                     # страница сжимается один раз при старте (887 → ~200 КБ)
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
+    q_page = resources.files("gas_pult").joinpath("web/q.html").read_bytes()     # анкета клиента (0010)
     terms_page = resources.files("gas_pult").joinpath("web/terms.html").read_bytes()   # /terms — без входа (17.11)
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
     icons = {f"/{n}": (resources.files("gas_pult").joinpath(f"web/{n}").read_bytes(), t)   # значок вкладки (GAS-20)
@@ -3534,6 +3577,9 @@ def handler(panel: Panel):
     hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(x).digest()).decode() + "'" for x in scripts)
     offer_csp = (f"default-src 'none'; script-src {hashes}; style-src 'unsafe-inline'; img-src 'self' data:; "
                  "connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'")
+    q_hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(x).digest()).decode() + "'"
+                        for x in re.findall(rb"<script>(.*?)</script>", q_page, re.S))
+    q_csp = offer_csp.replace(f"script-src {hashes}", f"script-src {q_hashes}")
 
     class H(BaseHTTPRequestHandler):
         focused: dict | None = None             # запрос из фокуса: ссылка (focus.py), уже проверенная
@@ -3843,6 +3889,8 @@ def handler(panel: Panel):
                 return self.reply(302, b"", "text/plain", headers={**NOINDEX, "Location": f"/?invite={m.group(1)}"})
             if url.path == "/api/invite":                # экран входа: «приглашение в …» — только для действующего
                 return self.json(panel.invite_info(dict(urllib.parse.parse_qsl(url.query)).get("code", "")))
+            if url.path.startswith(("/q/", "/api/q/")) and not url.path.startswith(("/api/q/list", "/api/q/answers")):
+                return self.anketa_http("GET", url.path)   # анкета клиента: без входа, только по личному коду
             if url.path.startswith(("/offer/", "/api/offer/")):     # предложение: без входа, только по коду
                 return self.offer("GET", url.path)
             if not url.path.startswith("/api/"):
@@ -4015,6 +4063,12 @@ def handler(panel: Panel):
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] in ("owner", "admin"),
                                                      self.terms_uid()))
+            if path == "/api/q/list":                     # «Анкеты клиентов» (0010): ссылки без кодов и анкеты
+                fs = onboarding.forms(panel.cfg.data).values()
+                return {"links": panel.forms_links.listing(),
+                        "forms": [{"id": f["id"], "title": f["title"]} for f in fs]}
+            if path == "/api/q/answers":
+                return panel.anketa_answers(str(q.get("id") or ""))
             if path == "/api/focus/list":                 # «Настройки» → «Фокус-ссылки»: действующие, без токенов
                 return {"links": panel.focus.listing()}
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
@@ -4115,6 +4169,8 @@ def handler(panel: Panel):
                 if not panel.email.enabled:
                     return self.json({"error": "вход по почте выключен на этом пульте", "code": "off"}, 503)
                 return self.dispatch(lambda: self.email_login(path))
+            if path.startswith("/api/q/") and path != "/api/q/new":
+                return self.anketa_http("POST", path)
             if path.startswith("/api/offer/"):
                 return self.offer("POST", path)
             if path in ("/api/invite/check", "/api/invite/enter"):   # лёгкий вход: код или ссылка, без Telegram
@@ -4531,6 +4587,39 @@ def handler(panel: Panel):
                     return v
             return ""
 
+        def anketa_http(self, method: str, path: str):
+            """``/q/<код>`` — страница анкеты; ``/api/q/<код>`` — анкета и черновик; ``…/save`` — черновик;
+            ``…/submit`` — отправить. Неизвестный и просроченный код — один и тот же 404; перебор с IP — 429."""
+            m = re.match(r"^/(api/)?q/([A-Za-z0-9_-]{16,64})(?:/(save|submit))?/?$", path)
+            ip, api = self.client_ip(), path.startswith("/api/")
+            if panel.q_misses.blocked(ip):
+                return self.offer_reply(429, {"error": "слишком много запросов — подождите 10 минут"}, page=False)
+            try:
+                rec, form = panel.anketa(m.group(2)) if m and bool(m.group(1)) == api else (None, None)
+            except LookupError:
+                rec = form = None
+            if not rec:
+                panel.q_misses.miss(ip)
+                body = OFFER_404.encode() if not api else {"error": "ссылка не найдена или устарела"}
+                return self.offer_reply(404, body, page=not api)
+            if not api:
+                return self.offer_reply(200, q_page, page=True, csp=q_csp)
+            act = m.group(3) or ""
+            if method == "GET" and not act:
+                return self.offer_reply(200, {"form": onboarding.public(form), "draft": rec.get("draft") or {},
+                                              "sent": bool(rec.get("sent"))})
+            if method != "POST" or not act:
+                return self.offer_reply(404, {"error": "нет такого метода"})
+            try:
+                b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 262144)) or b"{}")
+                answers = b.get("answers") if isinstance(b, dict) else None
+                if act == "save":
+                    panel.forms_links.draft(m.group(2), onboarding.clean(form, answers))
+                    return self.offer_reply(200, {"ok": True})
+                return self.offer_reply(200, panel.anketa_submit(m.group(2), answers))
+            except (ValueError, LookupError) as e:
+                return self.offer_reply(400, {"error": str(e) or "ошибка"})
+
         def offer(self, method: str, path: str):
             """``/offer/<код>`` — страница; ``/api/offer/<код>[/действие]`` — её данные. Неизвестный, отозванный и
             просроченный код — один и тот же 404; перебор кодов с одного IP — 429 на любые коды."""
@@ -4930,6 +5019,12 @@ def handler(panel: Panel):
                 return {"ok": panel.focus.set_browser(str(b.get("id", "")), bool(b.get("on", True)))}
             if path == "/api/focus/revoke":
                 return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
+            if path == "/api/q/new":                      # новая личная ссылка на анкету клиента (0010)
+                fid = str(b.get("form") or "")
+                if fid not in onboarding.forms(panel.cfg.data):
+                    raise ValueError("нет такой анкеты")
+                r = panel.forms_links.new(fid, str(b.get("client") or ""), int(b.get("days") or onboarding.DAYS))
+                return r                                   # адрес собирает панель: свой origin + path
             if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
                 ttl = invites.TTLS.get(str(b.get("ttl") or "1d"))
                 if not ttl:
