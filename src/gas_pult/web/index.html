@@ -3057,17 +3057,15 @@ function chatDetails(id) {
     ...row("Поставщик", provName(s)), ...row("Контекст", ctxUsed(s) == null ? "" : ctxUsed(s) + " %"),
     ...row("Расход", s.cost?.total ? (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""),
     ...row("Папка", s.path), ...row("Ветка", s.branch && s.branch !== "HEAD" ? s.branch : ""),
-    ...row("Репозитории", s.repos?.map((r) => r.name).join(", ")), ...row("В чате бота", s.active ? "активная — ответы бота от этого чата" : ""),
-    ...(meta?.role === "owner" && limitsInfo?.limits ? row("Лимиты подписки", limitsLine(limitsInfo).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
-    ...(meta?.role !== "viewer" && !document.body.classList.contains("nocap-dev_terminal") ? [{ label: "Экран терминала", icon: "term", run: () => { openSession(id); setTab("screen"); } }] : []),
+    ...(s.repos?.length && canRepos(s) ? [{ label: "Репозитории", icon: "folder", sub: s.repos.map((r) => r.name).join(", ") + " — подключить или отключить", run: () => repoSheet(id) }]
+      : row("Репозитории", s.repos?.map((r) => r.name).join(", "))), ...row("В чате бота", s.active ? "активная — ответы бота от этого чата" : ""),
+    ...(s.harness && s.harness !== "claude" ? row("Токены и расход", usageLine(s.usage).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
+    ...(meta?.role === "owner" && (s.harness || "claude") === "claude" && limitsInfo?.limits ? row("Лимиты подписки", limitsLine(limitsInfo).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
+    { label: "Что здесь умеет", icon: "help", sub: "коротко, тур по экрану или прослушать", run: () => part("about").then((m) => m.aboutSession(id)) },
+    ...(meta?.role !== "viewer" && !FOCUS && !s.space && !document.body.classList.contains("nocap-dev_terminal") ? [{ label: "Экран терминала", icon: "term", run: () => { openSession(id); setTab("screen"); } }] : []),
   ]);
 }
-const provChip = (s) => provName(s) ? `<span class="chip prov">${esc(provName(s))}</span>` : "";
 const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
-function ctxMeter(s) {
-  const u = ctxUsed(s);
-  return u == null ? "" : `<span class="ctx ${u > 70 ? "warn" : ""}" title="${u > 70 ? "Контекст почти заполнен — пора /compact" : "Заполнение контекста"}">Контекст: ${u}%<span class="bar"><i style="width:${u}%"></i></span></span>`;
-}
 // Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
 // лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
 const EFFORT_RU = { auto: "авто", low: "низкие", medium: "средние", high: "высокие", xhigh: "очень высокие", max: "максимум" };
@@ -3088,7 +3086,6 @@ function usageLine(u) {                                // как у Pi: ↑ вв
     + (u.at ? `<span title="Последний ответ агента">ход ${esc(agoText(u.at))}</span>` : "");
 }
 function sinfo(s) {
-  const eff = s?.effort ? `<span title="${s.effort_guess ? "Уровень усилий из настроек — Claude Code его не сообщил" : "Уровень усилий"}">усилия: <b>${esc(EFFORT_RU[s.effort] || s.effort)}</b>${s.effort_guess ? "?" : ""}</span>` : "";
   // окно другого агента (Pi): модель «поставщик/модель», контекст, ↑↓ токены и $ за сессию — из его журнала; лимиты
   // подписки Claude (5 ч, неделя) к нему не относятся — не показываем
   const other = s?.harness && s.harness !== "claude";
@@ -6691,11 +6688,6 @@ async function focusList() {
 // Клон (или pull, если папка уже есть) на сервере и /add-dir в живую сессию; при перезапуске — --add-dir.
 // «Отключить» убирает только из сессии: папка с репозиторием остаётся.
 const canRepos = (s) => !!s && meta?.role !== "viewer" && (meta?.role === "owner" || !!s.space);
-function reposLine(s) {
-  if (!s.repos?.length) return "";
-  const off = canRepos(s);
-  return `<div class="repos">${ic("folder")}${s.repos.map((r) => `<span class="rp" title="${esc(r.path)}">${esc(r.name)}${off ? `<button type="button" data-roff-s="${esc(s.id)}" data-roff="${esc(r.path)}" aria-label="Отключить ${esc(r.name)}">Отключить</button>` : ""}</span>`).join("")}</div>`;
-}
 async function repoOff(id, path, btn) {
   const go = async () => {
     try { await api("/api/repos/remove", { w: id, path }); toast("Отключено. Папка осталась на сервере; Claude перестанет её видеть после перезапуска сессии", 5000); await refresh(); }

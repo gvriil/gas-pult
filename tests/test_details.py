@@ -37,3 +37,13 @@ def test_details_sheet_has_everything():
         assert f'"{k}"' in d, k
     assert 'label: "Показать подробности", icon: "eye"' in INDEX
     assert 'label: "Открыть", icon: "chat", run: () => openSession(id)' not in INDEX
+
+
+def test_review_fixes():
+    """Слепая проверка #347: «Что здесь умеет» не потерян; экран — не в фокусе и не в пространстве; репозитории —
+    действием; расход Pi/OpenCode — в подробностях; лимиты подписки — только у Claude."""
+    d = fn("function chatDetails(id) {")
+    assert 'label: "Что здесь умеет"' in d and "aboutSession(id)" in d
+    assert 'meta?.role !== "viewer" && !FOCUS && !s.space' in d
+    assert "run: () => repoSheet(id)" in d and 'row("Токены и расход", usageLine(s.usage)' in d
+    assert '(s.harness || "claude") === "claude" && limitsInfo?.limits' in d
