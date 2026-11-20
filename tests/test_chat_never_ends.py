@@ -25,3 +25,14 @@ def test_message_wakes_the_chat():
     assert 'waking: "чат просыпается' in INDEX
     assert 'Попробовать ещё</button>' in INDEX and "data-rewake" in INDEX
     assert "if (WAKING.has(id)) return WAKING.get(id);" in INDEX        # одно пробуждение на окно
+
+
+def test_review_fixes():
+    """Слепая проверка #344: «уже проснулся» — не провал; ждём готовности; текст не теряется; слова «спит»."""
+    w = INDEX[INDEX.index("function wakeChat(id) {"):INDEX.index("const wakeOnOpen")]
+    assert "catch (err) { await refresh(); if (asleep(id))" in w
+    assert '["idle", "dialog"].includes(' in w and "WAKE_ERR.delete(id); return true;" in w
+    r = INDEX[INDEX.index("async function resumeWith("):INDEX.index("async function chatView(")]
+    assert r.index("catch (e)") < r.index("bg?.remove()")                    # шторка закрывается только после успеха
+    assert "!pending.some((x) => x.w === current)" in INDEX                    # сообщение «не проснулся» не прячется
+    assert "Убрать все спящие (" in INDEX and "</b> спят</span>" in INDEX and 'label: "Продолжить", sub' not in INDEX

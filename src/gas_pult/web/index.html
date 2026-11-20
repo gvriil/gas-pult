@@ -2064,7 +2064,7 @@ function navDelete(s) { chatDelete({ w: s.id }, s.title || s.name); }
 // «Убрать все остановленные»: окна, где Claude уже вышел, закрываются; переписка остаётся в «Завершённых» проекта.
 function stoppedItem() {
   const n = sessions.filter((x) => x.status === "stopped" && !x.space).length;
-  return { label: `Убрать все остановленные (${n})`, icon: "x", sub: "окна закроются, переписка останется в «Завершённых» проекта",
+  return { label: `Убрать все спящие (${n})`, icon: "x", sub: "окна закроются, переписка останется в «Завершённых» проекта",
     run: () => api("/api/stopped/clear", {}).then((d) => { toast(`Убрано окон: ${d.closed}`); refresh(); }, (e) => toast("Не вышло: " + e.message, 4500)) };
 }
 function undoBar(text, undo, commit, ms = 5000) {
@@ -3731,7 +3731,7 @@ async function refresh() {
         const mine = (x) => meta?.role === "owner" && x.space;     // владельцу окна пространств — своей группой ниже
         morph($("sessionsView"), notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
-            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> остановлены</span>` : ""}${costSummary()}</div>`
+            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> спят</span>` : ""}${costSummary()}</div>`
             + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новый чат».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
       }
       if (homeView === "sessions" && projMode()) {
@@ -3912,8 +3912,13 @@ async function projectResume(sid, btn) {
 }
 // Завершённый чат не заканчивается (владелец 20.11): пишете — окно поднимается с этим разговором (--resume), сообщение
 // уходит, когда Claude готов; пустое — просто открыть чат.
-async function resumeWith(sid, text) {
-  const id = await projectResume(sid); if (!id || !text) return;
+async function resumeWith(sid, text, bg) {
+  const p0 = projOf(proj), btn = bg?.querySelector("[data-go-resume]"); if (!p0) return;
+  if (btn) btn.disabled = true;
+  let d; try { d = await api("/api/project/resume", { id: p0.id, sid }); }
+  catch (e) { if (btn) btn.disabled = false; return toast("Не вышло: " + e.message, 5000); }   // шторка и текст на месте
+  bg?.remove(); projDone = null; await refresh(); openSession(d.id); if (projTab === "done") loadDone();
+  const id = d.id; if (!text) return;
   const p = { text, state: "waking", id: msgId(), w: id }; pending.push(p); renderChat(true);
   for (let n = 0; n < 12 && !["idle", "dialog"].includes(sessions.find((x) => x.id === id)?.status); n++) { await new Promise((r) => setTimeout(r, 1500)); await refresh(); }
   p.state = "sending"; renderChat(true); deliver(p);
@@ -3927,9 +3932,9 @@ async function chatView(sid) {                         // переписка з�
   document.body.append(bg);
   bg.addEventListener("click", (e) => {
     if (e.target === bg || e.target.closest("[data-close]")) bg.remove();
-    if (e.target.closest("[data-go-resume]")) resumeWith(sid, bg.querySelector("#cvIn")?.value.trim());
+    if (e.target.closest("[data-go-resume]")) resumeWith(sid, bg.querySelector("#cvIn")?.value.trim(), bg);
   });
-  bg.querySelector("#cvIn")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); resumeWith(sid, e.target.value.trim()); } });
+  bg.querySelector("#cvIn")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); resumeWith(sid, e.target.value.trim(), bg); } });
   try {
     const d = await api(`/api/project/history?id=${encodeURIComponent(p.id)}&sid=${encodeURIComponent(sid)}`);
     const list = bg.querySelector(".chatv-list");
@@ -3949,7 +3954,7 @@ function chatSheet(sid) {
   helpSheet("sheet.project-chat-menu");
   sheet(c.title, [
     { label: "Открыть переписку", icon: "chat", run: () => chatView(sid) },
-    ...(c.mine && meta?.role !== "viewer" ? [{ label: "Продолжить", sub: "новое окно с этим разговором", icon: "play", run: () => projectResume(sid) }] : []),
+    ...(c.mine && meta?.role !== "viewer" ? [{ label: "Открыть и написать", sub: "чат проснётся с этим разговором", icon: "chat", run: () => projectResume(sid) }] : []),
     ...(meta?.role !== "viewer" ? [pinItem(c, { id: p.id, sid }, c.title),
       { label: "Переименовать", icon: "edit", run: () => chatRename(c, (t) => set({ title: t }, "Теперь: " + t)) },
       { label: "Скрыть", sub: "из списка; журнал Claude Code остаётся", icon: "x", run: () => set({ hidden: true }, "Чат скрыт") }] : []),
@@ -4265,12 +4270,14 @@ function wakeChat(id) {
   WAKE_ERR.delete(id);
   const go = (async () => {
     try { await api("/api/revive", { w: id }); }
-    catch (err) { if (asleep(id)) { WAKE_ERR.set(id, err.message); return false; } }
-    for (const ms of [1500, 2500, 4000, 6000, 8000]) {  // Claude поднимается несколько секунд
-      await new Promise((r) => setTimeout(r, ms)); await refresh();
-      if (!asleep(id)) return true;
+    catch (err) { await refresh(); if (asleep(id)) { WAKE_ERR.set(id, err.message); return false; } }   // уже проснулся — не провал
+    const ready = () => ["idle", "dialog"].includes(sessions.find((x) => x.id === id)?.status);
+    for (const ms of [0, 1500, 2500, 4000, 6000, 8000]) {   // Claude поднимается несколько секунд — ждём готовности
+      if (ms) { await new Promise((r) => setTimeout(r, ms)); await refresh(); }
+      if (ready()) break;
     }
-    WAKE_ERR.set(id, "Claude не поднялся за 20 секунд"); return false;
+    if (asleep(id)) { WAKE_ERR.set(id, "Claude не поднялся за 20 секунд"); return false; }
+    WAKE_ERR.delete(id); return true;
   })().finally(() => { WAKING.delete(id); if (current === id) { paintSession(cur()); loadContent(); } });
   WAKING.set(id, go); if (current === id) paintSession(cur());
   return go;
@@ -4287,7 +4294,7 @@ $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setTab
 
 async function loadContent() {
   if (!current) return;
-  if (asleep(current) && WAKE_ERR.has(current) && !WAKING.has(current)) {   // не проснулся — причина и одна кнопка
+  if (asleep(current) && WAKE_ERR.has(current) && !WAKING.has(current) && !pending.some((x) => x.w === current)) {   // причина и одна кнопка
     $("content").className = ""; setAsk("");
     $("content").innerHTML = `<div class="panel"><p style="margin-top:0">Чат не проснулся: ${esc(WAKE_ERR.get(current))}.</p>
       ${meta?.role !== "viewer" ? `<button class="btn" data-rewake="${esc(current)}">${ic("refresh")}Попробовать ещё</button>` : ""}</div>`;
@@ -4662,7 +4669,7 @@ function renderChat(toBottom) {
   paintAct();
   if (toBottom && !params.has("noscroll")) stickBottom();   // с конца, как в ChatGPT/Claude
 }
-$("content").addEventListener("click", (e) => { const v = e.target.closest("[data-rewake]"); if (v) { v.disabled = true; wakeChat(v.dataset.rewake); } });
+$("content").addEventListener("click", (e) => { const v = e.target.closest("[data-rewake]"); if (v) { v.disabled = true; wakeChat(v.dataset.rewake); } });   // сообщения «не проснулся» — своей кнопкой у сообщения
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
   const k = e.target.dataset?.log; if (k) e.target.open ? openLogs.add(k) : openLogs.delete(k);
 }, true);
