@@ -739,7 +739,7 @@
   .rail .rt.on { color: var(--accent-primary); box-shadow: none; background: var(--accent-soft); }
   .rail .rnew { background: transparent; border: 1px dashed var(--border-subtle); color: var(--text-secondary); margin-top: 4px; }
   .rail hr { width: 28px; border: 0; border-top: 1px solid var(--border-subtle); margin: 2px 0; flex: none; }
-  .rail .rgap { flex: 1 0 4px; }
+  .rail .rgap { flex: 1 0 4px; align-self: stretch; cursor: pointer; }   /* пустая полоса — развернуть */
   .rail .pj { border-radius: 10px; background: var(--pj1-bg); color: var(--pj1-fg); font-size: calc(13px * var(--fz, 1)); letter-spacing: .02em; }
   .rail .pj.c2 { background: var(--pj2-bg); color: var(--pj2-fg); } .rail .pj.c3 { background: var(--pj3-bg); color: var(--pj3-fg); }
   .rail .pj.c4 { background: var(--pj4-bg); color: var(--pj4-fg); } .rail .pj.c5 { background: var(--pj5-bg); color: var(--pj5-fg); }
@@ -1811,29 +1811,14 @@ function railProjects() {
 }
 const railTool = (id, icon, tip, extra = "") => `<button class="rb rt" type="button" id="${id}" title="${esc(tip)}" aria-label="${esc(tip)}"${extra}>${ic(icon)}</button>`;
 function renderRail() {
+  // Свёрнутая панель (владелец и Алексей 20.11: «разноцветные кнопки убрать; оставить развернуть, новый чат, поиск,
+  // настройки; сворачивание непонятно — переделать»): четыре значка и пустая полоса — нажатие на неё разворачивает.
   if (!split() || !sideMini || !navOn()) return;
-  const rw = meta?.role !== "viewer", cur = sessions.find((x) => x.id === current);
+  const rw = meta?.role !== "viewer";
   const head = railTool("railOpen", "sideopen", "Развернуть панель чатов", ' aria-expanded="false"')
-    + (rw ? railTool("railNew", "compose", "Новый чат") : "") + railTool("railSearch", "search", "Поиск (Ctrl+K)") + "<hr>";
-  let body;
-  if (projOn() && projData) {
-    body = railProjects().map((p) => {
-      const list = sessions.filter((x) => x.project === p.id), wait = list.filter((x) => x.status === "dialog").length || p.waiting || 0;
-      const nw = !wait && list.some(isNew), on = !!cur && cur.project === p.id && view === "session";
-      const tip = `${p.name}${p.pinned ? " · закреплён" : ""} — ${list.length ? "активных чатов: " + list.length : "нет активных чатов"}${wait ? " · ждёт ответа" : nw ? " · новый ответ" : ""}`;
-      return `<button class="rb pj c${pjColor(p.id)}${on ? " on" : ""}" type="button" data-rp="${esc(p.id)}" title="${esc(tip)}" aria-label="${esc(tip)}" aria-haspopup="menu" aria-expanded="false"${on ? ' aria-current="true"' : ""}>`
-        + `${esc(initials(p.name))}${list.length ? `<span class="cnt" aria-hidden="true">${list.length}</span>` : ""}${wait || nw ? `<i class="pdot${wait ? " wait" : ""}" aria-hidden="true"></i>` : ""}</button>`;
-    }).join("");
-  } else {
-    body = pinFirst([...sessions].sort(byChange)).map((s) => {
-      const st = ST[s.status] || ST.idle, prov = provName(s), nw = isNew(s);
-      const tip = `${s.name} — ${st.label}${prov ? " · " + prov : ""}${nw ? " · новый ответ" : ""}`;
-      return `<button class="rb ${st.cls}${s.id === current ? " on" : ""}${nw ? " new" : ""}" type="button" data-id="${esc(s.id)}" title="${esc(tip)}" aria-label="${esc(tip)}"${s.id === current ? ' aria-current="true"' : ""}>${esc(initial(s.name))}<i class="sdot"></i></button>`;
-    }).join("");
-  }
+    + (rw ? railTool("railNew", "compose", "Новый чат") : "") + railTool("railSearch", "search", "Поиск (Ctrl+K)");
   const f = $("rail").contains(document.activeElement) ? document.activeElement : null;   // опрос перерисовал — фокус на месте
-  const key = f && (f.id ? "#" + f.id : f.dataset.rp ? `[data-rp="${CSS.escape(f.dataset.rp)}"]` : f.dataset.id ? `[data-id="${CSS.escape(f.dataset.id)}"]` : "");
-  if (setHTML($("rail"), head + body + `<span class="rgap"></span>` + railTool("railSettings", "settings", "Настройки")) !== false && key) $("rail").querySelector(key)?.focus();
+  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
 }
 function railProject(btn) {                           // чаты проекта — меню у значка, справа от полосы
   const p = projOf(btn.dataset.rp); if (!p) return;
@@ -1846,7 +1831,7 @@ function railProject(btn) {                           // чаты проекта
   ], { right: true });
 }
 $("rail").addEventListener("click", (e) => {
-  const t = e.target.closest("button"); if (!t) return;
+  const t = e.target.closest("button"); if (!t) return setMini(false);   // пустое место полосы — развернуть
   if (t.id === "railOpen") return setMini(false);
   if (t.id === "railNew") return newChat();
   if (t.id === "railSearch") return navSearch(true);

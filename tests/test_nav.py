@@ -73,15 +73,16 @@ def test_e2e_nav_demo():
 
 
 def test_rail_is_beside_nav_with_projects():
-    """Узкая полоса (свёрнутая панель на ПК): рядом с #nav, не внутри главной; проекты, инструменты, стрелки."""
+    """Узкая полоса (свёрнутая панель на ПК): рядом с #nav, не внутри главной; четыре инструмента и стрелки."""
     home = PAGE[PAGE.index('<section id="home"'):PAGE.index("</section>", PAGE.index('<section id="home"'))]
     assert 'id="rail"' not in home
     assert PAGE.index('id="navBg"') < PAGE.index('id="rail"') < PAGE.index('id="scroller"')
     assert "body.split.side-mini.has-nav { --side: 60px; }" in PAGE
     rail = fn("renderRail")
-    for x in ("railOpen", "railNew", "railSearch", "railSettings", "railProjects()", "data-rp"):
+    for x in ("railOpen", "railNew", "railSearch", "railSettings"):
         assert x in rail, x
-    assert "pinned" in fn("railProjects")
+    assert "data-rp" not in rail and "railProjects()" not in rail           # 20.11: без разноцветных значков
+    assert "if (!t) return setMini(false);" in PAGE                          # пустая полоса — развернуть
     for n in range(1, 7):
         assert PAGE.count(f"--pj{n}-bg:") == 2 and PAGE.count(f"--pj{n}-fg:") == 2, n     # светлая и тёмная тема
 
