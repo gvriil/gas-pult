@@ -42,3 +42,9 @@ def test_role_conditions_kept():
                         ("tgBig()", "Во весь экран")):
         line = next(x for x in SET.splitlines() if label in x)
         assert f"...({cond} ? [" in line, (label, line[:100])
+
+
+def test_space_has_no_owner_connections():
+    """GAS-38: «Подключения» ведут в интеграции владельца (/api/mcp не в SPACE_OK) — в пространстве пункта нет."""
+    line = next(x for x in SET.splitlines() if '"Подключения"' in x)
+    assert '!meta?.space' in line
