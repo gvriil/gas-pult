@@ -3,6 +3,14 @@
 // (перенос из index.html), плюс «Подключения» (раньше — только вкладка главной); тема — один пункт по кругу. Пустой
 // для этой роли раздел не показывается. «Подключения» в пространстве — нет: интеграции там пока владельца (GAS-38).
 
+// Состояние уведомлений этого устройства — сразу в подписи (владелец 20.11: «опять только Telegram»; подписок не было:
+// «Включить» ни разу не нажимали). Подписку проверяет экран «Уведомления»; здесь — то, что видно без запроса.
+function pushState() {
+  if (tg?.initData) return "здесь, в Telegram, — присылает бот; на телефон — откройте Гаврилу в браузере";
+  if (!("PushManager" in window) || !("Notification" in window)) return /iPhone|iPad/.test(navigator.userAgent) ? "на iPhone — откройте Гаврилу значком с экрана «Домой»" : "этот браузер не умеет уведомления";
+  return Notification.permission === "granted" ? "на этом устройстве включены · проверить, устройства" : "на этом устройстве выключены — включить";
+}
+
 function groups() {
   const mode = store("theme") || "auto", THEME = { auto: "как в системе", light: "светлая", dark: "тёмная" };
   return [
@@ -19,7 +27,7 @@ function groups() {
     ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: () => part("email").then(() => emailSheet()) },
-    { label: "Уведомления", icon: "bell", sub: "на телефон и компьютер — даже когда панель закрыта; проверить, устройства", run: () => part("push").then((m) => m.open()) },
+    { label: "Уведомления", icon: "bell", sub: pushState(), run: () => part("push").then((m) => m.open()) },
     ] },
     { title: "ИИ, интеграции и бюджет", icon: "chip", items: [
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),

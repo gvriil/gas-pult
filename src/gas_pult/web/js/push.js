@@ -36,7 +36,8 @@ async function enable() {
 
 export async function open() {
   helpSheet("settings");
-  if (tg?.initData) return sheet("Уведомления", [{ info: true, icon: "bell", label: "В Telegram уведомления присылает бот", sub: "чтобы получать их на телефон без Telegram — откройте панель в браузере и включите здесь" }]);
+  if (tg?.initData) return sheet("Уведомления", [{ info: true, icon: "bell", label: "Здесь, в Telegram, уведомления присылает бот", sub: "чтобы они приходили на телефон без Telegram — откройте Гаврилу в браузере и включите там" },
+    { label: "Открыть в браузере", icon: "ext", sub: "iPhone: дальше «Поделиться» → «На экран «Домой»», откройте значком и включите", run: () => { try { tg.openLink(location.origin + "/"); } catch (e) { window.open(location.origin + "/", "_blank"); } } }]);
   if (!can()) return sheet("Уведомления", [{ info: true, icon: "warn", label: "Этот браузер не умеет уведомления", sub: ios() && !standalone() ? "iPhone: «Поделиться» → «На экран «Домой»», откройте пульт оттуда и включите здесь" : "откройте панель в Chrome, Edge, Firefox или Safari" }]);
   let devs = [], sub = null;
   try { [devs, sub] = await Promise.all([DEMO ? { devices: [] } : api("/api/push/devices").then((d) => d.devices), mine()]); } catch (e) { return toast(e.message, 5000); }
