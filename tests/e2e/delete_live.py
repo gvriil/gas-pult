@@ -247,7 +247,7 @@ def run(shots: str = ""):
 
             # (д) «Корзина чатов» → «Вернуть»
             pg.click("#settingsBtn")
-            sheet_click(pg, "Помощь и данные")                         # настройки по группам (20.11)
+            sheet_click(pg, "Система и справка")                         # настройки по группам (20.11)
             sheet_click(pg, "Корзина чатов")
             pg.wait_for_selector(".sheet >> text=Удалённые", timeout=10000)
             shot(pg, "d-trash-1366-dark")
