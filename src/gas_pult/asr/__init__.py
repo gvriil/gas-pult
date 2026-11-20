@@ -252,6 +252,23 @@ def cuts(pcm: bytes, rate: int = 16000, parts: int = PARALLEL) -> list[int]:
     return [i * 2 for i in out]
 
 
+BUSY_WAIT = (0.05, 0.1, 0.2, 0.4)
+
+
+def _stream_wait(rate: int, path: Path | None) -> Stream:
+    """Поток службы для следующего куска. Служба отдаёт ответ куска чуть раньше, чем освобождает поток, — сразу
+    после своего куска работник получал «занята» и бросал очередь (20.11, нестабильный тест и та же гонка на сервере
+    при одном свободном потоке). Поэтому «занята» — несколько коротких повторов, всего < 1 с."""
+    for pause in (*BUSY_WAIT, None):
+        try:
+            return Stream(rate, partials=False, path=path)
+        except Unavailable:
+            if pause is None:
+                raise
+            time.sleep(pause)
+    raise AssertionError("недостижимо")
+
+
 def transcribe_pcm(pcm: bytes, rate: int = 16000, path: Path | None = None, timeout: float = 60,
                    parts: int = PARALLEL) -> str:
     """Готовая запись целиком → текст (бот, ``/api/stt``).
@@ -282,7 +299,7 @@ def transcribe_pcm(pcm: bytes, rate: int = 16000, path: Path | None = None, time
                     return
                 i = todo.pop(0)
             try:
-                st = Stream(rate, partials=False, path=path)
+                st = _stream_wait(rate, path)
             except Unavailable as e:
                 with lock:
                     todo.insert(0, i)                 # поток службы занят — кусок вернётся другому работнику
