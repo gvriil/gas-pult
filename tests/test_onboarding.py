@@ -90,3 +90,11 @@ def test_expired_link(tmp_path, monkeypatch):
     assert links.get(code) is None
     with pytest.raises(ValueError):
         links.new("t", " ")
+
+
+def test_forms_sheet_survives_empty_answer():
+    """Демо 20.11: «Анкеты клиентов» падали без списка ссылок — теперь пустые списки, и в демо есть пример."""
+    from pathlib import Path
+    web = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
+    assert "links: d?.links || []" in (web / "js/forms.js").read_text(encoding="utf-8")
+    assert '"/api/q/list"' in (web / "js/demo.js").read_text(encoding="utf-8")

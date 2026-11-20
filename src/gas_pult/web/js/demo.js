@@ -206,6 +206,9 @@ function demoApi(path, body) {
       { at: t0 - 280, tool: "Edit", what: "Правит файл Header.tsx", ok: true, out: "", dur: 0.2 }] }];
     const q = (new URLSearchParams(path.split("?")[1] || "").get("q") || "").toLowerCase();
     return Promise.resolve({ turns: all.filter((t) => !q || JSON.stringify(t).toLowerCase().includes(q)).reverse() }); }
+  if (path.split("?")[0] === "/api/q/list") return Promise.resolve({ forms: [{ id: "example", title: "Пример анкеты: настройка учёта" }],
+    links: [{ id: "d1", client: "Лавка «Пример»", form: "example", created: Date.now() / 1000 - 86400, exp: Date.now() / 1000 + 13 * 86400, sent: null, answered: 6 }] });
+  if (path.split("?")[0] === "/api/q/answers") return Promise.resolve({ client: "Лавка «Пример»", form: "example", sent: null, rows: [{ q: "Сколько предметов учитываем?", a: "1–5 тысяч" }], profile: null });
   if (path.split("?")[0] === "/api/title") { TT[body.w] = body.title || ""; return Promise.resolve({ title: body.title || "", own: !!body.title }); }
   const R = {
     "/api/meta": { desktop: true, agents: [{ id: "pi", title: "Pi", model: "deepseek/deepseek-v4-pro" }], ui: demoUi(), host: "ubuntu", tz: "Europe/Amsterdam", via: "telegram", commands: ["🧠 Модель", "🔌 MCP", "📏 Контекст", "🗜 Сжать", "🧹 Очистить", "ℹ️ Статус"], models: ["opus", "sonnet", "haiku"],
