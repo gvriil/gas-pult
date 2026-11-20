@@ -101,6 +101,7 @@ from gas_pult import (
     usage,
     voice,
     webauth,
+    webpush,
     wsock,
 )
 from gas_pult import brief as morning_brief  # «brief» ниже — «Кратко» для озвучки
@@ -131,6 +132,7 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     PASSKEY_LOGIN,
     PASSKEY_OWN,
     PERSONA,
+    PUSH_OWN,
     REPOS,
     SELFTEST,
     SPACE_OK,
@@ -459,6 +461,7 @@ class Panel:
         self.team = personas.Team(cfg.data / "team.json")      # потолок возможностей сотрудников (экран «Команда»)
         self.logins = webauth.TgLogins(cfg.data / "tg_logins.json")
         self.email = emailcode.Service(cfg.email, self.people, cfg.data / "email_codes.json")   # вход по почте
+        self.push = webpush.Hub(cfg.data / "push")              # уведомления на телефон (Web Push)
         self.keys = passkeys.Passkeys(cfg.passkeys, self.people, cfg.data / "passkeys.json")    # Face ID / ключ
         self.oidc = oidc.Oidc({"google": cfg.google, "yandex": cfg.yandex}, self.people, cfg.data / "oidc.json",
                               base=lambda: self.public_url)                                # Google, Яндекс ID
@@ -3425,7 +3428,19 @@ def utc_now() -> str:
 
 
 # Сервис-воркер: только клик по уведомлению — открыть панель на нужной сессии. Ни кэша, ни фоновых запросов.
-SW_JS = """self.addEventListener("notificationclick", (e) => {
+SW_JS = """self.addEventListener("push", (e) => {   // сигнал без содержимого — текст забираем с сервера по куке
+  e.waitUntil(self.registration.pushManager.getSubscription().then(async (sub) => {
+    const ep = sub ? sub.endpoint : "", h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ep));
+    const dev = [...new Uint8Array(h)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+    const r = await fetch("/api/push/last?dev=" + dev, { credentials: "include" });
+    const items = r.ok ? (await r.json()).items || [] : [];
+    if (!items.length) return self.registration.showNotification("Пульт", { body: "Есть новое — откройте панель" });
+    for (const x of items) {
+      await self.registration.showNotification(x.title, { body: x.body, tag: x.w || x.id, data: { id: x.w } });
+    }
+  }));
+});
+self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const id = e.notification.data && e.notification.data.id;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
@@ -3540,6 +3555,13 @@ def handler(panel: Panel):
 
         def json(self, data, code: int = 200):
             self.reply(code, json.dumps(data, ensure_ascii=False).encode())
+
+        def push_uid(self) -> int:
+            """Чьи подписки: Telegram ID вошедшего; фокус-ссылке и входу без ID уведомлений нет."""
+            via, _, uid = self.who()
+            if via == "focus" or uid is None:
+                raise ValueError("уведомления на телефон — после входа через Telegram, Google, Яндекс или ключ")
+            return uid
 
         def who(self) -> tuple[str, str | None, int | None]:
             """(откуда: «telegram» / «browser» / "", роль, Telegram ID). Роль — на каждый запрос, из people.json.
@@ -3687,7 +3709,7 @@ def handler(panel: Panel):
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
                     "/api/clientlog",
-                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN)   # и наблюдателю
+                    *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN, *PUSH_OWN)   # и наблюдателю
             need = (("admin" if path in ADMIN_OK else "owner") if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
             if not allowed(role, need):
@@ -3888,6 +3910,13 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/prefs":
                 return panel.prefs(self.terms_uid(), self.who()[1])
+            if path in ("/api/push/key", "/api/push/devices", "/api/push/last"):   # уведомления на телефон — свои
+                uid = self.push_uid()
+                if path == "/api/push/key":
+                    return {"key": panel.push.public_key()}
+                if path == "/api/push/devices":
+                    return {"devices": panel.push.devices(uid)}
+                return {"items": panel.push.pending(uid, q.get("dev", [""])[0][:32])}
             if path == PERSONA:
                 return panel.ui(self.terms_uid(), self.who()[1])
             if path == "/api/team":
@@ -4655,6 +4684,16 @@ def handler(panel: Panel):
                 return panel.stt_retry(str(b.get("id", "")), self.terms_uid())
             if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
                 return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
+            if path in ("/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test"):
+                uid = self.push_uid()
+                if path == "/api/push/subscribe":
+                    return panel.push.add(uid, b.get("sub") or {}, str(b.get("label") or ""),
+                                          "https://" + str(self.headers.get("Host") or "localhost"))
+                if path == "/api/push/unsubscribe":
+                    return {"ok": panel.push.remove(uid, str(b.get("id") or ""))}
+                n = panel.push.notify(uid, "Проверка уведомлений",
+                                      "Видите это — уведомления на это устройство работают.", wait=True)
+                return {"devices": n, "list": panel.push.devices(uid)}
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои
                 lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
                 if b.get("simple") is True and panel.is_owner(uid):
