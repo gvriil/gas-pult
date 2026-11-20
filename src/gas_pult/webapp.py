@@ -1769,7 +1769,7 @@ class Panel:
 
     def country_info(self, uid) -> dict:
         rec = self.people.country(uid)
-        return {**country.public(rec), **self.geo.info(), "need": not country.norm(rec.get("chosen")),
+        return {**country.public(rec), **self.geo.info(), "need": False,                     # 20.11: не спрашиваем
                 "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
                 "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
 
@@ -3695,9 +3695,7 @@ def handler(panel: Panel):
             if path not in TERMS_FREE and not panel.people.accepted(uid):
                 self.json({"error": "сначала примите условия использования пульта", "code": "terms"}, 403)
                 return False
-            if path not in COUNTRY_FREE and not country.norm(panel.people.country(uid).get("chosen")):
-                self.json({"error": "сначала выберите страну, из которой работаете", "code": "country"}, 403)
-                return False
+            # выбор страны не спрашиваем (решение владельца 20.11, country.check_set) — без шага «страна»
             if self.space() and path not in SPACE_OK:     # тестировщик — только своё пространство
                 self.json({"error": "в демо-пространстве этого нет", "code": "space"}, 403)
                 return False
