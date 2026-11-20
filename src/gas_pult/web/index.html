@@ -2028,7 +2028,6 @@ function popMenu(anchor, items, opt = {}) {
 }
 addEventListener("pointerdown", (e) => { if (!e.target.closest(".pop, [data-nmore], [data-rp], #navMoreBtn, [data-dfold], [data-dmodel]")) closePop(); }, true);
 $("navList").addEventListener("scroll", closePop, { passive: true });
-addEventListener("resize", closePop);
 function navItems(row) {
   if (row.dataset.np) {
     const p = projOf(row.dataset.np); if (!p) return [];
@@ -2470,11 +2469,35 @@ function hideDock(on) {
 const SC = $("scroller");                            // прокручивается только лента; документ стоит на месте
 const atEnd = (gap) => SC.scrollHeight - (SC.clientHeight + SC.scrollTop) <= gap;
 let atBot = false;                                   // лента была у последнего сообщения (держит низ при ресайзе)
+// Поворот экрана (владелец 20.11: «повернул — вижу то же место»): якорь — первое видимое сообщение и его смещение
+// или «был внизу». Пишем его только при той же ширине: прокрутка, которую вызвал сам поворот, якорь не портит.
+let ANCH = null, anchT = 0;
+function saveAnch() {
+  anchT = 0; if (view !== "session" || ANCH && ANCH.w !== innerWidth) return;
+  const top = SC.getBoundingClientRect().top, m = [...$("content").querySelectorAll(".msg[data-i]")].find((x) => x.getBoundingClientRect().bottom > top + 8);
+  ANCH = { w: innerWidth, bot: atEnd(24), i: m?.dataset.i, off: m ? m.getBoundingClientRect().top - top : 0 };
+}
+function keepAnch() {
+  closePops();
+  const a = ANCH; if (!a || a.w === innerWidth || view !== "session") return;
+  const go = () => {
+    autoUntil = Date.now() + 300;
+    if (a.bot) { atBot = true; SC.scrollTop = SC.scrollHeight; return; }
+    const m = a.i && $("content").querySelector(`.msg[data-i="${a.i}"]`);
+    if (m) SC.scrollTop += m.getBoundingClientRect().top - SC.getBoundingClientRect().top - a.off;
+  };
+  go(); requestAnimationFrame(go); setTimeout(go, 150); setTimeout(() => { go(); ANCH = { ...a, w: innerWidth }; }, 400);
+}
+function closePops() {                               // меню у строки: на телефоне не закрываем при повороте — держим в экране
+  if (!matchMedia("(pointer: coarse)").matches) return closePop();
+  document.querySelectorAll(".pop").forEach((b) => { b.style.left = Math.max(8, Math.min(innerWidth - b.offsetWidth - 8, b.offsetLeft)) + "px"; b.style.top = Math.max(8, Math.min(innerHeight - b.offsetHeight - 8, b.offsetTop)) + "px"; });
+}
+addEventListener("resize", keepAnch); addEventListener("orientationchange", () => setTimeout(keepAnch, 60));
 function scrollToY(y, smooth) { autoUntil = Date.now() + (smooth ? 900 : 300); SC.scrollTo({ top: y, behavior: smooth ? "smooth" : "auto" }); }
 SC.addEventListener("scroll", () => {
   const max = SC.scrollHeight - SC.clientHeight, y = SC.scrollTop;
   const far = !atEnd(200) && Date.now() >= glideT;   // пролистали вверх — кнопка «к последнему» (не на ходу follow)
-  atBot = atEnd(24);
+  atBot = atEnd(24); if (!anchT) anchT = requestAnimationFrame(saveAnch);
   $("toBottom").hidden = !(view === "session" && far);
   if (!far) $("toBottom").classList.remove("new");
   $("top").classList.toggle("edge", y > 4);
@@ -7940,7 +7963,7 @@ paintIcons();
 applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
-if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", fitViewport); }
+if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", () => { fitViewport(); keepAnch(); }); }
 // iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
 // Окно намного уже экрана — просим полный экран (Bot API 8.0); выключить — «Настройки» → «Во весь экран на планшете».
 const tgBig = () => !!tg?.isVersionAtLeast?.("8.0") && screen.width >= 700;
