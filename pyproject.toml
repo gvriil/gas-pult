@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "gas-pult"
 dynamic = ["version"]
-description = "Telegram-пульт для сессий Claude Code в tmux: ответы, диалоги, голос и команды — с телефона"
+description = "Безопасное рабочее пространство с ИИ для руководителей и небольших команд: агент делает рутину — человек подтверждает «Да»"
 readme = "README.md"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE", "NOTICE.md"]
