@@ -1,5 +1,16 @@
+import pytest
+
+from gas_pult import bot
 from gas_pult.commands import DANGER, Commands, extract, mask
 from gas_pult.config import SUDO_ALLOW
+
+
+@pytest.fixture(autouse=True)
+def _window_name_as_label(monkeypatch):
+    """20.11: бот показывает название чата, не имя окна. Здесь проверяются маршруты и кнопки, поэтому подпись —
+    имя окна из заглушки; сами подписи — tests/test_bot_labels.py."""
+    monkeypatch.setattr(bot.Pult, "label", lambda self, w: w.get("name", ""))
+
 
 
 def cmds(tmp_path, platform="linux", **kw):

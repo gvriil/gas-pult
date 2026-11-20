@@ -24,6 +24,14 @@ import pytest
 from gas_pult import bot, tgroutes, transcripts, webapp
 from gas_pult.config import Config
 
+
+@pytest.fixture(autouse=True)
+def _window_name_as_label(monkeypatch):
+    """20.11: бот показывает название чата, не имя окна. Здесь проверяются маршруты и кнопки, поэтому подпись —
+    имя окна из заглушки; сами подписи — tests/test_bot_labels.py."""
+    monkeypatch.setattr(bot.Pult, "label", lambda self, w: w.get("name", ""))
+
+
 A = "11111111-1111-4111-8111-111111111111"
 B = "22222222-2222-4222-8222-222222222222"
 
@@ -146,9 +154,11 @@ def test_reply_to_human_message_is_not_a_route(tg):
     assert tg.got == [("@33", "x")]
 
 
-def test_status_line_names_the_window():
-    assert bot.Pult.to_head({"id": "@1", "name": "штаб"}) == "→ [штаб] "
-    assert bot.Pult.to_head({"id": "@1"}) == ""
+def test_status_line_names_the_chat():
+    p = bot.Pult.__new__(bot.Pult)
+    p.label = lambda w: "План продаж"                        # название чата, не имя окна (20.11)
+    assert p.to_head({"id": "@1", "name": "штаб"}) == "→ [План продаж] "
+    assert p.to_head({"id": "@1"}) == ""
 
 
 class Api:
