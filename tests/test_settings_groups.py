@@ -25,3 +25,20 @@ def test_groups_in_order_and_nothing_lost():
                   "Выйти на этом устройстве", 'go("go:integrations")'):
         assert label in SET, label
     assert ".filter((g) => g.items.some((x) => !x.head))" in SET           # пустая для роли группа не показывается
+
+
+def test_role_conditions_kept():
+    """Слепая проверка #341: условия показа — те же, что в прежнем плоском списке (перенос строк без правок)."""
+    for cond, label in (('meta?.role === "owner" && !FOCUS', "Анкеты клиентов"),
+                        ('meta?.space && meta?.role !== "owner"', 'T("dev.title")'),
+                        ("deskLinks()", "Ссылки: где открывать"), ('meta?.role === "owner"', "Компьютеры"),
+                        ('meta?.role === "owner"', "Брифинг"), ("canNotify()", '"Уведомления"'),
+                        ('meta?.role === "owner"', '"Проверка"'), ('meta?.role === "owner"', 'T("st.title")'),
+                        ("isBoss()", '"Люди"'), ('meta?.role === "owner" && UI?.can_team', '"Команда"'),
+                        ('meta?.role === "owner"', "Корзина чатов"), ('meta?.role === "owner"', "Фокус-ссылки"),
+                        ('meta?.role === "owner"', "Модель по умолчанию"),
+                        ('meta?.role !== "viewer"', "Расход и лимиты"),
+                        ("UI", 'T("caps.title")'), ('meta?.via === "browser"', "Выйти на этом устройстве"),
+                        ("tgBig()", "Во весь экран")):
+        line = next(x for x in SET.splitlines() if label in x)
+        assert f"...({cond} ? [" in line, (label, line[:100])
