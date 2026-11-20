@@ -39,6 +39,9 @@ TOKEN_LEN = (24, 64)
 GRACE = 30                              # с: окна сессии нет — столько считаем, что её перезапускают
 DEMO = "demo"                           # вид ссылки: несколько устройств, только просмотр и выбор вариантов
 DEMO_MAX = 20                           # устройств на одну демо-ссылку
+# Обычная фокус-ссылка — до трёх устройств одного человека (владелец 20.11: «присылаешь ссылку, открываю — извини»):
+# ссылка из Telegram открывается во встроенном браузере, потом — в Safari или Chrome; у них разные cookie.
+FOCUS_MAX = 3
 
 
 def _h(s: str) -> str:
@@ -124,12 +127,18 @@ class Focus:
                 raise Gone(self.why(rec))
             if self.is_demo(rec):
                 return self._open_demo(d, k, rec, cookie, device)
-            if rec.get("dev"):
-                if self._match(k, rec, cookie):
-                    return cookie, {**rec, "id": k}
-                raise Gone("Эта ссылка уже открыта на другом устройстве. Попросите новую фокус-ссылку.")
-            secret = secrets.token_urlsafe(32)
-            rec.update(dev=_h(secret), device=device[:60], opened=int(time.time()))
+            if self._match(k, rec, cookie):
+                return cookie, {**rec, "id": k}
+            devs = rec.setdefault("devs", {})
+            if rec.get("dev") and rec["dev"] not in devs:         # старая запись: одно устройство в поле dev
+                devs[rec["dev"]] = {"device": rec.get("device", ""), "opened": rec.get("opened")}
+            if len(devs) >= FOCUS_MAX:
+                raise Gone(f"Ссылку уже открыли на {FOCUS_MAX} устройствах. Попросите новую фокус-ссылку или отзовите "
+                           "эту: «Настройки» → «Команда и клиенты» → «Фокус-ссылки».")
+            secret, now = secrets.token_urlsafe(32), int(time.time())
+            devs[_h(secret)] = {"device": device[:60], "opened": now}
+            rec.setdefault("dev", _h(secret))                    # первое устройство — как раньше (совместимость)
+            rec.update(device=device[:60], opened=now)
             self._save(d)
             return f"{k}.{secret}", {**rec, "id": k}
 
@@ -152,10 +161,10 @@ class Focus:
         rid, _, secret = str(cookie or "").partition(".")
         if not secret or rid != k:
             return False
-        if rec.get("mode") == DEMO:                     # демо: любое из открывших устройств
-            h = _h(secret)
-            return any(hmac.compare_digest(x, h) for x in (rec.get("devs") or {}))
-        return bool(rec.get("dev")) and hmac.compare_digest(rec["dev"], _h(secret))
+        h = _h(secret)                                  # любое из открывших устройств (демо — до DEMO_MAX, обычная — 3)
+        if any(hmac.compare_digest(x, h) for x in (rec.get("devs") or {})):
+            return True
+        return rec.get("mode") != DEMO and bool(rec.get("dev")) and hmac.compare_digest(rec["dev"], h)
 
     def by_cookie(self, cookie: str) -> dict:
         """Запись по cookie устройства: действующая — {..., id}; погасла — ``Gone``; cookie чужой или нет — ``Gone``."""

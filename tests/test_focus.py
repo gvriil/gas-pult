@@ -26,12 +26,15 @@ def test_store_binds_first_device_and_keeps_only_hashes(tmp_path):
     cookie, rec = f.open(link["token"], "", "iPhone · Safari")
     assert rec["w"] == "@1" and cookie.split(".")[1] not in (tmp_path / "focus.json").read_text()
     assert f.open(link["token"], cookie)[0] == cookie                       # то же устройство — снова можно
-    with pytest.raises(focus.Gone, match="другом устройстве"):
-        f.open(link["token"], "")                                           # другое — нет
+    c2, _ = f.open(link["token"], "", "Telegram")                            # 20.11: ещё два устройства того же
+    c3, _ = f.open(link["token"], "", "Chrome")                              # человека — можно
+    assert len({cookie, c2, c3}) == 3 and f.by_cookie(c2)["w"] == "@1" and f.by_cookie(cookie)["w"] == "@1"
+    with pytest.raises(focus.Gone, match=f"на {focus.FOCUS_MAX} устройствах"):
+        f.open(link["token"], "")                                           # четвёртое — нет
     with pytest.raises(focus.Gone):
         f.by_cookie(link["id"] + ".чужой")
     assert f.by_cookie(cookie)["w"] == "@1"
-    assert f.listing()[0]["device"] == "iPhone · Safari" and "h" not in f.listing()[0]
+    assert f.listing()[0]["device"] == "Chrome" and "h" not in f.listing()[0]          # последнее открывшее
 
 
 def test_store_ends_moves_revokes_and_expires(tmp_path):
@@ -131,8 +134,10 @@ def test_link_is_fragment_and_cookie_is_strict(server):
     _, _, setc = call(server["base"], "/api/focus/open", {"token": token}, cookie, FX)
     for attr in ("HttpOnly", "Secure", "SameSite=Strict", "Path=/"):
         assert attr in setc
-    code, r, _ = call(server["base"], "/api/focus/open", {"token": token}, "", FX)   # второе устройство
-    assert code == 410 and r["code"] == "focus_gone" and "другом устройстве" in r["error"]
+    for _ in range(focus.FOCUS_MAX - 1):                                     # ещё два устройства — можно
+        assert call(server["base"], "/api/focus/open", {"token": token}, "", FX)[0] == 200
+    code, r, _ = call(server["base"], "/api/focus/open", {"token": token}, "", FX)   # четвёртое — нет
+    assert code == 410 and r["code"] == "focus_gone" and "устройствах" in r["error"]
 
 
 def test_focus_sees_only_its_session(server):
@@ -501,9 +506,10 @@ def test_store_demo_link_many_devices_limit_and_revoke(tmp_path):
     for c in cookies:
         with pytest.raises(focus.Gone, match="отозвал эту демо-ссылку"):
             f.by_cookie(c)
-    plain = f.new(W1, 1)                                                 # обычная — по-прежнему одно устройство
-    f.open(plain["token"], "")
-    with pytest.raises(focus.Gone, match="другом устройстве"):
+    plain = f.new(W1, 1)                                                 # обычная — до FOCUS_MAX (3) устройств
+    for _ in range(focus.FOCUS_MAX):
+        f.open(plain["token"], "")
+    with pytest.raises(focus.Gone, match="устройствах"):
         f.open(plain["token"], "")
     assert "mode" not in f.listing()[0] and focus.TTL == 7 * 86400
 
