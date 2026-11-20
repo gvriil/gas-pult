@@ -19,7 +19,7 @@ def test_fold_all_and_settings_at_bottom():
 
 
 def test_review_fixes():
-    """Слепая проверка #340: фокус-режим, касание 44 px, фокус клавиатуры после свёртки, «всё свёрнуто» без «Закреплённых»."""
+    """Слепая проверка #340: фокус-режим, касание 44 px, фокус после свёртки, «всё свёрнуто»."""
     assert "body.focus #navSet { display: none !important; }" in INDEX
     assert '$("settingsBtn").hidden = $("navSet").hidden = gate;' in INDEX
     assert "@media (pointer: coarse) { .nav-sec.fold { min-height: 44px; }" in INDEX
