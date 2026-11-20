@@ -168,3 +168,11 @@ def test_el_refusal_is_remembered(monkeypatch):
     p.el_pause_until = 0                                                   # пауза кончилась — снова пробуем облако
     p.stt(b"webm", "audio/webm")
     assert calls == [1, 1]
+
+
+def test_transcribe_pcm_one_stream_many_chunks_no_busy_race(svc):
+    """20.11: служба освобождает поток чуть позже ответа — следующий кусок не должен падать с «занята»."""
+    path = svc(1)
+    pcm = tone(11) + b"\0" * 16000 + tone(9) + b"\0" * 16000 + tone(7)
+    for _ in range(15):
+        assert len(asr.transcribe_pcm(pcm, 16000, path, parts=3).split()) == 3   # все куски распознаны

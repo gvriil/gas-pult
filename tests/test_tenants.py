@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -71,9 +72,14 @@ def test_tmux_without_user_unchanged():
 # --- окна пространства: sudo -u … tmux -S … -----------------------------------------------------------------------
 
 def test_tmux_for_tenant_uses_sudo_prefix(monkeypatch):
-    runs = []
-    monkeypatch.setattr(tmux.subprocess, "run", lambda args, **kw: runs.append(args) or
-                        subprocess.CompletedProcess(args, 0 if "has-session" not in args else 1, "@7\n", ""))
+    runs, me = [], threading.get_ident()
+
+    def fake(args, **kw):
+        if threading.get_ident() != me:               # 20.11: фоновые потоки других тестов зовут тот же subprocess
+            return subprocess.CompletedProcess(args, 1, "", "")
+        runs.append(args)
+        return subprocess.CompletedProcess(args, 0 if "has-session" not in args else 1, "@7\n", "")
+    monkeypatch.setattr(tmux.subprocess, "run", fake)
     t = tmux.Tmux("main", socket="/srv/t/demo/run/tmux/default", user="pult_t_demo", home="/srv/t/demo/home",
                   tmux="/usr/bin/tmux")
     assert t.new_window("w", "/srv/t/demo/home", "claude") == "@7"
