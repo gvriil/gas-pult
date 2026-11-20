@@ -102,12 +102,8 @@ def run(shots: str = ""):
                 assert f"Демо до {till}" in pg.inner_text("#focusExp"), pg.inner_text("#focusExp")
                 assert pg.is_visible("#demoNote") and "только просмотр и выбор вариантов" in pg.inner_text("#demoNote")
                 assert not pg.is_visible("#input") and not pg.is_visible("#mic") and not pg.is_visible("#plus")
-                pg.click("#menuBtn")
-                acts = pg.evaluate("[...document.querySelectorAll('#menu button')].filter((b) => "
-                                   "getComputedStyle(b).display !== 'none' && !b.hidden).map((b) => b.dataset.act)")
-                # «Сессии» — шторка сессий проекта
-                assert set(acts) <= {"say", "sayfull", "refresh", "switch"} and "refresh" in acts, acts
-                pg.click("#menuBtn")
+                # 20.11: «Быстрые функции» меняют следующее сообщение — в демо писать нельзя, кнопки нет
+                assert not pg.is_visible("#menuBtn")
                 for path, body in (("/api/send", {"w": shop, "text": "чужой текст"}), ("/api/model",
                                    {"w": shop, "name": "opus"}), ("/api/close", {"w": shop}),
                                    ("/api/effort", {"w": shop, "level": "high"}), ("/api/upload", {}),
