@@ -28,7 +28,7 @@ def test_ui_orders_groups_and_moves():
     for grp in ('ordBy("pins"', 'ordBy("proj"', 'ordBy("chats"', 'ordBy("p:" + p.id'):
         assert grp in INDEX, grp
     assert 'api("/api/order", { grp, ids: keys })' in INDEX
-    assert '{ label: "Выше", icon: "up", run: () => orderMove(row, -1) }' in INDEX
+    assert '{ label: "Поднять выше", icon: "up", run: () => orderMove(row, -1) }' in INDEX
     assert "if (NAV.drag) return;" in INDEX                            # во время перетаскивания список не трогаем
     js = (WEB / "js/order.js").read_text(encoding="utf-8")
     assert "export function arm(" in js and "export function drag(" in js and "saveOrder(grp, keys)" in js

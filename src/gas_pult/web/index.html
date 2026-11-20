@@ -2065,7 +2065,7 @@ function orderMove(row, d) {
   [keys[i], keys[i + d]] = [keys[i + d], keys[i]]; saveOrder(grp, keys);
 }
 const moveItems = (row) => { if (!row.dataset.og || meta?.role === "viewer") return []; const rs = ogRows(row.dataset.og.split("|")[0]), i = rs.indexOf(row);
-  return [...(i > 0 ? [{ label: "Выше", icon: "up", run: () => orderMove(row, -1) }] : []), ...(i >= 0 && i < rs.length - 1 ? [{ label: "Ниже", icon: "down", run: () => orderMove(row, 1) }] : [])]; };
+  return [...(i > 0 ? [{ label: "Поднять выше", icon: "up", run: () => orderMove(row, -1) }] : []), ...(i >= 0 && i < rs.length - 1 ? [{ label: "Опустить ниже", icon: "down", run: () => orderMove(row, 1) }] : [])]; };
 const navItems = (row) => { const a = navItems0(row), m = moveItems(row); if (!m.length) return a; const k = a.findIndex((x) => x.sep); return k < 0 ? [...a, ...m] : [...a.slice(0, k), ...m, ...a.slice(k)]; };
 function navItems0(row) {
   if (row.dataset.np) {
