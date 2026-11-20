@@ -12,6 +12,7 @@ let D = null;                                         // ответ /api/brief: 
 
 const css = document.createElement("style");
 css.textContent = `
+body:has(.brief-bg) .notices { z-index: 61; }   /* сообщения («Сохранено») — поверх брифинга (Gemini 20.11) */
 .brief-bg { position: fixed; inset: 0; z-index: 60; background: var(--bg-canvas); overflow-y: auto; overscroll-behavior: contain; }
 .brief { max-width: 640px; margin: 0 auto; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); color: var(--text-primary); }
 .brief .bh { display: flex; align-items: center; gap: 6px; }

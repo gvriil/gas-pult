@@ -32,3 +32,9 @@ def test_e2e_rotate_demo():
         mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
     finally:
         srv.shutdown()
+
+
+def test_toasts_above_brief():
+    """Gemini 20.11, подтверждено в демо: брифинг (z-index 60) закрывал сообщения (#notices, 30)."""
+    brief = (WEB / "js/brief.js").read_text(encoding="utf-8")
+    assert "body:has(.brief-bg) .notices { z-index: 61; }" in brief
