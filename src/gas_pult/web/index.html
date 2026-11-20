@@ -5895,16 +5895,22 @@ async function loadMcp(fresh) {
   await dictReady;                                     // разделы «Для любой модели» / «Через сайт Claude» — из словаря
   const owner = meta?.role === "owner";                // участнику — только его сервисы; модели, ключи и голос — владельцу
   if (view === "home") setSub(owner ? "<span>голос, ключи API и сервисы</span>" : "<span>ваши сервисы</span>");
-  $("integrationsView").innerHTML = '<div id="mcpBox" data-tour="integrations"><div class="empty">Проверяю, что уже подключено… (до 30 секунд)</div></div>' + (owner ? '<div id="modelsBox" data-tour="models"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
-  if (!owner) {
-    try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
-    catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
-    return;
-  }
-  renderModels(); loadFallback();
-  Promise.all([api("/api/providers"), api("/api/voice/cards")]).then(([d, c]) => { prov = d; vcards = c; renderVoice(); }).catch((e) => { $("voiceBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
-  try { mcpData = await api("/api/mcp" + (fresh ? "?fresh=1" : "")); renderMcp(); }
-  catch (e) { $("mcpBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; }
+  // Одно состояние «загружаю» и сразу весь экран (владелец 20.11: «сначала вываливаются модели, потом пропадают,
+  // появляются другие вещи»): раньше «Модели» рисовались сразу, а сервисы, голос и запасные приходили по одному
+  // и сдвигали их. Теперь ждём всё вместе и рисуем один раз; ошибка одного блока не мешает остальным.
+  const box = $("integrationsView");
+  box.innerHTML = '<div class="empty">Загружаю подключения… (до 30 секунд)</div>';
+  const q = (u) => api(u).then((v) => ({ v }), (e) => ({ e }));
+  const cal = owner && !FOCUS ? part("calkeys").then((x) => x.calendarsSection()).catch(() => "") : "";   // «Календари» — тоже сразу
+  const [m, pr, vc, f, ch] = await Promise.all([q("/api/mcp" + (fresh ? "?fresh=1" : "")), ...(owner ? [q("/api/providers"), q("/api/voice/cards"), q("/api/fallback")] : [{}, {}, {}]), cal]);
+  if (!box.isConnected) return;
+  box.innerHTML = '<div id="mcpBox" data-tour="integrations"></div>' + (owner ? '<div id="modelsBox" data-tour="models"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
+  const bad = (el, e) => { $(el).innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; };
+  if (m.e) bad("mcpBox", m.e); else { mcpData = m.v; renderMcp(); if (ch && $("calKeys")) $("calKeys").innerHTML = ch; }
+  if (!owner) return;
+  renderModels();
+  if (f.e) $("fbBox").innerHTML = `<div class="section">Запасные</div><div class="result bad">${ic("warn")}<span>${esc(f.e.message)}</span></div>`; else { fb = f.v; renderFallback(); }
+  if (pr.e || vc.e) bad("voiceBox", pr.e || vc.e); else { prov = pr.v; vcards = vc.v; renderVoice(); }
 }
 function renderModels() {
   const list = (meta?.profiles || []).filter((p) => p.needs_key);
