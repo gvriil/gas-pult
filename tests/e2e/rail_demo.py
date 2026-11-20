@@ -83,9 +83,8 @@ def run(base: str, shots: str = ""):
             pg.wait_for_timeout(400)
             assert pg.evaluate("view") == "settings" or pg.locator(".sheet").count(), f"{tag}: ⚙ не открыл настройки"
             ctx.close()
-        # телефон и фокус — без полосы
-        for q, kw in (("home", {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True}),
-                      ("focus", {"viewport": {"width": 1366, "height": 860}})):
+        # телефон — без полосы (в фокусе полоса есть с #324, без «Новый чат» и «Настройки» — test_focus)
+        for q, kw in (("home", {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True}),):
             ctx = br.new_context(**kw)
             ctx.add_init_script(INIT)
             pg = ctx.new_page()

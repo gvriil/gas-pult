@@ -96,3 +96,25 @@ def test_new_chat_like_claude():
     assert 'ic("compose") + "Новый чат"' in PAGE
     assert "if (!p && !meta?.space) return newSession();" in fn("newChat")
     assert "body.drafting .dock { bottom: auto;" in PAGE                       # на компьютере — поле посередине
+
+
+def test_e2e_rail_demo():
+    """Свёрнутая панель в браузере (tests/e2e/rail_demo.py): раньше сценарий не запускался ни одним тестом."""
+    import importlib.util
+    import shutil
+    import threading
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    pytest.importorskip("playwright.sync_api")
+    if not shutil.which("google-chrome") and not shutil.which("chrome"):
+        pytest.skip("нет Chrome для Playwright")
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(WEB.parent)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    spec = importlib.util.spec_from_file_location("rail_demo", Path(__file__).resolve().parent / "e2e" / "rail_demo.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+    finally:
+        srv.shutdown()
