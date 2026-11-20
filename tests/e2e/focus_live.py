@@ -16,7 +16,7 @@ Telegram — подмена ``telegram.Api`` (запросы пишутся в �
   (в) на устройстве A: сообщение и ответ, файл, интеграции, уровень усилий, модель (перезапуск чата);
   (е) перезапуск сессии владельцем (смена поставщика) — ссылка переезжает на новое окно;
   (д) «Настройки» → «Фокус-ссылки» → «Отозвать» — устройство видит «Ссылка не действует» (410);
-  (г) новая ссылка, «Завершить» на устройстве — «Сессия завершена», окно закрыто, повторное открытие — 410;
+  (г) новая ссылка, «Завершить» на устройстве — «Чат завершён», окно закрыто, повторное открытие — 410;
   (ж) токен не появляется ни в адресе запросов, ни в Referer (журнал запросов сервера — как журнал Caddy).
 """
 
@@ -354,23 +354,23 @@ def run(shots: str = ""):
             pc.click("#menuBtn")
             pc.click("#menu [data-act=close]")
             pc.wait_for_selector("#focusEnd", timeout=40000)
-            assert "Сессия завершена" in pc.inner_text("#focusEnd")
+            assert "Чат завершён" in pc.inner_text("#focusEnd")
             code, d = pc.evaluate(FETCH, ["/api/sessions", None])
             assert code == 410, (code, d)
             pd = page(a2, url2)                            # повторное открытие на том же устройстве
             pd.wait_for_selector("#focusEnd", timeout=10000)
-            assert "Сессия завершена" in pd.inner_text("#focusEnd")
+            assert "Чат завершён" in pd.inner_text("#focusEnd")
             code, d = pd.evaluate("""async (t) => { const r = await fetch("/api/focus/open", { method: "POST",
               headers: { "X-Gp-Focus": "1", "Content-Type": "application/json" }, body: JSON.stringify({ token: t }) });
               return [r.status, await r.json()]; }""", tokens[-1])
-            assert code == 410 and "Сессия завершена" in d["error"], (code, d)
+            assert code == 410 and "Чат завершён" in d["error"], (code, d)
             po.reload()
             po.wait_for_function("start.done || sessions.length", timeout=15000)
             po.wait_for_timeout(1500)
             assert shop not in po.evaluate("sessions.map((s) => s.id)"), "окно не закрыто"
             if shots:
                 pd.screenshot(path=f"{shots}/focus-live-end.png")
-            log("(г) «Завершить» на устройстве: окно закрыто, «Сессия завершена», повторное открытие — 410")
+            log("(г) «Завершить» на устройстве: окно закрыто, «Чат завершён», повторное открытие — 410")
 
             # ---------- (ж) токены не в журнале запросов ----------
             raw = (root / "access.log").read_text()

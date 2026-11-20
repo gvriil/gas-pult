@@ -41,7 +41,7 @@ function fold(k) {
   document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
   tasksSheet(true);
 }
-const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", danger: q === 1,
+const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", /* срочность — точкой, не красным текстом (UI-обзор 20.11) */
   sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
     t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
   run: () => taskGo(t) });

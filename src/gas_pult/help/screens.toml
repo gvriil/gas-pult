@@ -23,7 +23,7 @@ version = 1
 # ---------- действия: панель ----------
 [[action]]
 id = "go:sessions"
-title = "Сессии"
+title = "Чаты"
 roles = ["owner", "member", "viewer"]
 required_cap = "cap.dev_sessions"
 

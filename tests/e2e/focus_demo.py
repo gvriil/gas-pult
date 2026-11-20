@@ -4,8 +4,8 @@
 
 Владелец: меню сессии → «Создать фокус-ссылку» — шторка со ссылкой (токен после «#»), «Отправить себе в Telegram»,
 «Отозвать»; «Новый чат» → «В фокусе»; «Настройки» → «Фокус-ссылки». Устройство по ссылке (``&focus``): только чат
-одной сессии — нет «Назад», «Настроек», переключателя, списка сессий; в меню — «Интеграции» и «Модель», нет «Сессии» и
-«Активная»; «Завершить» → «Сессия завершена». Погасшая ссылка (``&focus=gone``) — сразу «Сессия завершена». Ширина 390
+одной сессии — нет «Назад», «Настроек», переключателя, списка сессий; в меню — «Интеграции» и «Модель», нет «Чаты» и
+«Активная»; «Завершить» → «Чат завершён». Погасшая ссылка (``&focus=gone``) — сразу «Чат завершён». Ширина 390
 и 1366, светлая и тёмная тема, консоль без ошибок.
 """
 
@@ -83,14 +83,14 @@ def run(base: str, shots: str = ""):
             pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
             pg.evaluate("closeSession('@1')")
             pg.wait_for_selector("#focusEnd", timeout=3000)
-            assert "Сессия завершена" in pg.inner_text("#focusEnd")
+            assert "Чат завершён" in pg.inner_text("#focusEnd")
             if shots:
                 pg.screenshot(path=f"{shots}/focus-end-{dev}-{theme}.png")
             pg.close()
 
             pg = page("focus=gone")
             pg.wait_for_selector("#focusEnd", timeout=3000)
-            assert "Сессия завершена" in pg.inner_text("#focusEnd")
+            assert "Чат завершён" in pg.inner_text("#focusEnd")
             pg.close()
             ctx.close()
         br.close()
