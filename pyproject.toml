@@ -66,3 +66,10 @@ ignore = ["RUF001", "RUF002", "RUF003", "SIM105"]   # кириллица в ст
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Покрытие (docs/MONOLITH-PLAN.md): коннекторы и base_mcp тесты запускают отдельным процессом, как их запускает
+# Claude Code; coverage учитывает такие процессы сама (patch = subprocess), данные — `coverage combine`.
+[tool.coverage.run]
+source = ["src/gas_pult"]
+patch = ["subprocess"]
+parallel = true
