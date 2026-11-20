@@ -270,14 +270,14 @@ function demoApi(path, body) {
   R["/api/focus/list"] = { links: [{ id: "f1", name: "gas-pult", space: null, created: Date.now() / 1000 - 3600, exp: Date.now() / 1000 + 6 * 86400, opened: Date.now() / 1000 - 3000, device: "iPhone · Safari" },
     { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" }] };
   if (FOCUS) {
-    if (params.get("focus") === "gone") { focusEnd("Сессия завершена."); return Promise.reject(new Error("Сессия завершена.")); }
+    if (params.get("focus") === "gone") { focusEnd("Чат завершён."); return Promise.reject(new Error("Чат завершён.")); }
     // &focus=proj — ссылка на проект сессии @1 (все его окна); &fexp=1 — до конца срока сутки (предупреждение)
     const fp = params.get("focus") === "proj", pw = "p-" + folder(R["/api/sessions"].sessions.find((x) => x.id === "@1")?.path || "");
     const fexp = Math.floor(Date.now() / 1000) + (params.has("fexp") ? +params.get("fexp") || 1 : 7) * 86400 - 600;
     R["/api/meta"] = { ...R["/api/meta"], focus: { id: "f1", name: fp ? pw.slice(2) : "gas-pult", w: fp ? "" : "@1", exp: fexp, proj: fp ? pw : null }, via: "focus", role: "owner", projects: [] };
     if (fp && path === "/api/close") (demoApi.gone ||= {})[body.w] = 1;
     R["/api/sessions"] = { ...R["/api/sessions"], sessions: R["/api/sessions"].sessions.filter((x) => fp ? "p-" + folder(x.path) === pw && !demoApi.gone?.[x.id] : x.id === "@1"), focus: true };
-    if (!fp && path === "/api/close") setTimeout(() => focusEnd("Сессия завершена."), 0);
+    if (!fp && path === "/api/close") setTimeout(() => focusEnd("Чат завершён."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
@@ -416,9 +416,9 @@ function demoApi(path, body) {
     const w = new URLSearchParams(path.split("?")[1]).get("w"), now = Date.now() / 1000, r = demoApi.run, base = { now, rev: demoRev(), spinner: "", action: "", tool: "" };
     if (r && r.w === w) {
       const t = (Date.now() - r.t) / 1000, at = r.t / 1000;
-      const P = r.unsent ? [[0, "delivered", "Доставлено в сессию"], [3, "unsent", "Не отправлено — текст в поле ввода", { action: "enter" }]]
-        : r.stuck ? [[0, "delivered", "Доставлено в сессию"], [4, "stuck", "Не видно реакции — показать экран?", { action: "screen" }]]
-        : [[0, "delivered", "Доставлено в сессию"], [1.5, "started", "Взял в работу"], [3, "working", "Читает файл index.html", { tool: "Read", spinner: "Reading… · 1s" }],
+      const P = r.unsent ? [[0, "delivered", "Доставлено в чат"], [3, "unsent", "Не отправлено — текст в поле ввода", { action: "enter" }]]
+        : r.stuck ? [[0, "delivered", "Доставлено в чат"], [4, "stuck", "Не видно реакции — показать экран?", { action: "screen" }]]
+        : [[0, "delivered", "Доставлено в чат"], [1.5, "started", "Взял в работу"], [3, "working", "Читает файл index.html", { tool: "Read", spinner: "Reading… · 1s" }],
            [6, "working", "Выполняет команду: npm test", { tool: "Bash", spinner: "Running… · 2s" }], [10, "done", "Готово"]];
       const [s0, phase, text, extra] = P.filter((x) => x[0] <= t).at(-1);
       return Promise.resolve({ ...base, phase, text, since: at + s0, ...(extra || {}) });

@@ -1375,7 +1375,7 @@ class Panel:
                 raise focus.Wait("сессия перезапускается — подождите несколько секунд")
             self.focus_gap.pop(rec["id"], None)
             self.focus.end(rec["id"])
-            raise focus.Gone("Сессия завершена.")
+            raise focus.Gone("Чат завершён.")
         self.focus_gap.pop(rec["id"], None)
         return rec
 
@@ -4317,7 +4317,7 @@ def handler(panel: Panel):
 
         def focus_call(self, method: str, path: str, q: dict):
             """Запрос страницы в режиме фокуса: действующая ссылка этого устройства, путь из ``FOCUS_*``, окно — только
-            её. Ссылка погасла — 410 (страница покажет «Сессия завершена»), чужое — 403."""
+            её. Ссылка погасла — 410 (страница покажет «Чат завершён»), чужое — 403."""
             try:
                 rec = panel.focus_rec(self.focus_cookie())
             except focus.Gone as e:

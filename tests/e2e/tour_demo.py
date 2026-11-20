@@ -75,7 +75,7 @@ def run(base: str, shots: str = ""):
             pg.click("#tourOffer [data-tgo]")
             dev = walk(pg, w, shots, f"dev-{tag}")
             print(tag, "dev:", dev)
-            assert "Сессии" in dev and "Строка статуса" in dev and "Интеграции" in dev and dev[-1] == "Настройки"
+            assert "Чаты" in dev and "Строка статуса" in dev and "Интеграции" in dev and dev[-1] == "Настройки"
             # вкладки «Переписка/Экран» — только на широком экране, кнопка «Экран» — только на телефоне; свёрнутого
             # списка нет — шаг пропущен
             assert ("Переписка и экран" in dev) == (w > 900) and ("Экран терминала" in dev) == (w < 900)

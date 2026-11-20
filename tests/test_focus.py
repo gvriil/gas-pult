@@ -44,7 +44,7 @@ def test_store_ends_moves_revokes_and_expires(tmp_path):
     cb, _ = f.open(b["token"], "")
     assert f.move("@1", "@7") == 1 and f.by_cookie(ca)["w"] == "@7"          # перезапуск с другой моделью
     assert f.end_window("@7") == 1
-    with pytest.raises(focus.Gone, match="Сессия завершена"):
+    with pytest.raises(focus.Gone, match="Чат завершён"):
         f.by_cookie(ca)
     assert f.revoke(b["id"]) and not f.listing()
     with pytest.raises(focus.Gone, match="отозвал"):
@@ -200,7 +200,7 @@ def test_close_in_focus_ends_link(server):
     code, d, _ = call(s["base"], "/api/close", {"w": "@1"}, cookie, FX)
     assert code == 200 and d["result"] == "закрыто" and s["closed"] == ["@1"]
     code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert code == 410 and r["code"] == "focus_gone" and "Сессия завершена" in r["error"]
+    assert code == 410 and r["code"] == "focus_gone" and "Чат завершён" in r["error"]
 
 
 def test_close_from_panel_or_window_gone_ends_link(server, monkeypatch):
@@ -215,7 +215,7 @@ def test_close_from_panel_or_window_gone_ends_link(server, monkeypatch):
     assert code == 503 and r["code"] == "focus_wait"            # сначала — как при перезапуске: ссылка жива
     monkeypatch.setattr(focus, "GRACE", 0)                       # окна нет дольше GRACE — сессия завершена
     code, r, _ = call(s["base"], "/api/sessions", None, c2, FX)
-    assert code == 410 and "Сессия завершена" in r["error"]
+    assert code == 410 and "Чат завершён" in r["error"]
     assert not s["p"].focus.listing()
 
 
@@ -230,7 +230,7 @@ def test_restart_keeps_link_on_same_folder(server):
 
 def test_restart_gap_keeps_link(server):
     """Перезапуск закрывает окно раньше, чем открывает новое (вживую — секунды): опрос страницы в этот промежуток
-    не гасит ссылку (было: 410 «Сессия завершена» посреди смены модели), а после — ссылка уже на новом окне."""
+    не гасит ссылку (было: 410 «Чат завершён» посреди смены модели), а после — ссылка уже на новом окне."""
     s = server
     _, _, cookie = open_link(s)
     w = s["wins"].w.pop("@1")                                                      # старое окно закрыто, нового нет

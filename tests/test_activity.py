@@ -193,7 +193,7 @@ def test_phases_sent_delivered_taken():
     clock.t += 1
     s.delivered("@1")
     st = a.combine(journal, s.get("@1"), {}, clock.t)
-    assert st["phase"] == "delivered" and st["text"] == "Доставлено в сессию" and st["since"] == clock.t
+    assert st["phase"] == "delivered" and st["text"] == "Доставлено в чат" and st["since"] == clock.t
     clock.t += 2                                                       # в журнале появился наш запрос
     journal = a.parse([prompt("старое", 0), say("ответ", 3), prompt("новое", 102)])
     st = a.combine(journal, s.get("@1"), {}, clock.t, sends=s, wid="@1")
@@ -306,7 +306,7 @@ def test_bot_edits_one_message_and_throttles():
     methods = {m for m, _ in p.calls}
     assert methods == {"editMessageText"}                     # ни одного нового сообщения
     texts = [t for _, t in p.calls]
-    assert texts[0].startswith("📨 Доставлено в сессию")
+    assert texts[0].startswith("📨 Доставлено в чат")
     assert any(t.startswith("✅ Взял в работу") for t in texts)
     assert texts[-1].startswith("✅ Готово")
     assert len(texts) == len(set(texts))                      # одинаковый текст второй раз не правим
@@ -409,4 +409,4 @@ def test_api_send_marks_delivered(server, monkeypatch):
     panel.send({"id": "@1", "path": "/w/proj"}, "новое")
     panel.screens.clear()
     code, d = get(base, "/api/activity?w=@1", panel.auth.issue(1))
-    assert code == 200 and d["phase"] == "delivered" and d["text"] == "Доставлено в сессию"
+    assert code == 200 and d["phase"] == "delivered" and d["text"] == "Доставлено в чат"

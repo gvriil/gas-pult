@@ -56,7 +56,7 @@ def test_business_tour_speaks_simple_words():
     for jargon in ("tmux", "MCP", "git", "Ctrl"):
         assert jargon not in biz, jargon
     dev = " ".join(s["title"] + " " + s["text"] for s in TOURS["dev"]["steps"])
-    for need in ("Сессии", "Экран", "Команды", "Модели", "Интеграции", "Расход", "лимит", "Новая папка",
+    for need in ("Чаты", "Экран", "Команды", "Модели", "Интеграции", "Расход", "лимит", "Новая папка",
                  "Строка статуса"):
         assert need in dev, need
 

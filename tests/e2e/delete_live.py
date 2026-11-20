@@ -7,7 +7,7 @@ GAS_PULT_DATA_DIR, GAS_PULT_CONFIG_DIR и своим сервером tmux (``GA
 «Claude» — подставной скрипт (как в focus_live.py, но с ``--session-id``/``--resume``: журнал — ``<id>.jsonl``).
 
 Сценарий (телефон 390 и компьютер 1366, светлая и тёмная тема):
-  (а) остановленная сессия (Claude вышел, в окне оболочка) → «Завершить сессию» — окно закрыто (было: 404);
+  (а) остановленная сессия (Claude вышел, в окне оболочка) → «Завершить чат» — окно закрыто (было: 404);
   (б) работающая сессия → «⋯» → «Удалить» → плашка «Удалено · Отменить» (без окна «Вы уверены?»), через 5 с —
       окна нет, журнал — в корзине пульта, после обновления страницы карточка не возвращается и в «Завершённых»
       проекта чата нет;
@@ -163,7 +163,7 @@ def run(shots: str = ""):
             def sheet_click(pg, text):
                 pg.locator(".sheet button", has_text=text).first.click()
 
-            # (а) остановленная сессия → «Завершить сессию»
+            # (а) остановленная сессия → «Завершить чат»
             pg = page(390, "light")
             pg.wait_for_function("sessions.length === 2", timeout=15000)
             subprocess.run([*tmux, "send-keys", "-t", w["other"], "/exit", "Enter"])
@@ -171,7 +171,7 @@ def run(shots: str = ""):
                                  timeout=15000)
             pg.evaluate(f"sessionSheet({json.dumps(w['other'])})")
             shot(pg, "a-menu-390-light")
-            sheet_click(pg, "Завершить сессию")
+            sheet_click(pg, "Завершить чат")
             pg.wait_for_function(f"!sessions.some((s) => s.id === {json.dumps(w['other'])})", timeout=15000)
             assert w["other"] not in windows()
             log("(а) остановленная сессия: «Завершить» закрыло окно")

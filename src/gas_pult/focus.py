@@ -49,7 +49,7 @@ def _h(s: str) -> str:
 
 
 class Gone(Exception):
-    """Ссылка больше не действует: текст — для экрана «Сессия завершена»."""
+    """Ссылка больше не действует: текст — для экрана «Чат завершён»."""
 
 
 class Denied(Exception):
@@ -179,7 +179,7 @@ class Focus:
     @staticmethod
     def why(rec: dict) -> str:
         if rec.get("state") == "closed":
-            return "Проект удалён." if rec.get("proj") else "Сессия завершена."
+            return "Проект удалён." if rec.get("proj") else "Чат завершён."
         if rec.get("state") == "revoked":
             return f"Владелец отозвал эту {'демо' if rec.get('mode') == DEMO else 'фокус'}-ссылку."
         return "Срок фокус-ссылки вышел — попросите новую."

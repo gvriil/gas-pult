@@ -1133,7 +1133,7 @@
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
     <div class="titles"><h1 class="serif" id="title">Гаврила</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="composeBtn" hidden aria-label="Новый чат" title="Новый чат"></button>
-    <button class="icon" id="switchBtn" hidden aria-label="Другая сессия"></button>
+    <button class="icon" id="switchBtn" hidden aria-label="Другой чат"></button>
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
     <button class="hpill" id="helpBtn" data-tour="help" aria-label="Подсказать: что делать на этом экране"></button>
     <button class="icon" id="settingsBtn" data-tour="settings" aria-label="Настройки"></button>
@@ -1228,7 +1228,7 @@
 
   <section id="home" hidden>
     <div class="brand"><h1 class="serif brand-text">Гаврила</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
+    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Чаты</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
     <div id="projectsView" hidden></div>
@@ -1241,7 +1241,7 @@
   </section>
 
   <section id="mcpForm" hidden></section>
-  <section id="pick" hidden><div class="pick"><span id="pickIcon"></span><h2 class="serif">Выберите сессию</h2><p>Слева — все сессии и их статус. Нажмите карточку, чтобы открыть переписку.</p></div></section>
+  <section id="pick" hidden><div class="pick"><span id="pickIcon"></span><h2 class="serif">Выберите чат</h2><p>Слева — все чаты и их статус. Нажмите карточку, чтобы открыть переписку.</p></div></section>
 </main>
 </div>
 <div class="ptr" id="ptr" aria-hidden="true"></div>
@@ -1249,7 +1249,7 @@
 <div class="voice mini" id="mini" hidden></div>
 
 <button class="tobottom" id="toBottom" hidden aria-label="К последнему сообщению"></button>
-<div class="grip" id="sideGrip" role="separator" aria-orientation="vertical" aria-label="Ширина списка сессий" aria-valuemin="200" aria-valuemax="480" tabindex="0" title="Потяните, чтобы изменить ширину; двойной щелчок — по умолчанию"></div>
+<div class="grip" id="sideGrip" role="separator" aria-orientation="vertical" aria-label="Ширина списка чатов" aria-valuemin="200" aria-valuemax="480" tabindex="0" title="Потяните, чтобы изменить ширину; двойной щелчок — по умолчанию"></div>
 <div class="homebar" id="homeBar" hidden><button class="btn" id="newBtn" data-tour="new" style="margin:0"></button></div>
 
 <div class="dock" id="dock" hidden>
@@ -1266,7 +1266,7 @@
     <div class="ctools" id="ctools">
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
       <button class="tool" id="menuBtn" data-tour="menu" aria-label="Меню действий"></button>
-      <button class="target" id="target" data-tour="target" type="button" aria-label="Сменить сессию"></button>
+      <button class="target" id="target" data-tour="target" type="button" aria-label="Сменить чат"></button>
       <div class="dchips" id="draftBar" hidden></div>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
@@ -1328,10 +1328,10 @@
     "title": "для разработчика",
     "steps": [
       {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, интеграции", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
-      {"target": "sessions", "screen": "home", "title": "Сессии", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
+      {"target": "sessions", "screen": "home", "title": "Чаты", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
       {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — квадратами: цифра — активные чаты, точка — ждёт ответа или новое. Нажатие — чаты проекта; сверху — развернуть, новый чат, поиск."},
-      {"target": "new", "screen": "home", "title": "Новый чат", "text": "В папке проекта; «Новая папка» — пустой проект с git init; «Из модуля» — агент с готовыми правилами и навыками."},
-      {"target": "cost", "screen": "home", "title": "Расход и лимиты", "text": "Токены и деньги за день. Лимит на сессию и на день — «Настройки» → «Расход и лимиты»: дошли — сессия встанет на паузу."},
+      {"target": "new", "screen": "home", "title": "Новый чат", "text": "В папке проекта; «Новая папка» — пустой проект; «Из модуля» — агент с готовыми правилами и навыками."},
+      {"target": "cost", "screen": "home", "title": "Расход и лимиты", "text": "Токены и деньги за день. Лимит на чат и на день — «Настройки» → «Расход и лимиты»: дошли — сессия встанет на паузу."},
       {"target": "commands", "screen": "home", "title": "Команды", "text": "Команды из ответов всех сессий. «Выполнить» запускает на сервере пульта; опасные — с подтверждением."},
       {"target": "tabs", "screen": "session", "title": "Переписка и экран", "text": "«Переписка» — чат с Claude; «Экран» — терминал tmux как есть, с клавишами 1/2/3, Esc, Ctrl+C."},
       {"target": "screen", "screen": "session", "title": "Экран терминала", "text": "Терминал tmux как есть: варианты ответа и клавиши 1/2/3, Esc, Ctrl+C."},
@@ -1582,7 +1582,7 @@ function paintIcons() {
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
   // «Быстрые функции» (разбор Gemini и таблица отладочного, «да» владельца 20.11): только то, что меняет следующее
   // сообщение — модель и усилие, интеграции чата, «/команды» (режим разработчика). «Прослушать» — под каждым
-  // ответом, «Активная» — в «Подробнее», «Сессии» — панель чатов, «Обновить» — не нужно, «Завершить» — «⋯» чата
+  // ответом, «Активная» — в «Подробнее», «Чаты» — панель чатов, «Обновить» — не нужно, «Завершить» — «⋯» чата
   // (в фокусе «⋯» нет — там «Завершить» остаётся здесь).
   $("menu").innerHTML = `<button data-act="close" class="danger focus-only">${ic("power")}Завершить</button>`
     + [["models", "chip", "Модель и усилие"], ["commands", "bolt", "Команды"]].map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
@@ -2285,7 +2285,7 @@ async function api(path, body, raw, extra, signal) {
   if (DEMO && params.has("confirm") && !demoApi.confirmed && CONFIRM_PATHS.has(path)) { await confirmCode(); return api(path, body, raw, extra, signal); }
   if (DEMO && params.get("slow") && (!start.done || path.startsWith("/api/history"))) await new Promise((ok) => setTimeout(ok, +params.get("slow")));   // ?demo&slow=1500 — медленная сеть: загрузка и переписка (скелетоны)
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
-  if (FOCUS && $("focusEnd")) throw new Error("Сессия завершена");   // ссылка погасла — опросы больше не шлём
+  if (FOCUS && $("focusEnd")) throw new Error("Чат завершён");   // ссылка погасла — опросы больше не шлём
   const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (PWA) headers["X-Pult-Pwa"] = "1";                 // с экрана «Домой» — для журнала событий (GAS-31)
   if (body && !raw) headers["Content-Type"] = "application/json";
@@ -2293,7 +2293,7 @@ async function api(path, body, raw, extra, signal) {
   let r;
   try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined, signal }); }
   catch (e) { if (signal?.aborted) throw e; throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
-  if (FOCUS && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Сессия завершена"); }
+  if (FOCUS && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Чат завершён"); }
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
@@ -3050,7 +3050,7 @@ function setHome(v) {
 }
 $("homeSeg").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.v === "sessions" && projOn()) setMode("sessions");   // «Сессии» — плоский список окон, как раньше
+  if (b.dataset.v === "sessions" && projOn()) setMode("sessions");   // «Чаты» — плоский список окон, как раньше
   setHome(b.dataset.v);
 };
 
@@ -3110,8 +3110,8 @@ function limitsLine(L) {
 }
 function usageLine(u) {                                // как у Pi: ↑ ввод, ↓ вывод, $; tok() — из раздела «расход»
   if (!u) return "";
-  return `<span title="Токены за сессию: ↑ отправлено модели, ↓ получено; R — из кэша">↑${tok(u.in)} ↓${tok(u.out)}${u.read ? " R" + tok(u.read) : ""}</span>`
-    + (u.cost ? `<span title="Расход за сессию по ценам поставщика">$${u.cost.toFixed(3)}</span>` : "")
+  return `<span title="Токены за чат: ↑ отправлено модели, ↓ получено; R — из кэша">↑${tok(u.in)} ↓${tok(u.out)}${u.read ? " R" + tok(u.read) : ""}</span>`
+    + (u.cost ? `<span title="Расход за чат по ценам поставщика">$${u.cost.toFixed(3)}</span>` : "")
     + (u.at ? `<span title="Последний ответ агента">ход ${esc(agoText(u.at))}</span>` : "");
 }
 function sinfo(s) {
@@ -3250,7 +3250,7 @@ function card(s, chat) {                              // chat — в проек�
   return `<div class="card ${st.cls}${s.active ? " active" : ""}${old ? " stale" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
       <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div>${sub}</div>
-      ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
+      ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с чатом">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     ${s.twin ? `<div class="preview twin">${ic("warn", "s16")}Этот разговор открыт ещё в «${esc(s.twin)}» — ответы смешиваются. Закройте одно окно.</div>` : ""}
     <div class="cfoot">${loud(s) ? `<span class="chip ${st.cls}">${st.label}</span>` : ""}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${spaceChips(s)}${schedChip(s)}${s.retry_at ? `<span class="chip" title="Упёрлась в лимит подписки — продолжит сама один раз">${ic("refresh", "s16")}продолжит в ${new Date(s.retry_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>` : ""}${costNear(s) ? costChip(s) : ""}
@@ -3665,7 +3665,7 @@ function costChip(s) {
   const c = s.cost;
   if (!c || !c.total) return "";
   const near = c.limit && c.usd != null && c.usd >= c.limit * 0.8;
-  const title = `Расход сессии ${costSrc(c)}: ${tokLine(c)}${c.pending ? ` · ${c.pending} отв. ждут счёта OpenRouter` : c.unknown ? " · часть ответов — модели без цены" : ""}${s.cost.by ? " · открыл(а) " + (c.by.name || c.by.id) : ""}`;
+  const title = `Расход чата ${costSrc(c)}: ${tokLine(c)}${c.pending ? ` · ${c.pending} отв. ждут счёта OpenRouter` : c.unknown ? " · часть ответов — модели без цены" : ""}${s.cost.by ? " · открыл(а) " + (c.by.name || c.by.id) : ""}`;
   return `<span class="chip cost${near ? " warn" : ""}" title="${esc(title)}">${ic("coin")}${c.usd == null ? "цена ?" : usd(c.usd) + estTag(c)} · ${tok(c.total)}${c.limit ? " из $" + c.limit : ""}${c.by ? " · " + esc(c.by.name || "участник") : ""}</span>`;
 }
 function costBar(s) {
@@ -3706,7 +3706,7 @@ function costSheet() {
   sheet("Расход", [
     ...(c.budget ? [{ info: true, icon: "coin", label: c.budget.text, sub: T("bud.sub", { r: usd(c.budget.reserve), d: c.budget.period_days }) }] : []),
     { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)}${estTag(c.today)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.pending ? ` · ${c.today.pending} отв. ждут счёта OpenRouter` : c.today.unknown ? " · часть ответов — модели без цены" : "") },
-    ...(own ? [{ info: true, icon: "pause", label: `Лимит на сессию: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
+    ...(own ? [{ info: true, icon: "pause", label: `Лимит на чат: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
                { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
                { label: "Изменить лимиты", icon: "edit", run: limitsForm }] : []),
     { info: true, icon: "help", label: "Как считаем", sub: `По журналам Claude Code. Модели Claude — по прайсу API Anthropic (сверено ${c.prices_checked}); с подпиской Pro/Max это оценка, а не счёт. OpenRouter — по его счёту за каждый ответ (приходит через несколько секунд). GLM (Z.ai) и DeepSeek — оценка: токены × цены поставщика${c.provider_prices_checked ? " (сверено " + c.provider_prices_checked + ")" : ""}. Цену, которую показывает сам Claude Code для чужих моделей, не берём — он считает их по тарифам Anthropic. Шлюзы GigaChat и YandexGPT — только токены. ${own ? "Сессии участников на их собственных учётках сюда не входят." : "Здесь — только ваша учётка Claude."}` },
@@ -3782,7 +3782,7 @@ async function refresh() {
         morph($("sessionsView"), notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
             <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> спят</span>` : ""}${costSummary()}</div>`
-            + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Сессий с Claude пока нет — нажмите «Новый чат».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
+            + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Чатов с Claude пока нет — нажмите «Новый чат».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
       }
       if (homeView === "sessions" && projMode()) {
         if (!projData) { projData = await api("/api/projects"); }
@@ -3794,7 +3794,7 @@ async function refresh() {
     const s = cur();
     // фокус: сессию перезапустили (модель, поставщик) — окно новое, сервер отдаёт его; завершённая — 410 (focusEnd)
     if (FOCUS) focusExp();                              // срок входа — раз в опрос (минуты меняются)
-    if (!s) { if (FOCUS_PROJ()) return current ? focusGone() : focusEmpty(); if (FOCUS) return sessions.length ? openSession(sessions[0].id) : focusEnd("Сессия завершена."); toast("Сессия завершена"); return back(); }
+    if (!s) { if (FOCUS_PROJ()) return current ? focusGone() : focusEmpty(); if (FOCUS) return sessions.length ? openSession(sessions[0].id) : focusEnd("Чат завершён."); toast("Чат завершён"); return back(); }
     paintSession(s); loadHint(s);
     if (lastStatus === "busy" && s.status !== "busy") { haptic("notificationOccurred", "success"); loadContent(); }   // вкладку не дёргаем
     else if (tab === "screen" || s.status === "dialog" || s.status === "stopped" || lastStatus === "stopped") loadContent();
@@ -3810,7 +3810,7 @@ function paintSession(s) {
   if (split()) setText($("title"), dn(s));
   else {                                            // телефон: имя ▾ — шторка сессий; точка — что-то ждёт в другой сессии
     const sig = sessions.some((x) => x.id !== s.id && (x.status === "dialog" || isNew(x)));
-    setHTML($("title"), `<span class="nm">${esc(dn(s))}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другой сессии"></span>' : ""}`);
+    setHTML($("title"), `<span class="nm">${esc(dn(s))}</span><span class="caret">${ic("chev", "s16")}</span>${sig ? '<span class="sig" title="Что-то ждёт в другом чате"></span>' : ""}`);
   }
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
@@ -3846,7 +3846,7 @@ $("newBtn").onclick = () => (navOn() && projOn() || meta?.space) && meta?.role !
   : projMode() && proj ? projectNew() : newSession();
 // ---------- «Проекты» (задача 49, docs/PROJECTS.md): главная — проекты, внутри — их чаты ----------
 // Проект — папка со своими инструкциями (CLAUDE.md) и файлами; внутри — много чатов: активные (окна) и завершённые
-// (журналы Claude Code без окна, «Продолжить» — --resume). Плоский список окон — вкладка «Сессии», как раньше.
+// (журналы Claude Code без окна, «Продолжить» — --resume). Плоский список окон — вкладка «Чаты», как раньше.
 let homeMode = store("homeMode") || (DEMO && !params.has("proj") ? "sessions" : "projects");
 let projData = null, proj = null, projInfo = null, projTab = "active", projQ = "", projListQ = "", projFilter = "all";
 let projDone = null, projDoneQ = null;                // завершённые чаты открытого проекта и поиск, по которому загружены
@@ -4041,7 +4041,7 @@ async function chatUndo(t, live, label) {
   try {
     await api("/api/chat/restore", { id: t.id });
     if (live && t.project) await api("/api/project/resume", { id: t.project, sid: t.sid });
-    toast("Вернул «" + label + "»" + (live ? " — сессия снова открыта" : ""), 3500);
+    toast("Вернул «" + label + "»" + (live ? " — чат снова открыт" : ""), 3500);
   } catch (e) { toast("Не вернул: " + e.message, 5000); }
   projDone = null; await refresh(); if (proj && projTab === "done") loadDone();
 }
@@ -4094,11 +4094,11 @@ function newSession(profile) {
     { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed() }]);
   helpSheet("sheet.new-session");
   sheet(f ? "Новый чат в фокусе — в какой папке?" : "Новый чат — в какой папке?", [
-    ...(meta?.role === "owner" && !f ? [{ label: "В фокусе", sub: "сразу фокус-ссылка: только эта сессия на другом устройстве", icon: "qr", run: () => { focusNext = true; newSession(profile); } }] : []),
-    { label: "Новая папка", sub: "пустой проект (git init) и сессия в нём", icon: "plus", run: () => { focusWant = f; newFolder(profile); } },
+    ...(meta?.role === "owner" && !f ? [{ label: "В фокусе", sub: "сразу фокус-ссылка: только этот чат на другом устройстве", icon: "qr", run: () => { focusNext = true; newSession(profile); } }] : []),
+    { label: "Новая папка", sub: "пустой проект и чат в нём", icon: "plus", run: () => { focusWant = f; newFolder(profile); } },
     ...(profile || f ? [] : [{ label: "Из модуля", sub: "готовый агент под задачу: новая папка с правилами и навыками", icon: "puzzle", run: () => modulesView() }]),
     ...meta.projects.map((label, i) => ({
-      label, icon: "file", run: () => { focusWant = f; profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)); },
+      label, icon: "folder", run: () => { focusWant = f; profile ? startSession(i, profile) : pickProfile((pid) => startSession(i, pid)); },   // папка — значок папки (UI-обзор 20.11)
     }))]);
 }
 // «Новая папка» — своё поле ввода (prompt() в Telegram на iPhone ненадёжен); имя — как у 📁 в боте.
@@ -4186,9 +4186,9 @@ function newProject() {
 // Модель Claude по умолчанию для новых сессий — отдельной явной настройкой владельца (не из чата).
 async function defaultModelSheet() {
   let d; try { d = await api("/api/model/default"); } catch (e) { return toast(e.message, 4500); }
-  const set = async (m) => { try { await api("/api/model/default", { model: m }); toast(m ? "Новые сессии Claude — с " + m : "Модель по умолчанию снята — решает Claude Code"); } catch (e) { toast(e.message, 4500); } };
+  const set = async (m) => { try { await api("/api/model/default", { model: m }); toast(m ? "Новые чаты Claude — с " + m : "Модель по умолчанию снята — решает Claude Code"); } catch (e) { toast(e.message, 4500); } };
   helpSheet("settings.default-model");
-  sheet("Модель по умолчанию для новых сессий", [
+  sheet("Модель по умолчанию для новых чатов", [
     { info: true, icon: "help", label: d.model ? "Сейчас: " + d.model : "Сейчас не задана — решает Claude Code", sub: "действует на все новые сессии Claude (общая настройка Claude Code). Модель одного чата — в самом чате: «Модель»" },
     ...d.models.map((m) => ({ label: m, icon: "chip", on: d.model === m, run: () => set(m) })),
     ...(d.model ? [{ label: "Не задавать", icon: "x", sub: "убрать — модель выберет Claude Code", run: () => set("") }] : []),
@@ -4244,15 +4244,15 @@ function sessionSheet(id) {
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
-    ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
-    ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этой сессии" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
+    ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
+    ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этого чата" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(FOCUS && meta?.focus?.browser ? [{ label: "Подключить браузер", icon: "monitor", sub: "пульт будет работать в Chrome/Edge на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
-    ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только эта сессия на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
-    ...(canRepos(s) ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этой сессии — без перезапуска", run: () => repoSheet(id) }] : []),
+    ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только этот чат на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
+    ...(canRepos(s) ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этому чату — без перезапуска", run: () => repoSheet(id) }] : []),
     ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Настроить расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
-    ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить сессию", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
+    ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить чат", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
     ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule && !FOCUS ? [{ label: "Удалить", icon: "trash", danger: true, sub: "окно закроется, переписка — в корзину пульта; можно вернуть", run: () => chatDelete({ w: id }, s.title || s.name) }] : []),
     ...(meta?.role === "owner" && s.status === "stopped" && !FOCUS ? [stoppedItem()] : []),
@@ -4531,7 +4531,7 @@ function userMsg(m) {                               // вставленный в
   return (head ? `<div class="bubble">${esc(head)}</div>` : "") + logBlock(m.i + ":u", "Терминал", body.join("\n"), first);
 }
 // ---------- живая строка статуса (activity.py): что агент делает сейчас ----------
-// Отправлено → Доставлено в сессию → Взял в работу → «Читает файл X · 12 с» → Готово; «Ждёт вашего ответа» — с кнопкой.
+// Отправлено → Доставлено в чат → Взял в работу → «Читает файл X · 12 с» → Готово; «Ждёт вашего ответа» — с кнопкой.
 // Опрос /api/activity раз в 1,5 с, пока идёт ход (иначе — раз в 4,5 с); текст меняется только при смене фазы.
 const busySince = {};
 const ACT_CLS = { sent: "run", delivered: "run", started: "run", working: "run", thinking: "run", queued: "wait", waiting: "wait", stuck: "bad", failed: "bad", unsent: "bad", done: "done" };
@@ -4794,7 +4794,7 @@ const KIND_HINT = { sudo: ["lock", "sudo вне разрешённого спи�
   tty: ["key", "нужен ввод (пароль) — кнопкой не выполнится, откройте в терминале"], foreign: ["monitor", "для другой машины — скопируйте и выполните там"] };
 async function loadCommands(quiet) {
   const box = $("commandsView");
-  if (!quiet && !cmdLog) box.innerHTML = '<div class="empty">Собираю команды из сессий…</div>';
+  if (!quiet && !cmdLog) box.innerHTML = '<div class="empty">Собираю команды из чатов…</div>';
   try { cmdLog = await api("/api/commands"); } catch (e) { if (!quiet) box.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   const sig = JSON.stringify(cmdLog.items.map((c) => [c.id, c.done?.at, c.done?.code, c.running, c.manual?.at]));
   if (quiet && sig === cmdSig) return;                // ничего нового — не перерисовываем (раскрытый вывод не схлопнется)
@@ -5294,7 +5294,7 @@ const ACTIONS = {
   chatmcp: () => { const s = cur(); if (s) part("newchat").then((m) => m.chatMcp(s)); },
   repos: () => repoSheet(current),
   switch: () => $("switchBtn").onclick(),
-  active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),
+  active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этого чата").then(refresh),
   refresh: () => { hist = []; loadContent(); toast("Обновлено"); },
   top: () => { $("top").classList.remove("hide"); scrollToY(0, true); },
   close: () => confirmClose(current),
@@ -5321,9 +5321,9 @@ function switchProfile(s) {
 async function closeSession(id = current, schedule = "", force = false) {
   try {
     const d = await api("/api/close", { w: id, ...(schedule ? { schedule } : {}), ...(force ? { force: true } : {}) });
-    if (d.code) helpSheet("session.menu"), sheet("Сессия не завершена", [{ info: true, icon: "warn", label: d.result, sub: "переписка сохранится в журнале; «Продолжить» в проекте её поднимет" },
+    if (d.code) helpSheet("session.menu"), sheet("Чат не завершён", [{ info: true, icon: "warn", label: d.result, sub: "переписка сохранится в журнале; «Продолжить» в проекте её поднимет" },
       { label: "Закрыть принудительно", icon: "power", danger: true, run: () => closeSession(id, schedule, true) }]);
-    else toast(d.result === "закрыто" ? (d.forced ? "Закрыта принудительно" : "Сессия завершена") : "Не завершена: " + d.result, 4500);
+    else toast(d.result === "закрыто" ? (d.forced ? "Закрыта принудительно" : "Чат завершён") : "Не завершена: " + d.result, 4500);
     if (d.result === "закрыто") { if (FOCUS) return focusGone(); if (id === current) back(); else refresh(); }
     if (d.draft) draftSheet(d.draft);                 // неотправленный текст из поля ввода — не теряем молча
   } catch (e) { toast("Не вышло: " + e.message, 4500); }
@@ -5339,12 +5339,12 @@ function draftSheet(text) {
 function openSwitcher() {
   if (FOCUS) return FOCUS_PROJ() ? focusProjSheet() : undefined;   // фокус на сессию — только она; на проект — его сессии
   helpSheet("sheet.switcher");
-  sheet("Сессии", [...pinFirst([...sessions].sort(byChange)).map((s) => ({
+  sheet("Чаты", [...pinFirst([...sessions].sort(byChange)).map((s) => ({
     label: s.name, sub: `${s.pinned ? "закреплена · " : ""}${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
     ...(meta?.role !== "viewer" ? [{ label: "Новый чат", icon: "plus", run: () => newSession() }] : []),
-    { label: "Команды из всех сессий", icon: "term", run: () => { back(); setHome("commands"); } },
-    { label: "Все сессии и интеграции", icon: "menu", run: back },
+    { label: "Команды из всех чатов", icon: "term", run: () => { back(); setHome("commands"); } },
+    { label: "Все чаты и интеграции", icon: "menu", run: back },
     { label: "Обозначения", icon: "help", sub: "что значат цвета точек", run: legend }]);
 }
 const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
@@ -5443,7 +5443,7 @@ async function deliver(p, restore) {
     try {
       actLocal = { phase: "sent", text: "Отправлено", since: Date.now() / 1000 + actSkew, w: p.w }; paintAct();
       await api("/api/send", { w: p.w, text: p.text, id: p.id });
-      actLocal = null; liveAct = { phase: "delivered", text: "Доставлено в сессию", since: Date.now() / 1000 + actSkew, w: p.w };
+      actLocal = null; liveAct = { phase: "delivered", text: "Доставлено в чат", since: Date.now() / 1000 + actSkew, w: p.w };
       paintAct(); setTimeout(() => pollAct(true), 300);                // дальше — сервер: ход, инструменты, «Готово»
       p.state = "sent"; p.at = Date.now(); haptic("notificationOccurred", "success");
       if (cur()?.status !== "busy") lastStatus = "busy";
@@ -6266,7 +6266,7 @@ $("mcpForm").addEventListener("click", async (e) => {
   const t = e.target.closest("[data-try]");
   if (t) {
     const s = sessions.find((x) => x.active && x.status !== "busy") || sessions.find((x) => x.status === "idle") || sessions[0];
-    if (!s) return toast("Нет открытых сессий — откройте новую", 4500);
+    if (!s) return toast("Нет открытых чатов — откройте новый", 4500);
     return busy(t, "Отправляю…", async () => {
       try { await api("/api/send", { w: s.id, text: t.dataset.try }); toast("Отправлено в «" + s.name + "»"); clearInterval(connTimer); openSession(s.id); }
       catch (err) { toast("Не отправлено: " + err.message, 4500); }
@@ -6404,11 +6404,11 @@ function moduleView(m) {
       ${m.skills.length ? `<p class="note" style="margin:8px 0 0">Навыки: ${esc(m.skills.join(", "))}${m.uses?.length ? " · общие блоки: " + esc(m.uses.map((u) => u.title).join(", ")) : ""}</p>` : ""}
       ${m.agents?.length ? `<p class="note" style="margin:8px 0 0">Проверяющие: ${m.agents.map((a) => `<b>${esc(a.title)}</b> — ${esc(a.about)}`).join(" ")} Позовите словами: «отдай на слепую проверку».</p>` : ""}</div>
     ${can && m.existing?.length ? `<div class="section">Уже есть</div><div class="panel">${m.existing.map((x) => `<button class="btn" data-mopen="${x.i ?? ""}" data-mw="${esc(x.open || "")}">${ic("folder")}Открыть «${esc(x.folder)}»</button>
-      <p class="note" style="margin:-2px 0 10px">${esc(x.path)}${x.changed && agoText(x.changed) ? " · изменено " + esc(agoText(x.changed, nowSec(), true)) : ""}${x.open ? " · сессия открыта" : ""}${x.schedule ? " · расписание: " + esc(x.schedule.text) + " — " + esc(schedLabel(x.schedule)) : ""}</p>`).join("")}</div>` : ""}
+      <p class="note" style="margin:-2px 0 10px">${esc(x.path)}${x.changed && agoText(x.changed) ? " · изменено " + esc(agoText(x.changed, nowSec(), true)) : ""}${x.open ? " · чат открыт" : ""}${x.schedule ? " · расписание: " + esc(x.schedule.text) + " — " + esc(schedLabel(x.schedule)) : ""}</p>`).join("")}</div>` : ""}
     ${can ? `<div class="section">${m.existing?.length ? "Создать ещё одно" : "Создать пространство"}</div><div class="panel">
       <div class="field"><label for="modName">Имя папки</label><input id="modName" value="${esc(m.folder)}" autocapitalize="off" spellcheck="false" autocomplete="off">
         <div class="hint">Латиница, цифры, дефис. Папка появится в «${esc(modData?.root || "projects")}»; существующие не перезаписываются.</div></div>
-      <button class="btn${m.existing?.length ? " ghost" : ""}" id="modCreate" data-id="${esc(m.id)}">${ic("plus")}${m.existing?.length ? "Создать ещё одно пространство" : "Создать и открыть сессию"}</button></div>` : '<p class="viewonly">У вас доступ только на просмотр.</p>'}</div>`;
+      <button class="btn${m.existing?.length ? " ghost" : ""}" id="modCreate" data-id="${esc(m.id)}">${ic("plus")}${m.existing?.length ? "Создать ещё одно пространство" : "Создать и открыть чат"}</button></div>` : '<p class="viewonly">У вас доступ только на просмотр.</p>'}</div>`;
   if (can && mcpData === null && m.integrations.some((x) => x.kind !== "manual")) api("/api/mcp").then((d) => { mcpData = d; if (view === "mcpForm" && $("modIntegr")) $("modIntegr").innerHTML = moduleIntegr(m); })
     .catch(() => { mcpData = { servers: [], connectors: [], presets: [] }; if ($("modIntegr")) $("modIntegr").innerHTML = moduleIntegr(m); });
 }
@@ -6821,7 +6821,7 @@ async function focusProjDone() {
     : [{ info: true, icon: "chat", label: "Завершённых чатов нет" }]);
 }
 function focusGone() {                              // сессию завершили: ссылка на сессию гаснет, на проект — живёт
-  if (!FOCUS_PROJ()) return focusEnd("Сессия завершена.");
+  if (!FOCUS_PROJ()) return focusEnd("Чат завершён.");
   current = null; return refresh().then(() => { const n = [...sessions].sort(byLast)[0]; return n ? openSession(n.id) : focusEmpty(); });
 }
 function focusEmpty() {                             // в проекте нет открытых сессий: новая или завершённая
@@ -6837,9 +6837,9 @@ function focusEnd(text) {
   if ($("focusEnd")) return;
   start.poll = null;
   document.querySelectorAll(".sheet-bg").forEach((b) => b.remove());
-  const done = !text || /^Сессия завершена/.test(text);
+  const done = !text || /^Чат завершён/.test(text);
   const d = document.createElement("div"); d.id = "focusEnd"; d.className = "focus-end"; d.setAttribute("role", "alert");
-  d.innerHTML = `<div>${ic(done ? "power" : "lock")}<h2 class="serif">${done ? "Сессия завершена" : "Ссылка не действует"}</h2>${done ? "" : `<p>${esc(text)}</p>`}<p class="note">Эту страницу можно закрыть.</p></div>`;
+  d.innerHTML = `<div>${ic(done ? "power" : "lock")}<h2 class="serif">${done ? "Чат завершён" : "Ссылка не действует"}</h2>${done ? "" : `<p>${esc(text)}</p>`}<p class="note">Эту страницу можно закрыть.</p></div>`;
   document.body.append(d);
 }
 async function focusStart() {
@@ -6856,7 +6856,7 @@ async function focusStart() {
   document.body.classList.toggle("focus-proj", FOCUS_PROJ()); focusExp();
   await refresh();
   if (FOCUS_PROJ()) { const n = [...sessions].sort(byLast)[0]; if (n) await openSession(n.id); else focusEmpty(); }
-  else if (!sessions.length) return focusEnd("Сессия завершена.");
+  else if (!sessions.length) return focusEnd("Чат завершён.");
   else await openSession(sessions[0].id);
   start.done = true; afterPaint(mdLoad);
   start.poll ||= refresh;                            // опрос — общий секундный тик (tick, pollDue)
