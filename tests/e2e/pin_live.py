@@ -123,13 +123,13 @@ def run(shots: str = ""):
             log("(а) телефон закрепил проект долгим нажатием — компьютер видит его наверху")
 
             # (б) «⋯» сессии на компьютере
-            pc.click("#homeSeg button[data-v=sessions]")
+            pc.evaluate("document.querySelector('#homeSeg [data-v=sessions]').click(); 0")   # вкладок не видно (20.11)
             pc.wait_for_selector("#sessionsView .card[data-id]", timeout=10000)
             pc.locator(f"#sessionsView .card[data-id='{shop}'] [data-more-s]").first.click()
             sheet_click(pc, "Закрепить")
             pc.wait_for_function(f"document.querySelector('#sessionsView .card[data-id]').dataset.id === '{shop}'",
                                  timeout=10000)
-            phone.click("#homeSeg button[data-v=sessions]")
+            phone.evaluate("document.querySelector('#homeSeg [data-v=sessions]').click(); 0")
             phone.wait_for_function(f"document.querySelector('#sessionsView .card[data-id]')?.dataset.id === '{shop}'"
                                     " && document.querySelector('#sessionsView .pin-h')", timeout=10000)
             shot(phone, "b-phone-390-light")
