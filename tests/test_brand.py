@@ -14,7 +14,8 @@ def test_one_place_and_manifest():
     m = brand.manifest()
     assert m["name"] == m["short_name"] == brand.NAME and m["display"] == "standalone" and m["start_url"] == "/"
     assert '<link rel="manifest" href="/manifest.webmanifest">' in INDEX
-    assert f'<meta name="application-name" content="{brand.DEFAULT}">' in INDEX and f"<title>{brand.DEFAULT}</title>" in INDEX
+    assert f'<meta name="application-name" content="{brand.DEFAULT}">' in INDEX
+    assert f"<title>{brand.DEFAULT}</title>" in INDEX
 
 
 def test_no_visible_pult_in_ui_strings():
