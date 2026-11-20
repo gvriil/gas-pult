@@ -1,0 +1,5 @@
+{"_source": "Собрано по схеме OpenAPI MAX Bot API v0.0.34 (https://github.com/max-messenger/api-schema, коммит 0016ff3) и https://dev.max.ru/docs-api, сверено 20.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ПЕСОЧНИЦЕ (у MAX её нет, ключа нет).",
+ "user_id": 9000001, "first_name": "Пульт УК Тестовая", "username": "puls_uk_test_bot", "is_bot": true,
+ "last_activity_time": 1763600000000, "description": "Тестовый бот пульта", "avatar_url": null,
+ "full_avatar_url": null,
+ "commands": [{"name": "start", "description": "Начать"}, {"name": "zayavka", "description": "Оставить заявку"}]}
