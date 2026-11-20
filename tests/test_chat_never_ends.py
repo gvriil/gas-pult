@@ -21,7 +21,7 @@ def test_no_restart_or_continue_buttons():
 
 def test_message_wakes_the_chat():
     body = INDEX[INDEX.index("async function deliver(p, restore) {"):]
-    assert body.index("if (!await wake(p.w))") < body.index('await api("/api/send"')
+    assert body.index("if (!await wakeChat(p.w))") < body.index('await api("/api/send"')
     assert 'waking: "чат просыпается' in INDEX
     assert 'Попробовать ещё</button>' in INDEX and "data-rewake" in INDEX
     assert "if (WAKING.has(id)) return WAKING.get(id);" in INDEX        # одно пробуждение на окно

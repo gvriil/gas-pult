@@ -4259,7 +4259,7 @@ async function openSession(id, startTab) {
 // Одно пробуждение на окно (WAKING: id → промис true/false); причина неудачи — WAKE_ERR, без всплывашек.
 const WAKING = new Map(), WAKE_ERR = new Map();
 const asleep = (id) => ["sleep", "stopped"].includes(sessions.find((x) => x.id === id)?.status);
-function wake(id) {
+function wakeChat(id) {
   if (!asleep(id) || meta?.role === "viewer" || DEMO) return Promise.resolve(true);
   if (WAKING.has(id)) return WAKING.get(id);
   WAKE_ERR.delete(id);
@@ -4275,7 +4275,7 @@ function wake(id) {
   WAKING.set(id, go); if (current === id) paintSession(cur());
   return go;
 }
-const wakeOnOpen = (id) => { wake(id); };
+const wakeOnOpen = (id) => { wakeChat(id); };
 function setTab(t) {
   tab = t;
   $("screenBtn").innerHTML = ic(t === "chat" ? "term" : "chat"); $("screenBtn").setAttribute("aria-label", t === "chat" ? "Экран терминала" : "Переписка");
@@ -4662,7 +4662,7 @@ function renderChat(toBottom) {
   paintAct();
   if (toBottom && !params.has("noscroll")) stickBottom();   // с конца, как в ChatGPT/Claude
 }
-$("content").addEventListener("click", (e) => { const v = e.target.closest("[data-rewake]"); if (v) { v.disabled = true; wake(v.dataset.rewake); } });
+$("content").addEventListener("click", (e) => { const v = e.target.closest("[data-rewake]"); if (v) { v.disabled = true; wakeChat(v.dataset.rewake); } });
 $("content").addEventListener("toggle", (e) => {        // раскрытый лог остаётся раскрытым при живом обновлении
   const k = e.target.dataset?.log; if (k) e.target.open ? openLogs.add(k) : openLogs.delete(k);
 }, true);
@@ -5377,7 +5377,7 @@ const msgId = () => crypto.randomUUID?.() || Date.now().toString(36) + Math.rand
 async function deliver(p, restore) {
   if (asleep(p.w) || WAKING.has(p.w)) {               // спит — сообщение будит чат и уходит, когда он поднимется
     p.state = "waking"; renderChat(true);
-    if (!await wake(p.w)) { p.state = "wfail"; p.err = WAKE_ERR.get(p.w) || ""; restore?.(); return renderChat(true); }
+    if (!await wakeChat(p.w)) { p.state = "wfail"; p.err = WAKE_ERR.get(p.w) || ""; restore?.(); return renderChat(true); }
     p.state = "sending"; renderChat(true);
   }
   for (const pause of [0, 1500, 4000, 8000]) {
