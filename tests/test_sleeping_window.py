@@ -78,6 +78,6 @@ def test_awake_window_is_not_sleeping(tm):
 
 def test_panel_shows_sleep_status():
     page = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web" / "index.html").read_text()
-    assert 'sleep: { label: "💤 спит"' in page
+    assert 'sleep: { label: "спит"' in page and 'stopped: { label: "спит"' in page   # 20.11: одно состояние, без эмодзи
     src = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "webapp.py").read_text()
     assert '"status": "sleep" if w.get("sleep")' in src

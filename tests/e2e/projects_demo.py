@@ -51,10 +51,10 @@ def run(base: str, shots: str = ""):
             pg.click("#projSeg button[data-pt=done]")
             pg.wait_for_selector("#projChats .card[data-chat]", timeout=4000)
             assert "удаляет сам" in pg.inner_text("#projChats")             # честно о сроке хранения
-            assert pg.locator("#projChats [data-resume]").count() == 2      # третий чат — другой учётки
+            assert pg.locator("#projChats [data-resume]").count() == 0      # 20.11: без «Продолжить»
             pg.click("#projChats .card[data-chat] .name >> nth=0")
             pg.wait_for_selector(".chatv .bubble", timeout=4000)
-            assert pg.is_visible(".chatv [data-go-resume]")
+            assert pg.is_visible(".chatv #cvIn")                           # 20.11: поле ввода вместо «Продолжить»
             pg.wait_for_timeout(400)                                     # лист выезжает 0,2 с
             if shots:
                 pg.screenshot(path=f"{shots}/project-chat-{dev}-{theme}.png")
