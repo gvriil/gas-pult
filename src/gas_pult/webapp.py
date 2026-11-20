@@ -49,6 +49,7 @@ from gas_pult import (
     ago,
     asr,
     balance,
+    brand,
     bridge,
     calkeys,
     chat_trash,
@@ -3438,7 +3439,7 @@ SW_JS = """self.addEventListener("push", (e) => {   // сигнал без со�
     const dev = [...new Uint8Array(h)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
     const r = await fetch("/api/push/last?dev=" + dev, { credentials: "include" });
     const items = r.ok ? (await r.json()).items || [] : [];
-    if (!items.length) return self.registration.showNotification("Пульт", { body: "Есть новое — откройте панель" });
+    if (!items.length) return self.registration.showNotification("Гаврила", { body: "Есть новое — откройте" });
     for (const x of items) {
       await self.registration.showNotification(x.title, { body: x.body, tag: x.w || x.id, data: { id: x.w } });
     }
@@ -3482,6 +3483,9 @@ DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content
 
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
+    if brand.NAME_RU != brand.DEFAULT:                      # название продукта — одно место: brand.py
+        page = page.replace(brand.DEFAULT.encode(), brand.NAME_RU.encode())
+    manifest = json.dumps(brand.manifest(), ensure_ascii=False).encode()
     # части интерфейса по требованию (#191): web/js/<имя>.js — нативные ES-модули без сборки; читаются и сжимаются
     # один раз при старте, отдаются с ETag (после выкладки браузер получит новую версию, иначе — 304 без тела)
     parts = {}
@@ -3811,8 +3815,11 @@ def handler(panel: Panel):
             if url.path in icons:                        # значок вкладки и экрана «Домой» — без входа, кэш на сутки
                 body, ctype = icons[url.path]
                 return self.reply(200, body, ctype, headers={"Cache-Control": "public, max-age=86400"})
+            if url.path == "/manifest.webmanifest":     # экран «Домой» и пуш на iPhone (brand.py) — без входа
+                return self.reply(200, manifest, "application/manifest+json; charset=utf-8")
             if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
-                return self.reply(200, SW_JS.encode(), "text/javascript; charset=utf-8")
+                sw = SW_JS.replace(brand.DEFAULT, brand.NAME_RU).encode()
+                return self.reply(200, sw, "text/javascript; charset=utf-8")
             if url.path == CALLBACK:                    # возврат из OpenRouter: без входа, по одноразовому state
                 return self.openrouter_back(dict(urllib.parse.parse_qsl(url.query)))
             if url.path == "/help-map.json":            # демо панели (?demo) отвечает подсказками из карты сам

@@ -139,7 +139,7 @@ def test_bot_broadcast_and_answers_reach_owner_phone(tmp_path, monkeypatch):
     assert got == []                                                   # нет устройств — ничего
     webpush.Hub(tmp_path / "push").add(1, {"endpoint": EP}, "телефон")
     p.broadcast("⏳ [План] упёрлась в лимит подписки")
-    assert got == [(1, "Пульт", "[План] упёрлась в лимит подписки", "")]
+    assert got == [(1, "Гаврила", "[План] упёрлась в лимит подписки", "")]
 
 
 def test_redirect_from_push_service_is_not_followed(tmp_path):

@@ -37,7 +37,7 @@ from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 
-from gas_pult import providers
+from gas_pult import brand, providers
 from gas_pult.config import write_private
 
 CODE_TTL = 600
@@ -46,7 +46,7 @@ RESEND_AFTER = 60
 PER_HOUR = 5
 IP_PER_HOUR = 20
 TIMEOUT = 20
-SAME_ANSWER = "Если адрес привязан к пульту, мы отправили на него код. Он действует 10 минут."
+SAME_ANSWER = "Если адрес привязан к Гаврила, мы отправили на него код. Он действует 10 минут."
 # Подсказка в docs/AUTH.md и config.example.toml: Яндекс — для РФ, Gmail или другой — для остальных.
 PRESETS = {"yandex": ("smtp.yandex.ru", 465), "gmail": ("smtp.gmail.com", 465), "mailru": ("smtp.mail.ru", 465)}
 HMAC_KEY = "email_hmac"                      # ключ HMAC в secrets.json — создаётся при первом коде
@@ -136,7 +136,7 @@ def send(smtp: Smtp, msg: EmailMessage):
 
 def code_text(code: str, why: str) -> tuple[str, str]:
     """Тема и текст письма с кодом. Без ссылок для входа и без слов о том, есть ли аккаунт."""
-    return (f"{code} — код для пульта gas-pult",
+    return (f"{code} — код {brand.NAME_RU}",
             f"Код {why}: {code}\n\n"
             "Он действует 10 минут. Никому его не сообщайте.\n"
             "Если вы не запрашивали код, просто удалите письмо — без кода войти нельзя.\n")
@@ -298,7 +298,7 @@ class Service:
         slot = f"login:{addr}"
         code = self.codes.issue(slot, addr, ip, decoy=uid is None, uid=uid)
         if code:
-            subject, text = code_text(code, "для входа в пульт")
+            subject, text = code_text(code, "для входа в " + brand.NAME_RU)
             self.deliver(addr, subject, text, on_fail=lambda: self.codes.forget(slot, addr))
         log("email_code_requested", to=mask(addr), ip=ip)        # свой ли адрес — не пишем даже в журнал
         return {"sent": True, "message": SAME_ANSWER, "resend_in": RESEND_AFTER, "ttl": CODE_TTL}
@@ -337,7 +337,7 @@ class Service:
             raise ValueError("Этот адрес уже привязан к другому человеку пульта.")
         slot = f"bind:{int(uid)}:{addr}"
         code = self.codes.issue(slot, addr, ip, uid=int(uid))
-        subject, text = code_text(code, "для привязки почты к пульту")
+        subject, text = code_text(code, "для привязки почты к " + brand.NAME_RU)
         try:
             self.deliver(addr, subject, text, wait=True)
         except RuntimeError:
@@ -389,7 +389,7 @@ class Service:
         pid = secrets.token_urlsafe(24)
         slot = f"2fa:{pid}"
         code = self.codes.issue(slot, addr, ip, cooldown=False, uid=int(uid))
-        subject, text = code_text(code, "подтверждения входа в пульт")
+        subject, text = code_text(code, "подтверждения входа в " + brand.NAME_RU)
         self.deliver(addr, subject, text, on_fail=lambda: self.codes.forget(slot, addr))
         log("second_factor_sent", uid=uid, ip=ip)
         return {"state": "2fa", "id": pid, "to": mask(addr), "ttl": CODE_TTL}

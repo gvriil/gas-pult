@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
-<title>gas-pult · пульт</title>
+<title>Гаврила</title>
+<meta name="application-name" content="Гаврила"><meta name="apple-mobile-web-app-title" content="Гаврила">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -13,7 +16,7 @@
   :root, :root[data-theme="light"] {
     --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F0F4F9; --bg-terminal: #1E1F20;
     --tq-red: #C5221F; --tq-orange: #C45A00; --tq-yellow: #9A7400; --tq-green: #137333;   /* задачи (17.11), к фону ≥3,9:1 */
-    --border-subtle: #E1E5EA; --border-focus: #0B57D0;
+    --border-subtle: #E1E5EA; --border-focus: #0B57D0; --field-border: #80868B; --field-ph: #5F6368;
     --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
     --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
     --status-idle: #747775; --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
@@ -29,7 +32,7 @@
   :root[data-theme="dark"] { --row-hv: 7%;
     --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
     --tq-red: #F28B82; --tq-orange: #FCAD70; --tq-yellow: #FDD663; --tq-green: #81C995;   /* к фону ≥6,9:1 */
-    --border-subtle: #3C4043; --border-focus: #A8C7FA;
+    --border-subtle: #3C4043; --border-focus: #A8C7FA; --field-border: #747A80; --field-ph: #9AA0A6;
     --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
     --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
     --status-idle: #8E918F; --status-running: #81C995; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
@@ -502,8 +505,10 @@
   .kb .dock { padding-bottom: 8px; }                    /* клавиатура открыта — полоса «домой» не нужна */
   .dock { transition: transform .2s ease; } .dock.hide { transform: translateY(calc(100% + 8px)); }
   .tobottom { transition: transform .2s ease; }       /* над полем ввода — сдвиг transform, без пересчёта раскладки */
-  .composer { background: var(--bg-subtle); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid transparent; transition: border-color .15s, background .15s; }
-  .composer:focus-within { border-color: var(--border-subtle); background: var(--bg-surface); box-shadow: 0 1px 8px rgba(0,0,0,.08); }
+  /* Поле ввода заметно (владелец 20.11; WCAG 1.4.11): рамка к фону ≥ 3:1 (3,7 / 3,8), фокус — 2 px акцентом, подсказка ≥ 4,5:1 */
+  .composer { background: var(--bg-surface); border-radius: 26px; padding: 2px 6px 6px; border: 1px solid var(--field-border); transition: border-color .15s, box-shadow .15s; }
+  .composer:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 1px var(--border-focus), 0 1px 8px rgba(0,0,0,.08); }
+  .composer textarea::placeholder { color: var(--field-ph); opacity: 1; }
   .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; overflow-y: hidden; }
   .composer .attach { padding: 8px 6px 0; }
   .ctools { display: flex; align-items: center; gap: 2px; min-width: 0; }
@@ -1002,7 +1007,7 @@
   body.split .nav { width: var(--side); transform: none; z-index: 4; box-shadow: none; padding-top: 8px; }
   body.split.side-mini .nav { display: none; }
   .nav-h { display: flex; align-items: center; gap: 2px; padding: 0 0 6px 8px; }
-  .nav-h h2 { flex: 1; min-width: 0; margin: 0; font-size: calc(19px * var(--fz, 1)); font-weight: 600; }
+  .nav-h h2 { flex: 1; min-width: 0; margin: 0; font-size: calc(19px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
   .nav-home { border: 0; padding: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-text-fill-color: inherit; }
   .nav-h .icon { width: 36px; height: 36px; color: var(--text-secondary); border-radius: var(--radius-sm); }
   .nav-h .icon:hover, .nav-h .icon[aria-expanded="true"] { background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-primary); }
@@ -1106,7 +1111,7 @@
   <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 </div>
 <aside class="nav" id="nav" aria-label="Чаты" inert>
-  <div class="nav-h"><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Пульт</button></h2>
+  <div class="nav-h"><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Гаврила</button></h2>
     <button class="icon" id="navSearchBtn" type="button" aria-label="Поиск (Ctrl+K)" title="Поиск (Ctrl+K)"></button>
     <button class="icon" id="navFoldBtn" type="button" aria-label="Свернуть всё" title="Свернуть всё"></button>
     <button class="icon" id="navMoreBtn" type="button" aria-label="Ещё: новая папка, из модуля, в фокусе" title="Ещё" aria-haspopup="menu" aria-expanded="false"></button>
@@ -1126,7 +1131,7 @@
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
-    <div class="titles"><h1 class="serif" id="title">Пульт</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
+    <div class="titles"><h1 class="serif" id="title">Гаврила</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="composeBtn" hidden aria-label="Новый чат" title="Новый чат"></button>
     <button class="icon" id="switchBtn" hidden aria-label="Другая сессия"></button>
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
@@ -1222,7 +1227,7 @@
   <section id="persona" hidden><div class="panel terms" id="personaBox"></div></section>
 
   <section id="home" hidden>
-    <div class="brand"><h1 class="serif brand-text">Пульт</h1><div class="sub"><span id="brandSub"></span></div></div>
+    <div class="brand"><h1 class="serif brand-text">Гаврила</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
@@ -1495,6 +1500,8 @@ const wideMQ = matchMedia("(min-width: 1024px)");
 const split = () => (!FOCUS || meta?.focus?.mode !== "demo") && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
+const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Гаврила";   // brand.py — одно место
+const brandName = () => (typeof LANG !== "undefined" && LANG === "en" ? DICT?.["login.brand"] || "Gavrila" : BRAND);   // на английском — латиницей
 // Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
 const openUrl = (url) => (tg?.initData ? tg.openLink(url) : window.open(url, "_blank", "noopener"));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -2836,7 +2843,7 @@ const loginMsg = (ok, text) => { $("loginResult").innerHTML = `<div class="resul
 async function showTerms() {
   if (view === "terms") return;
   start.poll = null;                 // фоновые запросы — после согласия
-  show("terms"); $("title").textContent = "Пульт"; setSub("<span>условия использования</span>");
+  show("terms"); $("title").textContent = brandName(); setSub("<span>условия использования</span>");
   let d; try { d = await api("/api/terms"); } catch (e) { $("termsBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   $("termsBox").innerHTML = `<h2 class="serif">${esc(d.title)}</h2><p class="ver">Версия от ${esc(d.version.split("-").reverse().join("."))} · прочитайте перед началом работы</p>
     <ol>${d.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>
@@ -2862,7 +2869,7 @@ function ipMark(c) {                              // отметка страны
 async function showCountry(change) {
   if (view === "country" && !change) return;
   start.poll = null;
-  show("country"); $("title").textContent = "Пульт"; setSub("<span>ваша страна</span>");
+  show("country"); $("title").textContent = brandName(); setSub("<span>ваша страна</span>");
   let d; try { d = await api("/api/country"); } catch (e) { $("countryBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   const bot = d.bot ? `https://t.me/${encodeURIComponent(d.bot)}?start=phone` : "";
   $("countryBox").innerHTML = `<h2 class="serif">Из какой страны вы работаете?</h2>
@@ -3034,7 +3041,7 @@ function setHome(v) {
   const two = split();
   if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
     const sub = (v !== "sessions" || inProj) && !two;
-    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : "Пульт";
+    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : brandName();
     $("title").classList.toggle("brand-text", !sub); noDup();
     $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
   }
@@ -5143,7 +5150,7 @@ function mediaPos() {                               // полоса на экр�
 function mediaSession(title, name) {               // previoustrack/nexttrack не трогаем: «следующего ответа» нет
   if (!("mediaSession" in navigator)) return;
   const ms = navigator.mediaSession, on = (a, f) => { try { ms.setActionHandler(a, f); } catch (e) {} };
-  ms.metadata = new MediaMetadata({ title, artist: name, album: "Пульт" });
+  ms.metadata = new MediaMetadata({ title, artist: name, album: brandName() });
   on("play", () => player().play()); on("pause", () => player().pause()); on("stop", stopPlayer);
   on("seekbackward", (d) => seekBy(-(d?.seekOffset || SEEK)));
   on("seekforward", (d) => seekBy(d?.seekOffset || SEEK));
@@ -7581,7 +7588,7 @@ function paintLoginLang() {                           // первый экран
   document.querySelectorAll("#login [data-l], #demoBar [data-l]").forEach((el) => { el.dataset.ru ??= el.textContent; el.textContent = LL(el.dataset.l, el.dataset.ru); });
   invTitle();
   if (view === "login" && !SIM.on) {
-    $("title").textContent = LL("login.brand", "Пульт"); setSub(`<span>${esc(INVITE ? LL("login.sub.inv", "вход по приглашению") : LL("login.sub", "вход через Telegram"))}</span>`);
+    $("title").textContent = brandName(); setSub(`<span>${esc(INVITE ? LL("login.sub.inv", "вход по приглашению") : LL("login.sub", "вход через Telegram"))}</span>`);
     $("helpBtn").innerHTML = ic("help") + `<span>${esc(LL("s.help", "Подсказать"))}</span>`;
   }
 }
