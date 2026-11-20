@@ -33,8 +33,8 @@ def run(base: str, shots: str = ""):
                 pg.click("#navBtn")
                 pg.wait_for_timeout(300)
             r1 = pg.locator('#navList .nrow[data-nw="@1"]').first
-            meta = r1.locator(".nmeta").inner_text()
-            assert meta == "Opus 5.5 · усилия высокие · контекст 78%", f"{where}: {meta!r}"
+            meta = r1.get_attribute("title")                              # 20.11: модель и контекст — в подсказке
+            assert meta.endswith("Opus 5.5 · усилия высокие · контекст 78%"), f"{where}: {meta!r}"
             assert r1.locator(".nnew").count() == 0, f"{where}: точка у прочитанной"
             r3 = pg.locator('#navList .nrow[data-nw="@3"]').first
             assert r3.locator(".nnew").count() == 1, f"{where}: нет точки «новый ответ»"

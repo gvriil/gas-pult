@@ -2056,7 +2056,7 @@ function navItems(row) {
     ...(meta?.role === "owner" && s.schedule && !s.space ? [{ label: "Удалить", icon: "trash", danger: true, sub: "расписание выключится, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(s.space && meta?.role !== "viewer" ? [{ label: T("ss.del.item"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) }] : []),
     ...(meta?.role === "owner" && s.status === "stopped" ? [stoppedItem()] : []),
-    { label: "Подробнее", icon: "eye", run: () => chatDetails(s.id) },
+    { label: "Показать подробности", icon: "eye", run: () => chatDetails(s.id) },
     { sep: true }, { label: "Показать все действия…", icon: "more", run: () => sessionSheet(s.id) }];
 }
 function navProject(id) {                             // «Все чаты проекта» — страница проекта на главной
@@ -3791,7 +3791,7 @@ function paintSession(s) {
   const ag = agoSpan(s, true);
   setSub(`${loud(s) || WAKING.has(s.id) ? `<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>` : ""}${spaceChips(s)}${split() ? ag : ""}`);   // техническое — в «Подробнее»
   const cb = costBar(s); setHidden($("costPause"), !cb); setHTML($("costPause"), cb);     // пауза по расходу — над полем ввода
-  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${loud(s) ? st.label : ""}</span>${split() ? "" : ag}`);
+  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${loud(s) && (split() || !ag) ? st.label : ""}</span>${split() ? "" : ag}`);
   const ph = hint || "Сообщение для " + dn(s) + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
   if ($("input").placeholder !== ph) $("input").placeholder = ph;
   sinfo(s);                                         // под полем ввода — только предупреждения (контекст, лимиты)
@@ -4214,7 +4214,7 @@ function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   helpSheet("sheet.session");
   sheet(s.name, [
-    { label: "Подробнее", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) },
+    { label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) },
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),

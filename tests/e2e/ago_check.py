@@ -77,7 +77,7 @@ def run(base: str, shots: str = "") -> None:
                 time.sleep(2.2)
                 assert pg.evaluate(f"document.querySelector(`{q}`).dataset.mark") == "1"   # тот же узел
                 assert first.inner_text() != before                               # обновился раз в секунду
-                assert pg.locator(".card.stale").count() == 1 and pg.locator(".chip.stale").count() == 1
+                assert pg.locator(".card.stale").count() == 1 and pg.locator(".chip.stale").count() == 0
                 order = pg.eval_on_selector_all(".card[data-id]", "els => els.map((e) => e.dataset.id)")
                 assert order == ["@2", "@1", "@3", "@4", "@5"], order               # ждущая — сверху, дальше по времени
                 if shots:

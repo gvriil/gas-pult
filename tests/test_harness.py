@@ -404,5 +404,5 @@ def test_ui_hides_claude_limits_for_other_agents():
     s = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
     f = s[s.index("function sinfo(s) {"):]
     f = f[:f.index("\n}\n")]
-    assert 'const other = s?.harness && s.harness !== "claude"' in f and "usageLine(s.usage)" in f
+    assert 'const other = s?.harness && s.harness !== "claude"' in f and "!other && meta?.role === \"owner\"" in f
     assert "function usageLine(u)" in s

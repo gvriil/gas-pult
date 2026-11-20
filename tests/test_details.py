@@ -35,5 +35,5 @@ def test_details_sheet_has_everything():
     for k in ("Модель", "Поставщик", "Контекст", "Расход", "Папка", "Ветка", "Репозитории", "В чате бота",
               "Экран терминала"):
         assert f'"{k}"' in d, k
-    assert 'label: "Подробнее", icon: "eye"' in INDEX
+    assert 'label: "Показать подробности", icon: "eye"' in INDEX
     assert 'label: "Открыть", icon: "chat", run: () => openSession(id)' not in INDEX
