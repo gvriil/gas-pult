@@ -148,3 +148,15 @@ def test_redirect_from_push_service_is_not_followed(tmp_path):
     h = webpush._NoRedirect()
     req = webpush.urllib.request.Request(EP, data=b"", method="POST")
     assert h.redirect_request(req, None, 307, "x", http.client.HTTPMessage(), "https://127.0.0.1/admin") is None
+
+
+def test_settings_show_push_state_and_telegram_way_out():
+    """Владелец 20.11: «опять только Telegram» — подписок не было («Включить» не нажимали). Состояние — сразу в подписи
+    пункта «Уведомления»; из Telegram — «Открыть в браузере» (там ставят на экран «Домой» и включают)."""
+    from pathlib import Path
+    web = Path(__file__).resolve().parents[1] / "src/gas_pult/web/js"
+    st = (web / "settings.js").read_text(encoding="utf-8")
+    assert "sub: pushState()" in st and "на этом устройстве выключены — включить" in st
+    assert "откройте Гаврилу значком с экрана «Домой»" in st
+    js = (web / "push.js").read_text(encoding="utf-8")
+    assert 'label: "Открыть в браузере"' in js and "tg.openLink(location.origin" in js
