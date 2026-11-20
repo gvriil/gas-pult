@@ -138,6 +138,7 @@ class Wins(FakeTm):
 def server(monkeypatch):
     p = webapp.Panel(Config(token="1:T", owners=[1]))
     p.people.add(2, "member", "Иван")
+    p.people.set_ui(2, {**p.people.ui(2), "added": ["cap.dev_terminal"]})   # 20.11: терминал участнику — явно
     p.people.add(3, "viewer", "Анна")
     p.people.add(4, "member", "Олег")
     p.people.set_ui(4, {"persona": "business_owner", "onboarded": True})     # простой режим
@@ -191,7 +192,7 @@ def test_owner_reads_types_and_keys_everywhere(server):
 def test_member_only_running_sessions(server):
     p, base, _ = server
     tok = confirmed(p, 2)
-    assert call(base, "/api/meta", tok=tok)[1]["tty"] is True                  # вид разработчика по умолчанию
+    assert call(base, "/api/meta", tok=tok)[1]["tty"] is True                  # терминал включён явно
     assert call(base, "/api/tty?w=%401", tok=tok)[0] == 200
     assert call(base, "/api/tty/type", {"w": "@1", "text": "привет"}, tok)[0] == 200
     assert call(base, "/api/tty/key", {"w": "@1", "key": "C-c"}, tok)[0] == 200

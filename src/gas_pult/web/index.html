@@ -271,6 +271,11 @@
   .pcard:hover { border-color: var(--accent-primary); } .pcard.on { border-color: var(--accent-primary); background: var(--accent-soft); }
   .pcard .i { flex: none; width: 22px; height: 22px; color: var(--accent-primary); margin-top: 2px; }
   .pcard b { display: block; font-size: calc(16px * var(--fz, 1)); margin: 0 0 3px; } .pcard small { display: block; color: var(--text-muted); font-size: calc(13.5px * var(--fz, 1)); line-height: 1.4; }
+  /* режим разработчика (таблица отладочного, согласована владельцем 20.11): без возможности «Экран терминала» нет
+     вкладок «Переписка/Экран», кнопки >_, клавиш 1/2/3/Esc, «Команд» и кнопок «Выполнить» */
+  body.nocap-dev_terminal #tabsBar, body.nocap-dev_terminal #screenBtn, body.nocap-dev_terminal #keys,
+  body.nocap-dev_terminal #menu [data-act=commands], body.nocap-dev_terminal #homeSeg [data-v=commands],
+  body.nocap-dev_terminal [data-run], body.nocap-dev_terminal [data-crun] { display: none !important; }
   body.nocap-assistant_guide #helpBtn, body.nocap-assistant_guide #sHelp, body.nocap-dev_terminal [data-tab="screen"],
   body.nocap-dev_models_mcp #homeSeg [data-v="integrations"], body.nocap-dev_cost_tokens .chip.cost { display: none !important; }
   /* Страна человека: выбор кнопками частых или кодом; номер подтверждается в боте; отметка страны по IP */
