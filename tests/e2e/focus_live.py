@@ -257,10 +257,13 @@ def run(shots: str = ""):
             assert "focus=" + tokens[0] not in pa.url, "токен остался в адресе страницы"
             assert pa.evaluate("sessions.map((s) => s.id)") == [shop]
             assert any(c["name"] == "gp_focus" for c in a.cookies()), "нет cookie фокуса"
-            b = device(False)
+            for _ in range(2):                                    # FOCUS_MAX = 3: ещё два устройства — можно
+                px = page(device(False), url)
+                px.wait_for_selector("#session:not([hidden])", timeout=15000)
+            b = device(False)                                     # четвёртое — нет
             pb = page(b, url)
             pb.wait_for_selector("#focusEnd", timeout=10000)
-            assert "другом устройстве" in pb.inner_text("#focusEnd")
+            assert "устройствах" in pb.inner_text("#focusEnd")
             for path, body in ((f"/api/history?w={other}", None), (f"/api/screen?w={other}", None),
                                ("/api/send", {"w": other, "text": "чужое"}), ("/api/key", {"w": other, "key": "Enter"}),
                                ("/api/new", {"i": 0}), ("/api/people", None), ("/api/focus/list", None),
