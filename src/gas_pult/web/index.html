@@ -424,7 +424,9 @@
   .md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 3px solid var(--border-subtle); color: var(--text-secondary); }
 
   /* ===== Экран (терминал) — всегда контрастный, без простыни ===== */
-  .term { background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-md); padding: 8px 0 10px; overflow: hidden; }
+  .term { background: var(--bg-terminal); color: #E8E6DE; border-radius: var(--radius-md); padding: 8px 0 10px; overflow: hidden;
+          display: flex; flex-direction: column; min-height: calc(var(--app-h, 100dvh) - 320px); }   /* во всю высоту, без дыры (Gemini 20.11) */
+  .term pre { margin-top: auto !important; }
   .termbar { display: flex; gap: 6px; padding: 0 8px 8px; }
   .termbar button { border: 1px solid #2E2D2A; background: transparent; color: #9E9B93; border-radius: var(--radius-pill); padding: 5px 11px; font-size: calc(12.5px * var(--fz, 1)); }
   .termbar button.on { color: #E8E6DE; border-color: #57544E; }
@@ -768,7 +770,7 @@
   .sheet .hpill.insheet { position: absolute; top: 10px; right: 12px; width: auto; min-height: 0; height: 30px; padding: 0 10px 0 7px; gap: 4px; font-size: calc(13px * var(--fz, 1)); z-index: 1; }
   .sheet .hpill.insheet .i { color: var(--accent-primary); }
   .sheet.hp > h3:first-of-type, .sheet.hp > .sback + h3 { padding-right: 116px; }
-  @media (max-width: 359px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }
+  @media (max-width: 480px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }   /* 20.11: название чата не обрезается */
   .help-bg { z-index: 35; }
   .help-bg { justify-content: center; }
   /* Шторка помощника поверх экрана — над нижней панелью, а не на ней: поле ввода и кнопки видны (задача 26).
@@ -4192,7 +4194,7 @@ function sessionSheet(id) {
   sheet(s.name, [
     { label: "Открыть", icon: "chat", run: () => openSession(id) },
     { label: "Что здесь умеет", icon: "help", sub: "коротко, тур по экрану или прослушать", run: () => part("about").then((m) => m.aboutSession(id)) },
-    ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "list", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
+    ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
     ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этой сессии", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
@@ -6841,9 +6843,10 @@ function gapsHtml(p) {
 function paintGaps(s) {
   let el = $("gapBar");
   const p = s?.profile && s.profile !== "claude" ? profileOf(s.profile) : null;
-  if (!p?.limits?.length || store("gaps:" + p.id) === "hide" || !DICT["gap.short"]) { el?.remove(); return; }
+  const seen = store("gaps:" + p?.id);                // показали один раз — дальше только «Подробнее» (Gemini 20.11)
+  if (!p?.limits?.length || seen === "hide" || seen === "seen" && el?.dataset.s !== s.id || !DICT["gap.short"]) { el?.remove(); return; }
   if (!el) { el = document.createElement("div"); el.id = "gapBar"; el.className = "gapbar"; $("dock").insertBefore(el, $("costPause")); }   // над полем ввода — видно всегда
-  const k = p.id + ":" + LANG; if (el.dataset.k === k) return; el.dataset.k = k; el.dataset.p = p.id;
+  const k = p.id + ":" + LANG; if (el.dataset.k === k) return; el.dataset.k = k; el.dataset.p = p.id; el.dataset.s = s.id; store("gaps:" + p.id, "seen");
   el.innerHTML = `<button class="gapline" data-gap-more>${ic("warn", "s16")}<span>${esc(T("gap.short", { name: p.short, list: gapShort(p) }))}</span>${ic("chevron", "s16")}</button>
     <button class="icon" data-gap-hide aria-label="${esc(T("gap.hide", { name: p.short }))}" title="${esc(T("gap.hide", { name: p.short }))}">${ic("x", "s16")}</button>`;
 }
