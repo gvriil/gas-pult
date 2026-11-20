@@ -58,6 +58,7 @@ from gas_pult import (
     notifylevel,
     offers,
     people,
+    projects,
     providers,
     qr,
     review_inbox,
@@ -641,10 +642,9 @@ class Pult:
         if mid:
             threading.Thread(target=self.follow, args=(chat, mid, w), daemon=True).start()
 
-    @staticmethod
-    def to_head(w: dict) -> str:
-        """«→ [имя окна] » перед строкой статуса: видно, в какую сессию ушло сообщение (#178)."""
-        return f"→ [{w['name']}] " if w.get("name") else ""
+    def to_head(self, w: dict) -> str:
+        """«→ [название чата] » перед строкой статуса: видно, в какой чат ушло сообщение (#178)."""
+        return f"→ [{self.label(w)}] " if w.get("name") else ""
 
     def follow(self, chat: int, mid: int, w: dict, clock=time.time, sleep=time.sleep):
         """Правит одно сообщение по фазам — не чаще раза в ``FOLLOW_EVERY`` с и только когда текст изменился.
@@ -743,7 +743,8 @@ class Pult:
                 left[wid] = rec
                 continue
             seen.discard(wid)
-            text = f"🔔 «{w['name']}»: " + ("ждёт вашего ответа" if dialog else "ход закончен — ответ в панели и здесь")
+            text = f"🔔 «{self.label(w)}»: " + ("ждёт вашего ответа" if dialog
+                                                 else "ход закончен — ответ в панели и здесь")
             said += [(c, text) for c in rec.get("to", [])]
         if left != nd:
             self.set_state(notify_done=left)
@@ -774,7 +775,7 @@ class Pult:
         return ago.stamps(self.acts.status(w["path"], self.home_of(w), w.get("sid") or ""), self.changes.at(w["id"]))
 
     def screen_msg(self, w: dict, title: str) -> tuple[str, dict]:
-        return (f"[{w['name']}] {title}\n\n" + "\n".join(self.tmux.screen(w["id"])),
+        return (f"[{self.label(w)}] {title}\n\n" + "\n".join(self.tmux.screen(w["id"])),
                 {"reply_markup": kb([[(t, f"key:{w['id']}|{k}") for t, k in KEYS]])})
 
     def send_screen(self, chat: int, w: dict, title: str):
@@ -796,6 +797,32 @@ class Pult:
         """Папка Claude Code человека для новых окон; владелец — None (``~/.claude``)."""
         return people.claude_dir(self.cfg.data, uid, self.cfg.owners)
 
+    LABEL_TTL = 30.0
+
+    def label(self, w: dict) -> str:
+        """Название чата для человека (владелец 19.11: «номера убрать, оставлять смысловой контекст»): своё название
+        (projects.json) → название по смыслу из журнала (projects.title_of, #317) → «Новый чат». Служебное имя окна
+        (gas-pult-1835) человеку не показываем; маршрут ответа — по id окна (tgroutes), не по имени."""
+        if not harness.is_agent(w):
+            return "Терминал"                                # окно без агента — не «чат»
+        cache = self.__dict__.setdefault("_labels", {})
+        hit = cache.get(w.get("id"))
+        if hit and time.time() - hit[0] < self.LABEL_TTL:
+            return hit[1]
+        sid, t = w.get("sid") or "", ""
+        try:
+            if sid:
+                d = json.loads((self.cfg.data / projects.FILE).read_text(encoding="utf-8"))
+                t = str(((d.get("sessions") or {}).get(sid) or {}).get("title") or "")
+            if not t and harness.of(w).name == harness.DEFAULT:   # журнал по смыслу — только у Claude Code
+                f = transcripts.current(w.get("path", ""), self.home_of(w), sid)
+                t = projects.title_of(f) if f else ""
+        except (OSError, ValueError, AttributeError):
+            t = ""
+        out = t if t and not projects.is_status(t) else "Новый чат"
+        cache[w.get("id")] = (time.time(), out)
+        return out
+
     def home_of(self, w: dict) -> Path | None:
         """Папка Claude Code окна: того, кто его открыл (``@gas_pult_by``), а не того, кто сейчас нажал."""
         return people.home_of(w, self.cfg.data)
@@ -805,7 +832,7 @@ class Pult:
             return self.show_setup(chat)
         if w := self.project_window(path):
             self.set_state(active=w["id"])
-            self.send(chat, f"↪️ В {self.short(path)} уже работает «{w['name']}» — пишу туда (одно окно на проект).")
+            self.send(chat, f"↪️ В {self.short(path)} уже работает «{self.label(w)}» — пишу туда (одно окно на проект).")
             if first:
                 self.to_claude(w, first)
             return
@@ -945,19 +972,19 @@ class Pult:
     def close(self, chat: int, w: dict):
         if not harness.is_agent(w):
             self.tmux.kill(w["id"])
-            return self.send(chat, f"«{w['name']}» завершена.")
+            return self.send(chat, f"«{self.label(w)}» завершена.")
         r = self.quit_ex(w)
         tail = f"\n\nЧерновик из поля ввода (не отправлен):\n{r['draft']}" if r["draft"] else ""
         force = kb([[("⛔ Закрыть принудительно", f"fclose:{w['id']}"), ("Нет", "noop:")]])
         if r["result"] == "background":
-            return self.send(chat, f"«{w['name']}» не завершена: у сессии есть фоновые задачи, они бы "
+            return self.send(chat, f"«{self.label(w)}» не завершена: у сессии есть фоновые задачи, они бы "
                                    "остановились. Закрыть принудительно? Переписка останется в журнале." + tail,
                              reply_markup=force)
         if r["result"] == "busy":
-            return self.send(chat, f"«{w['name']}»: Claude не вышел за {self.QUIT_WAIT:.0f} с (возможно, занят). "
+            return self.send(chat, f"«{self.label(w)}»: Claude не вышел за {self.QUIT_WAIT:.0f} с (возможно, занят). "
                                    "Посмотри 📺 Экран или закрой принудительно." + tail, reply_markup=force)
         focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])   # фокус-ссылки этой сессии гаснут
-        self.send(chat, f"«{w['name']}» завершена." + tail)
+        self.send(chat, f"«{self.label(w)}» завершена." + tail)
 
     # ---------- голос ----------
     def say(self, chat: int, text: str):
@@ -1117,7 +1144,7 @@ class Pult:
         rows, msgs = [[("🔊", f"say:{n}"), ("✅ Да", f"yes:{w['id']}"), ("✏️ Ответить", f"act:{w['id']}")]], {}
         for chat in self.cfg.owners:
             try:
-                msgs[chat] = self.send_answer(chat, f"[{w['name']}]", text, wid=w["id"],
+                msgs[chat] = self.send_answer(chat, f"[{self.label(w)}]", text, wid=w["id"],
                                               reply_markup=kb(rows)).get("message_id")
                 self.ev("answer_tg", w=w["id"], len=len(text), sha=chatlog.sha(text))
             except TelegramError as e:
@@ -1182,7 +1209,7 @@ class Pult:
                         if not notifylevel.wants(st, w["id"], "answer"):    # уровень окна: «все» — с ответами
                             continue
                         if len(texts) > self.BURST:            # пачка за 3 с — сбой, а не переписка
-                            self.broadcast(f"[{w['name']}] пропущено ответов: {len(texts) - 1} — они в панели. "
+                            self.broadcast(f"[{self.label(w)}] пропущено ответов: {len(texts) - 1} — они в панели. "
                                            "Последний:")
                         for text in texts[-1:] if len(texts) > self.BURST else texts:
                             self.deliver(w, text)
@@ -1230,7 +1257,7 @@ class Pult:
                 continue
             new = got[n:]
             if len(new) > self.BURST:
-                self.broadcast(f"[{w['name']}] пропущено ответов: {len(new) - 1} — они в панели. Последний:")
+                self.broadcast(f"[{self.label(w)}] пропущено ответов: {len(new) - 1} — они в панели. Последний:")
                 new = new[-1:]
             for text in new:
                 self.deliver(w, text)
@@ -1266,13 +1293,13 @@ class Pult:
         now = time.time()
         at = limitretry.reset_at(text, ctxsnap.limits(), now)
         if not at:
-            return self.broadcast(f"⏳ [{w['name']}] упёрлась в лимит подписки; когда он сбросится — не знаю, "
+            return self.broadcast(f"⏳ [{self.label(w)}] упёрлась в лимит подписки; когда он сбросится — не знаю, "
                                   "напишите «продолжай» сами.")
         if at - now > limitretry.MAX_WAIT:
-            return self.broadcast(f"⏳ [{w['name']}] упёрлась в лимит подписки до {limitretry.hhmm(at, now)} — это "
+            return self.broadcast(f"⏳ [{self.label(w)}] упёрлась в лимит подписки до {limitretry.hhmm(at, now)} — это "
                                   "дольше 6 часов, сама не продолжу.")
-        self.set_state(limit_retries=limitretry.schedule(self.state(), w["id"], w["name"], at, now))
-        self.broadcast(f"⏳ [{w['name']}] упёрлась в лимит подписки. Продолжу сама в {limitretry.hhmm(at, now)} — "
+        self.set_state(limit_retries=limitretry.schedule(self.state(), w["id"], self.label(w), at, now))
+        self.broadcast(f"⏳ [{self.label(w)}] упёрлась в лимит подписки. Продолжу сама в {limitretry.hhmm(at, now)} — "
                        "один раз; напишете в сессию раньше — повтор снимется.",
                        reply_markup=kb([[("Не продолжать", f"rc:{w['id']}")]]))
 
@@ -1294,7 +1321,7 @@ class Pult:
                 try:
                     with self.via("retry"):
                         self.to_claude(w, limitretry.TEXT)
-                    self.broadcast(f"▶️ [{w['name']}] лимит подписки обновился — написал «продолжай».")
+                    self.broadcast(f"▶️ [{self.label(w)}] лимит подписки обновился — написал «продолжай».")
                 except Exception as e:                       # окно не готово — сказать, повтор снимаем
                     self.broadcast(f"⏳ [{r.get('name', wid)}] продолжить после лимита не вышло: {e}")
             self.set_state(limit_retries=limitretry.cancel(self.state(), wid))
@@ -1326,7 +1353,7 @@ class Pult:
                 if self.quit_ex(w)["result"] != "closed":
                     continue                                # фоновые задачи или не вышла — оставляем
             focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])
-            closed.append(w["name"])
+            closed.append(self.label(w))                    # человеку — название, не имя окна
         if closed:
             self.broadcast(f"🗄 Закрыты сессии без активности дольше {days} дн.: {', '.join(closed)}. Переписка — "
                            "в «Завершённых» проекта, «Продолжить» её поднимет.")
@@ -1354,7 +1381,7 @@ class Pult:
             s = self.meter.session(w["path"], None, today, w.get("sid") or "")
             if s:
                 pub = usage.public(s["total"])
-                out.append({"w": w["id"], "name": w["name"], "sid": s["id"], "usd": pub["usd"],
+                out.append({"w": w["id"], "name": self.label(w), "sid": s["id"], "usd": pub["usd"],
                             "src": pub["cost_source"]})
         return out
 
@@ -1421,7 +1448,7 @@ class Pult:
         for w in self.tmux.windows():
             claude = harness.is_agent(w) and harness.of(w).name == "claude"     # диалог — экран Claude Code
             if claude and DIALOG.search("\n".join(self.tmux.screen(w["id"]))):
-                items.append({"kind": "win", "key": digest.key("win", w["id"]), "id": w["id"], "name": w["name"]})
+                items.append({"kind": "win", "key": digest.key("win", w["id"]), "id": w["id"], "name": self.label(w)})
         return items + digest.handoffs(self.cfg.roots())
 
     def send_digest(self, chat: int | None = None):
@@ -1616,7 +1643,7 @@ class Pult:
             send(done := digest.merge(x["repo"], x["n"]))
         elif w := self.project_window(x["path"]):
             self.to_claude(w, f"Владелец отвечает «да» на пункт из HANDOFF.md: {x['text']}")
-            send(done := f"Передал «да» в «{w['name']}».")
+            send(done := f"Передал «да» в «{self.label(w)}».")
         else:
             return send(f"Окна с Claude в {x['project']} нет — откройте сессию (🆕 Новая) и повторите.")
         self.digest.snooze(k, digest.GONE)
@@ -1777,7 +1804,7 @@ class Pult:
                                       f" --session-id {sid}", mark=w.get("mark") or "claude")
                     self.tmux.set_sid(w["id"], sid)
                     self.send_later(w["id"], item["prompt"])
-                    self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{w['name']}» ({item['title']}).")
+                    self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{self.label(w)}» ({item['title']}).")
                     continue
                 if not setup.installed(self.cfg.claude):
                     self.broadcast(f"🗓 {name}: {item['at']} — Claude Code не установлен, задание не отправлено.")
@@ -1818,7 +1845,7 @@ class Pult:
             wait, ch = info.get(w["id"], (False, 0.0))
             when = (" · " + ago.ago(ch, now) + (" · " + ago.tr("ru", "ago.stale") if ago.stale(ch, now) else "")
                     if ch else "")
-            return (f"{w['idx']}: {'⏸ ' if wait else ''}{w['name']} · {self.short(w['path'])}{when}"
+            return (f"{w['idx']}: {'⏸ ' if wait else ''}{self.label(w)} · {self.short(w['path'])}{when}"
                     + (" 🤖" if harness.is_agent(w) and harness.of(w).name == "claude" else ""))
         rows = [[(label(w), f"w:{w['id']}")] for w in ws]
         self.send(chat, "Окна tmux (🤖 — работает Claude, ⏸ — ждёт ответа; сверху — ждущие и недавние):",
@@ -1830,20 +1857,20 @@ class Pult:
         if not ws:
             return self.send(chat, "Окон с Claude нет. Нажми 🆕 Новая.")
         self.send(chat, "Куда писать? (📡 — у окна свой Telegram-бот)", reply_markup=kb([[(
-            ("✅ " if w["id"] == act else "") + f"{w['name']} · {self.short(w['path'])}"
+            ("✅ " if w["id"] == act else "") + f"{self.label(w)} · {self.short(w['path'])}"
             + (" 📡" if w["channel"] else ""), f"act:{w['id']}")] for w in ws]))
 
     def show_summary(self, chat: int):
         act, lines = self.state().get("active"), []
         for w in self.tmux.windows():
             if not harness.is_agent(w):
-                lines.append(f"{w['idx']}. {w['name']} — терминал")
+                lines.append(f"{w['idx']}. {self.label(w)} — терминал")
                 continue
             scr = "\n".join(self.tmux.screen(w["id"], 40))
             status = "⏸ ждёт выбора" if DIALOG.search(scr) else "⚙️ работает" if BUSY.search(scr) else "✅ свободен"
             ch = self.stamps(w)["changed"]                 # экран отмечает монитор — по своим 25 строкам
             ctx = re.search(r"left [\d.]+k? \((\d+)%\)", scr)
-            lines.append(f"{w['idx']}. {'▶️ ' if w['id'] == act else ''}{w['name']} · {self.short(w['path'])} — "
+            lines.append(f"{w['idx']}. {'▶️ ' if w['id'] == act else ''}{self.label(w)} · {self.short(w['path'])} — "
                          f"{status}" + (f" · {ago.tr('ru', 'ago.changed', ago=ago.ago(ch))}" if ch else "")
                          + (f" · контекст свободен {ctx.group(1)}%" if ctx else "")
                          + (" · 📡" if w["channel"] else ""))
@@ -1856,7 +1883,7 @@ class Pult:
         if w := self.need_active(chat):
             cmds = list(enumerate(self.command_list()))
             rows = [cmds[i:i + 3] for i in range(0, len(cmds), 3)]
-            self.send(chat, f"⚡ Команды для «{w['name']}»:",
+            self.send(chat, f"⚡ Команды для «{self.label(w)}»:",
                       reply_markup=kb([[(t, f"cmd:{i}") for i, (t, _) in r] for r in rows]))
 
     def show_settings(self, chat: int):
@@ -1897,21 +1924,32 @@ class Pult:
         if not w:
             return "closed", ""
         if not self.journal.triage_once(key):
-            return "dup", w["name"]
+            return "dup", self.label(w)
         try:
             (paste or self.to_claude)(w, triage_text(cmd, code, out))
         except NotReady:
             self.journal.forget_triage(key)                  # следующий запуск попробует снова
-            return "busy", w["name"]
-        return "sent", w["name"]
+            return "busy", self.label(w)
+        return "sent", self.label(w)
 
     def rename(self, chat: int, wid: str, name: str):
-        if not self.tmux.window(wid):
+        """Своё название чата (projects.json по id разговора, как «Переименовать» в панели); имя окна не меняется."""
+        w = self.tmux.window(wid)
+        if not w:
             return self.send(chat, "Этого окна уже нет.")
+        sid = transcripts.valid_sid(w.get("sid") or "")
+        title = " ".join(str(name or "").split())[:projects.TITLE_MAX]
+        if not sid or not title:
+            return self.send(chat, "У этого чата ещё нет разговора — напишите первое сообщение, потом переименуйте."
+                             if not sid else "Пустое название — нажмите ✏️ ещё раз.")
         try:
-            self.send(chat, f"✏️ Теперь сессия называется «{self.tmux.rename(wid, name)}».")
-        except (ValueError, RuntimeError) as e:
-            self.send(chat, f"Не переименовал: {e}. Нажмите ✏️ ещё раз.")
+            st = projects.Store(self.cfg.data / projects.FILE, self.home)
+            pid = "" if w.get("space") else (st.of_path(st.read(), w.get("path", "")) or "")
+            st.set_chat(sid, pid, title=title)
+        except (OSError, ValueError) as e:
+            return self.send(chat, f"Не переименовал: {e}. Нажмите ✏️ ещё раз.")
+        self.__dict__.get("_labels", {}).pop(wid, None)
+        self.send(chat, f"✏️ Теперь чат называется «{title}».")
 
     def make_folder(self, name: str) -> Path:
         """Новая папка проекта в первом корне (как у модулей) + ``git init``. Общая для бота и панели."""
@@ -2155,7 +2193,7 @@ class Pult:
             if not w:
                 return send("Подсказка устарела или окна уже нет.")
             self.to_claude(w, h)
-            return send(f"→ [{w['name']}]: {h}", wid=w["id"])
+            return send(f"→ [{self.label(w)}]: {h}", wid=w["id"])
         if kind == "dg":
             return self.on_digest(chat, arg)
         if kind == "md":                                   # модули-агенты: описание, создание пространства
@@ -2207,7 +2245,7 @@ class Pult:
                 return send("Команда устарела — открой ⚡ Команды ещё раз.")
             cmd = cmds[int(arg)][1]
             if cmd == "models":
-                return send(f"Модель для «{w['name']}»:", reply_markup=kb([
+                return send(f"Модель для «{self.label(w)}»:", reply_markup=kb([
                     [(m, f"cmd:/model {m}") for m in self.cfg.models], [("Открыть меню /model", "cmd:/model")]]))
             if cmd in PROMPTS:
                 return self.to_claude(w, PROMPTS[cmd])
@@ -2250,17 +2288,17 @@ class Pult:
         if not w:
             return send("Этого окна уже нет.")
         if kind == "stop":                                 # «Остановить» — Esc в окно, только после «Да»
-            return send(f"Остановить текущий ход в «{w['name']}»? Claude получит Esc — как кнопка Esc под экраном.",
+            return send(f"Остановить текущий ход в «{self.label(w)}»? Claude получит Esc — как кнопка Esc под экраном.",
                         reply_markup=kb([[("Да, остановить", f"key:{w['id']}|Escape"), ("Нет", "noop:")]]))
         if kind == "act":
             self.set_state(active=w["id"])
-            send(f"✅ Пишу в «{w['name']}» ({self.short(w['path'])})."
+            send(f"✅ Пишу в «{self.label(w)}» ({self.short(w['path'])})."
                  + ("\n⚠️ У окна свой Telegram-бот — ответы придут туда, а не сюда." if w["channel"] else ""))
         elif kind == "yes":
             self.to_claude(w, "да")
         elif kind == "w":
             lv = notifylevel.level(self.state(), w["id"])
-            send(f"«{w['name']}» · {w['path']}\n🔔 Уведомления: {notifylevel.TITLES[lv]}", reply_markup=kb([
+            send(f"«{self.label(w)}» · {w['path']}\n🔔 Уведомления: {notifylevel.TITLES[lv]}", reply_markup=kb([
                 [("🔀 Сделать активной", f"act:{w['id']}")],
                 [(("✅ " if lv == x else "") + t, f"nl:{w['id']}|{x}")
                  for x, t in (("all", "🔔 Все"), ("input", "❓ Вопросы"), ("muted", "🔕 Тихо"))],
@@ -2268,7 +2306,7 @@ class Pult:
                 [("✏️ Переименовать", f"ren:{w['id']}"), ("⛔ Завершить", f"ask:{w['id']}")]]))
         elif kind == "ren":
             self.waiting[chat] = f"ren:{w['id']}"
-            send(f"Новое имя для «{w['name']}» (до 40 знаков, без «:» и «.»):", reply_markup={"force_reply": True})
+            send(f"Новое название для «{self.label(w)}»:", reply_markup={"force_reply": True})
         elif kind == "scr":
             self.send_screen(chat, w, "экран:")
         elif kind == "last":
@@ -2277,14 +2315,14 @@ class Pult:
                 return send("Ответов Claude в этой папке не нашёл.")
             send(text, wid=w["id"], reply_markup=kb([[("🔊", f"say:{self.remember(w, text)}")]]))
         elif kind == "ask":
-            send(f"Завершить «{w['name']}»? Claude выйдет штатно, переписка сохранится.",
+            send(f"Завершить «{self.label(w)}»? Claude выйдет штатно, переписка сохранится.",
                  reply_markup=kb([[("Да, завершить", f"close:{w['id']}"), ("Нет", "noop:")]]))
         elif kind == "close":
             self.close(chat, w)
         elif kind == "fclose":                             # «Закрыть принудительно»: фоновые задачи остановятся
             self.tmux.kill(w["id"])
             focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])
-            send(f"«{w['name']}» закрыта принудительно. Переписка — в журнале, «Продолжить» в панели её поднимет.")
+            send(f"«{self.label(w)}» закрыта принудительно. Переписка — в журнале, «Продолжить» в панели её поднимет.")
 
     def react(self, m: dict, emoji: str):
         try:
@@ -2884,7 +2922,7 @@ class Pult:
                 return send(f"Не разобрал голосовое: {e}")
             if not text:
                 return send("Не разобрал голосовое — попробуй ещё раз.")
-            send(f"🎙 → [{w['name']}]: {text}", wid=w["id"])
+            send(f"🎙 → [{self.label(w)}]: {text}", wid=w["id"])
             return self.to_claude_live(chat, w, text)
         f = (m.get("photo") or [None])[-1] or m.get("document") or m.get("video")
         if f:
@@ -2908,14 +2946,14 @@ class Pult:
         wid = (routes.get(chat, rt.get("message_id")) if routes else None) or tgroutes.markup_wid(rt)
         ws = self.tmux.windows() if not wid else []
         if not wid and (name := tgroutes.head_name(rt)):
-            same = [x for x in ws if x["name"] == name]
+            same = [x for x in ws if x["name"] == name] or [x for x in ws if self.label(x) == name]   # 20.11
             wid = same[0]["id"] if len(same) == 1 else None
         if not wid:
             return None
         w = self.tmux.window(wid)
         if w and harness.is_agent(w):
             return w
-        self.send(chat, ("Сессии этого сообщения уже нет" if not w else f"В «{w['name']}» Claude остановлен")
+        self.send(chat, ("Сессии этого сообщения уже нет" if not w else f"В «{self.label(w)}» Claude остановлен")
                   + " — текст не отправил. Ответьте на сообщение живой сессии или выберите окно в 🔀 Переключить.",
                   reply_markup=MENU)
         return False

@@ -12,6 +12,14 @@ import pytest
 from gas_pult import bot, tgroutes, transcripts
 from gas_pult.config import Config
 
+
+@pytest.fixture(autouse=True)
+def _window_name_as_label(monkeypatch):
+    """20.11: бот показывает название чата, не имя окна. Здесь проверяются маршруты и кнопки, поэтому подпись —
+    имя окна из заглушки; сами подписи — tests/test_bot_labels.py."""
+    monkeypatch.setattr(bot.Pult, "label", lambda self, w: w.get("name", ""))
+
+
 PROMPT = "● готово\n──────\n❯ \n──────"
 
 
@@ -137,7 +145,8 @@ def test_rename_flow_targets_the_pressed_window(p):
     p.on_callback(q("ren:@1"))
     assert p.waiting[1] == "ren:@1"
     p.on_message(m("главный штаб"))
-    assert p.tmux.renamed == [("@1", "главный штаб")] and p.got == []   # имя — не текст для Claude
+    assert p.tmux.renamed == [] and p.got == []                         # название чата — не текст для Claude
+    assert "главный штаб" in texts(p)[-1] or "нет разговора" in texts(p)[-1]
     p.on_callback(q("ren:@1"))
     p.on_message(m("   "))
     p.waiting[1] = "ren:@99"

@@ -13,9 +13,17 @@ from pathlib import Path
 
 import pytest
 
-from gas_pult import transcripts
+from gas_pult import bot, transcripts
 from gas_pult.bot import Pult
 from gas_pult.config import Config
+
+
+@pytest.fixture(autouse=True)
+def _window_name_as_label(monkeypatch):
+    """20.11: бот показывает название чата, не имя окна. Здесь проверяются маршруты и кнопки, поэтому подпись —
+    имя окна из заглушки; сами подписи — tests/test_bot_labels.py."""
+    monkeypatch.setattr(bot.Pult, "label", lambda self, w: w.get("name", ""))
+
 
 pytestmark = pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
 
@@ -275,17 +283,21 @@ def test_claude_with_long_path_is_recognised(tmp_path, tmux_socket):
     assert wait(lambda: (t.window(wid) or {}).get("cmd") == "claude")
 
 
-def test_bot_rename_flow(monkeypatch):
+def test_bot_rename_flow(tmp_path):
+    """20.11: «✏️ Переименовать» в боте меняет название чата (как в панели), имя окна tmux не трогает."""
     from gas_pult import bot
     p = bot.Pult.__new__(bot.Pult)
+    p.cfg, p.home = type("C", (), {"data": tmp_path})(), str(tmp_path)
     p.waiting, sent, renamed = {}, [], []
+    sid = "0f3c8a2e-1111-4222-8333-444455556666"
     p.send = lambda chat, text, **kw: sent.append(text)
     p.to = lambda chat: (lambda text, **kw: sent.append(text))
-    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid, "name": "old"},
+    p.tmux = type("T", (), {"window": lambda self, wid: {"id": wid, "name": "old", "cmd": "claude", "sid": sid,
+                                                         "path": str(tmp_path)},
                             "rename": lambda self, wid, name: renamed.append((wid, name)) or name})()
     p.waiting[1] = "ren:@4"
     p.on_message({"message_id": 1, "chat": {"id": 1}, "from": {"id": 1}, "text": "магазин"})
-    assert renamed == [("@4", "магазин")] and "магазин" in sent[-1]
+    assert renamed == [] and sent[-1] == "✏️ Теперь чат называется «магазин»."
 
 
 def test_bot_adds_hint_button_to_answer(monkeypatch):

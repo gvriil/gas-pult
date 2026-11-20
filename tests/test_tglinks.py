@@ -132,4 +132,4 @@ def test_bot_falls_back_to_plain_text():
 def test_deliver_uses_html():
     src = Path(bot.__file__).read_text(encoding="utf-8")
     body = src[src.index("    def deliver("):src.index("    def offer_hints(")]
-    assert re.search(r"self\.send_answer\(chat, f\"\[\{w\['name'\]\}\]\", text", body)
+    assert re.search(r"self\.send_answer\(chat, f\"\[\{self\.label\(w\)\}\]\", text", body)
