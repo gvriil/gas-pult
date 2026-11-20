@@ -166,7 +166,7 @@ def test_bridge_code_endpoint(server):
 
 def test_bridge_ui_part():
     web = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
-    core = (web / "index.html").read_text(encoding="utf-8")
+    core = (web / "index.html").read_text(encoding="utf-8") + (web / "js/settings.js").read_text(encoding="utf-8")
     assert 'part("bridge").then(() => bridgeSheet())' in core and 'part("email").then(() => emailSheet())' in core
     js = (web / "js" / "bridge.js").read_text(encoding="utf-8")
     assert "/api/bridge/devices" in js and "/api/bridge/pair" in js and "/api/bridge/revoke" in js
