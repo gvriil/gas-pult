@@ -1,0 +1,5 @@
+{"_source": "Собрано по схеме OpenAPI MAX Bot API v0.0.34 (https://github.com/max-messenger/api-schema, коммит 0016ff3) и https://dev.max.ru/docs-api, сверено 20.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ПЕСОЧНИЦЕ (у MAX её нет, ключа нет).",
+ "message": {"sender": {"user_id": 9000001, "first_name": "Пульт УК Тестовая", "is_bot": true},
+             "recipient": {"chat_id": 5550001, "chat_type": "dialog", "user_id": 7770001}, "timestamp": 1763597300000,
+             "link": {"type": "reply", "message": {"mid": "mid.0000aa01", "seq": 115000000000000001}},
+             "body": {"mid": "mid.0000aa04", "seq": 115000000000000004, "text": "Мастер выехал."}}}
