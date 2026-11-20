@@ -2050,7 +2050,9 @@ class Pult:
         return country.check_set(self.people.country(uid), self.cfg.region)
 
     def has_country(self, uid) -> bool:
-        return bool(country.norm(self.people.country(uid).get("chosen")))
+        """Решение владельца 20.11: страну не спрашиваем — по умолчанию регион сервера (country.check_set); вопроса
+        «ваша страна» в боте нет, как и в панели. Вернуться при платных клиентах."""
+        return True
 
     def window_countries(self, w: dict) -> set[str]:
         """Чьё окно: метка ``@gas_pult_by`` (кто открыл), иначе первый владелец — его страны для запасных."""

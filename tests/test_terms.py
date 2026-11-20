@@ -85,17 +85,9 @@ def test_bot_shows_terms_until_accepted(pult):
     assert "обновились" in p.sent[0][1] and not p.people.accepted(1)       # старая кнопка — не согласие
     p.sent.clear()
     p.handle(cb(f"tm:{terms.VERSION}"))
-    assert p.people.accepted(1) and "Из какой страны" in p.sent[0][1]          # после условий — страна
-    assert "cc:NL" in json.dumps(p.sent[0][2])
-    p.sent.clear()
-    p.handle({"message": {"chat": {"id": 1}, "from": {"id": 1}, "text": "/start"}})
-    assert not p.handled and "Из какой страны" in p.sent[0][1]                # без страны — снова выбор
-    p.sent.clear()
-    p.handle(cb("cc:NL"))
-    assert p.people.country(1)["chosen"] == "NL" and p.sent[0][2]["reply_markup"] == bot.PHONE_KB
-    p.sent.clear()
-    bot.Pult.on_message(p, {"chat": {"id": 1}, "from": {"id": 1}, "text": "Позже"})
-    assert p.sent[0][2]["reply_markup"] == bot.MENU                             # потом — обычное меню
+    # 20.11 (решение владельца): страну не спрашиваем — после условий сразу обычная работа
+    assert p.people.accepted(1) and "Из какой страны" not in p.sent[0][1] and "условия приняты" in p.sent[0][1]
+    assert "cc:NL" not in json.dumps(p.sent[0][2])
     p.sent.clear()
     p.handle({"message": {"chat": {"id": 1}, "from": {"id": 1}, "text": "/start"}})
     assert p.handled == ["/start"] and not p.sent
