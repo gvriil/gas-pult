@@ -73,15 +73,16 @@ def test_e2e_nav_demo():
 
 
 def test_rail_is_beside_nav_with_projects():
-    """Узкая полоса (свёрнутая панель на ПК): рядом с #nav, не внутри главной; проекты, инструменты, стрелки."""
+    """Узкая полоса (свёрнутая панель на ПК): рядом с #nav, не внутри главной; четыре инструмента и стрелки."""
     home = PAGE[PAGE.index('<section id="home"'):PAGE.index("</section>", PAGE.index('<section id="home"'))]
     assert 'id="rail"' not in home
     assert PAGE.index('id="navBg"') < PAGE.index('id="rail"') < PAGE.index('id="scroller"')
     assert "body.split.side-mini.has-nav { --side: 60px; }" in PAGE
     rail = fn("renderRail")
-    for x in ("railOpen", "railNew", "railSearch", "railSettings", "railProjects()", "data-rp"):
+    for x in ("railOpen", "railNew", "railSearch", "railSettings"):
         assert x in rail, x
-    assert "pinned" in fn("railProjects")
+    assert "data-rp" not in rail and "railProjects()" not in rail           # 20.11: без разноцветных значков
+    assert "if (!t) return setMini(false);" in PAGE                          # пустая полоса — развернуть
     for n in range(1, 7):
         assert PAGE.count(f"--pj{n}-bg:") == 2 and PAGE.count(f"--pj{n}-fg:") == 2, n     # светлая и тёмная тема
 
@@ -95,3 +96,25 @@ def test_new_chat_like_claude():
     assert 'ic("compose") + "Новый чат"' in PAGE
     assert "if (!p && !meta?.space) return newSession();" in fn("newChat")
     assert "body.drafting .dock { bottom: auto;" in PAGE                       # на компьютере — поле посередине
+
+
+def test_e2e_rail_demo():
+    """Свёрнутая панель в браузере (tests/e2e/rail_demo.py): раньше сценарий не запускался ни одним тестом."""
+    import importlib.util
+    import shutil
+    import threading
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    pytest.importorskip("playwright.sync_api")
+    if not shutil.which("google-chrome") and not shutil.which("chrome"):
+        pytest.skip("нет Chrome для Playwright")
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(WEB.parent)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    spec = importlib.util.spec_from_file_location("rail_demo", Path(__file__).resolve().parent / "e2e" / "rail_demo.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+    finally:
+        srv.shutdown()
