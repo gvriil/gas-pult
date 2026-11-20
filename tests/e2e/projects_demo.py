@@ -30,17 +30,17 @@ def run(base: str, shots: str = ""):
             assert pg.is_visible("#projectsView") and not pg.is_visible("#sessionsView"), "главная — не «Проекты»"
             first = pg.eval_on_selector_all("#projectsView .card[data-proj]", "els => els.map((e) => e.dataset.proj)")
             assert first[0] == "p-icon", first                         # ждущий ответа — сверху
-            assert pg.is_visible("#projSegBtn") and pg.locator("#homeSeg button.on").inner_text() == "Проекты"
+            assert not pg.is_visible("#homeSeg")                         # 20.11: главная без вкладок
             if shots:
                 pg.screenshot(path=f"{shots}/projects-{dev}-{theme}.png")
             pg.fill("#projQ", "бухг")
             pg.wait_for_timeout(200)
             assert pg.eval_on_selector_all("#projectsView .card[data-proj]", "els => els.length") == 1
             pg.fill("#projQ", "")
-            pg.click("#homeSeg button[data-v=sessions]")                 # прежний список окон — как был
+            pg.evaluate("document.querySelector('#homeSeg [data-v=sessions]').click(); 0")   # вкладок не видно
             pg.wait_for_selector("#sessionsView .card[data-id]", timeout=4000)
             assert not pg.is_visible("#projectsView")
-            pg.click("#homeSeg button[data-v=projects]")
+            pg.evaluate("document.querySelector('#homeSeg [data-v=projects]').click(); 0")
             pg.wait_for_selector("#projectsView .card[data-proj]", timeout=4000)
             pg.click("#projectsView .card[data-proj='p-tgi']")
             pg.wait_for_selector("#projSeg", timeout=4000)

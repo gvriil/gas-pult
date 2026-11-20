@@ -721,6 +721,7 @@
   body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 760px; }
   .sidebtn, .grip, .rail { display: none; }
   body.no-dup.has-nav:not(.side-mini) #top .titles { visibility: hidden; }
+  #homeSeg { display: none !important; }   /* главная без вкладок (владелец 20.11): чаты — в панели, интеграции — в Настройках, команды — «⋯» разработчику */
   body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
   body.split .sidebtn { display: grid; }
   body.split:not(.side-mini) .grip { display: block; position: fixed; top: 0; bottom: 0; left: calc(var(--side) - 4px); width: 8px; z-index: 7; cursor: col-resize; touch-action: none; }
@@ -2017,6 +2018,7 @@ $("navMoreBtn").onclick = (e) => popMenu(e.currentTarget, [
   ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", run: spaceInvite }] : []),   // владелец и админ
   ...(meta?.role === "owner" && projOn() ? [{ label: "Показать архив проектов", icon: "file", run: projArchive }] : []),
   ...(meta?.role === "owner" ? [{ label: "Открыть брифинг", icon: "spark", run: briefGo }] : []),
+  ...(!document.body.classList.contains("nocap-dev_terminal") && meta?.role !== "viewer" ? [{ label: "Показать команды из ответов", icon: "bolt", run: () => go("go:commands") }] : []),
   { sep: true }, { label: "Открыть главную", icon: "home", run: () => { current = null; show("home"); setHome("sessions"); } },
 ]);
 // Меню у строки (поповер): закрыть — щелчок мимо, Esc, прокрутка
@@ -2861,35 +2863,8 @@ async function showTerms() {
 // Страна человека: после условий (и в «Настройках» — поменять). Доступно то, что поставщики разрешают для страны;
 // номер подтверждается в боте («Поделиться номером»), страна по IP — локальной базой (IP Geolocation by DB-IP).
 const DENY = "Этот сервис недоступен в вашей стране по условиям поставщика";
-const ccDate = (t) => t ? new Date(t * 1000).toLocaleDateString("ru-RU") : "";
-function ipMark(c) {                              // отметка страны по IP — с атрибуцией базы (CC BY 4.0)
-  const by = `<a href="${esc(c.attribution_url || "https://db-ip.com")}" target="_blank" rel="noopener">${esc(c.attribution || "IP Geolocation by DB-IP")}</a>`;
-  return !c.geoip ? "нет данных — база стран по IP не загружена" : c.ip_cc ? `${esc(c.ip_cc)}${c.ip_at ? " · " + ccDate(c.ip_at) : ""} · ${by}` : `нет данных · ${by}`;
-}
-async function showCountry(change) {
-  if (view === "country" && !change) return;
-  start.poll = null;
-  show("country"); $("title").textContent = brandName(); setSub("<span>ваша страна</span>");
-  let d; try { d = await api("/api/country"); } catch (e) { $("countryBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
-  const bot = d.bot ? `https://t.me/${encodeURIComponent(d.bot)}?start=phone` : "";
-  $("countryBox").innerHTML = `<h2 class="serif">Из какой страны вы работаете?</h2>
-    <p class="ver">Модели доступны по спискам стран их поставщиков: пульт покажет то, что разрешено для вашей страны.</p>
-    <div class="cc-grid" role="group" aria-label="Страна">${d.options.map((o) => `<button data-cc="${esc(o.code)}" class="${o.code === d.chosen ? "on" : ""}" aria-pressed="${o.code === d.chosen}">${esc(o.name)}<span class="code">${esc(o.code)}</span></button>`).join("")}</div>
-    <div class="field"><label for="ccCode">Другая страна <span class="opt">— код из двух букв (ISO 3166-1)</span></label>
-      <div class="inp"><input id="ccCode" maxlength="2" autocomplete="off" autocapitalize="characters" placeholder="например, CH" value="${d.chosen && !d.options.some((o) => o.code === d.chosen) ? esc(d.chosen) : ""}"><button class="btn sm" id="ccGo" style="width:auto">Выбрать</button></div></div>
-    <div class="cc-sig">${ic("phone")}<div><b>Номер телефона:</b> ${d.phone ? `подтверждён · код страны ${esc(d.phone_cc || "не определён")}` : "не подтверждён"}
-      <div class="hint">Подтвердите номер в боте: «Поделиться номером» — хранится только код страны и хеш номера.${bot ? ` <a href="${bot}" target="_blank" rel="noopener">Открыть бота</a>` : ""}</div></div></div>
-    <div class="cc-sig">${ic("globe")}<div><b>Страна по IP:</b> ${ipMark(d)}<div class="hint">Сверяется при каждом входе; адрес не сохраняется — только код страны.</div></div></div>
-    ${d.mismatch ? `<div class="result wait">${ic("warn")}<span>Признаки страны не совпадают — доступны только сервисы, разрешённые для всех: ${esc(d.effective.join(", "))}.</span></div>` : ""}
-    <div id="ccResult"></div>`;
-  const choose = async (code, btn) => busy(btn, "Сохраняю…", async () => {
-    try { await api("/api/country", { code }); haptic("notificationOccurred", "success"); if (change) toast("Страна: " + code.toUpperCase()); await start(); }
-    catch (err) { $("ccResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
-  });
-  $("countryBox").querySelectorAll("[data-cc]").forEach((b) => (b.onclick = () => choose(b.dataset.cc, b)));
-  $("ccGo").onclick = (e) => choose($("ccCode").value.trim(), e.currentTarget);
-  $("ccCode").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("ccGo").click(); } };
-}
+// Выбор страны — часть js/country.js (решение владельца 20.11: страну не спрашиваем; экран — для правки владельцем)
+const showCountry = (change) => part("country").then((m) => m.open(change));
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
