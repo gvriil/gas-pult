@@ -1847,7 +1847,7 @@ let DRAFT = null;                                     // новый чат до 
 const dn = (s) => s.name;
 // Служебное имя окна (gas-pult-1835) человеку не показываем нигде (владелец 19.11): name — название по смыслу (#317),
 // пока его нет — «Новый чат»; имя окна — wname (для «Имя окна · изменить» у владельца)
-const named = (x) => x.wname ? x : { ...x, wname: x.name, name: x.title && !x.title_status ? x.title : "Новый чат" };            // фокус: название чата, не служебное имя окна (19.11)
+const named = (x) => { if (x.wname) return x; const ok = !!x.title && !x.title_status; return { ...x, wname: x.name, name: ok ? x.title : "Новый чат", title: ok ? x.title : "" }; };            // фокус: название чата, не служебное имя окна (19.11)
 const navOn = () => (!FOCUS || meta?.focus?.mode !== "demo") && !SIM.on && !!meta && !["login", "terms", "country", "persona"].includes(view);
 const lastMsg = (s) => Math.max(+s.said || 0, +s.asked || 0) || +s.changed || 0;
 const canPin = (s) => meta?.role !== "viewer" && !FOCUS && !s?.space;
@@ -6653,6 +6653,7 @@ async function focusList() {
   let d; try { d = await api("/api/focus/list"); } catch (e) { return toast(e.message, 5000); }
   const when = (t) => new Date(t * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   helpSheet("settings.focus");
+  for (const x of d.links) if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || "Чат";   // не имя окна (19.11)
   sheet("Фокус-ссылки", d.links.length ? [
     { info: true, icon: "qr", label: "Действующие ссылки", sub: "нажмите, чтобы отозвать: устройство сразу потеряет доступ" },
     ...d.links.map((x) => ({ label: (x.mode === "demo" ? "Демо · " : "") + (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.mode === "demo" ? "eye" : x.proj ? "folder" : "qr",
