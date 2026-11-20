@@ -63,7 +63,7 @@ def test_send_headers_and_gone_subscription_removed(tmp_path, monkeypatch):
     def fake(req, timeout):
         seen.append(req)
         raise urllib.error.HTTPError(req.full_url, 410, "Gone", {}, None)
-    monkeypatch.setattr(webpush.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(webpush.OPENER, "open", fake)
     assert h.notify(7, "Пульт", "ждёт вашего ответа", w="@1", wait=True) == 1
     r = seen[0]
     assert r.get_method() == "POST" and r.data == b"" and r.headers["Ttl"] == "3600"
@@ -108,7 +108,7 @@ def req(port, path, method="GET", body=None, cookie=""):
 def test_http_each_person_sees_only_own_devices(server, monkeypatch):
     from gas_pult import webauth
     panel, port = server
-    monkeypatch.setattr(webpush.urllib.request, "urlopen", lambda req, timeout: type("R", (), {
+    monkeypatch.setattr(webpush.OPENER, "open", lambda req, timeout: type("R", (), {
         "status": 201, "__enter__": lambda s: s, "__exit__": lambda s, *a: None})())
     ck = {u: f"{webauth.COOKIE}={panel.auth.issue(u)}" for u in (1, 2, 3)}
     assert req(port, "/api/push/key")[0] == 401                               # без входа — нельзя
@@ -140,3 +140,11 @@ def test_bot_broadcast_and_answers_reach_owner_phone(tmp_path, monkeypatch):
     webpush.Hub(tmp_path / "push").add(1, {"endpoint": EP}, "телефон")
     p.broadcast("⏳ [План] упёрлась в лимит подписки")
     assert got == [(1, "Пульт", "[План] упёрлась в лимит подписки", "")]
+
+
+def test_redirect_from_push_service_is_not_followed(tmp_path):
+    """3xx от службы пуша — не идём по новому адресу (иначе обход фильтра адресов)."""
+    import http.client
+    h = webpush._NoRedirect()
+    req = webpush.urllib.request.Request(EP, data=b"", method="POST")
+    assert h.redirect_request(req, None, 307, "x", http.client.HTTPMessage(), "https://127.0.0.1/admin") is None

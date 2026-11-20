@@ -34,6 +34,16 @@ INBOX_MAX = 30
 INBOX_AGE = 3600                       # сообщение для показа живёт час: дальше служебный файл его не покажет
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Служба пуша ответила 3xx — не идём дальше: иначе сервер ушёл бы по чужому адресу (обход allowed_endpoint)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
@@ -185,7 +195,7 @@ class Hub:
             req = urllib.request.Request(ep, data=b"", method="POST", headers={
                 "TTL": "3600", "Urgency": "high", "Content-Length": "0",
                 "Authorization": f"vapid t={tok}, k={self.public_key()}"})
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with OPENER.open(req, timeout=15) as r:
                 return r.status
         except urllib.error.HTTPError as e:
             return e.code
