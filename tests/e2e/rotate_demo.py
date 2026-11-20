@@ -6,10 +6,14 @@
 from playwright.sync_api import sync_playwright
 
 ANCH = """() => { const sc = document.getElementById('scroller'), top = sc.getBoundingClientRect().top;
-  const m = [...document.querySelectorAll('#content .msg[data-i]')]
-    .find((x) => x.getBoundingClientRect().bottom > top + 60);
+  const ms = [...document.querySelectorAll('#content .msg[data-i]')];
+  const m = ms.find((x) => x.getBoundingClientRect().top >= top - 1)
+    || ms.findLast((x) => x.getBoundingClientRect().top < top);
   return { i: m?.dataset.i, off: m ? Math.round(m.getBoundingClientRect().top - top) : null,
            bottom: Math.round(sc.scrollHeight - sc.clientHeight - sc.scrollTop) }; }"""
+AT = """(i) => { const sc = document.getElementById('scroller');
+  const m = document.querySelector(`#content .msg[data-i="${i}"]`);
+  return m ? Math.round(m.getBoundingClientRect().top - sc.getBoundingClientRect().top) : null; }"""
 LONG = """() => { const h = demoApi.h, L = 'Длинный абзац ответа, который при повороте переносится иначе. '.repeat(8);
   const base = Math.max(...h.map((x) => x.i || 0)) + 1;
   for (let k = 0; k < 40; k++)
@@ -31,19 +35,21 @@ def run(url: str):
         pg.evaluate(LONG)
         pg.wait_for_timeout(5500)                                    # «прилипнуть к низу» после открытия — 4 с
         pg.mouse.move(195, 400)
-        for case, dy in (("середина", -2500), ("низ", 20000)):
+        for case, dy in (("середина", -2500), ("середина", -700), ("середина", 400), ("низ", 20000)):
             pg.mouse.wheel(0, dy)
             pg.wait_for_timeout(600)
             a = pg.evaluate(ANCH)
             pg.set_viewport_size(LAND)
             pg.wait_for_timeout(900)
             land = pg.evaluate(ANCH)
+            at_land = pg.evaluate(AT, a["i"])
             pg.set_viewport_size(PORT)
             pg.wait_for_timeout(900)
             back = pg.evaluate(ANCH)
-            if case == "середина":
-                assert land["i"] == a["i"] and abs(land["off"] - a["off"]) <= 4, ("поворот сдвинул ленту", a, land)
-                assert back["i"] == a["i"] and abs(back["off"] - a["off"]) <= 4, ("назад сдвинул ленту", a, back)
+            at_back = pg.evaluate(AT, a["i"])
+            if case == "середина":                                   # то же сообщение — на том же месте
+                assert abs((at_land or 1e9) - a["off"]) <= 4, ("поворот сдвинул ленту", a, at_land, land)
+                assert abs((at_back or 1e9) - a["off"]) <= 4, ("назад сдвинул ленту", a, at_back, back)
             else:
                 assert land["bottom"] <= 4 and back["bottom"] <= 4, ("поворот увёл от низа", a, land, back)
         # шторка с прокруткой внутри

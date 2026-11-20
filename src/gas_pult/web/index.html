@@ -2474,7 +2474,8 @@ let atBot = false;                                   // лента была у �
 let ANCH = null, anchT = 0;
 function saveAnch() {
   anchT = 0; if (view !== "session" || ANCH && ANCH.w !== innerWidth) return;
-  const top = SC.getBoundingClientRect().top, m = [...$("content").querySelectorAll(".msg[data-i]")].find((x) => x.getBoundingClientRect().bottom > top + 8);
+  const top = SC.getBoundingClientRect().top, ms = [...$("content").querySelectorAll(".msg[data-i]")];   // начало видимого — то, что читают
+  const m = ms.find((x) => x.getBoundingClientRect().top >= top - 1) || ms.findLast((x) => x.getBoundingClientRect().top < top);
   ANCH = { w: innerWidth, bot: atEnd(24), i: m?.dataset.i, off: m ? m.getBoundingClientRect().top - top : 0 };
 }
 function keepAnch() {
