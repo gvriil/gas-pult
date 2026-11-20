@@ -16,6 +16,12 @@ import pytest
 from gas_pult import bot, usage, webapp, webauth
 from gas_pult.config import Config
 
+
+@pytest.fixture(autouse=True)
+def _window_name_as_label(monkeypatch):
+    """Здесь проверяются лимиты расхода; подпись чата — имя окна из заглушки (подписи — tests/test_bot_labels.py)."""
+    monkeypatch.setattr(bot.Pult, "label", lambda self, w: w.get("name", ""))
+
 OWNER, MEMBER, VIEWER = 1001, 1002, 1003
 TODAY = date.today().isoformat()
 

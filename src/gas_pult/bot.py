@@ -803,6 +803,8 @@ class Pult:
         """Название чата для человека (владелец 19.11: «номера убрать, оставлять смысловой контекст»): своё название
         (projects.json) → название по смыслу из журнала (projects.title_of, #317) → «Новый чат». Служебное имя окна
         (gas-pult-1835) человеку не показываем; маршрут ответа — по id окна (tgroutes), не по имени."""
+        if not harness.is_agent(w):
+            return "Терминал"                                # окно без агента — не «чат»
         cache = self.__dict__.setdefault("_labels", {})
         hit = cache.get(w.get("id"))
         if hit and time.time() - hit[0] < self.LABEL_TTL:
@@ -812,7 +814,7 @@ class Pult:
             if sid:
                 d = json.loads((self.cfg.data / projects.FILE).read_text(encoding="utf-8"))
                 t = str(((d.get("sessions") or {}).get(sid) or {}).get("title") or "")
-            if not t:
+            if not t and harness.of(w).name == harness.DEFAULT:   # журнал по смыслу — только у Claude Code
                 f = transcripts.current(w.get("path", ""), self.home_of(w), sid)
                 t = projects.title_of(f) if f else ""
         except (OSError, ValueError, AttributeError):
@@ -1296,7 +1298,7 @@ class Pult:
         if at - now > limitretry.MAX_WAIT:
             return self.broadcast(f"⏳ [{self.label(w)}] упёрлась в лимит подписки до {limitretry.hhmm(at, now)} — это "
                                   "дольше 6 часов, сама не продолжу.")
-        self.set_state(limit_retries=limitretry.schedule(self.state(), w["id"], w["name"], at, now))
+        self.set_state(limit_retries=limitretry.schedule(self.state(), w["id"], self.label(w), at, now))
         self.broadcast(f"⏳ [{self.label(w)}] упёрлась в лимит подписки. Продолжу сама в {limitretry.hhmm(at, now)} — "
                        "один раз; напишете в сессию раньше — повтор снимется.",
                        reply_markup=kb([[("Не продолжать", f"rc:{w['id']}")]]))
@@ -1379,7 +1381,7 @@ class Pult:
             s = self.meter.session(w["path"], None, today, w.get("sid") or "")
             if s:
                 pub = usage.public(s["total"])
-                out.append({"w": w["id"], "name": w["name"], "sid": s["id"], "usd": pub["usd"],
+                out.append({"w": w["id"], "name": self.label(w), "sid": s["id"], "usd": pub["usd"],
                             "src": pub["cost_source"]})
         return out
 
@@ -1931,12 +1933,23 @@ class Pult:
         return "sent", self.label(w)
 
     def rename(self, chat: int, wid: str, name: str):
-        if not self.tmux.window(wid):
+        """Своё название чата (projects.json по id разговора, как «Переименовать» в панели); имя окна не меняется."""
+        w = self.tmux.window(wid)
+        if not w:
             return self.send(chat, "Этого окна уже нет.")
+        sid = transcripts.valid_sid(w.get("sid") or "")
+        title = " ".join(str(name or "").split())[:projects.TITLE_MAX]
+        if not sid or not title:
+            return self.send(chat, "У этого чата ещё нет разговора — напишите первое сообщение, потом переименуйте."
+                             if not sid else "Пустое название — нажмите ✏️ ещё раз.")
         try:
-            self.send(chat, f"✏️ Теперь сессия называется «{self.tmux.rename(wid, name)}».")
-        except (ValueError, RuntimeError) as e:
-            self.send(chat, f"Не переименовал: {e}. Нажмите ✏️ ещё раз.")
+            st = projects.Store(self.cfg.data / projects.FILE, self.home)
+            pid = "" if w.get("space") else (st.of_path(st.read(), w.get("path", "")) or "")
+            st.set_chat(sid, pid, title=title)
+        except (OSError, ValueError) as e:
+            return self.send(chat, f"Не переименовал: {e}. Нажмите ✏️ ещё раз.")
+        self.__dict__.get("_labels", {}).pop(wid, None)
+        self.send(chat, f"✏️ Теперь чат называется «{title}».")
 
     def make_folder(self, name: str) -> Path:
         """Новая папка проекта в первом корне (как у модулей) + ``git init``. Общая для бота и панели."""
@@ -2293,7 +2306,7 @@ class Pult:
                 [("✏️ Переименовать", f"ren:{w['id']}"), ("⛔ Завершить", f"ask:{w['id']}")]]))
         elif kind == "ren":
             self.waiting[chat] = f"ren:{w['id']}"
-            send(f"Новое имя для «{self.label(w)}» (до 40 знаков, без «:» и «.»):", reply_markup={"force_reply": True})
+            send(f"Новое название для «{self.label(w)}»:", reply_markup={"force_reply": True})
         elif kind == "scr":
             self.send_screen(chat, w, "экран:")
         elif kind == "last":
@@ -2933,7 +2946,7 @@ class Pult:
         wid = (routes.get(chat, rt.get("message_id")) if routes else None) or tgroutes.markup_wid(rt)
         ws = self.tmux.windows() if not wid else []
         if not wid and (name := tgroutes.head_name(rt)):
-            same = [x for x in ws if name in (x["name"], self.label(x))]   # и по названию (19.11)
+            same = [x for x in ws if x["name"] == name] or [x for x in ws if self.label(x) == name]   # 20.11
             wid = same[0]["id"] if len(same) == 1 else None
         if not wid:
             return None

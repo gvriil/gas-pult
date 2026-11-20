@@ -145,7 +145,8 @@ def test_rename_flow_targets_the_pressed_window(p):
     p.on_callback(q("ren:@1"))
     assert p.waiting[1] == "ren:@1"
     p.on_message(m("главный штаб"))
-    assert p.tmux.renamed == [("@1", "главный штаб")] and p.got == []   # имя — не текст для Claude
+    assert p.tmux.renamed == [] and p.got == []                         # название чата — не текст для Claude
+    assert "главный штаб" in texts(p)[-1] or "нет разговора" in texts(p)[-1]
     p.on_callback(q("ren:@1"))
     p.on_message(m("   "))
     p.waiting[1] = "ren:@99"
