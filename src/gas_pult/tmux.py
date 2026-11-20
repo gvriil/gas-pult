@@ -229,6 +229,14 @@ def tty_procs(ttys: list[str]) -> dict[str, list[list[str]]]:
     return out
 
 
+
+# Авто-сжатие разговора раньше (владелец 20.11: «контекст 92 %, а договаривались сжимать автоматически»). У моделей
+# с окном 1M Claude Code сжимает сам около 967K (~96,7 %, code.claude.com/docs/en/model-config); переменная
+# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (1–100, только понижает порог, code.claude.com/docs/en/env-vars) — 80 % окна
+# авто-сжатия. Есть в Claude Code 2.1.329 (строка в бинарнике). Задаём окну tmux (-e), а не в команде: selftest
+# запускает команду без оболочки.
+WINDOW_ENV = (("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "80"),)
+
 class Tmux:
     def __init__(self, session: str, socket: str = "", user: str = "", home: str = "", tmux: str = "tmux"):
         """``socket`` (или ``GAS_PULT_TMUX_SOCKET``) — свой сервер tmux по пути сокета (``tmux -S``): тесты и проверки
@@ -452,6 +460,9 @@ class Tmux:
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
         subprocess.run(cmd, check=True)
 
+    def env_args(self) -> list[str]:
+        return [x for k, v in WINDOW_ENV for x in ("-e", f"{k}={v}")]
+
     def new_window(self, name: str, path: str, command: str, mark: str = "claude", by: str = "", sid: str = "") -> str:
         """Новое окно с командой (Claude); после её выхода остаётся шелл. Возвращает id окна.
 
@@ -465,7 +476,7 @@ class Tmux:
         shell = self.shell()
         self.forget()
         r = subprocess.run([*self.tmux, "new-window", "-P", "-F", "#{window_id}", "-t", f"{self.session}:",
-                            "-n", name, "-c", path, f"{command}; exec {shlex.quote(shell)}"],
+                            "-n", name, "-c", path, *self.env_args(), f"{command}; exec {shlex.quote(shell)}"],
                            capture_output=True, text=True)
         self.forget()
         if r.returncode != 0:
@@ -492,7 +503,7 @@ class Tmux:
             make_room()
         shell = self.shell()
         self.forget()
-        r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path,
+        r = subprocess.run([*self.tmux, "respawn-window", "-k", "-t", wid, "-c", path, *self.env_args(),
                             f"{command}; exec {shlex.quote(shell)}"], capture_output=True, text=True)
         self.forget()
         if r.returncode != 0:
