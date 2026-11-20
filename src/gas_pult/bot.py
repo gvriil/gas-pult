@@ -330,7 +330,7 @@ class Pult:
 
     PUSH_PLAIN = re.compile(r"^[^\w«\[(]+")                       # значок-эмодзи в начале — не в заголовок пуша
 
-    def push_owners(self, text: str, w: str = "", title: str = brand.NAME):
+    def push_owners(self, text: str, w: str = "", title: str = brand.NAME_RU):
         """То же, что владелец получает в Telegram, — и на телефон (Web Push, webpush.py), если он включил
         уведомления на каком-то устройстве (владелец 20.11). Нет подписок — ничего не пишем."""
         cfg = getattr(self, "cfg", None)
@@ -2042,7 +2042,7 @@ class Pult:
         self.people.accept(uid, version)
         if not self.has_country(uid):
             return self.show_country(chat, "Спасибо, условия приняты.")
-        self.send(chat, f"Спасибо, условия приняты. {brand.NAME}: текст, голос и файлы уходят в "
+        self.send(chat, f"Спасибо, условия приняты. {brand.NAME_RU}: текст, голос и файлы уходят в "
                         "активное окно. Кнопки внизу.", reply_markup=self.menu_of(uid))
 
     # ---------- страна человека (country.py) ----------
@@ -2931,7 +2931,7 @@ class Pult:
         if t == "/tasks":
             return self.show_tasks(chat)
         if t in ("/start", "/menu", "/help"):
-            send(f"{brand.NAME}. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice, "
+            send(f"{brand.NAME_RU}. Текст, голос и файлы уходят в активное окно. Кнопки внизу; голос — /voice, "
                  "готовые агенты — /modules.",
                  reply_markup=MENU)
             if t == "/start" and not (st := self.setup_status())["ready"]:

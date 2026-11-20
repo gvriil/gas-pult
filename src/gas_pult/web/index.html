@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
-<title>Gavriil App</title>
-<meta name="application-name" content="Gavriil App"><meta name="apple-mobile-web-app-title" content="Gavriil App">
+<title>Гаврила</title>
+<meta name="application-name" content="Гаврила"><meta name="apple-mobile-web-app-title" content="Гаврила">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -1111,7 +1111,7 @@
   <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 </div>
 <aside class="nav" id="nav" aria-label="Чаты" inert>
-  <div class="nav-h"><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Gavriil App</button></h2>
+  <div class="nav-h"><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Гаврила</button></h2>
     <button class="icon" id="navSearchBtn" type="button" aria-label="Поиск (Ctrl+K)" title="Поиск (Ctrl+K)"></button>
     <button class="icon" id="navFoldBtn" type="button" aria-label="Свернуть всё" title="Свернуть всё"></button>
     <button class="icon" id="navMoreBtn" type="button" aria-label="Ещё: новая папка, из модуля, в фокусе" title="Ещё" aria-haspopup="menu" aria-expanded="false"></button>
@@ -1131,7 +1131,7 @@
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
-    <div class="titles"><h1 class="serif" id="title">Gavriil App</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
+    <div class="titles"><h1 class="serif" id="title">Гаврила</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="composeBtn" hidden aria-label="Новый чат" title="Новый чат"></button>
     <button class="icon" id="switchBtn" hidden aria-label="Другая сессия"></button>
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
@@ -1227,7 +1227,7 @@
   <section id="persona" hidden><div class="panel terms" id="personaBox"></div></section>
 
   <section id="home" hidden>
-    <div class="brand"><h1 class="serif brand-text">Gavriil App</h1><div class="sub"><span id="brandSub"></span></div></div>
+    <div class="brand"><h1 class="serif brand-text">Гаврила</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Сессии</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
@@ -1500,7 +1500,8 @@ const wideMQ = matchMedia("(min-width: 1024px)");
 const split = () => (!FOCUS || meta?.focus?.mode !== "demo") && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
-const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Gavriil App";   // brand.py — одно место
+const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Гаврила";   // brand.py — одно место
+const brandName = () => (typeof LANG !== "undefined" && LANG === "en" ? DICT?.["login.brand"] || "Gavrila" : BRAND);   // на английском — латиницей
 // Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
 const openUrl = (url) => (tg?.initData ? tg.openLink(url) : window.open(url, "_blank", "noopener"));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -2842,7 +2843,7 @@ const loginMsg = (ok, text) => { $("loginResult").innerHTML = `<div class="resul
 async function showTerms() {
   if (view === "terms") return;
   start.poll = null;                 // фоновые запросы — после согласия
-  show("terms"); $("title").textContent = BRAND; setSub("<span>условия использования</span>");
+  show("terms"); $("title").textContent = brandName(); setSub("<span>условия использования</span>");
   let d; try { d = await api("/api/terms"); } catch (e) { $("termsBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   $("termsBox").innerHTML = `<h2 class="serif">${esc(d.title)}</h2><p class="ver">Версия от ${esc(d.version.split("-").reverse().join("."))} · прочитайте перед началом работы</p>
     <ol>${d.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>
@@ -2868,7 +2869,7 @@ function ipMark(c) {                              // отметка страны
 async function showCountry(change) {
   if (view === "country" && !change) return;
   start.poll = null;
-  show("country"); $("title").textContent = BRAND; setSub("<span>ваша страна</span>");
+  show("country"); $("title").textContent = brandName(); setSub("<span>ваша страна</span>");
   let d; try { d = await api("/api/country"); } catch (e) { $("countryBox").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
   const bot = d.bot ? `https://t.me/${encodeURIComponent(d.bot)}?start=phone` : "";
   $("countryBox").innerHTML = `<h2 class="serif">Из какой страны вы работаете?</h2>
@@ -3040,7 +3041,7 @@ function setHome(v) {
   const two = split();
   if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
     const sub = (v !== "sessions" || inProj) && !two;
-    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : BRAND;
+    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : brandName();
     $("title").classList.toggle("brand-text", !sub); noDup();
     $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
   }
@@ -5149,7 +5150,7 @@ function mediaPos() {                               // полоса на экр�
 function mediaSession(title, name) {               // previoustrack/nexttrack не трогаем: «следующего ответа» нет
   if (!("mediaSession" in navigator)) return;
   const ms = navigator.mediaSession, on = (a, f) => { try { ms.setActionHandler(a, f); } catch (e) {} };
-  ms.metadata = new MediaMetadata({ title, artist: name, album: BRAND });
+  ms.metadata = new MediaMetadata({ title, artist: name, album: brandName() });
   on("play", () => player().play()); on("pause", () => player().pause()); on("stop", stopPlayer);
   on("seekbackward", (d) => seekBy(-(d?.seekOffset || SEEK)));
   on("seekforward", (d) => seekBy(d?.seekOffset || SEEK));
@@ -7587,7 +7588,7 @@ function paintLoginLang() {                           // первый экран
   document.querySelectorAll("#login [data-l], #demoBar [data-l]").forEach((el) => { el.dataset.ru ??= el.textContent; el.textContent = LL(el.dataset.l, el.dataset.ru); });
   invTitle();
   if (view === "login" && !SIM.on) {
-    $("title").textContent = BRAND; setSub(`<span>${esc(INVITE ? LL("login.sub.inv", "вход по приглашению") : LL("login.sub", "вход через Telegram"))}</span>`);
+    $("title").textContent = brandName(); setSub(`<span>${esc(INVITE ? LL("login.sub.inv", "вход по приглашению") : LL("login.sub", "вход через Telegram"))}</span>`);
     $("helpBtn").innerHTML = ic("help") + `<span>${esc(LL("s.help", "Подсказать"))}</span>`;
   }
 }
