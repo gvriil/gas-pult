@@ -1202,6 +1202,24 @@ class Pult:
                 except TelegramError as e:
                     print("hint:", e, flush=True)
 
+    TRUST_EVERY = 10.0
+
+    def trust_auto(self, w: dict, scr: str) -> bool:
+        """Вопрос Claude Code «доверять файлам этой папки? 1. Да 2. Нет» — человеку его не показываем (владелец и
+        Алексей 20.11: «выбор 1/2/3 обычный пользователь видеть не должен»): папка окна — папка, которую пульт сам
+        открыл для этого человека, поэтому отвечаем «Да» (Enter на пункте 1). Раньше отвечал только поток при
+        создании окна и только 30 с — при перезапуске, пробуждении и медленном старте вопрос оставался на экране.
+        В журнал чата — событие ``trust_auto``: админ видит, что произошло."""
+        if not (tmux_mod.TRUST_ASK.search(scr) and tmux_mod.TRUST_YES.search(scr)):
+            return False
+        last = self.__dict__.setdefault("_trust_at", {})
+        if time.time() - last.get(w["id"], 0) < self.TRUST_EVERY:   # Enter уже нажат — ждём, пока экран сменится
+            return True
+        last[w["id"]] = time.time()
+        self.tmux.keys(w["id"], "Enter")
+        self.ev("trust_auto", w=w["id"], path=w.get("path", ""))
+        return True
+
     def monitor(self):
         tail, turns, shown = transcripts.Tail(time.time()), {}, {}
         while True:
@@ -1241,6 +1259,8 @@ class Pult:
                     quiet = not notifylevel.wants(st, w["id"], "dialog")   # «тихо» — и вопросы не шлём
                     lines = self.tmux.screen(w["id"])
                     scr = screens[w["id"]] = "\n".join(lines)
+                    if self.trust_auto(w, scr):                 # «доверять папке?» — пульт отвечает сам (20.11)
+                        continue
                     self.changes.look(w["id"], lines)
                     self.draft_watch(w, lines)                  # наш текст висит в поле ввода дольше 2 мин?
                     if w["id"] in self.fallback.pending:        # сессия стоит на ошибке, человек не набирает
