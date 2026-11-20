@@ -8,7 +8,7 @@ INDEX = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").re
 def test_one_quiet_sleep_state():
     assert 'stopped: { label: "спит", cls: "s-idle s-sleep" }' in INDEX
     assert 'sleep: { label: "спит", cls: "s-idle s-sleep" }' in INDEX
-    assert "💤" not in INDEX and "остановлена" not in INDEX.split("const ST = ")[1].split("\n")[1]
+    assert "💤" not in INDEX and "label: \"остановлена\"" not in INDEX
 
 
 def test_no_restart_or_continue_buttons():
