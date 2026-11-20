@@ -2,8 +2,10 @@
 
 # gas-pult
 
-**Пульт для Claude Code в телефоне.** Claude работает на вашем сервере — вы получаете ответы, отвечаете голосом
-и кнопкой, подключаете сервисы и не сидите у терминала.
+**Безопасное рабочее пространство с ИИ для руководителей и небольших команд:** агент делает рутину — человек
+подтверждает «Да». Агент работает на вашем сервере; вы получаете ответы в телефоне, отвечаете голосом и кнопкой.
+
+Исходный код открыт для чтения ([PolyForm Noncommercial 1.0.0](LICENSE)).
 
 [![CI](https://github.com/gvriil/gas-pult/actions/workflows/ci.yml/badge.svg)](https://github.com/gvriil/gas-pult/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%E2%80%933.14-blue)](pyproject.toml)
@@ -238,8 +240,8 @@ gas-pult webapp --port 8765   # панель локально; http://127.0.0.1:
 
 ## Лицензия
 
-[PolyForm Noncommercial 1.0.0](LICENSE): свободно для личного, учебного, исследовательского и некоммерческого
-использования. **Коммерческое использование — по отдельной договорённости** с автором
+Исходный код открыт для чтения. [PolyForm Noncommercial 1.0.0](LICENSE): свободно для личного, учебного,
+исследовательского и некоммерческого использования. **Коммерческое использование — по отдельной договорённости** с автором
 ([issue](https://github.com/gvriil/gas-pult/issues) или контакт в профиле). Сторонние компоненты — [NOTICE.md](NOTICE.md).
 
 > gas-pult — независимый проект. Он не связан с Anthropic и не одобрен ею. Claude и Claude Code — товарные знаки Anthropic.
@@ -247,8 +249,9 @@ gas-pult webapp --port 8765   # панель локально; http://127.0.0.1:
 <details>
 <summary><b>English summary</b></summary>
 
-**gas-pult** is a phone remote for [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions running in
-tmux on your server. A Telegram bot forwards every finished Claude turn and every on-screen dialog (permissions,
+**gas-pult** is a secure AI workspace for executives and small teams: the agent does the routine work, a human
+approves with “Yes”. Source code is available to read (PolyForm Noncommercial 1.0.0). Under the hood it drives
+[Claude Code](https://docs.claude.com/en/docs/claude-code) sessions running in tmux on your server. A Telegram bot forwards every finished Claude turn and every on-screen dialog (permissions,
 `/model`, `/mcp`) and sends your text, voice notes, photos and files back. A Telegram Mini App (also usable in a
 browser with a one-time code sent to Telegram) shows all sessions, the full conversation with text-to-speech for any
 message, Claude's dialogs as buttons, run-buttons for shell blocks (with confirmation for destructive commands),
