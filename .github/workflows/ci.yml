@@ -80,7 +80,7 @@ jobs:
   # он стоит, и ни один тест не должен пропуститься из-за браузера. Плюс замер покрытия Python (отчёт в логе).
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40                 # 20.11: 30 мин кончились на 93 % — тестов больше, ни один не упал
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

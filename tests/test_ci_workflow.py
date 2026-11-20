@@ -34,8 +34,8 @@ def test_every_job_has_timeout():
         js = jobs((WF / name).read_text())
         assert js
         for job, block in js.items():
-            m = re.search(r"^    timeout-minutes: (\d+)$", block, re.M)
-            assert m and 0 < int(m.group(1)) <= 30, (name, job)
+            m = re.search(r"^    timeout-minutes: (\d+)\s*(#.*)?$", block, re.M)
+            assert m and 0 < int(m.group(1)) <= 40, (name, job)                # 20.11: браузерным — 40
 
 
 def test_macos_not_in_pull_requests_but_daily_and_on_main():

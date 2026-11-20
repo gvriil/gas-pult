@@ -22,6 +22,7 @@ import imaplib
 import json
 import os
 import re
+import socket
 import ssl
 import sys
 import time
@@ -37,6 +38,9 @@ else:                                                  # запуск файло
 
 SVC = "mail"
 TIMEOUT = 25
+# Имя для EHLO — без socket.getfqdn(): smtplib по умолчанию спрашивает DNS, на macOS это бывает дольше минуты
+# (гипотеза по падениям CI macOS 20.11: test_mail_mcp — TimeoutExpired на отправке; проверка — CI main на macOS).
+EHLO = socket.gethostname() or "localhost"
 MAX_FETCH = 3_000_000                                  # больше — письмо читается не целиком (вложения)
 MAX_RCPT = 10                                          # не рассылка: до 10 адресатов на письмо
 MAX_BODY = 20_000
@@ -476,9 +480,9 @@ def _send(box: str, msg: EmailMessage) -> None:
     host, port = cfg["smtp_host"], int(cfg.get("smtp_port") or 465)
     try:
         if cfg["tls"]:
-            s = smtplib.SMTP_SSL(host, port, timeout=TIMEOUT, context=ssl.create_default_context())
+            s = smtplib.SMTP_SSL(host, port, timeout=TIMEOUT, context=ssl.create_default_context(), local_hostname=EHLO)
         else:
-            s = smtplib.SMTP(host, port, timeout=TIMEOUT)
+            s = smtplib.SMTP(host, port, timeout=TIMEOUT, local_hostname=EHLO)
         with s:
             s.login(cfg["user"], cfg["app_password"])
             s.send_message(msg)
