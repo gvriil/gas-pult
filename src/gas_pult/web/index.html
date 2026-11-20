@@ -1033,6 +1033,7 @@
   .nrow { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 4px 4px 4px 10px; border-radius: var(--radius-sm);
           color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .nrow { transition: background-color .12s ease; }
+  .nrow.dragging { z-index: 5; background: var(--bg-surface); box-shadow: var(--shadow-lg); transition: none; cursor: grabbing; }
   .nrow:hover, .nrow.menu-on { background: color-mix(in srgb, var(--text-primary) var(--row-hv), transparent); }
   .nrow.on { background: color-mix(in srgb, var(--text-primary) calc(var(--row-hv) + 4%), transparent); } .nrow.on .nm { font-weight: 600; }
   #navList .nrow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--border-focus); }
@@ -1888,18 +1889,25 @@ const navBtns = (x, pinOk) => (pinOk ? `<button class="nb npin" type="button" da
   + `<button class="nb nmore" type="button" data-nmore aria-label="Действия" title="Действия" aria-haspopup="menu">${ic("more")}</button>`;
 // строка под названием (#189): модель · усилия · контекст; точка справа — новый ответ, который вы не открывали
 const navMeta = (s) => [s.model, s.effort && "усилия " + (EFFORT_RU[s.effort] || s.effort), ctxUsed(s) == null ? "" : "контекст " + ctxUsed(s) + "%"].filter(Boolean).join(" · ");
-function navRow(s, sub) {
+// Свой порядок (владелец 20.11: «двигать между собой, ставить приоритет»): data-og="группа|ключ"; порядок — с
+// сервера (projData.order), перетаскивание — js/order.js, «⋯ → Выше / Ниже» — orderMove.
+const skey = (s) => "S" + (s.sid || s.id);
+const ordBy = (grp, list, key) => { const o = projData?.order?.[grp]; if (!o?.length) return list; const ix = new Map(o.map((k, i) => [k, i]));
+  return [...list].sort((a, b) => (ix.get(key(a)) ?? 1e9) - (ix.get(key(b)) ?? 1e9)); };
+const og = (grp, k) => ` data-og="${esc(grp + "|" + k)}"`;
+function navRow(s, sub, grp) {
   const st = ST[s.status] || ST.idle, name = dn(s), nw = isNew(s), mt = navMeta(s), tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label + (nw ? " · новый ответ" : "") + (mt ? " · " + mt : "");   // модель, контекст — в подсказке
-  return `<div class="nrow${s.id === current && view === "session" ? " on" : ""}${s.pinned ? " pinned" : ""}${sub ? " sub" : ""}${nw ? " new" : ""}" data-nw="${esc(s.id)}" role="listitem" tabindex="0" title="${esc(tip)}">`
+  return `<div class="nrow${s.id === current && view === "session" ? " on" : ""}${s.pinned ? " pinned" : ""}${sub ? " sub" : ""}${nw ? " new" : ""}" data-nw="${esc(s.id)}"${grp ? og(grp, skey(s)) : ""} role="listitem" tabindex="0" title="${esc(tip)}">`
     + `<span class="sdot ${st.cls}"></span><span class="ntx"><span class="nm">${esc(name)}</span></span>${nw ? '<span class="nnew"></span>' : ""}<span class="tm">${esc(navTime(lastMsg(s)))}</span>${navBtns(s, canPin(s))}</div>`;
 }
-function navProj(p, list, open) {
+function navProj(p, list, open, grp) {
   const n = p.waiting ? p.waiting + " ждут" : String(list.length || p.chats || "");
   const add = meta?.role !== "viewer" ? `<button class="nb nadd" type="button" data-nnew aria-label="Новый чат в проекте" title="Новый чат в проекте">${ic("plus")}</button>` : "";
-  return `<div class="nrow proj${p.pinned ? " pinned" : ""}" data-np="${esc(p.id)}" role="listitem" tabindex="0" aria-expanded="${open}" title="${esc(p.name)}">${ic("chevron", "nchev")}<span class="nm">${esc(p.name)}</span><span class="tm">${esc(n)}</span>${add}${navBtns(p, canPin())}</div>`
-    + (open ? list.map((s) => navRow(s, true)).join("") + `<div class="nrow sub all" data-nall="${esc(p.id)}" role="listitem" tabindex="0"><span class="nm">Все чаты проекта${p.chats ? " · " + p.chats : ""}</span></div>` : "");
+  return `<div class="nrow proj${p.pinned ? " pinned" : ""}" data-np="${esc(p.id)}"${og(grp || "proj", "P" + p.id)} role="listitem" tabindex="0" aria-expanded="${open}" title="${esc(p.name)}">${ic("chevron", "nchev")}<span class="nm">${esc(p.name)}</span><span class="tm">${esc(n)}</span>${add}${navBtns(p, canPin())}</div>`
+    + (open ? ordBy("p:" + p.id, list, skey).map((s) => navRow(s, true, "p:" + p.id)).join("") + `<div class="nrow sub all" data-nall="${esc(p.id)}" role="listitem" tabindex="0"><span class="nm">Все чаты проекта${p.chats ? " · " + p.chats : ""}</span></div>` : "");
 }
 function renderNav() {
+  if (NAV.drag) return;                               // тянут строку — список не трогаем (js/order.js)
   const on = navOn();
   document.body.classList.toggle("has-nav", on);
   const two = split();
@@ -1911,20 +1919,21 @@ function renderNav() {
   const ss = sessions.filter((x) => !NAV.gone.has(x.id)), nm = (x) => x.name + " " + (x.wname || "");
   const projs = projOn() ? projData?.projects || [] : [];
   const ofProj = (p) => ss.filter((x) => x.project === p.id).sort((a, b) => lastMsg(b) - lastMsg(a));
-  const pv = (p) => { const l = ofProj(p).filter((x) => !q || hit(nm(x)) || hit(p.name)); return (hit(p.name) || l.length) ? navProj(p, l, !!q || NAV.exp.has(p.id)) : ""; };
+  const pv = (p, grp) => { const l = ofProj(p).filter((x) => !q || hit(nm(x)) || hit(p.name)); return (hit(p.name) || l.length) ? navProj(p, l, !!q || NAV.exp.has(p.id), grp) : ""; };
   const sec = (t) => `<div class="nav-sec" role="presentation">${t}</div>`;
   const shut = (k) => !q && NAV.shut.has(k);
   const fold = (k, t) => `<button type="button" class="nav-sec fold" data-nsec="${k}" aria-expanded="${!shut(k)}">${ic("chevron", "nchev")}<span>${t}</span></button>`;
-  const pins = projs.filter((p) => p.pinned).map(pv).join("") + ss.filter((x) => x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a)).map((x) => navRow(x)).join("");
-  const groups = projs.filter((p) => !p.pinned).map(pv).join("");
-  const recent = ss.filter((x) => !x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a));
+  const pins = ordBy("pins", [...projs.filter((p) => p.pinned).map((p) => ({ k: "P" + p.id, h: () => pv(p, "pins") })),
+    ...ss.filter((x) => x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a)).map((x) => ({ k: skey(x), h: () => navRow(x, false, "pins") }))], (x) => x.k).map((x) => x.h()).join("");
+  const groups = ordBy("proj", projs.filter((p) => !p.pinned), (p) => "P" + p.id).map((p) => pv(p)).join("");
+  const recent = ordBy("chats", ss.filter((x) => !x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a)), skey);
   const cmds = q ? palCmds().filter((c) => hit(c.label + " " + (c.kw || ""))) : [];   // палитра: при поиске — и команды
   const canNewP = projOn() && meta?.role !== "viewer" && !q;           // «+» — «Новый проект» (и когда проектов ещё нет)
   const secP = `<div class="nav-sec has-add" role="presentation">${fold("proj", "Проекты")}<button type="button" class="nav-add" data-nnewp aria-label="Новый проект" title="Новый проект">${ic("plus")}</button></div>`;
   const h = (pins ? fold("pins", "Закреплённые") + (shut("pins") ? "" : pins) : "")
     + (groups ? (canNewP ? secP : fold("proj", "Проекты")) + (shut("proj") ? "" : groups) : canNewP ? secP : "")
     + (recent.length || !cmds.length ? fold("chats", "Чаты") : "") + (shut("chats") ? ""
-    : recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
+    : recent.length ? recent.map((x) => navRow(x, false, "chats")).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
     + (cmds.length ? sec("Команды") + cmds.map((c) => `<div class="nrow cmd" data-ncmd="${c.id}" role="listitem" tabindex="0">${ic(c.icon, "ncmd")}<span class="nm">${esc(c.label)}</span></div>`).join("") : "");
   if (NAV.html !== h) { NAV.html = h; $("navList").innerHTML = h; }   // опрос раз в 3–10 с — DOM только при изменении
   const allShut = !NAV.exp.size && [...$("navList").querySelectorAll("[data-nsec]")].every((b) => NAV.shut.has(b.dataset.nsec));
@@ -2044,7 +2053,21 @@ function popMenu(anchor, items, opt = {}) {
 }
 addEventListener("pointerdown", (e) => { if (!e.target.closest(".pop, [data-nmore], [data-rp], #navMoreBtn, [data-dfold], [data-dmodel]")) closePop(); }, true);
 $("navList").addEventListener("scroll", closePop, { passive: true });
-function navItems(row) {
+const ogRows = (grp) => [...$("navList").querySelectorAll(".nrow[data-og]")].filter((r) => r.dataset.og.split("|")[0] === grp);
+function saveOrder(grp, keys) {                       // свой порядок группы: сразу на экране, потом на сервер
+  if (projData) projData.order = { ...(projData.order || {}), [grp]: keys };
+  NAV.html = ""; renderNav();
+  api("/api/order", { grp, ids: keys }).catch((e) => toast("Порядок не сохранился: " + e.message, 4000));
+}
+function orderMove(row, d) {
+  const [grp] = row.dataset.og.split("|"), keys = ogRows(grp).map((r) => r.dataset.og.slice(grp.length + 1)), i = keys.indexOf(row.dataset.og.slice(grp.length + 1));
+  if (i < 0 || i + d < 0 || i + d >= keys.length) return;
+  [keys[i], keys[i + d]] = [keys[i + d], keys[i]]; saveOrder(grp, keys);
+}
+const moveItems = (row) => { if (!row.dataset.og || meta?.role === "viewer") return []; const rs = ogRows(row.dataset.og.split("|")[0]), i = rs.indexOf(row);
+  return [...(i > 0 ? [{ label: "Поднять выше", icon: "up", run: () => orderMove(row, -1) }] : []), ...(i >= 0 && i < rs.length - 1 ? [{ label: "Опустить ниже", icon: "down", run: () => orderMove(row, 1) }] : [])]; };
+const navItems = (row) => { const a = navItems0(row), m = moveItems(row); if (!m.length) return a; const k = a.findIndex((x) => x.sep); return k < 0 ? [...a, ...m] : [...a.slice(0, k), ...m, ...a.slice(k)]; };
+function navItems0(row) {
   if (row.dataset.np) {
     const p = projOf(row.dataset.np); if (!p) return [];
     return [...(canPin() ? [{ label: p.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!p.pinned, run: () => pinSet({ project: p.id }, !p.pinned, p.name) }] : []),
@@ -2122,20 +2145,25 @@ $("navList").addEventListener("contextmenu", (e) => {   // правая кноп
   const row = e.target.closest(".nrow[data-nw], .nrow[data-np]"); if (!row) return;
   e.preventDefault(); popMenu(row, navItems(row));
 });
-{ // долгое нажатие (телефон) — меню у строки
-  let lp = null;
+{ // долгое нажатие (телефон) — меню у строки; повели пальцем после него — перетаскивание (js/order.js)
+  let lp = null, held = null;
   $("navList").addEventListener("pointerdown", (e) => {
     const row = e.target.closest(".nrow[data-nw], .nrow[data-np]");
+    if (row?.dataset.og && e.pointerType === "mouse" && e.button === 0 && !e.target.closest(".nb") && meta?.role !== "viewer") part("order").then((m) => m.arm(e, row));
     if (!row || e.pointerType === "mouse" || e.target.closest(".nb")) return;
     const key = row.dataset.nw ? `[data-nw="${CSS.escape(row.dataset.nw)}"]` : `[data-np="${CSS.escape(row.dataset.np)}"]`;
     lp = { x: e.clientX, y: e.clientY, t: setTimeout(() => {                 // строку могли перерисовать — берём живую
       lp = null; const r = row.isConnected ? row : $("navList").querySelector(".nrow" + key); if (!r) return;
-      NAV.held = true; haptic("impactOccurred", "medium"); popMenu(r, navItems(r));
+      NAV.held = true; haptic("impactOccurred", "medium"); popMenu(r, navItems(r)); held = r.dataset.og && meta?.role !== "viewer" ? { r, y: e.clientY } : null;
     }, 480) };
   });
   const stop = () => { if (lp) clearTimeout(lp.t); lp = null; };
-  $("navList").addEventListener("pointermove", (e) => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) stop(); });
-  $("navList").addEventListener("pointerup", stop); $("navList").addEventListener("pointercancel", stop);
+  $("navList").addEventListener("pointermove", (e) => {
+    if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) stop();
+    if (held && !NAV.drag && Math.abs(e.clientY - held.y) > 10) { const r = held.r; held = null; closePop(); part("order").then((m) => m.drag(e, r)); }
+  });
+  $("navList").addEventListener("pointerup", () => { stop(); held = null; }); $("navList").addEventListener("pointercancel", () => { stop(); held = null; });
+  $("navList").addEventListener("touchmove", (e) => { if (NAV.drag || held) e.preventDefault(); }, { passive: false });   // не прокручивать, пока тянем
 }
 // Свайп от левого края (телефон): панель идёт за пальцем; отпустили дальше трети или быстро — открыта. Закрыть — свайп
 // влево по панели или затемнению. Только transform и opacity, кадр — через requestAnimationFrame.

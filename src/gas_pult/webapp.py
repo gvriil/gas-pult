@@ -3873,6 +3873,7 @@ def handler(panel: Panel):
                     ss = panel.sessions(pool, self.pinner())
                 # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
                 return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
+                        "order": projects.order_of(panel.project_data(), self.pinner()),   # свой порядок (20.11)
                         "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
                         "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
                         "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
@@ -4882,6 +4883,10 @@ def handler(panel: Panel):
             if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
                 return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
                                             self.terms_uid())
+            if path == "/api/order":                     # свой порядок: закреплённые, проекты, чаты (20.11)
+                ids = panel.projects.set_order(self.pinner(), str(b.get("grp") or ""), b.get("ids") or [])
+                panel._proj = (0.0, {})
+                return {"ok": True, "ids": ids}
             if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
                 return panel.pin(self.pinner(), b.get("on", True) is not False, str(b.get("project") or ""),
                                  str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))

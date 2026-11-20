@@ -78,6 +78,11 @@ def empty() -> dict:
     return {"v": VERSION, "projects": {}, "sessions": {}}
 
 
+def order_of(d: dict, who: str | None) -> dict:
+    """Свой порядок групп панели человека: {группа: [id…]} (``Store.set_order``)."""
+    return dict((d.get("order") or {}).get(str(who)) or {}) if who else {}
+
+
 def pins_of(d: dict, who: str | None) -> tuple[dict, dict]:
     """Закрепления человека: (проекты ``{pid: время}``, сессии и чаты ``{ключ: время}``). ``who`` None — пусто."""
     mine = ((d.get("pins") or {}).get(str(who)) or {}) if who else {}
@@ -263,6 +268,25 @@ class Store:
                 p["archived"] = bool(archived)
             self.write(d)
             return p
+
+    ORDER_GROUP = re.compile(r"^(pins|proj|chats|p:[A-Za-z0-9_.-]{1,64})$")
+
+    def set_order(self, who: str, grp: str, ids: list) -> list[str]:
+        """Свой порядок в группе панели (владелец 20.11: «двигать между собой, ставить приоритет»): ``pins`` —
+        закреплённые, ``proj`` — проекты, ``chats`` — чаты, ``p:<id проекта>`` — чаты проекта. Свой у каждого
+        человека (``who``), на сервере — одинаков на всех устройствах. Пустой список — вернуть порядок по умолчанию."""
+        if not self.ORDER_GROUP.match(str(grp or "")):
+            raise ValueError("неизвестная группа")
+        clean = [str(x)[:200] for x in (ids or []) if str(x).strip()][:500]
+        with _lock:
+            d = self.read()
+            mine = d.setdefault("order", {}).setdefault(str(who), {})
+            if clean:
+                mine[grp] = clean
+            else:
+                mine.pop(grp, None)
+            self.write(d)
+        return clean
 
     def set_pin(self, who: str, on: bool, pid: str = "", key: str = "") -> int:
         """«Закрепить» / «Открепить» — свои у каждого человека (``who``: «owner» или Telegram ID участника):

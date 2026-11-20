@@ -85,7 +85,7 @@ function demoProjects(key, path, body, ses) {
       windows: mine.length, waiting: mine.filter((x) => x.status === "dialog").length, busy: mine.filter((x) => x.status === "busy").length,
       chats: ch.length + mine.length, last, last_title: mine.sort((a, b) => (b.changed || 0) - (a.changed || 0))[0]?.title || ch[0]?.title || "", sessions: mine.map((x) => x.id) };
   }).sort((a, b) => b.pinned_at - a.pinned_at || (b.waiting ? 1 : 0) - (a.waiting ? 1 : 0) || (b.last || 0) - (a.last || 0));
-  if (key === "/api/projects") return Promise.resolve({ ...ses, projects: list, new_root: "~/projects" });
+  if (key === "/api/projects") return Promise.resolve({ ...ses, projects: list, new_root: "~/projects", order: demoApi.order || {} });
   const id = q.get("id") || body?.id, p = list.find((x) => x.id === id);
   if (!p) return Promise.reject(new Error("проекта нет — обновите список"));
   if (key === "/api/project") return Promise.resolve({ ...p, instructions: id === "p-books" ? "# Бухгалтерия\nОтвечай коротко. Суммы — в рублях, даты — ДД.ММ.ГГГГ." : "", files: id === "p-books" ? [{ name: "выписка-октябрь.xlsx", size: 48213, mtime: t0 - D }] : [], windows: p.sessions });
@@ -168,6 +168,7 @@ function demoApi(path, body) {
   // расход (usage.py): владелец видит свой пул, участник — свою учётку, наблюдатель — ничего; ?cost=pause — сессия на паузе
   const role = params.get("role") || "owner", own = role === "owner";
   demoApi.pins ||= params.has("pins") ? { "w:@3": 2, "p:p-books": 2, "p:p-gas-pult": 1 } : {};   // ?pins — уже закреплены
+  if (path === "/api/order") { demoApi.order = { ...(demoApi.order || {}), [body.grp]: body.ids }; return Promise.resolve({ ok: true, ids: body.ids }); }   // свой порядок (20.11)
   if (path === "/api/pin") { const k = body.project ? "p:" + body.project : body.w ? "w:" + body.w : "c:" + body.sid;
     if (body.on === false) delete demoApi.pins[k]; else demoApi.pins[k] = Math.floor(Date.now() / 1000); }
   S.forEach((x) => { x.pinned = demoApi.pins["w:" + x.id] || 0; });

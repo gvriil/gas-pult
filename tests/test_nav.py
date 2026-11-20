@@ -28,7 +28,7 @@ def test_nav_markup():
 
 
 def test_row_menu_is_popover_and_pin_first():
-    items = fn("navItems")
+    items = fn("navItems0")                                             # 20.11: navItems = navItems0 + «Выше/Ниже»
     sess = items[items.index("const name = s.title || s.name;"):]       # меню владельца (у фокуса — своё, выше)
     assert sess.index('"Открепить" : "Закрепить"') < sess.index('"Переименовать"') < sess.index('"Удалить"')
     assert "sheet(" not in fn("popMenu")
