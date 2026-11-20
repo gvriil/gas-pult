@@ -111,7 +111,7 @@
   body:not(.focus) .focus-only { display: none; }
   body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus-demo #rail, body.focus #railNew, body.focus #railSettings, body.focus #home, body.focus #homeBar,
   body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
-  body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew { display: none !important; }
+  body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew, body.focus #navSet { display: none !important; }
   /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
   body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
   body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
@@ -1006,6 +1006,13 @@
   .nav-q input:focus { outline: none; border-color: var(--border-focus); }
   .nav-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px 12px; }
   .nav-sec { margin: 14px 10px 4px; font-size: calc(12px * var(--fz, 1)); font-weight: 600; color: var(--text-muted); }
+  .nav-sec.fold { display: flex; align-items: center; gap: 4px; width: calc(100% - 20px); min-height: 32px; padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
+  .nav-sec.fold .nchev { width: 14px; height: 14px; transition: transform .15s ease; } .nav-sec.fold[aria-expanded="true"] .nchev { transform: rotate(90deg); }
+  .nav-sec.has-add .nav-sec.fold { margin: 0; flex: 1; }
+  #navFoldBtn.shut svg { transform: scaleY(-1); } .nav-sec.fold:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+  @media (pointer: coarse) { .nav-sec.fold { min-height: 44px; } .nav-h .icon, .nav-sec .nav-add { min-width: 44px; min-height: 44px; } }
+  .nav-foot { display: flex; align-items: center; gap: 10px; flex: none; min-height: 44px; margin: 4px 8px 8px; padding: 0 12px; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; }
+  .nav-foot:hover { background: var(--bg-subtle); } .nav-foot svg { width: 18px; height: 18px; }
   .nav-sec.has-add { display: flex; align-items: center; margin-right: 2px; } .nav-sec.has-add span { flex: 1; }
   .nav-add { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
              display: grid; place-items: center; cursor: pointer; flex: none; }
@@ -1089,12 +1096,14 @@
 <aside class="nav" id="nav" aria-label="Чаты" inert>
   <div class="nav-h"><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Пульт</button></h2>
     <button class="icon" id="navSearchBtn" type="button" aria-label="Поиск (Ctrl+K)" title="Поиск (Ctrl+K)"></button>
+    <button class="icon" id="navFoldBtn" type="button" aria-label="Свернуть всё" title="Свернуть всё"></button>
     <button class="icon" id="navMoreBtn" type="button" aria-label="Ещё: новая папка, из модуля, в фокусе" title="Ещё" aria-haspopup="menu" aria-expanded="false"></button>
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
     <button class="icon" id="navCloseBtn" type="button" aria-label="Закрыть"></button></div>
   <button class="nav-new" id="navNew" type="button"></button>
   <div class="nav-q" id="navQBox" hidden><input id="navQ" type="search" placeholder="Чаты, проекты, команды…" autocomplete="off" aria-label="Поиск по чатам, проектам и командам (Ctrl+K)"></div>
   <div class="nav-list" id="navList" role="list"></div>
+  <button class="nav-foot" id="navSet" type="button"></button>
 </aside>
 <div class="nav-bg" id="navBg"></div>
 <nav class="rail" id="rail" data-tour="rail" aria-label="Свёрнутая панель чатов: проекты"></nav>
@@ -1485,6 +1494,7 @@ const haptic = (kind, v) => { try { tg?.HapticFeedback?.[kind]?.(v); } catch (e)
 // ---------- иконки (линейные SVG, цвет — currentColor) ----------
 const P = {
   expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', back: '<path d="M15 18l-6-6 6-6"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>', swap: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
+  fold: '<path d="M7 9l5-5 5 5M7 15l5 5 5-5"/>',
   settings: '<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>',
   menu: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6M12 17.2v.1"/>',
@@ -1547,7 +1557,7 @@ function paintIcons() {
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("compose") + "Новый чат";
   $("navBtn").innerHTML = ic("burger"); $("composeBtn").innerHTML = ic("compose"); $("navSearchBtn").innerHTML = ic("search");
-  $("navMoreBtn").innerHTML = ic("more"); $("navCloseBtn").innerHTML = ic("x"); $("navNew").innerHTML = ic("compose") + "<span>Новый чат</span>";
+  $("navMoreBtn").innerHTML = ic("more"); $("navFoldBtn").innerHTML = ic("fold"); $("navSet").innerHTML = ic("settings") + "<span>Настройки</span>"; $("navCloseBtn").innerHTML = ic("x"); $("navNew").innerHTML = ic("compose") + "<span>Новый чат</span>";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
@@ -1842,7 +1852,9 @@ $("sideBtn").onclick = () => setMini(!sideMini);
 // группами и «Недавние» — по времени последнего сообщения (ваше или агента), не по изменению файла. У строки «⋯» при
 // наведении (компьютер) или долгом нажатии (телефон) — меню у самой строки: «Закрепить», «Переименовать», «Удалить»
 // (плашка «Отменить» 5 с — до неё на сервере ничего не удаляется). Телефон: панель выезжает слева (☰ или свайп).
-const NAV = { open: false, q: "", html: "", gone: new Set(), held: false, exp: new Set((() => { try { return JSON.parse(store("navExp") || "[]"); } catch (e) { return []; } })()) };
+const navSet = (k) => new Set((() => { try { return JSON.parse(store(k) || "[]"); } catch (e) { return []; } })());
+// exp — раскрытые проекты; shut — свёрнутые секции (Закреплённые, Проекты, Чаты), запоминаются (карта навигации 19.11)
+const NAV = { open: false, q: "", html: "", gone: new Set(), held: false, exp: navSet("navExp"), shut: navSet("navShut") };
 let DRAFT = null;                                     // новый чат до первой отправки: { proj, profile }
 const dn = (s) => s.name;
 // Служебное имя окна (gas-pult-1835) человеку не показываем нигде (владелец 19.11): name — название по смыслу (#317),
@@ -1885,17 +1897,23 @@ function renderNav() {
   const ofProj = (p) => ss.filter((x) => x.project === p.id).sort((a, b) => lastMsg(b) - lastMsg(a));
   const pv = (p) => { const l = ofProj(p).filter((x) => !q || hit(nm(x)) || hit(p.name)); return (hit(p.name) || l.length) ? navProj(p, l, !!q || NAV.exp.has(p.id)) : ""; };
   const sec = (t) => `<div class="nav-sec" role="presentation">${t}</div>`;
+  const shut = (k) => !q && NAV.shut.has(k);
+  const fold = (k, t) => `<button type="button" class="nav-sec fold" data-nsec="${k}" aria-expanded="${!shut(k)}">${ic("chevron", "nchev")}<span>${t}</span></button>`;
   const pins = projs.filter((p) => p.pinned).map(pv).join("") + ss.filter((x) => x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a)).map((x) => navRow(x)).join("");
   const groups = projs.filter((p) => !p.pinned).map(pv).join("");
   const recent = ss.filter((x) => !x.pinned && hit(nm(x))).sort((a, b) => lastMsg(b) - lastMsg(a));
   const cmds = q ? palCmds().filter((c) => hit(c.label + " " + (c.kw || ""))) : [];   // палитра: при поиске — и команды
   const canNewP = projOn() && meta?.role !== "viewer" && !q;           // «+» — «Новый проект» (и когда проектов ещё нет)
-  const secP = `<div class="nav-sec has-add" role="presentation"><span>Проекты</span><button type="button" class="nav-add" data-nnewp aria-label="Новый проект" title="Новый проект">${ic("plus")}</button></div>`;
-  const h = (pins ? sec("Закреплённые") + pins : "") + (groups ? (canNewP ? secP : sec("Проекты")) + groups : canNewP ? secP : "")
-    + (recent.length || !cmds.length ? sec("Недавние") : "")
-    + (recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
+  const secP = `<div class="nav-sec has-add" role="presentation">${fold("proj", "Проекты")}<button type="button" class="nav-add" data-nnewp aria-label="Новый проект" title="Новый проект">${ic("plus")}</button></div>`;
+  const h = (pins ? fold("pins", "Закреплённые") + (shut("pins") ? "" : pins) : "")
+    + (groups ? (canNewP ? secP : fold("proj", "Проекты")) + (shut("proj") ? "" : groups) : canNewP ? secP : "")
+    + (recent.length || !cmds.length ? fold("chats", "Чаты") : "") + (shut("chats") ? ""
+    : recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
     + (cmds.length ? sec("Команды") + cmds.map((c) => `<div class="nrow cmd" data-ncmd="${c.id}" role="listitem" tabindex="0">${ic(c.icon, "ncmd")}<span class="nm">${esc(c.label)}</span></div>`).join("") : "");
   if (NAV.html !== h) { NAV.html = h; $("navList").innerHTML = h; }   // опрос раз в 3–10 с — DOM только при изменении
+  const allShut = !NAV.exp.size && [...$("navList").querySelectorAll("[data-nsec]")].every((b) => NAV.shut.has(b.dataset.nsec));
+  $("navFoldBtn").setAttribute("aria-label", allShut ? "Развернуть всё" : "Свернуть всё"); $("navFoldBtn").title = allShut ? "Развернуть всё" : "Свернуть всё";
+  $("navFoldBtn").classList.toggle("shut", allShut); $("navSet").hidden = $("settingsBtn").hidden;
   renderRail();
 }
 // Палитра команд (план UX, пункт 5): Ctrl+K / ⌘K — тот же поиск панели чатов (#149), только в выдаче, кроме чатов и
@@ -1943,6 +1961,13 @@ $("navBtn").onclick = () => (split() ? setMini(false) : navOpen(true));
 $("navCloseBtn").onclick = () => navOpen(false);
 $("navBg").onclick = () => navOpen(false);
 $("navNew").onclick = () => newChat();
+function navSave() { store("navShut", JSON.stringify([...NAV.shut])); store("navExp", JSON.stringify([...NAV.exp])); renderNav(); }
+$("navFoldBtn").onclick = () => {                     // «Свернуть всё / Развернуть всё»: секции и раскрытые проекты
+  const k = ["pins", "proj", "chats"];
+  if ($("navFoldBtn").classList.contains("shut")) NAV.shut.clear(); else { k.forEach((x) => NAV.shut.add(x)); NAV.exp.clear(); }
+  navSave();
+};
+$("navSet").onclick = () => { navOpen(false); $("settingsBtn").click(); };
 $("navHome").onclick = () => { navOpen(false); current = null; show("home"); setHome("sessions"); };
 $("composeBtn").onclick = () => newChat();
 // Проект: название и архив (GAS-24) — только projects.json; удаление папки отсюда не делаем (необратимо).
@@ -2051,6 +2076,8 @@ function undoBar(text, undo, commit, ms = 5000) {
 $("navList").addEventListener("click", (e) => {
   if (NAV.held) { NAV.held = false; return; }          // долгое нажатие уже открыло меню
   if (e.target.closest("[data-nnewp]")) return newProject();
+  const sb = e.target.closest("[data-nsec]");
+  if (sb) { const k = sb.dataset.nsec; NAV.shut.has(k) ? NAV.shut.delete(k) : NAV.shut.add(k); navSave(); return $("navList").querySelector(`[data-nsec=${k}]`)?.focus(); }
   const row = e.target.closest(".nrow"); if (!row) return;
   if (e.target.closest("[data-nmore]")) return popMenu(e.target.closest("[data-nmore]"), navItems(row));
   if (e.target.closest("[data-npin]")) {
@@ -2341,7 +2368,7 @@ function show(v) {
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
   $("title").classList.toggle("sw", v === "session" && !two);
-  $("settingsBtn").hidden = gate;
+  $("settingsBtn").hidden = $("navSet").hidden = gate;
   $("title").classList.toggle("brand-text", v === "home" || gate);   // «Пульт» — фирменным градиентом
   noDup();
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
