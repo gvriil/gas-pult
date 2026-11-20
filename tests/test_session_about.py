@@ -32,7 +32,7 @@ def test_endpoint_speaks_map_text_only(server, monkeypatch):  # noqa: F811
 
 
 def test_menu_item_and_part():
-    page = (WEB / "index.html").read_text(encoding="utf-8")
-    assert 'label: "Что здесь умеет"' in page and 'part("about").then((m) => m.aboutSession(id))' in page
+    ease = (WEB / "js/ease.js").read_text(encoding="utf-8")         # 20.11: из «⋯» — в «Удобства»
+    assert 'label: "Что здесь умеет"' in ease and "aboutSession(" in ease
     js = (WEB / "js/about.js").read_text(encoding="utf-8")
     assert "/api/tts/about?screen=" in js and "startTour(tourKind(), true)" in js
