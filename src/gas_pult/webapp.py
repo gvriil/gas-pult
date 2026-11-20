@@ -327,9 +327,11 @@ def effort_flag(level: str | None) -> str:
 
 
 def effort_ok(profile: str | None, model: str | None = "") -> bool:
-    """Усилие — только у Claude Code со своей подпиской или ключом Anthropic и не у Haiku (у Haiku усилий нет);
-    другим программам (Pi, OpenCode) и поставщикам с чужим ключом флаг не передаём."""
-    return (profile or "claude") == "claude" and "haiku" not in str(model or "").lower()
+    """Усилие — только у Claude Code со своей подпиской или ключом Anthropic, в том числе у Haiku (20.11: проверено —
+    ``claude -p --model haiku --effort low`` отвечает без ошибки, строка статуса Haiku показывает уровень);
+    другим программам (Pi, OpenCode) и поставщикам с чужим ключом флаг не передаём. ``model`` — для совместимости."""
+    del model
+    return (profile or "claude") == "claude"
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
 CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
 MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»

@@ -9,7 +9,12 @@
 const EFFORT = [["auto", "Авто", "Claude сам решает"], ["low", "Низкие", "быстро и дёшево"], ["medium", "Средние", "обычные задачи"],
   ["high", "Высокие", "сложные задачи"], ["xhigh", "Очень высокие", "архитектура, сложный разбор"], ["max", "Максимальные", "дольше и дороже всего"]];
 const SUB = { opus: "самая сильная", sonnet: "баланс скорости и качества", haiku: "самая быстрая" };
-const hasEffort = (profile, alias) => (profile || "claude") === "claude" && !/haiku/i.test(alias || "");
+// Усилие — у Claude Code с подпиской или ключом Anthropic, и у Haiku тоже (владелец 20.11; проверено: claude -p
+// --model haiku --effort low отвечает без ошибки, строка статуса Haiku показывает уровень). Другим поставщикам — нет.
+const hasEffort = (profile) => (profile || "claude") === "claude";
+// Модель чата, если её не выбирали вручную (model_own пуст): «Haiku 5.5» из строки статуса → алиас окна выбора
+const aliasOf = (name, list) => { const n = String(name || "").toLowerCase(); if (!n) return "";
+  return (list.find((m) => n === String(m.name).toLowerCase()) || list.find((m) => n.includes(m.alias)))?.alias || ""; };
 
 // [{alias, name, sub}] — модели поставщика чата
 function models(profile) {
@@ -23,7 +28,7 @@ function models(profile) {
 export function open(s) {
   const profile = s ? s.profile || "claude" : DRAFT?.profile || projOf(DRAFT?.proj)?.profile || "claude";
   const list = models(profile);
-  let sel = (s ? s.model_own : DRAFT?.model) || list[0]?.alias || "";
+  let sel = (s ? s.model_own || aliasOf(s.model, list) : DRAFT?.model) || list[0]?.alias || "";   // модель чата, а не умолчание
   const cur = { model: sel, effort: (s ? s.effort : DRAFT?.effort) || "" };
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.model");
   bg.innerHTML = `<div class="sheet mpick" role="dialog" aria-label="Модель и усилие"><h3>Модель и усилие${s ? " · только этот чат" : ""}</h3>

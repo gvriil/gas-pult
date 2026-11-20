@@ -36,7 +36,7 @@ def test_e2e_effort_step_after_model():
             pg.evaluate("ACTIONS.models()")
             pg.wait_for_selector(".mpick #mpModels [data-m='sonnet']", timeout=5000)
             pg.locator("#mpModels [data-m='haiku']").click()
-            assert pg.locator("#mpEff .mp-none").count() == 1                   # у Haiku усилий нет
+            assert pg.locator("#mpEff [data-e='low']").count() == 1           # 20.11: у Haiku усилия есть
             pg.locator("#mpModels [data-m='sonnet']").click()
             assert pg.evaluate("__calls.length") == 0                 # смена модели — по выбору усилия
             pg.locator("#mpEff [data-e='max']").click()

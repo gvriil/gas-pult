@@ -249,13 +249,13 @@ def test_effort_flag():
 
 @pytest.mark.skipif(not shutil.which("tmux"), reason="нужен tmux")
 def test_effort_review_fixes(panel, monkeypatch):
-    """Слепая проверка #323: Haiku и чужой поставщик — без --effort; закрытое окно забывает модель и усилие."""
+    """Слепая проверка #323: чужой поставщик — без --effort (Haiku — с ним, 20.11); закрытое окно забывает модель."""
     panel.cfg.models = ["opus", "haiku"]
     w = {"id": "@1", "name": "a", "path": "/p/shop", "profile": "claude", "sid": A}
     panel.model(w, "opus", effort="high")
     wid = f"@{10 + len(panel.t['opened'])}"
-    panel.model({**w, "id": wid}, "haiku")                                  # на Haiku прежнее усилие не переносится
-    assert "--effort" not in panel.t["opened"][-1][0]
+    panel.model({**w, "id": wid}, "haiku")                                  # 20.11: у Haiku усилие есть — переносится
+    assert "--effort high" in panel.t["opened"][-1][0]
     panel._open_in("/p/shop", profile="deepseek", effort="max")
     assert "--effort" not in panel.t["opened"][-1][0]
     st = panel.pult.state()
@@ -267,7 +267,7 @@ def test_effort_review_fixes(panel, monkeypatch):
 
 def test_effort_ok():
     assert webapp.effort_ok("claude", "opus") and webapp.effort_ok("", "")
-    assert not webapp.effort_ok("claude", "claude-haiku-5-5") and not webapp.effort_ok("pi", "")
+    assert webapp.effort_ok("claude", "claude-haiku-5-5") and not webapp.effort_ok("pi", "")   # 20.11: и у Haiku
 
 
 def test_effort_auto_remembered_for_display(panel, monkeypatch):
