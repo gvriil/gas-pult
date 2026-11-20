@@ -7,6 +7,7 @@ const day = (ts) => new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "nume
 
 export async function open() {
   let d; try { d = await api("/api/q/list"); } catch (e) { return toast(e.message, 4000); }
+  d = { links: d?.links || [], forms: d?.forms || [] };              // пустой или старый ответ — пустые списки
   helpSheet("sheet.forms");
   sheet("Анкеты клиентов", [
     { label: "Новая ссылка на анкету", icon: "plus", sub: "клиент заполнит по ссылке, без входа", run: () => newLink(d.forms) },
