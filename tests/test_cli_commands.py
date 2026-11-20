@@ -17,6 +17,15 @@ from gas_pult import cli, config, rogroup, setup
 from gas_pult.config import Config
 
 
+@pytest.fixture(autouse=True)
+def no_real_processes(monkeypatch):
+    """Страховка: настоящий systemctl, launchctl, loginctl или tmux из теста не запустится — подмена обязательна."""
+    def refuse(cmd, *a, **k):
+        pytest.fail(f"тест запустил настоящий процесс: {cmd}")
+    monkeypatch.setattr(cli.subprocess, "run", refuse)
+    FakeApi.calls.clear()
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -334,5 +343,5 @@ def test_main_parses_every_command_help(home, capsys):
                 "pi", "inbox", "last"):
         with pytest.raises(SystemExit) as e:
             cli.main([cmd, "--help"])
-        assert e.value.code == 0, cmd
-    assert "gas-pult" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert e.value.code == 0 and "usage:" in out and cmd in out, cmd
