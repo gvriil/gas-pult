@@ -1795,6 +1795,10 @@ class Panel:
             rec = {**rec, "persona": personas.DEFAULT, "onboarded": True, "added": [],
                    "hidden": sorted(self.SPACE_HIDE)}
             access = "guest"
+        elif not self.is_owner(uid) and "cap.dev_terminal" not in (rec.get("added") or []):
+            # терминал — только тем, кому нужен (владелец и Алексей 20.11): у участника без явного «добавить» — нет;
+            # включить — «Настройки» → «Возможности панели» (владелец задаёт потолок в «Команде»)
+            rec = {**rec, "hidden": sorted({*(rec.get("hidden") or []), "cap.dev_terminal"})}
         out = personas.view(rec, access, self.team, uid, self.people.prefs(uid)["lang"])
         own = self.is_owner(uid)                       # fixed — что владелец у себя не прячет (иначе ушёл бы в чат)
         return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else [],
