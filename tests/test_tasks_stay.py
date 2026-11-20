@@ -15,5 +15,6 @@ def test_tasks_return_to_same_place_with_undo():
 
 def test_hover_and_focus_visible_in_core():
     page = (WEB / "index.html").read_text(encoding="utf-8")
-    assert ".sheet button:focus-visible, .scn-opt:focus-visible, #navList .nrow:focus-visible" in page
+    assert ".sheet button:focus-visible, .scn-opt:focus-visible, .toast-undo:focus-visible" in page
+    assert "#navList .nrow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--border-focus); }" in page   # 20.11
     assert "outline: 2px solid var(--border-focus)" in page and "min-height: 44px; }" in page
