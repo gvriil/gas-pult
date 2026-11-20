@@ -72,7 +72,7 @@ def run(base: str, shots: str = ""):
             assert pop["x"] >= 60 and abs(pop["y"] - btn["y"]) < 40, f"{tag}: меню не у значка ({pop}, {btn})"
             names = pg.evaluate(f"sessions.filter((s) => s.project === {pid!r}).map((s) => s.title || s.name)")
             menu = pg.inner_text(".pop")
-            assert all(n in menu for n in names) and "Начать чат в проекте" in menu, (tag, names, menu)
+            assert all(n in menu for n in names) and "Новый чат в проекте" in menu, (tag, names, menu)
             if shots:
                 pg.screenshot(path=f"{shots}/rail-pop-1366-{theme}.png")
             pg.locator(".pop button").first.click()

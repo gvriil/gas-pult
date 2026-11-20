@@ -19,14 +19,14 @@
     --status-idle: #747775; --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
     --status-success: #146C2E; --status-danger: #B3261E; --status-stopped: #D93025;
     --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
-    --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
+    --row-hv: 5%; --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
     --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
     /* Значки проектов в узкой полосе: фон и буквы (контраст ≥ 4,5:1 в обеих темах) */
     --pj1-bg: #D3E3FD; --pj1-fg: #0842A0; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #E9DDFF; --pj3-fg: #4A2C8A;
     --pj4-bg: #FFDDB8; --pj4-fg: #7A4100; --pj5-bg: #FFD8E4; --pj5-fg: #8C1D48; --pj6-bg: #C2E8E7; --pj6-fg: #00504F;
   }
-  :root[data-theme="dark"] {
+  :root[data-theme="dark"] { --row-hv: 7%;
     --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
     --tq-red: #F28B82; --tq-orange: #FCAD70; --tq-yellow: #FDD663; --tq-green: #81C995;   /* к фону ≥6,9:1 */
     --border-subtle: #3C4043; --border-focus: #A8C7FA;
@@ -675,7 +675,7 @@
   .sheet button .sdot { margin: 0 3px; }
   /* Видно, где курсор (владелец 19.11): наведение и фокус с клавиатуры — подложка и кольцо --border-focus */
   @media (hover: hover) { .sheet button[data-i]:not(.info):hover, .scn-opt:hover { background: var(--bg-subtle); } }
-  .sheet button:focus-visible, .scn-opt:focus-visible, #navList .nrow:focus-visible, .toast-undo:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+  .sheet button:focus-visible, .scn-opt:focus-visible, .toast-undo:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
   .sheet button.just { background: color-mix(in srgb, var(--accent-primary) 14%, transparent); }
   .toast-undo { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; padding: 8px; min-height: 44px; }
   .sheet .row2 { display: flex; gap: 8px; padding: 12px 16px 4px; }
@@ -1024,8 +1024,10 @@
   .np-models button[aria-pressed="true"] { border-color: var(--accent-primary); background: var(--accent-soft); color: var(--accent-primary); font-weight: 600; }
   .nrow { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 4px 4px 4px 10px; border-radius: var(--radius-sm);
           color: var(--text-primary); font-size: calc(14px * var(--fz, 1)); cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  .nrow:hover, .nrow:focus-visible, .nrow.menu-on { background: color-mix(in srgb, var(--text-primary) 7%, transparent); outline: none; }
-  .nrow.on { background: var(--accent-soft); color: var(--accent-primary); }
+  .nrow { transition: background-color .12s ease; }
+  .nrow:hover, .nrow.menu-on { background: color-mix(in srgb, var(--text-primary) var(--row-hv), transparent); }
+  .nrow.on { background: color-mix(in srgb, var(--text-primary) calc(var(--row-hv) + 4%), transparent); } .nrow.on .nm { font-weight: 600; }
+  #navList .nrow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--border-focus); }
   .nrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nrow.new .nm { font-weight: 600; }
   .nrow .ntx { flex: 1; min-width: 0; display: flex; flex-direction: column; } .ntx .nm { flex: none; }
@@ -1042,6 +1044,7 @@
   .nrow .nb .i { width: 16px; height: 16px; }
   .nrow .nb:hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); color: var(--text-primary); }
   @media (hover: hover) { .nrow:hover .nb, .nrow:focus-within .nb { display: grid; } .nrow:hover .tm, .nrow:focus-within .tm { display: none; } }
+  @media (hover: none) { .nrow .nadd { display: grid; opacity: .7; } }
   .nrow.pinned .npin { display: grid; color: var(--accent-primary); } .nrow.menu-on .nb { display: grid; } .nrow.menu-on .tm { display: none; }
   .nav-empty { margin: 6px 10px; color: var(--text-muted); font-size: calc(13px * var(--fz, 1)); }
   /* Меню строки — у самой строки (не шторкой снизу) */
@@ -1825,7 +1828,7 @@ function railProject(btn) {                           // чаты проекта
   popMenu(btn, [
     ...list.map((x) => ({ label: (x.title || x.name) + (x.status === "dialog" ? " · ждёт ответа" : isNew(x) ? " · новое" : ""), icon: "chat", on: x.id === current, run: () => openSession(x.id) })),
     ...(list.length ? [{ sep: true }] : []),
-    ...(meta?.role !== "viewer" ? [{ label: "Начать чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
+    ...(meta?.role !== "viewer" ? [{ label: "Новый чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
     { label: p.chats ? `Все чаты проекта · ${p.chats}` : "Открыть проект", icon: "folder", run: () => navProject(p.id) },
   ], { right: true });
 }
@@ -1880,7 +1883,8 @@ function navRow(s, sub) {
 }
 function navProj(p, list, open) {
   const n = p.waiting ? p.waiting + " ждут" : String(list.length || p.chats || "");
-  return `<div class="nrow proj${p.pinned ? " pinned" : ""}" data-np="${esc(p.id)}" role="listitem" tabindex="0" aria-expanded="${open}" title="${esc(p.name)}">${ic("chevron", "nchev")}<span class="nm">${esc(p.name)}</span><span class="tm">${esc(n)}</span>${navBtns(p, canPin())}</div>`
+  const add = meta?.role !== "viewer" ? `<button class="nb nadd" type="button" data-nnew aria-label="Новый чат в проекте" title="Новый чат в проекте">${ic("plus")}</button>` : "";
+  return `<div class="nrow proj${p.pinned ? " pinned" : ""}" data-np="${esc(p.id)}" role="listitem" tabindex="0" aria-expanded="${open}" title="${esc(p.name)}">${ic("chevron", "nchev")}<span class="nm">${esc(p.name)}</span><span class="tm">${esc(n)}</span>${add}${navBtns(p, canPin())}</div>`
     + (open ? list.map((s) => navRow(s, true)).join("") + `<div class="nrow sub all" data-nall="${esc(p.id)}" role="listitem" tabindex="0"><span class="nm">Все чаты проекта${p.chats ? " · " + p.chats : ""}</span></div>` : "");
 }
 function renderNav() {
@@ -2032,7 +2036,7 @@ function navItems(row) {
   if (row.dataset.np) {
     const p = projOf(row.dataset.np); if (!p) return [];
     return [...(canPin() ? [{ label: p.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!p.pinned, run: () => pinSet({ project: p.id }, !p.pinned, p.name) }] : []),
-      ...(meta?.role !== "viewer" ? [{ label: "Начать чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
+      ...(meta?.role !== "viewer" ? [{ label: "Новый чат в проекте", icon: "compose", run: () => newChat(p.id) }] : []),
       { label: "Открыть проект", icon: "folder", run: () => navProject(p.id) },
       ...(meta?.role === "owner" && !FOCUS ? [{ label: "Переименовать", icon: "edit", sub: "название в списке; папка на диске не меняется", run: () => projRename(p) },
         { label: "Убрать в архив", icon: "file", sub: "скрыть из списка; папка и чаты не меняются", run: () => projUpdate(p.id, { archived: true }, "«" + p.name + "» — в архиве") }] : []),
@@ -2079,6 +2083,7 @@ $("navList").addEventListener("click", (e) => {
   if (sb) { const k = sb.dataset.nsec; NAV.shut.has(k) ? NAV.shut.delete(k) : NAV.shut.add(k); navSave(); return $("navList").querySelector(`[data-nsec=${k}]`)?.focus(); }
   const row = e.target.closest(".nrow"); if (!row) return;
   if (e.target.closest("[data-nmore]")) return popMenu(e.target.closest("[data-nmore]"), navItems(row));
+  if (e.target.closest("[data-nnew]")) { navOpen(false); return newChat(row.dataset.np); }   // «+» у проекта — новый чат в нём
   if (e.target.closest("[data-npin]")) {
     const p = row.dataset.np && projOf(row.dataset.np), s = sessions.find((x) => x.id === row.dataset.nw);
     return p ? pinSet({ project: p.id }, !p.pinned, p.name) : s && pinSet({ w: s.id }, !s.pinned, s.title || s.name);
