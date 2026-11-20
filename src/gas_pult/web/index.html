@@ -1880,9 +1880,9 @@ const navBtns = (x, pinOk) => (pinOk ? `<button class="nb npin" type="button" da
 // строка под названием (#189): модель · усилия · контекст; точка справа — новый ответ, который вы не открывали
 const navMeta = (s) => [s.model, s.effort && "усилия " + (EFFORT_RU[s.effort] || s.effort), ctxUsed(s) == null ? "" : "контекст " + ctxUsed(s) + "%"].filter(Boolean).join(" · ");
 function navRow(s, sub) {
-  const st = ST[s.status] || ST.idle, name = dn(s), nw = isNew(s), mt = navMeta(s), tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label + (nw ? " · новый ответ" : "");
+  const st = ST[s.status] || ST.idle, name = dn(s), nw = isNew(s), mt = navMeta(s), tip = name + (s.title && s.title !== name ? " — «" + s.title + "»" : "") + " — " + st.label + (nw ? " · новый ответ" : "") + (mt ? " · " + mt : "");   // модель, контекст — в подсказке
   return `<div class="nrow${s.id === current && view === "session" ? " on" : ""}${s.pinned ? " pinned" : ""}${sub ? " sub" : ""}${nw ? " new" : ""}" data-nw="${esc(s.id)}" role="listitem" tabindex="0" title="${esc(tip)}">`
-    + `<span class="sdot ${st.cls}"></span><span class="ntx"><span class="nm">${esc(name)}</span>${mt ? `<span class="nmeta">${esc(mt)}</span>` : ""}</span>${nw ? '<span class="nnew"></span>' : ""}<span class="tm">${esc(navTime(lastMsg(s)))}</span>${navBtns(s, canPin(s))}</div>`;
+    + `<span class="sdot ${st.cls}"></span><span class="ntx"><span class="nm">${esc(name)}</span></span>${nw ? '<span class="nnew"></span>' : ""}<span class="tm">${esc(navTime(lastMsg(s)))}</span>${navBtns(s, canPin(s))}</div>`;
 }
 function navProj(p, list, open) {
   const n = p.waiting ? p.waiting + " ждут" : String(list.length || p.chats || "");
@@ -2056,6 +2056,7 @@ function navItems(row) {
     ...(meta?.role === "owner" && s.schedule && !s.space ? [{ label: "Удалить", icon: "trash", danger: true, sub: "расписание выключится, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(s.space && meta?.role !== "viewer" ? [{ label: T("ss.del.item"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) }] : []),
     ...(meta?.role === "owner" && s.status === "stopped" ? [stoppedItem()] : []),
+    { label: "Показать подробности", icon: "eye", run: () => chatDetails(s.id) },
     { sep: true }, { label: "Показать все действия…", icon: "more", run: () => sessionSheet(s.id) }];
 }
 function navProject(id) {                             // «Все чаты проекта» — страница проекта на главной
@@ -3042,12 +3043,29 @@ function attnBadge() {
 // Поставщик модели сессии (models.py): у обычных сессий Claude метки нет — не шумим.
 const profileOf = (id) => meta?.profiles?.find((p) => p.id === id);
 const provName = (s) => s.profile && s.profile !== "claude" ? (profileOf(s.profile)?.short || s.profile) : "";
-const provChip = (s) => provName(s) ? `<span class="chip prov">${esc(provName(s))}</span>` : "";
-const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
-function ctxMeter(s) {
-  const u = ctxUsed(s);
-  return u == null ? "" : `<span class="ctx ${u > 70 ? "warn" : ""}" title="${u > 70 ? "Контекст почти заполнен — пора /compact" : "Заполнение контекста"}">Контекст: ${u}%<span class="bar"><i style="width:${u}%"></i></span></span>`;
+// Владелец 20.11: «многие вещи не должны быть на виду». Видимых состояний два — «работает» и «ждёт ответа»; модель,
+// папка, ветка, контекст, расход, поставщик — в «⋯ → Подробнее» (chatDetails). Контекст — только когда почти полон.
+const loud = (s) => s?.status === "busy" || s?.status === "dialog";
+const ctxWarn = (s) => (ctxUsed(s) ?? 0) > 85 ? `<span class="ctx warn" title="Разговор почти заполнил память — Claude сожмёт его сам">Контекст: ${ctxUsed(s)}%</span>` : "";
+function chatDetails(id) {
+  const s = sessions.find((x) => x.id === id); if (!s) return;
+  const RAW = { idle: "свободен", busy: "работает", dialog: "ждёт ответа", sleep: "спит", stopped: "спит — проснётся от сообщения" };
+  const row = (label, sub) => sub ? [{ info: true, label, sub: String(sub) }] : [];
+  helpSheet("sheet.session");
+  sheet("Подробнее: " + dn(s), [
+    ...row("Состояние", RAW[s.status] || s.status), ...row("Модель", [s.model, s.effort && "усилия " + (EFFORT_RU[s.effort] || s.effort)].filter(Boolean).join(" · ")),
+    ...row("Поставщик", provName(s)), ...row("Контекст", ctxUsed(s) == null ? "" : ctxUsed(s) + " %"),
+    ...row("Расход", s.cost?.total ? (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""),
+    ...row("Папка", s.path), ...row("Ветка", s.branch && s.branch !== "HEAD" ? s.branch : ""),
+    ...(s.repos?.length && canRepos(s) ? [{ label: "Репозитории", icon: "folder", sub: s.repos.map((r) => r.name).join(", ") + " — подключить или отключить", run: () => repoSheet(id) }]
+      : row("Репозитории", s.repos?.map((r) => r.name).join(", "))), ...row("В чате бота", s.active ? "активная — ответы бота от этого чата" : ""),
+    ...(s.harness && s.harness !== "claude" ? row("Токены и расход", usageLine(s.usage).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
+    ...(meta?.role === "owner" && (s.harness || "claude") === "claude" && limitsInfo?.limits ? row("Лимиты подписки", limitsLine(limitsInfo).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
+    { label: "Что здесь умеет", icon: "help", sub: "коротко, тур по экрану или прослушать", run: () => part("about").then((m) => m.aboutSession(id)) },
+    ...(meta?.role !== "viewer" && !FOCUS && !s.space && !document.body.classList.contains("nocap-dev_terminal") ? [{ label: "Экран терминала", icon: "term", run: () => { openSession(id); setTab("screen"); } }] : []),
+  ]);
 }
+const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
 // Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
 // лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
 const EFFORT_RU = { auto: "авто", low: "низкие", medium: "средние", high: "высокие", xhigh: "очень высокие", max: "максимум" };
@@ -3068,12 +3086,11 @@ function usageLine(u) {                                // как у Pi: ↑ вв
     + (u.at ? `<span title="Последний ответ агента">ход ${esc(agoText(u.at))}</span>` : "");
 }
 function sinfo(s) {
-  const eff = s?.effort ? `<span title="${s.effort_guess ? "Уровень усилий из настроек — Claude Code его не сообщил" : "Уровень усилий"}">усилия: <b>${esc(EFFORT_RU[s.effort] || s.effort)}</b>${s.effort_guess ? "?" : ""}</span>` : "";
   // окно другого агента (Pi): модель «поставщик/модель», контекст, ↑↓ токены и $ за сессию — из его журнала; лимиты
   // подписки Claude (5 ч, неделя) к нему не относятся — не показываем
   const other = s?.harness && s.harness !== "claude";
-  const html = s ? [s.model ? `<b>${esc(s.model)}</b>` : "", other ? "" : eff, ctxMeter(s),
-    other ? usageLine(s.usage) : meta?.role === "owner" ? limitsLine(limitsInfo) : ""].filter(Boolean).join("") : "";
+  const lim = !other && meta?.role === "owner" && Object.values(limitsInfo?.limits || {}).some((x) => x?.used >= 80);   // только когда близко к пределу
+  const html = s ? [ctxWarn(s), lim ? limitsLine(limitsInfo) : ""].filter(Boolean).join("") : "";   // остальное — «Подробнее»
   setHidden($("sinfo"), !html); setHTML($("sinfo"), html);
 }
 // ---------- «изменена N назад» (ago.py — те же правила и словари ago.*; тест сверяет обе реализации) ----------
@@ -3203,13 +3220,13 @@ function card(s, chat) {                              // chat — в проек�
   const st = ST[s.status], old = isStale(s), sub = chat && s.title && s.title !== s.name ? `<div class="meta ctitle">«${esc(s.title)}»</div>` : "";
   return `<div class="card ${st.cls}${s.active ? " active" : ""}${old ? " stale" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
-      <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div>${sub}<div class="meta">${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${s.model ? " · " + esc(s.model) : ""}</div></div>
+      <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div>${sub}</div>
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с сессией">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     ${s.twin ? `<div class="preview twin">${ic("warn", "s16")}Этот разговор открыт ещё в «${esc(s.twin)}» — ответы смешиваются. Закройте одно окно.</div>` : ""}
-    <div class="cfoot"><span class="chip ${st.cls}">${st.label}</span>${provChip(s)}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${s.active ? '<span class="chip accent">активная в чате</span>' : ""}${spaceChips(s)}${schedChip(s)}${s.retry_at ? `<span class="chip" title="Упёрлась в лимит подписки — продолжит сама один раз">${ic("refresh", "s16")}продолжит в ${new Date(s.retry_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>` : ""}${old ? `<button class="chip stale" data-more-s="${esc(s.id)}" title="${esc(T("ago.stale.tip"))}">${esc(T("ago.stale"))}</button>` : ""}${costChip(s)}
-      ${ctxMeter(s)}</div>
-    ${costBar(s)}${reposLine(s)}
+    <div class="cfoot">${loud(s) ? `<span class="chip ${st.cls}">${st.label}</span>` : ""}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${spaceChips(s)}${schedChip(s)}${s.retry_at ? `<span class="chip" title="Упёрлась в лимит подписки — продолжит сама один раз">${ic("refresh", "s16")}продолжит в ${new Date(s.retry_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>` : ""}${costNear(s) ? costChip(s) : ""}
+      ${ctxWarn(s)}</div>
+    ${costBar(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
   </div>`;
 }
@@ -3613,6 +3630,8 @@ const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round
 const costSrc = (c) => ({ estimate: "оценка: токены × цены поставщика (Z.ai, DeepSeek)", provider: "по счёту OpenRouter", anthropic: "по ценам API Anthropic" })[c?.cost_source] || "по ценам API";
 const estTag = (c) => c?.cost_source === "estimate" ? " · оценка" : "";
 const tokLine = (c) => `ввод ${tok(c.tokens.in)} · вывод ${tok(c.tokens.out)} · кэш: запись ${tok(c.tokens.cw)}, чтение ${tok(c.tokens.cr)}`;
+// расход на карточке — только когда близко к лимиту сессии (≥ 80 %); иначе — «Подробнее» (20.11)
+const costNear = (s) => !!(s.cost?.limit && s.cost.usd != null && s.cost.usd >= s.cost.limit * 0.8);
 function costChip(s) {
   const c = s.cost;
   if (!c || !c.total) return "";
@@ -3767,12 +3786,12 @@ function paintSession(s) {
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
   const ag = agoSpan(s, true);
-  setSub(`<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>${provChip(s)}${spaceChips(s)}<span>${s.model ? esc(s.model) + " · " : ""}${esc(folder(s.path))}${s.branch && s.branch !== "HEAD" ? " · " + esc(s.branch) : ""}${ctxUsed(s) == null ? "" : " · контекст " + ctxUsed(s) + "%"}${s.cost?.total ? " · " + (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd) + (s.cost.cost_source === "estimate" ? " (оценка)" : "")) : ""}</span>${split() ? ag : ""}`);
+  setSub(`${loud(s) || WAKING.has(s.id) ? `<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>` : ""}${spaceChips(s)}${split() ? ag : ""}`);   // техническое — в «Подробнее»
   const cb = costBar(s); setHidden($("costPause"), !cb); setHTML($("costPause"), cb);     // пауза по расходу — над полем ввода
-  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${provName(s) ? esc(provName(s)) + " · " : ""}${split() || !ag ? st.label : ""}</span>${split() ? "" : ag}`);
+  setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${loud(s) && (split() || !ag) ? st.label : ""}</span>${split() ? "" : ag}`);
   const ph = hint || "Сообщение для " + dn(s) + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
   if ($("input").placeholder !== ph) $("input").placeholder = ph;
-  sinfo(s);                                         // модель · усилия · контекст · лимиты — под полем ввода
+  sinfo(s);                                         // под полем ввода — только предупреждения (контекст, лимиты)
   paintWorking(s);
   paintGaps(s);                                     // что недоступно у поставщика сессии (задача 38)
 }
@@ -4192,8 +4211,7 @@ function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   helpSheet("sheet.session");
   sheet(s.name, [
-    { label: "Открыть", icon: "chat", run: () => openSession(id) },
-    { label: "Что здесь умеет", icon: "help", sub: "коротко, тур по экрану или прослушать", run: () => part("about").then((m) => m.aboutSession(id)) },
+    { label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) },
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
@@ -6670,11 +6688,6 @@ async function focusList() {
 // Клон (или pull, если папка уже есть) на сервере и /add-dir в живую сессию; при перезапуске — --add-dir.
 // «Отключить» убирает только из сессии: папка с репозиторием остаётся.
 const canRepos = (s) => !!s && meta?.role !== "viewer" && (meta?.role === "owner" || !!s.space);
-function reposLine(s) {
-  if (!s.repos?.length) return "";
-  const off = canRepos(s);
-  return `<div class="repos">${ic("folder")}${s.repos.map((r) => `<span class="rp" title="${esc(r.path)}">${esc(r.name)}${off ? `<button type="button" data-roff-s="${esc(s.id)}" data-roff="${esc(r.path)}" aria-label="Отключить ${esc(r.name)}">Отключить</button>` : ""}</span>`).join("")}</div>`;
-}
 async function repoOff(id, path, btn) {
   const go = async () => {
     try { await api("/api/repos/remove", { w: id, path }); toast("Отключено. Папка осталась на сервере; Claude перестанет её видеть после перезапуска сессии", 5000); await refresh(); }

@@ -14,7 +14,8 @@ WEB = ROOT / "src" / "gas_pult" / "web"
 
 def test_nav_row_has_meta_and_unread_dot():
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    assert "const navMeta = (s) =>" in html and '<span class="nmeta">' in html and '<span class="nnew"></span>' in html
+    assert "const navMeta = (s) =>" in html and '<span class="nnew"></span>' in html
+    assert '(mt ? " · " + mt : "")' in html and '<span class="nmeta">' not in html    # 20.11: модель — в подсказке
     assert ".nrow .nnew {" in html and "background: var(--accent-primary)" in html
 
 
