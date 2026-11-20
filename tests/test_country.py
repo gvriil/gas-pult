@@ -118,7 +118,7 @@ def test_mismatch_gives_intersection_and_notice(tmp_path):
     assert "79000000000" not in stored and "900 000" not in stored and "phone_hash" in stored  # номер — только хешем
     p.add(2, "viewer", "Иван")
     assert p.country(2)["chosen"] == "NL"                            # смена роли страну не сбрасывает
-    assert country.check_set({}, "NL") == set()                      # не выбрал — ничего
+    assert country.check_set({}, "NL") == {"NL"}                     # 20.11: не спрашиваем — страна сервера
     assert country.check_set({"chosen": "CA", "phone_cc": "US/CA"}, "") == {"CA", "US"}   # строгая трактовка
     assert not country.is_mismatch({"chosen": "CA", "phone_cc": "US/CA", "ip_cc": "CA"})
 
@@ -278,9 +278,9 @@ def test_panel_country_gate_choice_and_ip(server):
     panel, base, told = server
     member = panel.auth.issue(2)
     code, d = call(base, "/api/people/role", {"id": 2, "role": "member"}, member, "192.0.2.9")
-    assert code == 403 and d["code"] == "country"                    # без страны — только выбор
+    assert d.get("code") != "country"                                # 20.11: шага «страна» нет
     code, meta = call(base, "/api/meta", None, member, "192.0.2.9")
-    assert code == 200 and meta["country"]["need"] and meta["country"]["ip_cc"] == "NL"   # IP сверили сразу
+    assert code == 200 and not meta["country"]["need"] and meta["country"]["ip_cc"] == "NL"   # IP сверили сразу
     code, c = call(base, "/api/country", None, member)
     assert code == 200 and c["geoip"] and c["attribution"] == "IP Geolocation by DB-IP"
     assert {"code": "NL", "name": "Нидерланды"} in c["options"]

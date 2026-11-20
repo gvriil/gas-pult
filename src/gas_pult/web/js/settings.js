@@ -20,7 +20,6 @@ function groups() {
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: () => part("email").then(() => emailSheet()) },
     { label: "Уведомления", icon: "bell", sub: "на телефон и компьютер — даже когда панель закрыта; проверить, устройства", run: () => part("push").then((m) => m.open()) },
-    { label: "Страна", icon: "globe", sub: meta?.country?.chosen ? meta.country.chosen + (meta.country.mismatch ? " · признаки расходятся" : "") + " — поменять или подтвердить номер" : "не выбрана", run: () => showCountry(true) },
     ] },
     { title: "ИИ, интеграции и бюджет", icon: "chip", items: [
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),
