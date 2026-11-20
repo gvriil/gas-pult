@@ -122,7 +122,8 @@ def run(shots: str = ""):
             pa.click("#focusExp [data-fproj]")
             pa.wait_for_selector(".sheet h3:has-text('Проект')")
             sheet = pa.inner_text(".sheet")
-            assert "shop" in sheet and "other" not in sheet, sheet
+            # 19.11: служебные имена окон («shop-1») не показываются — чаты по названию, без него «Новый чат»
+            assert "«SHOP»" in sheet.upper() and "other" not in sheet.lower() and "Новый чат" in sheet, sheet
             if shots:
                 pa.screenshot(path=f"{shots}/focus-proj-sheet-390.png")
             pa.locator(".sheet button", has_text="Новый чат в проекте").click()

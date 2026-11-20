@@ -331,7 +331,7 @@ def run(shots: str = ""):
             # ---------- (д) «Отозвать» в настройках ----------
             po.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove()); focusList()")
             po.wait_for_selector(".sheet >> text=Действующие ссылки")
-            sheet_click(po, "shop")
+            po.locator(".sheet button[data-i]:not(.info)").first.click()   # 19.11: в списке — название чата, не «shop»
             po.wait_for_selector("text=Ссылка отозвана", timeout=5000)
             pa.wait_for_selector("#focusEnd", timeout=10000)
             assert "отозвал" in pa.inner_text("#focusEnd")

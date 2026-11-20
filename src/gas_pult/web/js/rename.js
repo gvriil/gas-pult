@@ -11,7 +11,7 @@ export function rename(s) {
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Название чата</h3>
     <div class="field" style="margin:4px 16px 0"><input id="renName" maxlength="60" autocomplete="off" value="${esc(s.title || "")}" placeholder="О чём этот чат"></div>
     <p class="note" id="renErr" style="margin:6px 16px 0">${s.title_own ? "Ваше название — автоматика его не меняет." : "Сейчас — автоматическое, по разговору."}</p>
-    ${winOk ? `<p class="note" style="margin:6px 16px 0">Имя окна: <b>${esc(s.name)}</b> · <a href="#" id="renWin">изменить</a></p>` : ""}
+    ${winOk ? `<p class="note" style="margin:6px 16px 0">Имя окна: <b>${esc(s.wname || s.name)}</b> · <a href="#" id="renWin">изменить</a></p>` : ""}
     <div class="row2">${s.title_own ? '<button class="btn ghost" id="renReset">Сбросить</button>' : '<button class="btn ghost" data-close>Отмена</button>'}<button class="btn" id="renOk">Сохранить</button></div></div>`;
   document.body.append(bg);
   const inp = $("renName"); inp.focus(); inp.select();
@@ -32,7 +32,7 @@ export function rename(s) {
 function renameWindow(s) {                            // имя окна tmux — как раньше: до 40 знаков, без «:» и «.»
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.rename");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Имя окна</h3>
-    <div class="field" style="margin:4px 16px 0"><input id="renName" maxlength="40" autocomplete="off" value="${esc(s.name)}"></div>
+    <div class="field" style="margin:4px 16px 0"><input id="renName" maxlength="40" autocomplete="off" value="${esc(s.wname || s.name)}"></div>
     <p class="note" id="renErr" style="margin:6px 16px 0">До 40 знаков, без «:» и «.» — по нему сессию находит бот.</p>
     <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="renOk">Сохранить</button></div></div>`;
   document.body.append(bg);

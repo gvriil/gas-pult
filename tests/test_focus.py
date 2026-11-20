@@ -649,7 +649,7 @@ def test_focus_desktop_nav_and_chat_names():
     page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
     assert 'const navOn = () => (!FOCUS || meta?.focus?.mode !== "demo")' in page
     assert 'const split = () => (!FOCUS || meta?.focus?.mode !== "demo")' in page
-    assert "const dn = (s) => FOCUS && s.title || s.name;" in page
+    assert "const dn = (s) => s.name;" in page and "const named = (x) =>" in page   # имя — название по смыслу
     for use in ('"Сообщение для " + dn(s)', "<b>${esc(dn(s))}</b>", 'setText($("title"), dn(s))'):
         assert use in page, use
     assert 'if (FOCUS) return [{ label: "Переименовать"' in page and "body.focus #navMoreBtn" in page
@@ -687,3 +687,12 @@ def test_focus_rail_back_after_collapse():
     assert "body.focus #rail," not in page and "body.focus-demo #rail" in page
     assert "body.focus #railNew, body.focus #railSettings" in page
     assert "if (sideMini && split() && !$(\"rail\").offsetWidth) setMini(false);" in page
+
+
+def test_names_hide_window_names_and_status_titles():
+    """Слепая проверка #334: название-статус не показывается нигде (title очищается), список фокус-ссылок — по
+    названию чата, а не по имени окна."""
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    assert 'title: ok ? x.title : ""' in page and 'name: ok ? x.title : "Новый чат"' in page
+    assert 'if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || "Чат"' in page

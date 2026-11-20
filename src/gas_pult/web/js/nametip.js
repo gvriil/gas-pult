@@ -8,7 +8,7 @@ const WAIT = 20000;
 
 export function watch(s) {
   if (!s?.sid || s.title_own || FOCUS_DEMO() || meta?.role === "viewer") return;
-  const named = !!s.title && !s.title_status && s.title !== s.name;
+  const named = !!s.title && !s.title_status && s.title !== (s.wname || s.name);
   if (!(s.sid in SEEN)) { SEEN[s.sid] = named; return; }    // открыли уже названный чат — не предлагаем
   if (SEEN[s.sid] || !named || store("nt:" + s.sid)) return;
   SEEN[s.sid] = true; store("nt:" + s.sid, "1");

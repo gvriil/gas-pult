@@ -231,7 +231,7 @@ class Focus:
     def listing(self) -> list[dict]:
         """Действующие ссылки для «Настройки» → «Фокус-ссылки»: без токенов и секретов."""
         now = time.time()
-        out = [{"id": k, "name": v.get("name", ""), "space": v.get("space"), "proj": v.get("proj"),
+        out = [{"id": k, "name": v.get("name", ""), "w": v.get("w"), "space": v.get("space"), "proj": v.get("proj"),
                 "created": v.get("created"), "browser": bool(v.get("browser")),
                 "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", ""),
                 **({"mode": DEMO, "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
