@@ -16,3 +16,12 @@ def test_fold_all_and_settings_at_bottom():
     assert 'id="navFoldBtn"' in INDEX and '"Развернуть всё" : "Свернуть всё"' in INDEX
     assert '<button class="nav-foot" id="navSet" type="button"></button>\n</aside>' in INDEX
     assert '$("navSet").onclick = () => { navOpen(false); $("settingsBtn").click(); };' in INDEX
+
+
+def test_review_fixes():
+    """Слепая проверка #340: фокус-режим, касание 44 px, фокус клавиатуры после свёртки, «всё свёрнуто» без «Закреплённых»."""
+    assert "body.focus #navSet { display: none !important; }" in INDEX
+    assert '$("settingsBtn").hidden = $("navSet").hidden = gate;' in INDEX
+    assert "@media (pointer: coarse) { .nav-sec.fold { min-height: 44px; }" in INDEX
+    assert "querySelector(`[data-nsec=${k}]`)?.focus()" in INDEX
+    assert 'querySelectorAll("[data-nsec]")].every(' in INDEX

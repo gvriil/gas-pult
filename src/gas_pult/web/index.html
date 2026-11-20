@@ -111,7 +111,7 @@
   body:not(.focus) .focus-only { display: none; }
   body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus-demo #rail, body.focus #railNew, body.focus #railSettings, body.focus #home, body.focus #homeBar,
   body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
-  body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew { display: none !important; }
+  body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew, body.focus #navSet { display: none !important; }
   /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
   body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
   body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
@@ -1009,7 +1009,8 @@
   .nav-sec.fold { display: flex; align-items: center; gap: 4px; width: calc(100% - 20px); min-height: 32px; padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
   .nav-sec.fold .nchev { width: 14px; height: 14px; transition: transform .15s ease; } .nav-sec.fold[aria-expanded="true"] .nchev { transform: rotate(90deg); }
   .nav-sec.has-add .nav-sec.fold { margin: 0; flex: 1; }
-  #navFoldBtn.shut svg { transform: scaleY(-1); }
+  #navFoldBtn.shut svg { transform: scaleY(-1); } .nav-sec.fold:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+  @media (pointer: coarse) { .nav-sec.fold { min-height: 44px; } .nav-h .icon, .nav-sec .nav-add { min-width: 44px; min-height: 44px; } }
   .nav-foot { display: flex; align-items: center; gap: 10px; flex: none; min-height: 44px; margin: 4px 8px 8px; padding: 0 12px; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; }
   .nav-foot:hover { background: var(--bg-subtle); } .nav-foot svg { width: 18px; height: 18px; }
   .nav-sec.has-add { display: flex; align-items: center; margin-right: 2px; } .nav-sec.has-add span { flex: 1; }
@@ -1910,7 +1911,7 @@ function renderNav() {
     : recent.length ? recent.map((x) => navRow(x)).join("") : cmds.length ? "" : `<p class="nav-empty">${q ? "Ничего не нашлось" : "Чатов пока нет — «Новый чат» вверху"}</p>`)
     + (cmds.length ? sec("Команды") + cmds.map((c) => `<div class="nrow cmd" data-ncmd="${c.id}" role="listitem" tabindex="0">${ic(c.icon, "ncmd")}<span class="nm">${esc(c.label)}</span></div>`).join("") : "");
   if (NAV.html !== h) { NAV.html = h; $("navList").innerHTML = h; }   // опрос раз в 3–10 с — DOM только при изменении
-  const allShut = !NAV.exp.size && ["pins", "proj", "chats"].every((k) => NAV.shut.has(k));
+  const allShut = !NAV.exp.size && [...$("navList").querySelectorAll("[data-nsec]")].every((b) => NAV.shut.has(b.dataset.nsec));
   $("navFoldBtn").setAttribute("aria-label", allShut ? "Развернуть всё" : "Свернуть всё"); $("navFoldBtn").title = allShut ? "Развернуть всё" : "Свернуть всё";
   $("navFoldBtn").classList.toggle("shut", allShut); $("navSet").hidden = $("settingsBtn").hidden;
   renderRail();
@@ -2076,7 +2077,7 @@ $("navList").addEventListener("click", (e) => {
   if (NAV.held) { NAV.held = false; return; }          // долгое нажатие уже открыло меню
   if (e.target.closest("[data-nnewp]")) return newProject();
   const sb = e.target.closest("[data-nsec]");
-  if (sb) { const k = sb.dataset.nsec; NAV.shut.has(k) ? NAV.shut.delete(k) : NAV.shut.add(k); return navSave(); }
+  if (sb) { const k = sb.dataset.nsec; NAV.shut.has(k) ? NAV.shut.delete(k) : NAV.shut.add(k); navSave(); return $("navList").querySelector(`[data-nsec=${k}]`)?.focus(); }
   const row = e.target.closest(".nrow"); if (!row) return;
   if (e.target.closest("[data-nmore]")) return popMenu(e.target.closest("[data-nmore]"), navItems(row));
   if (e.target.closest("[data-npin]")) {
@@ -2367,7 +2368,7 @@ function show(v) {
   $("switchBtn").hidden = true;                       // переключатель — само имя сессии с ▾ (телефон) или список слева
   $("screenBtn").hidden = v !== "session" || two;
   $("title").classList.toggle("sw", v === "session" && !two);
-  $("settingsBtn").hidden = gate;
+  $("settingsBtn").hidden = $("navSet").hidden = gate;
   $("title").classList.toggle("brand-text", v === "home" || gate);   // «Пульт» — фирменным градиентом
   noDup();
   $("toBottom").hidden = true; voiceUi();           // ушли с сообщения — мини-плеер, вернулись — состояние в сообщении
