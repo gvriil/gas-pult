@@ -22,7 +22,7 @@
     --status-idle: #747775; --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
     --status-success: #146C2E; --status-danger: #B3261E; --status-stopped: #D93025;
     --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
-    --row-hv: 5%; --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 9999px;
+    --row-hv: 5%; --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 8px;   /* пилюль нет (владелец 20.11): прямоугольник со скруглением 8 px */
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
     --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
     /* Значки проектов в узкой полосе: фон и буквы (контраст ≥ 4,5:1 в обеих темах) */
@@ -395,7 +395,7 @@
   .vcard.off .vpick b { color: var(--text-muted); font-weight: 500; }
   .vfb { margin-top: 8px; }
   .vcard .vpick .i, .sheet .vcard .vpick .i { color: var(--accent-primary); }
-  .vcard .vplay { width: 40px; height: 40px; min-height: 0; flex: none; padding: 0; border: 0; border-radius: 50%; background: var(--bg-subtle); color: var(--text-primary);
+  .vcard .vplay { width: 40px; height: 40px; min-height: 0; flex: none; padding: 0; border: 0; border-radius: var(--radius-sm); background: var(--bg-subtle); color: var(--text-primary);
                   display: grid; place-items: center; }
   .vcard.on .vplay { background: var(--bg-surface); }
   .vcard .vplay .i, .sheet .vcard .vplay .i { color: var(--text-primary); }
@@ -512,7 +512,7 @@
   .composer textarea { display: block; width: 100%; border: 0; background: transparent; resize: none; padding: 12px 12px 6px; max-height: 40vh; outline: none; overflow-y: hidden; }
   .composer .attach { padding: 8px 6px 0; }
   .ctools { display: flex; align-items: center; gap: 2px; min-width: 0; }
-  .tool { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
+  .tool { width: 40px; height: 40px; border-radius: var(--radius-sm); border: 0; background: transparent; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
   .tool:active, .tool.on { background: color-mix(in srgb, var(--text-primary) 9%, transparent); }
   .tool.send { background: var(--accent-primary); color: var(--on-accent); }
   .ctools .target { padding: 0 4px 0 6px; font-size: calc(12px * var(--fz, 1)); }
