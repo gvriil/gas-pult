@@ -3513,10 +3513,8 @@ def handler(panel: Panel):
     q_page = resources.files("gas_pult").joinpath("web/q.html").read_bytes()     # анкета клиента (0010)
     terms_page = resources.files("gas_pult").joinpath("web/terms.html").read_bytes()   # /terms — без входа (17.11)
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
-    icons = {f"/{n}": (resources.files("gas_pult").joinpath(f"web/{n}").read_bytes(), t)   # значок вкладки (GAS-20)
-             for n, t in (("favicon.svg", "image/svg+xml"), ("favicon-32.png", "image/png"),
-                          ("apple-touch-icon.png", "image/png"))}
-    icons["/favicon.ico"] = icons["/favicon-32.png"]          # браузеры просят /favicon.ico сами — PNG они понимают
+    icons = {u: (resources.files("gas_pult").joinpath(brand.FILES_DIR + f).read_bytes(), t)   # знак K3 (20.11)
+             for u, (f, t) in brand.ICONS.items()}
     i18n = {f"/i18n/{x}.json": resources.files("gas_pult").joinpath(f"web/i18n/{x}.json").read_bytes()
             for x in ("ru", "en")}                       # словари простого режима и первого экрана — и до входа
     scripts = re.findall(rb"<script>(.*?)</script>", offer_page, re.S)

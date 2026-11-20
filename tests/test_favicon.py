@@ -1,4 +1,5 @@
-"""GAS-20: значок вкладки — svg и png 32, apple-touch-icon 180; отдаются без входа, ссылки — в панели и страницах."""
+"""GAS-20: значок вкладки — svg и png 32, apple-touch-icon 180; отдаются без входа, ссылки — в панели и страницах.
+20.11: знак K3 — файлы в web/brand/ (brand.py), тёмный значок вкладки — prefers-color-scheme, 192/512 — манифест."""
 
 import struct
 import threading
@@ -10,6 +11,7 @@ from gas_pult import webapp
 from gas_pult.config import Config
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web"
+BR = WEB / "brand"
 
 
 def size(png: bytes) -> tuple[int, int]:
@@ -18,9 +20,15 @@ def size(png: bytes) -> tuple[int, int]:
 
 
 def test_files_and_links():
-    assert size((WEB / "favicon-32.png").read_bytes()) == (32, 32)
-    assert size((WEB / "apple-touch-icon.png").read_bytes()) == (180, 180)
-    assert (WEB / "favicon.svg").read_text().startswith("<svg")
+    assert size((BR / "favicon-32.png").read_bytes()) == (32, 32)
+    assert size((BR / "favicon-32-dark.png").read_bytes()) == (32, 32)
+    assert size((BR / "apple-touch-180.png").read_bytes()) == (180, 180)
+    assert size((BR / "icon-192.png").read_bytes()) == (192, 192)
+    assert size((BR / "icon-512.png").read_bytes()) == (512, 512)
+    fav = (BR / "favicon.svg").read_text()
+    assert fav.startswith("<svg") and "prefers-color-scheme:dark" in fav
+    for f in ("gavrila-mark.svg", "gavrila-mark-small.svg"):
+        assert 'fill="currentColor"' in (BR / f).read_text(), f
     for page in ("index.html", "offer.html", "terms.html"):
         t = (WEB / page).read_text(encoding="utf-8")
         assert 'rel="icon" href="/favicon.svg"' in t, page
@@ -34,10 +42,28 @@ def test_served_without_login(tmp_path, monkeypatch):
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     try:
         for path, ctype in (("/favicon.svg", "image/svg+xml"), ("/favicon-32.png", "image/png"),
-                            ("/apple-touch-icon.png", "image/png"), ("/favicon.ico", "image/png")):
+                            ("/apple-touch-icon.png", "image/png"), ("/favicon.ico", "image/png"),
+                            ("/favicon-32-dark.png", "image/png"), ("/icon-192.png", "image/png"),
+                            ("/icon-512.png", "image/png")):
             with urllib.request.urlopen(base + path) as r:
                 assert r.status == 200 and r.headers["Content-Type"] == ctype
                 assert "max-age" in r.headers["Cache-Control"]
                 assert r.read()
     finally:
         srv.shutdown()
+
+
+def test_mark_inline_in_panel():
+    """Знак — инлайн SVG (один symbol, три use): шапка панели, заголовок на телефоне, экран входа; цвет — из темы."""
+    t = (WEB / "index.html").read_text(encoding="utf-8")
+    assert t.count('<symbol id="gmk"') == 1 and t.count('<symbol id="gmks"') == 1     # малый — для 24 px и меньше
+    assert t.count('<use href="#gmk"/>') == 1 and t.count('<use href="#gmks"/>') == 2
+    assert ".gmark { flex: none; color: var(--text-primary); }" in t
+    assert 'href="/favicon-32-dark.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: dark)"' in t
+
+
+def test_manifest_icons():
+    from gas_pult import brand
+    src = [i["src"] for i in brand.manifest()["icons"]]
+    assert "/icon-192.png" in src and "/icon-512.png" in src and "/apple-touch-icon.png" in src
+    assert all(u in brand.ICONS for u in src)
