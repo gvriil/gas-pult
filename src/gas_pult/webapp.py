@@ -2101,6 +2101,15 @@ class Panel:
         self.pult.set_state(window_efforts={**ef, w["id"]: level})      # и «авто»: панель покажет выбор человека
         return self.slash(w, f"/effort {level}")
 
+    def keep_model(self, w: dict, name: str) -> dict:
+        """Окно выбора: реальная модель чата (строка статуса) расходится с сохранённой — «Оставить» запоминает
+        реальную для следующего перезапуска (``window_models``), окно не перезапускается (вариант A, владелец 20.11)."""
+        if name not in self.cfg.models:
+            raise ValueError("такой модели нет в настройках (models)")
+        st = self.pult.state()
+        self.pult.set_state(window_models={**(st.get("window_models") or {}), w["id"]: name})
+        return {"ok": True, "model_own": name}
+
     def model(self, w: dict, name: str, uid=None, effort: str | None = None) -> dict:
         """Модель — только для этого чата (задача 37): окно перезапускается с ``--model`` у того же поставщика, разговор
         продолжается. ``/model`` Claude Code не шлём: он сохраняет выбор в общие настройки (``~/.claude/settings.json``)
@@ -5087,6 +5096,8 @@ def handler(panel: Panel):
                 return {"notify": notifylevel.level(panel.pult.state(), w["id"])}
             if path == "/api/command":
                 return panel.command(w, int(b.get("i", -1)))
+            if path == "/api/model" and b.get("keep"):   # только запомнить модель для перезапуска — без перезапуска
+                return panel.keep_model(w, str(b.get("name", "")))
             if path == "/api/model":                     # модель — только этого чата (перезапуск с --model)
                 return panel.model(w, str(b.get("name", "")), self.terms_uid(),
                                    effort=str(b["effort"]) if b.get("effort") is not None else None)

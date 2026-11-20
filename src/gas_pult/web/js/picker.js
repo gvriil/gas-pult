@@ -28,10 +28,16 @@ function models(profile) {
 export function open(s) {
   const profile = s ? s.profile || "claude" : DRAFT?.profile || projOf(DRAFT?.proj)?.profile || "claude";
   const list = models(profile);
-  let sel = (s ? s.model_own || aliasOf(s.model, list) : DRAFT?.model) || list[0]?.alias || "";   // модель чата, а не умолчание
+  // Реальная модель чата (строка статуса) — первой; сохранённая для перезапуска (window_models) — если реальной нет.
+  // Расходятся — одна строка и выбор (владелец 20.11, вариант A: «Ничего не меняется без решения человека»).
+  const live = s ? aliasOf(s.model, list) : "", saved = s?.model_own || "";
+  let sel = (s ? live || saved : DRAFT?.model) || list[0]?.alias || "";
+  const nm = (a) => { const n = list.find((m) => m.alias === a)?.name || a; return n.charAt(0).toUpperCase() + n.slice(1); };
+  const differ = !!(live && saved && live !== saved);
   const cur = { model: sel, effort: (s ? s.effort : DRAFT?.effort) || "" };
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.model");
   bg.innerHTML = `<div class="sheet mpick" role="dialog" aria-label="Модель и усилие"><h3>Модель и усилие${s ? " · только этот чат" : ""}</h3>
+    ${differ ? `<div class="mp-warn" id="mpWarn"><p>После перезапуска чат запустится на ${esc(nm(saved))}.</p><div class="mp-wb"><button class="btn" type="button" data-keep="live">Оставить ${esc(nm(live))}</button><button class="btn ghost" type="button" data-keep="saved">Запускать ${esc(nm(saved))}</button></div></div>` : ""}
     <div class="mp-cols"><div class="mp-col" id="mpModels" role="radiogroup" aria-label="Модель"></div><div class="mp-col" id="mpEff" role="radiogroup" aria-label="Усилие"></div></div>
     ${meta.role === "owner" || !s ? '<button class="mp-other" type="button" id="mpOther">' + ic("swap") + "<span>Другой поставщик или агент…</span></button>" : ""}
     <button class="cancel" data-close>Закрыть</button></div>`;
@@ -47,6 +53,13 @@ export function open(s) {
   draw();
   bg.addEventListener("click", (e) => {
     if (e.target === bg || e.target.closest("[data-close]")) return close();
+    const k = e.target.closest("[data-keep]");
+    if (k) {                                            // расхождение: оставить реальную (запомнить) или прежнюю
+      const warn = bg.querySelector("#mpWarn");
+      if (k.dataset.keep === "saved") { warn?.remove(); return toast("После перезапуска — " + nm(saved), 3000); }
+      return api("/api/model", { w: s.id, name: live, keep: true }).then(() => { s.model_own = live; warn?.remove(); toast("Будет запускаться " + nm(live), 3000); },
+        (err) => toast("Не сохранилось: " + err.message, 5000));
+    }
     const m = e.target.closest("[data-m]");
     if (m) { sel = m.dataset.m; return draw(); }
     const ef = e.target.closest("[data-e]");
@@ -86,6 +99,10 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .mp-it .i { color: var(--text-secondary); flex: none; } .mp-it.on { background: var(--accent-soft); color: var(--accent-primary); } .mp-it.on .i { color: var(--accent-primary); }
   @media (hover: hover) { .mp-it:hover { background: var(--bg-subtle); } }
   .mp-it:focus-visible, .mp-other:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+  .mp-warn { margin: 0 12px 8px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg-subtle); }
+  .mp-warn p { margin: 0 0 8px; } .mp-wb { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mpick .mp-warn .btn { margin: 0; width: auto; flex: 1 1 140px; min-height: 44px; background: var(--accent-primary); color: var(--on-accent); border-radius: var(--radius-sm); }
+  .mpick .mp-warn .btn.ghost { background: transparent; color: var(--accent-primary); border: 1px solid var(--border-subtle); }
   .mp-none { margin: 10px; color: var(--text-secondary); } .mpick .btn { margin: 0 10px 8px; }
   .mp-other { display: flex; align-items: center; gap: 10px; width: calc(100% - 16px); margin: 6px 8px 0; min-height: 44px; padding: 8px 10px; border: 0;
               border-radius: var(--radius-sm); background: none; color: var(--accent-primary); font: inherit; cursor: pointer; }
