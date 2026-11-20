@@ -119,7 +119,7 @@
   /* Демо-ссылка: только просмотр и выбор вариантов — поля ввода, клавиш и опасных пунктов меню нет */
   body:not(.focus-demo) .demo-note { display: none; }
   body.focus-demo #input, body.focus-demo #plus, body.focus-demo #mic, body.focus-demo #send, body.focus-demo #hintBtn,
-  body.focus-demo #draftBar, body.focus-demo #attach, body.focus-demo #keys, body.focus-demo #menu button[data-owner],
+  body.focus-demo #menuBtn, body.focus-demo #draftBar, body.focus-demo #attach, body.focus-demo #keys, body.focus-demo #menu button[data-owner],
   body.focus-demo #menu button:not([data-act^=say]):not([data-act=refresh]):not([data-act=switch]) { display: none !important; }
   body.focus-demo:not(.focus-proj) #menu [data-act=switch] { display: none !important; }
   .demo-note { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
@@ -1572,9 +1572,13 @@ function paintIcons() {
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
-  $("menu").innerHTML = `<button data-act="close" class="danger" data-owner>${ic("power")}Завершить</button>` + [["say", "vol", "Прослушать"],
-    ["commands", "bolt", "Команды"], ["models", "chip", "Модель"], ["active", "place", "Активная"], ["refresh", "refresh", "Обновить"], ["switch", "swap", "Сессии"]]
-    .map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
+  // «Быстрые функции» (разбор Gemini и таблица отладочного, «да» владельца 20.11): только то, что меняет следующее
+  // сообщение — модель и усилие, интеграции чата, «/команды» (режим разработчика). «Прослушать» — под каждым
+  // ответом, «Активная» — в «Подробнее», «Сессии» — панель чатов, «Обновить» — не нужно, «Завершить» — «⋯» чата
+  // (в фокусе «⋯» нет — там «Завершить» остаётся здесь).
+  $("menu").innerHTML = `<button data-act="close" class="danger focus-only">${ic("power")}Завершить</button>`
+    + [["models", "chip", "Модель и усилие"], ["commands", "bolt", "Команды"]].map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
+    + `<button data-act="chatmcp" data-owner>${ic("puzzle")}Интеграции</button>`
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
     + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Интеграции</button>`            // фокус: интеграции сессии
     + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`
@@ -5267,6 +5271,7 @@ const ACTIONS = {
   models: () => part("picker").then((m) => m.open(cur())),     // модель и усилие — один выбор (js/picker.js, 19.11)
   effort: () => part("picker").then((m) => m.open(cur())),
   mcp: () => focusMcp(),
+  chatmcp: () => { const s = cur(); if (s) part("newchat").then((m) => m.chatMcp(s)); },
   repos: () => repoSheet(current),
   switch: () => $("switchBtn").onclick(),
   active: () => act("/api/active", {}, "Теперь ответы в чате бота — от этой сессии").then(refresh),

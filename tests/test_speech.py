@@ -131,7 +131,7 @@ def test_tts_speaks_words(monkeypatch):
 # ---------- панель: одна кнопка, скорость ----------
 def test_one_listen_button():
     assert "data-sayfull" not in PAGE and "Целиком</button>" not in PAGE and ">Кратко<" not in PAGE
-    assert 'Прослушать</button>' in PAGE and '["say", "vol", "Прослушать"]' in PAGE
+    assert 'Прослушать</button>' in PAGE and '["say", "vol", "Прослушать"]' not in PAGE   # 20.11: только под ответом
     assert "const RATES = [1, 1.25, 1.5, 2];" in PAGE and "data-vrate" in PAGE
     assert "p.playbackRate = p.defaultPlaybackRate = voiceRate();" in PAGE
 
