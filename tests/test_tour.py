@@ -16,7 +16,8 @@ from gas_pult import helper, people, webapp, webauth
 from gas_pult.config import Config
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = (ROOT / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
+INDEX = (ROOT / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8") \
+    + (ROOT / "src" / "gas_pult" / "web" / "js" / "settings.js").read_text(encoding="utf-8")   # часть (20.11)
 TOURS = json.loads(re.search(r'<script type="application/json" id="tourData">(.*?)</script>', INDEX, re.S).group(1))
 SCREENS = {"home", "session", "integrations", "any"}
 
