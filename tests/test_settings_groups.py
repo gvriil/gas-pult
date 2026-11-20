@@ -32,7 +32,7 @@ def test_role_conditions_kept():
     for cond, label in (('meta?.role === "owner" && !FOCUS', "Анкеты клиентов"),
                         ('meta?.space && meta?.role !== "owner"', 'T("dev.title")'),
                         ("deskLinks()", "Ссылки: где открывать"), ('meta?.role === "owner"', "Компьютеры"),
-                        ('meta?.role === "owner"', "Брифинг"), ("canNotify()", '"Уведомления"'),
+                        ('meta?.role === "owner"', "Брифинг"),
                         ('meta?.role === "owner"', '"Проверка"'), ('meta?.role === "owner"', 'T("st.title")'),
                         ("isBoss()", '"Люди"'), ('meta?.role === "owner" && UI?.can_team', '"Команда"'),
                         ('meta?.role === "owner"', "Корзина чатов"), ('meta?.role === "owner"', "Фокус-ссылки"),

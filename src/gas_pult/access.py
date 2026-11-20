@@ -82,6 +82,9 @@ PASSKEY_LOGIN = ("/api/login/passkey/options", "/api/login/passkey/verify")
 # Вход через Google и Яндекс ID (oidc.py): привязки — свои у каждого вошедшего; сам вход — переходами браузера.
 OIDC_OWN = ("/api/oidc", "/api/oidc/link", "/api/oidc/unlink")
 OIDC_PATH = re.compile(r"^/api/login/oidc/(google|yandex)/(start|back)$")
+# Уведомления на телефон (webpush.py): подписки и «ящик» — свои у каждого вошедшего, в том числе у наблюдателя.
+PUSH_OWN = ("/api/push/key", "/api/push/subscribe", "/api/push/unsubscribe", "/api/push/devices", "/api/push/test",
+            "/api/push/last")
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
 # Отметки короткого тура (пройден / «Не сейчас») — настройка самого человека: менять может и наблюдатель.
@@ -93,7 +96,7 @@ REPOS = ("/api/repos", "/api/repos/add", "/api/repos/remove")
 # Тестировщик демо-пространства (задача 31): только это — и только с окнами своего пространства (spaces.Routed.scope).
 # Остальное (папки и модули владельца, файлы, интеграции, ключи, люди, модели, расход владельца) — 403 code=space.
 USES = "/api/uses"                      # панель отмечает открытые экраны и листы (features.py): только id, без людей
-SPACE_OK = TERMS_FREE | {USES,
+SPACE_OK = TERMS_FREE | set(PUSH_OWN) | {USES,
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/tts/warm", "/api/stt", "/api/voice/cards", "/api/scenarios",
     "/api/new",

@@ -78,6 +78,7 @@ from gas_pult import (
     transcripts,
     usage,
     voice,
+    webpush,
 )
 from gas_pult import tmux as tmux_mod
 from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
@@ -324,6 +325,24 @@ class Pult:
                 self.send(chat, text, **kw)
             except TelegramError as e:
                 print("send:", e, flush=True)
+        self.push_owners(text)
+
+    PUSH_PLAIN = re.compile(r"^[^\w«\[(]+")                       # значок-эмодзи в начале — не в заголовок пуша
+
+    def push_owners(self, text: str, w: str = "", title: str = "Пульт"):
+        """То же, что владелец получает в Telegram, — и на телефон (Web Push, webpush.py), если он включил
+        уведомления на каком-то устройстве (владелец 20.11). Нет подписок — ничего не пишем."""
+        cfg = getattr(self, "cfg", None)
+        if cfg is None or not getattr(cfg, "data", None):
+            return
+        hub = self.__dict__.setdefault("_push", webpush.Hub(cfg.data / "push"))
+        body = self.PUSH_PLAIN.sub("", str(text or "")).strip()
+        for uid in cfg.owners:
+            try:
+                if hub.devices(uid):
+                    hub.notify(uid, title, body, w)
+            except (OSError, ValueError) as e:
+                print("push:", e, flush=True)
 
     def to(self, chat: int):
         return lambda text, **kw: self.send(chat, text, **kw)
@@ -750,6 +769,8 @@ class Pult:
             self.set_state(notify_done=left)
         for chat, text in said:
             self.notify(chat, text)
+        if said:
+            self.push_owners(said[-1][1])
 
     def cost_paused(self, wid: str) -> bool:
         return getattr(self, "cfg", None) is not None and wid in (self.state().get("cost_paused") or {})
@@ -1152,6 +1173,7 @@ class Pult:
                 self.ev("answer_tg_fail", w=w["id"], code=e.description[:60],
                                   err=str(e)[:120])
         self.hint_wait[w["id"]] = {"t": time.time(), "msgs": msgs, "rows": rows}
+        self.push_owners(text, w["id"], title=self.label(w))     # ответ — и на телефон
         self.cmds.offer(w, text, self.broadcast, kb)
         if self.state()["voice_always"]:
             for chat in self.cfg.owners:
