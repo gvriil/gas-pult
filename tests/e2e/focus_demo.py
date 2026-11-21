@@ -79,7 +79,7 @@ def run(base: str, shots: str = ""):
             if shots:
                 pg.screenshot(path=f"{shots}/focus-device-{dev}-{theme}.png")
             pg.click("#menu [data-act=mcp]")
-            pg.wait_for_selector("text=Интеграции этой сессии")
+            pg.wait_for_selector(".sheet h3:has-text(\"Подключено у поставщика\")")
             pg.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
             pg.evaluate("closeSession('@1')")
             pg.wait_for_selector("#focusEnd", timeout=3000)

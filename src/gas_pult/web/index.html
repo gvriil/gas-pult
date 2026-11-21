@@ -1587,9 +1587,9 @@ function paintIcons() {
   // (в фокусе «⋯» нет — там «Завершить» остаётся здесь).
   $("menu").innerHTML = `<button data-act="close" class="danger focus-only">${ic("power")}Завершить</button>`
     + [["models", "chip", "Модель и усилие"], ["commands", "bolt", "Команды"]].map(([a, i, t]) => `<button data-act="${a}">${ic(i)}${t}</button>`).join("")
-    + `<button data-act="chatmcp" data-owner>${ic("puzzle")}Интеграции</button>`
+    + `<button data-act="chatmcp" data-owner>${ic("puzzle")}Интеграции чата</button>`           // переключатели для этого чата
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
-    + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Интеграции</button>`            // фокус: интеграции сессии
+    + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Подключено у поставщика</button>`   // фокус: только просмотр
     + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`
     + `<button data-act="ease" class="focus-only">${ic("settings")}Удобства</button>`;          // фокус: имя, тема, шрифт (js/ease.js)        // фокус: репозитории сессии (задача 43)
 }
@@ -6754,7 +6754,7 @@ async function repoAdd(id, repo, btn, bg) {
 async function focusMcp() {                         // интеграции сессии: что подключено у Claude Code на сервере
   let d; try { d = await api("/api/mcp"); } catch (e) { return toast(e.message, 5000); }
   helpSheet("focus.mcp");
-  sheet("Интеграции этой сессии", [
+  sheet("Подключено у поставщика", [
     { info: true, icon: "puzzle", label: "Подключено у Claude Code", sub: "работают в этой сессии; добавить или убрать — в полном пульте («Интеграции»)" },
     ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
     ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Интеграций нет" }])]);

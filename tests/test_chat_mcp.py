@@ -37,3 +37,12 @@ def test_toggles_in_new_chat_and_open_chat():
     assert '"/api/chat/mcp"' in nc and "через 5 с" in nc and "Отменить" in nc
     page = (web / "index.html").read_text(encoding="utf-8")
     assert 'label: "Интеграции чата"' in page and 'm.chatMcp(s)' in page
+
+
+def test_focus_menu_names_owner_20_11():
+    """Владелец 20.11 (окно papasan): «Верхняя кнопка: «Интеграции чата». Нижняя кнопка: «Подключено у поставщика»»."""
+    from pathlib import Path
+    t = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    assert '<button data-act="chatmcp" data-owner>${ic("puzzle")}Интеграции чата</button>' in t
+    assert '<button data-act="mcp" class="focus-only">${ic("puzzle")}Подключено у поставщика</button>' in t
+    assert 'sheet("Подключено у поставщика", [' in t and "Интеграции этой сессии" not in t
