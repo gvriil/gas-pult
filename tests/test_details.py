@@ -5,12 +5,14 @@
 """
 from pathlib import Path
 
-INDEX = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+WEB = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
+INDEX = (WEB / "index.html").read_text(encoding="utf-8") + "\n" + (WEB / "js/details.js").read_text(encoding="utf-8")
 
 
 def fn(name):
     a = INDEX.index(name)
-    return INDEX[a:INDEX.index("\nfunction ", a + 1)]
+    b = INDEX.find("\nfunction ", a + 1)
+    return INDEX[a:b if b > 0 else len(INDEX)]
 
 
 def test_card_shows_only_human_things():
@@ -31,7 +33,7 @@ def test_header_and_input_line_quiet():
 
 
 def test_details_sheet_has_everything():
-    d = fn("function chatDetails(id) {")
+    d = fn("export function open(id) {")
     for k in ("Модель", "Поставщик", "Контекст", "Расход", "Папка", "Ветка", "Репозитории", "В чате бота",
               "Экран терминала"):
         assert f'"{k}"' in d, k
@@ -42,7 +44,7 @@ def test_details_sheet_has_everything():
 def test_review_fixes():
     """Слепая проверка #347: «Что здесь умеет» не потерян; экран — не в фокусе и не в пространстве; репозитории —
     действием; расход Pi/OpenCode — в подробностях; лимиты подписки — только у Claude."""
-    d = fn("function chatDetails(id) {")
+    d = fn("export function open(id) {")
     assert 'label: "Что здесь умеет"' in d and "aboutSession(id)" in d
     assert 'meta?.role !== "viewer" && !FOCUS && !s.space' in d
     assert "run: () => repoSheet(id)" in d and 'row("Токены и расход", usageLine(s.usage)' in d

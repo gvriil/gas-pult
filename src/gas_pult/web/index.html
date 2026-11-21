@@ -216,7 +216,8 @@
   .chip.stale { color: var(--text-secondary); background: var(--bg-subtle); }
   .kebab { width: 36px; height: 36px; border: 0; background: transparent; border-radius: 10px; display: grid; place-items: center; color: var(--text-secondary); flex: none; }
   .kebab:active { background: var(--bg-subtle); }
-  .reply { margin: 10px 6px 0 18px; }
+  .reply { margin: 10px 6px 0 18px; } .card.unread .name { font-weight: 700; }   /* новый ответ — жирным, без плашки */
+  body.split .card .reply { width: fit-content; min-height: 36px; padding: 6px 16px; margin: 10px 6px 0 auto; }   /* ПК: компактная справа (Gemini №4) */
   .section { color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin: 18px 4px 8px; }
   .note { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); margin: 4px 4px 12px; }
   .empty { color: var(--text-secondary); text-align: center; padding: 28px 12px; }
@@ -680,8 +681,9 @@
     .sheet button.cancel { margin-top: 4px; }
   }
   .sheet button.info { cursor: default; }
+  .sheet hr.ssep { border: 0; border-top: 1px solid var(--border-subtle); margin: 4px 0; }
   .sheet .vis { width: 44px; flex: none; display: flex; justify-content: center; align-items: center; }
-  .logo { width: 20px; height: 20px; flex: none; } .chip .logo { width: 14px; height: 14px; } .hero .mono .logo { width: 30px; height: 30px; } .pop .vis { display: flex; width: 20px; } .pop .pl { flex: 1; } .pop .ps { color: var(--text-secondary); }
+  .logo { width: 20px; height: 20px; flex: none; } .btn.rm-inline { width: auto; min-height: 32px; padding: 4px 10px; margin: 0 0 0 4px; } .chip .logo { width: 14px; height: 14px; } .hero .mono .logo { width: 30px; height: 30px; } .pop .vis { display: flex; width: 20px; } .pop .pl { flex: 1; } .pop .ps { color: var(--text-secondary); }
   .sheet .vis .sdot, .sheet button.info > .sdot { width: 10px; height: 10px; }
   .sheet button.info > .sdot, .sheet button.info > .i { margin: 0 9px; }
   .sheet h3 { margin: 8px 16px 6px; font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
@@ -2088,7 +2090,7 @@ function navItems0(row) {
     ...(meta?.role === "owner" && s.schedule && !s.space ? [{ label: "Удалить", icon: "trash", danger: true, sub: "расписание выключится, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(s.space && meta?.role !== "viewer" ? [{ label: T("ss.del.item"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) }] : []),
     ...(meta?.role === "owner" && s.status === "stopped" ? [stoppedItem()] : []),
-    { label: "Показать подробности", icon: "eye", run: () => chatDetails(s.id) },
+    ...(dev() ? [{ label: "Показать подробности", icon: "eye", run: () => chatDetails(s.id) }] : []),   // телеметрия [У] (Gemini №1)
     { sep: true }, { label: "Показать все действия…", icon: "more", run: () => sessionSheet(s.id) }];
 }
 function navProject(id) {                             // «Все чаты проекта» — страница проекта на главной
@@ -2362,7 +2364,7 @@ function sheet(title, items, closeLabel = "Закрыть") {                   
   const bg = document.createElement("div"); bg.className = "sheet-bg";
   const help = helpNext; helpNext = ""; if (help) bg.dataset.help = help;    // экран помощника: helpSheet("…") перед sheet()
   const parent = sheetFrom && Date.now() - sheetFrom.t < 15000 ? sheetFrom : null; sheetFrom = null;
-  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.head ? `<h3 class="sub">${esc(it.head)}</h3>` :
+  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.sep ? '<hr class="ssep">' : it.head ? `<h3 class="sub">${esc(it.head)}</h3>` :
     `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""} ${it.info ? "info" : ""}">${it.vis ? `<span class="vis">${it.vis}</span>` : it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
     <button class="cancel" data-close>${esc(closeLabel)}</button></div>`;
   let hold = null, held = false;
@@ -3057,24 +3059,7 @@ const provName = (s) => s.profile && s.profile !== "claude" ? (profileOf(s.profi
 // папка, ветка, контекст, расход, поставщик — в «⋯ → Подробнее» (chatDetails). Контекст — только когда почти полон.
 const loud = (s) => s?.status === "busy" || s?.status === "dialog";
 const ctxWarn = (s) => (ctxUsed(s) ?? 0) > 85 ? `<span class="ctx warn" title="Разговор почти заполнил память — Claude сожмёт его сам">Контекст: ${ctxUsed(s)}%</span>` : "";
-function chatDetails(id) {
-  const s = sessions.find((x) => x.id === id); if (!s) return;
-  const RAW = { idle: "свободен", busy: "работает", dialog: "ждёт ответа", sleep: "спит", stopped: "спит — проснётся от сообщения" };
-  const row = (label, sub) => sub ? [{ info: true, label, sub: String(sub) }] : [];
-  helpSheet("sheet.session");
-  sheet("Подробнее: " + dn(s), [
-    ...row("Состояние", RAW[s.status] || s.status), ...row("Модель", [s.model, s.effort && "усилия " + (EFFORT_RU[s.effort] || s.effort)].filter(Boolean).join(" · ")),
-    ...row("Поставщик", provName(s)), ...row("Контекст", ctxUsed(s) == null ? "" : ctxUsed(s) + " %"),
-    ...row("Расход", s.cost?.total ? (s.cost.usd == null ? tok(s.cost.total) + " токенов" : usd(s.cost.usd)) : ""),
-    ...row("Папка", s.path), ...row("Ветка", s.branch && s.branch !== "HEAD" ? s.branch : ""),
-    ...(s.repos?.length && canRepos(s) ? [{ label: "Репозитории", icon: "folder", sub: s.repos.map((r) => r.name).join(", ") + " — подключить или отключить", run: () => repoSheet(id) }]
-      : row("Репозитории", s.repos?.map((r) => r.name).join(", "))), ...row("В чате бота", s.active ? "активная — ответы бота от этого чата" : ""),
-    ...(s.harness && s.harness !== "claude" ? row("Токены и расход", usageLine(s.usage).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
-    ...(meta?.role === "owner" && (s.harness || "claude") === "claude" && limitsInfo?.limits ? row("Лимиты подписки", limitsLine(limitsInfo).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : []),
-    { label: "Что здесь умеет", icon: "help", sub: "коротко, тур по экрану или прослушать", run: () => part("about").then((m) => m.aboutSession(id)) },
-    ...(meta?.role !== "viewer" && !FOCUS && !s.space && !document.body.classList.contains("nocap-dev_terminal") ? [{ label: "Экран терминала", icon: "term", run: () => { openSession(id); setTab("screen"); } }] : []),
-  ]);
-}
+const chatDetails = (id) => part("details").then((m) => m.open(id));   // «Подробнее» — разработчику (js/details.js)
 const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
 // Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
 // лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
@@ -3228,13 +3213,13 @@ $("home").addEventListener("contextmenu", (e) => { if (e.target.closest(".card[d
 $("home").addEventListener("click", (e) => { if (cardSwallow && e.target.closest(".card")) { cardSwallow = false; e.stopPropagation(); e.preventDefault(); } }, true);   // отпустили после меню — карточку не открываем
 function card(s, chat) {                              // chat — в проекте: второй строкой название чата
   const st = ST[s.status], old = isStale(s), sub = chat && s.title && s.title !== s.name ? `<div class="meta ctitle">«${esc(s.title)}»</div>` : "";
-  return `<div class="card ${st.cls}${s.active ? " active" : ""}${old ? " stale" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
+  return `<div class="card ${st.cls}${s.active ? " active" : ""}${old ? " stale" : ""}${isNew(s) ? " unread" : ""}${split() && s.id === current ? " current" : ""}" data-id="${esc(s.id)}" role="button" tabindex="0" aria-label="${esc(s.name)}, ${st.label}">
     <div class="row"><span class="sdot"></span>
       <div class="ctext"><div class="name">${pinMark(s)}${esc(s.name)}</div>${sub}</div>
       ${agoSpan(s)}<button class="kebab" data-more-s="${esc(s.id)}" aria-label="Действия с чатом">${ic("more")}</button></div>
     ${s.preview ? `<div class="preview">${esc(s.preview)}</div>` : ""}
     ${s.twin ? `<div class="preview twin">${ic("warn", "s16")}Этот разговор открыт ещё в «${esc(s.twin)}» — ответы смешиваются. Закройте одно окно.</div>` : ""}
-    <div class="cfoot">${loud(s) ? `<span class="chip ${st.cls}">${st.label}</span>` : ""}${isNew(s) ? '<span class="chip new">новый ответ</span>' : ""}${spaceChips(s)}${schedChip(s)}${s.retry_at ? `<span class="chip" title="Упёрлась в лимит подписки — продолжит сама один раз">${ic("refresh", "s16")}продолжит в ${new Date(s.retry_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>` : ""}${costNear(s) ? costChip(s) : ""}
+    <div class="cfoot">${loud(s) ? `<span class="chip ${st.cls}">${st.label}</span>` : ""}${isNew(s) && dev() ? '<span class="chip new">новый ответ</span>' : ""}${spaceChips(s)}${dev() ? schedChip(s) : ""}${s.retry_at ? `<span class="chip" title="Упёрлась в лимит подписки — продолжит сама один раз">${ic("refresh", "s16")}продолжит в ${new Date(s.retry_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>` : ""}${costNear(s) ? costChip(s) : ""}
       ${ctxWarn(s)}</div>
     ${costBar(s)}
     ${s.status === "dialog" ? `<button class="btn approval sm reply" data-reply="${esc(s.id)}">Ответить</button>` : ""}
@@ -3745,7 +3730,7 @@ async function refresh() {
         const mine = (x) => meta?.role === "owner" && x.space;     // владельцу окна пространств — своей группой ниже
         morph($("sessionsView"), notifyCard() + (sessions.length ? `<div class="summary" data-tour="sessions">
             ${n("dialog") ? `<span class="chip s-approval"><b>${n("dialog")}</b> ждут ответа</span>` : ""}
-            <span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> спят</span>` : ""}${costSummary()}</div>`
+            ${dev() ? `<span class="chip s-running"><b>${n("busy")}</b> работают</span><span class="chip"><b>${n("idle")}</b> свободны</span>${n("stopped") ? `<span class="chip"><b>${n("stopped")}</b> спят</span>` : ""}${costSummary()}` : ""}</div>`
             + pinGroups(sorted.filter((x) => !mine(x)), card) : '<div class="empty" data-tour="sessions">Чатов с Claude пока нет — нажмите «Новый чат».</div>') + spacesGroup(sorted.filter(mine)) + scnEntry());
       }
       if (homeView === "sessions" && projMode()) {
@@ -3778,7 +3763,7 @@ function paintSession(s) {
   }
   // «изменена N назад»: на широком экране — в шапке; на телефоне шапка занята статусом и кнопками — в строке
   // «куда пишете» вместо повтора статуса (он остаётся в шапке и цветом точки)
-  const ag = agoSpan(s, true);
+  const ag = dev() ? agoSpan(s, true) : "";                // «изменена 11 с назад» — телеметрия [У] (Gemini №1)
   setSub(`${loud(s) || WAKING.has(s.id) ? `<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>` : ""}${spaceChips(s)}${split() ? ag : ""}`);   // техническое — в «Подробнее»
   const cb = costBar(s); setHidden($("costPause"), !cb); setHTML($("costPause"), cb);     // пауза по расходу — над полем ввода
   setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${loud(s) && (split() || !ag) ? st.label : ""}</span>${split() ? "" : ag}`);
@@ -4203,18 +4188,18 @@ async function startSession(i, profile) {
 function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   helpSheet("sheet.session");
-  sheet(s.name, [
-    { label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) },
+  sheet(dn(s), shortMenu([
+    ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
-    ...(s.space ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
+    ...(s.space || !dev() ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этого чата" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(FOCUS && meta?.focus?.browser ? [{ label: "Подключить браузер", icon: "monitor", sub: "пульт будет работать в Chrome/Edge на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только этот чат на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
-    ...(canRepos(s) ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этому чату — без перезапуска", run: () => repoSheet(id) }] : []),
+    ...(canRepos(s) && dev() ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этому чату — без перезапуска", run: () => repoSheet(id) }] : []),
     ...(s.schedule && meta?.role !== "viewer" ? [{ label: "Настроить расписание", icon: "cal", sub: s.schedule.text + " · " + schedLabel(s.schedule), run: () => scheduleSheet(s) }] : []),
     ...(meta?.role === "owner" && !s.space ? [{ label: "Завершить чат", sub: "Claude выйдет штатно, переписка сохранится", icon: "power", danger: true, run: () => confirmClose(id) }] : []),
     ...(meta?.role === "owner" && s.schedule ? [{ label: "Удалить", icon: "x", danger: true, sub: "расписание выключится навсегда, папка — в корзину", run: () => moduleDelete(s) }] : []),
@@ -4225,7 +4210,14 @@ function sessionSheet(id) {
       { label: T("ss.del.item"), sub: T("ss.del.sub"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) },
       { label: T("ss.list.title"), sub: T("ss.list.sub"), icon: "folder", run: () => ssClosed(s.space) },
       { label: T("sf.title"), sub: T("sf.sub"), icon: "file", run: () => sfFiles(s.id) }] : []),
-  ]);
+  ]));
+}
+// Меню пользователю (Gemini №10): короткие пункты без подзаголовков, разделитель перед первым красным пунктом;
+// разработчику — подписи остаются
+function shortMenu(items) {
+  const k = items.findIndex((x) => x.danger);
+  const out = k > 0 ? [...items.slice(0, k), { sep: true }, ...items.slice(k)] : items;
+  return dev() ? out : out.map(({ sub, ...x }) => x);
 }
 // Уровень уведомлений сессии (#189 п. 1, notifylevel.py): в Telegram — всё, только вопросы и ошибки, или ничего.
 const NOTIFY_T = { all: "все", input: "только вопросы", muted: "тихо" };
@@ -6175,12 +6167,12 @@ function renderMcp() {
       : "Интеграции у каждого человека пульта свои — здесь ваши."}</p>
     <div class="section">Подключено</div>
     ${ok.length ? `<div class="conn">${ok.map((s) => `<span class="chip ok">${LOGOS?.byName(s.name) || ic("check", "s16")}${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
-    ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row">${LOGOS?.byName(s.name) || ""}<span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span></div>
-      <button class="btn danger sm" data-rm="${srv.indexOf(s)}" style="margin-top:10px">Убрать</button></div>`).join("")}
+    ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row">${LOGOS?.byName(s.name) || ""}<span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span>
+      <button class="btn danger sm rm-inline" data-rm="${srv.indexOf(s)}">Отключить</button></div></div>`).join("")}
     <div class="section">${esc(T("int.any.title"))}</div>
     <p class="note">${esc(T("int.any.note"))} Нажмите на сервис — дальше всё по шагам.</p>
     <div class="tiles">
-      ${anyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}">${mono(p.title, p.id)}<span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0].split(" — ")[0])}</small><small class="chip ok">${esc(T("int.any.chip"))}</small></button>`).join("")}
+      ${anyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}">${mono(p.title, p.id)}<span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0].split(" — ")[0])}</small>${dev() ? `<small class="chip ok">${esc(T("int.any.chip"))}</small>` : ""}</button>`).join("")}
     </div>
     <div class="section">${esc(T("int.claude.title"))}</div>
     <p class="note">${esc(T("int.claude.note"))}</p>
