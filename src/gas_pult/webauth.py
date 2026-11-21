@@ -161,6 +161,16 @@ class Auth:
             s["confirmed"] = time.time()
             self._save(d)
 
+    def confirm_hash(self, sess: str) -> bool:
+        """Подтвердить сессию по её отпечатку (кнопка в боте, ``TgConfirm``): False — сессии нет или истекла."""
+        with self._locked():
+            d = self._load()
+            if (s := d.get(sess)) is None or s["exp"] < time.time():
+                return False
+            s["confirmed"] = time.time()
+            self._save(d)
+            return True
+
     def issue(self, uid: int, ua: str = "") -> str:
         """Новая сессия человека ``uid`` (её значение — в cookie браузера)."""
         token = secrets.token_urlsafe(32)
@@ -283,3 +293,37 @@ class TgLogins:
             d.pop(nonce)
             self._save(d)
         return (e["state"], e["uid"]) if e["state"] == "ok" else ("no", None)
+
+
+class TgConfirm:
+    """Кнопка «✅ Подтвердить вход» в сообщении бота с кодом подтверждения (владелец 21.11: «чтобы код сразу
+    подсказывался» — iOS подставляет коды только из SMS, поэтому вместо цифр — одно нажатие в Telegram).
+
+    Панель (``offer``) и бот (``approve``) — разные процессы: запрос лежит в ``web_confirm_tg.json`` (0600) под тем же
+    замком, что и сессии. Нажатие подтверждает только ту сессию браузера, что запросила код; только тот Telegram, кому
+    код ушёл (вход кодом владельца — любой владелец); срок — ``CONFIRM_TTL``; один раз."""
+
+    def __init__(self, auth: Auth):
+        self.auth, self.store = auth, auth.store.with_name("web_confirm_tg.json")
+
+    def _load(self) -> dict:
+        try:
+            d = json.loads(self.store.read_text())
+        except (OSError, ValueError):
+            return {}
+        return {k: v for k, v in d.items() if isinstance(v, dict) and v.get("exp", 0) > time.time()}
+
+    def offer(self, rid: str, token: str, uid: int):
+        with self.auth._locked():
+            d = self._load()
+            d[rid] = {"sess": _h(token), "uid": uid, "exp": time.time() + CONFIRM_TTL}
+            write_private(self.store, json.dumps(d))
+
+    def approve(self, rid: str, uid: int, owners) -> bool:
+        with self.auth._locked():
+            d = self._load()
+            rec = d.pop(str(rid), None)
+            write_private(self.store, json.dumps(d))
+        if not rec or not (rec["uid"] == uid or (rec["uid"] == LEGACY and uid in owners)):
+            return False
+        return self.auth.confirm_hash(rec["sess"])

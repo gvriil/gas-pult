@@ -458,6 +458,7 @@ class Panel:
         self.pult.tmux = spaces.Routed(self.pult.tmux)
         self.tmux = self.pult.tmux
         self.auth = webauth.Auth(cfg.data / "web_sessions.json")
+        self.tg_confirm = webauth.TgConfirm(self.auth)      # «✅ Подтвердить вход» в сообщении бота с кодом
         self.mcp = Mcp()
         self.openrouter = OpenRouter()
         self.people = People(cfg.data / "people.json", cfg.owners)
@@ -1963,7 +1964,8 @@ class Panel:
         where, pins, sent, err = self.bot_where(), [], 0, None
         for chat in (self.cfg.owners if uid == webauth.LEGACY else [uid]):
             try:                       # владелец, не открывший бота («user not found»), не мешает остальным
-                mid = self.pult.api("sendMessage", chat_id=chat, text=text).get("message_id")
+                mid = self.pult.api("sendMessage", chat_id=chat, text=text, reply_markup={"inline_keyboard": [[
+                    {"text": "✅ Подтвердить вход", "callback_data": "cf:" + rid}]]}).get("message_id")
             except (TelegramError, OSError) as e:
                 err = e
                 continue
@@ -1974,6 +1976,7 @@ class Panel:
                     pins.append((chat, mid))
         if not sent:
             raise RuntimeError(f"бот не смог прислать код: {err}" if err else "некому прислать код")
+        self.tg_confirm.offer(rid, token, uid)          # кнопка «✅ Подтвердить вход» — без ввода цифр
         self.confirm_pins[rid] = pins
         return {"id": rid, "via": "telegram", "to": "Telegram", "ttl": webauth.CONFIRM_TTL,
                 "at": int(time.time()), **where}
@@ -4847,6 +4850,8 @@ def handler(panel: Panel):
                     raise ValueError("подтверждение кодом — для входа из браузера")
                 if path == "/api/confirm/start":
                     return panel.confirm_start(self.session(), self.who()[2], *self.client())
+                if path == "/api/confirm/check":          # нажали «✅ Подтвердить вход» в боте — экран закрывается сам
+                    return {"ok": not panel.auth.needs_confirm(self.session())}
                 panel.auth.confirm_verify(self.session(), str(b.get("id", "")), str(b.get("code", "")))
                 panel.confirm_done(str(b.get("id", "")))
                 return {"ok": True}
