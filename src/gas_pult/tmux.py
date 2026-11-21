@@ -24,6 +24,25 @@ UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 TRUST_ASK = re.compile(r"Do you trust the files in this folder\?|Is this a project you (created|trust)|"
                        r"Quick safety check", re.I)
 TRUST_YES = re.compile(r"^\s*❯\s*1\.\s*Yes, I trust", re.I | re.M)
+# Claude Code 2.1.330 (21.11): пункты без номеров и первым — «❯ No, exit» (курсор на «нет»). Старый шаблон не
+# совпадал — вопрос доходил до человека, а Enter выбирал «No, exit» (владелец 21.11: «технический вопрос в чате»).
+# Теперь ищем строку «Yes, I trust …» и строку с курсором «❯» среди пунктов и двигаем курсор стрелками.
+TRUST_OPT = re.compile(r"^\s*(❯\s*)?(\d+\.\s*)?(Yes, I trust|No, exit|No\b)", re.I)
+
+
+def trust_keys(text: str) -> list[str] | None:
+    """Клавиши, чтобы ответить «да» на вопрос о доверии папке: [«Down»…, «Enter»]; не вопрос о доверии или не
+    понятно, где «Yes» и курсор, — None (тогда ничего не нажимаем: Enter на «No, exit» закрыл бы Claude)."""
+    if not TRUST_ASK.search(text):
+        return None
+    lines = text.splitlines()
+    opts = [i for i, x in enumerate(lines) if TRUST_OPT.match(x)]
+    yes = next((i for i in opts if re.search(r"Yes, I trust", lines[i], re.I)), None)
+    cur = next((i for i in opts if lines[i].lstrip().startswith("❯")), None)
+    if yes is None or cur is None:
+        return None
+    step = opts.index(yes) - opts.index(cur)
+    return ["Down"] * step + ["Up"] * -step + ["Enter"]
 TRUST_WAIT = 30.0                  # с: столько после запуска окна ждём вопрос о доверии
 
 # Мало свободной памяти — перед новой или проснувшейся сессией усыпить простаивающие (claude-sleep, если стоит).
@@ -428,8 +447,9 @@ class Tmux:
         end = time.monotonic() + wait
         while time.monotonic() < end:
             text = "\n".join(self.screen(wid, 30))
-            if TRUST_ASK.search(text) and TRUST_YES.search(text):
-                self.run("send-keys", "-t", wid, "Enter")
+            if keys := trust_keys(text):
+                for k in keys:
+                    self.run("send-keys", "-t", wid, k)
                 return True
             time.sleep(step)
         return False
