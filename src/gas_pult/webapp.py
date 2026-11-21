@@ -562,7 +562,8 @@ class Panel:
                             "sid": w.get("sid") or "",
                             "pinned": self.pinned_of(pd, w, w.get("sid") or "", who),   # закреплена: время (добавлено)
                             "repos": repos.public(repos.of(st, w["path"])),
-                            **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or ""))})
+                            **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or "",
+                                                               harness.of(w)))})
                 continue
             if not harness.is_agent(w):
                 continue
@@ -573,7 +574,8 @@ class Panel:
             home = self.pult.home_of(w)                       # папка Claude того, кто открыл окно
             sid = self.follow_sid(w, wins, home)              # свой журнал окна (--session-id); "" — старое окно
             # когда менялась (ago.py): последний ход в журнале или смена экрана; ответ агента, ваше сообщение
-            when = ago.stamps(self.pult.acts.status(w["path"], home, sid), self.pult.changes.look(w["id"], lines))
+            when = ago.stamps(self.pult.acts.status(w["path"], home, sid, harness.of(w)),
+                              self.pult.changes.look(w["id"], lines))
             ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
             snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
             rev = harness.of(w).revision(w["path"], home, sid)
@@ -587,7 +589,7 @@ class Panel:
                         else int(ctx.group(1)) if ctx else None,
                         # на чём работает сессия: снимок строки статуса, «🤖 …» на экране, иначе — модель из журнала
                         "model": pi["model"] if pi else (snap or {}).get("model") or (
-                            mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid)),
+                            mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid, harness.of(w))),
                         "harness": harness.of(w).name if harness.is_agent(w) else "",     # какой агент (добавлено)
                         "usage": pi["usage"] if pi else None,     # окно Pi: ↑↓ токены, $, контекст (добавлено)
                         # уровень усилий: выбранный в пульте (и «авто») важнее того, что Claude Code показал в строке
@@ -596,14 +598,14 @@ class Panel:
                         "ctx_at": (snap or {}).get("at"),                # когда строка статуса обновлялась
                         "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
                         "rev": rev,                                       # изменился журнал → «новый ответ»
-                        "preview": self.preview(w["path"], rev, home, sid),
+                        "preview": self.preview(w["path"], rev, home, sid, harness.of(w)),
                         "sid": sid,                                       # id сессии Claude Code окна (добавлено)
                         "twin": ((o := self.sid_owner(sid, w["id"], wins, running=True)) and o["name"]) or "",
                         "notify": notifylevel.level(st, w["id"]),        # уровень уведомлений окна (добавлено)
                         # один повтор после лимита подписки — когда (limitretry.py); нет — None
                         "retry_at": ((st.get("limit_retries") or {}).get(w["id"]) or {}).get("at"),
                         "notify_own": bool(notifylevel.own(st, w["id"])),
-                        "title": (ttl := self.chat_title(pd, w["path"], home, sid)),   # название чата («Проекты»)
+                        "title": (ttl := self.chat_title(pd, w["path"], home, sid, harness.of(w))),   # название чата
                         "title_status": projects.is_status(ttl),          # название-статус, смысла ещё нет
                         "mcp_off": chatmcp.get(self.CHAT_MCP, sid),        # интеграции, выключенные в этом чате
                         "title_own": bool(sid and ((pd.get("sessions") or {}).get(sid) or {}).get("title")),
@@ -644,12 +646,20 @@ class Panel:
                 "model": f"{u['provider']}/{u['model']}".strip("/") if u["model"] else getattr(h, "MODEL", ""),
                 "context": None if u["used"] is None else max(0, round(100 - u["used"]))}
 
-    def chat_title(self, d: dict, path: str, home, sid: str) -> str:
-        """Название чата окна: своё (``projects.json``) → ``summary`` журнала → первое сообщение человека."""
+    def chat_title(self, d: dict, path: str, home, sid: str, h: harness.Harness | None = None) -> str:
+        """Название чата окна: своё (``projects.json``) → ``summary`` журнала → первое сообщение человека.
+        Журнал — через адаптер агента окна (R13): у Claude Code — ``title_of``, у Pi/OpenCode/Hermes — первое сообщение
+        человека из их ленты."""
         if (own := ((d.get("sessions") or {}).get(sid) or {}).get("title")) if sid else None:
             return str(own)
-        f = transcripts.current(path, home, sid)
-        return projects.title_of(f) if f else ""
+        h = h or harness.of(None)
+        f = h.journal(path, home, sid)
+        if not f:
+            return ""
+        if h.name == harness.DEFAULT:
+            return projects.title_of(f)
+        first = next((m["text"] for m in h.history(path, 200, home=home, sid=sid)[0] if m.get("role") == "user"), "")
+        return " ".join(str(first).split())[:projects.TITLE_MAX]
 
     def project_of(self, d: dict, w: dict) -> str:
         """Проект окна: окно пространства — "" (проекты пространств — отдельным шагом)."""
@@ -837,7 +847,7 @@ class Panel:
                 continue
             if sid := transcripts.valid_sid(w.get("sid")):
                 by_sid[sid] = w
-            elif f := transcripts.current(w["path"], self.pult.home_of(w)):
+            elif f := harness.of(w).journal(w["path"], self.pult.home_of(w)):     # R13: журнал — у агента окна
                 legacy.add(str(f))
         return by_sid, legacy
 
@@ -949,7 +959,8 @@ class Panel:
         pd = self.project_data()
         self.projects.set_chat(sid, self.project_of(pd, w), title=title)
         self._proj = (0.0, {})
-        return {"title": title or self.chat_title(self.project_data(fresh=True), w["path"], self.pult.home_of(w), sid),
+        return {"title": title or self.chat_title(self.project_data(fresh=True), w["path"], self.pult.home_of(w), sid,
+                                                  harness.of(w)),
                 "own": bool(title)}
 
     def project_chat(self, pid: str, sid: str, title=None, hidden=None) -> dict:
@@ -994,14 +1005,14 @@ class Panel:
     def window_journal(self, w: dict) -> Path | None:
         """Журнал окна: по метке ``@gas_pult_sid``; старое окно без метки — последний журнал папки, но только если
         других окон Claude в этой папке нет (иначе можно унести чужой разговор)."""
-        home = self.pult.home_of(w)
+        home, h = self.pult.home_of(w), harness.of(w)          # R13: журнал — у агента окна (Pi, OpenCode, Hermes)
         if sid := transcripts.valid_sid(w.get("sid")):
-            return transcripts.current(w["path"], home, sid)
+            return h.journal(w["path"], home, sid)
         real = os.path.realpath(w["path"])
         if any(x["id"] != w["id"] and (harness.is_agent(x) or x.get("stopped"))
                and os.path.realpath(x.get("path", "")) == real for x in self.tmux.windows()):
             return None
-        return transcripts.current(w["path"], home)
+        return h.journal(w["path"], home)
 
     def chat_delete(self, wid: str = "", pid: str = "", sid: str = "", force: bool = False) -> dict:
         """«Удалить»: окно сессии (``wid``) или завершённый чат проекта (``pid`` + ``sid``). Окно закрывается (Claude
@@ -1708,18 +1719,23 @@ class Panel:
             w["sid"] = sid = nxt
         return sid
 
-    def model_of(self, path: str, rev: str, home=None, sid: str = "") -> str:
-        """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала."""
-        key = (path, str(home or ""), sid)
+    def model_of(self, path: str, rev: str, home=None, sid: str = "", h: harness.Harness | None = None) -> str:
+        """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала.
+        Журнал — у адаптера агента окна (R13); красивое имя (``model_title``) — у моделей Claude Code."""
+        h = h or harness.of(None)
+        key = (path, str(home or ""), sid, h.name)
         if self.model_cache.get(key, (None,))[0] != rev:      # (None,) — у нового окна журнала ещё нет (rev "")
-            self.model_cache[key] = (rev, transcripts.model_title(transcripts.last_model(path, home=home, sid=sid)))
+            m = h.last_model(path, home=home, sid=sid)
+            self.model_cache[key] = (rev, transcripts.model_title(m) if h.name == harness.DEFAULT else m)
         return self.model_cache[key][1]
 
-    def preview(self, path: str, rev: str, home=None, sid: str = "") -> str:
-        """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился."""
+    def preview(self, path: str, rev: str, home=None, sid: str = "", h: harness.Harness | None = None) -> str:
+        """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился. Журнал — у агента окна."""
+        h = h or harness.of(None)
         key = (f"{home}|{path}" if home else path) + (f"|{sid}" if sid else "")
+        key += f"|{h.name}" if h.name != harness.DEFAULT else ""
         if self.previews.get(key, (None,))[0] != rev:
-            self.previews[key] = (rev, transcripts.preview(path, home=home, sid=sid))
+            self.previews[key] = (rev, h.preview(path, home=home, sid=sid))
         return self.previews[key][1]
 
     # ---------- страна человека (country.py) ----------

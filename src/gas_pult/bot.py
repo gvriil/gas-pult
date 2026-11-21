@@ -616,7 +616,7 @@ class Pult:
         if h.name in harness.JOURNAL_ONLY:               # Pi, OpenCode, Hermes: статус хода — по их журналу
             j = h.status(h.journal(w["path"], sid=w.get("sid") or ""))
         else:
-            j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "")
+            j = self.acts.status(w["path"], self.home_of(w), w.get("sid") or "", harness.of(w))
         scr = screen if screen is not None else self.screen_state(w["id"])
         rec = self.sends.get(w["id"])
         if rec and rec.get("unsent_at") and not self.still_unsent(w["id"]):   # отправили руками или стёрли
@@ -794,7 +794,8 @@ class Pult:
 
     def stamps(self, w: dict) -> dict:
         """Когда сессия менялась (ago.py): последний ход в журнале или смена экрана, ответ агента, ваше сообщение."""
-        return ago.stamps(self.acts.status(w["path"], self.home_of(w), w.get("sid") or ""), self.changes.at(w["id"]))
+        return ago.stamps(self.acts.status(w["path"], self.home_of(w), w.get("sid") or "", harness.of(w)),
+                          self.changes.at(w["id"]))
 
     def screen_msg(self, w: dict, title: str) -> tuple[str, dict]:
         return (f"[{self.label(w)}] {title}\n\n" + "\n".join(self.tmux.screen(w["id"])),
