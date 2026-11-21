@@ -13,7 +13,7 @@ function openHere(href) { openLink(href) || window.open(href, "_blank", "noopene
 
 async function openDesk(href) {
   try { await api("/api/desktop/url", { url: href }); }
-  catch (e) { return toast("Не открыл в Ubuntu: " + e.message, 5000); }
+  catch (e) { return toast("Не открыл в Браузере: " + e.message, 5000); }
   toast("Открыл в Chrome на рабочем столе");
   part("desktop").then(() => deskOpen(), (er) => toast("Рабочий стол не загрузился: " + er.message, 4500));
 }
@@ -29,7 +29,7 @@ async function linkChoose(href) {
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.linkwhere");
   bg.innerHTML = `<div class="sheet" role="dialog" aria-label="Где открыть ссылку"><h3>Где открыть?</h3>
     <p class="note" style="margin:0 16px 6px;word-break:break-all">${esc(href)}</p>
-    <button data-lw="desk">${ic("monitor")}<span>В Ubuntu<small>вкладка в Chrome на рабочем столе — там ваши входы и агенты</small></span></button>
+    <button data-lw="desk">${ic("monitor")}<span>В Браузере<small>Браузер агентов — там ваши входы и агенты</small></span></button>
     <button data-lw="here">${ic("ext")}<span>Здесь<small>в браузере этого устройства</small></span></button>
     <button data-lw="copy">${ic("copy")}<span>Копировать</span></button>
     <label class="lw-mem" style="display:flex;gap:10px;align-items:center;margin:8px 16px"><input type="checkbox" id="lwMem" checked>
@@ -52,7 +52,7 @@ async function linkPrefsSheet() {
   helpSheet("settings.links");
   sheet("Ссылки: где открывать", sites.length ? [
     { info: true, icon: "globe", label: "Запомненные сайты", sub: "нажмите — забыть: при следующей ссылке спрошу снова" },
-    ...sites.map(([h, w]) => ({ label: h, icon: w === "desk" ? "monitor" : "ext", sub: w === "desk" ? "в Ubuntu" : "здесь",
+    ...sites.map(([h, w]) => ({ label: h, icon: w === "desk" ? "monitor" : "ext", sub: w === "desk" ? "в Браузере" : "здесь",
       run: async () => { await remember(h, null); toast("Забыл " + h); linkPrefsSheet(); } }))]
     : [{ info: true, icon: "globe", label: "Запомненных сайтов нет", sub: "выбор появится после первой ссылки с галочкой «Запомнить»" }]);
 }

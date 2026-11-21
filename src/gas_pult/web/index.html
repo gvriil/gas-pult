@@ -1159,7 +1159,7 @@
 <div id="scroller">
 <div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
-  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-brief" data-space="brief" hidden></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Рабочий стол Ubuntu" title="Рабочий стол Ubuntu"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал Ubuntu" title="Терминал Ubuntu"></button></div>
+  <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-brief" data-space="brief" hidden></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Браузер агентов" title="Браузер агентов — входы и вкладки агентов"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал сервера" title="Терминал сервера"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
@@ -1763,7 +1763,7 @@ function linkMenu(a) {
   helpSheet("sheet.link");
   sheet(LT("link.title", "Ссылка"), [
     { label: LT("link.open", "Открыть"), icon: "ext", run: () => openLink(href) || window.open(href, "_blank", "noopener,noreferrer") },
-    ...(deskLinks() ? [{ label: "Открыть в Ubuntu", icon: "monitor", run: () => part("links").then(() => openDesk(href)) }] : []),
+    ...(deskLinks() ? [{ label: "Открыть в Браузере", icon: "monitor", run: () => part("links").then(() => openDesk(href)) }] : []),
     { label: LT("link.copy", "Копировать"), sub: href, icon: "copy", run: () => copyText(href, LT("link.copied", "Ссылка скопирована")) },
     { label: LT("link.share", "Поделиться"), icon: "share", run: () => shareLink(href) },
   ], LT("link.close", "Закрыть"));
@@ -7442,7 +7442,7 @@ function paintSpaces() {
   $("spaces").querySelector(".sp-mine").hidden = !UI?.own_space || meta?.role === "owner";   // владельцу непонятно (17.11)
   $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
   const dk = $("spaces").querySelector(".sp-desk");     // рабочий стол агентов (#206): владельцу, если он запущен
-  dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + '<span class="lbl">Ubuntu</span>';   // владелец: «открыть Ubuntu сразу»
+  dk.hidden = !(meta?.role === "owner" && meta?.desktop); dk.innerHTML = ic("monitor") + '<span class="lbl">Браузер</span>';   // владелец: «открыть Ubuntu сразу»
   const tm = $("spaces").querySelector(".sp-term");     // «Терминал» (17.11): окно ubuntu-shell в живом терминале
   tm.hidden = !(meta?.role === "owner" && (meta?.desktop || meta?.tty)); tm.innerHTML = ic("term") + '<span class="lbl">Терминал</span>';
   $("spaces").querySelector(".sp-brief").hidden = $("spaces").querySelector(".sp-tasks").hidden = true;   // — в панели (Gemini №8)

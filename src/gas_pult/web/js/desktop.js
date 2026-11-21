@@ -43,14 +43,17 @@ async function rfbScreen(view, st) {
   const { default: keysyms } = await import("/desktop/core/input/keysymdef.js");
   const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/desktop/websockify";
   const rfb = new RFB(view, url, { shared: true });
-  rfb.scaleViewport = true; rfb.resizeSession = false; rfb.background = "transparent";
+  // 21.11: стол на Xvnc (TigerVNC) меняет размер под окно — «вписать» = стол того же размера, что экран устройства;
+  // буфер UTF-8 (расширенный буфер noVNC) — русский текст в обе стороны без набора клавишами
+  rfb.scaleViewport = false; rfb.resizeSession = true; rfb.background = "transparent";
   if (typeof DEMO !== "undefined" && DEMO) window.__deskRfb = rfb;     // проверка на живом столе (только ?demo)
   const scr = {
     get w() { return rfb._display?.width || 0; }, get h() { return rfb._display?.height || 0; },
     scroller: rfb._screen || view,                     // noVNC прокручивает свой блок внутри контейнера
     // noVNC 1.6: свой масштаб — через display.scale (сам он умеет только «вписать»); координаты мыши он делит на него же
-    scale(z) { rfb.scaleViewport = false; rfb.clipViewport = false; if (rfb._display) rfb._display.scale = z; },
-    fit() { rfb.clipViewport = false; rfb.scaleViewport = true; },
+    scale(z) { rfb.resizeSession = false; rfb.scaleViewport = false; rfb.clipViewport = false; if (rfb._display) rfb._display.scale = z; },
+    fit() { rfb.clipViewport = false; rfb.scaleViewport = false; rfb.resizeSession = true; },   // стол — под размер окна
+    get utf8() { return !!rfb._clipboardServerCapabilitiesFormats?.[1]; },   // сервер принял расширенный буфер (UTF-8)
     // «Рука» перехватывает касания своим слоем; viewOnly у noVNC не ставим — он глушит и клавиатуру (пароль, Enter)
     view() {},
     press(sym, code, mods = []) {                      // клавиша с модификаторами: нажать модификаторы, клавишу, отпустить
@@ -77,7 +80,7 @@ async function rfbScreen(view, st) {
 
 function demoScreen(view, st) {                        // демо: «стол» 1600×900 с терминалом-заглушкой (для тестов)
   const box = document.createElement("div"); box.className = "desk-demo";
-  box.innerHTML = `<pre class="desk-term" aria-label="Терминал на столе (демо)">Демо: терминал на рабочем столе Ubuntu\n$ </pre>`;
+  box.innerHTML = `<pre class="desk-term" aria-label="Терминал на столе (демо)">Демо: терминал в Браузере агентов\n$ </pre>`;
   view.append(box);
   const pre = box.querySelector("pre"), size = (z) => { box.style.width = 1600 * z + "px"; box.style.height = 900 * z + "px"; };
   let line = "", busy = false;
@@ -114,7 +117,7 @@ function deskShow(d) {
   deskClose();
   const touch = matchMedia("(pointer: coarse)").matches;   // палец: по умолчанию «Рука» (смотреть и двигать)
   const el = deskEl = document.createElement("div");
-  el.className = "desk"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Рабочий стол Ubuntu");
+  el.className = "desk"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Браузер агентов");
   const ui = uiGet(), keysOn = ui.keys ?? touch;
   const b = (k, icon, label, extra = "") => `<button class="desk-b" data-desk="${k}" aria-label="${label}" title="${label}"${extra}>${icon}</button>`;
   // одна строка плоских кнопок; не влезает — прокрутка вбок; «Скрыть» — панель в значок в углу (перетаскивается)
@@ -296,8 +299,8 @@ async function deskClip(el, k, t, later) {
   const text = inp.value;
   if (!text) { inp.focus(); return toast("Сначала вставьте текст в поле", 3000); }
   if (!deskScr) return toast("Стол ещё не подключён", 3000);
-  // буфер VNC у x11vnc — только Latin-1: кириллица и эмодзи пришли бы «?????» — такой текст набираем клавишами
-  const wide = /[^\u0000-\u00ff]/.test(text), typed = k === "clip-type" || wide;
+  // буфер UTF-8 (Xvnc) — вставляем как есть; старый сервер (Latin-1) — кириллицу и эмодзи набираем клавишами
+  const wide = /[^\u0000-\u00ff]/.test(text) && !deskScr.utf8, typed = k === "clip-type" || wide;
   if (typed) deskScr.type(text); else deskScr.paste(text);
   inp.value = "";
   toast(!typed ? "Вставлено на стол (Ctrl+V). Не вставилось — «Напечатать»"
