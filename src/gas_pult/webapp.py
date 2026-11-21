@@ -3508,10 +3508,16 @@ DONE_PAGE = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content
              '{title}</h1><p style="color:#6E6C65">{text}</p></body>')
 
 
+ORIGIN_OK = re.compile(r"[A-Za-z0-9.-]{1,100}(:\d{1,5})?")      # адрес панели для og:image (page_for)
+
+
 def handler(panel: Panel):
     page = resources.files("gas_pult").joinpath("web/index.html").read_bytes()
     if brand.NAME_RU != brand.DEFAULT:                      # название продукта — одно место: brand.py
         page = page.replace(brand.DEFAULT.encode(), brand.NAME_RU.encode())
+    # превью ссылки и экраны запуска (brand.head_tags) — вставляются в <head> при старте; полный адрес — из запроса
+    tags = brand.head_tags().replace(brand.DEFAULT, brand.NAME_RU).encode()
+    page = page.replace(b'<link rel="manifest"', tags + b'\n<link rel="manifest"', 1)
     manifest = json.dumps(brand.manifest(), ensure_ascii=False).encode()
     # части интерфейса по требованию (#191): web/js/<имя>.js — нативные ES-модули без сборки; читаются и сжимаются
     # один раз при старте, отдаются с ETag (после выкладки браузер получит новую версию, иначе — 304 без тела)
@@ -3523,7 +3529,19 @@ def handler(panel: Panel):
             parts[f.name[:-3]] = (body, gzip.compress(body, 9), '"' + hashlib.sha256(body).hexdigest()[:12] + '"')
     # версия страницы вместе с частями: изменилось что-то одно — панель предложит обновиться
     build = hashlib.sha256(page + b"".join(parts[k][0] for k in sorted(parts))).hexdigest()[:12]
-    page_gz = gzip.compress(page, 9)                     # страница сжимается один раз при старте (887 → ~200 КБ)
+    origin_pages: dict[str, tuple[bytes, bytes]] = {}   # адрес панели → страница с полным адресом превью (og:image)
+    page_plain = page.replace(b"__ORIGIN__", b"")        # неизвестный адрес — ссылки от корня
+    page_gz = gzip.compress(page_plain, 9)               # страница сжимается один раз при старте (887 → ~200 КБ)
+
+    def page_for(host: str) -> tuple[bytes, bytes]:
+        """Страница для адреса из запроса: ``og:image`` — полным адресом (так просят Telegram и iMessage). Адрес —
+        только буквы, цифры, точки, дефисы и порт; адресов немного (кэш до 8), остальные — без полного адреса."""
+        if not ORIGIN_OK.fullmatch(host or ""):
+            return page_plain, page_gz
+        if host not in origin_pages and len(origin_pages) < 8:
+            body = page.replace(b"__ORIGIN__", f"https://{host}".encode())
+            origin_pages[host] = (body, gzip.compress(body, 9))
+        return origin_pages.get(host) or (page_plain, page_gz)
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
     q_page = resources.files("gas_pult").joinpath("web/q.html").read_bytes()     # анкета клиента (0010)
@@ -3831,7 +3849,8 @@ def handler(panel: Panel):
                     return self.oidc_page(403, "Ссылка устарела", "Откройте рабочий стол заново кнопкой в пульте.")
                 return self.go(DESKTOP_URL, (desk_cookie(desk_pass(got[0]), tab=True),))
             if url.path in ("/", "/index.html"):
-                return self.reply(200, page, "text/html; charset=utf-8", packed=page_gz, etag=f'"{build}"')
+                body, packed = page_for(self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "")
+                return self.reply(200, body, "text/html; charset=utf-8", packed=packed, etag=f'"{build}"')
             if url.path == "/terms":                    # соглашение простым языком, RU и EN — без входа (17.11)
                 return self.reply(200, terms_page, "text/html; charset=utf-8")
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
