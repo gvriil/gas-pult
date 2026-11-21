@@ -58,6 +58,7 @@ from gas_pult import (
     country,
     ctxsnap,
     deskmobile,
+    drafts,
     drive_inbox,
     emailcode,
     fallback,
@@ -4120,6 +4121,14 @@ def handler(panel: Panel):
             _, role, uid = self.who()
             return None if role == "owner" or uid is None else panel.people.tenant(uid)
 
+        def drafts_scope(self) -> str | None:
+            """Чьи черновики коннекторов: человека пространства — его пространства; владельца — его; остальным — нет."""
+            if slug := self.space():
+                return slug
+            if self.who()[1] != "owner":
+                raise ValueError("черновики действий подтверждает тот, чей это коннектор")
+            return None
+
         def space_of(self, b: dict) -> str:
             """Чьё пространство: тестировщика — его; владельцу — из запроса (``space``); остальным — отказ."""
             if slug := self.space():
@@ -4558,6 +4567,10 @@ def handler(panel: Panel):
                 return st
             if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
                 return panel.space_list(self.space_of(q))
+            if path == "/api/drafts":                    # черновики коннекторов «Ждут вашего Да» (drafts.py)
+                slug = self.drafts_scope()
+                tm = tenants.tmux_of(slug) if slug else panel.tmux
+                return {"drafts": drafts.pending(slug, chat_of=lambda pane: drafts.chat_of(tm, pane, slug))}
             if path == "/api/space/mcp":                 # свои интеграции пространства (GAS-38 (в)): без ключей
                 slug = self.space_of(q)                      # тестировщику — своё; владельцу и админу — по ``space``
                 return {"servers": space_mcp.listing(slug), "space": slug,
@@ -5477,6 +5490,11 @@ def handler(panel: Panel):
                 r = panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
                 if r.get("result") == "closed":
                     panel.focus.end_window(str(b.get("w", "")))
+                return r
+            if path in ("/api/drafts/yes", "/api/drafts/no"):   # «Да» / «Нет» ровно этому черновику — только своему
+                r = drafts.decide(self.drafts_scope(), str(b.get("svc", "")), str(b.get("id", "")),
+                                  path.endswith("/yes"))
+                panel.events.event("draft_" + path.rsplit("/", 1)[1], "", svc=str(b.get("svc", ""))[:24])
                 return r
             if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
                 if not (slug := self.space()):
