@@ -123,9 +123,12 @@ def one(br, base: str, sep: str, w: int, h: int, mob: bool, th: str, shots, errs
     if mob:
         pg.mouse.click(w - 10, h // 2)
         assert not opened()
-    pg.keyboard.press("Control+k")
+    if mob:
+        pg.keyboard.press("Control+k")                      # телефон: Ctrl+K — поиск в панели
+    else:
+        pg.evaluate("navSearch(true)")                      # ПК: Ctrl+K — палитра по центру (Gemini №15, свой тест)
     pg.wait_for_timeout(300)
-    assert pg.evaluate("() => document.activeElement.id") == "navQ", f"{tag}: Ctrl+K не открыл поиск"
+    assert pg.evaluate("() => document.activeElement.id") == "navQ", f"{tag}: поиск не открылся"
     name = pg.locator("#navList .nrow[data-nw] .nm").first.inner_text()
     pg.keyboard.type(name[:5])
     pg.wait_for_timeout(100)
