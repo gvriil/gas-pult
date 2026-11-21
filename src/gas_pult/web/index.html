@@ -930,6 +930,10 @@
   .s-yc .t { flex: 1; min-width: 0; } .s-yc b { display: block; font-size: calc(14px * var(--fz, 1)); } .s-yc small { display: block; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .s-yc .scn-opt { flex: none; width: auto; min-height: 34px; padding: 5px 12px; font-size: calc(14px * var(--fz, 1)); }
   .s-yc .scn-opt.yes { background: var(--status-approval); border-color: var(--status-approval); color: var(--on-approval); }
+  /* черновик коннектора (js/drafts.js): что именно случится — целиком, кнопки — строкой ниже */
+  .s-yc.drf { flex-wrap: wrap; align-items: flex-start; } .s-yc.drf > .i { margin-top: 2px; } .s-yc.drf .t { flex: 1 1 calc(100% - 40px); }
+  .s-yc.drf small { white-space: normal; overflow-wrap: anywhere; } .s-yc.drf small.from { color: var(--text-muted); }
+  .s-yc.drf .scn-opts { width: 100%; margin: 2px 0 0 30px; display: flex; gap: 6px; flex-wrap: wrap; }
   .s-tips { padding: 8px 0 0; } .s-tips .note { margin: 0 0 6px; } .s-tips .scn-opts { margin: 0; }
   .sheet.s-sheet .s-body { padding: 0 16px 8px; }
   .sheet.s-sheet .s-body p { margin: 0 0 10px; }
@@ -7384,6 +7388,9 @@ function sSecs() {
 // «Ждут вашего Да»: другие агенты, которые ждут решения. «Да» — только у понятных вопросов (есть пункт «Да» первого
 // уровня), иначе — «Открыть»: решение принимается в разговоре, где видно подробности.
 async function sYesLoad() {
+  if (!FOCUS && meta?.role !== "viewer" && (meta?.role === "owner" || meta?.space)) {   // черновики коннекторов (js/drafts.js)
+    try { SIM.drf ??= await part("drafts"); await SIM.drf.load(); SIM.drf.bind($("sYes"), sYes); } catch (e) { /* нет — нет карточек */ }
+  }
   if (!UI || !cap("approvals_yes_no")) { SIM.yes = {}; return sYes(); }
   const wait = SIM.list.filter((x) => x.status === "dialog" && x.id !== SIM.w).slice(0, 3), next = {};
   for (const x of wait) {
@@ -7395,8 +7402,8 @@ async function sYesLoad() {
 }
 function sYes() {
   const box = $("sYes"), rows = SIM.list.filter((x) => SIM.yes[x.id] && x.status === "dialog" && x.id !== SIM.w);
-  const viewer = meta?.role === "viewer";
-  const html = rows.length ? `<p class="s-lbl">${esc(T("yes.title", { n: rows.length }))}</p>` + rows.map((x) => {
+  const viewer = meta?.role === "viewer", drf = SIM.drf?.cards() || "", nd = drf ? (drf.match(/data-drf=/g) || []).length : 0;
+  const html = rows.length || nd ? `<p class="s-lbl">${esc(T("yes.title", { n: rows.length + nd }))}</p>` + drf + rows.map((x) => {
     const a = SIM.yes[x.id].ask, yes = a?.known && a.options.find((o) => o.key === "yes" && o.level !== 2);
     return `<div class="s-yc">${ic("warn")}<div class="t"><b>${esc(sName(x))}</b><small>${esc(a ? a["title_" + LANG] || a.title_ru : T("yes.wait"))}</small></div>
       ${yes && !viewer ? `<button class="scn-opt yes" type="button" data-yes="${esc(x.id)}">${esc(sLab(yes))}</button>` : ""}<button class="scn-opt" type="button" data-w="${esc(x.id)}">${esc(T("yes.open"))}</button></div>`;

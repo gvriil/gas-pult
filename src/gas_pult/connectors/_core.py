@@ -152,7 +152,8 @@ def propose(svc: str, action: str, params: dict, summary: str) -> dict:
     """Черновик операции. Ничего не пишет в сервис: возвращает id, который человек подтверждает в пульте."""
     pid = secrets.token_hex(6)
     rec = {"id": pid, "svc": svc, "action": action, "params": params, "summary": summary,
-           "digest": _digest(action, params), "created": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+           "digest": _digest(action, params), "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+           "pane": os.environ.get("TMUX_PANE", "")}     # из какого чата: панель покажет «Да» и вернёт туда (drafts.py)
     f = _dir(svc) / f"{pid}.json"
     f.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
     f.chmod(0o600)

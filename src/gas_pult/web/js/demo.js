@@ -400,6 +400,11 @@ function demoApi(path, body) {
       fields: [{ key: "engine", label: "Сервис поиска", options: [{ v: "yandex", t: "Яндекс" }, { v: "brave", t: "Brave" }] }, { key: "token", label: "API-ключ", secret: true }], after: "" }] };
   if (path === "/api/space/mcp/add") { if (!smcp.some((x) => x.name === body.name)) smcp.push({ name: body.name, type: "http", target: "https://" + body.preset + ".example", removable: true }); return Promise.resolve({ result: "подключено. Перезапустите открытые сессии.", servers: smcp }); }
   if (path === "/api/space/mcp/remove") { demoApi.smcp = smcp.filter((x) => x.name !== body.name); return Promise.resolve({ result: "отключено", servers: demoApi.smcp }); }
+  // черновики действий коннекторов (drafts.py): «Да / Изменить / Нет» — в памяти демо
+  const drf = (demoApi.drf ||= [{ id: "a1b2c3d4e5f6", svc: "moysklad", action: "set_order_state", summary: "Заказ №1043 «Кафе у моря» → статус «Отгружен»", created: "", w: "@1" },
+                                 { id: "0f1e2d3c4b5a", svc: "wildberries", action: "feedback_answer", summary: "Ответ на отзыв о кофемолке: «Спасибо! Замену отправили сегодня»", created: "", w: null }]);
+  R["/api/drafts"] = { drafts: params.has("nodrafts") ? [] : drf };
+  if (path === "/api/drafts/yes" || path === "/api/drafts/no") { demoApi.drf = drf.filter((x) => x.id !== body.id); return Promise.resolve({ ok: true }); }
   if (path.startsWith("/api/space/download")) return Promise.resolve(new Blob(["демо"], { type: "text/plain" }));
   const demoBud = { daily: 4, period_days: 30, reserve: 120, spent: 97.4, today: 9.2, left: 22.6, pct: 0.81, over: false, reason: "", day_cap: null, estimate: true,
     text: "сегодня $9.20 · в запасе $22.60 до 01.12 · норма $4.00/день; при нынешнем темпе хватит до 21.11 (оценка по ценам за токены — работает на подписке)" };

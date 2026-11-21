@@ -119,6 +119,11 @@ SPACE_OK |= set(SPACE_PROJ)
 # Свои интеграции пространства (GAS-38 (в), space_mcp.py): список, «Подключить», «Отключить» — только своего.
 SPACE_MCP = ("/api/space/mcp", "/api/space/mcp/add", "/api/space/mcp/remove")
 SPACE_OK |= set(SPACE_MCP)
+# Черновики действий коннекторов (drafts.py): список, «Да», «Нет» — только свои (владельца или своего пространства);
+# «Да» — как команда на сервере: свежей сессии браузера — после кода.
+DRAFTS = ("/api/drafts", "/api/drafts/yes", "/api/drafts/no")
+SPACE_OK |= set(DRAFTS)
+CONFIRM |= {"/api/drafts/yes"}
 # Что тратит деньги: тестировщику — только пока дневной бюджет пространства не исчерпан (клавиши, Esc — можно).
 BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume", "/api/project/session",
                 "/api/project/resume"}
