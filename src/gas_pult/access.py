@@ -101,7 +101,7 @@ REPOS = ("/api/repos", "/api/repos/add", "/api/repos/remove")
 # Тестировщик демо-пространства (задача 31): только это — и только с окнами своего пространства (spaces.Routed.scope).
 # Остальное (папки и модули владельца, файлы, интеграции, ключи, люди, модели, расход владельца) — 403 code=space.
 USES = "/api/uses"                      # панель отмечает открытые экраны и листы (features.py): только id, без людей
-SPACE_OK = TERMS_FREE | set(PUSH_OWN) | {USES, FEEDBACK,
+SPACE_OK = TERMS_FREE | set(PUSH_OWN) | set(TTY) | {USES, FEEDBACK,
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/tts/warm", "/api/stt", "/api/voice/cards", "/api/scenarios",
     "/api/new",

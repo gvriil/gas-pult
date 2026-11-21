@@ -1864,7 +1864,8 @@ class Panel:
         if sp := self.space_info(uid):
             # тестировщик пространства — та же панель пульта, что у владельца, без его функций (владелец 19.11:
             # «интерфейс должен быть точно такой же, как у нас в пульте, только без заморочек»): сессии и проекты,
-            # без терминала, расхода и журнала; модели и MCP — по потолку гостя (закрыты)
+            # терминал (за «режимом разработчика», только своё пространство) и расход (бюджет пространства) — открыты
+            # (владелец 20.11, GAS-38); журнал — нет; модели и MCP — по потолку гостя (закрыты)
             rec = {**rec, "persona": personas.DEFAULT, "onboarded": True, "added": [],
                    "hidden": sorted(self.SPACE_HIDE)}
             access = "guest"
@@ -1877,7 +1878,9 @@ class Panel:
         return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else [],
                 **({"space": sp} if sp else {})}
 
-    SPACE_HIDE = frozenset({"cap.dev_terminal", "cap.dev_cost_tokens", "cap.audit_journal"})
+    # терминал и расход пространству — открыты (владелец 20.11: «весь функционал, чтобы не было вырезано»; GAS-38):
+    # терминал — за «режимом разработчика» и только своё пространство, расход — бюджет пространства, не владельца
+    SPACE_HIDE = frozenset({"cap.audit_journal"})
 
     def space_info(self, uid) -> dict | None:
         """Пространство тестировщика для панели: имя, название, вид. Не тестировщик — None."""
@@ -2273,13 +2276,18 @@ class Panel:
             os.replace(tmp, f)
         return {"model": d.get("model") or "", "models": list(self.cfg.models)}
 
-    def tty_window(self, wid: str, owner: bool, write: bool) -> dict:
+    def tty_window(self, wid: str, owner: bool, write: bool, space: str | None = None) -> dict:
         """Окно для живого терминала (задача 50). Владельцу — любое окно его tmux, окно gp-term и окна пространств
-        (через их tmux). Участнику — только окна сессий пульта; писать — только пока в окне работает Claude
-        (остановленная сессия — командная строка сервера, она только владельцу)."""
+        (через их tmux). Тестировщику пространства — только окна своего пространства: командная строка там —
+        песочница пространства (свой пользователь Linux, GAS-38). Участнику — только окна сессий пульта; писать —
+        только пока в окне работает Claude (остановленная сессия — командная строка сервера, она только владельцу)."""
         w = self.tmux.window(str(wid or ""))
         if not w:
             raise LookupError("окна уже нет")
+        if space:
+            if w.get("space") != space:
+                raise LookupError("окна уже нет")         # чужое окно — как несуществующее
+            return w
         if owner:
             return w
         if w.get("space") or w.get("name") == termwin.WINDOW:
@@ -4135,8 +4143,9 @@ def handler(panel: Panel):
 
         def dev_tty(self) -> bool:
             """Живой терминал: владелец или участник, у которого в виде есть «Экран терминала» и не простой режим.
-            Фокус-ссылка сюда не доходит (``FOCUS_*``), тестировщик пространства — тоже (``SPACE_OK``)."""
-            if self.focused is not None or self.space():
+            Фокус-ссылка сюда не доходит (``FOCUS_*``). Тестировщик пространства — как владелец, за «режимом
+            разработчика», и только окна своего пространства (``tty_window``; решение владельца 20.11, GAS-38)."""
+            if self.focused is not None:
                 return False
             role = self.who()[1]
             if role not in ("owner", "member"):
@@ -4449,7 +4458,7 @@ def handler(panel: Panel):
             if path == "/api/term":                       # окно терминала панели: что на экране, живо ли
                 return termwin.screen(panel.tmux, q.get("id", ""))
             if path == "/api/tty":                        # живой терминал: история окна страницами (задача 50)
-                w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False)
+                w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False, space=self.space())
                 d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1",
                                     q.get("color") == "1")             # color — экран для xterm.js (добавлено)
                 return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
@@ -5336,7 +5345,7 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path in ("/api/tty/type", "/api/tty/key", "/api/tty/size"):   # живой терминал: текст, клавиши, размер
                 owner = self.who()[1] == "owner"
-                w = panel.tty_window(str(b.get("w") or ""), owner, write=True)
+                w = panel.tty_window(str(b.get("w") or ""), owner, write=True, space=self.space())
                 if path == "/api/tty/size":                    # окно tmux — под размер области терминала (17.11)
                     return termwin.tty_size(panel.tmux, w["id"], b.get("cols"), b.get("rows"), bool(b.get("reset")))
                 if path == "/api/tty/key":

@@ -217,7 +217,8 @@ def test_not_for_simple_viewer_tester(server):
     p.people.set_ui(2, {"persona": "developer", "onboarded": True, "hidden": ["cap.dev_terminal"]})
     assert call(base, "/api/tty?w=%401", tok=p.auth.issue(2))[0] == 403          # «Экран терминала» скрыт
     for path in webapp.TTY:
-        assert path not in webapp.SPACE_OK and path not in webapp.FOCUS_GET | webapp.FOCUS_POST
+        # пространству — да, только его окна (GAS-38, tests/test_space_terminal.py); фокус-ссылке — нет
+        assert path in webapp.SPACE_OK and path not in webapp.FOCUS_GET | webapp.FOCUS_POST
         assert path in webapp.MEMBER_ONLY
 
 

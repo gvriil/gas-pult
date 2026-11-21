@@ -182,10 +182,12 @@ def test_tester_meta_and_view(world):
     w = world
     m = call(w, "/api/meta")[1]
     assert m["projects"] == [] and m["host"] == "Демо для кафе" and m["profiles"] == []
-    # владелец 19.11: в пространстве — та же панель пульта (вид разработчика) без терминала, расхода и журнала
+    # владелец 19.11 и 20.11: в пространстве — та же панель пульта (вид разработчика), «весь функционал»: терминал
+    # (своё пространство) и расход (бюджет пространства) — есть; журнала действий — нет (GAS-38)
     assert m["space"]["slug"] == "demo" and m["ui"]["persona"] == "developer" and m["ui"]["space"]["slug"] == "demo"
     caps = set(m["ui"]["caps"])
-    assert "cap.dev_sessions" in caps and not {"cap.dev_terminal", "cap.dev_cost_tokens"} & caps
+    assert {"cap.dev_sessions", "cap.dev_terminal", "cap.dev_cost_tokens"} <= caps and "cap.audit_journal" not in caps
+    assert m["tty"] is True
     assert m["ui"]["simple"] is False
     assert m["ui"]["onboarded"] is True
     assert call(w, "/api/persona", {"persona": "developer"})[0] == 400          # вид задаёт владелец
