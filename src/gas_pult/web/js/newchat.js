@@ -13,6 +13,9 @@ const agents = () => meta?.agents || [];
 const choices = () => readyProfiles().length + agents().length;
 const profTitle = (id) => agents().find((a) => a.id === id)?.title || profileOf(id || "claude")?.title || "Claude";
 const okProfile = (id) => !id || agents().some((a) => a.id === id) || readyProfiles().some((p) => p.id === id);
+// три режима (Gemini №7; соответствие — MODES в js/picker.js; здесь — только подпись чипа)
+const modeKey = (e) => (e === "low" ? "low" : /^(high|xhigh|max)$/.test(e || "") ? "high" : "medium");
+const MODE_T = { low: "Быстро", medium: "Обычно", high: "Глубоко" }, MODE_IC = { low: "bolt", medium: "chat", high: "spark" };
 const chip = (attr, icon, text, title, on) => `<button class="dchip${on ? " on" : ""}" type="button" ${attr} title="${esc(title)}">${ic(icon)}<span>${esc(text)}</span>${ic("chev", "s16")}</button>`;
 
 export function paint() {
@@ -26,8 +29,9 @@ export function paint() {
   const eff = EFFORT.find(([v]) => v === (DRAFT.effort || "")) || EFFORT[0];
   $("draftBar").innerHTML = (p ? chip("data-dfold", "folder", p.name, "Проект: куда положить чат") : "")
     + (DRAFT.route ? `<button class="dchip${DRAFT.model ? " on" : ""}" type="button" data-droute aria-pressed="${!!DRAFT.model}" title="${esc("Почему: " + DRAFT.route.why)}">${ic(DRAFT.model ? "check" : "spark")}<span>${esc((DRAFT.model ? "" : "Подходит: ") + DRAFT.route.label)}</span></button>` : "")
-    + chip("data-dmodel", "chip", (DRAFT.model || profTitle(prof)) + (claude && !/haiku/i.test(DRAFT.model || "") ? " · усилия: " + eff[1].toLowerCase() : ""),
-      "Модель и усилие — один выбор", !!(DRAFT.model || DRAFT.effort))
+    + (claude && !dev() ? chip("data-dmodel", MODE_IC[modeKey(DRAFT.effort)], MODE_T[modeKey(DRAFT.effort)], "Быстро, обычно или глубоко; «Точнее…» — модель и усилие", !!DRAFT.effort)   // Gemini №7
+      : chip("data-dmodel", "chip", (DRAFT.model || profTitle(prof)) + (claude && !/haiku/i.test(DRAFT.model || "") ? " · усилия: " + eff[1].toLowerCase() : ""),
+      "Модель и усилие — один выбор", !!(DRAFT.model || DRAFT.effort)))
     + (MCP?.length ? chip("data-dmcp", "puzzle", "Интеграции: " + onCount(DRAFT.mcpOff) + (DRAFT.mcpOff.length ? " из " + okCount() : ""),
       claude ? "Какие интеграции доступны этому чату" : "У другого агента интеграции — в его настройках", DRAFT.mcpOff.length > 0) : "");
   $("input").placeholder = "Напишите, что нужно…";

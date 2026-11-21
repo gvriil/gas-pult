@@ -1295,7 +1295,7 @@
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
       <button class="tool" id="menuBtn" data-tour="menu" aria-label="Меню действий"></button>
       <button class="target" id="target" data-tour="target" type="button" aria-label="Сменить чат"></button>
-      <button class="dchip mode" id="modeChip" type="button" title="Модель и усилие этого чата"></button><button class="tool" id="mcpChip" type="button" aria-label="Интеграции чата" title="Интеграции чата"></button>
+      <button class="dchip mode" id="modeChip" type="button" title="Режим этого чата: быстро, обычно или глубоко"></button><button class="tool" id="mcpChip" type="button" aria-label="Интеграции чата" title="Интеграции чата"></button>
       <div class="dchips" id="draftBar" hidden></div>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
@@ -3729,8 +3729,10 @@ async function refresh() {
 }
 // Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
 function paintTools(s) {                              // строка поля: режим (модель) и интеграции чата (Gemini №2)
-  const m = String(s?.model || "").replace(/^claude-?/i, "").trim() || "Модель";
-  setHTML($("modeChip"), ic("chip", "s16") + `<span>${esc(m)}</span>` + ic("chev", "s16"));
+  // человеку — режим (Gemini №7: усилие → «Быстро / Обычно / Глубоко»), разработчику и другим агентам — модель
+  const k = s?.effort === "low" ? 0 : /^(high|xhigh|max)$/.test(s?.effort || "") ? 2 : 1, mode = !dev() && (s?.harness || "claude") === "claude";
+  const m = mode ? ["Быстро", "Обычно", "Глубоко"][k] : String(s?.model || "").replace(/^claude-?/i, "").trim() || "Модель";
+  setHTML($("modeChip"), ic(mode ? ["bolt", "chat", "spark"][k] : "chip", "s16") + `<span>${esc(m)}</span>` + ic("chev", "s16"));
   const mcpOk = ["owner", "admin"].includes(meta?.role) && !s?.space && (s?.harness || "claude") === "claude";
   setHidden($("mcpChip"), !mcpOk); setHidden($("modeChip"), !s || meta?.role === "viewer");
 }
