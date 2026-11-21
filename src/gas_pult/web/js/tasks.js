@@ -47,8 +47,13 @@ const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.k
   sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
     chatName(t) ? "чат «" + chatName(t) + "»" : ""].filter(Boolean).join(" · "),
   run: () => taskGo(t) });
+// Gemini №14: задачи «Выполнить команду» — разработчику; на ПК окно задач — правой шторкой 400 px
+const mine = (t) => dev() || t.kind !== "command";
+const SIDE_CSS = `.sheet-bg.side { justify-content: flex-end; align-items: stretch; padding: 0; }
+.sheet-bg.side .sheet { width: 400px; max-width: 100vw; height: 100%; max-height: none; border-radius: 0; }`;
 function tasksSheet(keep) {
-  const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
+  const all = TASKS.filter(mine);
+  const open = all.filter((t) => t.status !== "done"), done = all.filter((t) => t.status === "done");
   const f = folds(), rows = [];
   const group = (k, title, list, q) => {
     if (!list.length) return;
@@ -70,6 +75,10 @@ function tasksSheet(keep) {
   const sh = [...document.querySelectorAll(".sheet-bg .sheet")].pop();
   if (!sh) return;
   sh.dataset.tasks = "1";
+  if (split()) {
+    if (!document.getElementById("tasksSideCss")) document.head.insertAdjacentHTML("beforeend", `<style id="tasksSideCss">${SIDE_CSS}</style>`);
+    sh.parentElement.classList.add("side");
+  }
   if (keep) sh.scrollTop = Y;
   sh.addEventListener("scroll", () => { Y = sh.scrollTop; }, { passive: true });
   if (JUST) {                                          // только что изменённая задача — подсветка на месте
