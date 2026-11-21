@@ -117,6 +117,10 @@ function taskSheet(t) {
   }
   if (t.link) a.push({ label: "Открыть источник", icon: "ext", sub: t.link, run: () => openUrl(t.link) });
   if (t.chat_now && t.chat_now !== current) a.push({ label: "Открыть чат «" + chatName(t) + "»", icon: "chat", run: () => openSession(t.chat_now) });
+  if (!t.chat_now) a.push({ label: "Продолжить в чате", icon: "chat", sub: "новый чат — задача уже в поле ввода", run: () => {   // чата нет — новый
+    document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
+    chatWith(["Задача: " + t.title, t.next && "Дальше: " + t.next, t.due && "Срок: " + t.due, t.link && "Источник: " + t.link].filter(Boolean).join("\n") + "\n");
+  } });
   a.push(t.status === "done" ? { label: "Вернуть в работу", icon: "refresh", run: () => taskSet(t, { status: "todo" }, "Задача снова в работе") }
     : { label: "Отметить выполненным", icon: "check", run: () => taskSet(t, { status: "done" }, "Выполнено") });
   if (t.status !== "done") a.push({ label: "Срочность и важность…", icon: "bolt", sub: Q_SHORT[t.q || 0], run: () => taskQ(t) },

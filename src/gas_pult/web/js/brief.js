@@ -29,6 +29,7 @@ body:has(.brief-bg) .notices { z-index: 61; }   /* сообщения («Сох�
 .brief .src .i { width: 13px; height: 13px; }
 .brief a.src { color: var(--accent-primary); text-decoration: none; }
 .brief .dec { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 7px 10px; margin-top: 6px; font-size: 14px; line-height: 1.3; background: var(--bg-surface); }
+.brief .tochat { border: 0; background: none; color: var(--accent-primary); padding: 2px 4px; margin-left: 4px; vertical-align: middle; cursor: pointer; }
 .brief .dec.hot { border-color: color-mix(in srgb, var(--status-approval) 45%, var(--border-subtle)); }   /* Gemini №14: без грязной заливки */
 .brief .yes { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .brief .acts { display: flex; gap: 6px; margin-top: 6px; }
@@ -52,7 +53,10 @@ const srcHtml = (s) => {
 };
 // Строки разработки (PR GitHub, HANDOFF.md) — разработчику (Gemini №14 [У]); у остальных — письма, встречи, задачи
 const devOnly = (r) => !dev() && ["github", "handoff"].includes(r.source?.kind);
-const rowHtml = (r) => `<li>${esc(r.text)} · ${srcHtml(r.source)}${r.why ? `<div class="why">${esc(r.why)}</div>` : ""}</li>`;
+// Каждый пункт — «В чат»: новый чат, пункт и источник уже в поле ввода (владелец 21.11: «сразу вход в чат»)
+let ROWS = [];
+const rowHtml = (r) => `<li>${esc(r.text)} · ${srcHtml(r.source)}<button class="tochat" data-chat="${ROWS.push(r) - 1}" title="Продолжить в чате" aria-label="Продолжить в чате">${ic("chat", "s16")}</button>${r.why ? `<div class="why">${esc(r.why)}</div>` : ""}</li>`;
+const chatText = (r) => [r.text, "Источник: " + (r.source?.label || "") + (r.source?.url ? " " + r.source.url : ""), r.why].filter(Boolean).join("\n") + "\n";
 
 function frame() {
   document.querySelector(".brief-bg")?.remove();
@@ -75,7 +79,7 @@ export async function briefOpen(mode) {
 }
 
 function briefView(bg) {
-  const b = { ...D.brief }, at = (b.at || "").slice(11, 16);
+  const b = { ...D.brief }, at = (b.at || "").slice(11, 16); ROWS = [];
   for (const [k] of BLOCKS) if (b[k]) b[k] = b[k].filter((r) => !devOnly(r));
   b.decisions = (b.decisions || []).filter((r) => !devOnly(r)); if (b.today) b.today = b.today.filter((r) => !devOnly(r));
   const nd = b.decisions.length;                     // заголовок сервера считает и скрытые строки — число по видимым
@@ -83,7 +87,7 @@ function briefView(bg) {
   const blocks = BLOCKS.map(([k, t, i]) => b[k]?.length ? `<section data-tour="brief-${k}"><h3>${ic(i)}${t}</h3><ul>${b[k].map(rowHtml).join("")}</ul>${b.more?.[k] ? `<div class="more">…и ещё ${b.more[k]}</div>` : ""}</section>` : "").join("");
   const decs = b.decisions.map((r, n) => `<div class="dec${r.cat ? " hot" : ""}" data-n="${n}"><div>${esc(r.text)}</div>
       <div class="yes">${srcHtml(r.source)}${r.yes ? ` · «Да» — ${esc(r.yes)}` : ""}</div>
-      <div class="acts">${r.act ? `<button class="btn ghost sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button></div></div>`).join("");
+      <div class="acts">${r.act ? `<button class="btn ghost sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button><button class="btn quiet sm" data-a="chat">В чат</button></div></div>`).join("");
   const off = (b.sources || []).filter((s) => s.state === "error" || s.state === "none");
   bg.innerHTML = `<div class="brief">${head("Брифинг", at && "на " + at,
       `<button class="icon" data-btour aria-label="Тур по брифингу">${ic("help")}</button><button class="icon" data-bprefs aria-label="Источники и время" data-tour="brief-prefs">${ic("settings")}</button><button class="icon" data-bfresh aria-label="Обновить">${ic("refresh")}</button>`)}
@@ -97,7 +101,9 @@ function briefView(bg) {
   bg.querySelector("[data-bprefs]").onclick = () => pickView(bg, false);
   bg.querySelector("[data-bfresh]").onclick = () => briefOpen("fresh");
   bg.querySelector("[data-btour]").onclick = () => briefTour();
-  bg.querySelectorAll(".dec [data-a]").forEach((x) => { x.onclick = () => act(bg, b.decisions[+x.closest(".dec").dataset.n], x.dataset.a); });
+  bg.querySelectorAll(".dec [data-a]").forEach((x) => { x.onclick = () => (x.dataset.a === "chat" ? (close(), chatWith(chatText(b.decisions[+x.closest(".dec").dataset.n])))
+    : act(bg, b.decisions[+x.closest(".dec").dataset.n], x.dataset.a)); });
+  bg.querySelectorAll("[data-chat]").forEach((x) => { x.onclick = () => { close(); chatWith(chatText(ROWS[+x.dataset.chat])); }; });
   if (!D.tour) briefTour();                            // первый брифинг — тур сам, дальше — по «?»
 }
 

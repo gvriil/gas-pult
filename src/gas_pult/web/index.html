@@ -2239,6 +2239,8 @@ function newChat(pid) {
   starters(); paintDraft(); renderNav(); padDock(); sync();
   setTimeout(() => $("input").focus(), 60);
 }
+// Из задачи и пункта брифинга — сразу в чат (владелец 21.11: «это очень важно»): новый чат, текст — в поле, не отправлен
+const chatWith = (text, pid) => { newChat(pid); setTimeout(() => { $("input").value = text; grow(); $("input").focus(); }, 80); };
 const readyProfiles = () => (meta?.profiles || []).filter((x) => (!x.needs_key || x.key) && !x.not_ready && !x.no_balance && x.allowed !== false);
 // Первый разговор: бейджики-сценарии (GAS-37, js/starters.js) — в пустой сессии и новом чате
 const starters = () => { if (!FOCUS_DEMO?.() && meta?.role !== "viewer") part("starters").then((m) => m.paint()).catch(() => {}); };
