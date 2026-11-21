@@ -324,7 +324,7 @@ def session_files(folders: list[str], homes: list) -> list[Path]:
     for f in folders:
         for h in homes:
             for x in transcripts.transcripts(f, h):
-                if x not in seen and not transcripts.is_batch(x):
+                if x not in seen and transcripts.inside(x, h) and not transcripts.is_batch(x):   # ссылка наружу — нет
                     seen.add(x)
                     out.append(x)
     return out
