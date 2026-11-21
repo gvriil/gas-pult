@@ -1,40 +1,77 @@
 // Утренний брифинг первого лица (GAS-18) — часть интерфейса по требованию (#191): ядро держит кнопку «Брифинг»,
 // пункт в «⋯» и в «Настройках»; этот код грузится при первом нажатии.
-// Владелец 18.11: один экран телефона — вывод одной строкой, «Выполнено», «Не выполнено — и почему», «Ваши решения»
-// с «Да / Нет / Позже»; у каждой строки — источник-ссылка. Первый вход — выбор источников и времени («что хотят
-// подключить — всегда должна быть такая возможность»), потом — короткий тур (как в админке и сканере TGI).
+// Владелец 18.11: один экран телефона, у каждой строки — источник-ссылка. Первый вход — выбор источников и времени
+// («что хотят подключить — всегда должна быть такая возможность»), потом — короткий тур (как в админке и сканере TGI).
+// Владелец 21.11: «понятно с первого взгляда» (ориентиры — Things 3 «Today», Linear Inbox, «Напоминания»): сверху
+// итог одной строкой, затем группы «Ждут вашего Да» → «Сегодня» → «Сделано» (свёрнуто) и «Не выполнено»;
+// пустая группа не показывается, кроме «Ждут вашего Да»; длинное — «…», раскрывается нажатием.
 
 const KIND_IC = { mail: "mail", calendar: "cal", github: "code", linear: "tasks", pult: "home", handoff: "book" };
 const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const EVERY_T = { workdays: "Рабочие дни", daily: "Каждый день", custom: "Выбрать дни" };
-const BLOCKS = [["done", "Выполнено", "check"], ["failed", "Не выполнено — и почему", "warn"]];   // как в макете; «Сегодня» — после решений
+const BLOCKS = [["done", "Сделано", "check"], ["failed", "Не выполнено", "warn"]];   // идут после «Ждут вашего Да» и «Сегодня»
+const TIME = /^((?:\d{1,2}:\d{2}(?:–\d{1,2}:\d{2})?)|весь день) · /;   // «10:00–10:30 · Планёрка» → время слева
 let D = null;                                         // ответ /api/brief: {brief, sel, schedule, avail, tour}
 
 const css = document.createElement("style");
 css.textContent = `
 body:has(.brief-bg) .notices { z-index: 61; }   /* сообщения («Сохранено») — поверх брифинга (Gemini 20.11) */
 .brief-bg { position: fixed; inset: 0; z-index: 60; background: var(--bg-canvas); overflow-y: auto; overscroll-behavior: contain; }
-.brief { max-width: 640px; margin: 0 auto; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); color: var(--text-primary); }
+.brief { max-width: 780px; margin: 0 auto; padding: 8px 16px calc(32px + env(safe-area-inset-bottom)); color: var(--text-primary); }   /* как абзацы ленты */
 .brief .bh { display: flex; align-items: center; gap: 6px; }
 .brief .bh h2 { flex: 1; margin: 0; font-size: 20px; }
 .brief .bh small { color: var(--text-muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
-.brief .bl { margin: 6px 0 4px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--accent-soft); font-weight: 600; line-height: 1.35; }
-.brief h3 { display: flex; align-items: center; gap: 6px; margin: 10px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
-.brief h3 .i { width: 15px; height: 15px; }
+.brief .bl { margin: 10px 0 6px; font-size: 18px; font-weight: 600; line-height: 1.35; }   /* итог — крупно, без плашки */
+.brief .bl small { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--text-muted); }
+.brief .grp { margin-top: 22px; }
+.brief h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 15px; font-weight: 600; line-height: 22px; color: var(--text-primary); }
+.brief h3 .i { width: 18px; height: 18px; color: var(--text-secondary); }
+.brief h3 .n { font-weight: 400; color: var(--text-muted); }
+.brief .grp.warn h3, .brief .grp.warn h3 .i { color: var(--status-approval); }
 .brief ul { list-style: none; margin: 0; padding: 0; }
-.brief li { padding: 5px 0; border-bottom: 1px solid var(--border-subtle); line-height: 1.3; font-size: 14px; }
+.brief li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 0; border-bottom: 1px solid var(--border-subtle); font-size: 15px; line-height: 22px; }
 .brief li:last-child { border-bottom: 0; }
-.brief .why { color: var(--status-danger); font-size: 13px; }
-.brief .src { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; vertical-align: 1px; color: var(--text-muted); }
-.brief .src .i { width: 13px; height: 13px; }
-.brief a.src { color: var(--accent-primary); text-decoration: none; }
-.brief .dec { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 7px 10px; margin-top: 6px; font-size: 14px; line-height: 1.3; background: var(--bg-surface); }
-.brief .tochat { border: 0; background: none; color: var(--accent-primary); padding: 2px 4px; margin-left: 4px; vertical-align: middle; cursor: pointer; }
+.brief .tm { flex: none; width: 52px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.brief .tm small { display: block; font-size: 13px; font-weight: 400; line-height: 16px; color: var(--text-muted); }
+.brief .tx { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.brief .tx.open { white-space: normal; }
+.brief .why { color: var(--status-approval); }
+.brief .src { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 40%; font-size: 13px; color: var(--text-muted); text-decoration: none; }
+.brief .src .lb { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.brief .src .i { width: 14px; height: 14px; flex: none; }
+.brief a.src:hover { color: var(--accent-primary); }
+.brief .tochat { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-muted); cursor: pointer; }
+.brief .tochat:hover { color: var(--accent-primary); background: var(--bg-subtle); }
+.brief .dec { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 14px 10px; margin-top: 8px; background: var(--bg-surface); }
 .brief .dec.hot { border-color: color-mix(in srgb, var(--status-approval) 45%, var(--border-subtle)); }   /* Gemini №14: без грязной заливки */
-.brief .yes { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-.brief .acts { display: flex; gap: 6px; margin-top: 6px; }
-.brief .acts .btn { flex: 1; min-height: 34px; padding-block: 4px; }
-.brief .more, .brief .off { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+.brief .dt { font-size: 15px; line-height: 22px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; cursor: pointer; }
+.brief .dec.open .dt { display: block; } .brief .dec.open .yes { white-space: normal; }
+.brief .tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 6px; font-size: 12px; line-height: 20px; font-weight: 600; vertical-align: 1px;
+  color: var(--status-approval); background: var(--status-approval-bg); }
+.brief .meta { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 13px; color: var(--text-muted); min-width: 0; }
+.brief .meta .src { max-width: none; }
+.brief .meta .yes { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.brief .acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.brief .acts .btn { flex: none; width: auto; min-height: 36px; padding: 6px 14px; }
+.brief .dec .acts .btn.quiet { background: transparent; color: var(--text-secondary); font-weight: 500; }   /* «Нет / Позже / В чат» — тихие */
+.brief .dec .acts .btn.quiet:hover { background: var(--bg-subtle); color: var(--text-primary); }
+.brief .dec .acts [data-a=yes] { min-width: 72px; }
+.brief .calm { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--text-secondary); font-size: 15px; }
+.brief .calm .i { width: 18px; height: 18px; color: var(--status-success); }
+.brief details.fold > summary { list-style: none; cursor: pointer; }
+.brief details.fold > summary::-webkit-details-marker { display: none; }
+.brief details.fold > summary h3 { min-height: 44px; margin: 0; }
+.brief details.fold > summary .chev { margin-left: auto; transition: transform .15s; }
+.brief details.fold[open] > summary .chev { transform: rotate(180deg); }
+.brief .more { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+.brief .off { margin-top: 24px; font-size: 13px; color: var(--text-muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.brief .off.open { white-space: normal; }
+@media (max-width: 600px) {                          /* телефон: цели нажатия 44 px, источник — значком */
+  .brief .acts .btn { min-height: 44px; }
+  .brief .tochat { width: 44px; height: 44px; margin-right: -8px; }
+  .brief li .src .lb { display: none; }
+  .brief li .src { min-width: 28px; min-height: 44px; justify-content: center; }
+}
 .brief.bpick label { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); font-size: 15px; }
 .brief.bpick label small { display: block; color: var(--text-muted); font-size: 12px; }
 .brief.bpick label.dis { color: var(--text-muted); }
@@ -48,14 +85,28 @@ body:has(.brief-bg) .notices { z-index: 61; }   /* сообщения («Сох�
 document.head.append(css);
 
 const srcHtml = (s) => {
-  const inner = ic(KIND_IC[s.kind] || "ext") + esc(s.label);
-  return s.url ? `<a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<span class="src">${inner}</span>`;
+  const inner = ic(KIND_IC[s.kind] || "ext") + `<span class="lb">${esc(s.label)}</span>`, t = ` title="${esc(s.label)}"`;
+  return s.url ? `<a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"${t} aria-label="Источник: ${esc(s.label)}">${inner}</a>` : `<span class="src"${t}>${inner}</span>`;
 };
 // Строки разработки (PR GitHub, HANDOFF.md) — разработчику (Gemini №14 [У]); у остальных — письма, встречи, задачи
 const devOnly = (r) => !dev() && ["github", "handoff"].includes(r.source?.kind);
 // Каждый пункт — «В чат»: новый чат, пункт и источник уже в поле ввода (владелец 21.11: «сразу вход в чат»)
 let ROWS = [];
-const rowHtml = (r) => `<li>${esc(r.text)} · ${srcHtml(r.source)}<button class="tochat" data-chat="${ROWS.push(r) - 1}" title="Продолжить в чате" aria-label="Продолжить в чате">${ic("chat", "s16")}</button>${r.why ? `<div class="why">${esc(r.why)}</div>` : ""}</li>`;
+// строка группы — одна строка: [время] текст (длинное — «…», нажатие раскрывает) · источник · «В чат»
+const rowHtml = (r, timed) => {
+  const m = timed && String(r.text).match(TIME), [a, z] = m ? m[1].split("–") : [];
+  const tx = m ? r.text.slice(m[0].length) : r.text;
+  return `<li>${m ? `<span class="tm">${esc(a)}${z ? `<small>${esc(z)}</small>` : ""}</span>` : ""}<span class="tx" data-more>${esc(tx)}${r.why ? `<span class="why"> · ${esc(r.why)}</span>` : ""}</span>${srcHtml(r.source)}<button class="tochat" data-chat="${ROWS.push(r) - 1}" title="Продолжить в чате" aria-label="Продолжить в чате">${ic("chat", "s16")}</button></li>`;
+};
+// решение — карточка: метка категории («[деньги] …») — плашкой, текст ≤ 2 строк, источник и что сделает «Да» — мелко
+const decHtml = (r, n) => {
+  const m = String(r.text).match(/^\[([^\]]{1,20})\]\s*/), tx = m ? r.text.slice(m[0].length) : r.text;
+  return `<div class="dec${r.cat ? " hot" : ""}" data-n="${n}" data-more><div class="dt">${m ? `<span class="tag">${esc(m[1])}</span>` : ""}${esc(tx)}</div>
+    <div class="meta">${srcHtml(r.source)}${r.yes ? `<span class="yes" title="${esc(r.yes)}">· Да — ${esc(r.yes)}</span>` : ""}</div>
+    <div class="acts">${r.act ? `<button class="btn sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button><button class="btn quiet sm" data-a="chat">В чат</button></div></div>`;
+};
+const count = (b, k) => (b[k]?.length || 0) + (b.more?.[k] || 0);
+const moreHtml = (b, k) => (b.more?.[k] ? `<div class="more">…и ещё ${b.more[k]}</div>` : "");
 const chatText = (r) => [r.text, "Источник: " + (r.source?.label || "") + (r.source?.url ? " " + r.source.url : ""), r.why].filter(Boolean).join("\n") + "\n";
 
 function frame() {
@@ -111,18 +162,22 @@ function briefView(bg) {
   b.decisions = (b.decisions || []).filter((r) => !devOnly(r)); if (b.today) b.today = b.today.filter((r) => !devOnly(r));
   const nd = b.decisions.length;                     // заголовок сервера считает и скрытые строки — число по видимым
   if (nd !== (D.brief.decisions || []).length) b.headline = String(b.headline || "").replace(/(\d+)\s+решени[а-я]*/, nd + " " + plural(nd, ["решение", "решения", "решений"]));
-  const blocks = BLOCKS.map(([k, t, i]) => b[k]?.length ? `<section data-tour="brief-${k}"><h3>${ic(i)}${t}</h3><ul>${b[k].map(rowHtml).join("")}</ul>${b.more?.[k] ? `<div class="more">…и ещё ${b.more[k]}</div>` : ""}</section>` : "").join("");
-  const decs = b.decisions.map((r, n) => `<div class="dec${r.cat ? " hot" : ""}" data-n="${n}"><div>${esc(r.text)}</div>
-      <div class="yes">${srcHtml(r.source)}${r.yes ? ` · «Да» — ${esc(r.yes)}` : ""}</div>
-      <div class="acts">${r.act ? `<button class="btn ghost sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button><button class="btn quiet sm" data-a="chat">В чат</button></div></div>`).join("");
+  const nt = count(b, "today"), ndone = count(b, "done"), nf = count(b, "failed");
+  // итог: первое предложение — крупно, остальное — мелко; «Решений от вас не ждут» уже сказано в группе — не повторяем
+  let [h1, ...h2] = String(b.headline || "").split(/(?<=\.)\s+/);
+  if (!nd && /^(Решений от вас не ждут|Ждут вас 0 )/.test(h1) && h2.length) h1 = h2.shift();
   const off = (b.sources || []).filter((s) => s.state === "error" || s.state === "none");
   bg.innerHTML = `<div class="brief">${head("Сегодня", at && "на " + at,
       `<button class="icon" data-btour aria-label="Тур по брифингу">${ic("help")}</button><button class="icon" data-bprefs aria-label="Источники и время" data-tour="brief-prefs">${ic("settings")}</button><button class="icon" data-bfresh aria-label="Обновить">${ic("refresh")}</button>`)}
-    <div class="bl" data-tour="brief-head">${esc(b.headline)}</div>
-    ${blocks}
-    <section data-tour="brief-decisions"><h3>${ic("help")}Ваши решения · ${b.decisions.length}</h3>${decs || '<div class="empty">Решений от вас не ждут.</div>'}</section>
-    ${b.today?.length ? `<section data-tour="brief-today"><h3>${ic("cal")}Сегодня</h3><ul>${b.today.map(rowHtml).join("")}</ul></section>` : ""}
-    ${off.length ? `<div class="off">Не подключено: ${off.map((s) => esc(s.label + (s.note ? " — " + s.note : ""))).join("; ")}</div>` : ""}
+    <div class="bl" data-tour="brief-head">${esc(h1)}${h2.length ? `<small>${esc(h2.join(" "))}</small>` : ""}</div>
+    <section class="grp" data-group="decisions" data-tour="brief-decisions">${nd
+      ? `<h3>${ic("help")}Ждут вашего Да <span class="n">${nd}</span></h3>${b.decisions.map(decHtml).join("")}`
+      : `<div class="calm">${ic("check")}Решений от вас не ждут</div>`}</section>
+    ${nt ? `<section class="grp" data-group="today" data-tour="brief-today"><h3>${ic("cal")}Сегодня <span class="n">${nt}</span></h3><ul>${b.today.map((r) => rowHtml(r, true)).join("")}</ul>${moreHtml(b, "today")}</section>` : ""}
+    ${ndone ? `<section class="grp" data-group="done"><details class="fold" data-tour="brief-done"><summary><h3>${ic("check")}Сделано <span class="n">${ndone}</span>${ic("chev", "chev")}</h3></summary>
+      <ul>${b.done.map((r) => rowHtml(r)).join("")}</ul>${moreHtml(b, "done")}</details></section>` : ""}
+    ${nf ? `<section class="grp warn" data-group="failed" data-tour="brief-failed"><h3>${ic("warn")}Не выполнено <span class="n">${nf}</span></h3><ul>${b.failed.map((r) => rowHtml(r)).join("")}</ul>${moreHtml(b, "failed")}</section>` : ""}
+    ${off.length ? `<div class="off" data-more>Не подключено: ${off.map((s) => esc(s.label + (s.note ? " — " + s.note : ""))).join("; ")}</div>` : ""}
   </div>`;
   bg.querySelector("[data-bx]").onclick = close;
   bg.querySelector("[data-bprefs]").onclick = () => pickView(bg, false);
@@ -131,6 +186,7 @@ function briefView(bg) {
   bg.querySelectorAll(".dec [data-a]").forEach((x) => { x.onclick = () => (x.dataset.a === "chat" ? (close(), chatWith(chatText(b.decisions[+x.closest(".dec").dataset.n])))
     : act(bg, b.decisions[+x.closest(".dec").dataset.n], x.dataset.a)); });
   bg.querySelectorAll("[data-chat]").forEach((x) => { x.onclick = () => { close(); chatWith(chatText(ROWS[+x.dataset.chat])); }; });
+  bg.querySelectorAll("[data-more]").forEach((x) => { x.onclick = (e) => { if (!e.target.closest("a, button")) x.classList.toggle("open"); }; });
   if (!D.tour) briefTour();                            // первый брифинг — тур сам, дальше — по «?»
 }
 
@@ -195,8 +251,9 @@ const tzName = () => { try { return Intl.DateTimeFormat().resolvedOptions().time
 // ---------- тур по брифингу: механизм тура пульта (driver.js, отметка на сервере — /api/tour, вид «brief») ----------
 const STEPS = [
   { target: "brief-head", title: "Главное — одной строкой", text: "Сколько решений ждут вас и было ли ночью срочное. Ночью бот будит только по деньгам, безопасности и срокам." },
-  { target: "brief-decisions", title: "Ваши решения", text: "«Да» — сделать (что именно — написано под пунктом; слияние и «да» проекту — после второго подтверждения). «Нет» — убрать на месяц, «Позже» — вернётся в следующем брифинге." },
-  { target: "brief-done", title: "Выполнено и не выполнено", text: "У каждой строки — источник: письмо, событие, PR, задача. Нажмите источник — откроется оригинал. Строк без источника здесь нет." },
+  { target: "brief-decisions", title: "Ждут вашего Да", text: "«Да» — сделать (что именно — написано под пунктом; слияние и «да» проекту — после второго подтверждения). «Нет» — убрать на месяц, «Позже» — вернётся в следующем брифинге." },
+  { target: "brief-today", title: "Сегодня", text: "Встречи и дела дня: время слева. Длинная строка раскрывается нажатием." },
+  { target: "brief-done", title: "Сделано и не выполнено", text: "«Сделано» свёрнуто — нажмите, чтобы раскрыть. У каждой строки — источник: письмо, событие, PR, задача; нажмите его — откроется оригинал." },
   { target: "brief-prefs", title: "Источники и время", text: "Что подключить, во сколько и по каким дням присылать — меняйте здесь в любой момент или в «Настройки» → «Брифинг»." },
 ];
 async function briefTour() {
