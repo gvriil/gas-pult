@@ -24,8 +24,27 @@ function models(profile) {
   return (meta.models || []).map((m) => ({ alias: m, name: m, sub: SUB[m] || "" }));
 }
 
-// s — открытый чат; без s — черновик «Нового чата» (DRAFT)
-export function open(s) {
+// Три режима (разбор Gemini, №7; владелец: «по всем пунктам да»): человеку — «Быстро / Обычно / Глубоко», модель и
+// шесть усилий — разработчику и по «Точнее…». Штаб 21.11, вариант А: режим = усилие на текущей модели чата (модель и
+// расход не меняются, работает у всех агентов). Пятое поле — модель режима: "" — текущая; вариант Б — вписать
+// "haiku" / "sonnet" / "opus" здесь, больше нигде.
+export const MODES = [["low", "Быстро", "коротко и быстро — простые вопросы", "bolt", ""],
+  ["medium", "Обычно", "для большинства задач", "chat", ""], ["high", "Глубоко", "сложные задачи — дольше и тщательнее", "spark", ""]];
+export const modeOf = (effort) => MODES.find(([e]) => e === effort) || (/^(high|xhigh|max)$/.test(effort || "") ? MODES[2] : MODES[1]);
+
+function openModes(s, profile, sel, cur) {
+  const now = modeOf(cur.effort)[0];
+  helpSheet("sheet.model");
+  sheet("Режим" + (s ? " · этот чат" : ""), [
+    ...MODES.map(([e, label, sub, icon, model]) => ({ label, sub, icon, on: e === now, run: () => {
+      const alias = model || sel, name = models(profile).find((x) => x.alias === alias)?.name || alias;
+      return apply(s, alias, name, e, { ...cur, model: sel });
+    } })),
+    { label: "Точнее…", icon: "settings", sub: "модель и усилие", run: () => open(s, true) }]);
+}
+
+// s — открытый чат; без s — черновик «Нового чата» (DRAFT); full — сразу модель и усилие («Точнее…», разработчик)
+export function open(s, full) {
   const profile = s ? s.profile || "claude" : DRAFT?.profile || projOf(DRAFT?.proj)?.profile || "claude";
   const list = models(profile);
   // Реальная модель чата (строка статуса) — первой; сохранённая для перезапуска (window_models) — если реальной нет.
@@ -35,6 +54,7 @@ export function open(s) {
   const nm = (a) => { const n = list.find((m) => m.alias === a)?.name || a; return n.charAt(0).toUpperCase() + n.slice(1); };
   const differ = !!(live && saved && live !== saved);
   const cur = { model: sel, effort: (s ? s.effort : DRAFT?.effort) || "" };
+  if (!full && !dev() && hasEffort(profile, sel) && !differ) return openModes(s, profile, sel, cur);   // человеку — три режима
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.model");
   bg.innerHTML = `<div class="sheet mpick" role="dialog" aria-label="Модель и усилие"><h3>Модель и усилие${s ? " · только этот чат" : ""}</h3>
     ${differ ? `<div class="mp-warn" id="mpWarn"><p>После перезапуска чат запустится на ${esc(nm(saved))}.</p><div class="mp-wb"><button class="btn" type="button" data-keep="live">Оставить ${esc(nm(live))}</button><button class="btn ghost" type="button" data-keep="saved">Запускать ${esc(nm(saved))}</button></div></div>` : ""}
