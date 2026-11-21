@@ -38,6 +38,7 @@ OWNER_ONLY |= {"/api/people/access"}
 OWNER_ONLY |= {"/api/q/new", "/api/q/list", "/api/q/answers"}   # анкеты клиентов (0010) — только владелец
 # Интеграции на чат посреди чата — перезапуск окна, как /api/restart: владелец и админ (включить выключенное = доступ)
 OWNER_ONLY |= {"/api/chat/mcp"}
+OWNER_ONLY |= {"/api/spend"}                                       # расход по ценам API (spend.py)
 ADMIN_OK |= {"/api/chat/mcp"}
 # Подтверждение кодом (аудит 09.11): сессия браузера моложе суток (``webauth.CONFIRM_FRESH``) выполняет команды на
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
