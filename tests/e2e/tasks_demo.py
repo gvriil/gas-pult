@@ -29,11 +29,14 @@ def run(base: str):
             pg.on("console", lambda m: m.type == "error" and "404" not in m.text and errs.append(m.text))
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(f"{base}{sep}space=1&home&theme={th}")
-            pg.wait_for_selector(".sp-tasks[aria-label^='Задачи']")
+            pg.wait_for_selector("#navTasks[aria-label^='Задачи']", state="attached")   # «Задачи» — строкой в панели
             assert pg.locator("[data-space=demo]").count() == 0, f"{where}: «Демо и тесты» осталось наверху"
-            lab = pg.get_attribute(".sp-tasks", "aria-label")                 # сводка цветом (17.11): подпись — словами
+            lab = pg.get_attribute("#navTasks", "aria-label")                 # сводка цветом (17.11): подпись — словами
             assert lab.startswith("Задачи: 2 срочно"), lab
-            pg.click(".sp-tasks")
+            if w < 900:
+                pg.evaluate("navOpen(true)")
+                pg.wait_for_timeout(400)
+            pg.click("#navTasks")
             pg.wait_for_selector(".sheet h3:has-text('Задачи')")
             labels = [x.split("\n")[0] for x in pg.locator(".sheet button").all_inner_texts()]
             i_wait = labels.index("Выбрать цену пилота для клиента")
@@ -64,14 +67,14 @@ def run(base: str):
             pg.wait_for_function("() => current === '@1'")
             pg.evaluate(SPY)
             pg.locator(".sheet button", has_text="80 тыс. ₽").click()
-            pg.wait_for_function("() => (document.querySelector('.sp-tasks').getAttribute('aria-label') || '')"
+            pg.wait_for_function("() => (document.querySelector('#navTasks').getAttribute('aria-label') || '')"
                                  ".startsWith('Задачи: 1 срочно')")
             # квадрант руками: «Написать Ивану» → «Срочно и важно» (список уже открыт — остались на месте)
             pg.wait_for_selector(".sheet[data-tasks] h3:has-text('Задачи')")
             pg.locator(".sheet button", has_text="Написать Ивану про доступ").click()
             pg.locator(".sheet button", has_text="Срочность и важность").click()
             pg.locator(".sheet button", has_text="Срочно и важно — сделать сейчас").click()
-            pg.wait_for_function("() => (document.querySelector('.sp-tasks').getAttribute('aria-label') || '')"
+            pg.wait_for_function("() => (document.querySelector('#navTasks').getAttribute('aria-label') || '')"
                                  ".startsWith('Задачи: 2 срочно')")
             sent = pg.evaluate("() => window.__sent")
             assert sent and sent[0]["text"] == "80 тыс. ₽" and sent[0]["w"] == "@1", f"{where}: ответ в чат {sent}"
