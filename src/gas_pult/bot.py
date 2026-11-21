@@ -1259,14 +1259,16 @@ class Pult:
         открыл для этого человека, поэтому отвечаем «Да» (Enter на пункте 1). Раньше отвечал только поток при
         создании окна и только 30 с — при перезапуске, пробуждении и медленном старте вопрос оставался на экране.
         В журнал чата — событие ``trust_auto``: админ видит, что произошло."""
-        if not (tmux_mod.TRUST_ASK.search(scr) and tmux_mod.TRUST_YES.search(scr)):
+        keys = tmux_mod.trust_keys(scr)
+        if not keys:
             return False
         last = self.__dict__.setdefault("_trust_at", {})
         if time.time() - last.get(w["id"], 0) < self.TRUST_EVERY:   # Enter уже нажат — ждём, пока экран сменится
             return True
         last[w["id"]] = time.time()
-        self.tmux.keys(w["id"], "Enter")
-        self.ev("trust_auto", w=w["id"], path=w.get("path", ""))
+        for k in keys:                                  # Claude Code 2.1.330: курсор — на «No, exit», сначала вниз
+            self.tmux.keys(w["id"], k)
+        self.ev("trust_auto", w=w["id"], path=w.get("path", ""), keys=len(keys))
         return True
 
     def monitor(self):
