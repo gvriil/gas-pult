@@ -88,3 +88,50 @@ def test_throttle():
     for _ in range(3):
         t.wait()
     assert time.monotonic() - s >= 0.15
+
+
+class Gzip(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):                                        # как МойСклад: ответ и ошибка — только в gzip
+        import gzip
+        code = 200 if self.path == "/ok" else 404
+        body = gzip.compress(json.dumps({"rows": [{"name": "Товар"}]} if code == 200 else {"errors": [
+            {"error": "Объект не найден"}]}, ensure_ascii=False).encode())
+        self.send_response(code)
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def test_http_gzip():
+    s = HTTPServer(("127.0.0.1", 0), Gzip)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{s.server_port}"
+    try:
+        assert _core.http("GET", base + "/ok", headers={"Accept-Encoding": "gzip"}) == {"rows": [{"name": "Товар"}]}
+        with pytest.raises(_core.ToolError, match="Объект не найден"):
+            _core.http("GET", base + "/nope", headers={"Accept-Encoding": "gzip"})
+    finally:
+        s.shutdown()
+
+
+def test_http_error_hides_key_before_cut(srv):
+    long = "x" * 290 + KEY                                   # ключ на границе обреза в 300 символов
+    class Long(Echo401):
+        def do_GET(self):
+            body = long.encode()
+            self.send_response(500)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+    s = HTTPServer(("127.0.0.1", 0), Long)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(_core.ToolError) as e:
+            _core.http("GET", f"http://127.0.0.1:{s.server_port}/x", keys=[KEY])
+        assert KEY[:8] not in str(e.value) and "***" in str(e.value)
+    finally:
+        s.shutdown()

@@ -1,0 +1,121 @@
+{
+ "_source": "не проверено на песочнице: собрано по примерам из официальной документации МойСклад JSON API 1.2 (github.com/moysklad/api-remap-1.2-doc @012cd53, md/reports/_report_counterparty.md, «Получить показатели контрагентов»), данные выдуманные",
+ "context": {
+  "employee": {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/context/employee",
+    "type": "employee",
+    "mediaType": "application/json"
+   }
+  }
+ },
+ "meta": {
+  "href": "https://api.moysklad.ru/api/remap/1.2/report/counterparty",
+  "type": "counterparty",
+  "mediaType": "application/json",
+  "size": 3,
+  "limit": 20,
+  "offset": 0
+ },
+ "rows": [
+  {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/report/counterparty/9794d400-f689-11e5-8a84-bae500000078",
+    "type": "counterparty",
+    "mediaType": "application/json"
+   },
+   "counterparty": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/9794d400-f689-11e5-8a84-bae500000078",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/metadata",
+     "type": "counterparty",
+     "mediaType": "application/json"
+    },
+    "id": "9794d400-f689-11e5-8a84-bae500000078",
+    "name": "ООО «Ромашка-Бистро»",
+    "externalCode": "o7732zkki541HDkZZD1Yt3",
+    "companyType": "legal"
+   },
+   "firstDemandDate": "2026-08-26 15:49:00",
+   "lastDemandDate": "2026-11-12 12:57:00",
+   "demandsCount": 14,
+   "demandsSum": 17500000,
+   "averageReceipt": 1250000,
+   "returnsCount": 0,
+   "returnsSum": 0,
+   "discountsSum": 0,
+   "balance": -1250000,
+   "bonusBalance": 0,
+   "profit": 0,
+   "lastEventDate": "2026-11-12 12:57:00",
+   "lastEventText": "продажа",
+   "updated": "2026-11-01 18:32:17"
+  },
+  {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/report/counterparty/12c9ebcf-692c-11e6-8a84-bae50000005d",
+    "type": "counterparty",
+    "mediaType": "application/json"
+   },
+   "counterparty": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/12c9ebcf-692c-11e6-8a84-bae50000005d",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/metadata",
+     "type": "counterparty",
+     "mediaType": "application/json"
+    },
+    "id": "12c9ebcf-692c-11e6-8a84-bae50000005d",
+    "name": "ИП Иванов (кафе «Пример»)",
+    "externalCode": "o7732zkki541HDkZZD1Yt3",
+    "companyType": "legal"
+   },
+   "firstDemandDate": "2026-08-26 15:49:00",
+   "lastDemandDate": "2026-11-11 09:10:00",
+   "demandsCount": 3,
+   "demandsSum": 1458150,
+   "averageReceipt": 486050,
+   "returnsCount": 0,
+   "returnsSum": 0,
+   "discountsSum": 0,
+   "balance": 0,
+   "bonusBalance": 0,
+   "profit": 0,
+   "lastEventDate": "2026-11-11 09:10:00",
+   "lastEventText": "продажа",
+   "updated": "2026-11-01 18:32:17"
+  },
+  {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/report/counterparty/b80ea81b-7058-11e6-8a84-bae500000000",
+    "type": "counterparty",
+    "mediaType": "application/json"
+   },
+   "counterparty": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/b80ea81b-7058-11e6-8a84-bae500000000",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/metadata",
+     "type": "counterparty",
+     "mediaType": "application/json"
+    },
+    "id": "b80ea81b-7058-11e6-8a84-bae500000000",
+    "name": "ООО «Радуга»",
+    "externalCode": "o7732zkki541HDkZZD1Yt3",
+    "companyType": "legal"
+   },
+   "firstDemandDate": "2026-08-26 15:49:00",
+   "lastDemandDate": "2026-10-02 11:00:00",
+   "demandsCount": 1,
+   "demandsSum": 80000,
+   "averageReceipt": 80000,
+   "returnsCount": 0,
+   "returnsSum": 0,
+   "discountsSum": 0,
+   "balance": 50000,
+   "bonusBalance": 0,
+   "profit": 0,
+   "lastEventDate": "2026-10-02 11:00:00",
+   "lastEventText": "продажа",
+   "updated": "2026-11-01 18:32:17"
+  }
+ ]
+}

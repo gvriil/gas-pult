@@ -1,0 +1,134 @@
+{
+ "_source": "не проверено на песочнице: собрано по примерам из официальной документации МойСклад JSON API 1.2 (github.com/moysklad/api-remap-1.2-doc @012cd53, md/reports/_report_stock.md, «Получить Расширенный отчет об остатках»), данные выдуманные",
+ "context": {
+  "employee": {
+   "href": "https://api.moysklad.ru/api/remap/1.2/context/employee",
+   "type": "employee",
+   "mediaType": "application/json"
+  }
+ },
+ "meta": {
+  "href": "https://api.moysklad.ru/api/remap/1.2/report/stock/all",
+  "type": "stock",
+  "mediaType": "application/json",
+  "size": 3,
+  "limit": 20,
+  "offset": 0
+ },
+ "rows": [
+  {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/entity/product/c02e3a5c-007e-11e6-9464-e4de00000006?expand=supplier",
+    "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata",
+    "type": "product",
+    "mediaType": "application/json"
+   },
+   "stock": 12.5,
+   "inTransit": 0,
+   "reserve": 2.5,
+   "quantity": 10.0,
+   "name": "Томаты черри",
+   "code": "one1",
+   "article": "Ar23",
+   "price": 18000.0,
+   "salePrice": 32000.0,
+   "uom": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/uom/c6bc9273-2c83-11e6-8a84-bae5000000a4",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/uom/metadata",
+     "type": "uom",
+     "mediaType": "application/json"
+    },
+    "name": "кг"
+   },
+   "externalCode": "ibWbdtWWhXiIwfZVEal6z2",
+   "stockDays": 2,
+   "folder": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/productfolder/a1b2c3d4-0000-11e6-9464-e4de00000001",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/productfolder/metadata",
+     "type": "productfolder",
+     "mediaType": "application/json"
+    },
+    "name": "Овощи",
+    "pathName": ""
+   }
+  },
+  {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/entity/product/cc99c055-fa34-11e5-9464-e4de00000069?expand=supplier",
+    "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata",
+    "type": "product",
+    "mediaType": "application/json"
+   },
+   "stock": 4,
+   "inTransit": 20,
+   "reserve": 0,
+   "quantity": 4,
+   "name": "Базилик зелёный, пучок",
+   "code": "00006",
+   "article": "B-01",
+   "price": 4500.0,
+   "salePrice": 9900.0,
+   "uom": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/uom/c6bc9273-2c83-11e6-8a84-bae5000000a3",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/uom/metadata",
+     "type": "uom",
+     "mediaType": "application/json"
+    },
+    "name": "шт"
+   },
+   "externalCode": "ibWbdtWWhXiIwfZVEal6z2",
+   "stockDays": 1,
+   "folder": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/productfolder/a1b2c3d4-0000-11e6-9464-e4de00000001",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/productfolder/metadata",
+     "type": "productfolder",
+     "mediaType": "application/json"
+    },
+    "name": "Овощи",
+    "pathName": ""
+   }
+  },
+  {
+   "meta": {
+    "href": "https://api.moysklad.ru/api/remap/1.2/entity/product/e8f5f9ff-fa34-11e5-9464-e4de0000008a?expand=supplier",
+    "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata",
+    "type": "product",
+    "mediaType": "application/json"
+   },
+   "stock": -3,
+   "inTransit": 0,
+   "reserve": 0,
+   "quantity": -3,
+   "name": "Руккола",
+   "code": "00008",
+   "article": "R-07",
+   "price": 0.0,
+   "salePrice": 0.0,
+   "uom": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/uom/c6bc9273-2c83-11e6-8a84-bae5000000a4",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/uom/metadata",
+     "type": "uom",
+     "mediaType": "application/json"
+    },
+    "name": "кг"
+   },
+   "externalCode": "ibWbdtWWhXiIwfZVEal6z2",
+   "stockDays": 0,
+   "folder": {
+    "meta": {
+     "href": "https://api.moysklad.ru/api/remap/1.2/entity/productfolder/a1b2c3d4-0000-11e6-9464-e4de00000001",
+     "metadataHref": "https://api.moysklad.ru/api/remap/1.2/entity/productfolder/metadata",
+     "type": "productfolder",
+     "mediaType": "application/json"
+    },
+    "name": "Овощи",
+    "pathName": ""
+   }
+  }
+ ]
+}

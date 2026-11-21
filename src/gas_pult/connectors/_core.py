@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -94,6 +95,16 @@ def base_url(svc: str, default: str) -> str:
     return (os.environ.get(f"GAS_{svc.upper()}_BASE") or default).rstrip("/")
 
 
+def _unzip(raw: bytes, headers) -> bytes:
+    """Ответ в gzip (МойСклад отдаёт только так и требует ``Accept-Encoding: gzip``) — распаковать."""
+    if raw and (headers.get("Content-Encoding") or "").lower() == "gzip":
+        try:
+            return gzip.decompress(raw)
+        except (OSError, EOFError):
+            return b""
+    return raw
+
+
 def http(method: str, url: str, *, headers: dict | None = None, body=None, query: dict | None = None,
          keys: list[str] | tuple = (), throttle: Throttle | None = None, service: str = "сервис"):
     """Запрос с JSON. Возвращает разобранный JSON (или текст, если не JSON). Ошибки — ToolError без ключа."""
@@ -107,9 +118,10 @@ def http(method: str, url: str, *, headers: dict | None = None, body=None, query
         throttle.wait()
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
-            raw = r.read()
+            raw = _unzip(r.read(), r.headers)
     except urllib.error.HTTPError as e:
-        detail = e.read(300).decode("utf-8", "replace")
+        # сначала скрыть ключ, потом резать: иначе ключ на границе обреза утёк бы кусками
+        detail = hide(_unzip(e.read(), e.headers).decode("utf-8", "replace"), *keys)[:300]
         hint = {401: " — ключ не подходит или истёк", 403: " — у ключа нет прав на это",
                 404: " — не найдено", 429: " — лимит запросов, подождите"}.get(e.code, "")
         if e.code == 429 and e.headers.get("Retry-After"):

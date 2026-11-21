@@ -1,0 +1,10 @@
+{
+ "_source": "не проверено на песочнице: собрано по примерам из официальной документации МойСклад JSON API 1.2 (github.com/moysklad/api-remap-1.2-doc @012cd53, md/_general.md «Обработка ошибок», md/_errors.md код 1056), данные выдуманные",
+ "errors": [
+  {
+   "error": "Ошибка аутентификации: Неправильный пароль или имя для входа",
+   "code": 1056,
+   "moreInfo": "https://dev.moysklad.ru/doc/api/remap/1.2/#error_1056"
+  }
+ ]
+}
