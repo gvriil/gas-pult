@@ -17,6 +17,12 @@ SHA-256 от токена и секрета устройства (``focus.json``
 устройству нет — каждое открытие получает своё cookie на ту же запись (не больше ``DEMO_MAX`` устройств, счётчик
 ``opens``); права — только смотреть и отвечать на вопрос Claude кнопками (``webapp.DEMO_GET``/``DEMO_POST``).
 «Отозвать» гасит все устройства сразу. Старые записи без ``mode`` — обычная ссылка, как раньше.
+
+Ссылка на пространство (``mode: "space"``, GAS-38, владелец 21.11): полная панель одного пространства — как у его
+тестировщика (``access.SPACE_OK`` и та же изоляция). Устройство получает «виртуального» человека (``vuid``:
+отрицательный номер из id записи), ``People.virtual`` отдаёт ему роль (``member`` — полные права, ``viewer`` —
+только чтение) и пространство. Срок — от часа до «без срока», число устройств — ``max`` (0 — без ограничения).
+Истекла, отозвана, сверх устройств — ``Gone``, панель покажет «Ссылка не действует».
 """
 
 from __future__ import annotations
@@ -42,6 +48,25 @@ DEMO_MAX = 20                           # устройств на одну де�
 # Обычная фокус-ссылка — до трёх устройств одного человека (владелец 20.11: «присылаешь ссылку, открываю — извини»):
 # ссылка из Telegram открывается во встроенном браузере, потом — в Safari или Chrome; у них разные cookie.
 FOCUS_MAX = 3
+SPACE = "space"                         # вид ссылки: панель пространства (GAS-38)
+SPACE_TTLS = {"1h": 3600, "1d": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "none": 0}   # 0 — без срока
+SPACE_MAX = (1, 3, 0)                   # устройств: 0 — без ограничения
+FOREVER = 100 * 365 * 86400             # «без срока» — запись живёт, пока не отзовут
+VUID_BASE = 2 ** 50                     # виртуальный человек ссылки: −(VUID_BASE + id записи); не Telegram ID
+
+
+def vuid(rid: str) -> int:
+    """Номер «человека» ссылки на пространство: отрицательный — с Telegram ID не совпадёт."""
+    return -(VUID_BASE + int(rid, 16))
+
+
+def rid_of(uid) -> str | None:
+    """Id записи по номеру ``vuid`` или None (обычный человек)."""
+    try:
+        n = -int(uid) - VUID_BASE
+    except (TypeError, ValueError):
+        return None
+    return f"{n:012x}" if 0 <= n < 16 ** 12 else None
 
 
 def _h(s: str) -> str:
@@ -86,16 +111,23 @@ class Focus:
     def is_demo(rec: dict) -> bool:
         return rec.get("mode") == DEMO
 
-    def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None, mode: str = "") -> dict:
+    def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None, mode: str = "",
+            limit: int = FOCUS_MAX, rights: str = "full") -> dict:
         """Новая ссылка на окно ``w`` (из ``tmux.window``): {token, id, exp}. Токен показывается один раз.
         ``proj`` — ссылка на весь проект: ``w`` — {id: "", path, name} проекта, окна у ссылки нет.
-        ``mode="demo"`` — демо-ссылка: несколько устройств (``devs``), только просмотр и выбор вариантов."""
+        ``mode="demo"`` — демо-ссылка: несколько устройств (``devs``), только просмотр и выбор вариантов.
+        ``mode="space"`` — панель пространства ``w["space"]``: ``ttl=0`` — без срока, ``limit`` устройств (0 — сколько
+        угодно), ``rights`` «full» или «read»."""
         token, rid, now = secrets.token_urlsafe(32), secrets.token_hex(6), time.time()
+        forever = mode == SPACE and not ttl
+        ttl = FOREVER if forever else ttl
         with self.lock:
             d = {k: v for k, v in self._load().items() if self.live(v, now) or now - v.get("ended", now) < KEEP}
             d[rid] = {"h": _h(token), "w": w["id"], "path": w.get("path", ""), "name": w.get("name", ""),
                       **({"proj": proj} if proj else {}),
                       **({"mode": DEMO, "devs": {}, "opens": 0} if mode == DEMO else {}),
+                      **({"mode": SPACE, "devs": {}, "max": int(limit), "forever": forever,
+                          "rights": "read" if rights == "read" else "full"} if mode == SPACE else {}),
                       "space": w.get("space") or None, "by": by, "created": int(now), "exp": int(now + ttl),
                       "dev": None, "device": "", "opened": None, "state": "active"}
             self._save(d)
@@ -132,9 +164,10 @@ class Focus:
             devs = rec.setdefault("devs", {})
             if rec.get("dev") and rec["dev"] not in devs:         # старая запись: одно устройство в поле dev
                 devs[rec["dev"]] = {"device": rec.get("device", ""), "opened": rec.get("opened")}
-            if len(devs) >= FOCUS_MAX:
-                raise Gone(f"Ссылку уже открыли на {FOCUS_MAX} устройствах. Попросите новую фокус-ссылку или отзовите "
-                           "эту: «Настройки» → «Команда и клиенты» → «Фокус-ссылки».")
+            lim = int(rec.get("max") or 0) if rec.get("mode") == SPACE else FOCUS_MAX
+            if lim and len(devs) >= lim:
+                raise Gone(f"Ссылку уже открыли на {lim} {'устройстве' if lim == 1 else 'устройствах'}. Попросите "
+                           "новую ссылку или отзовите эту: «Настройки» → «Команда и клиенты» → «Фокус-ссылки».")
             secret, now = secrets.token_urlsafe(32), int(time.time())
             devs[_h(secret)] = {"device": device[:60], "opened": now}
             rec.setdefault("dev", _h(secret))                    # первое устройство — как раньше (совместимость)
@@ -176,12 +209,32 @@ class Focus:
             raise Gone(self.why(rec))
         return {**rec, "id": rid}
 
+    def space_by_cookie(self, cookie: str) -> dict | None:
+        """Ссылка на пространство этого устройства: действует — запись; cookie не от неё — None; погасла — ``Gone``."""
+        rid = str(cookie or "").partition(".")[0]
+        rec = self._load().get(rid) if rid else None
+        if not rec or rec.get("mode") != SPACE or not self._match(rid, rec, cookie):
+            return None
+        if not self.live(rec):
+            raise Gone(self.why(rec))
+        return {**rec, "id": rid}
+
+    def person(self, uid) -> dict | None:
+        """«Человек» ссылки на пространство (``People.virtual``): {role, tenant} пока ссылка жива, иначе None."""
+        rid = rid_of(uid)
+        rec = self._load().get(rid) if rid else None
+        if not rec or rec.get("mode") != SPACE or not self.live(rec) or not rec.get("space"):
+            return None
+        return {"role": "viewer" if rec.get("rights") == "read" else "member", "tenant": rec["space"]}
+
     @staticmethod
     def why(rec: dict) -> str:
         if rec.get("state") == "closed":
             return "Проект удалён." if rec.get("proj") else "Чат завершён."
         if rec.get("state") == "revoked":
             return f"Владелец отозвал эту {'демо' if rec.get('mode') == DEMO else 'фокус'}-ссылку."
+        if rec.get("mode") == SPACE:
+            return "Срок ссылки вышел — попросите новую."
         return "Срок фокус-ссылки вышел — попросите новую."
 
     def end(self, rid: str, state: str = "closed") -> bool:
@@ -223,7 +276,7 @@ class Focus:
         with self.lock:
             d = self._load()
             rec = d.get(str(rid or ""))
-            if not rec or not self.live(rec) or self.is_demo(rec):
+            if not rec or not self.live(rec) or self.is_demo(rec) or rec.get("mode") == SPACE:
                 return False
             rec["browser"] = bool(on)
             self._save(d)
@@ -244,6 +297,9 @@ class Focus:
                 "created": v.get("created"), "browser": bool(v.get("browser")),
                 "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", ""),
                 **({"mode": DEMO, "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
-                   if v.get("mode") == DEMO else {})}
+                   if v.get("mode") == DEMO else {}),
+                **({"mode": SPACE, "devices": len(v.get("devs") or {}), "max": v.get("max", 0),
+                    "rights": v.get("rights", "full"), "forever": bool(v.get("forever"))}
+                   if v.get("mode") == SPACE else {})}
                for k, v in self._load().items() if self.live(v, now)]
         return sorted(out, key=lambda x: -(x["created"] or 0))

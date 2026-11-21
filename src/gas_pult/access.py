@@ -158,3 +158,8 @@ DEMO_POST = {"/api/select", "/api/key", "/api/logout"}
 FOCUS_PROJ_GET = {"/api/project", "/api/project/sessions", "/api/project/history"}
 FOCUS_PROJ_POST = {"/api/project/session", "/api/project/resume"}
 # Адрес клиента из заголовков прокси — только если запрос пришёл с этой машины (Caddy, cloudflared).
+# Ссылка на пространство (GAS-38, focus.SPACE): права тестировщика этого пространства (SPACE_OK, та же изоляция), но
+# без того, что привязывает устройство или человека мимо ссылки: вход на другом устройстве, ключи входа, уведомления.
+SLINK = "slink"                                     # who()[0] для входа по ссылке на пространство
+SLINK_HEADER = "X-Gp-Slink"                         # страница ссылки: проверяется только её cookie (не вход владельца)
+SLINK_NO = set(INVITE_OWN) | set(PASSKEY_OWN) | set(PUSH_OWN) | {NOTIFY_DONE}

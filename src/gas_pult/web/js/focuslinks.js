@@ -2,15 +2,29 @@
 export async function open() {
   let d; try { d = await api("/api/focus/list"); } catch (e) { return toast(e.message, 5000); }
   const when = (t) => new Date(t * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  if (!spacesInfo) await loadSpaces();
+  const sl = await part("spacelink");                  // ссылки на пространство (GAS-38): своя строка и «Отозвать»
   helpSheet("settings.focus");
+  const add = spacesInfo?.tenants?.length ? [{ label: "Ссылка на пространство", icon: "flask", sub: "полная панель пространства: срок, устройства, права", run: () => sl.form() }] : [];
+  const spaceRow = (x) => ({ label: "Пространство «" + x.name + "»", icon: "flask", sub: sl.terms(x, x.devices), run: () => spaceCard(x, sl) });
   for (const x of d.links) if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || x.name || "Чат";   // не имя окна (19.11)
   sheet("Фокус-ссылки", d.links.length ? [
     { info: true, icon: "qr", label: "Действующие ссылки", sub: "нажмите — новая ссылка на тот же чат или проект, или отозвать" },
-    ...d.links.map((x) => ({ label: (x.mode === "demo" ? "Демо · " : "") + (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.mode === "demo" ? "eye" : x.proj ? "folder" : "chat",
+    ...d.links.map((x) => x.mode === "space" ? spaceRow(x) : ({ label: (x.mode === "demo" ? "Демо · " : "") + (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.mode === "demo" ? "eye" : x.proj ? "folder" : "chat",
       sub: (x.mode === "demo" ? (x.devices ? `${x.devices} ${plural(x.devices, ["устройство", "устройства", "устройств"])} · последнее ${when(x.opened)}` : "ещё не открыта")
         : x.opened ? `открыта ${when(x.opened)} · ${x.device || "устройство"}` : "ещё не открыта") + ` · до ${when(x.exp)}`,
-      run: () => card(x) }))]
-    : [{ info: true, icon: "qr", label: "Фокус-ссылок нет", sub: "выпустить — меню сессии → «Фокус-ссылка»" }]);
+      run: () => card(x) }))].concat(add)
+    : [{ info: true, icon: "qr", label: "Фокус-ссылок нет", sub: "выпустить — меню сессии → «Фокус-ссылка»" }, ...add]);
+}
+
+// Ссылка на пространство: условия и «Отозвать» одной кнопкой (токен не хранится — скопировать нельзя, только новую)
+function spaceCard(x, sl) {
+  sheet("Пространство «" + x.name + "»", [
+    { info: true, icon: "flask", label: x.space, sub: sl.terms(x, x.devices) },
+    { label: "Новая ссылка на это пространство", icon: "qr", run: () => sl.form(x.space) },
+    { label: "Отозвать", icon: "x", danger: true, sub: "все устройства сразу потеряют доступ, чаты пространства продолжат работать",
+      run: async () => { try { await api("/api/focus/revoke", { id: x.id }); toast("Ссылка отозвана"); open(); } catch (e) { toast(e.message, 5000); } } },
+  ]);
 }
 
 // Карточка ссылки (штаб 21.11, пункт 5): из фокус-ссылки — ещё одна, на тот же чат, на его проект или на чат проекта;

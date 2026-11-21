@@ -1487,6 +1487,7 @@ if (DEMO) part("demo");                               // демо — сразу
 const FOCUS_TOKEN = (/(?:^#|&)focus=([A-Za-z0-9_-]{24,64})/.exec(location.hash) || [])[1] || "";
 const FOCUS = !!FOCUS_TOKEN || params.has("focus");
 if (FOCUS_TOKEN) history.replaceState(null, "", location.pathname + (params.has("focus") ? location.search : (location.search ? location.search + "&" : "?") + "focus"));
+const SLINK = params.has("slink") && !FOCUS_TOKEN;  // ссылка на пространство (GAS-38): полная панель пространства, js/spacelink.js
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
              stopped: { label: "спит", cls: "s-idle s-sleep" },       // чат не заканчивается (владелец 20.11): остановлена
@@ -2299,15 +2300,15 @@ async function api(path, body, raw, extra, signal) {
   if (DEMO && params.has("confirm") && !demoApi.confirmed && CONFIRM_PATHS.has(path)) { await confirmCode(); return api(path, body, raw, extra, signal); }
   if (DEMO && params.get("slow") && (!start.done || path.startsWith("/api/history"))) await new Promise((ok) => setTimeout(ok, +params.get("slow")));   // ?demo&slow=1500 — медленная сеть: загрузка и переписка (скелетоны)
   if (DEMO) { lastOk = Date.now(); return demoApi(path, body); }
-  if (FOCUS && $("focusEnd")) throw new Error("Чат завершён");   // ссылка погасла — опросы больше не шлём
-  const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
+  if ((FOCUS || SLINK) && $("focusEnd")) throw new Error("Чат завершён");   // ссылка погасла — опросы больше не шлём
+  const headers = FOCUS ? { "X-Gp-Focus": "1", ...(extra || {}) } : SLINK ? { "X-Gp-Slink": "1", ...(extra || {}) } : { "X-Telegram-Init-Data": tg?.initData || "", ...(extra || {}) };
   if (PWA) headers["X-Pult-Pwa"] = "1";                 // с экрана «Домой» — для журнала событий (GAS-31)
   if (body && !raw) headers["Content-Type"] = "application/json";
   if (raw) headers["Content-Type"] = raw;
   let r;
   try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined, signal }); }
   catch (e) { if (signal?.aborted) throw e; throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
-  if (FOCUS && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Чат завершён"); }
+  if ((FOCUS || SLINK) && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Чат завершён"); }
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
@@ -3253,7 +3254,7 @@ function spaceChips(s) {
 }
 function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
   if (!isBoss() || (!list.length && !spacesInfo?.tenants?.length)) return "";
-  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" + '<button class="chip" data-space-closed>' + ic("folder") + "Закрытые</button>" : ""}</div>`
+  return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" + '<button class="chip" data-space-closed>' + ic("folder") + "Закрытые</button>" + (meta?.role === "owner" ? '<button class="chip" data-space-link>' + ic("qr") + "Ссылка</button>" : "") : ""}</div>`
     + (spacesInfo?.tenants || []).filter((x) => x.budget).map((x) => `<div class="note space-bud${x.budget.pct >= 0.8 ? " warn" : ""}"><b>${esc(x.title || x.slug)}</b> — ${esc(x.budget.text)} <button class="chip" data-space-add="${esc(x.slug)}">${ic("plus")}${esc(T("bud.add"))}</button></div>`).join("")
     + (projData?.space_projects || []).map(projCard).join("") + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
 }
@@ -3709,6 +3710,7 @@ function sessionsClick(e) {
   if (e.target.closest("[data-space-task]")) return spaceTaskForm();
   if (e.target.closest("[data-space-invite]")) return spaceInvite();
   if (e.target.closest("[data-space-closed]")) return ssPickSpace(ssClosed);
+  if (e.target.closest("[data-space-link]")) return spaceLink();
   if (e.target.closest("[data-space-add]")) return budgetAdd(e.target.closest("[data-space-add]").dataset.spaceAdd);
   if (e.target.closest("[data-scn-home]")) return scenariosView();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");
@@ -6448,6 +6450,7 @@ async function focusLink(id, proj, mode) {           // proj — ссылка н
   });
 }
 const focusList = () => part("focuslinks").then((m) => m.open());   // «Фокус-ссылки» — js/focuslinks.js
+const spaceLink = (slug) => part("spacelink").then((m) => m.form(slug)).catch((e) => toast(e.message, 4000));   // «Ссылка на пространство»
 // ---------- репозитории GitHub в сессии (задача 43, repos.py) ----------
 // Клон (или pull, если папка уже есть) на сервере и /add-dir в живую сессию; при перезапуске — --add-dir.
 // «Отключить» убирает только из сессии: папка с репозиторием остаётся.
@@ -6579,7 +6582,8 @@ function focusEnd(text) {
 async function focusStart() {
   document.body.classList.add("focus");             // экран сессии — openSession, когда известна сессия
   try {
-    if (FOCUS_TOKEN) await api("/api/focus/open", { token: FOCUS_TOKEN });   // первое открытие — привязка устройства
+    const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN }) : null;   // первое открытие — привязка устройства
+    if (o?.mode === "space") return location.replace(location.pathname + "?slink");   // ссылка на пространство — полная панель
     meta = await api("/api/meta"); BUILD = meta.build;
   } catch (e) { return focusEnd(e.message); }
   document.body.dataset.role = FOCUS_DEMO() ? "demo" : "owner";   // демо: сервер — «наблюдатель», кнопки вопроса — есть
@@ -7049,6 +7053,7 @@ async function start() {
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
   document.body.classList.toggle("tester", !!meta.space);         // тестировщик демо-пространства (задача 31)
+  if (meta.slink) part("spacelink").then((m) => m.bar(meta.slink)).catch(() => {});   // по ссылке на пространство: срок и права
   if (UI && !UI.onboarded && !UI.own_space && meta.role !== "owner" && (!DEMO || params.has("persona"))) return showPersona();   // роль — один раз, не владельцу
   paintSpaces();
   if (simplePrefs(meta).simple) return simpleStart();              // простой режим — свой экран, полный не запускаем
