@@ -1,0 +1,6 @@
+{"_source": "Собрано по схеме OpenAPI MAX Bot API v0.0.34 (https://github.com/max-messenger/api-schema, коммит 0016ff3) и https://dev.max.ru/docs-api, сверено 20.11.2026. Данные выдуманные. НЕ ПРОВЕРЕНО НА ПЕСОЧНИЦЕ (у MAX её нет, ключа нет).",
+ "chat_id": 5550001, "type": "dialog", "status": "active", "title": null, "icon": null,
+ "last_event_time": 1763596980000, "participants_count": 2, "is_public": false, "link": null, "description": null,
+ "dialog_with_user": {"user_id": 7770001, "first_name": "Ирина", "last_name": "Тестова", "username": null,
+                      "is_bot": false, "avatar_url": null},
+ "messages_count": 3}
