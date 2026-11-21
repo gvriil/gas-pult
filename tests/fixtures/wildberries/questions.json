@@ -1,0 +1,29 @@
+{
+ "_source": "не проверено на песочнице: собрано по примеру ответа из OpenAPI WB (https://dev.wildberries.ru/api/swagger/yaml/ru/09-communications.yaml, GET /api/v1/questions), скачан 18.11.2026; тексты и названия выдуманные",
+ "data": {
+  "countUnanswered": 1,
+  "countArchive": 508,
+  "questions": [
+   {
+    "id": "2ncBtX4B9I0UHoornoqG",
+    "text": "Можно стирать в машинке при 40 градусах?",
+    "createdDate": "2026-11-17T11:18:08.769513469Z",
+    "state": "suppliersPortalSynch",
+    "answer": null,
+    "productDetails": {
+     "imtId": 123456789,
+     "nmId": 987654321,
+     "productName": "Плед флисовый 150×200",
+     "supplierArticle": "PL-150",
+     "supplierName": "ИП Тестовый",
+     "brandName": "Тестовый бренд"
+    },
+    "wasViewed": false,
+    "isWarned": false
+   }
+  ]
+ },
+ "error": false,
+ "errorText": "",
+ "additionalErrors": null
+}

@@ -1,0 +1,85 @@
+{
+ "_source": "не проверено на песочнице: собрано по примеру ответа из OpenAPI WB (https://dev.wildberries.ru/api/swagger/yaml/ru/09-communications.yaml, GET /api/v1/feedbacks), скачан 18.11.2026; тексты и названия выдуманные",
+ "data": {
+  "countUnanswered": 2,
+  "countArchive": 1000,
+  "feedbacks": [
+   {
+    "id": "YX52RZEBhH9mrcYdEJuD",
+    "text": "После стирки появились катышки",
+    "pros": "Мягкий",
+    "cons": "Катышки",
+    "productValuation": 2,
+    "createdDate": "2026-11-17T10:20:48+03:00",
+    "answer": null,
+    "state": "none",
+    "productDetails": {
+     "imtId": 123456789,
+     "nmId": 987654321,
+     "productName": "Плед флисовый 150×200",
+     "supplierArticle": "PL-150",
+     "supplierName": "ИП Тестовый",
+     "brandName": "Тестовый бренд",
+     "size": "0"
+    },
+    "video": null,
+    "wasViewed": true,
+    "photoLinks": [
+     {
+      "fullSize": "https://feedback04.wbbasket.ru/vol1333/part133337/123456789/photos/fs.webp",
+      "miniSize": "https://feedback04.wbbasket.ru/vol1333/part133337/123456789/photos/ms.webp"
+     }
+    ],
+    "userName": "Покупатель",
+    "orderStatus": "buyout",
+    "matchingSize": "ok",
+    "bables": [
+     "качество"
+    ],
+    "subjectId": 219,
+    "subjectName": "Пледы",
+    "parentFeedbackId": null,
+    "childFeedbackId": null
+   },
+   {
+    "id": "bIjTCZDvJni7NGnLbUlf",
+    "text": "Спасибо, всё подошло",
+    "pros": "",
+    "cons": "",
+    "productValuation": 5,
+    "createdDate": "2026-11-16T09:00:00+03:00",
+    "answer": null,
+    "state": "none",
+    "productDetails": {
+     "imtId": 123456789,
+     "nmId": 987654322,
+     "productName": "Подушка 50×70",
+     "supplierArticle": "PD-5070",
+     "supplierName": "ИП Тестовый",
+     "brandName": "Тестовый бренд",
+     "size": "0"
+    },
+    "video": {
+     "previewImage": "https://videofeedback01.wbbasket.ru/x/preview.webp",
+     "link": "https://videofeedback01.wbbasket.ru/x/index.m3u8",
+     "durationSec": 10
+    },
+    "wasViewed": false,
+    "photoLinks": [],
+    "userName": "Покупатель",
+    "orderStatus": "buyout",
+    "matchingSize": "ok",
+    "bables": [
+     "цена"
+    ],
+    "subjectId": 220,
+    "subjectName": "Подушки",
+    "parentFeedbackId": null,
+    "childFeedbackId": null
+   }
+  ]
+ },
+ "error": false,
+ "errorText": "",
+ "additionalErrors": null
+}
