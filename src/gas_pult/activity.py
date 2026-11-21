@@ -272,9 +272,12 @@ class Journal:
             self.cache[str(f)] = (key, res)
         return res
 
-    def status(self, path: str, home: Path | None = None, sid: str = "") -> dict:
+    def status(self, path: str, home: Path | None = None, sid: str = "", h=None) -> dict:
         """Статус журнала сессии: окно с ``sid`` — его журнал, иначе последний журнал папки ``path`` (у участника — в
-        его папке Claude ``home``)."""
+        его папке Claude ``home``). ``h`` — адаптер агента окна (``harness.of(w)``, R13): не Claude Code — статус
+        из его журнала (``h.status``, та же форма); без ``h`` и у Claude Code — журнал Claude, как раньше."""
+        if h is not None and h.name != "claude":
+            return h.status(h.journal(path, home, sid))
         f = transcripts.current(path, home, sid)
         if not f:
             return parse([])

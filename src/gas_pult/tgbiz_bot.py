@@ -261,7 +261,7 @@ def _journalist() -> Journalist:
     import re
     import uuid
 
-    from gas_pult import activity, config, models, transcripts
+    from gas_pult import activity, config, harness, models
     from gas_pult.tmux import Tmux
     cfg = config.load()
     tm = Tmux(cfg.session)
@@ -281,9 +281,10 @@ def _journalist() -> Journalist:
         return bool(tm.paste_ex(wid, text).get("ok"))
 
     def answer(path: str, sid: str) -> tuple[bool, str, str]:
-        st = acts.status(path, None, sid)
+        h = harness.of({"harness": "claude"})             # окно журналиста — всегда Claude Code (open_window); R13
+        st = acts.status(path, None, sid, h)
         done = st.get("phase") == "done"
-        return done, transcripts.last_answer(path, None, sid), transcripts.revision(path, None, sid)
+        return done, h.last_answer(path, None, sid), h.revision(path, None, sid)
 
     return Journalist(open_window, paste, answer, lambda wid: tm.window(wid) is not None)
 

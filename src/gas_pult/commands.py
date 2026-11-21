@@ -28,7 +28,7 @@ import time
 import uuid
 from pathlib import Path
 
-from gas_pult import people, termwin, transcripts
+from gas_pult import harness, people, termwin
 
 SPACE_RUN = ("команда из сессии пространства на сервере пульта не выполняется — её выполняет сам агент "
              "пространства в своей песочнице")
@@ -277,11 +277,12 @@ class Journal:
         for w in windows:
             sid = w.get("sid") or ""                     # окно со своим журналом (--session-id) — по нему
             key = f"{w['path']}|{sid}" if sid else w["path"]
-            rev = transcripts.revision(w["path"], people.home_of(w), sid)
+            h = harness.of(w)                            # R13: журнал и лента — у агента окна (Pi, OpenCode, Hermes)
+            rev = h.revision(w["path"], people.home_of(w), sid)
             if not rev or d["revs"].get(key) == rev:
                 continue
             d["revs"][key], changed = rev, True
-            items, _ = transcripts.history(w["path"], 80, home=people.home_of(w), sid=sid)
+            items, _ = h.history(w["path"], 80, home=people.home_of(w), sid=sid)
             for m in items:
                 if m["role"] != "assistant":
                     continue
