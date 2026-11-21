@@ -13,7 +13,7 @@ WEB = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
 
 def test_code():
     js = (WEB / "js/picker.js").read_text(encoding="utf-8")
-    assert "s.model_own || aliasOf(s.model, list)" in js
+    assert "let sel = (s ? live || saved : DRAFT?.model)" in js   # реальная модель первой (вариант A, 20.11)
     assert 'const hasEffort = (profile) => (profile || "claude") === "claude";' in js
 
 
