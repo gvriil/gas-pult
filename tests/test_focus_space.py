@@ -221,14 +221,32 @@ def test_listing_has_no_secrets(world):  # noqa: F811
     assert "devs" not in s and '"h"' not in s
 
 
-def test_link_person_is_welcomed_without_questions(world):  # noqa: F811
-    """Владелец 19.11: «попал по ссылке — значит проверен; не спрашивать ни про страну, ни про что» — условия
-    отмечены выпуском ссылки, страна — пространства, как у приглашения (space_welcome)."""
+def test_link_for_self_is_welcomed_without_questions(world):  # noqa: F811
+    """Ссылка «для себя или тестировщика»: условия отмечены выпуском ссылки, страна — пространства (как приглашение)."""
     w = world
-    d = issue(w)
+    d = issue(w, audience="self")
     code, _out, ck = open_link(w, d)
-    assert code == 200
+    assert code == 200 and d["audience"] == "self"
     uid = focus.vuid(d["id"])
     assert w["p"].people.accepted(uid) and w["p"].people.country(uid).get("chosen")
     m = sl(w, "/api/meta", ck=ck)[1]
-    assert m["terms"]["accepted"] is True
+    assert m["terms"]["accepted"] is True and m["slink"]["terms_line"] is False
+
+
+def test_link_for_client_agrees_by_line_on_first_action(world):  # noqa: F811
+    """Ссылка «для клиента» (по умолчанию, штаб 21.11): без отдельного экрана — строка «Продолжая, вы принимаете
+    условия»; смотреть можно сразу, первое действие — согласие самого человека, с датой."""
+    w = world
+    d = issue(w)
+    code, _out, ck = open_link(w, d)
+    assert code == 200 and d["audience"] == "client"
+    uid = focus.vuid(d["id"])
+    assert not w["p"].people.accepted(uid) and w["p"].people.country(uid).get("chosen")
+    m = sl(w, "/api/meta", ck=ck)[1]
+    assert m["terms"]["accepted"] is False and m["slink"]["terms_line"] is True
+    assert sl(w, "/api/sessions", ck=ck)[0] == 200                         # смотреть — сразу
+    assert not w["p"].people.accepted(uid)
+    code, out = sl(w, "/api/new", {"i": 0}, ck)                             # первое действие — согласие
+    assert code == 200, out
+    assert w["p"].people.accepted(uid) and sl(w, "/api/meta", ck=ck)[1]["slink"]["terms_line"] is False
+    assert call(w, "/api/focus/new", {"space": "demo", "base": BASE, "audience": "всем"}, who=OWNER)[0] == 400

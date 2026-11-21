@@ -1294,7 +1294,7 @@ class Panel:
                 "proj": proj or None, **({"mode": focus.DEMO, "max": focus.DEMO_MAX} if mode else {})}
 
     def focus_space(self, slug: str, by, base: str, ttl: str = "7d", limit: int = 3, rights: str = "full",
-                    name: str = "") -> dict:
+                    name: str = "", audience: str = "client") -> dict:
         """«Ссылка на пространство» (владелец, GAS-38): полная панель пространства ``slug`` — как у его тестировщика.
         Срок ``ttl`` (``focus.SPACE_TTLS``), устройств ``limit`` (1, 3, 0 — без ограничения), права «full» / «read»."""
         slug = tenants.check_slug(slug)
@@ -1307,15 +1307,17 @@ class Panel:
             raise ValueError("устройств: 1, 3 или 0 — без ограничения")
         if rights not in ("full", "read"):
             raise ValueError("права: full или read")
+        if audience not in ("client", "self"):
+            raise ValueError("для кого: client или self")
         base = (self.public_url or base or "").rstrip("/")
         if not self.FOCUS_BASE.match(base):
             raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
         title = str(name or "").strip()[:60] or t.get("title") or slug
         f = self.focus.new({"id": "", "path": "", "name": title, "space": slug}, by, ttl=focus.SPACE_TTLS[ttl],
-                           mode=focus.SPACE, limit=limit, rights=rights)
+                           mode=focus.SPACE, limit=limit, rights=rights, audience=audience)
         return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": title, "space": slug,
                 "space_title": t.get("title") or slug, "mode": focus.SPACE, "max": limit, "rights": rights,
-                "forever": ttl == "none"}
+                "forever": ttl == "none", "audience": audience}
 
     def focus_sessions(self, rec: dict) -> list[dict]:
         """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""
@@ -2601,13 +2603,14 @@ class Panel:
 
     FIRST_PROJECT = "Мой проект"
 
-    def space_welcome(self, uid: int, slug: str):
+    def space_welcome(self, uid: int, slug: str, accept: bool = True):
         """Вход по приглашению в пространство — сразу внутри (владелец 19.11: «онбординг простой — не спрашивать ни про
         страну, ни про что: если человек по ссылке попал — он уже проверен; он должен сразу начинать пользоваться»):
         условия отмечены приглашением владельца, страна — юрисдикция пространства (нет — регион сервера), первая
         сессия «Мой проект» — если в пространстве ещё нет ни одной. Сбой сессии не мешает входу."""
         t = tenants.load(slug) or {}
-        self.people.accept(uid)
+        if accept:                                      # ссылка «для клиента» — соглашается сам (terms_line)
+            self.people.accept(uid)
         code = country.norm(t.get("jurisdiction")) or country.norm(self.cfg.region) or "NL"
         self.people.set_country(uid, chosen=code)
         try:
@@ -4172,7 +4175,7 @@ def handler(panel: Panel):
                 return False
             if self.via() != SLINK:                       # у ссылки нет страны человека
                 panel.seen_ip(uid, self.client_ip())       # страна по IP — не чаще раза в IP_EVERY
-            if path not in TERMS_FREE and not panel.people.accepted(uid):
+            if path not in TERMS_FREE and not panel.people.accepted(uid) and not self.terms_line(method, uid):
                 self.json({"error": "сначала примите условия использования пульта", "code": "terms"}, 403)
                 return False
             # выбор страны не спрашиваем (решение владельца 20.11, country.check_set) — без шага «страна»
@@ -4207,6 +4210,17 @@ def handler(panel: Panel):
                 self.json({"error": "новый вход: подтвердите кодом, что команды выполняете вы", "code": "confirm",
                            "confirm": "code"}, 403)
                 return False
+            return True
+
+        def terms_line(self, method: str, uid) -> bool:
+            """Ссылка на пространство «для клиента» (штаб 21.11): вместо экрана условий — строка «Продолжая, вы
+            принимаете условия» в панели. Смотреть можно сразу; первое действие (POST) — согласие человека ссылки,
+            записывается за ним с датой (``people.accept``)."""
+            rec = self.slink()[0] if self.via() == SLINK else None
+            if not rec or rec.get("aud") == "self":
+                return False
+            if method == "POST":
+                panel.people.accept(uid)
             return True
 
         def dev_tty(self) -> bool:
@@ -4413,7 +4427,10 @@ def handler(panel: Panel):
                         "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
                         "shares": panel.shares.pending(tu) if role and kind != "focus" else 0,   # «Поделились»
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")},
-                        **({"slink": {k: (self.slink()[0] or {}).get(k) for k in ("name", "exp", "forever", "rights")}}
+                        **({"slink": {**{k: (self.slink()[0] or {}).get(k)
+                                         for k in ("name", "exp", "forever", "rights")},
+                                      "terms_line": (self.slink()[0] or {}).get("aud") != "self"
+                                      and not panel.people.accepted(tu)}}
                            if kind == SLINK else {})}       # вход по ссылке на пространство: срок и права (GAS-38)
             if path == "/api/terms":
                 return self.terms_info()
@@ -4865,9 +4882,10 @@ def handler(panel: Panel):
             age = max(60, int(rec["exp"] - time.time()))
             if rec.get("mode") == focus.SPACE and rec.get("space") and not panel.people.accepted(focus.vuid(rec["id"])):
                 # владелец 19.11: «попал по ссылке — значит проверен; не спрашивать ни про страну, ни про что» —
-                # как у приглашения: условия отмечены выпуском ссылки владельцем, страна — пространства
+                # страна — пространства, первая сессия; условия: «для себя» — отмечены выпуском ссылки, «для
+                # клиента» — человек соглашается сам строкой «Продолжая, вы принимаете условия» (штаб 21.11)
                 with contextlib.suppress(Exception):
-                    panel.space_welcome(focus.vuid(rec["id"]), rec["space"])
+                    panel.space_welcome(focus.vuid(rec["id"]), rec["space"], accept=rec.get("aud") == "self")
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
             return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""),
                                        **({"mode": focus.SPACE} if rec.get("mode") == focus.SPACE else {})})
@@ -5561,7 +5579,8 @@ def handler(panel: Panel):
             if path == "/api/focus/new" and b.get("space"):   # «Ссылка на пространство» (GAS-38)
                 return panel.focus_space(str(b["space"]), self.terms_uid(), str(b.get("base", "")),
                                          str(b.get("ttl") or "7d"), int(b.get("max", 3) or 0),
-                                         str(b.get("rights") or "full"), str(b.get("name") or ""))
+                                         str(b.get("rights") or "full"), str(b.get("name") or ""),
+                                         str(b.get("audience") or "client"))
             if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
                 return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
                                        str(b.get("proj") or ""), str(b.get("mode") or ""))
