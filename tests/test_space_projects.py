@@ -163,8 +163,11 @@ def test_tester_chats_history_new_and_resume(world):
     code, d = call(w, "/api/project/session", {"id": pid("demo", SV)})
     assert code == 200 and d["id"].startswith("t:demo:@") and d["project"] == pid("demo", SV), d
     raw = spaces.split(d["id"])[1]
+    # путь окна tmux сообщает, когда процесс уже запущен в папке, — ждём, а не читаем сразу (тест «мигал»)
+    want = str(w["root"] / "demo/home/projects" / SV)
+    assert wait(lambda: next((x for x in tenants.tmux_of("demo").windows() if x["id"] == raw), {}).get("path") == want)
     win = next(x for x in tenants.tmux_of("demo").windows() if x["id"] == raw)
-    assert win["path"] == str(w["root"] / "demo/home/projects" / SV) and win["sid"] == d["sid"]
+    assert win["path"] == want and win["sid"] == d["sid"]
     assert not space_windows("other")
     assert wait(lambda: any(s["id"] == d["id"] and s["project"] == pid("demo", SV)
                             for s in call(w, "/api/projects")[1]["sessions"]))
