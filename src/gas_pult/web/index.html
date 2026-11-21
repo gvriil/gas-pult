@@ -3099,7 +3099,7 @@ function sinfo(s) {
   // окно другого агента (Pi): модель «поставщик/модель», контекст, ↑↓ токены и $ за сессию — из его журнала; лимиты
   // подписки Claude (5 ч, неделя) к нему не относятся — не показываем
   const other = s?.harness && s.harness !== "claude";
-  const lim = !other && meta?.role === "owner" && Object.values(limitsInfo?.limits || {}).some((x) => x?.used >= 80);   // только когда близко к пределу
+  const lim = !other && meta?.role === "owner" && dev("dev_cost_tokens") && Object.values(limitsInfo?.limits || {}).some((x) => x?.used >= 80);   // близко к пределу; у пользователя — в «Подробнее»
   const html = s ? [ctxWarn(s), lim ? limitsLine(limitsInfo) : ""].filter(Boolean).join("") : "";   // остальное — «Подробнее»
   setHidden($("sinfo"), !html); setHTML($("sinfo"), html);
 }
@@ -3693,24 +3693,7 @@ function costSheet() {
     { info: true, icon: "help", label: "Как считаем", sub: `По журналам Claude Code. Модели Claude — по прайсу API Anthropic (сверено ${c.prices_checked}); с подпиской Pro/Max это оценка, а не счёт. OpenRouter — по его счёту за каждый ответ (приходит через несколько секунд). GLM (Z.ai) и DeepSeek — оценка: токены × цены поставщика${c.provider_prices_checked ? " (сверено " + c.provider_prices_checked + ")" : ""}. Цену, которую показывает сам Claude Code для чужих моделей, не берём — он считает их по тарифам Anthropic. Шлюзы GigaChat и YandexGPT — только токены. ${own ? "Сессии участников на их собственных учётках сюда не входят." : "Здесь — только ваша учётка Claude."}` },
   ]);
 }
-async function limitsForm() {
-  let cur = { limits: costInfo?.limits || {} };
-  try { cur = await api("/api/cost/limits"); } catch (e) { /* покажем то, что знаем */ }
-  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("settings.limits");
-  const v = (x) => x == null ? "" : String(x);
-  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Лимиты расхода</h3>
-    <div class="field" style="margin:4px 16px 10px"><label for="limS">На одну сессию, $</label><input id="limS" inputmode="decimal" autocomplete="off" placeholder="выключен" value="${esc(v(cur.limits.session))}"></div>
-    <div class="field" style="margin:0 16px 0"><label for="limD">На день по вашей учётке, $</label><input id="limD" inputmode="decimal" autocomplete="off" placeholder="выключен" value="${esc(v(cur.limits.day))}"></div>
-    <p class="note" id="limErr" style="margin:8px 16px 0">Пусто или 0 — без лимита. Превышение: Claude останавливается, сообщения в сессию не уходят, пока вы не решите — в боте или здесь.</p>
-    <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="limOk">Сохранить</button></div></div>`;
-  document.body.append(bg);
-  $("limOk").onclick = async () => {
-    try { const r = await api("/api/cost/limits", { session: $("limS").value.trim(), day: $("limD").value.trim() });
-          if (costInfo) costInfo.limits = r.limits; bg.remove(); toast("Лимиты сохранены"); haptic("notificationOccurred", "success"); refresh(); }
-    catch (e) { $("limErr").textContent = e.message; $("limErr").style.color = "var(--status-danger)"; }
-  };
-  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
-}
+const limitsForm = () => part("limits").then((m) => m.open());   // форма лимитов расхода — js/limits.js
 $("costPause").addEventListener("click", costClick);
 // переключение на запасного поставщика (бот сделал сам) — одна строка, один раз
 const fbSeen = new Set();
@@ -4499,8 +4482,12 @@ async function keepAwake() { try { if (navigator.wakeLock && !document.hidden &&
 // Строки, по которым видно вывод терминала: приглашение, ssh/lsof, предупреждения, листинги, трассировки.
 const TECH = /^\s*(\$ |# |❯ |Last login|WARNING:|\*\* |COMMAND\s+PID|(tcp|udp)\s|LISTEN|Connection (to|closed)|ssh[: ]|lsof|sudo |\[sudo\]|total \d+|[dl-][rwx-]{9}|Traceback|File "|npm (ERR|WARN)|error:|E: |fatal:|[\w.-]+@[\w.-]+[:~]|[─━═]{6,}|\s*\d+\s+\d+\s+\d+)/;
 const plural = (n, f) => f[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
+// Режим разработчика (персона «Разработчик» или возможность в «Возможностях панели»): сырое техническое — только ему
+// (штаб 21.11 по снимкам: «строка лимитов, «Терминал · 7 строк», «Выполняет команду: npm…» пользователь видеть не должен»)
+const dev = (c = "dev_terminal") => !document.body.classList.contains("nocap-" + c);
 function logBlock(key, label, text, hint) {
   const n = text.split("\n").length;
+  if (!dev()) { label = { Терминал: "Технический текст", Код: "Подробный вывод" }[label] || label; hint = ""; }   // без сырого начала
   return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em>${cCopyBtn()}</summary><pre>${esc(text)}</pre></details>`;
 }
 function userMsg(m) {                               // вставленный вывод терминала — свёрнут, ваш текст — открыт
@@ -4562,6 +4549,9 @@ function actState() {                                // что показыва�
   return s?.status === "dialog" ? { phase: "waiting", text: "Ждёт вашего ответа", action: "answer" } : null;
 }
 function paintWorking() { paintAct(); }
+function humanAct(st) {                              // «Выполняет команду: npm run test» → «Выполняет действие» (s.* словарь)
+  const t = T(sKey(st)); return t && !t.startsWith("status.") ? t : "";
+}
 function paintAct() {
   const row = $("act"); if (!row) return;
   const st = actView(), now = Date.now() / 1000 + actSkew;
@@ -4570,7 +4560,7 @@ function paintAct() {
   if (row.className !== cls) row.className = cls;
   let text = "";
   if (fresh) text = st.phase === "done" ? "Готово" + (st.since ? " · " + new Date(st.since * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "")
-    : st.action === "screen" && st.phase !== "failed" ? "Не видно реакции" : st.text + (st.spinner ? ` (${st.spinner.split(" · ")[0]})` : "");   // кнопка рядом
+    : st.action === "screen" && st.phase !== "failed" ? "Не видно реакции" : !dev() && st.phase !== "failed" && humanAct(st) || st.text + (st.spinner ? ` (${st.spinner.split(" · ")[0]})` : "");   // кнопка рядом
   const t = row.querySelector(".t");
   if (t.textContent !== text) { t.textContent = text; row.title = text; }   // без мигания: только при смене фазы
   const btn = fresh && ["screen", "answer", "enter"].includes(st.action) ? st.action : "";
@@ -4646,7 +4636,7 @@ function renderChat(toBottom) {
   const head = (t) => norm(t).slice(0, 60);               // журнал мог дописать вложения/вставку — сверяем начало
   pending = pending.filter((p) => !hist.some((m) => m.role === "user" && (norm(m.text) === norm(p.text) || head(m.text) === head(p.text)))
     && !(p.state === "sent" && Date.now() - (p.at || 0) > 120000));     // GAS-21: не висит вечно
-  const QS = { wait: ["wait", "в очереди — Claude занят и прочитает по ходу работы"], read: ["ok", "прочитано по ходу работы"] };
+  const QS = { wait: ["wait", dev() ? "в очереди — Claude занят и прочитает по ходу работы" : "в очереди — прочитает, как освободится"], read: ["ok", dev() ? "прочитано по ходу работы" : "доставлено"] };
   const canSay = meta?.voices?.length || prov?.keys?.elevenlabs || DEMO;
   const lastAi = hist.at(-1)?.role === "assistant" ? hist.at(-1).i : null;
   if (lastAi != null) tgOffer();
