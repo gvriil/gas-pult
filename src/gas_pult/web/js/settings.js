@@ -30,9 +30,9 @@ function groups() {
     { label: "Уведомления", icon: "bell", sub: pushState(), run: () => part("push").then((m) => m.open()) },
     ...(meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Устройства для «Поделиться»", icon: "share", sub: "фото, ссылки и файлы из других приложений — в Гаврилу; iPhone и Android", run: () => part("share").then((m) => m.devicesSheet()) }] : []),
     ] },
-    { title: "ИИ, интеграции и бюджет", icon: "chip", items: [
+    { title: "ИИ, подключения и бюджет", icon: "chip", items: [
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),
-    ...(meta?.space && meta?.role !== "owner" ? [{ label: "Подключения", icon: "puzzle", sub: "свои интеграции пространства: GitHub, Linear, поиск, свой сервер — ключи только у вас", run: () => part("spacemcp").then((m) => m.open()) }] : []),
+    ...(meta?.space && meta?.role !== "owner" ? [{ label: "Подключения", icon: "puzzle", sub: "свои подключения пространства: GitHub, Linear, поиск, свой сервер — ключи только у вас", run: () => part("spacemcp").then((m) => m.open()) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Модель по умолчанию", icon: "chip", sub: "для всех новых сессий Claude; модель одного чата — в самом чате", run: defaultModelSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Брифинг: источники и время", icon: "spark", run: () => briefGo("prefs") }] : []),
@@ -53,7 +53,7 @@ function groups() {
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Корзина чатов", icon: "trash", sub: "удалённые сессии и чаты — вернуть; скрытые — показать снова", run: chatTrash }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
-    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOURS[k].title, icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, интеграции, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
+    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOURS[k].title, icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, подключения, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ] },
   ].map((g) => ({ ...g, items: g.items.filter(Boolean) })).filter((g) => g.items.some((x) => !x.head));

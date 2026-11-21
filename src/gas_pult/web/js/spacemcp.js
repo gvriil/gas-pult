@@ -15,7 +15,7 @@ function row(s) {
 function listHtml() {
   const s = data?.servers || [], p = data?.presets || [];
   const have = new Set(s.map((x) => x.name));
-  return `<div id="smcpOut"></div><p class="note">${space ? "Интеграции этого пространства — только названия. Ключи хранятся у пространства и сюда не приходят."
+  return `<div id="smcpOut"></div><p class="note">${space ? "Подключения этого пространства — только названия. Ключи хранятся у пространства и сюда не приходят."
       : "Свои подключения этого пространства: ключи хранятся только у него, владельцу и другим пространствам они не видны."}</p>
     ${s.length ? s.map(row).join("") : '<div class="empty">Пока ничего не подключено.</div>'}
     ${canEdit() && p.length ? `<div class="s-lbl">Подключить</div><div class="scn-opts">${p.map((x, i) =>

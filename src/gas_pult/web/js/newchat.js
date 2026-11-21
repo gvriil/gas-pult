@@ -32,8 +32,8 @@ export function paint() {
     + (claude && !dev() ? chip("data-dmodel", MODE_IC[modeKey(DRAFT.effort)], MODE_T[modeKey(DRAFT.effort)], "Быстро, обычно или глубоко; «Точнее…» — модель и усилие", !!DRAFT.effort)   // Gemini №7
       : chip("data-dmodel", "chip", (DRAFT.model || profTitle(prof)) + (claude && !/haiku/i.test(DRAFT.model || "") ? " · усилия: " + eff[1].toLowerCase() : ""),
       "Модель и усилие — один выбор", !!(DRAFT.model || DRAFT.effort)))
-    + (MCP?.length ? chip("data-dmcp", "puzzle", "Интеграции: " + onCount(DRAFT.mcpOff) + (DRAFT.mcpOff.length ? " из " + okCount() : ""),
-      claude ? "Какие интеграции доступны этому чату" : "У другого агента интеграции — в его настройках", DRAFT.mcpOff.length > 0) : "");
+    + (MCP?.length ? chip("data-dmcp", "puzzle", "Подключения: " + onCount(DRAFT.mcpOff) + (DRAFT.mcpOff.length ? " из " + okCount() : ""),
+      claude ? "Какие подключения доступны этому чату" : "У другого агента подключения — в его настройках", DRAFT.mcpOff.length > 0) : "");
   $("input").placeholder = "Напишите, что нужно…";
   if (MCP === null) { MCP = []; Promise.all([api("/api/mcp"), part("logos").catch(() => null)]).then(([d, l]) => { MCP = d.servers || []; LG = l; if (DRAFT) paint(); }).catch(() => {}); }
 }
@@ -100,7 +100,7 @@ export async function send() {
 // Интеграции открытого чата (владелец и админ): выбор → плашка «Перезапущу чат с новыми подключениями» 5 с с
 // «Отменить» → /api/chat/mcp (запомнить у разговора и перезапустить окно с --resume — переписка та же).
 export async function chatMcp(s) {
-  try { [MCP, LG] = await Promise.all([api("/api/mcp").then((d) => d.servers || []), part("logos").catch(() => null)]); } catch (e) { return toast("Интеграции: " + e.message, 4000); }
+  try { [MCP, LG] = await Promise.all([api("/api/mcp").then((d) => d.servers || []), part("logos").catch(() => null)]); } catch (e) { return toast("Подключения: " + e.message, 4000); }
   let off = [...(s.mcp_off || [])];
   const items = () => [...MCP.map((x) => {
     const on = x.ok && !off.includes(x.name);
@@ -117,7 +117,7 @@ export async function chatMcp(s) {
     b.onclick = () => { undone = true; el.remove(); toast("Отменено"); }; el.append(b); notice(el);
     setTimeout(async () => {
       el.remove(); if (undone) return;
-      try { const d = await api("/api/chat/mcp", { w: s.id, off }); toast("Чат перезапущен: " + (off.length ? "выключено " + off.length : "все интеграции включены")); await refresh(); if (d.id) openSession(d.id); }
+      try { const d = await api("/api/chat/mcp", { w: s.id, off }); toast("Чат перезапущен: " + (off.length ? "выключено " + off.length : "все подключения включены")); await refresh(); if (d.id) openSession(d.id); }
       catch (e) { toast("Не вышло: " + e.message, 5000); }
     }, 5000);
   };

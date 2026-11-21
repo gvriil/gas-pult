@@ -137,7 +137,7 @@ def test_search_key_hidden_in_errors(api):
 def test_search_without_key_or_folder(api, tmp_path):
     (r,), _ = rpc("search", [call("web_search", {"query": "x"})],
                   {"GAS_SEARCH_KEY_FILE": str(tmp_path / "нет.key"), "GAS_SEARCH_ENGINE": "brave"})
-    assert r["result"]["isError"] and "Интеграциях" in text(r)
+    assert r["result"]["isError"] and "Подключениях" in text(r)
     (r,), _ = rpc("search", [call("web_search", {"query": "x"})], api | {"GAS_SEARCH_ENGINE": "yandex"})
     assert r["result"]["isError"] and "каталога" in text(r) and Fake.seen == []
 

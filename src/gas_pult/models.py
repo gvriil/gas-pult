@@ -222,7 +222,7 @@ def estimate(provider: str, model: str, t: dict, ts: str = "") -> float | None:
 
 def gaps_of(p: dict) -> dict:
     """Для панели: что не работает (``limits``), под вопросом (``unsure``), работает (``works``) — [{id, names}] — и
-    какими интеграциями заменить (``alt`` — id шаблонов «Интеграций»)."""
+    какими интеграциями заменить (``alt`` — id шаблонов «Подключений»)."""
     def items(ids):
         return [{"id": i, "names": NAMES.get(i, "")} for i in ids]
     missing = [*p.get("limits", ()), *p.get("unsure", ())]
@@ -285,7 +285,7 @@ def local_up(p: dict) -> bool:
 def no_gateway(p: dict) -> str:
     if p.get("local_token"):
         return f"{p['title']}: служба на сервере не запущена (127.0.0.1:8082) или нет её токена"
-    return (f"не задан адрес шлюза {p['short']} — «Интеграции» → «Модели» → {p['title']}. "
+    return (f"не задан адрес шлюза {p['short']} — «Подключения» → «Модели» → {p['title']}. "
             f"Шлюз разворачиваете вы, в России: {p.get('guide', GUIDE)}")
 
 
@@ -347,7 +347,7 @@ def command(base: str, profile: str, state: dict, home: Path | None = None) -> s
         raise ValueError(no_gateway(p))
     key = local_token(p) if p.get("local_token") else providers.load_keys().get(p["key"])
     if not key:
-        raise ValueError(f"нет ключа {p['title']} — добавьте его в «Интеграции» → «Модели»")
+        raise ValueError(f"нет ключа {p['title']} — добавьте его в «Подключения» → «Модели»")
     f = profiles_dir() / f"{profile}.json"
     write_private(f, json.dumps({"env": env_of(p, key, state)}, ensure_ascii=False))
     return with_home(f"{base} --settings {shlex.quote(str(f))}", home)

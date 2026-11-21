@@ -178,7 +178,7 @@ def available(cfg) -> dict:
         except Exception:                        # файл ящика испорчен — покажем, но без «Gmail»
             host = ""
         boxes.append({"id": b, "gmail": host == "imap.gmail.com"})
-    try:                                         # «Интеграции» → «Календари» (calkeys.py): что подключено, без значений
+    try:                                        # «Подключения» → «Календари» (calkeys.py): что подключено, без значений
         from gas_pult import calkeys
         keys = calkeys.status()
     except Exception:
@@ -413,7 +413,7 @@ def collect(cfg, *, sel: dict, digest_items: list[dict], tasks_list: list[dict],
         status += st
     elif "calendar" in src:
         status.append({"id": "calendar", "label": SOURCES["calendar"], "state": "none",
-                       "note": "календарь не подключён — «Интеграции» → «Календари»"})
+                       "note": "календарь не подключён — «Подключения» → «Календари»"})
     pr_items = [x for x in digest_items if x["kind"] == "pr"]
     if "github" in src:
         owner = getattr(cfg, "digest_github", "")

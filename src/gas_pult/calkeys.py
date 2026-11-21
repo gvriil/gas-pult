@@ -1,9 +1,9 @@
-"""Ключи календарей из панели («Интеграции» → «Календари»): владелец вставляет секрет в поле — пульт кладёт его в файл
+"""Ключи календарей из панели («Подключения» → «Календари»): владелец вставляет секрет в поле — пульт кладёт его в файл
 коннектора 0600 (``~/.config/gastech-mcp/calendar-<имя>.json``, его читает ``connectors/calendar_mcp.py``) и сразу
 проверяет подключение. Владелец секреты в чат не шлёт и файлы руками не кладёт (штаб 18.11).
 
 - Google Календарь — «Секретный адрес в формате iCal» (только чтение) → ``calendar-google.json`` ``{kind: ics}``;
-- iCloud (Apple) — не здесь: пресет «Календарь iCloud» в «Интеграциях» (GAS-15, #293), одно место для пароля Apple.
+- iCloud (Apple) — не здесь: пресет «Календарь iCloud» в «Подключениях» (GAS-15, #293), одно место для пароля Apple.
 
 Значение секрета наружу не уходит: ни в ответ API, ни в журнал, ни в текст ошибки — только «подключено» и что
 проверено (число календарей). Не прошла проверка — файл не остаётся.
@@ -19,7 +19,7 @@ from gas_pult.config import write_private
 from gas_pult.connectors import _core
 from gas_pult.connectors import calendar_mcp as cal
 
-KINDS = {"google": "Google Календарь"}             # iCloud — пресетом «Календарь iCloud» в «Интеграциях» (#293)
+KINDS = {"google": "Google Календарь"}             # iCloud — пресетом «Календарь iCloud» в «Подключениях» (#293)
 
 
 def path(kind: str):
@@ -56,7 +56,7 @@ def _check(kind: str) -> str:
 def save(kind: str, b: dict) -> dict:
     """Записать ключ (0600) и проверить; не вышло — файл убрать, ошибку — без значения секрета."""
     if kind not in KINDS:
-        raise ValueError("здесь — только Google Календарь; iCloud — «Интеграции» → «Календарь iCloud»")
+        raise ValueError("здесь — только Google Календарь; iCloud — «Подключения» → «Календарь iCloud»")
     rec = _google(b.get("url"))
     d = cal._key_dir()
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
