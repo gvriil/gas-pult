@@ -102,10 +102,19 @@ def test_bridge_end_to_end(server, tmp_path):
         devs = call(base, "/api/bridge/devices", tok=owner)[1]["devices"]
         assert devs[0]["online"] and devs[0]["id"] == conf["id"]
         tools = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
-        assert tools["id"] == 1 and [t["name"] for t in tools["result"]["tools"]] == [
-            "browser_navigate", "browser_snapshot", "save_to_computer", "list_dir", "open_app", "screenshot",
-            "notes_list", "notes_get", "notes_create", "reminders_lists", "reminders_list", "reminders_create",
-            "mac_calendar_events"]
+        names = ["browser_navigate", "browser_snapshot", "save_to_computer", "list_dir", "open_app", "screenshot",
+                 "notes_list", "notes_get", "notes_create", "reminders_lists", "reminders_list", "reminders_create",
+                 "mac_calendar_events", "run_allowed"]
+        # новое устройство — «Личные данные не уходят модели» (владелец 21.11): снимка экрана в списке нет
+        assert devs[0]["private"] is True
+        assert tools["id"] == 1 and [t["name"] for t in tools["result"]["tools"]] == [n for n in names
+                                                                                      if n != "screenshot"]
+        denied = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": {
+            "name": "screenshot", "arguments": {}}})
+        assert denied["error"]["code"] == -32015 and "Личные данные" in denied["error"]["message"]
+        assert call(base, "/api/bridge/private", {"id": conf["id"], "on": False}, owner)[1] == {"ok": True}
+        tools = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        assert [t["name"] for t in tools["result"]["tools"]] == names
         ok = rpc(base, p.cfg.data, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                                     "params": {"name": "browser_snapshot", "arguments": {}}})
         assert ok["result"]["content"][0]["text"] == "ok browser_snapshot"

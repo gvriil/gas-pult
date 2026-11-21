@@ -18,7 +18,11 @@ import { spawn, execFile } from "node:child_process";
 import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, readdirSync, statSync, rmSync, realpathSync } from "node:fs";
 import { homedir, hostname, platform, tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, dirname, delimiter, sep } from "node:path";
+
+// Установщик с панели (install.sh / install.ps1) кладёт свой Node в папку пользователя и запускает мост без Терминала
+// (LaunchAgent, «Автозагрузка»): npx берём рядом с этим node, а не из PATH системы.
+process.env.PATH = dirname(process.execPath) + delimiter + (process.env.PATH || "");
 
 const PW_MCP = "@playwright/mcp@0.0.85";                 // выпуск 09.11.2026 (старше 14 дней — правило портфеля)
 const CONF = join(homedir(), ".gas-pult-bridge.json");
@@ -43,6 +47,68 @@ const MAC_TOOLS = [
   { name: "screenshot", description: "Снимок экрана компьютера (JPEG, длинная сторона до 1600 px). На macOS нужно разрешение «Запись экрана» для Терминала. Несколько мониторов (расширенный рабочий стол) — display: 1 основной, 2, 3…",
     inputSchema: { type: "object", properties: { display: { type: "integer", minimum: 1, maximum: 9, description: "номер дисплея; нет — основной" } } } },
 ];
+// Терминал на компьютере (владелец 21.11): только команды из белого списка, каждая — после «Да» человека в пульте.
+// Сервер проверяет строку и делает черновик; сюда приходит готовый список аргументов с отметкой _confirmed — мост
+// проверяет его ещё раз сам. Без оболочки: execFile, ни конвейеров, ни подстановок.
+export const RUN_TOOL = { name: "run_allowed",
+  description: "Команда на компьютере пользователя — только из белого списка: ls [-l|-a|-la|-lh] [папка в доме]; df -h; " +
+    "du -sh <папка в доме>; open <файл или папка в доме> (документы, картинки, музыка, видео — не программы; macOS); " +
+    "ping -c 3 <адрес сайта>; brew list (macOS); sw_vers (macOS); uptime. Без ; | & $( ) кавычек и «..». " +
+    "Каждая — только после «Да» человека: первый вызов вернёт черновик; после подтверждения вызовите снова с draft. " +
+    "На Windows — пока только ping.",
+  inputSchema: { type: "object", properties: { command: { type: "string", description: "например: df -h" },
+    draft: { type: "string", description: "id черновика — только после «Да» человека; первый вызов — без него" } }, required: ["command"] } };
+const DOC_EXT = new Set(("pdf txt rtf md csv doc docx xls xlsx ppt pptx odt ods odp pages numbers key jpg jpeg png gif heic " +
+  "webp bmp tif tiff mp3 m4a wav aac flac mp4 mov m4v avi mkv epub").split(" "));
+const BAD = /[;|&$`<>(){}[\]*?!\\"'\n\r\t#%^=]/;
+
+export function checkArgv(argv, home = homedir(), os = platform()) {
+  const no = (t) => { throw new Error(t || "команды нет в белом списке"); };
+  if (!Array.isArray(argv) || !argv.length || argv.some((x) => typeof x !== "string" || BAD.test(x) || x.split(/[\\/]/).includes(".."))) no();
+  const [p, ...a] = argv, key = argv.join(" ");
+  const inHome = (x) => {
+    if (!x || x.startsWith("-") || x.startsWith("/") || /^[a-z]:/i.test(x)) no("только путь внутри домашней папки");
+    const real = realpathSync(join(home, x.replace(/^~[\\/]?/, ""))), base = realpathSync(home);
+    if (real !== base && !real.startsWith(base + sep)) no("только путь внутри домашней папки");
+    return real;
+  };
+  if (os === "win32" && p !== "ping") no("на Windows — пока только ping");
+  if (p === "ls") {
+    const flags = a.filter((x) => x.startsWith("-")), rest = a.filter((x) => !x.startsWith("-"));
+    if (flags.length > 1 || (flags.length && !["-l", "-a", "-la", "-al", "-lh"].includes(flags[0])) || rest.length > 1) no("ls: -l, -a, -la, -lh и одна папка");
+    return ["ls", ...flags, ...(rest.length ? [inHome(rest[0])] : [])];
+  }
+  if (p === "df") { if (key !== "df -h") no("df: только df -h"); return ["df", "-h"]; }
+  if (p === "du") { if (a.length !== 2 || a[0] !== "-sh") no("du: только du -sh <папка>"); return ["du", "-sh", inHome(a[1])]; }
+  if (p === "open") {
+    if (os !== "darwin") no("open — только на macOS");
+    if (a.length !== 1) no("open: один файл или папка");
+    const real = inHome(a[0]), last = basename(real), ext = last.includes(".") && !/^\.[^.]*$/.test(last) ? last.split(".").pop().toLowerCase() : "";
+    if (ext && !DOC_EXT.has(ext)) no(`open: файлы .${ext} не открываю — только документы, картинки, музыку, видео и папки`);
+    if (!ext && !statSync(real).isDirectory()) no("open: файл без расширения не открываю");
+    return ["open", real];
+  }
+  if (p === "ping") {
+    const host = String(a[2] || "").toLowerCase();
+    if (a.length !== 3 || a[0] !== "-c" || a[1] !== "3" || !/^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)*$/.test(host)) no("ping: только ping -c 3 <адрес сайта>");
+    return os === "win32" ? ["ping", "-n", "3", host] : ["ping", "-c", "3", host];
+  }
+  if (p === "brew") { if (os !== "darwin" || key !== "brew list") no("brew: только brew list на macOS"); return ["brew", "list"]; }
+  if (p === "sw_vers" || p === "uptime") { if (a.length || (p === "sw_vers" && os !== "darwin")) no(); return [p]; }
+  return no();
+}
+
+export async function runAllowed(args = {}, run = execFile, home = homedir(), os = platform()) {
+  if (!args._confirmed) throw new Error("команда — только после «Да» человека в пульте: сначала черновик");
+  const [cmd, ...rest] = checkArgv(args.argv, home, os);
+  const env = { ...process.env, PATH: `${process.env.PATH}${delimiter}/opt/homebrew/bin${delimiter}/usr/local/bin` };
+  return new Promise((ok) => run(cmd, rest, { timeout: 60000, maxBuffer: 2 << 20, cwd: home, env, shell: false },
+    (e, out, err) => {
+      const text = `${out || ""}${err ? "\n" + err : ""}`.trim().slice(0, 20000);
+      ok(e && !text ? `не выполнилось: ${e.message}` : text || "(пусто)");
+    }));
+}
+
 const exec = (cmd, args) => new Promise((ok, no) => execFile(cmd, args, { timeout: 20000 }, (e, out) => (e ? no(e) : ok(out))));
 
 // Заметки, Напоминания, Календарь на Маке (GAS-15, владелец 18.11) — через osascript (JXA), без чужих программ.
@@ -230,7 +296,7 @@ export function saveToComputer(args, root = join(homedir(), "Downloads")) {
 
 async function pair(url, code) {
   const r = await fetch(url.replace(/\/$/, "") + "/api/bridge/claim", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, name: hostname(), os: platform() }) });
+    body: JSON.stringify({ code, name: hostname(), os: platform(), old: load().token || "" }) });   // повторная установка — та же запись
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || "ошибка " + r.status);
   save({ ...load(), url: url.replace(/\/$/, ""), token: d.token, id: d.id });
@@ -247,7 +313,7 @@ function run() {
     mcp = spawn(cmd, { shell: true, stdio: ["pipe", "pipe", "inherit"] });
     createInterface({ input: mcp.stdout }).on("line", (line) => {
       let m; try { m = JSON.parse(line); } catch { return; }
-      if (m?.result?.tools && Array.isArray(m.result.tools)) m.result.tools.push(SAVE_TOOL, ...MAC_TOOLS, ...APPLE_TOOLS);   // ответ на tools/list
+      if (m?.result?.tools && Array.isArray(m.result.tools)) m.result.tools.push(SAVE_TOOL, ...MAC_TOOLS, ...APPLE_TOOLS, RUN_TOOL);   // ответ на tools/list
       if (ws?.readyState === 1) ws.send(JSON.stringify(m));
     });
     mcp.on("exit", (c) => { log("Playwright MCP завершился:", c); mcp = null; });
@@ -273,6 +339,10 @@ function run() {
       if (m.method === "tools/call" && APPLE_TOOLS.some((t) => t.name === p.name)) {
         return appleTool(p.name, p.arguments || {}).then((t) => reply(m.id, { content: [{ type: "text", text: t }] }),
           (err) => reply(m.id, null, { code: -32013, message: err.message }));
+      }
+      if (m.method === "tools/call" && p.name === RUN_TOOL.name) {
+        return runAllowed(p.arguments || {}).then((t) => reply(m.id, { content: [{ type: "text", text: t }] }),
+          (err) => reply(m.id, null, { code: -32014, message: err.message }));
       }
       if (m.method === "tools/call" && String(p.name || "").endsWith("navigate")) {
         const d = blockedHost((p.arguments || {}).url, allowed);
