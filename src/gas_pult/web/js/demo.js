@@ -96,7 +96,7 @@ function demoProjects(key, path, body, ses) {
     ["p-shop-bot", "shop-bot", L2("Магазин-бот", "Shop bot"), "auto"], ["p-gastech-digest", "gastech-digest", L2("Дайджест", "Digest"), "auto"], ["p-books", "books", L2("Бухгалтерия", "Accounting"), "module:acc-start"], ["p-home", "~", L2("Домашняя", "Home"), "auto"]];
   const DONE = { "p-tgi": [[L2("Отчёт П8 за октябрь", "October report"), 2 * 3600, 14], [L2("Комнаты: миграция базы", "Rooms: database move"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]],
     "p-books": [[L2("Акт сверки за октябрь", "October reconciliation"), D, 18], [L2("Описание платёжки", "Payment description"), 4 * D, 4]], "p-icon": [[L2("Цены конкурентов", "Competitor prices"), 3 * D, 12]] };
-  const SP = params.has("tester");                   // тестировщик (GAS-38): проекты — папки его пространства
+  const SP = params.has("tester") || params.has("slink");                   // тестировщик (GAS-38): проекты — папки его пространства
   if (SP) { P.length = 0; P.push(...[[L2("Сверка счетов", "Invoice check")], [L2("Меню на зиму", "Winter menu")], [L2("Отчёт для собственника", "Owner report")]].map(([f]) => ["s:demo:" + f, f, f, "space"]));
     DONE["s:demo:" + P[0][1]] = [[L2("Акт сверки с поставщиком", "Supplier reconciliation"), D, 9]]; DONE["s:demo:" + P[1][1]] = [[L2("Цены на супы", "Soup prices"), 3 * D, 5]]; }
   P.push(...(demoApi.pj.newp || []));                // «Новый проект» в демо — в памяти страницы
@@ -305,10 +305,14 @@ function demoApi(path, body) {
   // фокус (задача 41): ?demo&focus — устройство по ссылке (одна сессия @1); &focus=gone — ссылка погасла
   const FURL = location.origin + "/#focus=demo-token-demo-token-demo-token";
   R["/api/focus/new"] = { url: FURL, id: "f1", exp: Math.floor(Date.now() / 1000) + 7 * 86400, name: S.find((y) => y.id === (body?.w || "@1"))?.name || "сессия" };
+  if (body?.space) R["/api/focus/new"] = { url: FURL, id: "f9", exp: Math.floor(Date.now() / 1000) + ({ "1h": 1 / 24, "1d": 1, "30d": 30, none: 36500 }[body.ttl] || 7) * 86400, name: body.name || "Демо для бухгалтерии",   // GAS-38
+    space: body.space, space_title: "Демо для бухгалтерии", mode: "space", max: body.max, rights: body.rights, forever: body.ttl === "none" };
   R["/api/focus/send"] = { ok: true }; R["/api/focus/revoke"] = { ok: true, links: [] }; R["/api/focus/open"] = { ok: true, name: "gas-pult" };
   R["/api/focus/list"] = { links: [{ id: "f3", name: "Ассистент ТГИ", proj: "p-tgi", space: null, created: Date.now() / 1000 - 300, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" },
     { id: "f1", w: "@1", name: "gas-pult", space: null, created: Date.now() / 1000 - 3600, exp: Date.now() / 1000 + 6 * 86400, opened: Date.now() / 1000 - 3000, device: "iPhone · Safari" },
-    { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" }] };
+    { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" },
+    ...(params.has("spaces") ? [{ id: "f4", name: "Кафе — показ партнёру", w: "", space: "demo", mode: "space", devices: 2, max: 3, rights: "full", forever: false, created: Date.now() / 1000 - 900, exp: Date.now() / 1000 + 7 * 86400, opened: Date.now() / 1000 - 600, device: "iPhone · Safari" },
+      { id: "f5", name: "Демо для бухгалтерии", w: "", space: "demo", mode: "space", devices: 0, max: 0, rights: "read", forever: true, created: Date.now() / 1000 - 1900, exp: Date.now() / 1000 + 36500 * 86400, opened: null, device: "" }] : [])] };
   if (FOCUS) {
     if (params.get("focus") === "gone") { focusEnd("Чат завершён."); return Promise.reject(new Error("Чат завершён.")); }
     // &focus=proj — ссылка на проект сессии @1 (все его окна); &fexp=1 — до конца срока сутки (предупреждение)
@@ -415,8 +419,9 @@ function demoApi(path, body) {
     { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek: V4.1 Flash", ctx: 786432, in: 0.07, out: 0.28 },
     { id: "openrouter/auto", name: "Auto Router", ctx: 2000000, in: null, out: null }] };
   if (params.has("upd")) { R["/api/meta"].build = "demo-1"; R["/api/sessions"].build = "demo-2"; }   // ?upd — вышла новая версия
-  if (params.has("tester")) {                       // ?tester — тестировщик демо-пространства: только его сессия
+  if (params.has("tester") || params.has("slink")) {   // ?tester — тестировщик демо-пространства; ?slink — вход по ссылке на него (GAS-38)
     R["/api/meta"].space = { slug: "demo", title: "Демо для бухгалтерии", ready: true }; R["/api/meta"].role = "member"; R["/api/meta"].projects = [];
+    if (params.has("slink")) Object.assign(R["/api/meta"], { via: "slink", uid: null, tty: false, slink: { name: "Кафе — показ партнёру", exp: Math.floor(Date.now() / 1000) + 7 * 86400, forever: false, rights: "full" } });
     R["/api/sessions"].cost = { pool: "own", today: { tokens: { in: 0, out: 0, cw: 0, cr: 0 }, total: 0, usd: 9.2 }, budget: demoBud };
     R["/api/sessions"].sessions = [{ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false,
       channel: false, rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", owner_here: null,

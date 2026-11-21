@@ -142,6 +142,9 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     PUSH_OWN,
     REPOS,
     SELFTEST,
+    SLINK,
+    SLINK_HEADER,
+    SLINK_NO,
     SPACE_OK,
     STT_JOB,
     STT_STREAM,
@@ -512,6 +515,7 @@ class Panel:
         self.budget_cache: dict[str, tuple[float, dict]] = {}       # пространство → (когда, запас)
         self.invite_misses = invites.Misses()                        # перебор кодов приглашений — по IP
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
+        self.people.virtual = self.focus.person      # ссылка на пространство — «тестировщик» на срок ссылки (GAS-38)
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
         self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
@@ -1289,6 +1293,30 @@ class Panel:
         return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": w["name"],
                 "proj": proj or None, **({"mode": focus.DEMO, "max": focus.DEMO_MAX} if mode else {})}
 
+    def focus_space(self, slug: str, by, base: str, ttl: str = "7d", limit: int = 3, rights: str = "full",
+                    name: str = "") -> dict:
+        """«Ссылка на пространство» (владелец, GAS-38): полная панель пространства ``slug`` — как у его тестировщика.
+        Срок ``ttl`` (``focus.SPACE_TTLS``), устройств ``limit`` (1, 3, 0 — без ограничения), права «full» / «read»."""
+        slug = tenants.check_slug(slug)
+        t = tenants.load(slug) if tenants.enabled() else None
+        if t is None:
+            raise LookupError("пространства нет")
+        if ttl not in focus.SPACE_TTLS:
+            raise ValueError("срок: 1h, 1d, 7d, 30d или none")
+        if limit not in focus.SPACE_MAX:
+            raise ValueError("устройств: 1, 3 или 0 — без ограничения")
+        if rights not in ("full", "read"):
+            raise ValueError("права: full или read")
+        base = (self.public_url or base or "").rstrip("/")
+        if not self.FOCUS_BASE.match(base):
+            raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
+        title = str(name or "").strip()[:60] or t.get("title") or slug
+        f = self.focus.new({"id": "", "path": "", "name": title, "space": slug}, by, ttl=focus.SPACE_TTLS[ttl],
+                           mode=focus.SPACE, limit=limit, rights=rights)
+        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": title, "space": slug,
+                "space_title": t.get("title") or slug, "mode": focus.SPACE, "max": limit, "rights": rights,
+                "forever": ttl == "none"}
+
     def focus_sessions(self, rec: dict) -> list[dict]:
         """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""
         if rec.get("proj"):
@@ -1378,6 +1406,8 @@ class Panel:
         """Запрос из фокуса: действующая ссылка этого устройства и живое окно её сессии; иначе ``focus.Gone``.
         Окна нет (сессию завершили из панели или бота) — ссылка гаснет сразу."""
         rec = self.focus.by_cookie(cookie)
+        if rec.get("mode") == focus.SPACE:                   # ссылка на пространство — полная панель, не режим фокуса
+            raise focus.Gone("Это ссылка на пространство — откройте её ещё раз.")
         if rec.get("proj"):                                  # ссылка на проект: живёт, пока есть проект и срок
             if rec["proj"] not in self.project_data()["projects"]:
                 self.focus.end(rec["id"])
@@ -1478,6 +1508,8 @@ class Panel:
             raise ValueError("владелец уже получил сообщение — подождите несколько минут")
         self.help_calls[w["id"]] = time.time()
         person = next((p for p in self.people.list() if p["id"] == int(uid)), {"id": uid})
+        if rid := focus.rid_of(uid):                       # по ссылке на пространство — её название (GAS-38)
+            person = {"id": uid, "name": f"Гость по ссылке «{(self.focus._load().get(rid) or {}).get('name', '')}»"}
         text, kb = testers.help_message(person, slug, w, self.pult.panel_url())
         for chat in self.cfg.owners:
             try:
@@ -3913,12 +3945,14 @@ def handler(panel: Panel):
         raw: bytes | None = None                # тело, прочитанное проверкой фокуса
 
         renew = ""                              # Set-Cookie продлённой или новой сессии — уйдёт с ответом
+        sl: tuple | None = None                 # (запись ссылки на пространство | None, почему погасла) — на запрос
 
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
 
         def parse_request(self) -> bool:
             self.renew = ""                     # соединение keep-alive: у каждого запроса своё
+            self.sl = None                      # ссылка на пространство — проверяется заново на каждый запрос
             return super().parse_request()
 
         def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = "",
@@ -3959,7 +3993,7 @@ def handler(panel: Panel):
         def push_uid(self) -> int:
             """Чьи подписки: Telegram ID вошедшего; фокус-ссылке и входу без ID уведомлений нет."""
             via, _, uid = self.who()
-            if via == "focus" or uid is None:
+            if via in ("focus", SLINK) or uid is None:
                 raise ValueError("уведомления на телефон — после входа через Telegram, Google, Яндекс или ключ")
             return uid
 
@@ -3968,6 +4002,30 @@ def handler(panel: Panel):
             Запрос из фокуса — права того, кто выпустил ссылку, но только в пределах ``FOCUS_*`` и одного окна."""
             if self.focused is not None:
                 return "focus", "owner", self.focused.get("by")
+            if self.headers.get(SLINK_HEADER):            # страница ссылки на пространство — только её cookie
+                return self.slink_who()
+            got = self.login_who()
+            return got if got[1] else self.slink_who()
+
+        def slink(self) -> tuple[dict | None, str]:
+            """Ссылка на пространство этого устройства (focus.SPACE): (запись | None, почему не действует)."""
+            if self.sl is None:
+                try:
+                    self.sl = (panel.focus.space_by_cookie(self.focus_cookie()), "")
+                except focus.Gone as e:
+                    self.sl = (None, str(e))
+            return self.sl
+
+        def slink_who(self) -> tuple[str, str | None, int | None]:
+            """Вход по ссылке на пространство: «человек» ссылки (focus.vuid), роль и пространство — People.virtual."""
+            rec = self.slink()[0]
+            if not rec:
+                return "", None, None
+            uid = focus.vuid(rec["id"])
+            role = panel.people.role(uid)
+            return (SLINK, role, uid) if role else ("", None, None)
+
+        def login_who(self) -> tuple[str, str | None, int | None]:
             user = verify(self.headers.get("X-Telegram-Init-Data", ""), panel.cfg.token)
             if user and (role := panel.people.role(user.get("id"))):
                 self.tg_cookie(int(user["id"]))
@@ -4096,6 +4154,12 @@ def handler(panel: Panel):
         def permit(self, path: str, method: str) -> bool:
             """Не вошёл — 401 (панель покажет вход); не принял условия — 403 code=terms; не хватает роли — 403."""
             role = self.who()[1]
+            if not role and (self.headers.get(SLINK_HEADER) or self.focus_cookie()):
+                why = self.slink()[1]                    # ссылка на пространство погасла — экран «Ссылка не действует»
+                if why or self.headers.get(SLINK_HEADER):
+                    self.json({"error": why or "Ссылка не открыта на этом устройстве. Откройте ссылку ещё раз.",
+                               "code": "focus_gone"}, 410)
+                    return False
             if not role and self.focus_cookie():          # с фокус-ссылкой — только её сессия, остальное закрыто
                 self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
                 return False
@@ -4103,7 +4167,11 @@ def handler(panel: Panel):
                 self.json({"error": "нужен вход"}, 401)
                 return False
             uid = self.terms_uid()
-            panel.seen_ip(uid, self.client_ip())                   # страна по IP — не чаще раза в IP_EVERY
+            if self.via() == SLINK and path in SLINK_NO:  # вход на другое устройство, ключи, уведомления — не по ссылке
+                self.json({"error": "по ссылке на пространство этого нет", "code": "focus_scope"}, 403)
+                return False
+            if self.via() != SLINK:                       # у ссылки нет страны человека
+                panel.seen_ip(uid, self.client_ip())       # страна по IP — не чаще раза в IP_EVERY
             if path not in TERMS_FREE and not panel.people.accepted(uid):
                 self.json({"error": "сначала примите условия использования пульта", "code": "terms"}, 403)
                 return False
@@ -4344,7 +4412,9 @@ def handler(panel: Panel):
                         "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
                         "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
                         "shares": panel.shares.pending(tu) if role and kind != "focus" else 0,   # «Поделились»
-                        "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
+                        "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")},
+                        **({"slink": {k: (self.slink()[0] or {}).get(k) for k in ("name", "exp", "forever", "rights")}}
+                           if kind == SLINK else {})}       # вход по ссылке на пространство: срок и права (GAS-38)
             if path == "/api/terms":
                 return self.terms_info()
             if path == "/api/prefs":
@@ -4794,7 +4864,8 @@ def handler(panel: Panel):
                                           self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
-            return ("cookie", cookie, {"ok": True, "name": rec.get("name", "")})
+            return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""),
+                                       **({"mode": focus.SPACE} if rec.get("mode") == focus.SPACE else {})})
 
         def focus_call(self, method: str, path: str, q: dict):
             """Запрос страницы в режиме фокуса: действующая ссылка этого устройства, путь из ``FOCUS_*``, окно — только
@@ -5282,6 +5353,9 @@ def handler(panel: Panel):
             if path == "/api/people/access":           # продлить доступ: дней (0 — бессрочно)
                 panel.set_access(int(b.get("id", 0)), int(b.get("days", 0)), by=self.who()[1])
                 return {"people": panel.people_list(), **panel.geo.info()}
+            if path == "/api/logout" and self.via() == SLINK:   # ссылка на пространство: cookie стираем, ссылка живёт
+                gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
+                return ("cookie", gone, {"ok": True})
             if path == "/api/logout":
                 panel.auth.logout(self.session())
                 return ("cookie", webauth.set_cookie("", 0), {"ok": True})
@@ -5479,6 +5553,10 @@ def handler(panel: Panel):
                 return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
+            if path == "/api/focus/new" and b.get("space"):   # «Ссылка на пространство» (GAS-38)
+                return panel.focus_space(str(b["space"]), self.terms_uid(), str(b.get("base", "")),
+                                         str(b.get("ttl") or "7d"), int(b.get("max", 3) or 0),
+                                         str(b.get("rights") or "full"), str(b.get("name") or ""))
             if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
                 return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
                                        str(b.get("proj") or ""), str(b.get("mode") or ""))

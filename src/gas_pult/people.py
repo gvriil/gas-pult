@@ -101,6 +101,8 @@ class People:
         self.email_store = store.with_name("emails.json")         # их же почта (emailcode.py)
         self.tour_store = store.with_name("tours.json")          # их же отметки тура
         self.ui_store = store.with_name("ui.json")               # их же вид панели (роль интерфейса)
+        # «Человек» фокус-ссылки на пространство (focus.py, GAS-38): номер → {role, tenant} или None. Задаёт панель.
+        self.virtual = None
 
     def _load(self) -> dict:
         try:
@@ -130,6 +132,8 @@ class People:
             return None
         if uid in self.owners:
             return "owner"
+        if uid < 0 and self.virtual and (v := self.virtual(uid)):
+            return v["role"]
         p = self._load().get(str(uid))
         return p["role"] if p and p.get("role") in ROLES and not expired(p) else None
 
@@ -222,6 +226,8 @@ class People:
             return None
         if uid in self.owners:
             return None
+        if uid < 0 and self.virtual and (v := self.virtual(uid)):
+            return v["tenant"]
         p = self._load().get(str(uid)) or {}
         return p.get("tenant") or None if p.get("role") in ROLES and not expired(p) else None
 
