@@ -35,7 +35,7 @@ function groups() {
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Брифинг: источники и время", icon: "spark", run: () => briefGo("prefs") }] : []),
     ...(meta?.role === "owner" ? [{ label: "Компьютеры — ваш браузер", icon: "monitor", sub: "пульт управляет Chrome на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
-    ...(deskLinks() ? [{ label: "Ссылки: где открывать", icon: "globe", sub: "запомненные сайты — в Ubuntu или здесь", run: () => part("links").then(() => linkPrefsSheet()) }] : []),
+    ...(deskLinks() ? [{ label: "Ссылки: где открывать", icon: "globe", sub: "запомненные сайты — в Браузере или здесь", run: () => part("links").then(() => linkPrefsSheet()) }] : []),
     ] },
     { title: "Команда и клиенты", icon: "place", items: [
     ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", sub: "ссылка-приглашение в пульт", run: spaceInvite }] : []),   // из «⋯» панели (Gemini №8)

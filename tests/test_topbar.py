@@ -50,7 +50,7 @@ def test_e2e_topbar_one_row_and_colors():
                 dots = pg.evaluate("[...document.querySelectorAll('#navTasks .sdot')].map((e) =>"
                                    " getComputedStyle(e).backgroundColor)")
                 assert len(dots) == 3 and len(set(dots)) == 3                           # три разных цвета
-                assert pg.get_attribute(".sp-desk:not(.sp-term)", "aria-label") == "Рабочий стол Ubuntu"
+                assert pg.get_attribute(".sp-desk:not(.sp-term)", "aria-label") == "Браузер агентов"
                 pg.evaluate("navOpen(true)")                                            # телефон: «Задачи» — в панели
                 pg.wait_for_timeout(400)
                 pg.click("#navTasks")
