@@ -4,14 +4,18 @@
 export async function peopleSheet() {
   let d; try { d = await api("/api/people"); } catch (e) { return toast(e.message, 4000); }
   helpSheet("settings.people");
-  sheet("Люди", [...(d.geoip === false ? [{ info: true, icon: "warn", label: "Страна по IP: нет данных", sub: "база стран по IP не загружена — на сервере: gas-pult geoip update" }] : []),
+  // Список — имя, роль, когда входил (Gemini №12: «ID, страна, IP — в карточке»). Подробности — в карточке человека.
+  const when = (t) => new Date(t * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  sheet("Команда и права", [
     ...d.people.map((p) => ({
-    label: p.name || (p.username ? "@" + p.username : "ID " + p.id), icon: p.country?.mismatch ? "warn" : "place",
-    sub: ROLE[p.role] + (p.kind === "guest" ? " · без Telegram" : "") + (p.tenant ? " · пространство " + p.tenant : "") + (p.last?.at ? " · вошёл " + new Date(p.last.at * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + ", " + p.last.device : "") + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + countryLine(p.country, d.geoip) + (p.role === "owner" ? "" : " — нажмите, чтобы изменить или отключить"),
-    run: () => p.role !== "owner" && personSheet(p) })),
-    { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" },
-    ...(d.geoip ? [{ info: true, icon: "globe", label: "Страна по IP", sub: (d.attribution || "IP Geolocation by DB-IP") + " · db-ip.com, CC BY 4.0" }] : [])]);
+      label: p.name || (p.username ? "@" + p.username : p.role === "owner" ? "Вы" : "Без имени"), icon: p.country?.mismatch ? "warn" : "place",
+      sub: ROLE[p.role] + (p.kind === "guest" ? " · без Telegram" : "") + (p.last?.at ? " · входил " + when(p.last.at) : " · ещё не входил"),
+      run: () => p.role !== "owner" && personSheet({ ...p, geoip: d.geoip, attribution: d.attribution }) })),
+    ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Что видят сотрудники", icon: "tasks", sub: "разделы и возможности по ролям", run: () => teamSheet() }] : []),
+    { info: true, label: "Как добавить человека", icon: "plus", sub: "пусть откроет панель и нажмёт «Войти через Telegram» — бот спросит вас, кем его пустить" }]);
 }
+// Подробности о человеке (было в строке списка): ID, @имя, пространство, устройство, условия, страна и IP — в карточке
+const personDetails = (p) => ROLE[p.role] + (p.kind === "guest" ? " · без Telegram" : "") + (p.tenant ? " · пространство " + p.tenant : "") + (p.last?.at ? " · вошёл " + new Date(p.last.at * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + ", " + p.last.device : "") + (p.username ? " · @" + p.username : "") + (p.terms && p.terms.version === meta?.terms?.version ? " · условия приняты " + new Date(p.terms.at * 1000).toLocaleDateString("ru-RU") : " · условия не приняты") + countryLine(p.country, p.geoip);
 
 export function personSheet(p) {
   const set = (role) => api("/api/people/role", { id: p.id, role }).then(() => toast("Роль: " + ROLE[role])).catch((e) => toast(e.message, 4000));
@@ -21,6 +25,8 @@ export function personSheet(p) {
   if (!owner && p.role === "admin") return sheet(p.name || "ID " + p.id, [{ info: true, icon: "lock", label: "Админ", sub: "менять админа может только владелец" }]);
   const exp = p.access_until ? new Date(p.access_until * 1000).toLocaleDateString("ru-RU") : "";
   sheet(p.name || "ID " + p.id, [
+    ...(owner || dev() ? [{ info: true, icon: "place", label: "ID " + p.id, sub: personDetails(p).replace(/^[^·]*· /, "") }] : []),
+    ...(p.geoip && (owner || dev()) ? [{ info: true, icon: "globe", label: "Страна по IP", sub: (p.attribution || "IP Geolocation by DB-IP") + " · db-ip.com, CC BY 4.0" }] : []),
     { info: true, icon: "wait", label: exp ? (p.access_until * 1000 < Date.now() ? "Доступ закончился " : "Доступ до ") + exp : "Доступ бессрочный" },
     ...(exp ? [{ label: "Продлить на 30 дней от сегодня", icon: "plus", run: () => until(30) }, { label: "Сделать бессрочным", icon: "check", run: () => until(0) }]
       : [{ label: "Ограничить доступ: 30 дней", icon: "wait", run: () => until(30) }]),
