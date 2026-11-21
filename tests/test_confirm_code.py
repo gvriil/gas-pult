@@ -153,3 +153,41 @@ def test_code_requests_limited_apart_from_login(server):
     code, d = call(base, "/api/confirm/start", {}, tok)
     assert code == 400 and "слишком много" in d["error"]
     p.auth.start()                                                              # вход кодом — свой счётчик
+
+
+def test_code_pinned_where_to_look_and_unpinned(server, monkeypatch):
+    """21.11: владелец не нашёл четыре дошедших кода — их утопило зеркало сессий в том же чате. Код закрепляется,
+    экран говорит, когда и в какой чат он ушёл, и даёт ссылку на бота; после подтверждения закреп снимается.
+    Код идёт прямым сообщением бота — каналы уведомлений (notify_channels.json) на него не влияют."""
+    p, base, _ = server
+    calls = []
+
+    def api(method, **kw):
+        calls.append((method, kw))
+        if method == "sendMessage":
+            if kw["chat_id"] == 3:
+                from gas_pult.telegram import TelegramError
+                raise TelegramError("sendMessage", "Bad Request: user not found")
+            return {"message_id": 77}
+        return {"username": "pult_bot", "first_name": "Пульт"} if method == "getMe" else {}
+    monkeypatch.setattr(p.pult, "api", api)
+    (p.cfg.data / "notify_channels.json").write_text(json.dumps({"1": {"telegram": False}}))
+    tok = p.auth.issue(1)
+    code, d = call(base, "/api/confirm/start", {}, tok)
+    assert code == 200 and d["chat"] == "Пульт" and d["bot"] == "pult_bot" and abs(d["at"] - time.time()) < 5
+    assert ("pinChatMessage", {"chat_id": 1, "message_id": 77, "disable_notification": True}) in calls
+    good = code_in(next(kw["text"] for m, kw in calls if m == "sendMessage"))
+    assert call(base, "/api/confirm/verify", {"id": d["id"], "code": good}, tok) == (200, {"ok": True})
+    assert ("unpinChatMessage", {"chat_id": 1, "message_id": 77}) in calls
+    # вход кодом владельца (LEGACY): владелец, не открывший бота, не мешает остальным
+    p.cfg.owners = [1, 3]
+    calls.clear()
+    out = p.confirm_start(p.auth.issue(webauth.LEGACY), webauth.LEGACY, "", "")
+    assert out["via"] == "telegram" and [kw["chat_id"] for m, kw in calls if m == "sendMessage"] == [1, 3]
+
+
+def test_screen_shows_bot_link():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    assert 'id="cfBot"' in html and "Открыть чат с ботом" in html and '"https://t.me/" + r.bot' in html
+    assert "он закреплён сверху" in html

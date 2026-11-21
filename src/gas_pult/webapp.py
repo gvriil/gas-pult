@@ -469,6 +469,8 @@ class Panel:
         self.oidc = oidc.Oidc({"google": cfg.google, "yandex": cfg.yandex}, self.people, cfg.data / "oidc.json",
                               base=lambda: self.public_url)                                # Google, Яндекс ID
         self._bot = ""
+        self._bot_name = ""
+        self.confirm_pins: dict[str, list] = {}           # код подтверждения → закреплённые сообщения (снимаем)
         self.public_url = ""                                 # адрес панели снаружи — для возврата после входа
         self.previews: dict[str, tuple[str, str]] = {}  # папка → (ревизия журнала, строка превью)
         self.model_cache: dict[tuple, tuple[str, str]] = {}  # (папка, папка Claude) → (ревизия, модель ответа)
@@ -1956,9 +1958,40 @@ class Panel:
         text = (f"🔐 Подтверждение команд на сервере\n\nКод: {code}\n\nДействует 10 минут. Вход: {where}.\n"
                 "Новый вход в панель просит выполнять команды и писать в терминал. Если это не вы — не вводите код: "
                 "без него с этого входа команды не выполнятся.")
+        # код — всегда прямым сообщением бота, мимо каналов уведомлений (их выбор на код не влияет); закрепляем его,
+        # чтобы зеркало сессий в том же чате не утопило код (21.11: владелец не нашёл четыре дошедших кода)
+        where, pins, sent, err = self.bot_where(), [], 0, None
         for chat in (self.cfg.owners if uid == webauth.LEGACY else [uid]):
-            self.pult.api("sendMessage", chat_id=chat, text=text)
-        return {"id": rid, "via": "telegram", "to": "Telegram", "ttl": webauth.CONFIRM_TTL}
+            try:                       # владелец, не открывший бота («user not found»), не мешает остальным
+                mid = self.pult.api("sendMessage", chat_id=chat, text=text).get("message_id")
+            except (TelegramError, OSError) as e:
+                err = e
+                continue
+            sent += 1
+            if mid:
+                with contextlib.suppress(TelegramError, OSError):
+                    self.pult.api("pinChatMessage", chat_id=chat, message_id=mid, disable_notification=True)
+                    pins.append((chat, mid))
+        if not sent:
+            raise RuntimeError(f"бот не смог прислать код: {err}" if err else "некому прислать код")
+        self.confirm_pins[rid] = pins
+        return {"id": rid, "via": "telegram", "to": "Telegram", "ttl": webauth.CONFIRM_TTL,
+                "at": int(time.time()), **where}
+
+    def bot_where(self) -> dict:
+        """Где искать код: имя чата с ботом (как в списке чатов Telegram) и ссылка на бота; Telegram недоступен —
+        пусто."""
+        if not self._bot_name:
+            with contextlib.suppress(TelegramError, OSError, KeyError):
+                me = self.pult.api("getMe")
+                self._bot, self._bot_name = me["username"], me.get("first_name") or me["username"]
+        return {"chat": self._bot_name, "bot": self._bot} if self._bot_name else {}
+
+    def confirm_done(self, rid: str):
+        """Код подтверждён — снять закреп с его сообщений."""
+        for chat, mid in self.confirm_pins.pop(rid, []):
+            with contextlib.suppress(TelegramError, OSError):
+                self.pult.api("unpinChatMessage", chat_id=chat, message_id=mid)
 
     # ---------- предложения (offers.py): страница /offer/<код> без входа ----------
     def offer_country_ok(self, cc: str) -> bool:
@@ -4815,6 +4848,7 @@ def handler(panel: Panel):
                 if path == "/api/confirm/start":
                     return panel.confirm_start(self.session(), self.who()[2], *self.client())
                 panel.auth.confirm_verify(self.session(), str(b.get("id", "")), str(b.get("code", "")))
+                panel.confirm_done(str(b.get("id", "")))
                 return {"ok": True}
             if path == "/api/commands/run":
                 return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
