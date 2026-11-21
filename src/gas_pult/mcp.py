@@ -259,24 +259,31 @@ def rclone_bin() -> str:
     return shutil.which("rclone") or next((str(x) for x in (Path.home() / ".local/bin/rclone",) if x.is_file()), "")
 
 
+def search_env(vals: dict, key_file: Path) -> tuple[dict, str]:
+    """Веб-поиск (``base_mcp.py search``): проверка полей → (окружение сервера, ключ). Ключ — только в файл
+    ``key_file``; в окружении — путь к нему."""
+    engine = vals.get("engine") or SEARCH_ENGINES[0]["v"]
+    if engine not in {e["v"] for e in SEARCH_ENGINES}:
+        raise ValueError("выберите сервис поиска из списка")
+    key = vals["token"]
+    if len(key) > 400 or any(c.isspace() for c in key):
+        raise ValueError("ключ — одна строка без пробелов")
+    env = {}
+    if engine == "yandex":
+        if not re.match(r"^[a-z0-9]{6,40}$", vals.get("folder", "")):
+            raise ValueError("для Яндекса нужен ID каталога Yandex Cloud (b1g…)")
+        env["GAS_SEARCH_FOLDER"] = vals["folder"]
+    return env | {"GAS_SEARCH_ENGINE": engine, "GAS_SEARCH_KEY_FILE": str(key_file)}, key
+
+
 def builtin(p: dict, name: str, vals: dict, home: Path | None) -> dict:
     """Свой сервер пульта (``base_mcp.py``): ключ — в файл 0600, в настройки Claude Code — команда и пути."""
     env: dict[str, str] = {}
     d = secrets_dir(home)
     if p["server"] == "search":
-        engine = vals.get("engine") or SEARCH_ENGINES[0]["v"]
-        if engine not in {e["v"] for e in SEARCH_ENGINES}:
-            raise ValueError("выберите сервис поиска из списка")
-        key = vals["token"]
-        if len(key) > 400 or any(c.isspace() for c in key):
-            raise ValueError("ключ — одна строка без пробелов")
-        if engine == "yandex":
-            if not re.match(r"^[a-z0-9]{6,40}$", vals.get("folder", "")):
-                raise ValueError("для Яндекса нужен ID каталога Yandex Cloud (b1g…)")
-            env["GAS_SEARCH_FOLDER"] = vals["folder"]
         f = d / f"{name}.key"
+        env, key = search_env(vals, f)
         config.write_private(f, key + "\n")
-        env |= {"GAS_SEARCH_ENGINE": engine, "GAS_SEARCH_KEY_FILE": str(f)}
     elif p["server"] == "docs":
         folder = " ".join(str(vals.get("folder") or "~/Документы").split())
         if len(folder) > 300 or "\n" in folder or ".." in Path(folder).parts:
@@ -309,6 +316,34 @@ def builtin(p: dict, name: str, vals: dict, home: Path | None) -> dict:
         env |= {"RCLONE_CONFIG": str(f), "GAS_DRIVE_REMOTE": "gdrive", "GAS_DRIVE_RCLONE": exe}
     return {"type": "stdio", "command": sys.executable or "python3", "args": [str(BASE_SERVER), p["server"]],
             "env": env}
+
+
+def values_of(p: dict, values: dict) -> dict:
+    """Значения полей шаблона: пустое — первый вариант выбора; обязательное пустое — ошибка с названием поля."""
+    vals = {f["key"]: str(values.get(f["key"], "")).strip() or (f["options"][0]["v"] if f.get("options") else "")
+            for f in p["fields"]}
+    for f in p["fields"]:
+        if not vals[f["key"]] and not f.get("optional"):
+            raise ValueError(f"заполните поле «{f['label']}»")
+    return vals
+
+
+def http_config(p: dict, vals: dict) -> dict:
+    """Настройка сервера по адресу (``type: http``): адрес, заголовок с ключом, id клиента OAuth."""
+    url = p["url"].format(**{k: v.rstrip("/") for k, v in vals.items()})
+    if not url.startswith("https://") and not re.match(r"^http://(localhost|127\.|192\.168\.|10\.)", url):
+        raise ValueError("адрес должен начинаться с https://")
+    cfg: dict = {"type": "http", "url": url}
+    headers = {f["header"]: f["format"].format(vals[f["key"]]) for f in p["fields"]
+               if f.get("header") and vals[f["key"]]}
+    if headers:
+        cfg["headers"] = headers
+    oauth = next((vals[f["key"]] for f in p["fields"] if f.get("oauth_client")), "")
+    if oauth:
+        if not re.match(r"^[\w.-]{4,200}$", oauth):
+            raise ValueError("ID клиента OAuth — без пробелов, как в консоли сервиса")
+        cfg["oauth"] = {"clientId": oauth}
+    return cfg
 
 
 class Mcp:
@@ -349,25 +384,9 @@ class Mcp:
             raise ValueError("нет такого шаблона")
         if not NAME.match(name):
             raise ValueError("имя: латиница в нижнем регистре, цифры, - или _ (2–41 знак)")
-        vals = {f["key"]: str(values.get(f["key"], "")).strip() or (f["options"][0]["v"] if f.get("options") else "")
-                for f in p["fields"]}
-        for f in p["fields"]:
-            if not vals[f["key"]] and not f.get("optional"):
-                raise ValueError(f"заполните поле «{f['label']}»")
+        vals = values_of(p, values)
         if p["type"] == "http":
-            url = p["url"].format(**{k: v.rstrip("/") for k, v in vals.items()})
-            if not url.startswith("https://") and not re.match(r"^http://(localhost|127\.|192\.168\.|10\.)", url):
-                raise ValueError("адрес должен начинаться с https://")
-            cfg = {"type": "http", "url": url}
-            headers = {f["header"]: f["format"].format(vals[f["key"]]) for f in p["fields"]
-                       if f.get("header") and vals[f["key"]]}
-            if headers:
-                cfg["headers"] = headers
-            oauth = next((vals[f["key"]] for f in p["fields"] if f.get("oauth_client")), "")
-            if oauth:
-                if not re.match(r"^[\w.-]{4,200}$", oauth):
-                    raise ValueError("ID клиента OAuth — без пробелов, как в консоли сервиса")
-                cfg["oauth"] = {"clientId": oauth}
+            cfg = http_config(p, vals)
         elif p["type"] == "builtin":
             cfg = builtin(p, name, vals, home)
         else:

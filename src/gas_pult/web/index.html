@@ -3255,7 +3255,7 @@ function spaceChips(s) {
 function spacesGroup(list) {                          // группа под своими сессиями — только владельцу
   if (!isBoss() || (!list.length && !spacesInfo?.tenants?.length)) return "";
   return `<div class="sec-h space-h">${ic("flask")}<span>Пространства</span>${spacesInfo?.tenants?.length ? '<button class="chip" data-space-invite>' + ic("mail") + "Пригласить</button>" + '<button class="chip" data-space-task>' + ic("plus") + "Поставить задачу</button>" + '<button class="chip" data-space-closed>' + ic("folder") + "Закрытые</button>" + (meta?.role === "owner" ? '<button class="chip" data-space-link>' + ic("qr") + "Ссылка</button>" : "") : ""}</div>`
-    + (spacesInfo?.tenants || []).filter((x) => x.budget).map((x) => `<div class="note space-bud${x.budget.pct >= 0.8 ? " warn" : ""}"><b>${esc(x.title || x.slug)}</b> — ${esc(x.budget.text)} <button class="chip" data-space-add="${esc(x.slug)}">${ic("plus")}${esc(T("bud.add"))}</button></div>`).join("")
+    + (spacesInfo?.tenants || []).filter((x) => x.budget).map((x) => `<div class="note space-bud${x.budget.pct >= 0.8 ? " warn" : ""}"><b>${esc(x.title || x.slug)}</b> — ${esc(x.budget.text)} <button class="chip" data-space-add="${esc(x.slug)}">${ic("plus")}${esc(T("bud.add"))}</button> <button class="chip" data-space-mcp="${esc(x.slug)}">${ic("puzzle")}Подключения</button></div>`).join("")
     + (projData?.space_projects || []).map(projCard).join("") + (list.length ? list.map(card).join("") : '<div class="empty">В пространствах сессий пока нет.</div>');
 }
 const isBoss = () => meta?.role === "owner" || meta?.role === "admin";   // админ: люди, приглашения, пространства
@@ -3711,6 +3711,7 @@ function sessionsClick(e) {
   if (e.target.closest("[data-space-invite]")) return spaceInvite();
   if (e.target.closest("[data-space-closed]")) return ssPickSpace(ssClosed);
   if (e.target.closest("[data-space-link]")) return spaceLink();
+  if (e.target.closest("[data-space-mcp]")) return part("spacemcp").then((m) => m.open(e.target.closest("[data-space-mcp]").dataset.spaceMcp));   // GAS-38 (в): только названия
   if (e.target.closest("[data-space-add]")) return budgetAdd(e.target.closest("[data-space-add]").dataset.spaceAdd);
   if (e.target.closest("[data-scn-home]")) return scenariosView();
   const r = e.target.closest("[data-reply]"); if (r) return openSession(r.dataset.reply, "screen");

@@ -116,6 +116,9 @@ SPACE_OK = TERMS_FREE | set(PUSH_OWN) | set(TTY) | {USES, FEEDBACK,
 SPACE_PROJ = ("/api/projects", "/api/project", "/api/project/sessions", "/api/project/history", "/api/project/session",
               "/api/project/resume", "/api/project/new")
 SPACE_OK |= set(SPACE_PROJ)
+# Свои интеграции пространства (GAS-38 (в), space_mcp.py): список, «Подключить», «Отключить» — только своего.
+SPACE_MCP = ("/api/space/mcp", "/api/space/mcp/add", "/api/space/mcp/remove")
+SPACE_OK |= set(SPACE_MCP)
 # Что тратит деньги: тестировщику — только пока дневной бюджет пространства не исчерпан (клавиши, Esc — можно).
 BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume", "/api/project/session",
                 "/api/project/resume"}

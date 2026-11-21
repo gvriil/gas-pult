@@ -91,6 +91,7 @@ from gas_pult import (
     share,
     space_budget,
     space_files,
+    space_mcp,
     space_projects,
     space_sessions,
     spaces,
@@ -4540,6 +4541,10 @@ def handler(panel: Panel):
                 return st
             if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
                 return panel.space_list(self.space_of(q))
+            if path == "/api/space/mcp":                 # свои интеграции пространства (GAS-38 (в)): без ключей
+                slug = self.space_of(q)                      # тестировщику — своё; владельцу и админу — по ``space``
+                return {"servers": space_mcp.listing(slug), "space": slug,
+                        "presets": space_mcp.presets() if self.space() else []}
             if path in ("/api/space/files", "/api/space/download"):   # файлы папки сессии пространства
                 slug, w = self.space_win(q)
                 folder = space_files.folder_of(slug, w)
@@ -5447,6 +5452,12 @@ def handler(panel: Panel):
                 if r.get("result") == "closed":
                     panel.focus.end_window(str(b.get("w", "")))
                 return r
+            if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
+                if not (slug := self.space()):
+                    raise ValueError("интеграции пространства меняет его человек; владелец — pult-tenant mcp")
+                if path.endswith("/add"):
+                    return space_mcp.add(slug, str(b.get("preset", "")), str(b.get("name", "")), b.get("values") or {})
+                return space_mcp.remove(slug, str(b.get("name", "")))
             if path == "/api/space/resume":
                 return panel.space_resume(self.space_of(b), str(b.get("folder", "")))
             if path == "/api/space/delete":
