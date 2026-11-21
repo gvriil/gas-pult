@@ -392,6 +392,14 @@ function demoApi(path, body) {
   R["/api/space/files"] = { free: 1600 * 1024 * 1024, files: [{ name: "Реестр входящих.xlsx", size: 48213, changed: t0 - 300 },
     { name: "Акт сверки №14.pdf", size: 1288490, changed: t0 - 2 * H }, { name: "data/выгрузка 1С.xml", size: 913, changed: t0 - D }] };
   R["/api/space/upload"] = { name: "Счёт.pdf" };
+  // свои интеграции пространства (GAS-38 (в)): список без ключей, подключить и отключить — в памяти демо
+  const smcp = (demoApi.smcp ||= [{ name: "github", type: "http", target: "https://api.githubcopilot.com", removable: true },
+                                    { name: "browser-local", type: "stdio", target: "python3", removable: false }]);
+  R["/api/space/mcp"] = { space: "demo", servers: smcp, presets: [...R["/api/mcp"].presets.filter((x) => !["websearch", "drive", "gdrive", "stdio", "docs", "icloud"].includes(x.id)),
+    { id: "websearch", title: "Веб-поиск", about: "Поиск в интернете для любой модели: Яндекс, Brave, Tavily или Exa по вашему ключу",
+      fields: [{ key: "engine", label: "Сервис поиска", options: [{ v: "yandex", t: "Яндекс" }, { v: "brave", t: "Brave" }] }, { key: "token", label: "API-ключ", secret: true }], after: "" }] };
+  if (path === "/api/space/mcp/add") { if (!smcp.some((x) => x.name === body.name)) smcp.push({ name: body.name, type: "http", target: "https://" + body.preset + ".example", removable: true }); return Promise.resolve({ result: "подключено. Перезапустите открытые сессии.", servers: smcp }); }
+  if (path === "/api/space/mcp/remove") { demoApi.smcp = smcp.filter((x) => x.name !== body.name); return Promise.resolve({ result: "отключено", servers: demoApi.smcp }); }
   if (path.startsWith("/api/space/download")) return Promise.resolve(new Blob(["демо"], { type: "text/plain" }));
   const demoBud = { daily: 4, period_days: 30, reserve: 120, spent: 97.4, today: 9.2, left: 22.6, pct: 0.81, over: false, reason: "", day_cap: null, estimate: true,
     text: "сегодня $9.20 · в запасе $22.60 до 01.12 · норма $4.00/день; при нынешнем темпе хватит до 21.11 (оценка по ценам за токены — работает на подписке)" };
