@@ -267,7 +267,8 @@ function demoApi(path, body) {
   const FURL = location.origin + "/#focus=demo-token-demo-token-demo-token";
   R["/api/focus/new"] = { url: FURL, id: "f1", exp: Math.floor(Date.now() / 1000) + 7 * 86400, name: S.find((y) => y.id === (body?.w || "@1"))?.name || "сессия" };
   R["/api/focus/send"] = { ok: true }; R["/api/focus/revoke"] = { ok: true, links: [] }; R["/api/focus/open"] = { ok: true, name: "gas-pult" };
-  R["/api/focus/list"] = { links: [{ id: "f1", name: "gas-pult", space: null, created: Date.now() / 1000 - 3600, exp: Date.now() / 1000 + 6 * 86400, opened: Date.now() / 1000 - 3000, device: "iPhone · Safari" },
+  R["/api/focus/list"] = { links: [{ id: "f3", name: "Ассистент ТГИ", proj: "p-tgi", space: null, created: Date.now() / 1000 - 300, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" },
+    { id: "f1", w: "@1", name: "gas-pult", space: null, created: Date.now() / 1000 - 3600, exp: Date.now() / 1000 + 6 * 86400, opened: Date.now() / 1000 - 3000, device: "iPhone · Safari" },
     { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" }] };
   if (FOCUS) {
     if (params.get("focus") === "gone") { focusEnd("Чат завершён."); return Promise.reject(new Error("Чат завершён.")); }
