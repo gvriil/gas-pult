@@ -1029,9 +1029,9 @@
            background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: calc(14px * var(--fz, 1)); }
   .nav-q input:focus { outline: none; border-color: var(--border-focus); }
   .nav-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px 12px; }
-  .nav-sec { margin: 14px 10px 4px; font-size: calc(12px * var(--fz, 1)); font-weight: 600; color: var(--text-muted); }
+  .nav-sec { margin: 16px 10px 4px; font-size: calc(13px * var(--fz, 1)); font-weight: 600; color: var(--text-secondary); }   /* вариант А, владелец 21.11 */
   .nav-sec.fold { display: flex; align-items: center; gap: 4px; width: calc(100% - 20px); min-height: 32px; padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
-  .nav-sec.fold .nchev { width: 14px; height: 14px; transition: transform .15s ease; } .nav-sec.fold[aria-expanded="true"] .nchev { transform: rotate(90deg); }
+  .nav-sec.fold .nchev { width: 14px; height: 14px; color: var(--text-secondary); transition: transform .15s ease; } .nav-sec.fold[aria-expanded="true"] .nchev { transform: rotate(90deg); }
   .nav-sec.has-add .nav-sec.fold { margin: 0; flex: 1; }
   #navFoldBtn.shut svg { transform: scaleY(-1); } .nav-sec.fold:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
   @media (pointer: coarse) { .nav-sec.fold { min-height: 44px; } .nav-h .icon, .nav-sec .nav-add { min-width: 44px; min-height: 44px; } }
