@@ -122,6 +122,10 @@
   body:not(.tester) .tester-only { display: none; }
   /* Фокус (задача 41): одна сессия — без списка, переключения, создания и общих настроек */
   body:not(.focus) .focus-only { display: none; }
+  body:not(.focus):not(.tester) #menuBtn { display: none !important; }   /* «4 квадрата» нет (Gemini №2): режим и интеграции — в строке поля */
+  body.drafting #modeChip, body.drafting #mcpChip, body.focus #modeChip, body.focus #mcpChip { display: none !important; }
+  #modeChip { flex: none; max-width: 40%; } body:not(.split):not(.focus) #target { display: none; }   /* телефон: чат — в шапке */
+  body:not(.split):not(.focus) #modeChip { margin-left: auto; }
   body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus-demo #rail, body.focus #railNew, body.focus #railSettings, body.focus #home, body.focus #homeBar,
   body.focus #pick, body.focus #title .caret, body.focus #title .sig, body.focus #target .caret,
   body.focus #menu [data-act=switch], body.focus #menu [data-act=active], body.focus #composeBtn, body.focus #navMoreBtn, body.focus #navNew, body.focus #navSet { display: none !important; }
@@ -1291,6 +1295,7 @@
       <button class="tool" id="plus" aria-label="Прикрепить фото или файл"></button>
       <button class="tool" id="menuBtn" data-tour="menu" aria-label="Меню действий"></button>
       <button class="target" id="target" data-tour="target" type="button" aria-label="Сменить чат"></button>
+      <button class="dchip mode" id="modeChip" type="button" title="Модель и усилие этого чата"></button><button class="tool" id="mcpChip" type="button" aria-label="Интеграции чата" title="Интеграции чата"></button>
       <div class="dchips" id="draftBar" hidden></div>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
@@ -1595,7 +1600,7 @@ const P = {
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
   $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
-  $("menuBtn").innerHTML = ic("menu"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
+  $("menuBtn").innerHTML = ic("menu"); $("mcpChip").innerHTML = ic("puzzle"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
   $("netIcon").innerHTML = ic("warn"); $("updateBar").insertAdjacentHTML("afterbegin", ic("refresh", "s16")); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("compose") + "Новый чат";
@@ -3723,7 +3728,14 @@ async function refresh() {
   } catch (e) { if (view !== "login" && !e.net) setSub(`<span style="color:var(--status-danger)">ошибка: ${esc(e.message)}</span>`); }   // обрыв сети — плашка через 15 с
 }
 // Шапка и строка «куда пишете» — чтобы никогда не отправить в чужую сессию.
+function paintTools(s) {                              // строка поля: режим (модель) и интеграции чата (Gemini №2)
+  const m = String(s?.model || "").replace(/^claude-?/i, "").trim() || "Модель";
+  setHTML($("modeChip"), ic("chip", "s16") + `<span>${esc(m)}</span>` + ic("chev", "s16"));
+  const mcpOk = ["owner", "admin"].includes(meta?.role) && !s?.space && (s?.harness || "claude") === "claude";
+  setHidden($("mcpChip"), !mcpOk); setHidden($("modeChip"), !s || meta?.role === "viewer");
+}
 function paintSession(s) {
+  paintTools(s);
   if (s?.sid && !s.title_own) part("nametip").then((m) => m.watch(s)).catch(() => {});   // название по смыслу (js/nametip.js)
   moneyBar(s);
   const st = WAKING.has(s.id) ? { label: "просыпается…", cls: "s-running" } : ST[s.status];
@@ -4162,6 +4174,7 @@ function sessionSheet(id) {
   sheet(dn(s), shortMenu([
     ...(!split() && !FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // шапка телефона — без «?» (Gemini №3)
     ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
+    ...(dev() && meta?.role !== "viewer" && !FOCUS ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
@@ -5214,6 +5227,8 @@ function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHei
   const pb = (h + 16) + "px"; if ($("session").style.paddingBottom !== pb) $("session").style.paddingBottom = pb;
   document.documentElement.style.setProperty("--tb", shown + "px"); placeMini(); }); }
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
+$("modeChip").onclick = () => ACTIONS.models();
+$("mcpChip").onclick = () => ACTIONS.chatmcp();
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
 const ACTIONS = {
