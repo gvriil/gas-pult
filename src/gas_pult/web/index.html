@@ -13,14 +13,16 @@
 <style>
   /* ===== Дизайн-система: тёплая бумага + терракота; статусы семантические (свободна ≠ зелёный) ===== */
   /* ===== Палитра в духе Gemini (Material 3): белый и #F0F4F9, синий акцент; статусы — по смыслу ===== */
+  /* ===== Токены v2 (разбор стиля Gemini 21.11, «по всем пунктам да»): нейтральные серые, синий #2563EB, статусы —
+     точкой; оттенки подобраны так, что текст на каждом фоне — AA (≥ 4,5:1) в обеих темах (tests/test_design_tokens_v2.py) ===== */
   :root, :root[data-theme="light"] {
-    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F0F4F9; --bg-terminal: #1E1F20;
+    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F3F4F6; --bg-terminal: #1E1F20;
     --tq-red: #C5221F; --tq-orange: #C45A00; --tq-yellow: #9A7400; --tq-green: #137333;   /* задачи (17.11), к фону ≥3,9:1 */
-    --border-subtle: #E1E5EA; --border-focus: #0B57D0; --field-border: #80868B; --field-ph: #5F6368;
-    --text-primary: #1F1F1F; --text-secondary: #444746; --text-muted: #747775;
-    --accent-primary: #0B57D0; --accent-soft: #D3E3FD; --on-accent: #FFFFFF;
-    --status-idle: #747775; --status-running: #1E8E3E; --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
-    --status-success: #146C2E; --status-danger: #B3261E; --status-stopped: #D93025;
+    --border-subtle: #E6E8EC; --border-focus: #2563EB; --field-border: #80868B; --field-ph: #5F6368;
+    --text-primary: #111827; --text-secondary: #4B5563; --text-muted: #5F6672;
+    --accent-primary: #2563EB; --accent-soft: #DBEAFE; --on-accent: #FFFFFF;
+    --status-idle: #5F6672; --status-running: #15803D; --status-approval: #A85300; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
+    --status-success: #15803D; --status-danger: #C81E1E; --status-stopped: #C81E1E;
     --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
     --row-hv: 5%; --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 8px;   /* пилюль нет (владелец 20.11): прямоугольник со скруглением 8 px */
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
@@ -30,13 +32,13 @@
     --pj4-bg: #FFDDB8; --pj4-fg: #7A4100; --pj5-bg: #FFD8E4; --pj5-fg: #8C1D48; --pj6-bg: #C2E8E7; --pj6-fg: #00504F;
   }
   :root[data-theme="dark"] { --row-hv: 7%;
-    --bg-canvas: #131314; --bg-surface: #1E1F20; --bg-subtle: #282A2C; --bg-terminal: #0E0E0F;
+    --bg-canvas: #111214; --bg-surface: #1C1E22; --bg-subtle: #25272C; --bg-terminal: #0E0E0F;
     --tq-red: #F28B82; --tq-orange: #FCAD70; --tq-yellow: #FDD663; --tq-green: #81C995;   /* к фону ≥6,9:1 */
-    --border-subtle: #3C4043; --border-focus: #A8C7FA; --field-border: #747A80; --field-ph: #9AA0A6;
-    --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --text-muted: #8E918F;
-    --accent-primary: #A8C7FA; --accent-soft: #1B2B48; --on-accent: #062E6F;
-    --status-idle: #8E918F; --status-running: #81C995; --status-approval: #FDD663; --status-approval-bg: #3A2E00; --on-approval: #3A2E00;
-    --status-success: #6DD58C; --status-danger: #F2B8B5; --status-stopped: #EE675C;
+    --border-subtle: #2E3137; --border-focus: #60A5FA; --field-border: #747A80; --field-ph: #9AA0A6;
+    --text-primary: #F3F4F6; --text-secondary: #B4BAC4; --text-muted: #8B93A1;
+    --accent-primary: #60A5FA; --accent-soft: #1E3A5F; --on-accent: #0B1220;
+    --status-idle: #8B93A1; --status-running: #22C55E; --status-approval: #F59E0B; --status-approval-bg: #3A2E00; --on-approval: #1F1300;
+    --status-success: #4ADE80; --status-danger: #F87171; --status-stopped: #F87171;
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
     --qr-bg: #FFFFFF;
     --pj1-bg: #1B2B48; --pj1-fg: #A8C7FA; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #34245A; --pj3-fg: #D0BCFF;
@@ -50,7 +52,7 @@
   html { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg-canvas); }
   body { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: var(--app-h, 100%); overflow: hidden; contain: layout;
          margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
-         font: calc(15px * var(--fz, 1))/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+         font: calc(14.5px * var(--fz, 1))/1.52 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   button:disabled { opacity: .5; cursor: default; }
   button:not(:disabled):active { transform: scale(.97); }
@@ -87,7 +89,7 @@
   .nmark { width: 18px; height: 18px; margin-right: -2px; } .lmark { display: block; width: 44px; height: 44px; margin: 4px 0 8px; }
   .tmark { display: none; width: 24px; height: 24px; margin-left: 2px; } body:has(#title.brand-text) .tmark { display: block; }
   body.no-dup.has-nav:not(.side-mini) #top .tmark { visibility: hidden; }   /* на ПК знак — в панели, сверху не дублируем */
-  .top h1 { margin: 0; font-size: calc(20px * var(--fz, 1)); font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top h1 { margin: 0; font-size: calc(18px * var(--fz, 1)); font-weight: 600; letter-spacing: -.01em; line-height: 1.33; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sub > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .sub > .chip { flex: none; overflow: visible; }
@@ -3413,59 +3415,8 @@ function budgetAdd(slug) {
 // keepassxc-cli, sudo с паролем, ssh, passwd, read -s … — сервер открывает окно tmux «gp-term» и запускает команду там.
 // Пароль вводится здесь, в браузере: строка уходит прямо в окно (буфер tmux удаляется сразу) и нигде не хранится.
 // В Telegram (Mini App) пароль не вводим — только смотрим экран; ввод — в браузере или в терминале (Termius).
-async function termOpen(btn, path, body, cmd) {
-  const go = (confirmed) => busy(btn, "Открываю…", async () => {
-    try {
-      const r = await api(path, { ...body, confirmed });
-      if (r.confirm) return confirmDanger("Команда меняет или удаляет данные:\n\n" + cmd.slice(0, 600) + "\n\nОткрыть в терминале и выполнить?", () => go(true));
-      termSheet(r.id);
-    } catch (e) { toast(e.message, 5000); }
-  });
-  return go(false);
-}
-function termSheet(id) {
-  document.querySelector(".sheet-bg.termsheet")?.remove();
-  const inTg = !!tg?.initData;
-  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.classList.add("termsheet"); bg.dataset.help = hv("cmd.terminal");
-  bg.innerHTML = `<div class="sheet" role="dialog"><h3>Терминал</h3>
-    <p class="note" style="margin:4px 16px 8px">Команда запущена в окне «gp-term» на сервере. ${inTg ? "Пароль в Telegram не вводим — откройте панель в браузере или терминал (Termius)." : "Спросит пароль — введите его ниже: он уйдёт прямо в окно и нигде не сохранится."}</p>
-    <div class="term" style="margin:0 16px"><pre id="twScreen">…</pre></div>
-    ${inTg ? `<div class="row2"><button class="btn ghost" data-close>Закрыть</button><button class="btn" id="twBrowser">${ic("ext")}Открыть в браузере</button></div>`
-      : `<div class="field" style="margin:10px 16px 0"><input id="twIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="пароль или ответ — Enter отправит"></div>
-    <label class="note" style="margin:6px 16px 0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="twShow">показывать, что ввожу</label>
-    <p class="note" id="twErr" style="margin:6px 16px 0"></p>
-    <div class="row2"><button class="btn ghost" id="twCc">Ctrl+C</button><button class="btn" id="twSend">${ic("key")}Отправить</button></div>`}
-    ${ttyOk() ? `<div class="row2"><button class="btn ghost" id="twLive">${ic("term")}Живой терминал: клавиши и вся история</button></div>` : ""}
-    <div class="row2"><button class="btn ghost danger" id="twKill">Закрыть окно на сервере</button><button class="btn ghost" data-close>Свернуть</button></div></div>`;
-  document.body.append(bg);
-  let timer = null, alive = true;
-  const stop = () => { clearInterval(timer); const i = $("twIn"); if (i) i.value = ""; bg.remove(); };
-  const err = (m) => { const e = $("twErr"); if (e) { e.textContent = m; e.style.color = "var(--status-danger)"; } else toast(m, 4000); };
-  const poll = async () => {
-    if (!bg.isConnected) return clearInterval(timer);
-    try {
-      const d = await api("/api/term?id=" + encodeURIComponent(id)); alive = d.alive;
-      $("twScreen").textContent = d.alive ? (d.lines || []).slice(-30).join("\n") || "…" : "Окно закрыто — команда завершилась.";
-      if (!d.alive) { clearInterval(timer); bg.querySelectorAll("#twIn, #twSend, #twCc, #twKill").forEach((x) => { x.disabled = true; }); }
-    } catch (e) { $("twScreen").textContent = e.message; }
-  };
-  poll(); timer = setInterval(poll, 1500);
-  const inp = $("twIn");
-  if (inp) {
-    inp.focus();
-    $("twShow").onchange = (e) => { inp.type = e.target.checked ? "text" : "password"; };
-    const send = () => busy($("twSend"), "Отправляю…", async () => {
-      try { await api("/api/term/type", { id, text: inp.value }); inp.value = ""; $("twErr").textContent = ""; setTimeout(poll, 600); } catch (e) { err(e.message); }
-    });
-    $("twSend").onclick = send;
-    inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); send(); } });
-    $("twCc").onclick = async () => { try { await api("/api/term/key", { id, key: "C-c" }); setTimeout(poll, 600); } catch (e) { err(e.message); } };
-  }
-  $("twLive")?.addEventListener("click", () => { stop(); ttyOpen(id); });
-  $("twBrowser")?.addEventListener("click", () => openUrl(location.origin + location.pathname + "?term=" + encodeURIComponent(id)));
-  $("twKill").onclick = async () => { if (alive) { try { await api("/api/term/close", { id }); } catch (e) { /* окна уже нет */ } } stop(); };
-  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) stop(); });
-}
+const termOpen = (...a) => part("term").then((m) => m.termOpen(...a));   // окно терминала для ввода — js/term.js
+const termSheet = (id) => part("term").then((m) => m.termSheet(id));
 // ---------- живой терминал (задача 50): клавиши и текст прямо в окно, вся история, поиск ----------
 // Один лист для окна сессии и для окна gp-term. История tmux — страницами вверх (до 20 тысяч строк, секреты скрыты
 // сервером), поиск с подсветкой; «Журнал сессии» — переписка из транскрипта, если окно пересоздано и истории tmux
