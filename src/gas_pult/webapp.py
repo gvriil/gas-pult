@@ -5293,7 +5293,9 @@ def handler(panel: Panel):
             if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
                 sid = str(b.get("id", ""))[:40]
                 panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
-                return {"prompt": starters.prompt(sid)}
+                wid = str(b.get("w") or "")             # «добавь задачу» — только в чатах владельца (задачи — его)
+                win = next((x for x in panel.tmux.windows() if x["id"] == wid), None) if wid else None
+                return {"prompt": starters.prompt(sid, tasks=self.who()[1] == "owner" and not (win and in_space(win)))}
             if path == "/api/clientlog":                   # ошибка JS в браузере (GAS-31): тип, экран, место
                 panel.events.event("js_error", str(b.get("mid") or ""), kind=str(b.get("kind") or "")[:40],
                                    msg=str(b.get("msg") or "")[:160], at=str(b.get("at") or "")[:120],

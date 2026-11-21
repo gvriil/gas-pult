@@ -611,6 +611,8 @@ def cmd_task(a):
             raise SystemExit(f"не записал: {e}") from None
         print(f"{x['id']}: {tasks.STATUS_TITLES[x['status']]}")
         return
+    if a.action == "add" and a.id and not a.title:     # «gas-pult task add "Позвонить в банк"» — заголовок без --title
+        a.title, a.id = " ".join(a.id.split()), ""
     d = {k: v for k, v in {"title": a.title, "kind": a.type, "next": a.next, "status": a.status, "link": a.link,
                            "cmd": a.cmd, "phone": a.phone, "to": a.to, "draft": a.draft, "with": a.with_,
                            "when": a.when, "question": a.question,
@@ -633,13 +635,42 @@ def cmd_task(a):
             _, name = own_window()
             if a.chat and a.chat != "none":
                 d.update(_chat(a.chat))
-            elif not a.chat and (own := own_window()[0]):
-                d.update({"chat": own, "sid": _sid_of(own)})
+            elif not a.chat:
+                d.update(_own_chat())
+            if d.get("sid") or d.get("chat"):
+                d.setdefault("chat_title", _chat_title(d.get("sid", ""), d.get("chat", "")))
+            if not d.get("next") and d.get("status", "todo") != "done" and (d.get("chat") or d.get("sid")):
+                d["next"] = "продолжить в чате"              # «добавь задачу …» из чата — одной фразой
             x = t.add(d, by=a.by or (f"агент · {name}" if name else "агент"))
     except (ValueError, LookupError) as e:
         raise SystemExit(f"не записал: {e}") from None
     print(f"задача {x['id']}: {x['title']} [{tasks.STATUS_TITLES[x['status']]}]"
           + (f" · чат {x['chat']}" if x.get("chat") else ""))
+
+
+def _own_chat() -> dict:
+    """Чат, из которого агент ставит задачу («добавь задачу …», владелец 21.11): разговор — ``CLAUDE_CODE_SESSION_ID``
+    (его ставит Claude Code), окно — ``TMUX_PANE``; окна нет — ищем окно по разговору. Ничего нет — пусто."""
+    sid = transcripts.valid_sid(os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+    own = own_window()[0]
+    if own and not sid:
+        sid = _sid_of(own)
+    if sid and not own:
+        own = next((w["id"] for w in _windows() if w.get("sid") == sid), "")
+    return {k: v for k, v in {"chat": own, "sid": sid}.items() if v}
+
+
+def _chat_title(sid: str, wid: str) -> str:
+    """Название чата по смыслу (``gas-pult title`` или панель), иначе имя окна — для строки «из чата «…»»."""
+    from gas_pult import projects
+    try:
+        rec = projects.Store(config.data_dir() / projects.FILE, os.path.expanduser("~")).read()["sessions"].get(sid)
+    except (OSError, KeyError, TypeError):
+        rec = None
+    title = (rec or {}).get("title") or ""
+    if not title and wid:
+        title = (_window(wid) or {}).get("name", "")
+    return title
 
 
 def _sid_of(wid: str) -> str:
@@ -822,7 +853,7 @@ def main(argv: list[str] | None = None):
     s.set_defaults(fn=cmd_title)
     s = sub.add_parser("task", help="задачи владельца: add | list | done <id> | undo <id> | update <id> (#203)")
     s.add_argument("action", choices=["add", "list", "done", "undo", "update"])
-    s.add_argument("id", nargs="?", default="")
+    s.add_argument("id", nargs="?", default="", help="id задачи; у add — заголовок (или --title)")
     s.add_argument("--title", default="")
     s.add_argument("--type", default="", help="command | call | write | meeting | decision | check | other")
     s.add_argument("--next", default="", help="что сделать дальше — одна строка")

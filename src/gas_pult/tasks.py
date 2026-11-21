@@ -11,6 +11,7 @@
   (``with``, ``when``) · decision (``question``, ``options``) · check (``link``) · other;
 - ``next`` — что сделать дальше (обязательно для невыполненных); ``chat`` — окно, ``sid`` — разговор (окно может
   смениться при перезапуске — ищем по разговору); ``link`` — источник (issue, PR, документ);
+- ``chat_title`` — название чата на момент постановки (окно закрыли — в карточке всё равно видно, откуда задача);
 - ``by`` — кто поставил (owner / agent / имя окна); ``created``, ``done_at``.
 
 Порядок: по матрице Эйзенхауэра (решение владельца 14.11: «по срочности и важности»): поля ``urgent`` и ``important``
@@ -47,7 +48,7 @@ QUADRANTS = {1: "Срочно и важно — сделать сейчас", 2:
 Q_ORDER = {1: 0, 0: 1, 2: 2, 3: 3, 4: 4}          # «не разобрано» — сразу после срочного и важного
 MAX = 500                       # больше — самые старые выполненные уходят
 LIMITS = {"title": 200, "next": 300, "cmd": 2000, "phone": 40, "to": 120, "draft": 4000, "with": 200, "when": 80,
-          "question": 500, "link": 500, "chat": 20, "sid": 36, "by": 60, "due": 10}
+          "question": 500, "link": 500, "chat": 20, "sid": 36, "by": 60, "due": 10, "chat_title": 80}
 
 
 def clean(d: dict) -> dict:
@@ -112,6 +113,22 @@ def quadrant(t: dict, today: str | None = None) -> int:
     return {(True, True): 1, (False, True): 2, (True, False): 3, (False, False): 4}[(bool(u), bool(i))]
 
 
+# Группы списка (владелец 21.11, ориентир — Things, Todoist, Linear): «Срочно» — срок прошёл, отмечено срочным или
+# ждёт ответа владельца; «Сегодня» — срок сегодня или уже в работе; «Позже» — остальное; «Сделано» — выполненные.
+GROUPS = {"urgent": "Срочно", "today": "Сегодня", "later": "Позже", "done": "Сделано"}
+
+
+def group(t: dict, today: str | None = None) -> str:
+    today = today or time.strftime("%Y-%m-%d")
+    if t.get("status") == "done":
+        return "done"
+    if overdue(t, today) or t.get("urgent") is True or t.get("status") == "waiting":
+        return "urgent"
+    if str(t.get("due") or "") == today or t.get("status") == "doing":
+        return "today"
+    return "later"
+
+
 def set_quadrant(d: dict, q) -> dict:
     """``--q 1..4`` → срочно и важно."""
     q = int(q)
@@ -161,9 +178,10 @@ class Tasks:
         write_private(self.path, json.dumps(items, ensure_ascii=False))
 
     def list(self) -> list[dict]:
-        """По порядку; ``q`` — квадрант (0 — не оценено), ``overdue`` — срок прошёл."""
+        """По порядку; ``q`` — квадрант (0 — не оценено), ``overdue`` — срок прошёл, ``group`` — группа списка."""
         today = time.strftime("%Y-%m-%d")
-        return [{**x, "q": quadrant(x, today), "overdue": overdue(x, today)} for x in order(self._load())]
+        return [{**x, "q": quadrant(x, today), "overdue": overdue(x, today), "group": group(x, today)}
+                for x in order(self._load())]
 
     def etag(self) -> str:
         """Версия списка — по содержимому файла: не менялся — 304 без тела."""
@@ -177,7 +195,8 @@ class Tasks:
         live = [x for x in items if x.get("status") != "done"]
         return {"open": len(live), "waiting": sum(x.get("status") == "waiting" for x in live),
                 "q1": sum(quadrant(x) == 1 for x in live),
-                "doing": sum(x.get("status") == "doing" for x in live)}   # «в работе» — сводка в полосе (17.11)
+                "doing": sum(x.get("status") == "doing" for x in live),   # «в работе» — сводка в полосе (17.11)
+                "urgent": sum(group(x) == "urgent" for x in live)}       # счётчик на кнопке «Задачи» в шапке (21.11)
 
     def add(self, d: dict, by: str = "owner") -> dict:
         if d.get("q"):

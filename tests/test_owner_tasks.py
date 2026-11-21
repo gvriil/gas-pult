@@ -27,7 +27,7 @@ def test_add_check_order_and_done(t):
                "status": "waiting"})
     c = t.add({"title": "Сделано", "kind": "other", "status": "done"})
     assert [x["id"] for x in t.list()] == [b["id"], a["id"], c["id"]]        # ждут вас — первыми, выполненные — в конце
-    assert t.open_count() == {"open": 2, "waiting": 1, "q1": 0, "doing": 0}
+    assert t.open_count() == {"open": 2, "waiting": 1, "q1": 0, "doing": 0, "urgent": 1}
     x = t.update(a["id"], {"status": "done"})
     assert x["done_at"] and t.open_count()["open"] == 1
     x = t.update(a["id"], {"status": "todo"})
@@ -69,6 +69,7 @@ def test_concurrent_writers_do_not_lose_tasks(tmp_path):
 
 def test_cli_add_list_done(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("GAS_PULT_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)       # разговор — по окну (как вне Claude Code)
     monkeypatch.setattr(cli, "own_window", lambda: ("@4", "штаб"))
     monkeypatch.setattr(cli, "_sid_of", lambda wid: "11111111-1111-4111-8111-111111111111")
     cli.main(["task", "add", "--title", "Выбрать цену пилота", "--type", "decision", "--question", "Сколько?",
@@ -104,7 +105,7 @@ def test_api_owner_only_etag_and_run(server, monkeypatch):
     except urllib.error.HTTPError as e:
         assert e.code == 304
     code, d = call(base, "/api/sessions", tok=tok)
-    assert d["tasks"] == {"open": 1, "waiting": 0, "q1": 0, "doing": 0}
+    assert d["tasks"] == {"open": 1, "waiting": 0, "q1": 0, "doing": 0, "urgent": 0}
     monkeypatch.setattr(p.auth, "needs_confirm", lambda token, fresh=None: False)
     ran = []
     monkeypatch.setattr(webapp, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))

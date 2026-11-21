@@ -54,8 +54,8 @@ def test_e2e_topbar_one_row_and_colors():
                 pg.evaluate("navOpen(true)")                                            # телефон: «Задачи» — в панели
                 pg.wait_for_timeout(400)
                 pg.click("#navTasks")
-                pg.wait_for_selector(".sheet .sdot.tq-r", timeout=5000)                 # срочные — красные
-                assert pg.locator(".sheet .sdot.tq-o, .sheet .sdot.tq-y").count() >= 1
+                pg.wait_for_selector(".sheet .tsk-c.t-over", timeout=5000)              # просроченные — красные (21.11)
+                assert pg.locator(".sheet .tsk-c.t-o, .sheet .tsk-c.t-y").count() >= 1
                 assert not errs, errs
                 pg.close()
             br.close()

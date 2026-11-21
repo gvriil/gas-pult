@@ -60,7 +60,7 @@ def test_user_sees_human_words():
     assert not any("Last login" in x or "PASS" in x for x in o["logs"])
     assert "npm" not in o["act"] and "Выполняет команду" not in o["act"]
     assert "прочитано по ходу работы" not in o["feed"] and "доставлено" in o["feed"]
-    assert "tgi-0904" not in o["tasks"] and "чат «Тесты комнат и сверка П8»" in o["tasks"]
+    assert "tgi-0904" not in o["tasks"] and "из чата «Тесты комнат и сверка П8»" in o["tasks"]   # 21.11: карточка
 
 
 def test_developer_keeps_raw():
