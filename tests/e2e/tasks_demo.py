@@ -80,7 +80,7 @@ def run(base: str):
             assert sent and sent[0]["text"] == "80 тыс. ₽" and sent[0]["w"] == "@1", f"{where}: ответ в чат {sent}"
             # «Демо и тесты» — в «Подсказать»
             pg.evaluate("() => document.querySelectorAll('.sheet-bg').forEach((x) => x.remove())")
-            pg.click("#helpBtn")
+            pg.evaluate("document.getElementById('helpBtn').click()")   # телефон в чате — «Подсказать» в «⋯»
             pg.wait_for_selector("[data-demo-here]")
             pg.click("[data-demo-here]")
             pg.wait_for_selector(".sheet h3:has-text('Демо и тесты')")

@@ -132,7 +132,11 @@ def run(base: str, shots: str = ""):
                         if shots:
                             pg.screenshot(path=f"{shots}/notices-{mode}-{w}-{theme}{'-kb' if kb else ''}.png")
                         # Шторка помощника поверх экрана — над нижней панелью.
-                        pg.click("#helpBtn" if mode == "full" else "#sHelp")
+                        # телефон в чате: «Подсказать» — в «⋯» (Gemini №3), кнопка спрятана — нажимаем её кодом
+                        if mode == "full":
+                            pg.evaluate("document.getElementById('helpBtn').click()")
+                        else:
+                            pg.click("#sHelp")
                         pg.wait_for_selector(".help-bg .sheet", timeout=5000)
                         pg.wait_for_timeout(300)
                         r = pg.evaluate(RECTS, [".help-bg"])

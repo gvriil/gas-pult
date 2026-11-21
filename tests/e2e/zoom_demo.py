@@ -86,7 +86,7 @@ def run(base: str):
         pg.evaluate(GESTURE, [1.8, 195, 400])                                # жест WebKit
         assert abs(pg.evaluate("feedZoom()") - 1.8) < 0.01, "gesturechange не увеличил ленту"
         pg.evaluate("zoomFeed(1)")
-        pg.click("#settingsBtn")
+        pg.evaluate("document.getElementById('settingsBtn').click()")   # телефон в чате — «Настройки» в панели
         pg.locator(".sheet button", has_text="Внешний вид").click()       # настройки по группам (20.11)
         pg.locator(".sheet button", has_text="Размер текста").click()
         pg.locator(".sheet button", has_text="A+").click()
