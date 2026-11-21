@@ -34,6 +34,12 @@ async function demoHelp(b) {
   }
   return { ...out, text: s.purpose + " " + s.steps.map((x, i) => `${i + 1}) ${x}`).join(" "), actions: acts(s.next) };
 }
+// «Семейная история» (владелец 22.11): id, название, начало задания — как в help/starters.toml
+const DEMO_FAMILY = [["grave-search", "Найти место захоронения", "найти, где похоронен мой родственник. К каждой находке дай ссылку на источник. Не нашёл — так и скажи прямо"],
+  ["archive-request", "Запрос в архив", "подготовить черновик запроса в архив или ЗАГС: кому писать, что приложить и сам текст. Ничего не отправляй сам"],
+  ["family-photos", "Разобрать семейные фото", "разложить копии фото по годам и по людям и подписать, кто на снимке. Оригиналы не трогай"],
+  ["family-story", "Записать рассказ близкого", "записать рассказ близкого человека и оформить его главой семейной книги"]];
+
 function demoTeam(body) {                            // «Команда» в демо: как personas.Team, в памяти страницы
   const t = demoApi.team ||= { staff_caps: null, sections: ["search", "analytics", "docs", "comms"], people: { 2: {} } }, c = DEMO_PERSONAS.ru;
   if (body) { const r = body.id != null ? (t.people[body.id] ||= {}) : t;
@@ -590,13 +596,18 @@ function demoApi(path, body) {
     const all = { "": [["day-plan", "План на день"], ["meeting", "Назначить встречу"], ["mail", "Разобрать почту"], ["client-reply", "Ответить клиенту"],
       ["business-plan", "Бизнес-план"], ["find-doc", "Найти документ"], ["reminder", "Напомнить о деле"]],
       biz: [["money-leaks", "Где утекают деньги"], ["partners-summary", "Сводка для партнёров"], ["mail", "Разобрать почту"], ["week-priorities", "Приоритеты на неделю"]],
-      personal: [["official-letter", "Письмо в организацию"], ["trip-plan", "План поездки"], ["contract-check", "Разобраться с договором"], ["reminder", "Напомнить о деле"]] };
+      personal: [["official-letter", "Письмо в организацию"], ["trip-plan", "План поездки"], ["contract-check", "Разобраться с договором"], ["reminder", "Напомнить о деле"]],
+      family: DEMO_FAMILY };
     const list = all[occ] || all[""];
     return Promise.resolve({ starters: list.map(([id, title]) => ({ id, title })), occ: all[occ] ? occ : "",
       occupations: [["biz", "Руковожу бизнесом"], ["sales", "Продажи и клиенты"], ["accounting", "Бухгалтерия и документы"], ["it", "Разработка и IT"],
-        ["study", "Учусь"], ["personal", "Для себя и семьи"]].map(([id, title]) => ({ id, title })) });
+        ["study", "Учусь"], ["personal", "Для себя и семьи"], ["family", "Семейная история"]].map(([id, title]) => ({ id, title })) });
   }
-  if (key === "/api/starter") return Promise.resolve({ prompt: "«План на день». Помоги составить мне план на сегодня. Сначала расспроси меня — по одному вопросу за раз…" });
+  if (key === "/api/starter") {                        // семейная история (22.11) — своим текстом, остальное — «План на день»
+    const f = DEMO_FAMILY.find(([id]) => id === body?.id);
+    return Promise.resolve({ prompt: f ? `«${f[1]}». Помоги ${f[2]}. Сначала расспроси меня — по одному вопросу за раз…`
+      : "«План на день». Помоги составить мне план на сегодня. Сначала расспроси меня — по одному вопросу за раз…" });
+  }
   if (key === "/api/link/tg") return Promise.resolve({ id: "demo", link: "https://t.me/", ttl: 300 });
   if (key === "/api/oidc/link") return Promise.resolve({ url: "/api/login/oidc/" + body.provider + "/start?link=demo" });
   if (key.startsWith("/api/oidc")) {                // демо: Google привязан, Яндекс — нет

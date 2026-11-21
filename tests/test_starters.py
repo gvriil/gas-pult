@@ -82,3 +82,23 @@ def test_groceries_by_vkusvill():
     ids = [x["id"] for x in starters.for_occupation("personal", set(), "owner")]
     assert ids[0] == "connect-vkusvill" and "groceries" not in ids
     assert "корзину" in starters.prompt("groceries") and "«Да / Нет / Позже»" in starters.prompt("groceries")
+
+
+def test_family_history():
+    """Владелец 22.11: «Семейная история» для людей 50+ — 4 сценария, источники, только черновик, только копии."""
+    assert {"id": "family", "title": "Семейная история"} in starters.occupations()
+    ids = [x["id"] for x in starters.for_occupation("family", set(), "member", space=True)]
+    assert ids == ["grave-search", "archive-request", "family-photos", "family-story"]
+    general = [x["id"] for x in starters.listing(set(), "owner")]
+    assert not set(ids) & set(general)                                   # под занятие — не в общем ряду
+    assert "ссылку на источник" in starters.prompt("grave-search") and "Не нашёл" in starters.prompt("grave-search")
+    p = starters.prompt("archive-request")
+    assert "черновик" in p and "Ничего не отправляй" in p and "после моего «Да»" in p
+    assert "ничего не удаляй" in starters.prompt("family-photos") and "копиями" in starters.prompt("family-photos")
+    assert "микрофона" in starters.prompt("family-story") and "семейной книги" in starters.prompt("family-story")
+    for sid in ids:                                                      # без английских слов и техники
+        assert not any("a" <= c.lower() <= "z" for c in starters.prompt(sid).split("gas-pult")[0])
+    demo = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/demo.js").read_text(encoding="utf-8")
+    by = {s["id"]: s["title"] for s in starters.load()}
+    for sid in ids:                                                      # демо — те же id и названия, что в TOML
+        assert f'["{sid}", "{by[sid]}"' in demo
