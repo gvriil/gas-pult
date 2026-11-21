@@ -89,6 +89,7 @@ from gas_pult import (
     setup,
     space_budget,
     space_files,
+    space_projects,
     space_sessions,
     spaces,
     speech,
@@ -668,8 +669,11 @@ class Panel:
         return " ".join(str(first).split())[:projects.TITLE_MAX]
 
     def project_of(self, d: dict, w: dict) -> str:
-        """Проект окна: окно пространства — "" (проекты пространств — отдельным шагом)."""
-        return "" if w.get("space") else (self.projects.of_path(d, w.get("path", "")) or "")
+        """Проект окна: окно пространства — его папка ``home/projects/<имя>`` (``s:<пространство>:<имя>``, GAS-38)."""
+        if slug := w.get("space"):
+            f = space_projects.folder_of(slug, w.get("path", ""))
+            return space_projects.pid_of(slug, f) if f else ""
+        return self.projects.of_path(d, w.get("path", "")) or ""
 
     def claude_homes(self) -> list:
         """Папки Claude Code, где могут лежать журналы сессий проекта: владельца (None) и участников."""
@@ -2676,6 +2680,151 @@ class Panel:
     def space_restore(self, slug: str, tid: str) -> dict:
         return {"folder": space_sessions.restore(slug, tid)}
 
+    # ---------- «Проекты» пространства (GAS-38 п.1, space_projects.py): папки home/projects/<имя> ----------
+    def sp_windows(self, slug: str) -> list[dict]:
+        """Окна пространства — и владельцу, и тестировщику (без ограничения запроса)."""
+        return self.tmux.space(slug).windows()
+
+    def space_projects_list(self, slug: str, ss: list[dict], q: str = "") -> list[dict]:
+        """Проекты пространства для главной — в тех же полях, что ``projects_list`` у владельца. ``ss`` — готовые
+        сессии (свои окна пространства уже с полем ``project``)."""
+        if not tenants.enabled():
+            return []
+        title = (tenants.load(slug) or {}).get("title") or slug
+        root = space_sessions.projects(slug)
+        q = " ".join(str(q or "").lower().split())
+        out = []
+        for row in space_projects.listing(slug):
+            pid = space_projects.pid_of(slug, row["folder"])
+            mine = [x for x in ss if x.get("project") == pid]
+            st = space_projects.stats(slug, root / row["folder"])
+            lf = st["last_file"]
+            win = next((x for x in mine if lf and x.get("sid") == lf.stem), None)
+            item = {**space_projects.public(slug, row["folder"], title),
+                    "windows": len(mine), "waiting": sum(x["status"] == "dialog" for x in mine),
+                    "busy": sum(x["status"] == "busy" for x in mine), "chats": st["total"],
+                    "last": max([st["last"] or 0, row["changed"], *[int(x.get("changed") or 0) for x in mine]]) or None,
+                    "last_title": projects.title_of(lf) if lf else "", "last_window": (win or {}).get("name", ""),
+                    "sessions": [x["id"] for x in mine]}
+            if q and not any(q in str(v).lower() for v in (item["name"], item["last_title"],
+                                                            *[x.get("name", "") for x in mine])):
+                continue
+            out.append(item)
+        out.sort(key=lambda x: (not x["waiting"], -(x["last"] or 0), x["name"].lower()))
+        return out
+
+    def owner_space_projects(self, ss: list[dict]) -> list[dict]:
+        """Владельцу и админу — проекты всех готовых пространств (группа «Пространства»). Сбой одного пространства
+        (tmux, диск) не мешает остальным."""
+        out, slugs = [], getattr(self.tmux, "_slugs", None)      # готовые пространства (spaces.Routed)
+        for slug in slugs() if slugs else []:
+            try:
+                out += [{**x, "name": f"{x['space_title']} · {x['name']}"}   # чьё пространство — в названии
+                        for x in self.space_projects_list(slug, ss)]
+            except (RuntimeError, OSError, ValueError) as e:
+                print(f"пространство {slug}: проекты не прочитались: {e}", file=sys.stderr, flush=True)
+        return out
+
+    def space_project_info(self, pid: str, allowed: str | None) -> dict:
+        slug, folder, path = space_projects.parse(pid, allowed)
+        if folder not in {x["folder"] for x in space_projects.listing(slug)}:
+            raise LookupError(space_projects.NOT_FOUND)
+        text = space_projects.instructions(slug, path)
+        st = space_projects.stats(slug, path)
+        wins = [w["id"] for w in self.sp_windows(slug) if space_projects.folder_of(slug, w.get("path", "")) == folder
+                and (harness.is_agent(w) or w.get("mark"))]
+        title = (tenants.load(slug) or {}).get("title") or slug
+        return {**space_projects.public(slug, folder, title), "instructions": text[:self.INSTR_MAX],
+                "instructions_cut": len(text) > self.INSTR_MAX, "has_instructions": bool(text), "files": [],
+                "files_dir": "", "chats": st["total"], "last": st["last"], "windows": wins}
+
+    def space_project_chats(self, pid: str, allowed: str | None, q: str = "", before: float | None = None) -> dict:
+        """Завершённые чаты проекта пространства — как ``project_chats``: журналы без окна, новые сверху, страницами."""
+        slug, folder, path = space_projects.parse(pid, allowed)
+        if folder not in {x["folder"] for x in space_projects.listing(slug)}:
+            raise LookupError(space_projects.NOT_FOUND)
+        by_sid, legacy = space_projects.open_sids(slug, path, self.sp_windows(slug))
+        files = []
+        for f in space_projects.chat_files(slug, path):
+            with contextlib.suppress(OSError):
+                if f.stem not in by_sid and str(f) not in legacy:
+                    files.append((projects.last_said(f), f.stat().st_mtime, f))
+        files.sort(key=lambda x: (-x[0], -x[1]))
+        q = " ".join(str(q or "").lower().split())
+        out, scanned, t0, cut = [], 0, time.time(), False
+        for at, mt, f in files:
+            if before is not None and (at or int(mt)) >= before:
+                continue
+            title = projects.title_of(f)
+            if not title:
+                continue
+            if q and q not in title.lower():
+                if scanned >= self.SEARCH_FILES or time.time() - t0 > self.SEARCH_SECS:
+                    cut = True
+                    continue
+                scanned += 1
+                if not projects.contains(f, q):
+                    continue
+            out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": True,
+                        "pinned": 0, "last": at or int(mt)})
+            if len(out) >= self.CHATS_PAGE:
+                break
+        more = bool(out) and len(out) >= self.CHATS_PAGE
+        return {"chats": out, "more": more, "before": out[-1]["last"] if more else None, "cut": cut,
+                "keep_days": self.keep_days(), "active": len(by_sid) + len(legacy)}
+
+    def space_project_history(self, pid: str, allowed: str | None, sid: str, before: int | None = None) -> dict:
+        slug, _folder, path = space_projects.parse(pid, allowed)
+        f = space_projects.chat_file(slug, path, sid)
+        items, more = transcripts.history("", 30, before, file=f)
+        for it in items:
+            if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
+                it["human"] = h
+        return {"items": items, "more": more, "title": projects.title_of(f), "sid": f.stem}
+
+    def space_project_open(self, slug: str, folder: str, path: Path, args: str, sid: str) -> str:
+        """Окно пространства в папке проекта; метка разговора — чтобы чат знал свой журнал."""
+        if folder not in {x["folder"] for x in space_projects.listing(slug, fresh=True)}:
+            raise LookupError(space_projects.NOT_FOUND)
+        args = (repos.flags(self.pult.state(), str(path)) + " " + args).strip()   # подключённые репозитории
+        raw = tenants.new_window(slug, folder, str(path), args=args)
+        with contextlib.suppress(RuntimeError, OSError):
+            tenants.tmux_of(slug).set_sid(raw, sid)
+        self.space_claude_check(slug, raw)
+        return raw
+
+    def space_project_session(self, pid: str, allowed: str | None, effort: str = "") -> dict:
+        """«Новый чат в проекте»: ещё одно окно пространства в ЭТОЙ папке, свой журнал (``--session-id``)."""
+        if not tenants.enabled():
+            raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
+        slug, folder, path = space_projects.parse(pid, allowed)
+        sid = str(uuid.uuid4())
+        raw = self.space_project_open(slug, folder, path, f"--session-id {sid}{effort_flag(effort)}", sid)
+        return {"id": spaces.wid_of(slug, raw), "sid": sid, "project": pid}
+
+    def space_project_resume(self, pid: str, allowed: str | None, sid: str) -> dict:
+        """«Продолжить» завершённый чат проекта пространства (``--resume``); уже открыт — его окно."""
+        slug, folder, path = space_projects.parse(pid, allowed)
+        f = space_projects.chat_file(slug, path, sid)
+        by_sid, legacy = space_projects.open_sids(slug, path, self.sp_windows(slug))
+        if w := by_sid.get(f.stem):
+            return {"id": w["id"], "existing": True, "sid": f.stem}
+        if str(f) in legacy:
+            raise ValueError("этот чат уже открыт — откройте его в списке активных")
+        raw = self.space_project_open(slug, folder, path, f"--resume {f.stem}", f.stem)
+        return {"id": spaces.wid_of(slug, raw), "sid": f.stem, "project": pid}
+
+    def space_project_new(self, slug: str, name: str, instructions: str = "") -> dict:
+        """«Новый проект» тестировщика: папка ``home/projects/<название>``; чат — при первой отправке."""
+        if not tenants.enabled():
+            raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
+        name = " ".join(str(name or "").split())
+        if not name:
+            raise ValueError("назовите проект")
+        path = space_projects.create(slug, name, instructions)
+        return {"id": space_projects.pid_of(slug, path.name), "name": path.name, "folder": path.name,
+                "path": "projects/" + path.name}
+
     # ---------- модули-агенты (modules.py) ----------
     def modules_list(self) -> dict:
         """Каталог модулей для «Новое пространство → Из модуля»: имя папки по умолчанию — свободное."""
@@ -3815,6 +3964,18 @@ def handler(panel: Panel):
                 return tenants.check_slug(str(b["space"]))
             raise ValueError("это действие — для сессий демо-пространства")
 
+        def sp(self, pid) -> tuple[bool, str | None]:
+            """Проект пространства (GAS-38)? → (да/нет, чьё пространство можно). Тестировщику — любой id идёт в его
+            пространство (проект владельца и чужое пространство — «проекта нет»); владельцу и админу — любое
+            пространство (None); остальным id пространства — «проекта нет»."""
+            if slug := self.space():
+                return True, slug
+            if space_projects.is_space(pid):
+                if self.who()[1] in ("owner", "admin"):
+                    return True, None
+                raise LookupError(space_projects.NOT_FOUND)
+            return False, None
+
         def space_win(self, q: dict) -> tuple[str, dict]:
             """Окно пространства из запроса (``w``): тестировщику — только своё; владельцу — любое пространство."""
             w = panel.tmux.window(str(q.get("w") or ""))
@@ -4016,6 +4177,13 @@ def handler(panel: Panel):
                         "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
+            if path == "/api/projects" and (slug := self.space()):   # тестировщик: проекты своего пространства
+                sp, ss = panel.space_info(self.terms_uid()) or {}, panel.sessions(self.pool(), self.pinner())
+                return {"projects": panel.space_projects_list(slug, ss, q.get("q", "")) if q.get("archived") != "1"
+                        else [], "order": projects.order_of(panel.project_data(), self.pinner()), "sessions": ss,
+                        "now": time.time(), "host": sp.get("title", ""), "build": build, "limits": None,
+                        "tasks": None, "new_root": "projects", "cost": panel.cost_summary(self.pool()), "fallback": [],
+                        "space": sp}
             if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
                 pool = self.pool()
                 with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
@@ -4027,13 +4195,20 @@ def handler(panel: Panel):
                         "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
                         "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
                         "new_root": projects.tilde(str(panel.pult.module_root()), panel.pult.home),   # «Новый проект»
+                        # проекты пространств — владельцу и админу, в группе «Пространства» (GAS-38, добавлено)
+                        "space_projects": panel.owner_space_projects(ss) if self.who()[1] in ("owner", "admin")
+                        else [],
                         "cost": panel.cost_summary(pool),
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
             if path == "/api/project":
+                if (sp := self.sp(q.get("id", "")))[0]:      # проект пространства (GAS-38)
+                    return panel.space_project_info(q.get("id", ""), sp[1])
                 return panel.project_info(q.get("id", ""), self.pinner())
             if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
                 before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
+                if (sp := self.sp(q.get("id", "")))[0]:
+                    return panel.space_project_chats(q.get("id", ""), sp[1], q.get("q", ""), before)
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
             if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
                 return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
@@ -4046,6 +4221,8 @@ def handler(panel: Panel):
                 return panel.chat_trash_list()
             if path == "/api/project/history":           # переписка завершённого чата — без окна
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
+                if (sp := self.sp(q.get("id", "")))[0]:
+                    return panel.space_project_history(q.get("id", ""), sp[1], q.get("sid", ""), before)
                 return panel.project_history(q.get("id", ""), q.get("sid", ""), before)
             if path == "/api/meta":
                 kind, role, uid = self.who()
@@ -4056,7 +4233,7 @@ def handler(panel: Panel):
                         "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
                         "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
                         "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
-                        "projects_ui": not self.space(),              # «Проекты» (docs/PROJECTS.md): экран включён
+                        "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
@@ -5031,6 +5208,10 @@ def handler(panel: Panel):
                 return panel.space_restore(self.space_of(b), str(b.get("id", "")))
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
+            if path in ("/api/project/session", "/api/project/resume") and (sp := self.sp(b.get("id", "")))[0]:
+                if path == "/api/project/resume":         # проект пространства (GAS-38): окно — в его tmux
+                    return panel.space_project_resume(str(b.get("id", "")), sp[1], str(b.get("sid", "")))
+                return panel.space_project_session(str(b.get("id", "")), sp[1], str(b.get("effort") or ""))
             if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
                 return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
                                              self.terms_uid(), model=str(b.get("model") or ""),
@@ -5092,6 +5273,8 @@ def handler(panel: Panel):
                 return panel.clear_stopped()
             if path == "/api/chat/restore":               # «Вернуть» из корзины
                 return panel.chat_restore(str(b.get("id") or ""))
+            if path == "/api/project/new" and (slug := self.space()):   # тестировщик: папка в его пространстве
+                return panel.space_project_new(slug, str(b.get("name") or ""), str(b.get("instructions") or ""))
             if path == "/api/project/new":                # «Новый проект»: папка, CLAUDE.md, запись; чат — при отправке
                 return panel.project_new(str(b.get("name") or ""), str(b.get("folder") or ""),
                                          str(b.get("instructions") or ""), str(b.get("profile") or ""),

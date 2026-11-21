@@ -261,10 +261,15 @@ def test_api_projects_who(server):
     import gas_pult.people as people_mod
     orig = people_mod.People.tenant
     people_mod.People.tenant = lambda self, uid: "demo" if uid == 5 else orig(self, uid)
-    try:
-        assert call(base, "/api/projects", p.auth.issue(5))[1].get("code") == "space"   # тестировщик — позже
+    from gas_pult import space_projects
+    orig_list = space_projects.listing
+    space_projects.listing = lambda slug, fresh=False: []
+    try:   # тестировщик (GAS-38): проекты своего пространства, проектов владельца — нет (tests/test_space_projects.py)
+        code, d = call(base, "/api/projects", p.auth.issue(5))
+        assert code == 200 and not any(not x["id"].startswith("s:demo:") for x in d["projects"])
     finally:
         people_mod.People.tenant = orig
+        space_projects.listing = orig_list
 
 
 def test_chat_title_own_not_window_name(server, home, monkeypatch):

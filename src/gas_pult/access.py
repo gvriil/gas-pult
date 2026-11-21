@@ -108,8 +108,14 @@ SPACE_OK = TERMS_FREE | set(PUSH_OWN) | {USES, FEEDBACK,
     "/api/invite/device", "/api/invite/qr", "/api/link/tg", *("/api/passkeys", "/api/passkeys/options",
                                                             "/api/passkeys/add", "/api/passkeys/remove"),
 }
+# «Проекты» пространства (GAS-38): папки home/projects/<имя>, их чаты, «Новый чат в проекте», «Продолжить», «Новый
+# проект» — только в своём пространстве (Handler.sp, space_projects.parse). Меню проекта, закрепления — нет.
+SPACE_PROJ = ("/api/projects", "/api/project", "/api/project/sessions", "/api/project/history", "/api/project/session",
+              "/api/project/resume", "/api/project/new")
+SPACE_OK |= set(SPACE_PROJ)
 # Что тратит деньги: тестировщику — только пока дневной бюджет пространства не исчерпан (клавиши, Esc — можно).
-BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume"}
+BUDGET_PATHS = {"/api/send", "/api/new", "/api/command", "/api/select", "/api/space/resume", "/api/project/session",
+                "/api/project/resume"}
 # Лёгкий вход (задача 34): ссылка для входа на другое устройство, её QR и «Привязать Telegram» — свои у каждого.
 INVITE_OWN = ("/api/invite/device", "/api/invite/qr", "/api/link/tg")
 # Фокус (задача 41, focus.py): с cookie фокуса — только чат одной сессии; окно ``w`` в запросе — только её.
