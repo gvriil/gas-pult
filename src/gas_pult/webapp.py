@@ -4863,6 +4863,11 @@ def handler(panel: Panel):
             value, rec = panel.focus.open(str((b if isinstance(b, dict) else {}).get("token") or ""),
                                           self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
+            if rec.get("mode") == focus.SPACE and rec.get("space") and not panel.people.accepted(focus.vuid(rec["id"])):
+                # владелец 19.11: «попал по ссылке — значит проверен; не спрашивать ни про страну, ни про что» —
+                # как у приглашения: условия отмечены выпуском ссылки владельцем, страна — пространства
+                with contextlib.suppress(Exception):
+                    panel.space_welcome(focus.vuid(rec["id"]), rec["space"])
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
             return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""),
                                        **({"mode": focus.SPACE} if rec.get("mode") == focus.SPACE else {})})

@@ -94,7 +94,9 @@ def test_link_opens_full_space_panel_and_isolates(world):  # noqa: F811
     code, d = sl(w, "/api/new", {"i": 0}, ck)
     assert code == 200 and d["id"].startswith("t:demo:@"), d
     wid = d["id"]
-    assert wait(lambda: [s["id"] for s in sl(w, "/api/sessions", ck=ck)[1]["sessions"]] == [wid])
+    # первая сессия «Мой проект» открыта при первом входе (space_welcome) — плюс новая; всё — пространства demo
+    assert wait(lambda: wid in [s["id"] for s in sl(w, "/api/sessions", ck=ck)[1]["sessions"]])
+    assert all(s["id"].startswith("t:demo:@") for s in sl(w, "/api/sessions", ck=ck)[1]["sessions"])
     assert sl(w, "/api/send", {"w": wid, "text": "привет"}, ck)[0] == 200
     sent = []
     w["p"].pult.api = lambda method, **kw: sent.append(kw.get("text", "")) or {}
@@ -217,3 +219,16 @@ def test_listing_has_no_secrets(world):  # noqa: F811
     s = json.dumps(links)
     assert d["url"].split("#focus=")[1] not in s and urllib.parse.quote(d["url"]) not in s
     assert "devs" not in s and '"h"' not in s
+
+
+def test_link_person_is_welcomed_without_questions(world):  # noqa: F811
+    """Владелец 19.11: «попал по ссылке — значит проверен; не спрашивать ни про страну, ни про что» — условия
+    отмечены выпуском ссылки, страна — пространства, как у приглашения (space_welcome)."""
+    w = world
+    d = issue(w)
+    code, _out, ck = open_link(w, d)
+    assert code == 200
+    uid = focus.vuid(d["id"])
+    assert w["p"].people.accepted(uid) and w["p"].people.country(uid).get("chosen")
+    m = sl(w, "/api/meta", ck=ck)[1]
+    assert m["terms"]["accepted"] is True
