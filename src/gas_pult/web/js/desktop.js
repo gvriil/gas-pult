@@ -25,6 +25,63 @@ const KEYROW = [["Enter", "Enter ⏎", "Ввод (Enter)"], ["Escape", "Esc", "E
   ["mod:Shift", "Shift", "Shift — нажмите, затем клавишу"], ["c", "Ctrl+C", "Прервать команду (Ctrl+C)"],
   ["v", "Ctrl+V", "Вставить (Ctrl+V)"], ["l", "Ctrl+L", "Очистить экран терминала (Ctrl+L)"],
   ["d", "Ctrl+D", "Конец ввода / выйти (Ctrl+D)"], ["z", "Ctrl+Z", "Приостановить (Ctrl+Z)"]];
+// Стили стола — здесь, а не в ядре (ядро < 770 КБ, tests/test_ui_parts.py): часть грузится только при открытии стола.
+// В ядре остались только правила с position: fixed (.desk, .desk-fab, .desk-kbd) — их учитывает реестр FIXED_OK
+const DESK_CSS = `
+  /* одна строка плоских кнопок (владелец 15.11: «округлённые кнопки смотрятся дурацки … не больше чем в одну строку») */
+  .desk-bar, .desk-keys { display: flex; align-items: center; gap: 2px; padding: 2px 4px; background: var(--bg-canvas); flex: none;
+    overflow-x: auto; scrollbar-width: none; white-space: nowrap; border-bottom: 1px solid var(--border-subtle); }
+  .desk-bar::-webkit-scrollbar, .desk-keys::-webkit-scrollbar { display: none; }
+  .desk-name { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 4px; flex: none; color: var(--text-secondary); }
+  .desk-st { font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .desk-b { flex: none; min-width: 36px; height: 34px; padding: 0 9px; border: 0; border-radius: var(--radius-sm); background: transparent;
+    color: var(--text-primary); font: inherit; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+  .desk-b:hover { background: var(--bg-subtle); } .desk-b:active { background: var(--accent-soft); }
+  .desk-b[aria-pressed="true"], .desk-b[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-primary); }
+  .desk-b .i { width: 18px; height: 18px; }
+  .desk-keys { background: var(--bg-subtle); } .desk-keys .desk-b { font-variant-numeric: tabular-nums; }
+  .desk-z { min-width: 50px; text-align: center; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none; }
+  .desk.desk-hidden .desk-bar, .desk.desk-hidden .desk-keys, .desk.desk-hidden .desk-clip { display: none; }
+  .desk-term { margin: 0; padding: 16px; font: 14px/1.4 ui-monospace, monospace; color: var(--text-primary); white-space: pre-wrap; text-align: left; width: 100%; height: 100%; box-sizing: border-box; }
+  .desk-clip { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; background: var(--bg-canvas); border-bottom: 1px solid var(--border-subtle); flex: none; }
+  .desk-clip-in { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); resize: vertical; }
+  .desk-clip-row, .desk-clip-out { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .desk-clip-out span { font-size: 13px; color: var(--text-secondary); } .desk-clip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .desk-t.on { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--on-accent); }
+  .desk-stage { position: relative; flex: 1; min-height: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .desk-view { position: absolute; inset: 0; overflow: auto; display: flex; } .desk-view > * { margin: auto; flex: none; }   /* margin: auto — центр без обрезки при зуме */
+  .desk-pan { position: absolute; inset: 0; z-index: 1; touch-action: none; cursor: grab; }
+  .desk-demo { display: flex; align-items: flex-start; background: var(--bg-surface); color: var(--text-secondary); text-align: center; font-size: 15px; outline: 1px solid var(--border-subtle); }
+  body.desk-on { overflow: hidden; }
+  /* Телефон (владелец 21.11: «как у Safari или DuckDuckGo … не засорять поле»): стол на весь экран, кнопки панели —
+     в меню ≡, ряд клавиш — по кнопке с клавиатурой. Обе кнопки — в правом нижнем углу (сверху — вкладки и меню Chrome) */
+  .desk-dock { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 3;
+    display: none; flex-direction: column; gap: 6px; touch-action: none; }
+  .desk-dock .desk-b { width: 44px; height: 44px; padding: 0; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);
+    background: var(--bg-canvas); box-shadow: 0 2px 10px rgb(0 0 0 / .3); opacity: .88; }
+  .desk-dock .desk-b .i { width: 22px; height: 22px; }
+  .desk.desk-compact .desk-dock { display: flex; }
+  .desk.desk-compact .desk-fab, .desk.desk-compact [data-desk=hide] { display: none; }
+  .desk.desk-compact .desk-bar { position: absolute; z-index: 4; right: calc(60px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom));
+    display: none; flex-wrap: wrap; gap: 4px; width: min(300px, calc(100% - 76px)); max-height: calc(100% - 16px); overflow-y: auto;
+    padding: 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: 0 6px 24px rgb(0 0 0 / .35); white-space: normal; }
+  .desk.desk-compact.desk-menu .desk-bar { display: flex; }
+  .desk.desk-compact .desk-bar .desk-name { flex: 1 0 100%; padding: 4px 6px; }
+  .desk.desk-compact .desk-bar .desk-b { height: 40px; }
+  .desk.desk-compact .desk-keys { position: absolute; z-index: 3; left: env(safe-area-inset-left); right: calc(60px + env(safe-area-inset-right));
+    bottom: calc(8px + env(safe-area-inset-bottom)); margin-left: 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    box-shadow: 0 2px 10px rgb(0 0 0 / .3); padding: 3px; }
+  .desk.desk-compact .desk-keys[hidden] { display: none; }
+  .desk.desk-compact .desk-keys .desk-b { height: 38px; }
+  .desk.desk-compact .desk-stage { padding-bottom: 0; }
+`;
+if (!document.getElementById("desk-css")) {
+  const s = document.createElement("style"); s.id = "desk-css"; s.textContent = DESK_CSS; document.head.append(s);
+}
+// Телефон и альбом телефона: компактная панель (меню ≡, клавиши по кнопке) и мобильный вид сайтов (deskmobile.py)
+const NARROW = "(max-width: 700px), (max-height: 500px)";
+const MIN_W = 500;                                     // уже окно Chrome не бывает — стол не уже, показываем уменьшенным
+const BEAT = 20000;                                    // сердцебиение мобильного вида; сервер ждёт 60 с
 const DESK_UI = "gp.desk.ui";                          // свёрнута ли панель, показан ли ряд клавиш — на этом устройстве
 const uiGet = () => { try { return JSON.parse(localStorage.getItem(DESK_UI) || "{}"); } catch (_) { return {}; } };
 const uiSet = (v) => { try { localStorage.setItem(DESK_UI, JSON.stringify({ ...uiGet(), ...v })); } catch (_) {} };
@@ -47,12 +104,19 @@ async function rfbScreen(view, st) {
   // буфер UTF-8 (расширенный буфер noVNC) — русский текст в обе стороны без набора клавишами
   rfb.scaleViewport = false; rfb.resizeSession = true; rfb.background = "transparent";
   if (typeof DEMO !== "undefined" && DEMO) window.__deskRfb = rfb;     // проверка на живом столе (только ?demo)
+  // 21.11: окно Chrome не уже ~500 px — на телефоне (390) правый край обрезался. Узкий экран: просим стол шириной
+  // MIN_W (высота — в той же пропорции) и показываем его уменьшенным (scaleViewport: noVNC сам пересчитает мышь)
+  const box = () => { const r = rfb._screen.getBoundingClientRect(); return { w: r.width, h: r.height }; };
+  const narrow = () => { const b = box(); return b.w > 0 && b.w < MIN_W; };
+  const want = () => { const b = box(); return narrow() ? { w: MIN_W, h: Math.round(b.h * MIN_W / b.w) } : b; };
+  const ask = rfb._requestRemoteResize.bind(rfb);
+  rfb._requestRemoteResize = function () { this._screenSize = want; try { ask(); } finally { delete this._screenSize; } };
   const scr = {
     get w() { return rfb._display?.width || 0; }, get h() { return rfb._display?.height || 0; },
     scroller: rfb._screen || view,                     // noVNC прокручивает свой блок внутри контейнера
     // noVNC 1.6: свой масштаб — через display.scale (сам он умеет только «вписать»); координаты мыши он делит на него же
     scale(z) { rfb.resizeSession = false; rfb.scaleViewport = false; rfb.clipViewport = false; if (rfb._display) rfb._display.scale = z; },
-    fit() { rfb.clipViewport = false; rfb.scaleViewport = false; rfb.resizeSession = true; },   // стол — под размер окна
+    fit() { rfb.clipViewport = false; rfb.scaleViewport = narrow(); rfb.resizeSession = true; },   // стол — под размер окна
     get utf8() { return !!rfb._clipboardServerCapabilitiesFormats?.[1]; },   // сервер принял расширенный буфер (UTF-8)
     // «Рука» перехватывает касания своим слоем; viewOnly у noVNC не ставим — он глушит и клавиатуру (пароль, Enter)
     view() {},
@@ -141,7 +205,10 @@ function deskShow(d) {
         <button class="desk-t on" data-desk="clip-copy">Скопировать</button></div></div>
     <div class="desk-stage"><div class="desk-view"></div><div class="desk-pan"${touch ? "" : " hidden"}></div></div>
     <textarea class="desk-kbd" aria-label="Ввод на рабочий стол" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="enter"></textarea>
-    <button class="desk-fab" data-desk="show" aria-label="Показать панель стола" title="Показать панель (можно перетащить)" hidden>${ic("monitor")}</button>`;
+    <button class="desk-fab" data-desk="show" aria-label="Показать панель стола" title="Показать панель (можно перетащить)" hidden>${ic("monitor")}</button>
+    <div class="desk-dock" role="toolbar" aria-label="Кнопки стола">
+      ${b("keys", ic("keyboard"), "Клавиши: Enter, Esc, стрелки, Ctrl", ' aria-pressed="false"')}
+      ${b("menu", ic("lines"), "Меню стола", ' aria-haspopup="true" aria-expanded="false"')}</div>`;
   const st = el.querySelector(".desk-st"), view = el.querySelector(".desk-view"), pan = el.querySelector(".desk-pan");
   const zl = el.querySelector(".desk-z"), kbd = el.querySelector(".desk-kbd");
   const later = () => setTimeout(() => relayout(), 80);
@@ -232,6 +299,35 @@ function deskShow(d) {
   });
   fab.addEventListener("pointerup", () => { if (drag?.moved) { uiSet({ fab: [fab.offsetLeft, fab.offsetTop] }); fab.dataset.dragged = "1"; } drag = null; });
   if (ui.hidden) hideBar(true);
+
+  // Телефон (владелец 21.11): кнопки панели — в меню ≡, ряд клавиш — по кнопке, сайты — в мобильном виде
+  const mq = matchMedia(NARROW), keysBox = el.querySelector(".desk-keys"), menuB = el.querySelector("[data-desk=menu]");
+  const keysShow = (on) => { keysBox.hidden = !on; el.querySelectorAll("[data-desk=keys]").forEach((x) => x.setAttribute("aria-pressed", String(on))); };
+  const menu = (on) => { el.classList.toggle("desk-menu", on); menuB.setAttribute("aria-expanded", String(on)); };
+  let beat = 0, mob = false, mobT = 0;
+  const mobSend = () => api("/api/desktop/mobile", mob ? { on: true, w: Math.round(innerWidth), h: Math.round(innerHeight),
+    dpr: devicePixelRatio || 1 } : { on: false }).catch(() => {});       // сбой — не мешает столу; сервер ждёт 60 с
+  const mobile = (on) => {                             // мобильный вид — только пока стол открыт и виден на телефоне
+    on = on && !document.hidden; el.dataset.mobile = on ? "1" : "";
+    if (on === mob && on) return;
+    const was = mob; mob = on; clearInterval(beat); beat = 0;
+    if (d.demo) return;
+    if (on) { mobSend(); beat = setInterval(mobSend, BEAT); } else if (was) mobSend();
+  };
+  const compact = () => {
+    const on = mq.matches; el.classList.toggle("desk-compact", on); menu(false);
+    if (on) { el.classList.remove("desk-hidden"); fab.hidden = true; keysShow(!!uiGet().keysC); }
+    else { keysShow(uiGet().keys ?? touch); if (uiGet().hidden) hideBar(true); }
+    mobile(on); later();
+  };
+  const turn = () => { clearTimeout(mobT); mobT = setTimeout(() => { if (mob) mobSend(); }, 400); };   // поворот — новый размер
+  const vis = () => mobile(mq.matches);
+  mq.addEventListener("change", compact); addEventListener("resize", turn); document.addEventListener("visibilitychange", vis);
+  deskOff.push(() => { mq.removeEventListener("change", compact); removeEventListener("resize", turn);
+    document.removeEventListener("visibilitychange", vis); clearTimeout(mobT); mobile(false); });
+  el.querySelector(".desk-stage").addEventListener("pointerdown", () => menu(false), true);   // касание стола — меню закрыть
+  el.addEventListener("keydown", (e) => { if (e.key === "Escape" && el.classList.contains("desk-menu")) { e.stopPropagation(); menu(false); } });
+  compact();
   el.addEventListener("click", (e) => {
     const kk = e.target.closest("[data-key]");
     if (kk) {
@@ -242,6 +338,8 @@ function deskShow(d) {
     }
     const t = e.target.closest("[data-desk]"); if (!t) return;
     const k = t.dataset.desk;
+    if (k === "menu") return menu(!el.classList.contains("desk-menu"));
+    if (el.classList.contains("desk-menu") && t.closest(".desk-bar") && !["in", "out"].includes(k)) menu(false);   // выбрали — закрыть
     if (k === "close") return deskClose();
     if (k === "tab") return deskTab();
     if (k === "reload") { st.textContent = "подключаю…"; return deskOpen(); }
@@ -251,7 +349,7 @@ function deskShow(d) {
     if (k === "one") return zoom(1);
     if (k === "hand") return hand(pan.hidden);
     if (k === "kbd") return kbd.focus({ preventScroll: true });
-    if (k === "keys") { const box = el.querySelector(".desk-keys"); box.hidden = !box.hidden; t.setAttribute("aria-pressed", String(!box.hidden)); uiSet({ keys: !box.hidden }); return later(); }
+    if (k === "keys") { const on = keysBox.hidden; keysShow(on); uiSet(el.classList.contains("desk-compact") ? { keysC: on } : { keys: on }); return later(); }
     if (k === "hide") return hideBar(true);
     if (k === "show") { if (t.dataset.dragged) { delete t.dataset.dragged; return; } return hideBar(false); }
     if (k.startsWith("clip")) return deskClip(el, k, t, later);

@@ -64,6 +64,9 @@ OWNER_ONLY |= {"/api/project/update"}               # название и арх
 BRIEF = ("/api/brief", "/api/brief/prefs", "/api/brief/act")
 OWNER_ONLY |= set(BRIEF)
 CONFIRM |= {"/api/desktop/url", "/api/shell/open"}
+# Мобильный вид сайтов в «Браузере» (deskmobile.py, 21.11): как сам стол — только владельцу и после кода
+OWNER_ONLY |= {"/api/desktop/mobile"}
+CONFIRM |= {"/api/desktop/mobile"}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
 PERSONA = "/api/persona"

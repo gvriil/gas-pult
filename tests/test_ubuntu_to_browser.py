@@ -29,6 +29,6 @@ def test_desk_resizes_and_utf8_clipboard():
     «Привет, стол — проверка ёЁ» туда и «Ответ со стола — щука» обратно."""
     js = (WEB / "js/desktop.js").read_text(encoding="utf-8")
     assert "rfb.scaleViewport = false; rfb.resizeSession = true;" in js
-    assert "fit() { rfb.clipViewport = false; rfb.scaleViewport = false; rfb.resizeSession = true; }" in js
+    assert "fit() { rfb.clipViewport = false; rfb.scaleViewport = narrow(); rfb.resizeSession = true; }" in js
     assert "get utf8() { return !!rfb._clipboardServerCapabilitiesFormats?.[1]; }" in js
     assert "const wide = /[^\\u0000-\\u00ff]/.test(text) && !deskScr.utf8" in js
