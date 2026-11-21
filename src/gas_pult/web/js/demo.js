@@ -443,7 +443,7 @@ function demoApi(path, body) {
     screen.forEach((l, i) => { const m = l.match(/^ (?:❯|\s) (\d+)\. (.*)$/); if (m) screen[i] = ` ${m[1] === body.n ? "❯" : " "} ${m[1]}. ${m[2]}`; });
     return Promise.resolve({ lines: screen });
   }
-  if (key === "/api/confirm/start") return Promise.resolve({ id: "demo", via: "telegram", to: "Telegram", ttl: 600 });
+  if (key === "/api/confirm/start") return Promise.resolve({ id: "demo", via: "telegram", to: "Telegram", ttl: 600, at: Math.floor(Date.now() / 1000), chat: "Пульт", bot: "example_bot" });
   if (key === "/api/confirm/verify") {               // демо (&confirm): верный код — 123456
     if (body.code !== "123456") return Promise.reject(new Error("неверный код, осталось попыток: 4"));
     demoApi.confirmed = true; return Promise.resolve({ ok: true });
