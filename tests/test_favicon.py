@@ -27,7 +27,7 @@ def test_files_and_links():
     assert size((BR / "icon-512.png").read_bytes()) == (512, 512)
     fav = (BR / "favicon.svg").read_text()
     assert fav.startswith("<svg") and "prefers-color-scheme:dark" in fav
-    for f in ("gavrila-mark.svg", "gavrila-mark-small.svg"):
+    for f in ("gavrila-mark.svg", "gavrila-lockup.svg"):
         assert 'fill="currentColor"' in (BR / f).read_text(), f
     for page in ("index.html", "offer.html", "terms.html"):
         t = (WEB / page).read_text(encoding="utf-8")
@@ -44,7 +44,7 @@ def test_served_without_login(tmp_path, monkeypatch):
         for path, ctype in (("/favicon.svg", "image/svg+xml"), ("/favicon-32.png", "image/png"),
                             ("/apple-touch-icon.png", "image/png"), ("/favicon.ico", "image/png"),
                             ("/favicon-32-dark.png", "image/png"), ("/icon-192.png", "image/png"),
-                            ("/icon-512.png", "image/png")):
+                            ("/icon-512.png", "image/png"), ("/brand/gavrila-mark.svg", "image/svg+xml")):
             with urllib.request.urlopen(base + path) as r:
                 assert r.status == 200 and r.headers["Content-Type"] == ctype
                 assert "max-age" in r.headers["Cache-Control"]
@@ -53,12 +53,11 @@ def test_served_without_login(tmp_path, monkeypatch):
         srv.shutdown()
 
 
-def test_mark_inline_in_panel():
-    """Знак — инлайн SVG (один symbol, три use): шапка панели, заголовок на телефоне, экран входа; цвет — из темы."""
+def test_mark_in_panel():
+    """Знак v2 (21.11) — CSS mask из /gavrila-mark.svg: цвет — из темы, без 19 КБ векторов в ядре; три места."""
     t = (WEB / "index.html").read_text(encoding="utf-8")
-    assert t.count('<symbol id="gmk"') == 1 and t.count('<symbol id="gmks"') == 1     # малый — для 24 px и меньше
-    assert t.count('<use href="#gmk"/>') == 1 and t.count('<use href="#gmks"/>') == 2
-    assert ".gmark { flex: none; color: var(--text-primary); }" in t
+    assert t.count('<span class="gmark ') == 3 and '<symbol id="gmk' not in t
+    assert "mask: url(brand/gavrila-mark.svg) center / contain no-repeat;" in t and "background: currentColor;" in t
     assert 'href="/favicon-32-dark.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: dark)"' in t
 
 

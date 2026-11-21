@@ -1,8 +1,10 @@
 """Название продукта, которое видит человек (владелец 20.11: «gavrila app»: латиницей — «Gavrila», по-русски —
 «Гаврила»; главный адрес будет gavrila.app). Здесь — единственное место: сервер подставляет его в страницу
 (``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма, уведомления и сообщения бота.
-Код, пакет и пути остаются ``gas-pult``/«пульт». Знак — K3 (владелец 20.11: галстук, срезанный узел, лезвие с перьями),
-файлы — ``web/brand/`` (источник — Диск владельца, «Бренд/Gavrila-знак-K3»)."""
+Код, пакет и пути остаются ``gas-pult``/«пульт». Знак — v2 (владелец 21.11: «возьми за основу это» — галстук с перьями
+и надпись Gavrila), файлы — ``web/brand/`` (источник — Диск владельца, «Бренд/Gavrila-знак-v2»). Малого варианта
+нет: перья крупные, на 16 px читается. В русском интерфейсе рядом со знаком — «Гаврила» текстом; lockup с латиницей —
+только превью ссылки и международное."""
 
 NAME = "Gavrila"                   # латиницей: английский интерфейс, адрес, логотип
 NAME_RU = "Гаврила"                # русский интерфейс (в русских строках — без латиницы, humanize.LATIN_OK)
@@ -11,9 +13,10 @@ DEFAULT = "Гаврила"                # так записано в web/index
 
 FILES_DIR = "web/brand/"   # знак и значки: gavrila-mark.svg (currentColor), -small (≤ 24 px), png — экран «Домой»
 MARK = FILES_DIR + "gavrila-mark.svg"
-MARK_SMALL = FILES_DIR + "gavrila-mark-small.svg"
+LOCKUP = FILES_DIR + "gavrila-lockup.svg"
 # адрес → (файл в web/brand/, тип): прежние адреса значков (GAS-20) сохранены, браузеры и iPhone их уже знают
-ICONS = {"/favicon.svg": ("favicon.svg", "image/svg+xml"), "/favicon-32.png": ("favicon-32.png", "image/png"),
+ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # знак в панели — CSS mask
+         "/favicon.svg": ("favicon.svg", "image/svg+xml"), "/favicon-32.png": ("favicon-32.png", "image/png"),
          "/favicon-32-dark.png": ("favicon-32-dark.png", "image/png"),
          "/apple-touch-icon.png": ("apple-touch-180.png", "image/png"),
          "/icon-192.png": ("icon-192.png", "image/png"), "/icon-512.png": ("icon-512.png", "image/png"),
