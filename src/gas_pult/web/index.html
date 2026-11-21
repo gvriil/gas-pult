@@ -1993,7 +1993,9 @@ $("navQ").onkeydown = (e) => {
   if (e.key === "Enter") { e.preventDefault(); ($("navList").querySelector("[data-nw]") || $("navList").querySelector("[data-ncmd]"))?.click(); }
   if (e.key === "ArrowDown") { e.preventDefault(); $("navList").querySelector(".nrow")?.focus(); }
 };
-$("navSearchBtn").onclick = () => navSearch($("navQBox").hidden);
+// ПК — палитра ⌘K по центру (js/palette.js, Gemini №15); телефон — поиск в панели, как было
+const palOpen = () => split() ? part("palette").then((m) => m.open()) : navSearch(true);
+$("navSearchBtn").onclick = () => split() ? palOpen() : navSearch($("navQBox").hidden);
 $("navBtn").onclick = () => (split() ? setMini(false) : navOpen(true));
 $("navCloseBtn").onclick = () => navOpen(false);
 $("navBg").onclick = () => navOpen(false);
@@ -2216,7 +2218,7 @@ addEventListener("touchstart", (e) => {
 }, { passive: true });
 // Ctrl+K / ⌘K — палитра: поиск по чатам, проектам и командам (palCmds); Esc — закрыть меню и панель
 document.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === "KeyK" || e.key.toLowerCase() === "k") && document.body.classList.contains("has-nav")) { e.preventDefault(); navSearch(true); }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === "KeyK" || e.key.toLowerCase() === "k") && document.body.classList.contains("has-nav")) { e.preventDefault(); palOpen(); }
   else if (e.key === "Escape" && document.querySelector(".pop")) closePop();
   else if (e.key === "Escape" && NAV.open) navOpen(false);
 });

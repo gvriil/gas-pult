@@ -14,7 +14,7 @@ def palette(pg, tries: int = 4):
     """Ctrl+K → фокус в поиске. Сразу после открытия сессии панель ещё ставит фокус в поле ввода и может перехватить
     его у палитры (13.11: падало по таймауту 3 с на CI-подобной нагрузке) — жмём ещё раз, пока не откроется."""
     for i in range(tries):
-        pg.keyboard.press("Control+k")
+        pg.evaluate("navSearch(true)")       # поиск в панели; на ПК Ctrl+K — палитра по центру (21.11, свой тест)
         try:
             pg.wait_for_function("() => document.activeElement?.id === 'navQ'", timeout=2500)
             return
