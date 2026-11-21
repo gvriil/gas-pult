@@ -34,21 +34,51 @@ async function enable() {
   toast("Уведомления на это устройство включены", 3500);
 }
 
+// Часть B (notifyroute.py): куда — «На телефон / Telegram / Почта», о чём — события; одна точка доставки в боте.
+const DEMO_PREFS = { owner: true, push: true, telegram: true, devices: 0, email: { can: true, addr: false, on: false },
+  events: [["answer", "Ответы чатов"], ["dialog", "Чат ждёт вашего выбора"], ["error", "Сбои и лимиты"], ["brief", "Брифинг и расписание"], ["people", "Люди и вход"]]
+    .map(([id, label]) => ({ id, label, on: true, email: id !== "answer" })) };
+
+async function save(patch) {
+  if (DEMO) { Object.assign(DEMO_PREFS, patch); if (patch.events) for (const [k, v] of Object.entries(patch.events)) DEMO_PREFS.events.find((e) => e.id === k).on = v; return DEMO_PREFS; }
+  return api("/api/notify/prefs", patch);
+}
+
+function channels(p, deviceRow) {                    // «Куда присылать» и «О чём сообщать» — владельцу
+  if (!p?.owner) return deviceRow ? [deviceRow] : [];
+  const other = p.devices > 0 || p.email.on;
+  const tgRow = { label: "Telegram", icon: "send", toggle: p.telegram,
+    sub: p.telegram ? "сообщения бота" : "выключен — сообщения с кнопками решений всё равно придут туда",
+    run: () => save({ telegram: !p.telegram }).then(() => { if (p.telegram && !other) toast("Других каналов нет — пока не включите телефон или почту, уведомления останутся в Telegram", 6000); open(); }, (e) => toast(e.message, 5000)) };
+  const mailRow = !p.email.can ? null : !p.email.addr
+    ? { label: "Почта", icon: "mail", sub: "сначала привяжите адрес", run: () => part("email").then(() => emailSheet()) }
+    : { label: "Почта", icon: "mail", toggle: p.email.on, sub: "всё выбранное ниже, кроме ответов чатов", run: () => save({ email: !p.email.on }).then(open, (e) => toast(e.message, 5000)) };
+  return [{ head: "Куда присылать" }, ...(deviceRow ? [deviceRow] : []), tgRow, ...(mailRow ? [mailRow] : []),
+    { head: "О чём сообщать" },
+    ...p.events.map((e) => ({ label: e.label, icon: { answer: "chat", dialog: "help", error: "warn", brief: "cal", people: "key" }[e.id] || "bell", toggle: e.on,
+      run: () => save({ events: { [e.id]: !e.on } }).then(open, (x) => toast(x.message, 5000)) }))];
+}
+
 export async function open() {
   helpSheet("settings");
+  let p = null;
+  try { p = DEMO ? DEMO_PREFS : await api("/api/notify/prefs"); } catch (e) {}
   if (tg?.initData) return sheet("Уведомления", [{ info: true, icon: "bell", label: "Здесь, в Telegram, уведомления присылает бот", sub: "чтобы они приходили на телефон без Telegram — откройте Гаврилу в браузере и включите там" },
-    { label: "Открыть в браузере", icon: "ext", sub: "iPhone: дальше «Поделиться» → «На экран «Домой»», откройте значком и включите", run: () => { try { tg.openLink(location.origin + "/"); } catch (e) { window.open(location.origin + "/", "_blank"); } } }]);
-  if (!can()) return sheet("Уведомления", [{ info: true, icon: "warn", label: "Этот браузер не умеет уведомления", sub: ios() && !standalone() ? "iPhone: «Поделиться» → «На экран «Домой»», откройте пульт оттуда и включите здесь" : "откройте панель в Chrome, Edge, Firefox или Safari" }]);
+    { label: "Открыть в браузере", icon: "ext", sub: "iPhone: дальше «Поделиться» → «На экран «Домой»», откройте значком и включите", run: () => { try { tg.openLink(location.origin + "/"); } catch (e) { window.open(location.origin + "/", "_blank"); } } },
+    ...channels(p, null)]);
+  if (!can()) return sheet("Уведомления", [{ info: true, icon: "warn", label: "Этот браузер не умеет уведомления", sub: ios() && !standalone() ? "iPhone: «Поделиться» → «На экран «Домой»», откройте пульт оттуда и включите здесь" : "откройте панель в Chrome, Edge, Firefox или Safari" },
+    ...channels(p, null)]);
   let devs = [], sub = null;
   try { [devs, sub] = await Promise.all([DEMO ? { devices: [] } : api("/api/push/devices").then((d) => d.devices), mine()]); } catch (e) { return toast(e.message, 5000); }
   const on = !!sub, here = on ? await devId(sub.endpoint) : "";
+  // одна строка с тумблером справа (Gemini №11): включить — подписка; выключить — отписка этого устройства
+  const deviceRow = { label: "На этом устройстве", icon: "bell", toggle: on, sub: on ? "даже когда панель закрыта"
+    : ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте Гаврилу оттуда" : "браузер спросит разрешение",
+    run: on ? async () => { try { await api("/api/push/unsubscribe", { id: here }); await sub.unsubscribe(); } catch (e) {} toast("Выключено на этом устройстве", 3000); open(); }
+      : () => enable().then(open, (e) => toast("Не вышло: " + e.message, 6000)) };
   sheet("Уведомления", [
-    // одна строка с тумблером справа (Gemini №11): включить — подписка; выключить — отписка этого устройства
-    { label: "На этом устройстве", icon: "bell", toggle: on, sub: on ? "ждёт ответа, ответ готов, брифинг, сбои — даже когда панель закрыта"
-      : ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте Гаврилу оттуда" : "браузер спросит разрешение",
-      run: on ? async () => { try { await api("/api/push/unsubscribe", { id: here }); await sub.unsubscribe(); } catch (e) {} toast("Выключено на этом устройстве", 3000); open(); }
-        : () => enable().then(open, (e) => toast("Не вышло: " + e.message, 6000)) },
-    ...(on ? [{ label: "Проверить", icon: "send", sub: "прислать тестовое уведомление на все ваши устройства", run: () => api("/api/push/test", {}).then((d) => toast(d.devices ? `Отправил на ${d.devices} ${plural(d.devices, ["устройство", "устройства", "устройств"])} — должно прийти за несколько секунд` : "Нет устройств с уведомлениями", 5000), (e) => toast(e.message, 5000)) }] : []),
+    ...(p?.owner ? channels(p, deviceRow) : [deviceRow]),
+    ...(on ? [{ sep: true }, { label: "Проверить", icon: "send", sub: "прислать тестовое уведомление на все ваши устройства", run: () => api("/api/push/test", {}).then((d) => toast(d.devices ? `Отправил на ${d.devices} ${plural(d.devices, ["устройство", "устройства", "устройств"])} — должно прийти за несколько секунд` : "Нет устройств с уведомлениями", 5000), (e) => toast(e.message, 5000)) }] : []),
     ...(devs.length ? [{ head: "Ваши устройства" }, ...devs.map((d) => ({ label: d.label + (d.id === here ? " — это устройство" : ""), icon: "phone", sub: (d.ok === false ? "последняя отправка не дошла · " : "") + "нажмите, чтобы отключить",
       run: () => api("/api/push/unsubscribe", { id: d.id }).then(() => { toast("«" + d.label + "» отключено", 3000); open(); }, (e) => toast(e.message, 5000)) }))] : []),
   ]);
