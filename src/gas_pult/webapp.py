@@ -87,6 +87,7 @@ from gas_pult import (
     scenarios,
     selftest,
     setup,
+    share,
     space_budget,
     space_files,
     space_projects,
@@ -513,6 +514,8 @@ class Panel:
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
         self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
+        self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Гаврилу (share.py)
+        self.share_tokens = share.Tokens(cfg.data / "share_tokens.json")  # iPhone: токены «Быстрой команды»
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
@@ -3139,6 +3142,83 @@ class Panel:
                                     inbox_name=f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}-{safe}",
                                     size=size))
 
+    # ---------- «Поделиться» в Гаврилу (share.py) ----------
+    def share_receive(self, uid: int, f: BinaryIO, ctype: str, n: int, via: str) -> dict:
+        """Тело «поделились» → запись человека ``uid``. multipart — файлы потоком в inbox (``upload``), поля —
+        title/text/url; JSON и urlencoded — только текст и ссылка (iPhone «Быстрая команда»)."""
+        if n > MAX_BODY:
+            raise ValueError("больше 50 МБ")
+        kind = (ctype or "").split(";")[0].strip().lower()
+        if kind != "multipart/form-data":
+            raw = f.read(min(n, share.MAX_FIELD * 4)) if n else b""
+            if kind == "application/json":
+                b = json.loads(raw or b"{}")
+                b = b if isinstance(b, dict) else {}
+            else:                                         # application/x-www-form-urlencoded и прочее текстовое
+                b = dict(urllib.parse.parse_qsl(raw.decode("utf-8", "replace")))
+            return self.shares.add(uid, b.get("title", ""), b.get("text", ""), b.get("url", ""), via=via)
+        saved: list[dict] = []
+
+        def on_file(_field, name, typ, body):
+            p = Path(self.upload(name, body))
+            size = p.stat().st_size
+            if not size:
+                p.unlink(missing_ok=True)
+                return None
+            shown = re.sub(r"[\x00-\x1f/\\]+", "_", os.path.basename(name.replace("\\", "/")))[-80:] or p.name
+            rec = {"name": shown, "path": str(p), "size": size, "type": typ.split(";")[0].strip()[:80]}
+            saved.append(rec)
+            return rec
+        try:
+            fields, files = share.Multipart(f, ctype, n).parse(on_file)
+            return self.shares.add(uid, fields.get("title", ""), fields.get("text", ""), fields.get("url", ""),
+                                   files, via=via)
+        except Exception:
+            for x in saved:                               # запись не создана — недописанные файлы не копим
+                Path(x["path"]).unlink(missing_ok=True)
+            raise
+
+    def share_notify(self, uid: int, rec: dict):
+        """iPhone: «Поделились: … — откройте Гаврилу» в бот самому человеку (не другим). Сбой Telegram — не ошибка."""
+        what = rec.get("title") or rec.get("url") or rec.get("text") or ", ".join(x["name"] for x in rec["files"])
+        what = " ".join(str(what).split())[:120]
+        base = (self.public_url or "").rstrip("/")
+        text = f"Поделились: {what} — откройте Гаврилу" + (f"\n{base}/?share={rec['id']}" if base else "")
+
+        def go():
+            try:
+                self.pult.api("sendMessage", chat_id=int(uid), text=text,
+                              link_preview_options={"is_disabled": True})
+            except (TelegramError, OSError, ValueError) as e:
+                print("share:", e, file=sys.stderr, flush=True)
+        threading.Thread(target=go, daemon=True).start()
+
+    def share_list(self, uid) -> dict:
+        out = []
+        for r in self.shares.mine(uid):
+            out.append({**{k: r[k] for k in ("id", "at", "title", "text", "url", "via")},
+                        "files": [{"name": x["name"], "path": x["path"], "size": x["size"],
+                                   "image": x.get("type", "").startswith("image/")} for x in r["files"]]})
+        return {"items": out}
+
+    def share_file(self, uid, sid: str, i: str) -> tuple:
+        """Миниатюра своей записи: только картинка из её файлов, до 25 МБ."""
+        rec = self.shares.get(uid, sid)
+        try:
+            x = rec["files"][int(i)]
+        except (ValueError, IndexError):
+            raise LookupError("файл не найден") from None
+        ctype = x.get("type", "")
+        if not re.fullmatch(r"image/(jpeg|png|gif|webp|heic|heif)", ctype):
+            raise ValueError("это не картинка")
+        try:
+            if os.stat(x["path"]).st_size > self.MEDIA_MAX:
+                raise ValueError("картинка больше 25 МБ")
+            data = Path(x["path"]).read_bytes()
+        except OSError:
+            raise LookupError("файл не найден") from None
+        return (ctype, data, {"Cache-Control": "private, max-age=3600"})
+
     # ---------- голос: локально или ElevenLabs ----------
     def voice_settings(self) -> dict:
         st, keys = self.pult.state(), providers.key_info()
@@ -3727,6 +3807,19 @@ self.addEventListener("notificationclick", (e) => {
     return self.clients.openWindow("/");
   }));
 });
+// «Поделиться» (Android, share_target): форму пересылаем сами — запрос со страницы своего адреса несёт куку входа
+// (SameSite=Strict); остальные запросы service worker не трогает
+self.addEventListener("fetch", (e) => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== "POST" || u.origin !== self.location.origin || u.pathname !== "/share") return;
+  e.respondWith((async () => {
+    try {
+      const r = await fetch("/share", { method: "POST", credentials: "same-origin", body: await e.request.blob(),
+        headers: { "Content-Type": e.request.headers.get("Content-Type") || "", "X-GP-SW": "1" } });
+      return Response.redirect((await r.json()).go || "/?share=error", 303);
+    } catch (_) { return Response.redirect("/?share=error", 303); }
+  })());
+});
 """
 
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
@@ -4210,6 +4303,12 @@ def handler(panel: Panel):
                 if (sp := self.sp(q.get("id", "")))[0]:
                     return panel.space_project_chats(q.get("id", ""), sp[1], q.get("q", ""), before)
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
+            if path == "/api/share/list":                # «Поделились» — только свои неразобранные записи
+                return panel.share_list(self.terms_uid())
+            if path == "/api/share/file":                # миниатюра картинки своей записи
+                return panel.share_file(self.terms_uid(), q.get("id", ""), q.get("i", ""))
+            if path == "/api/share/devices":             # устройства «Поделиться» (iPhone) — свои
+                return {"devices": panel.share_tokens.mine(self.terms_uid())}
             if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
                 return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
             if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
@@ -4234,6 +4333,7 @@ def handler(panel: Panel):
                         "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
                         "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
                         "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
+                        "shares": panel.shares.pending(tu) if role and kind != "focus" else 0,   # «Поделились»
                         "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")}}
             if path == "/api/terms":
                 return self.terms_info()
@@ -4449,6 +4549,10 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: self.invite_login(path))
             if path == "/api/focus/open":                  # фокус-ссылка: первое открытие привязывает устройство
                 return self.dispatch(self.focus_open)
+            if path == "/share":                           # «Поделиться» Android (share_target): форма, кука входа
+                return self.share_post()
+            if path == "/api/share":                       # «Поделиться» iPhone: токен устройства, не кука
+                return self.share_api()
             if self.headers.get(focus.HEADER):
                 q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query))
                 return self.focus_call("POST", path, q)
@@ -4458,6 +4562,54 @@ def handler(panel: Panel):
                 return None if path.startswith("/api/") else self.json({"error": "нет такой страницы"}, 404)
             with panel.tmux.scope(self.space()):
                 self.dispatch(lambda: self.post(path))
+
+        def share_len(self) -> int:
+            try:
+                return max(0, int(self.headers.get("Content-Length") or 0))
+            except ValueError:
+                return -1
+
+        def share_post(self):
+            """POST /share из системного «Поделиться» (Android): запись человека → 303 на ``/?share=<id>``. Без входа,
+            без прав, больше 50 МБ — тоже 303, панель скажет почему («войдите и поделитесь снова»). Service worker
+            пересылает форму с ``X-GP-SW: 1`` — ему JSON ``{"go": …}`` (браузер переходит сам)."""
+            sw = self.headers.get("X-GP-SW") == "1"
+            n, role = self.share_len(), self.who()[1]
+            why = ("login" if not role else "denied" if not allowed(role, "member") or self.space() else
+                   "big" if n > MAX_BODY else "error" if n <= 0 else "")
+            rec = None
+            if not why:
+                try:
+                    rec = panel.share_receive(self.terms_uid(), self.rfile, self.headers.get("Content-Type", ""), n,
+                                              "android")
+                except (ValueError, OSError) as e:
+                    print("share:", e, file=sys.stderr, flush=True)
+                    why = "error"
+            if why:
+                self.close_connection = True               # тело не дочитано — соединение не переиспользуем
+            go = f"/?share={rec['id'] if rec else why}"
+            return self.json({"go": go}) if sw else self.go(go)
+
+        def share_api(self):
+            """POST /api/share (iPhone «Быстрая команда»): ``Authorization: Bearer <токен устройства>``; multipart,
+            JSON или форма. Нет токена, чужой, отозван, человек без роли — 401; больше 50 МБ — 413."""
+            rec = panel.share_tokens.check(share.bearer(self.headers.get("Authorization", "")))
+            role = panel.people.role(rec["uid"]) if rec else None
+            if not role or not allowed(role, "member") or panel.people.tenant(rec["uid"]):
+                self.close_connection = True
+                return self.json({"error": "нужен токен устройства: Гаврила → Настройки → Аккаунт и вход → "
+                                           "Устройства для «Поделиться»", "code": "token"}, 401)
+            n = self.share_len()
+            if n > MAX_BODY or n < 0:
+                self.close_connection = True
+                return self.json({"error": "больше 50 МБ — отправьте частями"}, 413)
+
+            def save():
+                got = panel.share_receive(rec["uid"], self.rfile, self.headers.get("Content-Type", ""), n, "iphone")
+                panel.share_notify(rec["uid"], got)
+                base = (panel.public_url or "").rstrip("/")
+                return {"ok": True, "id": got["id"], "open": f"{base}/?share={got['id']}"}
+            return self.dispatch(save)
 
         def bridge_claim(self):
             b = json.loads(self.body() or b"{}")
@@ -5002,6 +5154,12 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
+                return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
+            if path == "/api/share/devices/new":           # токен «Быстрой команды»: показываем один раз
+                return panel.share_tokens.create(self.terms_uid(), str(b.get("name", "")))
+            if path == "/api/share/devices/revoke":
+                return panel.share_tokens.revoke(self.terms_uid(), str(b.get("id", "")))
             if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
                 sid = str(b.get("id", ""))[:40]
                 panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
