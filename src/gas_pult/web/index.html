@@ -7049,7 +7049,7 @@ async function tourOffer() {                           // один раз: се�
 async function start() {
   try { meta = await api("/api/meta"); BUILD = meta.build; } catch (e) { if (view !== "login") setSub(`<span>нет связи: ${esc(e.message)}</span>`); return; }
   loadSpaces().then(() => { if (spacesInfo?.tenants?.length && view === "home") refreshShared(); });   // группа «Пространства»
-  if (meta.terms && !meta.terms.accepted) return showTerms();     // сначала условия использования
+  if (meta.terms && !meta.terms.accepted && !meta.slink?.terms_line) return showTerms();   // ссылка «для клиента» — строкой
   if (meta.country?.need) return showCountry();                   // потом — страна
   UI = meta.ui || null; applyCaps();
   document.body.classList.toggle("tester", !!meta.space);         // тестировщик демо-пространства (задача 31)

@@ -6,6 +6,8 @@
 const TTLS = [["1h", "1 час"], ["1d", "1 день"], ["7d", "7 дней"], ["30d", "30 дней"], ["none", "Без срока"]];
 const MAXES = [[1, "1"], [3, "3"], [0, "Без ограничения"]];
 const RIGHTS = [["full", "Полные"], ["read", "Только чтение"]];
+// для кого (штаб 21.11): клиент соглашается с условиями сам — строкой при первом действии; себе и тестировщику — нет
+const AUD = [["client", "Для клиента"], ["self", "Для себя или тестировщика"]];
 const day = (t) => new Date(t * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 
 // Подпись условий: «до 28 нояб.» / «без срока»; «входов 2 из 3»; «только чтение»
@@ -26,12 +28,12 @@ export async function form(slug) {
   const list = (spacesInfo?.tenants || []).filter((t) => t.ready !== false);
   if (!list.length) return toast("Пространств пока нет", 4000);
   // По умолчанию — 7 дней, 3 устройства (телефон, браузер Telegram, компьютер), полные права
-  const o = { space: list.some((t) => t.slug === slug) ? slug : list[0].slug, ttl: "7d", max: 3, rights: "full" };
+  const o = { space: list.some((t) => t.slug === slug) ? slug : list[0].slug, ttl: "7d", max: 3, rights: "full", audience: "client" };
   const html = `${list.length > 1 ? group("space", "Пространство", list.map((t) => [t.slug, t.title || t.slug]), o.space) : `<p class="note">Пространство «${esc(list[0].title || list[0].slug)}»: проекты, чаты, «Новый чат», настройки панели. Окон и настроек пульта по ссылке не видно.</p>`}
     <div class="field"><label for="slName">Название</label>
       <input id="slName" maxlength="60" autocomplete="off" placeholder="${esc((list.find((t) => t.slug === o.space) || list[0]).title || "")}" enterkeyhint="go">
       <div class="hint">Видно вам в списке ссылок и человеку — над панелью.</div></div>
-    ${group("ttl", "Срок", TTLS, o.ttl)}${group("max", "Сколько устройств", MAXES, o.max)}${group("rights", "Права", RIGHTS, o.rights)}
+    ${group("ttl", "Срок", TTLS, o.ttl)}${group("max", "Сколько устройств", MAXES, o.max)}${group("rights", "Права", RIGHTS, o.rights)}${group("audience", "Для кого", AUD, o.audience)}
     <p class="note" id="slNote"></p>
     <button class="btn wide" type="button" data-sgo="1">${ic("qr")}Создать ссылку</button>`;
   const note = () => { $("slNote").textContent = o.rights === "read" ? "Только чтение: человек видит проекты и переписку, но не пишет и не создаёт чаты." : "Полные права: пишет помощнику, создаёт чаты и проекты — только в этом пространстве."; };
@@ -83,6 +85,8 @@ export function bar(x) {
   const soon = !x.forever && x.exp * 1000 - Date.now() < 2 * 864e5;
   el.className = "focus-exp" + (soon ? " soon" : "");
   el.innerHTML = `<span>${ic("flask", "s16")}<b>${esc(x.name || "Пространство")}</b></span><span>${ic(soon ? "warn" : "lock", "s16")}${esc(x.forever ? "без срока" : "до " + day(x.exp))}</span>`
-    + (x.rights === "read" ? `<span>${ic("eye", "s16")}только чтение</span>` : "");
+    + (x.rights === "read" ? `<span>${ic("eye", "s16")}только чтение</span>` : "")
+    // ссылка «для клиента»: согласие — строкой, без отдельного экрана; первое действие — согласие
+    + (x.terms_line ? `<span class="sl-terms">Продолжая, вы принимаете <a href="/terms" target="_blank" rel="noopener" style="color:var(--accent-primary)">условия использования</a></span>` : "");
   el.hidden = false;
 }

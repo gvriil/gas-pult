@@ -112,7 +112,7 @@ class Focus:
         return rec.get("mode") == DEMO
 
     def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None, mode: str = "",
-            limit: int = FOCUS_MAX, rights: str = "full") -> dict:
+            limit: int = FOCUS_MAX, rights: str = "full", audience: str = "client") -> dict:
         """Новая ссылка на окно ``w`` (из ``tmux.window``): {token, id, exp}. Токен показывается один раз.
         ``proj`` — ссылка на весь проект: ``w`` — {id: "", path, name} проекта, окна у ссылки нет.
         ``mode="demo"`` — демо-ссылка: несколько устройств (``devs``), только просмотр и выбор вариантов.
@@ -127,7 +127,10 @@ class Focus:
                       **({"proj": proj} if proj else {}),
                       **({"mode": DEMO, "devs": {}, "opens": 0} if mode == DEMO else {}),
                       **({"mode": SPACE, "devs": {}, "max": int(limit), "forever": forever,
-                          "rights": "read" if rights == "read" else "full"} if mode == SPACE else {}),
+                          "rights": "read" if rights == "read" else "full",
+                          # для кого (штаб 21.11): «client» — человек сам соглашается с условиями строкой при первом
+                          # действии; «self» — владелец или его тестировщик, условия отмечены выпуском ссылки
+                          "aud": "self" if audience == "self" else "client"} if mode == SPACE else {}),
                       "space": w.get("space") or None, "by": by, "created": int(now), "exp": int(now + ttl),
                       "dev": None, "device": "", "opened": None, "state": "active"}
             self._save(d)

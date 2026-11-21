@@ -421,7 +421,7 @@ function demoApi(path, body) {
   if (params.has("upd")) { R["/api/meta"].build = "demo-1"; R["/api/sessions"].build = "demo-2"; }   // ?upd — вышла новая версия
   if (params.has("tester") || params.has("slink")) {   // ?tester — тестировщик демо-пространства; ?slink — вход по ссылке на него (GAS-38)
     R["/api/meta"].space = { slug: "demo", title: "Демо для бухгалтерии", ready: true }; R["/api/meta"].role = "member"; R["/api/meta"].projects = [];
-    if (params.has("slink")) Object.assign(R["/api/meta"], { via: "slink", uid: null, tty: false, slink: { name: "Кафе — показ партнёру", exp: Math.floor(Date.now() / 1000) + 7 * 86400, forever: false, rights: "full" } });
+    if (params.has("slink")) Object.assign(R["/api/meta"], { via: "slink", uid: null, tty: false, slink: { name: "Кафе — показ партнёру", exp: Math.floor(Date.now() / 1000) + 7 * 86400, forever: false, rights: "full", terms_line: true } });
     R["/api/sessions"].cost = { pool: "own", today: { tokens: { in: 0, out: 0, cw: 0, cr: 0 }, total: 0, usd: 9.2 }, budget: demoBud };
     R["/api/sessions"].sessions = [{ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false,
       channel: false, rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", owner_here: null,
