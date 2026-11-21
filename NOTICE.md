@@ -30,5 +30,8 @@ gas-pult не включает в репозиторий чужой код ил�
 (лицензия Apache-2.0, © T-Technologies) без зависимостей kenlm, pyctcdecode и huggingface_hub; числа и порядок шагов
 сохранены, понижение частоты 16 → 8 кГц добавлено.
 
+Логотипы сервисов в «Подключениях» (`src/gas_pult/web/js/logos.js`) — из [Simple Icons](https://simpleicons.org)
+16.36.0 (лицензия CC0 1.0); знаки — собственность их владельцев и показаны только как название сервиса.
+
 Claude и Claude Code — товарные знаки Anthropic, PBC. Telegram — товарный знак Telegram FZ-LLC.
 gas-pult не связан с этими компаниями.
