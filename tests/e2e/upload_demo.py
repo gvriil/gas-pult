@@ -4,7 +4,8 @@
 
 Узкое место — сеть телефона (223 КБ шли 52 с). Проверяем: фото 3000×2000 PNG сжимается на устройстве до ≤1920 px JPEG
 (байт меньше в разы), на значке файла — проценты загрузки, «Отправить» сразу (не «подождите»): сообщение в переписке
-«(файл загружается…)», путь подставляется по готовности. «Фото без сжатия» — оригинал. Телефон 390 с медленной сетью.
+«(файл загружается…)», путь подставляется по готовности. Оригинал — через «Файл» (пункта «Фото без сжатия» нет
+с 21.11, Gemini №9). Телефон 390 с медленной сетью.
 """
 
 import sys
@@ -47,11 +48,10 @@ def run(base: str):
         pg.wait_for_function("pending.some((p) => p.text.includes('файл загружается'))", timeout=3000)
         pg.wait_for_function("pending.length === 0 || pending.every((p) => p.text.includes('Файл из панели:'))",
                              timeout=20000)
-        # «Фото без сжатия» — оригинал
-        pg.evaluate("noShrink = true")
-        pg.set_input_files("#fPhoto", files=[{"name": "orig.png", "mimeType": "image/png", "buffer": png}])
+        # «Файл» — оригинал без сжатия
+        pg.set_input_files("#fFile", files=[{"name": "orig.png", "mimeType": "image/png", "buffer": png}])
         pg.wait_for_function("window.__demoUploads.length === 2", timeout=20000)
-        assert pg.evaluate("window.__demoUploads[1]") == len(png), "«без сжатия» сжал"
+        assert pg.evaluate("window.__demoUploads[1]") == len(png), "«Файл» сжал"
         print(f"ok: {len(png) // 1024} КБ PNG → {sent // 1024} КБ JPEG; сообщение ушло, не дожидаясь загрузки")
         br.close()
     assert not errs, f"ошибки: {errs}"

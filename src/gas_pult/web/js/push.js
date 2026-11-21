@@ -43,10 +43,12 @@ export async function open() {
   try { [devs, sub] = await Promise.all([DEMO ? { devices: [] } : api("/api/push/devices").then((d) => d.devices), mine()]); } catch (e) { return toast(e.message, 5000); }
   const on = !!sub, here = on ? await devId(sub.endpoint) : "";
   sheet("Уведомления", [
-    { info: true, icon: "bell", label: on ? "На это устройство — включены" : "На это устройство — выключены", sub: "ждёт вашего ответа, ответ готов, брифинг, сбои — даже когда панель закрыта" },
-    on ? { label: "Проверить", icon: "send", sub: "прислать тестовое уведомление на все ваши устройства", run: () => api("/api/push/test", {}).then((d) => toast(d.devices ? `Отправил на ${d.devices} ${plural(d.devices, ["устройство", "устройства", "устройств"])} — должно прийти за несколько секунд` : "Нет устройств с уведомлениями", 5000), (e) => toast(e.message, 5000)) }
-      : { label: "Включить на этом устройстве", icon: "bell", sub: ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте пульт оттуда" : "браузер спросит разрешение", run: () => enable().then(open, (e) => toast("Не вышло: " + e.message, 5000)) },
-    ...(on ? [{ label: "Выключить на этом устройстве", icon: "x", run: async () => { try { await api("/api/push/unsubscribe", { id: here }); await sub.unsubscribe(); } catch (e) {} toast("Выключено на этом устройстве", 3000); open(); } }] : []),
+    // одна строка с тумблером справа (Gemini №11): включить — подписка; выключить — отписка этого устройства
+    { label: "На этом устройстве", icon: "bell", toggle: on, sub: on ? "ждёт ответа, ответ готов, брифинг, сбои — даже когда панель закрыта"
+      : ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте Гаврилу оттуда" : "браузер спросит разрешение",
+      run: on ? async () => { try { await api("/api/push/unsubscribe", { id: here }); await sub.unsubscribe(); } catch (e) {} toast("Выключено на этом устройстве", 3000); open(); }
+        : () => enable().then(open, (e) => toast("Не вышло: " + e.message, 6000)) },
+    ...(on ? [{ label: "Проверить", icon: "send", sub: "прислать тестовое уведомление на все ваши устройства", run: () => api("/api/push/test", {}).then((d) => toast(d.devices ? `Отправил на ${d.devices} ${plural(d.devices, ["устройство", "устройства", "устройств"])} — должно прийти за несколько секунд` : "Нет устройств с уведомлениями", 5000), (e) => toast(e.message, 5000)) }] : []),
     ...(devs.length ? [{ head: "Ваши устройства" }, ...devs.map((d) => ({ label: d.label + (d.id === here ? " — это устройство" : ""), icon: "phone", sub: (d.ok === false ? "последняя отправка не дошла · " : "") + "нажмите, чтобы отключить",
       run: () => api("/api/push/unsubscribe", { id: d.id }).then(() => { toast("«" + d.label + "» отключено", 3000); open(); }, (e) => toast(e.message, 5000)) }))] : []),
   ]);

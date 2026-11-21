@@ -687,6 +687,13 @@
   .login-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; margin-top: 12px; }
   .linkbtn { border: 0; background: none; padding: 8px 4px; min-height: 40px; color: var(--accent-primary); font: inherit; cursor: pointer; }
   .linkbtn.small { font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+  .sseg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; } .sseg-row > span { flex: 1; }
+  .sseg { display: flex; flex: 1 1 260px; max-width: 340px; padding: 2px; gap: 2px; border-radius: var(--radius-sm); background: var(--bg-subtle); }
+  .sheet .sseg button { flex: 1; width: auto; min-width: 0; justify-content: center; min-height: 32px; padding: 4px 6px; border-radius: 6px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); background: transparent; }
+  .sheet .sseg button.on { background: var(--bg-surface); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .tgl { flex: none; width: 40px; height: 24px; border-radius: 12px; background: var(--border-subtle); position: relative; transition: background .15s; }
+  .tgl::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .tgl.on { background: var(--accent-primary); } .tgl.on::after { transform: translateX(16px); }
   .sheet .vis { width: 44px; flex: none; display: flex; justify-content: center; align-items: center; }
   .logo { width: 20px; height: 20px; flex: none; } .btn.rm-inline { width: auto; min-height: 32px; padding: 4px 10px; margin: 0 0 0 4px; } .chip .logo { width: 14px; height: 14px; } .hero .mono .logo { width: 30px; height: 30px; } .pop .vis { display: flex; width: 20px; } .pop .pl { flex: 1; } .pop .ps { color: var(--text-secondary); }
   .sheet .vis .sdot, .sheet button.info > .sdot { width: 10px; height: 10px; }
@@ -2364,8 +2371,8 @@ function sheet(title, items, closeLabel = "Закрыть") {                   
   const bg = document.createElement("div"); bg.className = "sheet-bg";
   const help = helpNext; helpNext = ""; if (help) bg.dataset.help = help;    // экран помощника: helpSheet("…") перед sheet()
   const parent = sheetFrom && Date.now() - sheetFrom.t < 15000 ? sheetFrom : null; sheetFrom = null;
-  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.sep ? '<hr class="ssep">' : it.head ? `<h3 class="sub">${esc(it.head)}</h3>` :
-    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""} ${it.info ? "info" : ""}">${it.vis ? `<span class="vis">${it.vis}</span>` : it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.on ? ic("check") : ""}</button>`).join("")}
+  bg.innerHTML = `<div class="sheet" role="dialog">${parent ? `<button class="sback" data-back="1">${ic("back", "s16")}Назад</button>` : ""}<h3>${esc(title)}</h3>${items.map((it, i) => it.sep ? '<hr class="ssep">' : it.head ? `<h3 class="sub">${esc(it.head)}</h3>` : it.seg ? `<div class="sseg-row">${ic(it.icon)}<span>${esc(it.label)}</span><div class="sseg" role="radiogroup">${it.seg.map(([v, l]) => `<button data-i="${i}" data-sv="${v}" role="radio" aria-checked="${v === it.cur}" class="${v === it.cur ? "on" : ""}">${esc(l)}</button>`).join("")}</div></div>` :
+    `<button data-i="${i}" class="${it.danger ? "danger" : ""} ${it.on ? "on" : ""} ${it.info ? "info" : ""}">${it.vis ? `<span class="vis">${it.vis}</span>` : it.dot ? `<i class="sdot ${it.dot}"></i>` : it.icon ? ic(it.icon) : ""}<span>${esc(clean(it.label))}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.toggle != null ? `<i class="tgl${it.toggle ? " on" : ""}" role="switch" aria-checked="${!!it.toggle}"></i>` : it.on ? ic("check") : ""}</button>`).join("")}
     <button class="cancel" data-close>${esc(closeLabel)}</button></div>`;
   let hold = null, held = false;
   bg.addEventListener("pointerdown", (e) => {
@@ -2383,7 +2390,7 @@ function sheet(title, items, closeLabel = "Закрыть") {                   
     if (b?.dataset.i && items[+b.dataset.i].info) return;     // строка-пояснение: шторка остаётся
     if (e.target === bg || b) bg.remove();
     if (b?.dataset.back) return parent.open();
-    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; helpNext = help; sheet(title, items, closeLabel); } }; items[+b.dataset.i].run(); }
+    if (b && b.dataset.i) { sheetFrom = { t: Date.now(), open: () => { sheetFrom = parent && { ...parent, t: Date.now() }; helpNext = help; sheet(title, items, closeLabel); } }; items[+b.dataset.i].run(b.dataset.sv); }
   });
   document.body.append(bg);
 }
@@ -5430,15 +5437,14 @@ function retryLost() {                               // GAS-21: связь ве�
 }
 addEventListener("online", retryLost);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) retryLost(); });
-$("plus").onclick = () => helpSheet("sheet.attach") || sheet("Прикрепить", [
-  { label: "Сфотографировать", icon: "camera", run: () => $("fCam").click() },
-  { label: "Фото или видео из галереи", icon: "image", sub: "фото сжимаем до 1920 px — быстрее загрузка", run: () => $("fPhoto").click() },
-  { label: "Фото без сжатия", icon: "image", sub: "оригинал — дольше по медленной сети", run: () => { noShrink = true; $("fPhoto").click(); } },
-  { label: "Файл с устройства", icon: "file", sub: "документ, таблица, архив — до 50 МБ", run: () => $("fFile").click() },
+// «+» (Gemini №9): на ПК — сразу выбор файла (там нет камеры и галереи); на телефоне — три пункта без подписей
+$("plus").onclick = () => split() && !matchMedia("(pointer: coarse)").matches ? $("fFile").click() : helpSheet("sheet.attach") || sheet("Прикрепить", [
+  { label: "Камера", icon: "camera", run: () => $("fCam").click() },
+  { label: "Галерея", icon: "image", run: () => $("fPhoto").click() },
+  { label: "Файл", icon: "file", run: () => $("fFile").click() },
 ]);
-let noShrink = false;                                  // «Фото без сжатия» — на один выбор
 for (const id of ["fCam", "fPhoto", "fFile"]) $(id).onchange = (e) => {
-  const raw = noShrink || id === "fFile"; noShrink = false;
+  const raw = id === "fFile";                          // фото — сжимаем сами (Gemini №9: «сжимать автоматически»)
   [...e.target.files].forEach((f) => upload(f, raw)); e.target.value = "";
 };
 async function upload(f, raw = false) {
