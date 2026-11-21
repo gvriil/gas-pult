@@ -701,4 +701,5 @@ def test_names_hide_window_names_and_status_titles():
     from pathlib import Path
     page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
     assert 'title: ok ? x.title : ""' in page and 'name: ok ? x.title : "Новый чат"' in page
-    assert 'if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || "Чат"' in page
+    links = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/focuslinks.js").read_text(encoding="utf-8")
+    assert 'if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || x.name || "Чат"' in links   # 21.11: часть

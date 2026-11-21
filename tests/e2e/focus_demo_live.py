@@ -145,7 +145,8 @@ def run(shots: str = ""):
             log("(г) «Фокус-ссылки»: пометка «Демо» и «2 устройства»")
 
             # ---------- (д) «Отозвать» — оба устройства отключены ----------
-            po.locator(".sheet button", has_text="Демо · Проект").click()        # подтверждение — confirm(), принято
+            po.locator(".sheet button", has_text="Демо · Проект").click()        # 21.11: карточка ссылки
+            po.locator(".sheet button", has_text="Отозвать эту ссылку").click()   # подтверждение — confirm(), принято
             for pg in (pa, pb):
                 pg.wait_for_selector("#focusEnd", timeout=20000)
                 assert "Ссылка не действует" in pg.inner_text("#focusEnd")

@@ -6523,7 +6523,7 @@ async function focusLink(id, proj, mode) {           // proj — ссылка н
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.focus");
   if (demo) bg.setAttribute("data-help", hv("sheet.focus-demo"));   // демо-ссылка — своя справка
   const till = new Date(d.exp * 1000).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  bg.innerHTML = `<div class="sheet" role="dialog"><h3>${demo ? "Демо-ссылка" : "Фокус-ссылка"}${proj && !demo ? " на проект" : ""}: ${esc(d.name)}</h3>
+  bg.innerHTML = `<div class="sheet" role="dialog"><h3>${demo ? "Демо-ссылка" : "Фокус-ссылка"}${proj && !demo ? " на проект" : ""}: ${esc(proj ? projOf(proj)?.name || d.name : (s => s?.title || s?.name)(sessions.find((x) => x.id === id)) || d.name)}</h3>
     <p class="note" style="margin:0 16px">${demo ? `Для показа: открывается на нескольких устройствах (до ${d.max || 20}). Гости видят сессии ${proj ? "этого проекта" : "этой сессии"} и могут только выбирать варианты в вопросах Claude — писать, загружать файлы и менять настройки нельзя. Ссылка действует до ${esc(till)}; «Отозвать» отключает все устройства сразу.`
       : proj ? `Откройте на нужном устройстве — там будут все сессии этого проекта, новая сессия в нём и завершённые чаты; другие проекты не видны. Первое открытие привязывает устройство. Ссылка действует до ${esc(till)}.`
       : `Откройте на нужном устройстве — там будет только чат этой сессии с её настройками. Первое открытие привязывает устройство. Ссылка гаснет, когда сессию завершат, и не позже ${esc(till)}.`}</p>
@@ -6546,21 +6546,7 @@ async function focusLink(id, proj, mode) {           // proj — ссылка н
     if (b.dataset.fa === "revoke") { try { await api("/api/focus/revoke", { id: d.id }); bg.remove(); toast(demo ? "Демо-ссылка отозвана — все устройства отключены" : "Ссылка отозвана"); } catch (err) { toast(err.message, 5000); } }
   });
 }
-async function focusList() {
-  let d; try { d = await api("/api/focus/list"); } catch (e) { return toast(e.message, 5000); }
-  const when = (t) => new Date(t * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  helpSheet("settings.focus");
-  for (const x of d.links) if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || "Чат";   // не имя окна (19.11)
-  sheet("Фокус-ссылки", d.links.length ? [
-    { info: true, icon: "qr", label: "Действующие ссылки", sub: "нажмите, чтобы отозвать: устройство сразу потеряет доступ" },
-    ...d.links.map((x) => ({ label: (x.mode === "demo" ? "Демо · " : "") + (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.mode === "demo" ? "eye" : x.proj ? "folder" : "qr",
-      sub: (x.mode === "demo" ? (x.devices ? `${x.devices} ${plural(x.devices, ["устройство", "устройства", "устройств"])} · последнее ${when(x.opened)}` : "ещё не открыта")
-        : x.opened ? `открыта ${when(x.opened)} · ${x.device || "устройство"}` : "ещё не открыта") + ` · до ${when(x.exp)}`,
-      run: () => confirmDanger(x.mode === "demo" ? `Отозвать демо-ссылку на «${x.name}»? Все устройства сразу потеряют доступ, сессии продолжат работать.`
-        : `Отозвать фокус-ссылку на «${x.name}»? Устройство сразу потеряет доступ, сессия продолжит работать.`,
-        async () => { try { await api("/api/focus/revoke", { id: x.id }); toast("Ссылка отозвана"); focusList(); } catch (e) { toast(e.message, 5000); } }) }))]
-    : [{ info: true, icon: "qr", label: "Фокус-ссылок нет", sub: "выпустить — меню сессии → «Фокус-ссылка»" }]);
-}
+const focusList = () => part("focuslinks").then((m) => m.open());   // «Фокус-ссылки» — js/focuslinks.js
 // ---------- репозитории GitHub в сессии (задача 43, repos.py) ----------
 // Клон (или pull, если папка уже есть) на сервере и /add-dir в живую сессию; при перезапуске — --add-dir.
 // «Отключить» убирает только из сессии: папка с репозиторием остаётся.
