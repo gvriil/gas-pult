@@ -76,17 +76,29 @@ def resume_args(sid) -> str:
     return f" --resume {sid}" if sid else " --continue"
 
 
+def inside(f: Path, home: Path | None) -> bool:
+    """Журнал лежит в своей папке Claude по realpath. Пространство или участник (``home``) мог положить ссылку на
+    чужой файл (журнал владельца, ключи) — такой «журнал» пульт не читает (GAS-38, изоляция)."""
+    if home is None:
+        return True
+    try:
+        return f.resolve().is_relative_to(Path(home).resolve() / "projects")
+    except OSError:
+        return False
+
+
 def current(path: str, home: Path | None = None, sid: str = "") -> Path | None:
     """Журнал сессии. С ``sid`` (окно запущено с ``--session-id``) — ровно ``<sid>.jsonl`` в папке журналов (или в
     любой папке журналов этой папки Claude: окно могло сменить каталог); его ещё нет — None, а не чужой журнал.
-    Без ``sid`` (старые окна) — как раньше, последний журнал папки."""
+    Без ``sid`` (старые окна) — как раньше, последний журнал папки. Ссылка наружу из своей папки Claude — None."""
     if sid := valid_sid(sid):
         f = project_dir(path, home) / f"{sid}.jsonl"
         if f.exists():
-            return f
+            return f if inside(f, home) else None
         base = home / "projects" if home else CLAUDE_PROJECTS
-        return next(iter(base.glob(f"*/{sid}.jsonl")), None)
-    files = [f for f in transcripts(path, home) if not is_batch(f)]     # плановый ``claude -p`` — не окно
+        f = next(iter(base.glob(f"*/{sid}.jsonl")), None)
+        return f if f is not None and inside(f, home) else None
+    files = [f for f in transcripts(path, home) if inside(f, home) and not is_batch(f)]   # ``claude -p`` — не окно
     return max(files, key=lambda p: p.stat().st_mtime) if files else None
 
 
