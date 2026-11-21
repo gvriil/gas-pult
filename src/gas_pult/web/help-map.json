@@ -263,7 +263,7 @@
    "roles": [
     "owner"
    ],
-   "title": "Люди"
+   "title": "Команда и права"
   },
   "go:settings.setup": {
    "id": "go:settings.setup",
@@ -1965,7 +1965,7 @@
     "Нажмите человека — сменить роль или отключить.",
     "Добавить — пусть сам нажмёт «Войти через Telegram»."
    ],
-   "title": "Люди",
+   "title": "Команда и права",
    "where": "panel"
   },
   "settings.person": {

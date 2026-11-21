@@ -247,6 +247,7 @@ def test_team_screen_fields_match_server(server):
     assert used <= set(t["people"][0]) and used                       # поля человека — из ответа сервера
     web = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
     index = (web / "index.html").read_text(encoding="utf-8") + (web / "js/settings.js").read_text(encoding="utf-8")
+    index += js                                                       # «Что видят сотрудники» — «Команда и права»
     assert 'meta?.role === "owner" && UI?.can_team' in index           # в настройках — только владельцу
 
 

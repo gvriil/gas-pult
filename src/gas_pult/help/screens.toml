@@ -131,7 +131,7 @@ required_cap = "cap.dev_cost_tokens"
 
 [[action]]
 id = "go:settings.people"
-title = "Люди"
+title = "Команда и права"
 roles = ["owner"]
 
 [[action]]
@@ -929,7 +929,7 @@ next = ["go:commands", "go:settings"]
 [[screen]]
 id = "settings.people"
 where = "panel"
-title = "Люди"
+title = "Команда и права"
 roles = ["owner"]
 purpose = "Кто входит в пульт и с какими правами; согласие с условиями и страна каждого."
 steps = ["Нажмите человека — сменить роль или отключить.", "Добавить — пусть сам нажмёт «Войти через Telegram»."]

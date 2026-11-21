@@ -39,8 +39,8 @@ function groups() {
     ] },
     { title: "Команда и клиенты", icon: "place", items: [
     ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", sub: "ссылка-приглашение в пульт", run: spaceInvite }] : []),   // из «⋯» панели (Gemini №8)
-    ...(isBoss() ? [{ label: "Люди", icon: "place", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
-    ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
+    // «Люди» и «Команда» — один пункт (Gemini №12): список людей, внутри — «Что видят сотрудники»
+    ...(isBoss() ? [{ label: "Команда и права", icon: "place", sub: "кто входит в пульт, роли и что видят сотрудники", run: peopleSheet }] : []),
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Фокус-ссылки", icon: "qr", sub: "какие сессии открыты по фокус-ссылке; отозвать", run: focusList }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Анкеты клиентов", icon: "file", sub: "ссылка клиенту — ответы сюда и в бот", run: () => part("forms").then((m) => m.open()) }] : []),
