@@ -98,10 +98,13 @@ def run(shots: str = ""):
             a = device(True)
             pa = page(a, url)
             pa.wait_for_selector("#session:not([hidden])", timeout=15000)
-            pa.wait_for_selector("#focusExp:not([hidden])", timeout=10000)
+            pa.wait_for_selector("#focusExp:not([hidden])", state="attached", timeout=10000)
+            # 21.11: сверху у человека — только название и ⋯; срок входа и «Чаты проекта» — в ⋯
+            assert pa.evaluate("document.body.classList.contains('clean-top')")
+            assert not pa.is_visible("#focusExp") and pa.is_visible("#chatMoreBtn")
             assert pa.evaluate("document.body.classList.contains('focus-proj')")
             assert pa.evaluate("sessions.map((s) => s.id)") == [shop]
-            exp = pa.inner_text("#focusExp")
+            exp = pa.text_content("#focusExp")
             till = time.strftime("%d.%m", time.localtime(time.time() + 7 * 86400 - 60))
             assert "shop" in exp and f"Вход действует до {till} (через 7 дн.)" in exp, exp
             for path, body in ((f"/api/project?id={oid}", None), (f"/api/project/sessions?id={oid}", None),
@@ -119,7 +122,9 @@ def run(shots: str = ""):
             log(f"(б) телефон: только сессии проекта, срок «{exp.splitlines()[-1]}»; чужой проект — 403")
 
             # ---------- (в) «Новый чат в проекте» ----------
-            pa.click("#focusExp [data-fproj]")
+            pa.click("#chatMoreBtn")
+            pa.wait_for_selector(".sheet :text('Вход по ссылке — до')")
+            pa.click(".sheet :text('Чаты проекта')")
             pa.wait_for_selector(".sheet h3:has-text('Проект')")
             sheet = pa.inner_text(".sheet")
             # 19.11: служебные имена окон («shop-1») не показываются — чаты по названию, без него «Новый чат»
@@ -185,7 +190,7 @@ def run(shots: str = ""):
             pe.wait_for_selector("#session:not([hidden])", timeout=15000)
             assert pe.evaluate("sessions.map((s) => s.id)") == [other]
             assert not pe.evaluate("document.body.classList.contains('focus-proj')")
-            assert "Вход действует до" in pe.inner_text("#focusExp")
+            assert "Вход действует до" in pe.text_content("#focusExp")
             for path, body in ((f"/api/project?id={oid}", None), ("/api/project/session", {"id": oid})):
                 code, r = pe.evaluate(FETCH, [path, body])
                 assert code == 403 and r.get("code") == "focus_scope", (path, code, r)

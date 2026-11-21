@@ -88,6 +88,10 @@
   #chatMoreBtn { display: none; } body.in-chat:not(.split):not(.focus) #chatMoreBtn { display: grid; }
   body.in-chat:not(.split):not(.focus) #helpBtn, body.in-chat:not(.split):not(.focus) #settingsBtn,
   body:not(.focus) #title .caret { display: none; }
+  /* Шапка чата у человека (фокус-ссылка, роль без терминала): только название и ⋯ (владелец 21.11); остальное — в ⋯ */
+  body.clean-top #subtitle, body.clean-top #helpBtn, body.clean-top #settingsBtn, body.clean-top #tabsBar,
+  body.clean-top:not(.tab-screen) #screenBtn, body.clean-top #focusExp:not(.soon) { display: none !important; }
+  body.clean-top #chatMoreBtn, body.clean-top.tab-screen #screenBtn { display: grid !important; }
   .gmark { flex: none; display: inline-block; color: var(--text-primary); background: currentColor;   /* знак v2: цвет — из темы */
            -webkit-mask: url(brand/gavrila-mark.svg) center / contain no-repeat; mask: url(brand/gavrila-mark.svg) center / contain no-repeat; }
   .nmark { width: 9px; height: 22px; margin: 0 4px 0 2px; } .lmark { display: block; width: 20px; height: 54px; margin: 4px 0 8px; }
@@ -2386,6 +2390,7 @@ function show(v) {
   const two = split() && !["terms", "country", "persona"].includes(v);  // одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
   document.body.classList.toggle("in-chat", v === "session");   // телефон: шапка чата «≡ · Название · ⋯» (Gemini №3)
+  document.body.classList.toggle("clean-top", v === "session" && (FOCUS || !dev()));   // человеку — только название и ⋯
   if (DRAFT && (v !== "session" || current)) { DRAFT = null; paintDraft(); }   // ушли из нового чата
   applyWide(); renderRail(); queueMicrotask(agoTick);   // «N назад» на открывшемся экране — сразу свежие
   $("pick").hidden = true;                           // компьютер: без открытой сессии — главная в основной колонке
@@ -4088,11 +4093,15 @@ async function startSession(i, profile) {
     if (d.existing) toast(`В этой папке уже работает «${d.existing}» — открыл её (одно окно на проект)`, 4500);
   } catch (err) { toast("Не вышло: " + err.message, 4500); }
 }
+const cleanTop = () => document.body.classList.contains("clean-top");
 function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   helpSheet("sheet.session");
   sheet(dn(s), shortMenu([
     ...(!split() && !FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // шапка телефона — без «?» (Gemini №3)
+    ...(cleanTop() && dev() && tab === "chat" ? [{ label: "Экран терминала", icon: "term", run: () => setTab("screen") }] : []),
+    ...(cleanTop() && FOCUS_PROJ() ? [{ label: `Чаты проекта «${meta.focus.name}»`, icon: "folder", run: () => focusProjSheet() }] : []),
+    ...(cleanTop() && FOCUS && meta?.focus?.exp ? [{ label: (FOCUS_DEMO() ? "Демо до " : "Вход по ссылке — до ") + new Date(meta.focus.exp * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), icon: "lock", run: () => {} }] : []),
     ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
     ...(dev() && meta?.role !== "viewer" && !FOCUS ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
@@ -4194,7 +4203,7 @@ function wakeChat(id) {
 }
 const wakeOnOpen = (id) => { wakeChat(id); };
 function setTab(t) {
-  tab = t;
+  tab = t; document.body.classList.toggle("tab-screen", t !== "chat");
   $("screenBtn").innerHTML = ic(t === "chat" ? "term" : "chat"); $("screenBtn").setAttribute("aria-label", t === "chat" ? "Экран терминала" : "Переписка");
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   $("live").hidden = t !== "chat";

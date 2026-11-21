@@ -96,10 +96,10 @@ def run(shots: str = ""):
             till = time.strftime("%d.%m", time.localtime(time.time() + 7 * 86400 - 60))
             for pg in (pa, pb):
                 pg.wait_for_selector("#session:not([hidden])", timeout=15000)
-                pg.wait_for_selector("#focusExp:not([hidden])", timeout=10000)
+                pg.wait_for_selector("#focusExp:not([hidden])", state="attached", timeout=10000)
                 assert pg.evaluate("document.body.classList.contains('focus-demo')")
                 assert pg.evaluate("sessions.map((s) => s.id)") == [shop]
-                assert f"Демо до {till}" in pg.inner_text("#focusExp"), pg.inner_text("#focusExp")
+                assert f"Демо до {till}" in pg.text_content("#focusExp"), pg.text_content("#focusExp")
                 assert pg.is_visible("#demoNote") and "только просмотр и выбор вариантов" in pg.inner_text("#demoNote")
                 assert not pg.is_visible("#input") and not pg.is_visible("#mic") and not pg.is_visible("#plus")
                 # 20.11: «Быстрые функции» меняют следующее сообщение — в демо писать нельзя, кнопки нет
