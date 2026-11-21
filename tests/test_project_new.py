@@ -116,8 +116,9 @@ def test_project_new_roles(server, tmp_path):
 def test_panel_has_new_project_button():
     nav = INDEX[INDEX.index("function renderNav("):INDEX.index("function navOpen(")]
     assert "data-nnewp" in nav                                       # «+» у заголовка «Проекты»
-    assert 'api("/api/project/new"' in INDEX and 'hv("sheet.new-project")' in INDEX
-    sheet = INDEX[INDEX.index("function newProject("):INDEX.index("// Модель Claude по умолчанию для новых сессий")]
+    assert 'part("newproject").then((m) => m.open())' in INDEX           # лист — часть js/newproject.js (GAS-38)
+    sheet = (Path(__file__).parent.parent / "src" / "gas_pult" / "web" / "js" / "newproject.js").read_text("utf-8")
+    assert 'api("/api/project/new"' in sheet and 'hv("sheet.new-project")' in sheet
     assert "newChat(d.id)" in sheet and "/api/project/session" not in sheet     # окно — при первой отправке
 
 

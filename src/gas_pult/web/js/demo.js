@@ -66,7 +66,16 @@ function demoProjects(key, path, body, ses) {
     ["p-shop-bot", "shop-bot", L2("Магазин-бот", "Shop bot"), "auto"], ["p-gastech-digest", "gastech-digest", L2("Дайджест", "Digest"), "auto"], ["p-books", "books", L2("Бухгалтерия", "Accounting"), "module:acc-start"], ["p-home", "~", L2("Домашняя", "Home"), "auto"]];
   const DONE = { "p-tgi": [[L2("Отчёт П8 за октябрь", "October report"), 2 * 3600, 14], [L2("Комнаты: миграция базы", "Rooms: database move"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]],
     "p-books": [[L2("Акт сверки за октябрь", "October reconciliation"), D, 18], [L2("Описание платёжки", "Payment description"), 4 * D, 4]], "p-icon": [[L2("Цены конкурентов", "Competitor prices"), 3 * D, 12]] };
+  const SP = params.has("tester");                   // тестировщик (GAS-38): проекты — папки его пространства
+  if (SP) { P.length = 0; P.push(...[[L2("Сверка счетов", "Invoice check")], [L2("Меню на зиму", "Winter menu")], [L2("Отчёт для собственника", "Owner report")]].map(([f]) => ["s:demo:" + f, f, f, "space"]));
+    DONE["s:demo:" + P[0][1]] = [[L2("Акт сверки с поставщиком", "Supplier reconciliation"), D, 9]]; DONE["s:demo:" + P[1][1]] = [[L2("Цены на супы", "Soup prices"), 3 * D, 5]]; }
   P.push(...(demoApi.pj.newp || []));                // «Новый проект» в демо — в памяти страницы
+  if (key === "/api/project/new" && SP) {            // в пространстве: папка — из названия, кириллица можно
+    const f = String(body?.name || "").trim().replace(/[\/]+/g, " ").slice(0, 60);
+    if (!f) return Promise.reject(new Error("назовите проект"));
+    (demoApi.pj.newp ||= []).push(["s:demo:" + f, f, f, "space"]);
+    return Promise.resolve({ id: "s:demo:" + f, name: f, folder: f, path: "projects/" + f });
+  }
   if (key === "/api/project/new") {
     const f = String(body?.folder || "").trim().toLowerCase() || npFolder(body?.name);
     if (!String(body?.name || "").trim()) return Promise.reject(new Error("назовите проект"));
@@ -81,7 +90,7 @@ function demoProjects(key, path, body, ses) {
   const list = P.map(([id, f, name, origin]) => {
     const mine = ses.sessions.filter((x) => x.project === id), ch = chats(id);
     const last = Math.max(0, ...mine.map((x) => x.changed || 0), ...ch.map((c) => c.mtime)) || null;
-    return { id, name, folder: f, path: f === "~" ? "~" : "~/projects/" + f, paths: id === "p-gas-pult" ? ["~/worktrees/gas-pult-fix"] : [], origin, pinned: !!demoApi.pins?.["p:" + id], pinned_at: demoApi.pins?.["p:" + id] || 0, archived: false,
+    return { id, name, folder: f, path: SP ? "projects/" + f : f === "~" ? "~" : "~/projects/" + f, ...(SP ? { space: "demo", space_title: "Демо для бухгалтерии" } : {}), paths: id === "p-gas-pult" ? ["~/worktrees/gas-pult-fix"] : [], origin, pinned: !!demoApi.pins?.["p:" + id], pinned_at: demoApi.pins?.["p:" + id] || 0, archived: false,
       windows: mine.length, waiting: mine.filter((x) => x.status === "dialog").length, busy: mine.filter((x) => x.status === "busy").length,
       chats: ch.length + mine.length, last, last_title: mine.sort((a, b) => (b.changed || 0) - (a.changed || 0))[0]?.title || ch[0]?.title || "", sessions: mine.map((x) => x.id) };
   }).sort((a, b) => b.pinned_at - a.pinned_at || (b.waiting ? 1 : 0) - (a.waiting ? 1 : 0) || (b.last || 0) - (a.last || 0));
@@ -98,7 +107,7 @@ function demoProjects(key, path, body, ses) {
     { i: 1, role: "assistant", text: L2("Готово: **акт сверки** — расхождений два.\n\n| Дата | Сумма | Что |\n|---|---|---|\n| 12.10 | 14 200 ₽ | нет первички |\n| 27.10 | 3 150 ₽ | двойная оплата |",
       "Done: **reconciliation** — two differences.\n\n| Date | Amount | What |\n|---|---|---|\n| 12.10 | 14,200 | no source document |\n| 27.10 | 3,150 | paid twice |"), ts: "2026-11-06 10:05" }] });
   if (key === "/api/project/chat") { if (body.hidden) demoApi.pj.hidden[body.sid] = 1; else if (body.hidden === false) delete demoApi.pj.hidden[body.sid]; if (body.title) demoApi.pj.titles[body.sid] = body.title; return Promise.resolve({ project: id }); }
-  if (key === "/api/project/session" || key === "/api/project/resume") return Promise.resolve({ id: p.sessions[0] || "@3", sid: body.sid || "", project: id });
+  if (key === "/api/project/session" || key === "/api/project/resume") return Promise.resolve({ id: p.sessions[0] || (SP ? "t:demo:@1" : "@3"), sid: body.sid || "", project: id });
   return Promise.reject(new Error("демо: нет такого запроса"));
 }
 // «Удалить» и «Корзина чатов» в демо: окно пропадает из списка, чат — из «Завершённых»; «Вернуть» — в «Завершённые».
@@ -380,13 +389,14 @@ function demoApi(path, body) {
     R["/api/meta"].space = { slug: "demo", title: "Демо для бухгалтерии", ready: true }; R["/api/meta"].role = "member"; R["/api/meta"].projects = [];
     R["/api/sessions"].cost = { pool: "own", today: { tokens: { in: 0, out: 0, cw: 0, cr: 0 }, total: 0, usd: 9.2 }, budget: demoBud };
     R["/api/sessions"].sessions = [{ id: "t:demo:@1", name: "Сверка счетов", path: "/home/u/demo", branch: "", status: "idle", context: 12, model: "", active: false,
-      channel: false, rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", owner_here: null }];
+      channel: false, rev: "s", preview: "Реестр готов: 14 документов, у двух нет первички", profile: "openrouter", space: "demo", owner_here: null,
+      project: "s:demo:Сверка счетов", title: "Реестр документов за октябрь" }];
   }
   R["/api/cmds"] = { host: "ubuntu", cmds: [{ i: 0, cmd: "npm test", kind: "local", danger: false, sha: "a" },
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" },
     { i: 3, cmd: "keepassxc-cli show -s ~/vault/demo.kdbx Сервисы/почта", kind: "tty", danger: false, sha: "d" }] };
   const key = path.split("?")[0];
-  R["/api/meta"].projects_ui = !params.has("tester");  // «Проекты» (задача 49): окна — по проектам-папкам
+  R["/api/meta"].projects_ui = true;                  // «Проекты» (задача 49): и у тестировщика пространства (GAS-38)
   R["/api/sessions"].sessions.forEach((x) => { if (!x.space) { x.project = "p-" + folder(x.path); x.title = demoTitle(x.id); } });
   if (key === "/api/projects" || key.startsWith("/api/project/") || key === "/api/project") return demoProjects(key, path, body, R["/api/sessions"]);
   if (key.startsWith("/api/chat/")) return demoChat(key, body, R["/api/sessions"]);
