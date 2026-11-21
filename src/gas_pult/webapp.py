@@ -3370,10 +3370,29 @@ class Panel:
         if sel["chosen"]:
             cache = self.__dict__.setdefault("brief_cache", {})
             got = cache.get(uid)
-            if fresh or not got or time.time() - got[0] > 300:
+            if fresh or not got:
                 got = cache[uid] = (time.time(), self.pult.brief_now(uid=uid))
-            out["brief"] = got[1]
+            elif time.time() - got[0] > 300:     # «Сегодня» сразу (владелец 21.11): отдаём готовый, свежий — в фоне,
+                self.brief_refresh(uid)          # панель заберёт его следующим запросом
+                out["stale"] = True
+            out["brief"], out["built"] = got[1], int(got[0])
         return out
+
+    def brief_refresh(self, uid):
+        """Собрать брифинг в фоне (один сбор на человека за раз)."""
+        busy = self.__dict__.setdefault("brief_busy", set())
+        if uid in busy:
+            return
+
+        def run():
+            try:
+                self.brief_cache[uid] = (time.time(), self.pult.brief_now(uid=uid))
+            except Exception as e:                        # сбой сбора — остаётся прежний, панель не падает
+                print("brief:", type(e).__name__, e, flush=True)
+            finally:
+                busy.discard(uid)
+        busy.add(uid)
+        threading.Thread(target=run, daemon=True).start()
 
     def brief_set(self, uid, b: dict) -> dict:
         prefs = self.pult.brief_prefs

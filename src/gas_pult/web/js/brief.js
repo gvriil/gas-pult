@@ -60,22 +60,49 @@ const chatText = (r) => [r.text, "Источник: " + (r.source?.label || "") 
 
 function frame() {
   document.querySelector(".brief-bg")?.remove();
-  const bg = document.createElement("div"); bg.className = "brief-bg"; bg.setAttribute("role", "dialog"); bg.setAttribute("aria-label", "Брифинг");
+  const bg = document.createElement("div"); bg.className = "brief-bg"; bg.setAttribute("role", "dialog"); bg.setAttribute("aria-label", "Сегодня");
   bg.addEventListener("keydown", (e) => { if (e.key === "Escape" && !document.querySelector(".driver-popover")) close(); });
   document.body.append(bg);
   return bg;
 }
 function close() { document.querySelector(".brief-bg")?.remove(); }
 const head = (title, sub, btns = "") => `<div class="bh"><h2>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ""}</h2>${btns}
-  <button class="icon" data-bx aria-label="Закрыть брифинг">${ic("x")}</button></div>`;
+  <button class="icon" data-bx aria-label="Закрыть «Сегодня»">${ic("x")}</button></div>`;
+
+// «Сегодня» открывается сразу (владелец 21.11: «без ожидания — заранее загружен, потом обновляется»): панель
+// заранее забирает брифинг (prefetch, ядро — через несколько секунд после загрузки); открыли — показываем готовый
+// и тихо спрашиваем свежий: сервер отдаёт готовый сразу, а свежий собирает в фоне (webapp.brief_get).
+let ready = null;                                     // идущий запрос prefetch
+export function prefetch() {
+  if (D || ready) return ready;
+  return ready = api("/api/brief").then((d) => { D = d; }, () => {}).finally(() => { ready = null; });
+}
 
 export async function briefOpen(mode) {
   const bg = frame();
-  bg.innerHTML = `<div class="brief">${head("Брифинг", "собираю…")}<div class="empty">Читаю почту, календарь и задачи — несколько секунд.</div></div>`;
+  if (ready && !D && mode !== "fresh") await ready;
+  if (D?.sel?.chosen && D.brief && mode !== "fresh" && mode !== "prefs") {
+    briefView(bg);
+    return later(bg, 0);
+  }
+  bg.innerHTML = `<div class="brief">${head("Сегодня", "собираю…")}<div class="empty">Читаю почту, календарь и задачи — несколько секунд.</div></div>`;
   bg.querySelector("[data-bx]").onclick = close;
-  try { D = await api("/api/brief" + (mode === "fresh" ? "?fresh=1" : "")); } catch (e) { close(); return toast("Брифинг: " + e.message, 4500); }
+  try { D = await api("/api/brief" + (mode === "fresh" ? "?fresh=1" : "")); } catch (e) { close(); return toast("Сегодня: " + e.message, 4500); }
   if (mode === "prefs" || !D.sel?.chosen) return pickView(bg, !D.sel?.chosen);
   briefView(bg);
+  if (D.stale) later(bg, 1);
+}
+
+// тихое обновление открытого экрана: перерисовываем, только если что-то изменилось и человек не в туре и не в
+// настройке; сервер собирает свежий в фоне — второй вопрос через несколько секунд
+function later(bg, n) {
+  setTimeout(() => api("/api/brief").then((d) => {
+    if (!bg.isConnected || !bg.querySelector(".bl")) return;
+    const changed = JSON.stringify(d.brief) !== JSON.stringify(D.brief);
+    D = d;
+    if (changed && !document.querySelector(".driver-popover")) briefView(bg);
+    if (d.stale && n < 3) later(bg, n + 1);
+  }, () => {}), n ? 6000 : 300);
 }
 
 function briefView(bg) {
@@ -89,7 +116,7 @@ function briefView(bg) {
       <div class="yes">${srcHtml(r.source)}${r.yes ? ` · «Да» — ${esc(r.yes)}` : ""}</div>
       <div class="acts">${r.act ? `<button class="btn ghost sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button><button class="btn quiet sm" data-a="chat">В чат</button></div></div>`).join("");
   const off = (b.sources || []).filter((s) => s.state === "error" || s.state === "none");
-  bg.innerHTML = `<div class="brief">${head("Брифинг", at && "на " + at,
+  bg.innerHTML = `<div class="brief">${head("Сегодня", at && "на " + at,
       `<button class="icon" data-btour aria-label="Тур по брифингу">${ic("help")}</button><button class="icon" data-bprefs aria-label="Источники и время" data-tour="brief-prefs">${ic("settings")}</button><button class="icon" data-bfresh aria-label="Обновить">${ic("refresh")}</button>`)}
     <div class="bl" data-tour="brief-head">${esc(b.headline)}</div>
     ${blocks}
@@ -128,7 +155,7 @@ function pickView(bg, first) {
   const cal = (c) => `<label><input type="checkbox" data-cal="${esc(c)}"${chk((sel.calendars || []).includes(c))}><span>Календарь · ${esc(c)}</span></label>`;
   const opt = (id, t, sub, ok) => `<label class="${ok ? "" : "dis"}"><input type="checkbox" data-src="${id}"${chk(ok && on(id))}${ok ? "" : " disabled"}><span>${t}<small>${sub}</small></span></label>`;
   let every = sch.every || "workdays", days = [...(sch.days || [0, 1, 2, 3, 4])];
-  bg.innerHTML = `<div class="brief bpick">${head(first ? "Что включить в брифинг?" : "Брифинг: источники и время")}
+  bg.innerHTML = `<div class="brief bpick">${head(first ? "Что показывать в «Сегодня»?" : "«Сегодня»: что, во сколько, откуда")}
     <p class="more">${first ? "Выберите, что подключить. Поменять можно всегда: «Настройки» → «Брифинг». " : ""}Письма и события читает код, а не модель; ничего не отправляется без вашего «Да».</p>
     <h3>${ic("mail")}Почта</h3>${(av.boxes || []).map(box).join("") || '<div class="empty">Ящик не подключён — «Интеграции» → «Почта».</div>'}
     <h3>${ic("cal")}Календарь</h3>${(av.calendars || []).map(cal).join("") || '<div class="empty">Календарь не подключён — «Интеграции» → «Календари»${(av.calkeys || []).length ? ": " + av.calkeys.filter((k) => !k.on).map((k) => esc(k.title)).join(", ") : ""}.</div>'}
