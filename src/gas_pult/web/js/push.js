@@ -72,7 +72,7 @@ export async function open() {
   try { [devs, sub] = await Promise.all([DEMO ? { devices: [] } : api("/api/push/devices").then((d) => d.devices), mine()]); } catch (e) { return toast(e.message, 5000); }
   const on = !!sub, here = on ? await devId(sub.endpoint) : "";
   // одна строка с тумблером справа (Gemini №11): включить — подписка; выключить — отписка этого устройства
-  const deviceRow = { label: "На этом устройстве", icon: "phone", toggle: on, sub: on ? "даже когда панель закрыта"
+  const deviceRow = { label: "На этом устройстве", icon: "bell", toggle: on, sub: on ? "даже когда панель закрыта"
     : ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте Гаврилу оттуда" : "браузер спросит разрешение",
     run: on ? async () => { try { await api("/api/push/unsubscribe", { id: here }); await sub.unsubscribe(); } catch (e) {} toast("Выключено на этом устройстве", 3000); open(); }
       : () => enable().then(open, (e) => toast("Не вышло: " + e.message, 6000)) };
