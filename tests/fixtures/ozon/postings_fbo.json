@@ -1,0 +1,38 @@
+{
+ "_source": "POST /v3/posting/fbo/list — docs.ozon.ru/api/seller (через Context7 /websites/ozon_ru_api_seller и зеркало github.com/etozhearut/ozon-seller-api), 19.11.2026 — пример ответа из документации, данные выдуманные; не проверено на песочнице",
+ "has_next": false,
+ "cursor": "",
+ "postings": [
+  {
+   "posting_number": "9121072335-0187-1",
+   "order_id": 39127012767,
+   "order_number": "9121072335-0187",
+   "status": "delivered",
+   "substatus": "posting_received",
+   "cancellation": null,
+   "products": [
+    {
+     "is_marketplace_buyout": false,
+     "offer_id": "TERMO-500",
+     "name": "Термокружка 500 мл",
+     "sku": 1000123456,
+     "quantity": 1,
+     "price": {
+      "amount": "2990",
+      "currency": "RUB"
+     },
+     "digital_codes": []
+    }
+   ],
+   "legal_info": null,
+   "external_order": {
+    "is_external": false,
+    "platform_name": ""
+   },
+   "cancel_reason_id": 0,
+   "created_at": "2026-11-17T23:59:51.653736Z",
+   "in_process_at": "2026-11-18T00:00:07.716614Z",
+   "additional_data": []
+  }
+ ]
+}

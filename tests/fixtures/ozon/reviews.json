@@ -1,0 +1,33 @@
+{
+ "_source": "POST /v2/review/list — docs.ozon.ru/api/seller (через Context7 /websites/ozon_ru_api_seller и зеркало github.com/etozhearut/ozon-seller-api), 19.11.2026 — пример ответа из документации, данные выдуманные; не проверено на песочнице",
+ "reviews": [
+  {
+   "id": "017c0d1c-66d3-b838-3d29-cf9b95a6ac48",
+   "sku": 1000123456,
+   "text": "Крышка подтекает, чай остывает за час.",
+   "published_at": "2026-11-18T07:23:55.970Z",
+   "rating": 2,
+   "status": "NEW",
+   "comments_amount": 0,
+   "photos_amount": 1,
+   "videos_amount": 0,
+   "order_status": "DELIVERED",
+   "is_rating_participant": true
+  },
+  {
+   "id": "017c0d53-a7c8-81ef-53de-7d32fcbd7421",
+   "sku": 1000123457,
+   "text": "Отличный органайзер, всё влезло.",
+   "published_at": "2026-11-17T10:00:00.000Z",
+   "rating": 5,
+   "status": "VIEWED",
+   "comments_amount": 0,
+   "photos_amount": 0,
+   "videos_amount": 0,
+   "order_status": "DELIVERED",
+   "is_rating_participant": true
+  }
+ ],
+ "has_next": true,
+ "last_id": "017c0d53-a7c8-81ef-53de-7d32fcbd7421"
+}
