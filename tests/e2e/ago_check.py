@@ -84,8 +84,8 @@ def run(base: str, shots: str = "") -> None:
                     pg.screenshot(path=f"{shots}/ago-list-{w}-{theme}.png")
                 pg.locator(".card[data-id='@2'] .name").click()
                 where = "#subtitle .ago" if w > 1000 else "#target .ago"         # телефон — строка «куда пишете»
-                pg.wait_for_selector(where)
-                head = pg.inner_text(where)
+                pg.wait_for_selector(where, state="attached")       # телефон: строка спрятана (Gemini №2)
+                head = pg.text_content(where).strip()
                 want = "изменена 4 минуты назад · ваше сообщение — 25 минут назад" if w > 1000 else "4 мин"
                 assert head == want, head
                 if shots:
