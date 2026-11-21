@@ -85,6 +85,9 @@
   .toprow { padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 4px; }
   .tabsbar { padding: 0 12px 8px; } .tabsbar .seg { margin: 0; }
   .titles { flex: 1; min-width: 0; padding: 0 4px; }
+  #chatMoreBtn { display: none; } body.in-chat:not(.split):not(.focus) #chatMoreBtn { display: grid; }
+  body.in-chat:not(.split):not(.focus) #helpBtn, body.in-chat:not(.split):not(.focus) #settingsBtn,
+  body:not(.focus) #title .caret { display: none; }
   .gmark { flex: none; display: inline-block; color: var(--text-primary); background: currentColor;   /* знак v2: цвет — из темы */
            -webkit-mask: url(brand/gavrila-mark.svg) center / contain no-repeat; mask: url(brand/gavrila-mark.svg) center / contain no-repeat; }
   .nmark { width: 9px; height: 22px; margin: 0 4px 0 2px; } .lmark { display: block; width: 20px; height: 54px; margin: 4px 0 8px; }
@@ -1162,6 +1165,7 @@
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
     <button class="hpill" id="helpBtn" data-tour="help" aria-label="Подсказать: что делать на этом экране"></button>
     <button class="icon" id="settingsBtn" data-tour="settings" aria-label="Настройки"></button>
+    <button class="icon" id="chatMoreBtn" aria-label="Действия с чатом"></button>
   </div>
   <div class="focus-exp" id="focusExp" hidden role="status"></div>
   <div class="tabsbar" id="tabsBar" data-tour="tabs" hidden><div class="seg" id="tabs"><button data-tab="chat" class="on"></button><button data-tab="screen"></button></div></div>
@@ -1596,7 +1600,7 @@ function paintIcons() {
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("compose") + "Новый чат";
   $("navBtn").innerHTML = ic("burger"); $("composeBtn").innerHTML = ic("compose"); $("navSearchBtn").innerHTML = ic("search");
-  $("navMoreBtn").innerHTML = ic("more"); $("navFoldBtn").innerHTML = ic("fold"); $("navSet").innerHTML = ic("settings") + "<span>Настройки</span>"; $("navCloseBtn").innerHTML = ic("x"); $("navNew").innerHTML = ic("compose") + "<span>Новый чат</span>";
+  $("navMoreBtn").innerHTML = $("chatMoreBtn").innerHTML = ic("more"); $("navFoldBtn").innerHTML = ic("fold"); $("navSet").innerHTML = ic("settings") + "<span>Настройки</span>"; $("navCloseBtn").innerHTML = ic("x"); $("navNew").innerHTML = ic("compose") + "<span>Новый чат</span>";
   document.querySelector('[data-tab="chat"]').innerHTML = ic("chat", "s16") + "Переписка";
   document.querySelector('[data-tab="screen"]').innerHTML = ic("term", "s16") + "Экран";
   // Две строки по четыре; «Завершить» — в верхнем левом углу, дальше всего от большого пальца, и с подтверждением.
@@ -2421,6 +2425,7 @@ function show(v) {
   const gate = ["login", "terms", "country", "persona"].includes(v);   // вход, условия, страна, роль — без списка и меню
   const two = split() && !["terms", "country", "persona"].includes(v);  // одной колонкой, без списка сессий
   document.body.classList.toggle("split", two);
+  document.body.classList.toggle("in-chat", v === "session");   // телефон: шапка чата «≡ · Название · ⋯» (Gemini №3)
   if (DRAFT && (v !== "session" || current)) { DRAFT = null; paintDraft(); }   // ушли из нового чата
   applyWide(); renderRail(); queueMicrotask(agoTick);   // «N назад» на открывшемся экране — сразу свежие
   $("pick").hidden = true;                           // компьютер: без открытой сессии — главная в основной колонке
@@ -4155,6 +4160,7 @@ function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   helpSheet("sheet.session");
   sheet(dn(s), shortMenu([
+    ...(!split() && !FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // шапка телефона — без «?» (Gemini №3)
     ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
@@ -5280,7 +5286,8 @@ const sessionActions = (s) => sessionSheet(s.id);          // долгое на�
 // Переименовать: своё поле ввода (prompt() в Telegram на iPhone ненадёжен). Имя — как в tmux: без «:» и «.».
 function renameSession(s) { part("rename").then((m) => m.rename(s)); }   // название чата и имя окна (js/rename.js)
 $("switchBtn").onclick = openSwitcher;
-$("title").onclick = () => { if (view !== "session" || split()) return; if (FOCUS && !FOCUS_DEMO() && !meta.focus.proj && cur()) renameSession(cur()); else openSwitcher(); };
+$("title").onclick = () => { if (view !== "session" || split()) return; if (FOCUS && !FOCUS_DEMO() && !meta.focus.proj && cur()) renameSession(cur()); else if (FOCUS) openSwitcher(); };   // Gemini №3: без второго списка
+$("chatMoreBtn").onclick = () => current && sessionSheet(current);
 $("screenBtn").onclick = () => setTab(tab === "chat" ? "screen" : "chat");
 // Жесты (телефон, в сессии): по шапке влево-вправо — соседняя сессия. От левого края — назад (backDrag); панель чатов — ☰.
 let swipe = null;
@@ -6799,7 +6806,7 @@ async function focusStart() {
   keepAwake(); restoreDraft();
 }
 $("backBtn").onclick = back;
-$("target").onclick = () => { haptic("selectionChanged"); openSwitcher(); };   // «куда уйдёт» у поля ввода — сменить сессию
+$("target").onclick = () => { haptic("selectionChanged"); FOCUS ? openSwitcher() : split() ? navSearch(true) : navOpen(true); };   // сменить чат — панель чатов (Gemini №3)
 
 // ---------- что работает у поставщика и автотест поставщиков (задача 38, ADR-0002) ----------
 // Поля профиля (models.py): limits — не работает, unsure — под вопросом, works — работает ([{id, names}]), alt — какие
@@ -7002,7 +7009,7 @@ const HELP_GO = {                                      // действие ка�
   "go:integrations": () => goHome("integrations"),
   "go:models": () => { goHome("integrations"); setTimeout(() => $("modelsBox")?.scrollIntoView({ behavior: "smooth" }), 400); },
   "go:voice": () => { goHome("integrations"); setTimeout(() => $("voiceBox")?.scrollIntoView({ behavior: "smooth" }), 600); },
-  "go:switch": () => (sessions.length ? openSwitcher() : goHome("sessions")),
+  "go:switch": () => (sessions.length ? (FOCUS ? openSwitcher() : split() ? navSearch(true) : navOpen(true)) : goHome("sessions")),
   "go:session.chat": () => goSession("chat"),
   "go:session.screen": () => goSession("screen"),
   "go:session.menu": () => goSession("chat").then((ok) => { if (ok && $("menu").hidden) $("menuBtn").click(); }),
