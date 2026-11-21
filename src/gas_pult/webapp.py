@@ -4882,8 +4882,16 @@ def handler(panel: Panel):
             """Страница прочитала токен из «#focus=…» и отдала сюда: cookie устройства (первое открытие — привязка).
             Ссылка не действует — ``focus.Gone``: ответ 410 даёт ``dispatch`` (один ответ на запрос)."""
             b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
-            value, rec = panel.focus.open(str((b if isinstance(b, dict) else {}).get("token") or ""),
-                                          self.focus_cookie(), webauth.device(self.client()[1]))
+            token = str((b if isinstance(b, dict) else {}).get("token") or "")
+            # владелец 21.11: «по фокус-ссылке должны быть все инструменты такие же, как и без неё». Ссылку открыл
+            # сам владелец на устройстве, где он вошёл, — открываем обычную панель на этом чате (все инструменты);
+            # устройство к ссылке не привязываем (слоты устройств — для того, кому ссылку отправили)
+            ouid = panel.auth.uid(self.session()) if self.session() else None
+            if ouid is not None and (ouid == webauth.LEGACY or panel.is_owner(ouid)):
+                r0 = panel.focus.check_token(token)
+                if r0 and r0.get("mode") != focus.SPACE and not focus.Focus.is_demo(r0):
+                    return {"ok": True, "owner_here": True, "w": r0.get("w") or "", "proj": r0.get("proj") or ""}
+            value, rec = panel.focus.open(token, self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
             if rec.get("mode") == focus.SPACE and rec.get("space") and not panel.people.accepted(focus.vuid(rec["id"])):
                 # владелец 19.11: «попал по ссылке — значит проверен; не спрашивать ни про страну, ни про что» —

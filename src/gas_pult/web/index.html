@@ -123,7 +123,7 @@
   /* Фокус (задача 41): одна сессия — без списка, переключения, создания и общих настроек */
   body:not(.focus) .focus-only { display: none; }
   body:not(.focus):not(.tester) #menuBtn { display: none !important; }   /* «4 квадрата» нет (Gemini №2): режим и интеграции — в строке поля */
-  body.drafting #modeChip, body.drafting #mcpChip, body.focus #modeChip, body.focus #mcpChip { display: none !important; }
+  body.drafting #modeChip, body.drafting #mcpChip, body.focus-demo #modeChip, body.focus #mcpChip { display: none !important; }
   #modeChip { flex: none; max-width: 40%; } body:not(.split):not(.focus) #target { display: none; }   /* телефон: чат — в шапке */
   body:not(.split):not(.focus) #modeChip { margin-left: auto; }
   body.focus #backBtn, body.focus #settingsBtn, body.focus #switchBtn, body.focus-demo #rail, body.focus #railNew, body.focus #railSettings, body.focus #home, body.focus #homeBar,
@@ -6585,6 +6585,7 @@ async function focusStart() {
   try {
     const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN }) : null;   // первое открытие — привязка устройства
     if (o?.mode === "space") return location.replace(location.pathname + "?slink");   // ссылка на пространство — полная панель
+    if (o?.owner_here) return location.replace(location.pathname + (o.w ? "?session=" + encodeURIComponent(o.w) : ""));   // владелец — обычная панель
     meta = await api("/api/meta"); BUILD = meta.build;
   } catch (e) { return focusEnd(e.message); }
   document.body.dataset.role = FOCUS_DEMO() ? "demo" : "owner";   // демо: сервер — «наблюдатель», кнопки вопроса — есть
