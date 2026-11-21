@@ -15,8 +15,8 @@ function groups() {
   const mode = store("theme") || "auto", THEME = { auto: "как в системе", light: "светлая", dark: "тёмная" };
   return [
     { title: "Внешний вид и язык", icon: "eye", items: [
-    { label: "Тема: " + THEME[mode], icon: "eye", sub: "нажмите — следующая: как в системе → светлая → тёмная",
-      run: () => { store("theme", { auto: "light", light: "dark", dark: "auto" }[mode]); applyTheme(); open(0); } },
+    { label: "Тема", icon: "eye", seg: [["auto", "Система"], ["light", "Светлая"], ["dark", "Тёмная"]], cur: mode,   // Gemini №11
+      run: (v) => { if (!v || v === mode) return open(0); store("theme", v); applyTheme(); open(0); } },
     ...(tgBig() ? [{ label: "Во весь экран на планшете: " + (store("tgFull") === "0" ? "нет" : "да"), icon: "expand", run: () => {
       const on = store("tgFull") === "0"; store("tgFull", on ? "1" : "0"); try { on ? tg.requestFullscreen() : tg.exitFullscreen(); } catch (e) {} } }] : []),
     { label: `Размер текста: ${Math.round(fontPx / FONT.def * 100)} %`, icon: "edit", sub: "A− / A+", run: () => part("zoom").then(() => fontSheet()) },
