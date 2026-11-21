@@ -57,6 +57,7 @@ from gas_pult import (
     chatmcp,
     country,
     ctxsnap,
+    deskmobile,
     drive_inbox,
     emailcode,
     fallback,
@@ -5412,6 +5413,11 @@ def handler(panel: Panel):
                 uid = uid if uid is not None else webauth.LEGACY
                 return ("cookie", desk_cookie(desk_pass(uid)),
                         {"url": DESKTOP_URL, "tab": "/desktop-enter?t=" + desk_ticket(uid)})
+            if path == "/api/desktop/mobile":             # мобильный вид сайтов, пока стол смотрят с телефона (21.11)
+                on = bool(b.get("on"))
+                if on and not desktop_up():
+                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
+                return deskmobile.MOBILE.set(on, b.get("w"), b.get("h"), b.get("dpr"))
             if path == "/api/brief/prefs":                # брифинг: источники, время, дни, пояс — у каждого свои
                 return panel.brief_set(self.terms_uid(), b)
             if path == "/api/brief/act":                  # «Да / Нет / Позже»; «Да» с действием — после confirm
