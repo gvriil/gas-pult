@@ -57,4 +57,10 @@ def manifest(name: str = NAME_RU) -> dict:
                       {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
                       {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
                       {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"},
-                      {"src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml"}]}
+                      {"src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml"}],
+            # «Поделиться» на Android (Chrome, установленное приложение; share.py): фото, ссылка, файл → POST /share.
+            # iPhone (Safari) share_target не поддерживает — там «Быстрая команда» и /api/share.
+            "share_target": {"action": "/share", "method": "POST", "enctype": "multipart/form-data",
+                             "params": {"title": "title", "text": "text", "url": "url",
+                                        "files": [{"name": "files", "accept": ["image/*", "video/*", "audio/*",
+                                                                               "application/pdf", "text/*", "*/*"]}]}}}
