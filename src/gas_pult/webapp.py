@@ -70,6 +70,7 @@ from gas_pult import (
     models,
     modules,
     notifylevel,
+    notifyroute,
     offer_report,
     offers,
     oidc,
@@ -1794,6 +1795,30 @@ class Panel:
         return {**country.public(rec), **self.geo.info(), "need": False,                     # 20.11: не спрашиваем
                 "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
                 "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
+
+    def notify_info(self, uid) -> dict:
+        """Уведомления, часть B (notifyroute.py): каналы и события человека. Каналы и события — у владельцев: бот
+        шлёт уведомления им; остальным — только устройства (Web Push)."""
+        rec = notifyroute.Store(self.cfg.data / "notify_channels.json").get(uid)
+        mail = self.people.email(uid)
+        return {"owner": self.is_owner(uid), "push": rec["push"], "telegram": rec["telegram"],
+                "devices": len(self.push.devices(uid)),
+                "email": {"can": self.email.enabled, "addr": bool(mail.get("address")),
+                          "on": bool(mail.get("notify") and mail.get("address"))},
+                "events": [{"id": k, "label": v, "on": rec["events"][k], "email": k not in notifyroute.NO_EMAIL}
+                           for k, v in notifyroute.EVENTS.items()]}
+
+    def notify_set(self, uid, b: dict) -> dict:
+        if not self.is_owner(uid):
+            raise focus.Denied("каналы и события — у владельца пульта", "owner")   # 403
+        patch = {k: b[k] for k in ("push", "telegram", "events") if k in b}
+        if patch:
+            notifyroute.Store(self.cfg.data / "notify_channels.json").set(uid, patch)
+        if "email" in b:
+            if not isinstance(b["email"], bool):
+                raise ValueError("email: да или нет")
+            self.email.options(uid, None, b["email"])
+        return self.notify_info(uid)
 
     def is_owner(self, uid) -> bool:
         try:
@@ -4000,6 +4025,8 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/prefs":
                 return panel.prefs(self.terms_uid(), self.who()[1])
+            if path == "/api/notify/prefs":                  # куда и о чём сообщать (notifyroute.py)
+                return panel.notify_info(self.push_uid())
             if path in ("/api/push/key", "/api/push/devices", "/api/push/last"):   # уведомления на телефон — свои
                 uid = self.push_uid()
                 if path == "/api/push/key":
@@ -4774,6 +4801,8 @@ def handler(panel: Panel):
                 return panel.stt_retry(str(b.get("id", "")), self.terms_uid())
             if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
                 return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
+            if path == "/api/notify/prefs":
+                return panel.notify_set(self.push_uid(), b)
             if path in ("/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test"):
                 uid = self.push_uid()
                 if path == "/api/push/subscribe":

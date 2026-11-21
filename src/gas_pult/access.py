@@ -84,7 +84,7 @@ OIDC_OWN = ("/api/oidc", "/api/oidc/link", "/api/oidc/unlink")
 OIDC_PATH = re.compile(r"^/api/login/oidc/(google|yandex)/(start|back)$")
 # Уведомления на телефон (webpush.py): подписки и «ящик» — свои у каждого вошедшего, в том числе у наблюдателя.
 PUSH_OWN = ("/api/push/key", "/api/push/subscribe", "/api/push/unsubscribe", "/api/push/devices", "/api/push/test",
-            "/api/push/last")
+            "/api/push/last", "/api/notify/prefs")   # и каналы/события (notifyroute.py): менять — владелец
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
 # Отметки короткого тура (пройден / «Не сейчас») — настройка самого человека: менять может и наблюдатель.

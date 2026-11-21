@@ -10,7 +10,7 @@ async function emailSheet() {
     const body = !d.enabled ? `<p class="note" style="margin:4px 16px 8px">Почта на этом пульте не настроена. Владелец включает её в config.toml (секция [email]) — инструкция в docs/AUTH.md.</p>`
       : step === "view" ? `<p class="note" style="margin:4px 16px 4px">Привязана: <b>${esc(d.address)}</b>${d.at ? " · " + ccDate(d.at) : ""}. По ней можно войти в пульт кодом из письма.</p>
           ${tog("second_factor", "lock", "Код с почты после входа через Telegram", "второй фактор: без кода из письма вход не завершится")}
-          ${tog("notify", "bell", "Оповещения на почту", "письмо, когда сессия встала на паузу по расходу")}
+          ${tog("notify", "bell", "Уведомления на почту", "что выбрано в «Уведомлениях», кроме ответов чатов")}
           <button data-em="change">${ic("edit")}<span>Сменить адрес</span></button>
           <button data-em="remove" class="danger">${ic("power")}<span>Отвязать почту<small>вход по почте и письма перестанут работать</small></span></button>`
       : `<div class="field" style="margin:4px 16px 10px"><label for="emsAddr">Адрес почты</label><input id="emsAddr" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254" placeholder="name@example.com" value="${esc(addr)}"></div>

@@ -26,7 +26,7 @@ function groups() {
     { label: "Ключи входа — Face ID", icon: "key", sub: "вход без Telegram: Face ID, отпечаток или PIN устройства", run: keysSheet },
     ...(meta?.space && meta?.role !== "owner" ? [{ label: T("dev.title"), icon: "phone", sub: T("dev.sub"), run: deviceSheet }] : []),
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
-    { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о паузе по расходу", run: () => part("email").then(() => emailSheet()) },
+    { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма-уведомления", run: () => part("email").then(() => emailSheet()) },
     { label: "Уведомления", icon: "bell", sub: pushState(), run: () => part("push").then((m) => m.open()) },
     ] },
     { title: "ИИ, интеграции и бюджет", icon: "chip", items: [

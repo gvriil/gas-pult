@@ -57,6 +57,7 @@ from gas_pult import (
     models,
     modules,
     notifylevel,
+    notifyroute,
     offers,
     people,
     projects,
@@ -307,6 +308,11 @@ class Pult:
         text, kw = self.screen_msg(w, "Claude ждёт выбора:")
         msgs = ep["msgs"] if ep else {}
         for chat in self.cfg.owners:
+            ch = self.channels(chat, "dialog")
+            if "push" in ch and not ep:                          # новый вопрос — и на телефон
+                self.push_one(chat, f"«{self.label(w)}» ждёт вашего выбора", w["id"], title=self.label(w))
+            if "telegram" not in ch:
+                continue
             try:
                 if chat in msgs:
                     try:
@@ -320,30 +326,64 @@ class Pult:
                 print("send:", e, flush=True)
         shown[w["id"]] = {"msgs": msgs, "hash": h, "t": now}
 
-    def broadcast(self, text: str, **kw):
+    def broadcast(self, text: str, kind: str = "error", **kw):
+        """Одна точка доставки владельцам (notifyroute.py): Telegram, телефон и почта — что выбрал каждый.
+        ``kind`` — вид события (answer, dialog, error, brief, people); кнопки решения — всегда и в Telegram."""
         for chat in self.cfg.owners:
-            try:
-                self.send(chat, text, **kw)
-            except TelegramError as e:
-                print("send:", e, flush=True)
-        self.push_owners(text)
+            ch = self.channels(chat, kind, action="reply_markup" in kw)
+            if "telegram" in ch:
+                try:
+                    self.send(chat, text, **kw)
+                except TelegramError as e:
+                    print("send:", e, flush=True)
+            if "push" in ch:
+                self.push_one(chat, text)
+            if "email" in ch:
+                self.mail_one(chat, text)
+
+    def _hub(self):
+        return self.__dict__.setdefault("_push", webpush.Hub(self.cfg.data / "push"))
+
+    def channels(self, uid: int, kind: str, action: bool = False) -> set[str]:
+        """Каналы владельца ``uid`` для события ``kind``. Бот без данных (заготовка в тестах) — только Telegram."""
+        cfg = getattr(self, "cfg", None)
+        if cfg is None or not getattr(cfg, "data", None):
+            return {"telegram"}
+        try:
+            push = bool(self._hub().devices(uid))
+        except (OSError, ValueError):
+            push = False
+        mail, email = getattr(self, "mail", None), False
+        try:
+            rec = mail.people.email(uid) if mail is not None and mail.enabled else {}
+            email = bool(rec.get("notify") and rec.get("address"))
+        except (AttributeError, OSError, ValueError):
+            email = False
+        rec = notifyroute.Store(cfg.data / "notify_channels.json").get(uid)
+        return notifyroute.route(rec, kind, push=push, email=email, action=action)
+
+    def push_one(self, uid: int, text: str, w: str = "", title: str = brand.NAME_RU):
+        try:
+            self._hub().notify(uid, title, self.PUSH_PLAIN.sub("", str(text or "")).strip(), w)
+        except (OSError, ValueError) as e:
+            print("push:", e, flush=True)
+
+    def mail_one(self, uid: int, text: str, subject: str = ""):
+        """Письмо в фоне: SMTP не задерживает монитор."""
+        body = self.PUSH_PLAIN.sub("", str(text or "")).strip()
+        subject = subject or body.split("\n", 1)[0][:80] or brand.NAME_RU
+        threading.Thread(target=emailcode.notify_email, args=(self.mail, uid, subject, body), daemon=True).start()
 
     PUSH_PLAIN = re.compile(r"^[^\w«\[(]+")                       # значок-эмодзи в начале — не в заголовок пуша
 
-    def push_owners(self, text: str, w: str = "", title: str = brand.NAME_RU):
-        """То же, что владелец получает в Telegram, — и на телефон (Web Push, webpush.py), если он включил
-        уведомления на каком-то устройстве (владелец 20.11). Нет подписок — ничего не пишем."""
+    def push_owners(self, text: str, w: str = "", title: str = brand.NAME_RU, kind: str = "dialog"):
+        """На телефон (Web Push, webpush.py) тем владельцам, у кого есть устройства и выбран этот вид событий."""
         cfg = getattr(self, "cfg", None)
         if cfg is None or not getattr(cfg, "data", None):
             return
-        hub = self.__dict__.setdefault("_push", webpush.Hub(cfg.data / "push"))
-        body = self.PUSH_PLAIN.sub("", str(text or "")).strip()
         for uid in cfg.owners:
-            try:
-                if hub.devices(uid):
-                    hub.notify(uid, title, body, w)
-            except (OSError, ValueError) as e:
-                print("push:", e, flush=True)
+            if "push" in self.channels(uid, kind):
+                self.push_one(uid, text, w, title)
 
     def to(self, chat: int):
         return lambda text, **kw: self.send(chat, text, **kw)
@@ -1165,7 +1205,10 @@ class Pult:
     def deliver(self, w: dict, text: str):
         n = self.remember(w, text)
         rows, msgs = [[("🔊", f"say:{n}"), ("✅ Да", f"yes:{w['id']}"), ("✏️ Ответить", f"act:{w['id']}")]], {}
+        to = {chat: self.channels(chat, "answer") for chat in self.cfg.owners}
         for chat in self.cfg.owners:
+            if "telegram" not in to[chat]:
+                continue
             try:
                 msgs[chat] = self.send_answer(chat, f"[{self.label(w)}]", text, wid=w["id"],
                                               reply_markup=kb(rows)).get("message_id")
@@ -1175,7 +1218,9 @@ class Pult:
                 self.ev("answer_tg_fail", w=w["id"], code=e.description[:60],
                                   err=str(e)[:120])
         self.hint_wait[w["id"]] = {"t": time.time(), "msgs": msgs, "rows": rows}
-        self.push_owners(text, w["id"], title=self.label(w))     # ответ — и на телефон
+        for chat, ch in to.items():                              # ответ — и на телефон, если выбран
+            if "push" in ch:
+                self.push_one(chat, text, w["id"], title=self.label(w))
         self.cmds.offer(w, text, self.broadcast, kb)
         if self.state()["voice_always"]:
             for chat in self.cfg.owners:
@@ -1252,7 +1297,7 @@ class Pult:
                             continue
                         if len(texts) > self.BURST:            # пачка за 3 с — сбой, а не переписка
                             self.broadcast(f"[{self.label(w)}] пропущено ответов: {len(texts) - 1} — они в панели. "
-                                           "Последний:")
+                                           "Последний:", kind="answer")
                         for text in texts[-1:] if len(texts) > self.BURST else texts:
                             self.deliver(w, text)
                 self.pi_answers([w for w in ws if harness.of(w).name in harness.JOURNAL_ONLY], st)
@@ -1301,7 +1346,8 @@ class Pult:
                 continue
             new = got[n:]
             if len(new) > self.BURST:
-                self.broadcast(f"[{self.label(w)}] пропущено ответов: {len(new) - 1} — они в панели. Последний:")
+                self.broadcast(f"[{self.label(w)}] пропущено ответов: {len(new) - 1} — они в панели. Последний:",
+                               kind="answer")
                 new = new[-1:]
             for text in new:
                 self.deliver(w, text)
@@ -1454,11 +1500,10 @@ class Pult:
             if p["w"] in paused:
                 paused[p["w"]]["interrupted"] = True
                 self.set_state(cost_paused=paused)
-        self.broadcast(usage.question(p), reply_markup=kb([[("▶️ Продолжить, +лимит", f"cost:go:{p['w']}"),
-                                                            ("⏹ Остановить", f"cost:stop:{p['w']}")]]))
-        for uid in self.cfg.owners:                         # и письмом — тем владельцам, кто включил оповещения
-            emailcode.notify_email(self.mail, uid, "Сессия на паузе по расходу",
-                                   usage.question(p).removeprefix("💰 ") + "\nРешить — в боте или в панели.")
+        # письмо и телефон — через ту же точку доставки (notifyroute.py): кто включил почту, получит письмо
+        self.broadcast(usage.question(p), kind="dialog",
+                       reply_markup=kb([[("▶️ Продолжить, +лимит", f"cost:go:{p['w']}"),
+                                         ("⏹ Остановить", f"cost:stop:{p['w']}")]]))
 
     def cost_decide(self, wid: str, act: str) -> str:
         """Решение владельца (кнопка в боте или в панели) → state.json. «Продолжить» — окна, где ход прервали Esc,
@@ -1501,7 +1546,7 @@ class Pult:
         if not items:
             return chat and self.send(chat, "☀️ Ничего не ждёт вашего решения.")
         text, kbd = digest.render(items)
-        return self.send(chat, text, reply_markup=kbd) if chat else self.broadcast(text, reply_markup=kbd)
+        return self.send(chat, text, reply_markup=kbd) if chat else self.broadcast(text, kind="brief", reply_markup=kbd)
 
     # ---------- утренний брифинг первого лица (brief.py, GAS-18) ----------
     def brief_now(self, now: datetime | None = None, uid: int | None = None) -> dict:
@@ -1540,7 +1585,7 @@ class Pult:
         for r in brief.hot(b):
             if r["key"] in new:
                 text, kbd = brief.decision_msg(1, r, self.panel_url("brief"))
-                self.broadcast("🚨 Срочно:" + text[2:], parse_mode="HTML", disable_web_page_preview=True,
+                self.broadcast("🚨 Срочно:" + text[2:], kind="brief", parse_mode="HTML", disable_web_page_preview=True,
                                reply_markup=kbd)
 
     def send_features(self, now: datetime):
@@ -1548,7 +1593,7 @@ class Pult:
         r = features.report(features.Uses(self.cfg.data / "features.json"), now.timestamp(),
                             month=features.previous(now))
         path = features.write(self.cfg.data, r)
-        self.broadcast(features.telegram(r, path))
+        self.broadcast(features.telegram(r, path), kind="brief")
 
     def morning_tick(self, now: datetime):
         """Утро — одно сообщение: брифинг по расписанию каждого владельца (время, дни, пояс — его выбор; по
@@ -1848,14 +1893,16 @@ class Pult:
                                       f" --session-id {sid}", mark=w.get("mark") or "claude")
                     self.tmux.set_sid(w["id"], sid)
                     self.send_later(w["id"], item["prompt"])
-                    self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{self.label(w)}» ({item['title']}).")
+                    self.broadcast(f"🗓 {name}: запустил по расписанию в окне «{self.label(w)}» ({item['title']}).",
+                                   kind="brief")
                     continue
                 if not setup.installed(self.cfg.claude):
-                    self.broadcast(f"🗓 {name}: {item['at']} — Claude Code не установлен, задание не отправлено.")
+                    self.broadcast(f"🗓 {name}: {item['at']} — Claude Code не установлен, задание не отправлено.",
+                                   kind="brief")
                     continue
                 by = modules.mark_of(folder).get("by")
                 if not models.allowed("claude", self.countries(by if by is not None else self.cfg.owners[0])):
-                    self.broadcast(f"🗓 {name}: {item['at']} — {country.DENY}")
+                    self.broadcast(f"🗓 {name}: {item['at']} — {country.DENY}", kind="brief")
                     continue
                 home = self.claude_dir(by) if by is not None else None
                 sid = str(uuid.uuid4())
@@ -1865,12 +1912,12 @@ class Pult:
                 if not home:
                     self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(self.cfg.owners[0]))
                 self.send_later(wid, item["prompt"])
-                self.broadcast(f"🗓 {name}: открыл сессию по расписанию ({item['title']}).")
+                self.broadcast(f"🗓 {name}: открыл сессию по расписанию ({item['title']}).", kind="brief")
             except (NotReady, Denied) as e:
                 if not item.get("every"):                # «каждые N минут» — следующий круг скоро: не дёргаем
-                    self.broadcast(f"🗓 {name}: {item['at']} — задание не отправлено: {e}")
+                    self.broadcast(f"🗓 {name}: {item['at']} — задание не отправлено: {e}", kind="brief")
             except (RuntimeError, OSError) as e:
-                self.broadcast(f"🗓 {name}: {item['at']} — не вышло: {e}")
+                self.broadcast(f"🗓 {name}: {item['at']} — не вышло: {e}", kind="brief")
 
     # ---------- экраны пульта ----------
     def show_windows(self, chat: int):
@@ -2116,7 +2163,7 @@ class Pult:
             return
         p = next((x for x in self.people.list() if x["id"] == uid), {})
         who = p.get("name") or (f"@{p['username']}" if p.get("username") else "человек")
-        self.broadcast(country.notice(who, uid, rec))
+        self.broadcast(country.notice(who, uid, rec), kind="people")
 
     def country_update(self, u: dict) -> bool:
         """От участников и наблюдателей бот принимает только страну: кнопки, код, контакт, «Позже», /start phone."""
@@ -2545,7 +2592,7 @@ class Pult:
         self.menu_for(u["id"])
         send("✅ Telegram привязан — вернитесь в браузер. Панель теперь открывается и кнопкой «📱 Панель» внизу чата.")
         self.broadcast(f"🔗 {rec.get('name') or name} привязал(а) Telegram (@{u.get('username') or '—'}, "
-                       f"ID {u['id']}) — тестировщик в пространстве «{rec.get('tenant') or '—'}».")
+                       f"ID {u['id']}) — тестировщик в пространстве «{rec.get('tenant') or '—'}».", kind="people")
 
     def web_sessions(self) -> Auth:
         return Auth(self.cfg.data / "web_sessions.json")
@@ -2577,7 +2624,7 @@ class Pult:
         self.menu_for(u["id"])
         self.broadcast(f"🎟 {name} (@{u.get('username') or '—'}, ID {u['id']}) вошёл по приглашению — "
                        f"{TITLES[inv['role']]}, тестировщик в пространстве «{inv['tenant']}». Убрать — «Настройки» → "
-                       "«Люди».")
+                       "«Люди».", kind="people")
         return inv["role"]
 
     def ask_owner(self, u: dict, offer: dict | None = None):
@@ -2598,7 +2645,7 @@ class Pult:
         rows = [[("👤 Участник", f"pp:member:{u['id']}"), ("👁 Наблюдатель", f"pp:viewer:{u['id']}")]]
         if self.spaces():                                  # демо-пространства включены — можно пустить только туда
             rows.append([("🧪 Тестировщик в пространстве…", f"pt:{u['id']}")])
-        self.broadcast(text, reply_markup=kb([*rows, [("✖️ Отказать", f"pp:no:{u['id']}")]]))
+        self.broadcast(text, kind="people", reply_markup=kb([*rows, [("✖️ Отказать", f"pp:no:{u['id']}")]]))
 
     # ---------- тестировщики демо-пространств (задача 31, docs/TENANTS.md) ----------
     def spaces(self) -> list[dict]:
@@ -2685,7 +2732,7 @@ class Pult:
         self.help_calls[uid] = now
         person = next((p for p in self.people.list() if p["id"] == uid), {"id": uid})
         text, kbd = testers.help_message(person, slug, testers.pick(testers.windows(slug)), self.panel_url())
-        self.broadcast(text, **({"reply_markup": kbd} if kbd else {}))
+        self.broadcast(text, kind="people", **({"reply_markup": kbd} if kbd else {}))
         self.send(chat, "🆘 Позвал владельца пульта — он получил сообщение с вашей сессией и подключится.")
 
     def send_testers(self, chat: int | None = None):
@@ -2693,7 +2740,7 @@ class Pult:
         text = testers.report(self.people, self.meter)
         if chat:
             return self.send(chat, text or "Тестировщиков нет.")
-        return text and self.broadcast(text)
+        return text and self.broadcast(text, kind="people")
 
     def send_invite(self, chat: int, slug: str):
         """/invite <пространство> [срок 1d|7d|30d|90d|365d] [входов N, 0 — без лимита] [доступ дней] (владелец):
