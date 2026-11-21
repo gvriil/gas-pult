@@ -9,6 +9,10 @@ portfolio-hq/products/meeting-notes-research-2026-11-19.md).
 экране не обещаем: для длинной встречи — Диктофон iPhone и файл.
 
 Хранение состояния — ``<данные>/meetings.json`` (0600): только открытые встречи по чату, тексты кусков.
+
+**Поручения вслух** (владелец 20.11): во время записи человек говорит «Клод, запиши …» — фрагмент становится отдельным
+пунктом-поручением протокола (дословно, с отметкой времени); «Клод, … отправь …» — агент готовит черновик отправки,
+отправка — только после «Да». Слова-обращения: Клод, Клауд, Claude, Гаврила (так их пишет распознавание речи).
 """
 
 from __future__ import annotations
@@ -89,6 +93,33 @@ def transcript(m: dict) -> str:
     return "\n\n".join(out)
 
 
+WAKE = r"(?:клод|клауд|claude|гаврил[аы]?)"
+# обращение → «запиши» или «отправь» → текст до конца фразы (точка, «!», «?», перевод строки)
+CMD = re.compile(WAKE + r"[\s,:—–-]+(запиши|отправь)\b[\s,:—–-]*(.*?)(?=[.!?…](?:\s|$)|\n|$)", re.I | re.S)
+SEND = re.compile(r"[\s,]*(?:и\s+)?отправь\b", re.I)
+
+
+def commands(m: dict) -> list[dict]:
+    """Поручения вслух: [{at: "ЧЧ:ММ" от начала, kind: note | send, text}] — по порядку."""
+    out = []
+    for p in m.get("pieces", []):
+        mm = int((p["at"] - m["started"]) // 60)
+        for verb, text in CMD.findall(p.get("text", "")):
+            text = text.strip(" ,:—–-")
+            kind = "send" if verb.lower() == "отправь" or SEND.search(text) else "note"
+            text = SEND.sub("", text).strip(" ,:—–-") if verb.lower() == "запиши" else text
+            if text:
+                out.append({"at": f"{mm // 60:02d}:{mm % 60:02d}", "kind": kind, "text": text})
+    return out
+
+
+def commands_md(cmds: list[dict]) -> str:
+    """Файл «поручения.md» рядом с расшифровкой: что сказали записать и что — отправить (после «Да»)."""
+    head = "# Поручения, сказанные вслух\n\n«Отправить» — только черновик; отправка — после «Да».\n"
+    return head + "\n".join(f"- [{c['at']}] {'Отправить' if c['kind'] == 'send' else 'Записать'}: {c['text']}"
+                             for c in cmds) + "\n"
+
+
 def folder_for(m: dict, drive: Path | None, data: Path) -> tuple[Path, bool]:
     """Папка встречи: на Диске клиента ``Встречи/ГГГГ-ММ-ДД ЧЧ-ММ встреча`` или локально. (папка, на Диске ли)."""
     name = time.strftime("%Y-%m-%d %H-%M", time.localtime(m["started"])) + " встреча"
@@ -102,6 +133,8 @@ def save(m: dict, drive: Path | None, data: Path) -> tuple[Path, bool]:
     d, on_drive = folder_for(m, drive, data)
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     (d / "расшифровка.txt").write_text(transcript(m) + "\n", encoding="utf-8")
+    if cmds := commands(m):
+        (d / "поручения.md").write_text(commands_md(cmds), encoding="utf-8")
     for f in m.get("files", []):
         src = Path(f)
         if src.is_file():
@@ -110,10 +143,18 @@ def save(m: dict, drive: Path | None, data: Path) -> tuple[Path, bool]:
     return d, on_drive
 
 
-def prompt(folder: Path, on_drive: bool) -> str:
+def prompt(folder: Path, on_drive: bool, cmds: list[dict] | None = None) -> str:
     """Задание агенту в чате «Встречи»: протокол по формату, потом действия — каждое после «Да»."""
     where = "на Диске" if on_drive else "на сервере (Диск не подключён — скажите об этом в итоге)"
-    return (f"Протокол встречи. Расшифровка: «{folder / 'расшифровка.txt'}» ({where}). Сделай протокол простым "
+    said = ""
+    if cmds:
+        said = ("\nПоручения, сказанные вслух («Клод, запиши / отправь»), — отдельным разделом «Поручения» в начале "
+                "протокола, дословно, с отметкой времени; не теряй и не перефразируй:\n"
+                + "\n".join(f"- [{c['at']}] {'Отправить' if c['kind'] == 'send' else 'Записать'}: {c['text']}"
+                             for c in cmds)
+                + "\nДля «Отправить» подготовь черновик (кому, текст) и спроси «Да / Нет / Позже» — сам не отправляй.")
+    head = said.lstrip("\n") + ("\n\n" if said else "")
+    return head + (f"Протокол встречи. Расшифровка: «{folder / 'расшифровка.txt'}» ({where}). Сделай протокол простым "
             "языком и сохрани рядом как «протокол.md»:\n1. Тема и дата.\n2. Участники — предложи по тексту и спроси "
             "меня вопросом с вариантами, кого отметить.\n3. Решения — по пунктам, с отметкой времени.\n4. Задачи: "
             "что, кто, срок.\n5. Открытые вопросы.\nПотом спроси вопросом с вариантами, что сделать: «Разослать "

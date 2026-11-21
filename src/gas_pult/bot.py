@@ -960,7 +960,9 @@ class Pult:
         if arg == "ok":
             self.meetings.open(chat)
             self.send(chat, "▶️ Встреча начата. Присылайте голосовые, аудиофайлы из Диктофона или текст — кусками "
-                            "можно. Всё — «Готово — протокол».", reply_markup=kb(self.MT_KB["open"]))
+                            "можно. Скажите вслух «Клод, запиши …» — это станет поручением в протоколе; «Клод, "
+                            "отправь …» — черновик, отправка после «Да». Всё — «Готово — протокол».",
+                      reply_markup=kb(self.MT_KB["open"]))
             if m := self.mt_wait.pop(chat, None):
                 self.meeting_piece(chat, m)
             return None
@@ -996,7 +998,7 @@ class Pult:
                         f"{folder}\nДелаю протокол в чате «Встречи» — ответ придёт сюда.")
         root = self.cfg.roots()[0] / "meetings"
         root.mkdir(parents=True, exist_ok=True)
-        self.open_session(chat, "meetings", str(root), first=meetings.prompt(folder, on_drive))
+        self.open_session(chat, "meetings", str(root), first=meetings.prompt(folder, on_drive, meetings.commands(mt)))
 
     QUIT_WAIT, QUIT_STEP = 20.0, 0.5                # длинная переписка: Claude выходит дольше 4 с — ждём до 20 с
 
