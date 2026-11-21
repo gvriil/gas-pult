@@ -59,8 +59,47 @@ function groups() {
 const brief = (items) => [...new Set(items.filter((x) => !x.head && !x.danger)
   .map((x) => x.label.split(/ — |:/)[0].trim()).map((t) => /^[А-ЯЁ][а-яё]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t))].slice(0, 4).join(", ");
 
+// ПК (Gemini №6, приём 2): одно окно 720×560 — слева разделы, справа пункты; без «‹ Назад», × справа вверху.
+// Строится из обычной шторки раздела (те же пункты и обработчики); вложенные окна «‹ Назад» возвращают сюда же.
+const WIDE_CSS = `.sheet.setwide { width: min(720px, calc(100vw - 32px)); max-width: 720px; height: min(560px, calc(100vh - 48px));
+  display: flex; padding: 0; overflow: hidden; }
+.setwide .setnav { flex: none; width: 248px; padding: 12px 8px; border-right: 1px solid var(--border-subtle);
+  background: var(--bg-subtle); display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.setwide .setnav button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 6px 10px;
+  border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-secondary); text-align: left;
+  font-size: calc(14px * var(--fz, 1)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setwide .setnav button span { overflow: hidden; text-overflow: ellipsis; }
+.setwide .hpill.insheet { right: 52px; }
+.setwide .setnav button.on { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; }
+.setwide .setpane { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 4px 12px; position: relative; }
+.setwide .cancel, .setwide .sback { display: none; }
+.setwide .setx { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; min-height: 0; padding: 0;
+  border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-secondary); display: grid; place-items: center; }`;
+const wide = () => split() && innerWidth >= 900;
+function openWide(at, gs) {
+  if (!document.getElementById("setwideCss")) document.head.insertAdjacentHTML("beforeend", `<style id="setwideCss">${WIDE_CSS}</style>`);
+  const g = gs[at];
+  const back = (run) => (v) => { if (sheetFrom) sheetFrom.open = () => open(at); return run(v); };   // «‹ Назад» — в это окно
+  helpSheet("settings");
+  sheet(g.title, g.items.map((x) => (x.run ? { ...x, run: back(x.run) } : x)));
+  const s = [...document.querySelectorAll(".sheet-bg .sheet")].at(-1); if (!s) return;
+  const pane = document.createElement("div"); pane.className = "setpane";
+  pane.append(...[...s.childNodes]);
+  pane.insertAdjacentHTML("afterbegin", `<button class="setx" data-close aria-label="Закрыть">${ic("x")}</button>`);
+  const nav = document.createElement("nav"); nav.className = "setnav"; nav.setAttribute("aria-label", "Разделы настроек");
+  nav.innerHTML = gs.map((x, i) => `<button type="button" data-sec="${i}" class="${i === at ? "on" : ""}">${ic(x.icon)}<span>${esc(x.title)}</span></button>`).join("")
+    + (meta?.via === "browser" ? `<button type="button" data-out class="danger" style="margin-top:auto">${ic("power")}<span>Выйти</span></button>` : "");
+  nav.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.out) return void api("/api/logout", {}).then(showLogin);
+    open(+b.dataset.sec);                             // старое окно уберёт сама шторка (нажата кнопка)
+  });
+  s.classList.add("setwide"); s.append(nav, pane);
+}
+
 export function open(at) {                            // at — номер раздела: открыть его сразу (тема переключилась)
   const gs = groups();
+  if (wide()) return openWide(gs[at] ? at : 0, gs);
   if (at != null && gs[at]) { helpSheet("settings"); return sheet(gs[at].title, gs[at].items); }
   helpSheet("settings");
   sheet("Настройки", [
