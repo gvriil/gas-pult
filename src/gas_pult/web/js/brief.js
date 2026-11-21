@@ -29,7 +29,7 @@ body:has(.brief-bg) .notices { z-index: 61; }   /* сообщения («Сох�
 .brief .src .i { width: 13px; height: 13px; }
 .brief a.src { color: var(--accent-primary); text-decoration: none; }
 .brief .dec { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 7px 10px; margin-top: 6px; font-size: 14px; line-height: 1.3; background: var(--bg-surface); }
-.brief .dec.hot { border-color: var(--status-approval); background: var(--status-approval-bg); }
+.brief .dec.hot { border-color: color-mix(in srgb, var(--status-approval) 45%, var(--border-subtle)); }   /* Gemini №14: без грязной заливки */
 .brief .yes { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .brief .acts { display: flex; gap: 6px; margin-top: 6px; }
 .brief .acts .btn { flex: 1; min-height: 34px; padding-block: 4px; }
@@ -50,6 +50,8 @@ const srcHtml = (s) => {
   const inner = ic(KIND_IC[s.kind] || "ext") + esc(s.label);
   return s.url ? `<a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<span class="src">${inner}</span>`;
 };
+// Строки разработки (PR GitHub, HANDOFF.md) — разработчику (Gemini №14 [У]); у остальных — письма, встречи, задачи
+const devOnly = (r) => !dev() && ["github", "handoff"].includes(r.source?.kind);
 const rowHtml = (r) => `<li>${esc(r.text)} · ${srcHtml(r.source)}${r.why ? `<div class="why">${esc(r.why)}</div>` : ""}</li>`;
 
 function frame() {
@@ -73,11 +75,15 @@ export async function briefOpen(mode) {
 }
 
 function briefView(bg) {
-  const b = D.brief, at = (b.at || "").slice(11, 16);
+  const b = { ...D.brief }, at = (b.at || "").slice(11, 16);
+  for (const [k] of BLOCKS) if (b[k]) b[k] = b[k].filter((r) => !devOnly(r));
+  b.decisions = (b.decisions || []).filter((r) => !devOnly(r)); if (b.today) b.today = b.today.filter((r) => !devOnly(r));
+  const nd = b.decisions.length;                     // заголовок сервера считает и скрытые строки — число по видимым
+  if (nd !== (D.brief.decisions || []).length) b.headline = String(b.headline || "").replace(/(\d+)\s+решени[а-я]*/, nd + " " + plural(nd, ["решение", "решения", "решений"]));
   const blocks = BLOCKS.map(([k, t, i]) => b[k]?.length ? `<section data-tour="brief-${k}"><h3>${ic(i)}${t}</h3><ul>${b[k].map(rowHtml).join("")}</ul>${b.more?.[k] ? `<div class="more">…и ещё ${b.more[k]}</div>` : ""}</section>` : "").join("");
   const decs = b.decisions.map((r, n) => `<div class="dec${r.cat ? " hot" : ""}" data-n="${n}"><div>${esc(r.text)}</div>
       <div class="yes">${srcHtml(r.source)}${r.yes ? ` · «Да» — ${esc(r.yes)}` : ""}</div>
-      <div class="acts">${r.act ? `<button class="btn sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button></div></div>`).join("");
+      <div class="acts">${r.act ? `<button class="btn ghost sm" data-a="yes">Да</button>` : ""}<button class="btn quiet sm" data-a="no">Нет</button><button class="btn quiet sm" data-a="later">Позже</button></div></div>`).join("");
   const off = (b.sources || []).filter((s) => s.state === "error" || s.state === "none");
   bg.innerHTML = `<div class="brief">${head("Брифинг", at && "на " + at,
       `<button class="icon" data-btour aria-label="Тур по брифингу">${ic("help")}</button><button class="icon" data-bprefs aria-label="Источники и время" data-tour="brief-prefs">${ic("settings")}</button><button class="icon" data-bfresh aria-label="Обновить">${ic("refresh")}</button>`)}
