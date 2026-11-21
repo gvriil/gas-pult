@@ -24,7 +24,7 @@ export function open() {
         const min = Math.round((r.ttl || 600) / 60);
         const at = r.at ? new Date(r.at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "";
         msg(r.via === "email" ? `Код отправлен на ${r.to}. Он действует ${min} минут.`
-          : `Код отправлен${at ? " в " + at : ""} в Telegram, в чат ${r.chat ? "«" + r.chat + "»" : "с ботом"} — он закреплён сверху. Нажмите там «✅ Подтвердить вход» или введите код. Действует ${min} минут.`);
+          : `Код отправлен${at ? " в " + at : ""} в Telegram, в чат ${r.chat ? "«" + r.chat + "»" : "с ботом"} — он закреплён сверху. Нажмите там «Подтвердить вход» или введите код. Действует ${min} минут.`);
         const tgb = bg.querySelector("#cfBot");               // не пришёл — открыть чат с ботом (21.11)
         if (r.via !== "email" && r.bot) { tgb.hidden = false; tgb.onclick = () => { const u = "https://t.me/" + r.bot; try { tg?.openTelegramLink ? tg.openTelegramLink(u) : window.open(u, "_blank"); } catch (e) { window.open(u, "_blank"); } }; }
         inp.focus();
