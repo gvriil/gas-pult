@@ -26,6 +26,7 @@ KEEP_DAYS = 40                          # счётчики по дням — с 
 WINDOW = 30                             # дней: «не открывали» и «топ за месяц»
 ID = re.compile(r"^[a-z][a-z0-9_.:-]{1,60}$")
 MAX_IDS = 20                            # за один запрос панели
+STUCK = "stuck."                        # «где застревают»: stuck.err:<экран>, stuck.help:<экран> (панель)
 
 
 class Uses:
@@ -87,10 +88,14 @@ def report(uses: Uses, now: float | None = None, top: int = 15, month: str = "")
     old = now - WINDOW * 86400
     unused = sorted(((k, t, st.get(k, {}).get("last") or None) for k, t in cat.items()
                      if (st.get(k, {}).get("last") or 0) < old), key=lambda x: (x[2] or 0, x[0]))
-    used = sorted(((k, cat.get(k, k), v["month"]) for k, v in st.items() if v["month"]), key=lambda x: (-x[2], x[0]))
+    used = sorted(((k, cat.get(k, k), v["month"]) for k, v in st.items() if v["month"] and not k.startswith(STUCK)),
+                  key=lambda x: (-x[2], x[0]))
+    # где застревают (штаб 21.11): ошибка сервера на экране и «Подсказать» — по id экрана, без текста
+    stuck = sorted(((k.removeprefix(STUCK), v["month"]) for k, v in st.items() if k.startswith(STUCK) and v["month"]),
+                   key=lambda x: (-x[1], x[0]))
     first = min((v["last"] for v in st.values() if v["last"]), default=None)
     return {"month": month or datetime.fromtimestamp(now).strftime("%Y-%m"), "unused": unused, "top": used[:top],
-            "total": len(cat), "seen": len(st), "since": first}
+            "total": len(cat), "seen": len(st), "since": first, "stuck": stuck[:top]}
 
 
 def _day(ts: int | None) -> str:
@@ -105,6 +110,9 @@ def markdown(r: dict) -> str:
     lines += [f"- `{k}` — {t} (последний раз: {_day(last)})" for k, t, last in r["unused"]] or ["- таких нет"]
     lines += ["", f"## Чаще всего за {WINDOW} дней", ""]
     lines += [f"{i}. `{k}` — {t}: {n}" for i, (k, t, n) in enumerate(r["top"], 1)] or ["- пока нет данных"]
+    lines += ["", f"## Где застревают за {WINDOW} дней", "",
+              "`err:<экран>` — ошибка сервера на экране, `help:<экран>` — нажали «Подсказать». Минуты, без текста.", ""]
+    lines += [f"{i}. `{k}`: {n}" for i, (k, n) in enumerate(r.get("stuck") or [], 1)] or ["- пока нет данных"]
     return "\n".join(lines) + "\n"
 
 

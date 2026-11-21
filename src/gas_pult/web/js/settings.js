@@ -46,6 +46,7 @@ function groups() {
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Анкеты клиентов", icon: "file", sub: "ссылка клиенту — ответы сюда и в бот", run: () => part("forms").then((m) => m.open()) }] : []),
     ] },
     { title: "Система и справка", icon: "help", items: [
+    { label: "Отзыв", icon: "chat", sub: "что не так или что улучшить — текстом или голосом, со снимком экрана", run: () => part("feedback").then((m) => m.open()) },
     ...(meta?.role === "owner" && dev("dev_models_mcp") ? [{ label: T("st.title"), icon: "chip", sub: T("st.sub"), run: providersView }] : []),   // инженерный экран [У] (Gemini №13)
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Корзина чатов", icon: "trash", sub: "удалённые сессии и чаты — вернуть; скрытые — показать снова", run: chatTrash }] : []),

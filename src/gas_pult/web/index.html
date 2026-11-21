@@ -1968,6 +1968,7 @@ function palCmds() {
   const rw = meta?.role !== "viewer", own = meta?.role === "owner";
   return [
     rw && { id: "new", label: "Начать новый чат", icon: "compose", kw: "сессия создать", run: () => newChat() },
+    { id: "feedback", label: "Отзыв", icon: "chat", kw: "ошибка жалоба идея улучшить", run: () => part("feedback").then((m) => m.open()) },
     rw && { id: "folder", label: "Создать папку", icon: "plus", kw: "проект новая", run: () => go("go:new-folder") },
     rw && !meta?.space && { id: "modules", label: "Создать из модуля", icon: "puzzle", kw: "агент модули", run: () => go("go:modules") },
     { id: "home", label: "Открыть главную: сессии", icon: "chat", kw: "список", run: () => go("go:sessions") },
@@ -2337,6 +2338,7 @@ async function api(path, body, raw, extra, signal) {
     if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
     if (r.status === 403 && err.code === "country") showCountry();  // страна ещё не выбрана
     if (r.status === 403 && err.confirm === "code") { await confirmCode(); return api(path, body, raw, extra, signal); }
+    useMark("stuck.err:" + (USE.cur || "home"));   // features.py
     throw Object.assign(new Error(err.error || "ошибка " + r.status), { code: err.code || "" });
   }
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
@@ -6910,6 +6912,7 @@ async function helpAsk(bg, body, label) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 function openHelp() {
+  useMark("stuck.help:" + (USE.cur || "home"));
   if (document.querySelector(".help-bg")) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
   bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="${esc(L("help.title", "Помощник"))}"><h3>${ic("help", "s16")}${esc(L("help.title", "Помощник"))}</h3><div class="hwhere"></div>
