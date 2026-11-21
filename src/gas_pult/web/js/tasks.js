@@ -24,6 +24,8 @@ async function tasksLoad() {
   return TASKS;
 }
 
+// Название чата задачи — по смыслу (как в панели), не служебное имя окна tmux («tgi-0904»): сервер отдаёт имя окна
+const chatName = (t) => { const s = sessions.find((x) => x.id === t.chat_now); return (s && (s.title || s.name)) || t.chat_name || ""; };
 async function tasksOpen() {
   try { await tasksLoad(); } catch (e) { return toast("Задачи: " + e.message, 4500); }
   tasksSheet();
@@ -43,7 +45,7 @@ function fold(k) {
 }
 const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", /* срочность — точкой, не красным текстом (UI-обзор 20.11) */
   sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
-    t.chat_name ? "чат «" + t.chat_name + "»" : ""].filter(Boolean).join(" · "),
+    chatName(t) ? "чат «" + chatName(t) + "»" : ""].filter(Boolean).join(" · "),
   run: () => taskGo(t) });
 function tasksSheet(keep) {
   const open = TASKS.filter((t) => t.status !== "done"), done = TASKS.filter((t) => t.status === "done");
@@ -102,10 +104,10 @@ function taskSheet(t) {
     run: () => copyText(`Встреча: ${t.title}\nС кем: ${t.with || "—"}\nКогда: ${t.when || "—"}`, "Черновик встречи скопирован — приглашения не отправлены") });
   if (t.kind === "decision") {
     a.push({ info: true, icon: "help", label: t.question });
-    for (const o of t.options || []) a.push({ label: o, icon: "check", sub: t.chat_now ? "ответ уйдёт в чат «" + t.chat_name + "» дословно" : "чата задачи нет — только отметить", run: () => taskDecide(t, o) });
+    for (const o of t.options || []) a.push({ label: o, icon: "check", sub: t.chat_now ? "ответ уйдёт в чат «" + chatName(t) + "» дословно" : "чата задачи нет — только отметить", run: () => taskDecide(t, o) });
   }
   if (t.link) a.push({ label: "Открыть источник", icon: "ext", sub: t.link, run: () => openUrl(t.link) });
-  if (t.chat_now && t.chat_now !== current) a.push({ label: "Открыть чат «" + t.chat_name + "»", icon: "chat", run: () => openSession(t.chat_now) });
+  if (t.chat_now && t.chat_now !== current) a.push({ label: "Открыть чат «" + chatName(t) + "»", icon: "chat", run: () => openSession(t.chat_now) });
   a.push(t.status === "done" ? { label: "Вернуть в работу", icon: "refresh", run: () => taskSet(t, { status: "todo" }, "Задача снова в работе") }
     : { label: "Отметить выполненным", icon: "check", run: () => taskSet(t, { status: "done" }, "Выполнено") });
   if (t.status !== "done") a.push({ label: "Срочность и важность…", icon: "bolt", sub: Q_SHORT[t.q || 0], run: () => taskQ(t) },
