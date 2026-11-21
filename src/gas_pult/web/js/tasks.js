@@ -25,67 +25,163 @@ async function tasksLoad() {
 }
 
 // Название чата задачи — по смыслу (как в панели), не служебное имя окна tmux («tgi-0904»): сервер отдаёт имя окна
-const chatName = (t) => { const s = sessions.find((x) => x.id === t.chat_now); return (s && (s.title || s.name)) || t.chat_name || ""; };
+const chatName = (t) => { const s = sessions.find((x) => x.id === t.chat_now); return (s && (s.title || s.name)) || t.chat_title || t.chat_name || ""; };
 async function tasksOpen() {
   try { await tasksLoad(); } catch (e) { return toast("Задачи: " + e.message, 4500); }
   tasksSheet();
 }
 
-// Цвет задачи (владелец 17.11): красный — срочно и важно, оранжевый — ждёт вас, жёлтый — в работе, зелёный — готово
-const tqDot = (t, q) => (t.status === "done" ? "tq-g" : q === 1 ? "tq-r" : t.status === "waiting" ? "tq-o" : t.status === "doing" ? "tq-y" : "");
-// Группы сворачиваются по нажатию на заголовок (владелец 19.11: «таски удобно сворачивать по группировкам срочно-важно»);
-// состояние запоминается в браузере. «Ждут вас» — всегда первой группой; по умолчанию все открыты («как было»).
-const FOLD_KEY = "tq:fold";
+// Группы (владелец 21.11, ориентир — Things, Todoist, Linear): «Срочно», «Сегодня», «Позже», «Сделано» (свёрнуто).
+// Группу считает сервер (tasks.group, поле group); здесь — то же правило на случай старого ответа и для демо.
+const GROUPS = [["urgent", "Срочно"], ["today", "Сегодня"], ["later", "Позже"], ["done", "Сделано"]];
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function taskGroup(t) {
+  if (t.group) return t.group;
+  if (t.status === "done") return "done";
+  if (t.overdue || t.urgent === true || t.status === "waiting") return "urgent";
+  return t.due === today() || t.status === "doing" ? "today" : "later";
+}
+// Тон карточки — полоса слева: просрочено и срочно — красный, ждёт вас — оранжевый, в работе — жёлтый, сделано — зелёный
+const tone = (t) => (t.status === "done" ? "g" : t.overdue ? "over" : taskGroup(t) === "urgent" ? (t.status === "waiting" ? "o" : "r")
+  : t.status === "doing" ? "y" : taskGroup(t) === "today" ? "a" : "");
+const dueText = (t) => {
+  if (!t.due) return "";
+  if (t.overdue) return "просрочено: " + dayName(t.due);
+  return t.due === today() ? "сегодня" : "до " + dayName(t.due);
+};
+const dayName = (d) => { const x = new Date(d + "T12:00:00"); return isNaN(x) ? d : x.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }); };
+// Свёрнутые группы запоминаются в браузере (владелец 19.11: «таски удобно сворачивать по группировкам»);
+// «Сделано» свёрнуто по умолчанию — флаг для него означает «развернули».
+const FOLD_KEY = "gp.tasks.groups";
 function folds() { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch (e) { return {}; } }
+const folded = (k, f = folds()) => (k === "done" ? !f[k] : !!f[k]);
 function fold(k) {
   const f = folds(); f[k] ? delete f[k] : (f[k] = 1);
   try { localStorage.setItem(FOLD_KEY, JSON.stringify(f)); } catch (e) { /* без памяти — свернётся на этот раз */ }
+  const sh = document.querySelector(".sheet[data-tasks]"); if (sh) Y = sh.scrollTop;
   document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
   tasksSheet(true);
 }
-const taskRow = (t, q) => ({ label: t.title, dot: tqDot(t, q), icon: KIND_IC[t.kind] || "tasks", /* срочность — точкой, не красным текстом (UI-обзор 20.11) */
-  sub: [ST_T[t.status], KIND_T[t.kind], t.due ? (t.overdue ? "просрочено: " : "срок ") + t.due : "", "дальше: " + (t.next || "—"),
-    chatName(t) ? "чат «" + chatName(t) + "»" : ""].filter(Boolean).join(" · "),
-  run: () => taskGo(t) });
 // Gemini №14: задачи «Выполнить команду» — разработчику; на ПК окно задач — правой шторкой 400 px
 const mine = (t) => dev() || t.kind !== "command";
 const SIDE_CSS = `.sheet-bg.side { justify-content: flex-end; align-items: stretch; padding: 0; }
 .sheet-bg.side .sheet { width: 400px; max-width: 100vw; height: 100%; max-height: none; border-radius: 0; }`;
+// Карточки (владелец 21.11): рамка 1 px, радиус 12, полоса тона слева; заголовок 15/600, ниже «что дальше» и мета
+// приглушённо; справа — «Готово» (круг с галочкой) и ⋯. Нажатие на карточку — чат задачи и её действия.
+const CARD_CSS = `.sheet.tsk { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.tsk-add { display: flex; gap: 8px; align-items: center; margin: 2px 16px 10px; padding: 4px 4px 4px 12px; border: 1px solid var(--field-border); border-radius: 12px; background: var(--bg-surface); }
+.tsk-add:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 1px var(--border-focus); }
+.tsk-add .i { color: var(--text-secondary); flex: none; }
+.tsk-add input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: calc(16px * var(--fz, 1)); padding: 8px 0; }
+.tsk-add input::placeholder { color: var(--field-ph); }
+.tsk-add input[type=date] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.tsk-add { position: relative; }
+.sheet .tsk-add .tsk-due { width: auto; min-width: 40px; background: transparent; gap: 4px; padding: 0 8px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+.sheet .tsk-add .tsk-due .i { color: var(--text-secondary); } .sheet .tsk-add .tsk-due:hover { background: var(--bg-subtle); }
+.sheet .tsk-add .tsk-due span:empty { display: none; }
+.sheet .tsk-add button[type=submit] { width: 40px; min-height: 40px; padding: 0; justify-content: center; border-radius: 9px; background: var(--accent-primary); flex: none; }
+.sheet .tsk-add button[type=submit] .i { color: var(--on-accent); }
+.sheet .tsk-g { min-height: 40px; padding: 8px 16px; gap: 8px; font-size: calc(13px * var(--fz, 1)); font-weight: 600; color: var(--text-secondary); }
+.sheet .tsk-g span { flex: 0 1 auto; } .sheet .tsk-g em { font-style: normal; font-weight: 500; color: var(--text-muted); }
+.sheet .tsk-g .i { width: 16px; height: 16px; transition: transform .15s; } .sheet .tsk-g.off .i { transform: rotate(-90deg); }
+.sheet .tsk-g.r span { color: var(--tq-red); }
+.tsk-list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 6px; }
+.tsk-c { position: relative; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface); overflow: hidden; }
+.tsk-c::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: transparent; }
+.tsk-c.t-r::before, .tsk-c.t-over::before { background: var(--tq-red); } .tsk-c.t-o::before { background: var(--tq-orange); }
+.tsk-c.t-y::before { background: var(--tq-yellow); } .tsk-c.t-g::before { background: var(--tq-green); } .tsk-c.t-a::before { background: var(--accent-primary); }
+.tsk-c.t-over { border-color: var(--tq-red); }
+.tsk-c.just { box-shadow: 0 0 0 2px var(--border-focus); }
+.sheet .tsk-c button { min-height: 0; padding: 0; font-size: inherit; }
+.tsk-row { display: flex; align-items: flex-start; gap: 4px; }
+.sheet .tsk-c .tsk-b { flex: 1; min-width: 0; display: block; padding: 12px 4px 12px 16px; }
+.tsk-c:has(.tsk-m) .tsk-b { padding-bottom: 4px; }
+.tsk-t { display: block; font-size: calc(15px * var(--fz, 1)); font-weight: 600; line-height: 1.35; color: var(--text-primary); overflow-wrap: anywhere; }
+.tsk-c.t-g .tsk-t { color: var(--text-secondary); text-decoration: line-through; text-decoration-color: var(--text-muted); font-weight: 500; }
+.tsk-n { display: block; margin-top: 3px; font-size: calc(14px * var(--fz, 1)); color: var(--text-secondary); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tsk-m { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 0 12px 10px 16px; font-size: calc(12.5px * var(--fz, 1)); color: var(--text-muted); }
+.tsk-m .over { color: var(--tq-red); font-weight: 600; } .tsk-m .wait { color: var(--tq-orange); font-weight: 600; }
+.sheet .tsk-c .tsk-chat { display: inline-flex; align-items: center; gap: 4px; width: auto; color: var(--accent-primary); font-size: inherit; min-height: 24px; max-width: 100%; }
+.sheet .tsk-c .tsk-chat .i { width: 14px; height: 14px; color: inherit; }
+.tsk-chat span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tsk-acts { display: flex; flex: none; align-items: center; padding: 6px 6px 0 0; }
+.sheet .tsk-acts button { width: 40px; height: 40px; justify-content: center; border-radius: 10px; }
+.sheet .tsk-acts button:hover { background: var(--bg-subtle); }
+.tsk-ok { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.8px solid var(--text-muted); }
+.tsk-ok .i { width: 14px; height: 14px; opacity: 0; }
+.sheet .tsk-acts button:hover .tsk-ok .i { opacity: .6; }
+.tsk-c.t-g .tsk-ok { background: var(--tq-green); border-color: var(--tq-green); } .tsk-c.t-g .tsk-ok .i { opacity: 1; color: var(--bg-surface); }
+.tsk-empty { margin: 8px 16px 12px; padding: 18px 16px; border: 1px dashed var(--border-subtle); border-radius: 12px; color: var(--text-secondary); text-align: center; font-size: calc(14px * var(--fz, 1)); }`;
+function styles() {
+  if (!document.getElementById("tasksSideCss")) document.head.insertAdjacentHTML("beforeend", `<style id="tasksSideCss">${SIDE_CSS}\n${CARD_CSS}</style>`);
+}
+function card(t) {
+  const g = taskGroup(t), ch = chatName(t), due = dueText(t);
+  const meta = [due && `<span class="${t.overdue ? "over" : ""}">${esc(due)}</span>`,
+    t.status === "waiting" && '<span class="wait">ждёт вас</span>', t.status === "doing" && "<span>в работе</span>",
+    t.kind !== "other" && `<span>${esc(KIND_T[t.kind] || "")}</span>`,
+    t.status === "done" && t.done_at && `<span>сделано ${esc(when(t.done_at))}</span>`,
+    ch && (t.chat_now ? `<button type="button" class="tsk-chat" data-chat="${esc(t.id)}" aria-label="Открыть чат «${esc(ch)}»">${ic("chat")}<span>из чата «${esc(ch)}»</span></button>`
+      : `<span>из чата «${esc(ch)}»</span>`)].filter(Boolean);
+  return `<div class="tsk-c t-${tone(t)}" data-id="${esc(t.id)}" data-g="${g}"><div class="tsk-row">
+    <button type="button" class="tsk-b" data-go="${esc(t.id)}"><span class="tsk-t">${esc(t.title)}</span>${t.next && t.status !== "done" ? `<span class="tsk-n">${esc(t.next)}</span>` : ""}</button>
+    <span class="tsk-acts"><button type="button" data-done="${esc(t.id)}" aria-label="${t.status === "done" ? "Вернуть в работу" : "Готово"}" title="${t.status === "done" ? "Вернуть в работу" : "Готово"}"><i class="tsk-ok">${ic("check")}</i></button><button type="button" data-more="${esc(t.id)}" aria-label="Действия с задачей">${ic("more")}</button></span></div>${meta.length ? `<div class="tsk-m">${meta.join("")}</div>` : ""}</div>`;
+}
 function tasksSheet(keep) {
-  const all = TASKS.filter(mine);
-  const open = all.filter((t) => t.status !== "done"), done = all.filter((t) => t.status === "done");
-  const f = folds(), rows = [];
-  const group = (k, title, list, q) => {
-    if (!list.length) return;
-    rows.push({ label: `${title} · ${list.length}`, icon: f[k] ? "plus" : "chev", sub: f[k] ? "свёрнуто — нажмите, чтобы открыть" : "",
-      fold: 1, run: () => fold(k) });
-    if (!f[k]) rows.push(...list.map((t) => taskRow(t, q ?? (t.q || 0))));
-  };
-  const waiting = open.filter((t) => t.status === "waiting");
-  group("w", "Ждут вас", waiting);
-  for (const q of [1, 0, 2, 3, 4]) group(q, Q_T[q], open.filter((t) => (t.q || 0) === q && t.status !== "waiting"), q);
-  helpSheet("sheet.tasks");
-  sheet(`Задачи · не решено ${open.length}`, [
-    ...(open.length ? [] : [{ info: true, icon: "check", label: "Всё решено", sub: "агенты ставят задачи командой gas-pult task add" }]),
-    ...rows,
-    { label: "Добавить задачу", icon: "plus", run: () => taskNew() },
-    ...(done.length ? [{ head: `Выполнено · ${done.length}` },
-      ...done.slice(0, 15).map((t) => ({ label: t.title, dot: "tq-g", sub: "выполнено" + (t.done_at ? " · " + when(t.done_at) : ""), run: () => taskGo(t) }))] : []),
-  ]);
-  const sh = [...document.querySelectorAll(".sheet-bg .sheet")].pop();
-  if (!sh) return;
-  sh.dataset.tasks = "1";
-  if (split()) {
-    if (!document.getElementById("tasksSideCss")) document.head.insertAdjacentHTML("beforeend", `<style id="tasksSideCss">${SIDE_CSS}</style>`);
-    sh.parentElement.classList.add("side");
+  const all = TASKS.filter(mine), open = all.filter((t) => t.status !== "done");
+  const f = folds(), by = Object.fromEntries(GROUPS.map(([k]) => [k, []]));
+  for (const t of all) (by[taskGroup(t)] || by.later).push(t);
+  let body = "";
+  for (const [k, title] of GROUPS) {
+    const list = k === "done" ? by[k].slice(0, 30) : by[k];
+    if (!by[k].length) continue;
+    const off = folded(k, f);
+    body += `<button type="button" class="tsk-g${off ? " off" : ""}${k === "urgent" ? " r" : ""}" data-fold="${k}" aria-expanded="${!off}">${ic("chev")}<span>${title}</span><em>${by[k].length}</em></button>`;
+    if (!off) body += `<div class="tsk-list">${list.map(card).join("")}</div>`;
   }
+  styles();
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.tasks");
+  bg.innerHTML = `<div class="sheet tsk" role="dialog" aria-label="Задачи" data-tasks="1"><h3>Задачи${open.length ? " · не решено " + open.length : ""}</h3>
+    <form class="tsk-add" autocomplete="off">${ic("plus")}<input id="tskNew" maxlength="200" placeholder="Добавить задачу" aria-label="Новая задача — Enter, чтобы добавить" enterkeyhint="done"><button type="button" class="tsk-due" data-due aria-label="Срок — по желанию" title="Срок — по желанию">${ic("cal")}<span></span></button><input id="tskDue" type="date" tabindex="-1" aria-hidden="true"><button type="submit" aria-label="Добавить">${ic("plus")}</button></form>
+    ${open.length ? "" : `<p class="tsk-empty">Всё решено. Скажите агенту в чате «добавь задачу …» — она появится здесь.</p>`}
+    ${body}<button class="cancel" data-close>Закрыть</button></div>`;
+  document.body.append(bg);
+  const sh = bg.firstElementChild, byId = (id) => TASKS.find((x) => x.id === id);
+  bg.addEventListener("click", (e) => {
+    if (e.target === bg || e.target.closest("[data-close]")) return bg.remove();
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.fold) return fold(b.dataset.fold);
+    if (b.dataset.due != null) { const d = bg.querySelector("#tskDue"); try { d.showPicker(); } catch (er) { d.focus(); } return; }
+    if (b.dataset.chat) { const t = byId(b.dataset.chat); Y = sh.scrollTop; bg.remove(); return t && openSession(t.chat_now); }
+    if (b.dataset.done) { const t = byId(b.dataset.done); Y = sh.scrollTop;
+      return t && taskSet(t, { status: t.status === "done" ? "todo" : "done" }, t.status === "done" ? "Задача снова в работе" : "Готово"); }
+    if (b.dataset.more) { const t = byId(b.dataset.more); Y = sh.scrollTop; bg.remove(); sheetFrom = null; return t && taskSheet(t); }
+    if (b.dataset.go) { const t = byId(b.dataset.go); return t && taskGo(t); }
+  });
+  bg.querySelector("#tskDue").addEventListener("change", (e) => { bg.querySelector(".tsk-due span").textContent = e.target.value ? "до " + dayName(e.target.value) : ""; });
+  bg.querySelector(".tsk-add").addEventListener("submit", (e) => { e.preventDefault(); taskQuick(bg); });
+  if (split()) bg.classList.add("side");
   if (keep) sh.scrollTop = Y;
   sh.addEventListener("scroll", () => { Y = sh.scrollTop; }, { passive: true });
   if (JUST) {                                          // только что изменённая задача — подсветка на месте
-    const b = [...sh.querySelectorAll("button[data-i]")].find((x) => x.querySelector("span")?.firstChild?.textContent === JUST);
+    const c = [...sh.querySelectorAll(".tsk-c")].find((x) => x.querySelector(".tsk-t")?.textContent === JUST);
     JUST = "";
-    if (b) { b.classList.add("just"); if (b.offsetTop < sh.scrollTop || b.offsetTop > sh.scrollTop + sh.clientHeight - 40) b.scrollIntoView({ block: "center" }); }
-  }
+    if (c) { c.classList.add("just"); setTimeout(() => c.classList.remove("just"), 2400);
+      if (c.offsetTop < sh.scrollTop || c.offsetTop > sh.scrollTop + sh.clientHeight - 40) c.scrollIntoView({ block: "center" }); }
+  } else if (!keep && !matchMedia("(pointer: coarse)").matches) sh.querySelector("#tskNew").focus();
+}
+// «Добавить задачу» сверху: одна строка + Enter, срок — по желанию. Открыт чат — задача привязана к нему.
+async function taskQuick(bg) {
+  const inp = bg.querySelector("#tskNew"), due = bg.querySelector("#tskDue").value, title = inp.value.trim();
+  if (!title) return inp.focus();
+  const inChat = current && view === "session";
+  try {
+    await api("/api/tasks/add", { title, kind: "other", next: inChat ? "продолжить в чате" : "решить, с чего начать", ...(due ? { due } : {}),
+      ...(inChat ? { chat: current, sid: cur()?.sid || "", chat_title: (cur()?.title || cur()?.name || "").slice(0, 80) } : {}) });
+    haptic("notificationOccurred", "success");
+    JUST = title; await tasksLoad(); tasksCount(); back();
+    document.getElementById("tskNew")?.focus();
+  } catch (e) { toast("Не добавлено: " + e.message, 4500); }
 }
 const back = () => { document.querySelectorAll(".sheet-bg").forEach((x) => x.remove()); tasksSheet(true); };
 
@@ -116,7 +212,7 @@ function taskSheet(t) {
     for (const o of t.options || []) a.push({ label: o, icon: "check", sub: t.chat_now ? "ответ уйдёт в чат «" + chatName(t) + "» дословно" : "чата задачи нет — только отметить", run: () => taskDecide(t, o) });
   }
   if (t.link) a.push({ label: "Открыть источник", icon: "ext", sub: t.link, run: () => openUrl(t.link) });
-  if (t.chat_now && t.chat_now !== current) a.push({ label: "Открыть чат «" + chatName(t) + "»", icon: "chat", run: () => openSession(t.chat_now) });
+  if (t.chat_now) a.push({ label: "Открыть чат «" + chatName(t) + "»", icon: "chat", sub: "откуда пришла задача", run: () => t.chat_now !== current && openSession(t.chat_now) });
   if (!t.chat_now) a.push({ label: "Продолжить в чате", icon: "chat", sub: "новый чат — задача уже в поле ввода", run: () => {   // чата нет — новый
     document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
     chatWith(["Задача: " + t.title, t.next && "Дальше: " + t.next, t.due && "Срок: " + t.due, t.link && "Источник: " + t.link].filter(Boolean).join("\n") + "\n");
@@ -197,14 +293,8 @@ function taskNext(t) {
   textSheet("Что сделать дальше", t.next, "Одна строка: следующий шаг по задаче", (v) => taskSet(t, { next: v }, "Записал"));
 }
 
-function taskNew() {
-  textSheet("Новая задача", "", "Что нужно не забыть — коротко", (title) =>
-    textSheet("Что сделать дальше", "", "Первый шаг", async (next) => {
-      try {
-        await api("/api/tasks/add", { title, next, kind: "other", ...(current && view === "session" ? { chat: current, sid: cur()?.sid || "" } : {}) });
-        JUST = title; toast("Задача добавлена"); await tasksLoad(); tasksCount(); back();
-      } catch (e) { toast("Не добавлено: " + e.message, 4500); }
-    }));
+function taskNew() {                                   // «Добавить задачу» — поле сверху списка
+  tasksOpen().then(() => document.getElementById("tskNew")?.focus());
 }
 
-Object.assign(window, { tasksOpen, taskSheet, tasksLoad });
+Object.assign(window, { tasksOpen, taskSheet, tasksLoad, taskNew });

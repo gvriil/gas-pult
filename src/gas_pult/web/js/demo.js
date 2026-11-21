@@ -645,7 +645,8 @@ function demoQ(t) {
 function demoTaskCount() {
   const l = demoTaskList().filter((t) => t.status !== "done");
   return { open: l.length, waiting: l.filter((t) => t.status === "waiting").length, q1: l.filter((t) => demoQ(t).q === 1).length,
-    doing: l.filter((t) => t.status === "doing").length };
+    doing: l.filter((t) => t.status === "doing").length,
+    urgent: l.filter((t) => demoQ(t).overdue || t.urgent === true || t.status === "waiting").length };
 }
 function demoTasks(path, body) {
   const l = demoTaskList(), t = l.find((x) => x.id === body?.id);

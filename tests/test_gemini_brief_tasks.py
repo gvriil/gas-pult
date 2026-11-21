@@ -16,4 +16,4 @@ def test_brief():
 def test_tasks():
     js = (WEB / "tasks.js").read_text(encoding="utf-8")
     assert 'const mine = (t) => dev() || t.kind !== "command";' in js and "TASKS.filter(mine)" in js
-    assert ".sheet-bg.side .sheet { width: 400px;" in js and 'sh.parentElement.classList.add("side")' in js
+    assert ".sheet-bg.side .sheet { width: 400px;" in js and 'if (split()) bg.classList.add("side")' in js

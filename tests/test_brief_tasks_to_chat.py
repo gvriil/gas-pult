@@ -14,7 +14,8 @@ def test_core_helper():
 
 def test_tasks_every_task_has_a_way_to_chat():
     js = (WEB / "js/tasks.js").read_text(encoding="utf-8")
-    assert 'if (t.chat_now && t.chat_now !== current) a.push({ label: "Открыть чат «"' in js
+    assert 'if (t.chat_now) a.push({ label: "Открыть чат «"' in js                # и в списке — «из чата «…»» (21.11)
+    assert 'class="tsk-chat" data-chat=' in js
     assert 'if (!t.chat_now) a.push({ label: "Продолжить в чате"' in js and "chatWith([" in js
 
 

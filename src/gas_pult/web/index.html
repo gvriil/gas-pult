@@ -86,6 +86,9 @@
   .tabsbar { padding: 0 12px 8px; } .tabsbar .seg { margin: 0; }
   .titles { flex: 1; min-width: 0; padding: 0 4px; }
   #chatMoreBtn { display: none; } body.in-chat:not(.split):not(.focus) #chatMoreBtn { display: grid; }
+  #tasksTop { position: relative; } body.focus #tasksTop { display: none !important; }   /* «Задачи» справа сверху (21.11) */
+  #tasksTop b { position: absolute; top: 3px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--tq-red);
+    color: var(--bg-surface); font: 600 11px/17px system-ui, sans-serif; text-align: center; }
   body.in-chat:not(.split):not(.focus) #helpBtn, body.in-chat:not(.split):not(.focus) #settingsBtn,
   body:not(.focus) #title .caret { display: none; }
   .gmark { flex: none; display: inline-block; color: var(--text-primary); background: currentColor;   /* знак v2: цвет — из темы */
@@ -1152,6 +1155,7 @@
     <button class="icon" id="switchBtn" hidden aria-label="Другой чат"></button>
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
     <button class="hpill" id="helpBtn" data-tour="help" aria-label="Подсказать: что делать на этом экране"></button>
+    <button class="icon" id="tasksTop" type="button" hidden aria-label="Задачи" title="Задачи"></button>
     <button class="icon" id="settingsBtn" data-tour="settings" aria-label="Настройки"></button>
     <button class="icon" id="chatMoreBtn" aria-label="Действия с чатом"></button>
   </div>
@@ -3643,7 +3647,7 @@ async function refresh() {
     if (pv) projData = d;
     await dictReady;                                   // отрисовка (чипы запаса, «+ добавить») — из словаря (T); запрос — сразу
     sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)).map(named); costInfo = d.cost || null; limitsInfo = d.limits || null;
-    if (d.tasks && JSON.stringify(d.tasks) !== JSON.stringify(tasksInfo)) { tasksInfo = d.tasks; if (!$("spaces").hidden) tasksCount(); } agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
+    if (d.tasks && JSON.stringify(d.tasks) !== JSON.stringify(tasksInfo)) { tasksInfo = d.tasks; tasksTop(); if (!$("spaces").hidden) tasksCount(); } agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
@@ -7200,6 +7204,7 @@ function demoUrl() { const u = new URL(location.href); UI.simple ? u.searchParam
 let tasksInfo = null;                                  // {open, waiting} из опроса списка (/api/sessions, /api/projects)
 function paintSpaces() {
   const on = (meta?.role === "owner" || !!UI?.own_space) && (!DEMO || params.has("space")) && !SIM.on;   // демо: ?demo&space=1
+  tasksTop();
   $("spaces").hidden = !on; if (!on) return;
   $("spaces").querySelector(".sp-mine").hidden = !UI?.own_space || meta?.role === "owner";   // владельцу непонятно (17.11)
   $("spaces").querySelector(".sp-mine").innerHTML = ic("folder") + "Моё пространство";
@@ -7227,6 +7232,15 @@ function tasksCount() {
   const lab = "Задачи: " + (parts.map(([, k, w]) => k + " " + w).join(", ") || (n ? n + " открыто" : "всё решено"));
   b.setAttribute("aria-label", lab); $("navTasks").setAttribute("aria-label", lab);
 }
+// Кнопка «Задачи» справа в шапке (владелец 21.11): только владельцу (задачи — его), число — сколько срочных
+function tasksTop() {
+  const b = $("tasksTop"), n = (tasksInfo || {}).urgent ?? (tasksInfo || {}).q1 ?? 0;
+  b.hidden = meta?.role !== "owner" || SIM.on;
+  const html = ic("tasks") + (n ? `<b>${n > 99 ? "99+" : n}</b>` : "");
+  if (b.innerHTML !== html) b.innerHTML = html;
+  b.setAttribute("aria-label", n ? `Задачи: срочных ${n}` : "Задачи");
+}
+$("tasksTop").onclick = () => part("tasks").then(() => tasksOpen(), (er) => toast("Задачи не загрузились: " + er.message, 4500));
 $("spaces").addEventListener("click", (e) => {
   if (e.target.closest("[data-space=term]")) return part("links").then(() => shellOpen());
   if (e.target.closest("[data-space=desk]")) return part("desktop").then(() => deskOpen(), (er) => toast("Рабочий стол не загрузился: " + er.message, 4500));

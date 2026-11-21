@@ -1,14 +1,15 @@
-"""Задачи сверху (владелец 19.11: «таски удобно сворачивать по группировкам срочно-важно»): группы сворачиваются по
-нажатию на заголовок, состояние запоминается, в заголовке — счётчик; «Ждут вас» — первой группой."""
+"""Задачи: группы «Срочно», «Сегодня», «Позже», «Сделано» (владелец 21.11, ориентир — Things, Todoist, Linear)
+сворачиваются по нажатию на заголовок, состояние запоминается, в заголовке — счётчик; «Сделано» свёрнуто сразу."""
 
 from pathlib import Path
 
 JS = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/tasks.js").read_text(encoding="utf-8")
 
 
-def test_groups_fold_and_waiting_first():
-    body = JS[JS.index("function tasksSheet(keep) {"):JS.index('helpSheet("sheet.tasks")')]
-    assert body.index('group("w", "Ждут вас", waiting)') < body.index("for (const q of [1, 0, 2, 3, 4])")
-    assert 't.status !== "waiting"' in body                                     # в квадрантах — без «ждут вас»
-    assert "`${title} · ${list.length}`" in body and "run: () => fold(k)" in body # заголовок со счётчиком — кнопка
-    assert 'const FOLD_KEY = "tq:fold"' in JS and "localStorage.setItem(FOLD_KEY" in JS   # состояние запоминается
+def test_groups_fold_and_urgent_first():
+    assert 'const GROUPS = [["urgent", "Срочно"], ["today", "Сегодня"], ["later", "Позже"], ["done", "Сделано"]];' in JS
+    body = JS[JS.index("function tasksSheet(keep) {"):JS.index("async function taskQuick")]
+    assert 'data-fold="${k}"' in body and "<em>${by[k].length}</em>" in body           # заголовок со счётчиком — кнопка
+    assert "if (b.dataset.fold) return fold(b.dataset.fold);" in body
+    assert 'const folded = (k, f = folds()) => (k === "done" ? !f[k] : !!f[k]);' in JS   # «Сделано» — свёрнуто
+    assert "localStorage.setItem(FOLD_KEY" in JS                                         # состояние запоминается
