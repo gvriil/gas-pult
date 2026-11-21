@@ -3,9 +3,9 @@
 import time
 
 import pytest
+from test_tenant_testers import TESTER, call, open_tester_session, q, world  # noqa: F401
 
 from gas_pult import spaces, tenants, webauth
-from tests.test_tenant_testers import TESTER, call, open_tester_session, q, world  # noqa: F401
 
 
 def confirmed(w):
