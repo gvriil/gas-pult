@@ -15,6 +15,7 @@ STT_STREAM = "/api/stt/stream"                            # голос пото�
 # Только владельцу: выполнение команд, закрытие сессий, ключи, модели, люди.
 TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
 OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "/api/bridge/log",
+              "/api/bridge/drafts", "/api/bridge/confirm", "/api/bridge/reject", "/api/bridge/private",
               "/api/focus/browser",
               "/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
@@ -148,9 +149,9 @@ FOCUS_POST |= {"/api/rename", "/api/starter", "/api/title"}
 FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
 FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
-FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke"}
+FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
-              "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke",
+              "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private",
               "/api/mcp/connected", "/api/uses"}   # без окна в запросе
 FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about", "/api/starters", "/api/media"}
 FOCUS_GET |= {"/api/media"}           # картинки в переписке по фокус-ссылке (papasan 19.11): только папки ссылки

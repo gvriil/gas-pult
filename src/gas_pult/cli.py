@@ -516,6 +516,10 @@ def cmd_bridge_code(a):
         d = _json.loads(r.read())
     url = a.url or "https://<адрес панели>"
     print(f"Код: {d['code']} (10 минут)\nНа компьютере: node gas-pult-bridge.mjs pair {url} {d['code']}")
+    if a.url:                                        # установка одной командой (bridge_install.py)
+        from gas_pult import bridge_install
+        c = bridge_install.commands(a.url, d["code"])
+        print(f"Или одной командой — Mac: {c['mac']}\nWindows (PowerShell): {c['win']}")
 
 
 def cmd_bridge_confirm(a):

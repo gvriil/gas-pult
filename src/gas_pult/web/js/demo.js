@@ -324,6 +324,7 @@ function demoApi(path, body) {
     if (!fp && path === "/api/close") setTimeout(() => focusEnd("Чат завершён."), 0);
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
+  if (path.startsWith("/api/bridge/")) return demoBridge(path, body);   // «Компьютеры» (мост, 21.11)
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
   if (path.startsWith("/api/brief")) return demoBrief(path, body);
   if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)
@@ -648,6 +649,25 @@ function demoTaskCount() {
     doing: l.filter((t) => t.status === "doing").length,
     urgent: l.filter((t) => demoQ(t).overdue || t.urgent === true || t.status === "waiting").length };
 }
+// «Компьютеры» в демо: Мак на связи с «Личными данными», Windows не на связи, одно действие ждёт «Да»
+function demoBridge(path, body) {
+  const now = Date.now() / 1000, st = demoApi.br ||= { devs: [
+    { id: "d1", name: "MacBook мамы", os: "darwin", online: true, created: now - 9 * 86400, seen: now - 30, private: true },
+    { id: "d2", name: "Рабочий ПК", os: "win32", online: false, created: now - 30 * 86400, seen: now - 2 * 86400 - 3600, private: false }],
+    drafts: [{ id: "a1b2c3d4e5f6", summary: "НАЖАТЬ «Отправить» (button) — страница «Новое письмо» https://mail.example.com/compose",
+      device: "d1", device_name: "MacBook мамы", created: now - 40, confirmed: false, tool: "browser_click" }] };
+  const key = path.split("?")[0];
+  if (key === "/api/bridge/devices") return Promise.resolve({ devices: st.devs });
+  if (key === "/api/bridge/drafts") return Promise.resolve({ drafts: st.drafts });
+  if (key === "/api/bridge/pair") return Promise.resolve({ code: "K7MP4QXR", expires: Math.floor(now + 600) });
+  if (key === "/api/bridge/private") { const x = st.devs.find((y) => y.id === body.id); if (x) x.private = body.on !== false; }
+  if (key === "/api/bridge/confirm") st.drafts.forEach((x) => { if (x.id === body.id) x.confirmed = true; });
+  if (key === "/api/bridge/reject") st.drafts = st.drafts.filter((x) => x.id !== body.id);
+  if (key === "/api/bridge/revoke") st.devs = st.devs.filter((x) => x.id !== body.id);
+  if (key === "/api/bridge/log") return Promise.resolve({ log: [{ t: now - 120, tool: "browser_navigate", url: "https://mail.example.com/", ok: true }] });
+  return Promise.resolve({ ok: true });
+}
+
 function demoTasks(path, body) {
   const l = demoTaskList(), t = l.find((x) => x.id === body?.id);
   const QO = { 1: 0, 0: 1, 2: 2, 3: 3, 4: 4 }, SO = { waiting: 0, doing: 1, todo: 2, done: 3 };
@@ -663,7 +683,7 @@ function demoTasks(path, body) {
   return Promise.resolve({ ok: true });
 }
 
-Object.assign(window, { demoTasks, demoTaskCount, DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
+Object.assign(window, { demoBridge, demoTasks, demoTaskCount, DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
 
 // Брифинг (GAS-18): ?demo&brief=first — первый вход с выбором источников; иначе — готовый брифинг на сегодня
 function demoBrief(path, body) {

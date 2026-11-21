@@ -51,6 +51,7 @@ from gas_pult import (
     balance,
     brand,
     bridge,
+    bridge_install,
     calkeys,
     chat_trash,
     chatlog,
@@ -521,6 +522,7 @@ class Panel:
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
         self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
+        self.hub.private = self.devices.private          # «Личные данные не уходят модели» — флаг устройства
         self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Гаврилу (share.py)
         self.share_tokens = share.Tokens(cfg.data / "share_tokens.json")  # iPhone: токены «Быстрой команды»
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
@@ -1451,6 +1453,11 @@ class Panel:
             if did not in {d["id"] for d in mine}:
                 raise focus.Denied("это устройство не из вашей ссылки")
             return {"ok": self.devices.revoke(did)}
+        if path == "/api/focus/bridge/private":          # свой компьютер: «Личные данные не уходят модели»
+            did = str(b.get("id") or "")
+            if did not in {d["id"] for d in mine}:
+                raise focus.Denied("это устройство не из вашей ссылки")
+            return {"ok": self.devices.set_private(did, b.get("on") is not False)}
         on = set(self.hub.online())
         return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
 
@@ -4337,6 +4344,10 @@ def handler(panel: Panel):
             if not url.path.startswith("/api/"):
                 return self.json({"error": "нет такой страницы"}, 404)
             q = dict(urllib.parse.parse_qsl(url.query))
+            if url.path in ("/api/bridge/install.sh", "/api/bridge/install.ps1"):   # установка одной командой: без
+                return self.bridge_installer(url.path.rsplit(".", 1)[1], q)          # входа, по коду пары (21.11)
+            if url.path == "/api/bridge/bridge.mjs":     # файл моста для установщика — тот же, что в репозитории
+                return self.bridge_file()
             if url.path == STT_STREAM:                   # WebSocket: вход — первым сообщением, не заголовком
                 return self.stt_stream()
             if url.path == "/api/bridge/ws":             # мост к браузеру пользователя: токен — в подпротоколе
@@ -4537,6 +4548,10 @@ def handler(panel: Panel):
                                     for d in panel.devices.listing()]}
             if path == "/api/bridge/log":                # журнал действий по устройству (только владелец)
                 return {"log": panel.hub.history(str(q.get("id") or ""))}
+            if path == "/api/bridge/drafts":             # что ждёт «Да» человека: кнопка, команда, запись на Маке
+                names = {d["id"]: d["name"] for d in panel.devices.listing()}
+                return {"drafts": [{**x, "device_name": names.get(x["device"], "компьютер")}
+                                   for x in bridge.drafts() if x["device"] in names]}
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
@@ -4728,7 +4743,29 @@ def handler(panel: Panel):
 
         def bridge_claim(self):
             b = json.loads(self.body() or b"{}")
-            return panel.devices.claim(b.get("code", ""), b.get("name", ""), b.get("os", ""))
+            return panel.devices.claim(b.get("code", ""), b.get("name", ""), b.get("os", ""), str(b.get("old") or ""))
+
+        def bridge_installer(self, kind: str, q: dict):
+            """``install.sh`` / ``install.ps1`` с адресом панели и кодом пары; код не тратится (тратит пара)."""
+            host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").split(",")[0].strip()
+            proto = (self.headers.get("X-Forwarded-Proto") or
+                     ("https" if self.headers.get("X-Forwarded-Host") else "http")).split(",")[0].strip()
+            remove, code = q.get("do") == "remove", str(q.get("c") or "")
+            try:
+                text = bridge_install.script(kind, f"{proto}://{host}", code, remove=remove,
+                                             valid=remove or panel.devices.peek(code))
+            except ValueError as e:
+                return self.json({"error": str(e)}, 400)
+            return self.reply(200, text.encode(), "text/plain; charset=utf-8",
+                              headers={**NOINDEX, "Cache-Control": "no-store"})
+
+        def bridge_file(self):
+            f = Path(__file__).resolve().parents[2] / "bridge" / "gas-pult-bridge.mjs"
+            try:
+                body = f.read_bytes()
+            except OSError:
+                return self.json({"error": "на сервере нет файла моста"}, 404)
+            return self.reply(200, body, "text/javascript; charset=utf-8", headers={"Cache-Control": "no-store"})
 
         def bridge_rpc(self):
             space = panel.bridge_space(self.headers.get("X-GP-Space-Token", ""))
@@ -5542,6 +5579,14 @@ def handler(panel: Panel):
                 return panel.devices.pair_code()
             if path == "/api/bridge/revoke":
                 return {"ok": panel.devices.revoke(str(b.get("id") or ""))}
+            if path == "/api/bridge/private":            # «Личные данные не уходят модели» для устройства
+                return {"ok": panel.devices.set_private(str(b.get("id") or ""), b.get("on") is not False)}
+            if path == "/api/bridge/confirm":            # «Да» человека в панели — как gas-pult bridge-confirm
+                bridge._core.confirm(bridge.CONFIRM_SVC, str(b.get("id") or ""))
+                return {"ok": True}
+            if path == "/api/bridge/reject":             # «Нет»: черновик убран, выполнить его нельзя
+                bridge.reject(str(b.get("id") or ""))
+                return {"ok": True}
             if path == "/api/desktop/url":                # ссылка — вкладкой в Chrome рабочего стола (владелец 17.11)
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
