@@ -676,6 +676,26 @@ def _chat(ref: str) -> dict:
     return {"chat": w["id"], "sid": w.get("sid") or ""}
 
 
+def cmd_title(a):
+    """Название чата по смыслу — для агента (владелец 20.11: «названия чатов везде — по смыслу: кто, что, сумма или
+    срок»). Разговор — ``CLAUDE_CODE_SESSION_ID`` (его ставит Claude Code в окружение агента) или ``--sid``.
+    Название своё: автоматика его не перетирает, человек меняет в «⋯» чата."""
+    from gas_pult import projects
+
+    title = " ".join(" ".join(a.text).split())[:projects.TITLE_MAX]
+    if not title:
+        raise SystemExit('Название пустое: gas-pult title "Долг: ООО Ромашка — 46 000 ₽, счёт за ноябрь"')
+    sid = transcripts.valid_sid(a.sid or os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+    if not sid:
+        raise SystemExit("Не знаю, какой это чат: команда — для агента в чате пульта (или --sid <id разговора>)")
+    store = projects.Store(config.data_dir() / projects.FILE, os.path.expanduser("~"))
+    try:
+        store.set_chat(sid, store.of_path(store.read(), os.getcwd()) or "", title=title)
+    except OSError as e:
+        raise SystemExit(f"Не вышло сохранить название: {e.strerror or e}") from None
+    print(f"Чат назван: «{title}»")
+
+
 def cmd_notify(a):
     """Своё уведомление владельцам в бот — для агента («готово, нужен ваш ответ»). Ответ (reply) на него уйдёт
     в окно, из которого отправлено (``tgroutes``). Уровни уведомлений окна на него не действуют: это явная просьба.
@@ -796,6 +816,10 @@ def main(argv: list[str] | None = None):
     s.add_argument("text", nargs="*", help="текст; пусто — из stdin")
     s.add_argument("--window", default="", help="окно (@N), куда пойдёт ответ; по умолчанию — своё окно tmux")
     s.set_defaults(fn=cmd_notify)
+    s = sub.add_parser("title", help="название чата по смыслу (агенту: «Долг: ООО Ромашка — 46 000 ₽, счёт за ноябрь»)")
+    s.add_argument("text", nargs="*", help="название: кто · что · сумма или срок")
+    s.add_argument("--sid", default="", help="id разговора; по умолчанию — CLAUDE_CODE_SESSION_ID агента")
+    s.set_defaults(fn=cmd_title)
     s = sub.add_parser("task", help="задачи владельца: add | list | done <id> | undo <id> | update <id> (#203)")
     s.add_argument("action", choices=["add", "list", "done", "undo", "update"])
     s.add_argument("id", nargs="?", default="")

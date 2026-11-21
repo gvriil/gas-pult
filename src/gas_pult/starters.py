@@ -79,6 +79,27 @@ def prompt(sid: str) -> str:
     for i, q in enumerate(s.get("questions", []), 1):
         parts = [x.strip() for x in q.split("|")]
         qs.append(f"{i}. {parts[0]}" + (f" (варианты: {', '.join(parts[1:])})" if len(parts) > 1 else ""))
-    return (f"«{s['title']}». Помоги {s['goal']}. Сначала расспроси меня — по одному вопросу за раз, с вариантами "
-            "ответа кнопками, если они есть:\n" + "\n".join(qs) + "\nПотом сделай дело и коротко покажи итог. Письма, "
-            "встречи, сообщения людям — только после моего ответа «Да / Нет / Позже».")
+    title = s.get("chat_title") or TITLE
+    out = (f"«{s['title']}». Помоги {s['goal']}. Сначала расспроси меня — по одному вопросу за раз, с вариантами "
+           "ответа кнопками, если они есть:\n" + "\n".join(qs) + "\nКогда поймёшь, о чём чат, назови его по смыслу "
+           f"командой gas-pult title \"{title}\" — без кодов и номеров задач.\nПотом сделай дело и коротко покажи "
+           "итог.")
+    if then := s.get("then"):
+        out += f" {then}."
+    if name := s.get("template"):
+        out += ("\nНад документом по шаблону — строка «Не юридическая консультация». Отправить его — только после "
+                "моего «Да».\n\nШаблон:\n" + template(name))
+    return out + "\nПисьма, встречи, сообщения людям — только после моего ответа «Да / Нет / Позже»."
+
+
+TITLE = "<кто или что> — <суть>, <сумма или срок>"     # название чата по смыслу (владелец 20.11)
+
+
+def template(name: str) -> str:
+    """Шаблон документа из ``help/templates/<имя>.md`` (имя — только буквы, цифры и дефис)."""
+    if not name.replace("-", "").isalnum():
+        raise LookupError("такого шаблона нет")
+    try:
+        return resources.files("gas_pult").joinpath(f"help/templates/{name}.md").read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        raise LookupError("такого шаблона нет") from None
