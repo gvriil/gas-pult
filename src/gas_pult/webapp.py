@@ -61,6 +61,7 @@ from gas_pult import (
     emailcode,
     fallback,
     features,
+    feedback,
     focus,
     harness,
     helper,
@@ -118,6 +119,7 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     DEMO_POST,
     EMAIL_LOGIN,
     EMAIL_OWN,
+    FEEDBACK,
     FOCUS_GET,
     FOCUS_NO_W,
     FOCUS_POST,
@@ -1819,6 +1821,22 @@ class Panel:
                 raise ValueError("email: да или нет")
             self.email.options(uid, None, b["email"])
         return self.notify_info(uid)
+    def feedback_add(self, who: tuple, b: dict) -> dict:
+        """Отзыв из панели: файл в ``feedback/``, задача владельцу (её видит штаб), сообщение бота владельцам."""
+        via, _, uid = who
+        if via == "focus":
+            raise ValueError("отзыв — после входа в панель")
+        p = next((x for x in self.people.list() if x["id"] == uid), {}) if uid is not None else {}
+        own = self.is_owner(uid) or uid == webauth.LEGACY
+        name = "владелец" if own else p.get("name") or f"@{p.get('username', '')}"
+        rec = feedback.save(self.cfg.data, uid, name, str(b.get("text") or ""), str(b.get("screen") or ""),
+                            str(b.get("shot") or ""))
+        t = self.tasks.add(feedback.task(rec), by="feedback")
+        if not own:                                       # свой отзыв владельцу не пересылаем
+            with contextlib.suppress(Exception):
+                self.pult.broadcast(f"💬 Отзыв ({name}, экран {rec['screen'] or '—'}): {rec['text'][:600]}"
+                                    + (" · есть снимок" if rec["shot"] else ""))
+        return {"ok": True, "task": t.get("id")}
 
     def is_owner(self, uid) -> bool:
         try:
@@ -3837,7 +3855,7 @@ def handler(panel: Panel):
                     self.json({"error": str(e), "code": "budget"}, 403)
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
-                    "/api/clientlog",
+                    FEEDBACK, "/api/clientlog",
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN, *PUSH_OWN)   # и наблюдателю
             need = (("admin" if path in ADMIN_OK else "owner") if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
@@ -4864,6 +4882,8 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/country":
                 return panel.set_country(self.terms_uid(), str(b.get("code", "")))
+            if path == FEEDBACK:                          # «Отзыв» (feedback.py): текст и снимок → задачи штаба
+                return panel.feedback_add(self.who(), b)
             if path == TOUR:
                 return panel.people.set_tour(self.terms_uid(), str(b.get("tour", "")), str(b.get("state", "")))
             if path == "/api/passkeys/options":

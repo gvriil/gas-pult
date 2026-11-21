@@ -87,6 +87,8 @@ PUSH_OWN = ("/api/push/key", "/api/push/subscribe", "/api/push/unsubscribe", "/a
             "/api/push/last", "/api/notify/prefs")   # и каналы/события (notifyroute.py): менять — владелец
 # «Сообщить по готовности» из строки статуса — и наблюдателю: только уведомление ему же в бот.
 NOTIFY_DONE = "/api/notify-done"
+# «Отзыв» (feedback.py): написать может каждый вошедший, в том числе наблюдатель и пространство.
+FEEDBACK = "/api/feedback"
 # Отметки короткого тура (пройден / «Не сейчас») — настройка самого человека: менять может и наблюдатель.
 TOUR = "/api/tour"
 # До выбора страны (country.py) — ещё и выбор страны; остальное — 403 с code="country".
@@ -96,7 +98,7 @@ REPOS = ("/api/repos", "/api/repos/add", "/api/repos/remove")
 # Тестировщик демо-пространства (задача 31): только это — и только с окнами своего пространства (spaces.Routed.scope).
 # Остальное (папки и модули владельца, файлы, интеграции, ключи, люди, модели, расход владельца) — 403 code=space.
 USES = "/api/uses"                      # панель отмечает открытые экраны и листы (features.py): только id, без людей
-SPACE_OK = TERMS_FREE | set(PUSH_OWN) | {USES,
+SPACE_OK = TERMS_FREE | set(PUSH_OWN) | {USES, FEEDBACK,
     "/api/sessions", "/api/country", "/api/prefs", TOUR, "/api/activity", "/api/last", "/api/screen", "/api/ask",
     "/api/hint", "/api/history", "/api/tts", "/api/tts/warm", "/api/stt", "/api/voice/cards", "/api/scenarios",
     "/api/new",
