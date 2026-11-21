@@ -87,7 +87,7 @@ def run(base: str, shots: str = ""):
             pg.wait_for_selector("#twLive", timeout=4000)
             pg.click("#twLive")
             pg.wait_for_selector(".ttybg #ttyPre")
-            assert "gp-term" in pg.text_content("#ttySub") and pg.locator("#ttyMode").is_hidden(), where
+            assert "окно для ввода пароля" in pg.text_content("#ttySub") and pg.locator("#ttyMode").is_hidden(), where
             pg.close()
 
             for q in ("open=@3&role=viewer", "open=@3&simple=1"):                 # наблюдателю и в простом — нет

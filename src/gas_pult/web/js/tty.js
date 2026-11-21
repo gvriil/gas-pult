@@ -68,7 +68,7 @@ function ttyOpenX(wid) {
     if (st.mode === "log") t.innerHTML = st.logMore ? `<button type="button" data-tmore>Показать раньше</button>` : "Начало журнала сессии.";
     else if (!st.alive) t.innerHTML = `Окна больше нет — истории tmux нет.${logBtn}`;
     else if (st.lo > st.floor) t.innerHTML = `Выше ещё ${st.lo - st.floor} строк <button type="button" data-tmore>Показать</button>`;
-    else t.innerHTML = (st.floor > 0 ? "Глубже 20 000 строк история окна не показывается." : "Начало истории окна: раньше tmux не помнит.") + logBtn;
+    else t.innerHTML = (st.floor > 0 ? "Глубже 20 000 строк история окна не показывается." : "Это начало истории — раньше ничего не сохранилось.") + logBtn;
   }
   function render(how = {}) {                               // how: {stick: вниз, prepend: сохранить место}
     const L = lines(), q = st.q.toLowerCase();
@@ -96,7 +96,8 @@ function ttyOpenX(wid) {
   }
   const get = (extra = "") => api(`/api/tty?w=${encodeURIComponent(wid)}${extra}`);
   function head(d) {
-    st.kind = d.kind || st.kind; $$("ttyName").textContent = d.name || wid;
+    st.kind = d.kind || st.kind;                            // владелец 21.11: для человека — «Терминал», без имён tmux
+    $$("ttyName").textContent = st.kind === "shell" || st.kind === "term" ? "Терминал" : d.name || wid;
     const rows = d.total ? `строк в истории: ${d.history ?? 0}` : "";
     $$("ttySub").textContent = [TTY_KIND[st.kind] || "окно", rows].filter(Boolean).join(" · ");
     $$("ttyMode").hidden = !(st.kind === "session" || st.kind === "stopped");

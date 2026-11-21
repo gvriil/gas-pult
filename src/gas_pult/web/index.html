@@ -2341,48 +2341,9 @@ async function api(path, body, raw, extra, signal) {
   }
   return (r.headers.get("Content-Type") || "").startsWith("application/json") ? r.json() : r.blob();
 }
-// Шторка «Подтвердите кодом»: код уходит сразу (бот в Telegram или почта), 6 цифр — проверка. Одна на все запросы,
-// что ждут подтверждения; «Отмена» — ошибка у кнопки, которая его запросила.
+// Шторка «Подтвердите кодом» — часть js/confirm.js (по требованию); одна на все запросы, что ждут подтверждения.
 let confirmWait = null;
-function confirmCode() {
-  return confirmWait ||= new Promise((ok, no) => {
-    const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.confirm");
-    bg.innerHTML = `<div class="sheet confirm-code" role="dialog" aria-labelledby="cfTitle"><h3 id="cfTitle">Подтвердите кодом</h3>
-      <p class="note" style="margin:4px 16px 10px">Это новый вход в панель. Команды на сервере и ввод в терминал — после кода: так чужой вход ничего не запустит. Подтверждение действует до конца этого входа.</p>
-      <div class="field" style="margin:0 16px 0"><label for="cfCode">Код</label><input id="cfCode" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></div>
-      <p class="note" id="cfMsg" role="status" style="margin:8px 16px 0">Отправляю код…</p>
-      <div class="row2"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="cfGo">Подтвердить</button></div>
-      <button class="btn ghost wide" id="cfBot" hidden style="margin:8px 16px 0;width:calc(100% - 32px)">Открыть чат с ботом</button>
-      <button class="btn ghost wide" id="cfAgain" style="margin:8px 16px 0;width:calc(100% - 32px)">Прислать новый код</button></div>`;
-    document.body.append(bg);
-    const inp = bg.querySelector("#cfCode"), go = bg.querySelector("#cfGo");
-    const msg = (t, bad) => { const n = bg.querySelector("#cfMsg"); n.textContent = t; n.style.color = bad ? "var(--status-danger)" : ""; };
-    let rid = "";
-    const done = (err) => { bg.remove(); confirmWait = null; err ? no(new Error(err)) : ok(); };
-    const send = async () => {
-      msg("Отправляю код…");
-      try {
-        const r = await api("/api/confirm/start", {}); rid = r.id;
-        const min = Math.round((r.ttl || 600) / 60);
-        const at = r.at ? new Date(r.at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "";
-        msg(r.via === "email" ? `Код отправлен на ${r.to}. Он действует ${min} минут.`
-          : `Код отправлен${at ? " в " + at : ""} в Telegram, в чат ${r.chat ? "«" + r.chat + "»" : "с ботом"} — он закреплён сверху. Действует ${min} минут.`);
-        const tgb = bg.querySelector("#cfBot");               // не пришёл — открыть чат с ботом (21.11)
-        if (r.via !== "email" && r.bot) { tgb.hidden = false; tgb.onclick = () => { const u = "https://t.me/" + r.bot; try { tg?.openTelegramLink ? tg.openTelegramLink(u) : window.open(u, "_blank"); } catch (e) { window.open(u, "_blank"); } }; }
-        inp.focus();
-      } catch (e) { msg(e.message, true); }
-    };
-    go.onclick = () => busy(go, "Проверяю…", async () => {
-      try { await api("/api/confirm/verify", { id: rid, code: inp.value }); haptic("notificationOccurred", "success"); toast("Подтверждено"); done(); }
-      catch (e) { msg(e.message, true); inp.select(); }
-    });
-    inp.addEventListener("input", () => { inp.value = inp.value.replace(/\D/g, "").slice(0, 6); if (inp.value.length === 6) go.click(); });
-    inp.onkeydown = (e) => { if (e.key === "Enter") go.click(); };
-    bg.querySelector("#cfAgain").onclick = send;
-    bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) done("Не выполнено: нужен код подтверждения"); });
-    send();
-  });
-}
+const confirmCode = () => confirmWait ||= part("confirm").then((m) => m.open()).finally(() => { confirmWait = null; });
 async function busy(btn, text, fn) {              // кнопка показывает, что работает, и не нажимается дважды
   const old = btn.innerHTML; btn.disabled = true; btn.textContent = text;
   try { return await fn(); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
@@ -3448,7 +3409,7 @@ const termSheet = (id) => part("term").then((m) => m.termSheet(id));
 const TTY_MAP = { ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Escape: "Escape", Tab: "Tab",
   Enter: "Enter", Backspace: "BSpace", Delete: "DC", Home: "Home", End: "End", PageUp: "PPage", PageDown: "NPage" };
 const TTY_CTRL = "cdzlraeukwpnotbfgy";                  // Ctrl+буква — как в белом списке сервера (termwin.TTY_KEYS)
-const TTY_KIND = { session: "сессия", stopped: "сессия остановлена — командная строка", term: "окно ввода gp-term", shell: "окно tmux" };
+const TTY_KIND = { session: "сессия", stopped: "сессия остановлена — командная строка", term: "окно для ввода пароля", shell: "командная строка сервера" };
 const ttyOk = () => !!meta?.tty && !FOCUS && !UI?.simple && !SIM.on;
 function ttyOpen(wid) {                            // живой терминал — часть js/tty.js (эмулятор xterm.js, 17.11)
   if (!ttyOk()) return toast("Живой терминал — только в режиме разработчика", 4000);

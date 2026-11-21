@@ -28,7 +28,7 @@ import threading
 import time
 import urllib.parse
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import date, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -89,7 +89,7 @@ from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux, prompt_draft
 from gas_pult.tmux import is_ours as tmux_is_ours
 from gas_pult.voice import catalog
-from gas_pult.webauth import Auth, TgLogins
+from gas_pult.webauth import Auth, TgConfirm, TgLogins
 
 # Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
 # сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
@@ -2205,6 +2205,16 @@ class Pult:
             if not self.logins.decide(nonce, uid, verdict == "ok"):
                 return send("Ссылка входа устарела — нажмите «Войти через Telegram» в браузере ещё раз.")
             return send("✅ Вход подтверждён — вернитесь в браузер." if verdict == "ok" else "Вход отклонён.")
+        if kind == "cf":                                   # «✅ Подтвердить вход» под кодом подтверждения (21.11)
+            ok = TgConfirm(Auth(self.cfg.data / "web_sessions.json")).approve(
+                arg, q["from"]["id"], self.cfg.owners)
+            if ok and q.get("message"):                    # код в чате больше не нужен — убираем его из сообщения
+                with suppress(TelegramError):
+                    self.api("editMessageText", chat_id=chat, message_id=q["message"]["message_id"],
+                             text="✅ Вход подтверждён — вернитесь в панель.")
+                return None
+            return send("✅ Вход подтверждён — вернитесь в панель." if ok else
+                        "Подтверждение устарело — в панели нажмите «Прислать новый код».")
         if kind == "lk":                                   # гость привязывает свой Telegram (из панели)
             verdict, _, nonce = arg.partition(":")
             return self.link_done(chat, q["from"], verdict, nonce)

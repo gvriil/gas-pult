@@ -188,6 +188,54 @@ def test_code_pinned_where_to_look_and_unpinned(server, monkeypatch):
 
 def test_screen_shows_bot_link():
     from pathlib import Path
-    html = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/confirm.js").read_text(encoding="utf-8")
     assert 'id="cfBot"' in html and "Открыть чат с ботом" in html and '"https://t.me/" + r.bot' in html
     assert "он закреплён сверху" in html
+
+
+def test_tg_button_confirms_only_its_session_once(server, monkeypatch, tmp_path):
+    """21.11: «чтобы код сразу подсказывался» — iOS берёт коды только из SMS; вместо цифр — кнопка
+    «✅ Подтвердить вход» под кодом. Подтверждает только ту сессию, что запросила код; только тот Telegram; один раз."""
+    p, base, _ = server
+    calls = []
+    monkeypatch.setattr(p.pult, "api", lambda method, **kw: calls.append((method, kw)) or
+                        ({"message_id": 5} if method == "sendMessage" else {}))
+    tok, other = p.auth.issue(1), p.auth.issue(1)
+    code, d = call(base, "/api/confirm/start", {}, tok)
+    assert code == 200
+    kb = next(kw["reply_markup"] for m, kw in calls if m == "sendMessage")
+    btn = kb["inline_keyboard"][0][0]
+    assert btn["text"] == "✅ Подтвердить вход" and btn["callback_data"] == "cf:" + d["id"]
+    assert call(base, "/api/confirm/check", {}, tok) == (200, {"ok": False})
+    tc = webauth.TgConfirm(webauth.Auth(p.auth.store))                     # бот — другой процесс, свой объект
+    assert not tc.approve(d["id"], 2, p.cfg.owners)                        # чужой Telegram — нет
+    code, d = call(base, "/api/confirm/start", {}, tok)                    # (тот запрос сгорел) — новый
+    assert tc.approve(d["id"], 1, p.cfg.owners)
+    assert call(base, "/api/confirm/check", {}, tok) == (200, {"ok": True})
+    assert call(base, "/api/run", RUN, tok)[0] == 200                       # команды — можно
+    assert call(base, "/api/run", RUN, other)[0] == 403                     # другая сессия того же человека — нет
+    assert not tc.approve(d["id"], 1, p.cfg.owners)                         # один раз
+    assert (p.auth.store.with_name("web_confirm_tg.json").stat().st_mode & 0o777) == 0o600
+
+
+def test_tg_button_expires(server):
+    p, _, _ = server
+    tok = p.auth.issue(1)
+    tc = webauth.TgConfirm(p.auth)
+    tc.offer("r1", tok, 1)
+    d = json.loads(tc.store.read_text())
+    d["r1"]["exp"] = time.time() - 1
+    tc.store.write_text(json.dumps(d))
+    assert not tc.approve("r1", 1, [1]) and p.auth.needs_confirm(tok)
+
+
+def test_bot_button_handler_and_terminal_words():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "src/gas_pult"
+    bot = (root / "bot.py").read_text(encoding="utf-8")
+    assert 'if kind == "cf":' in bot and "TgConfirm(Auth(" in bot
+    assert bot.index('if kind == "cf":') < bot.index('if q["from"]["id"] not in self.cfg.owners and kind not in')
+    tty = (root / "web/js/tty.js").read_text(encoding="utf-8")
+    assert '? "Терминал" : d.name' in tty and "раньше tmux" not in tty
+    html = (root / "web/index.html").read_text(encoding="utf-8")
+    assert 'shell: "командная строка сервера"' in html and 'part("confirm")' in html

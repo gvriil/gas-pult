@@ -46,7 +46,7 @@ CONFIRM = {"/api/run", "/api/run/term", "/api/tasks/run", "/api/desktop/open", "
            "/api/commands/term", "/api/term/type",
            "/api/term/key",
            "/api/tty/type", "/api/tty/key"}
-CONFIRM_API = ("/api/confirm/start", "/api/confirm/verify")
+CONFIRM_API = ("/api/confirm/start", "/api/confirm/verify", "/api/confirm/check")
 # Участнику и владельцу, в том числе чтение: интеграции — у каждого свои (его папка Claude Code), наблюдателю — нет.
 MEMBER_ONLY = {"/api/mcp", "/api/mcp/connected"}
 # Живой терминал (задача 50): клавиши и текст прямо в окно, вся история tmux. Только в режиме разработчика (владелец
