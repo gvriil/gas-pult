@@ -435,6 +435,9 @@
   .md .tbl { overflow-x: auto; margin: 8px 0; }
   .md table { border-collapse: collapse; font-size: calc(13px * var(--fz, 1)); } .md th, .md td { border: 1px solid var(--border-subtle); padding: 5px 7px; vertical-align: top; }
   .md th { background: var(--bg-subtle); font-weight: 600; text-align: left; }
+  /* владелец 21.11: «таблицы не красиво открываются» — ячейка наследовала overflow-wrap: anywhere пузыря, колонка
+     сжималась до букв («Об/раз»). В ячейке слова не рвём; шире ленты — прокрутка в .tbl; длинные ссылки — переносим */
+  .md th, .md td { overflow-wrap: normal; word-break: normal; } .md td a, .md th a { overflow-wrap: anywhere; }
   .md pre { background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 10px; overflow-x: auto; font-size: calc(12.5px * var(--fz, 1)); }
   .md code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: calc(13px * var(--fz, 1)); background: var(--bg-subtle); padding: 1px 4px; border-radius: 5px; }
   .md pre code { background: none; padding: 0; } .md a { color: var(--accent-primary); }
@@ -746,8 +749,10 @@
   body.split .tabsbar .seg { max-width: 860px; margin: 0 auto; }
   body.split .dock { left: var(--side); } body.split .homebar { left: var(--side); } body.split .homebar .btn { max-width: 836px; margin: 0 auto !important; } body.split .notices { left: var(--side); }
   body.split #session, body.split #mcpForm, body.split .dock > * { max-width: 860px; margin-left: auto; margin-right: auto; }
-  /* Лента на компьютере (план UX, пункт 6): колонка ~760 px по центру, поле ввода — той же ширины. */
-  body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 760px; }
+  /* Лента на компьютере: владелец 21.11 — «экран только по центру». Колонка шире (до 1120 px, поле ввода — той же
+     ширины), таблицы и код — во всю колонку; абзацы и списки ответа — до ~780 px, чтобы строку было удобно читать. */
+  body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 1120px; }
+  body.split .chat .ai .md > :is(p, ul, ol, h1, h2, h3, h4, blockquote) { max-width: 780px; }
   .sidebtn, .grip, .rail { display: none; }
   body.no-dup.has-nav:not(.side-mini) #top .titles { visibility: hidden; }
   #homeSeg { display: none !important; }   /* главная без вкладок (владелец 20.11): чаты — в панели, интеграции — в Настройках, команды — «⋯» разработчику */

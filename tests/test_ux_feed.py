@@ -1,4 +1,5 @@
-"""Лента ~760 px по центру и появление новых сообщений (план UX, пункт 6): разметка и tests/e2e/feed_demo.py."""
+"""Лента по центру (владелец 21.11: шире — до 1120 px, абзацы до ~780 px) и появление новых сообщений
+(план UX, пункт 6): разметка и tests/e2e/feed_demo.py."""
 
 from pathlib import Path
 
@@ -9,7 +10,7 @@ PAGE = WEB.read_text(encoding="utf-8")
 
 
 def test_feed_column_and_enter_animation():
-    assert "body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 760px; }" in PAGE
+    assert "body.split #session, body.split .dock > *, body.split .tabsbar .seg { max-width: 1120px; }" in PAGE
     assert "@keyframes msgin { from { opacity: 0; transform: translateY(8px); }" in PAGE
     assert ".chat .msg.enter { animation: msgin .15s ease-out; }" in PAGE
     assert ".chat .msg { margin: 0 0 14px; }" in PAGE                 # без анимации у каждого сообщения
