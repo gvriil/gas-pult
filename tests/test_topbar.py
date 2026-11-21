@@ -45,13 +45,15 @@ def test_e2e_topbar_one_row_and_colors():
                 bar = pg.evaluate("document.getElementById('spaces').getBoundingClientRect().height")
                 assert bar < 45, f"{w}: полоса в две строки ({bar}px)"
                 assert pg.evaluate("document.querySelector('.sp-mine').hidden")             # владельцу не показываем
-                lab = pg.get_attribute(".sp-tasks", "aria-label")
+                lab = pg.get_attribute("#navTasks", "aria-label")
                 assert "срочно" in lab and "ждут вас" in lab and "в работе" in lab
-                dots = pg.evaluate("[...document.querySelectorAll('.sp-tasks .sdot')].map((e) =>"
+                dots = pg.evaluate("[...document.querySelectorAll('#navTasks .sdot')].map((e) =>"
                                    " getComputedStyle(e).backgroundColor)")
                 assert len(dots) == 3 and len(set(dots)) == 3                           # три разных цвета
                 assert pg.get_attribute(".sp-desk:not(.sp-term)", "aria-label") == "Рабочий стол Ubuntu"
-                pg.click(".sp-tasks")
+                pg.evaluate("navOpen(true)")                                            # телефон: «Задачи» — в панели
+                pg.wait_for_timeout(400)
+                pg.click("#navTasks")
                 pg.wait_for_selector(".sheet .sdot.tq-r", timeout=5000)                 # срочные — красные
                 assert pg.locator(".sheet .sdot.tq-o, .sheet .sdot.tq-y").count() >= 1
                 assert not errs, errs

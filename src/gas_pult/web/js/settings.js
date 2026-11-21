@@ -38,6 +38,7 @@ function groups() {
     ...(deskLinks() ? [{ label: "Ссылки: где открывать", icon: "globe", sub: "запомненные сайты — в Ubuntu или здесь", run: () => part("links").then(() => linkPrefsSheet()) }] : []),
     ] },
     { title: "Команда и клиенты", icon: "place", items: [
+    ...(isBoss() ? [{ label: "Пригласить человека", icon: "mail", sub: "ссылка-приглашение в пульт", run: spaceInvite }] : []),   // из «⋯» панели (Gemini №8)
     ...(isBoss() ? [{ label: "Люди", icon: "place", sub: "кто ещё может входить в пульт и с какими правами", run: peopleSheet }] : []),
     ...(meta?.role === "owner" && UI?.can_team ? [{ label: "Команда", icon: "tasks", sub: "какие разделы и возможности видят сотрудники", run: teamSheet }] : []),
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
