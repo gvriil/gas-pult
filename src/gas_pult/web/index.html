@@ -682,6 +682,11 @@
   }
   .sheet button.info { cursor: default; }
   .sheet hr.ssep { border: 0; border-top: 1px solid var(--border-subtle); margin: 4px 0; }
+  .oa-row { display: flex; gap: 8px; margin: 8px 0; } .oa-row:not(:has(button:not([hidden]))) { display: none; }
+  .oa-row .btn { flex: 1; margin: 0; min-height: 44px; }   /* вход: ряд «Google · Яндекс · Почта» (Gemini №5) */
+  .login-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; margin-top: 12px; }
+  .linkbtn { border: 0; background: none; padding: 8px 4px; min-height: 40px; color: var(--accent-primary); font: inherit; cursor: pointer; }
+  .linkbtn.small { font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
   .sheet .vis { width: 44px; flex: none; display: flex; justify-content: center; align-items: center; }
   .logo { width: 20px; height: 20px; flex: none; } .btn.rm-inline { width: auto; min-height: 32px; padding: 4px 10px; margin: 0 0 0 4px; } .chip .logo { width: 14px; height: 14px; } .hero .mono .logo { width: 30px; height: 30px; } .pop .vis { display: flex; width: 20px; } .pop .pl { flex: 1; } .pop .ps { color: var(--text-secondary); }
   .sheet .vis .sdot, .sheet button.info > .sdot { width: 10px; height: 10px; }
@@ -1155,21 +1160,16 @@
   <section id="login" hidden>
     <div class="panel">
       <div class="scn-opts s-langsw" id="loginLang" role="group"></div>
-      <svg class="gmark lmark" aria-hidden="true"><use href="#gmk"/></svg><h2 class="serif" style="margin:2px 0 6px;font-size:21px" data-l="login.title">Вход в пульт</h2>
+      <svg class="gmark lmark" aria-hidden="true"><use href="#gmk"/></svg><h2 class="serif" style="margin:2px 0 6px;font-size:21px" data-l="login.title">Вход</h2>
       <p class="note" style="margin:0 0 12px" data-l="login.note">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
       <div id="loginStep1">
         <div class="result ok" id="inviteNote" hidden></div>
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
-        <button class="btn ghost" id="invCodeBtn" hidden data-l="login.inv.have">Есть код приглашения?</button>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
-        <button class="btn ghost" id="googleLogin" hidden data-l="login.google">Войти через Google</button>
-        <button class="btn ghost" id="yandexLogin" hidden data-l="login.yandex">Войти через Яндекс ID</button>
+        <div class="oa-row"><button class="btn ghost" id="googleLogin" hidden data-l="login.google">Google</button><button class="btn ghost" id="yandexLogin" hidden data-l="login.yandex">Яндекс</button><button class="btn ghost" id="emailLogin" hidden data-l="login.email">Почта</button></div>
         <p class="note" id="oidcNote" hidden style="margin:0 2px 6px" data-l="login.oidc.tg">Google и Яндекс не открываются внутри Telegram: вход продолжится в браузере телефона, и панель откроется там.</p>
-        <button class="btn ghost" id="emailLogin" hidden data-l="login.email">Войти по почте</button>
-        <button class="btn ghost" id="getCode" data-l="login.code">Войти по коду — для владельца</button>
-        <button class="btn ghost" id="tryDemo" data-l="login.demo">Посмотреть демо — без входа</button>
-        <p class="note" style="margin:6px 0 0" data-l="login.demo.note">Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.</p>
+        <div class="login-links"><button class="linkbtn" id="invCodeBtn" hidden data-l="login.inv.have">Есть код приглашения?</button><button class="linkbtn" id="tryDemo" data-l="login.demo" title="Демо — та же панель на примерах: можно всё нажимать и писать, ничего никуда не уходит.">Демо без входа</button><button class="linkbtn small" id="getCode" data-l="login.code">Вход для администратора</button></div>
       </div>
       <div id="loginStep2" hidden>
         <div class="field">
