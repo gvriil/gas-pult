@@ -4,9 +4,9 @@
 моделям без обучения на данных (Google API Limited Use). Поэтому брифинг собирает **код, без модели**: письма и
 события не уходят ни одной модели — только в Telegram владельцу и в его панель.
 
-Блоки: «Выполнено» (слитые PR, закрытые задачи Linear и пульта), «Не выполнено — и почему» (красный CI, срок прошёл),
-«Сегодня» (календарь), «Ваши решения» (пункты утренней сводки ``digest.py`` и письма без ответа). Каждая строка —
-``{text, source: {kind, label, url?}}``; строка без источника не показывается.
+Блоки: «Выполнено» (слитые PR, закрытые задачи Linear и пульта), «Не выполнено — и почему» (красный CI у PR и
+у ``main``, срок прошёл), «Сегодня» (календарь), «Ваши решения» (пункты утренней сводки ``digest.py`` и письма
+без ответа). Каждая строка — ``{text, source: {kind, label, url?}}``; строка без источника не показывается.
 
 Источники человек выбирает сам (экран выбора в панели, ``Prefs``); пока не выбрал — подключённое по умолчанию:
 ящики Gmail, все календари, GitHub (если задан ``digest_github``), Linear (если есть ключ), пульт.
@@ -25,7 +25,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from gas_pult import digest, store
+from gas_pult import alerts, digest, store
 
 # id → подпись; «скоро» — видно на экране выбора, но не подключается
 SOURCES = {"mail": "Почта", "calendar": "Календарь", "linear": "Задачи Linear", "github": "GitHub",
@@ -448,6 +448,10 @@ def collect(cfg, *, sel: dict, digest_items: list[dict], tasks_list: list[dict],
                                   why="CI красный — проверки не прошли"))
             else:
                 dec_items.append(x)
+        if (m := alerts.main_ci(now=now.timestamp())) and m.get("red"):   # красный main — его никто не видит
+            failed.append(row(alerts.ci_line(m, now.timestamp()), {"kind": "github", "label": "GitHub · CI main",
+                                                                   "url": m.get("url")},
+                              why="поломка уже в main — чинить до новых слияний"))
     else:
         off("github")
     if "linear" in src:

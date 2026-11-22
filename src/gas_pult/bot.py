@@ -37,6 +37,7 @@ from typing import ClassVar
 from gas_pult import (
     activity,
     ago,
+    alerts,
     brand,
     brief,
     chainfuse,
@@ -1367,9 +1368,36 @@ class Pult:
                 self.auto_close_tick()
                 self.offer_hints()
                 self.cost_watch(st)
+                self.fail_tick()                        # признак жизни и сводка сбоев панели (alerts.py)
             except Exception as e:
                 print("monitor:", self.api.redact(e), flush=True)
             time.sleep(3)
+
+    ERR_EVERY = 300                                     # с: новые server_error и js_error — смотрим раз в 5 минут
+    CI_EVERY = 600                                      # с: CI main через gh — раз в 10 минут
+
+    def fail_tick(self, now: float | None = None):
+        """Отметка ``heartbeat-bot`` (не чаще раза в минуту) и сводка сбоев панели владельцу: не чаще раза в
+        30 минут на класс, без текстов и персональных данных (alerts.py, docs/ALERTS.md)."""
+        cfg = getattr(self, "cfg", None)
+        if cfg is None or not getattr(cfg, "data", None):      # заготовка бота в тестах — без папки данных
+            return
+        now = time.time() if now is None else now
+        alerts.beat(cfg.data, "bot", now)
+        if now - getattr(self, "errs_at", 0) < self.ERR_EVERY:
+            return
+        self.errs_at = now
+        for text in alerts.Watch(self.cfg.data).errors(self.events, now):
+            self.broadcast(text, kind="error")
+
+    def ci_tick(self, now: float | None = None):
+        """CI ``main`` красный дольше часа — одно сообщение владельцу, не чаще раза в 6 часов (alerts.py)."""
+        now = time.time() if now is None else now
+        if now - getattr(self, "ci_at", 0) < self.CI_EVERY:
+            return
+        self.ci_at = now
+        if text := alerts.Watch(self.cfg.data).ci(alerts.main_ci(now=now), now):
+            self.broadcast(text, kind="error", disable_web_page_preview=True)
 
     def pi_answers(self, ws: list[dict], st: dict):
         """Ответы окон Pi, OpenCode и Hermes — в Telegram, как ответы Claude Code (у Claude их ловит ``Tail``/``Turns``
@@ -1717,6 +1745,10 @@ class Pult:
                         self.fuse_tick(now.timestamp())
                     except Exception as e:                       # предохранитель не мешает утру и отчётам
                         print("цепочки:", e, flush=True)
+                try:
+                    self.ci_tick(now.timestamp())                # красный main — владельцу (alerts.py)
+                except Exception as e:
+                    print("ci main:", e, flush=True)
                 if features.due(self.cfg.data, now):             # 1-го числа — отчёт по функциям панели
                     features.mark_sent(self.cfg.data, now)
                     self.send_features(now)
