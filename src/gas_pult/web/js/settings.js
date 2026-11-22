@@ -46,6 +46,7 @@ function groups() {
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Фокус-ссылки", icon: "qr", sub: "какие сессии открыты по фокус-ссылке; отозвать", run: focusList }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Анкеты клиентов", icon: "file", sub: "ссылка клиенту — ответы сюда и в бот", run: () => part("forms").then((m) => m.open()) }] : []),
+    ...(meta?.role === "owner" && !FOCUS && !meta?.space ? [{ label: "Платежи", icon: "coin", sub: "счета и тарифы; оплата онлайн — когда будет юрлицо", run: () => part("billing").then((m) => m.open()) }] : []),
     ] },
     { title: "Система и справка", icon: "help", items: [
     { label: "Отзыв", icon: "chat", sub: "что не так или что улучшить — текстом или голосом, со снимком экрана", run: () => part("feedback").then((m) => m.open()) },
