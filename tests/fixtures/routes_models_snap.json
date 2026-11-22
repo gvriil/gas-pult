@@ -8,7 +8,7 @@
   "06 GET /api/selftest": [200, "application/json", {"state": "idle"}, [["selftest.public", ["PosixPath", "dict"], []]]],
   "07 GET /api/cost/limits": [200, "application/json", {"day": 5}, [["cost_limits", [], []]]],
   "08 GET /api/spend?period=week": [200, "application/json", {"usd": 1.5}, [["spend.summary", ["week"], []]]],
-  "09 GET /api/spend": [200, "application/json", {"usd": 1.5}, [["spend.summary", ["today"], []]]],
+  "09 GET /api/spend": [200, "application/json", {"usd": 1.5, "live": {"usd": 2.0}}, [["spend.summary", ["today"], []], ["cost_summary", ["owner"], []]]],
   "10 GET /api/spend?period=bad": [400, "application/json", {"error": "неверный ввод"}, [["spend.summary", ["bad"], []]]],
   "11 GET /api/providers": [200, "application/json", {"keys": ["elevenlabs"], "tts": "el", "el_voices": [{"id": "e1"}]}, [["voice_settings", [], []], ["el_voices", [], []]]],
   "12 GET /api/providers (viewer)": [403, "application/json", {"error": "это может только владелец"}, []],

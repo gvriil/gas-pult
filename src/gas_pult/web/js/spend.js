@@ -1,7 +1,8 @@
 // Расход по ценам API (владелец 22.11: «строки 💰 в каждом чате не нужны»): один экран — только владельцу. Период
 // «Сегодня / Вчера / 7 дней», сумма крупно, столбики по часам (за 7 дней — по дням) и проекты по убыванию.
 // Данные — GET /api/spend (spend.py читает очередь оповещений, ничего не пересчитывает). Без библиотек: столбики —
-// div, цвета — токены из начала <style>.
+// div, цвета — токены из начала <style>. «Сегодня» крупно — r.live (22.11): то же число, что в меню и на главной
+// (todayText в ядре, usage.py); почасовая сводка отстаёт до часа — её сумма подписана отдельно, под столбиками.
 
 const CSS = `.spend .sseg { display: flex; max-width: none; gap: 4px; margin: 4px 16px 0; padding: 3px; background: var(--bg-subtle); border-radius: var(--radius-sm); }
 .spend .sseg button { flex: 1; min-height: 36px; border: 0; border-radius: 6px; background: none; color: var(--text-secondary); font: inherit; font-size: calc(14px * var(--fz, 1)); cursor: pointer; }
@@ -54,13 +55,14 @@ export function open(period = "today") {
     let r;
     try { r = await api("/api/spend?period=" + p); } catch (e) { if (n === seq) $s("#spBody").innerHTML = `<p class="sp-empty">${esc(e.message)}</p>`; return; }
     if (n !== seq) return;
-    if (p === "today" && typeof spendTick === "function") { spendTick.usd = +r.total || 0; spendLabel(); }   // строка в боковой панели — та же сумма
+    const live = p === "today" && r.live ? r.live : null;   // одно число «сегодня» — как в меню и на главной
     const b = bars(r), top = r.projects?.[0]?.usd || 0;
     const upd = r.updated ? new Date(r.updated * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
     const span = p === "7d" ? `${day(r.from)} — ${day(r.to)}` : day(r.from);
-    $s("#spBody").innerHTML = `<div class="sp-sum">${money(r.total)}</div>
-      <p class="sp-note">${esc(span)}${upd ? " · обновлено " + esc(upd) : ""}</p>
-      ${b.html}<p class="sp-tip" id="spTip">${r.days ? "Нажмите столбик — сумма за день" : "Нажмите столбик — сумма за час"}</p>
+    const hourly = live ? `<p class="sp-note">По часам — сводка раз в час${upd ? ", обновлено " + esc(upd) : ""}: ${money(r.total)}</p>` : "";
+    $s("#spBody").innerHTML = `<div class="sp-sum" data-spend-sum>${live ? (live.usd == null ? "цена ?" : usd(live.usd)) : money(r.total)}</div>
+      <p class="sp-note">${live ? esc("Сегодня" + estTag(live) + " · " + COST_WHAT) : esc(span) + (upd ? " · обновлено " + esc(upd) : "")}</p>
+      ${hourly}${b.html}<p class="sp-tip" id="spTip">${r.days ? "Нажмите столбик — сумма за день" : "Нажмите столбик — сумма за час"}</p>
       <h3>Проекты и окна</h3>
       ${r.projects?.length ? `<ul>${r.projects.map((x) => `<li style="--w:${top ? Math.round(x.usd / top * 100) : 0}%"><span>${esc(x.name)}</span><b>${money(x.usd)}</b></li>`).join("")}</ul>`
         : `<p class="sp-empty">${r.updated ? "За этот период расхода нет" : "Данных пока нет: сводка приходит раз в час"}</p>`}

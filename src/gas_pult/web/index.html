@@ -1867,7 +1867,7 @@ function renderRail() {
   const head = railTool("railOpen", "sideopen", "Развернуть панель чатов", ' aria-expanded="false"')
     + (rw ? railTool("railNew", "compose", "Новый чат") : "") + railTool("railSearch", "search", "Поиск (Ctrl+K)");
   const f = $("rail").contains(document.activeElement) ? document.activeElement : null;   // опрос перерисовал — фокус на месте
-  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + (spendOn() ? railTool("railSpend", "coin", spendText()) : "") + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
+  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + (spendOn() ? railTool("railSpend", "coin", spendTip()) : "") + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
 }
 function railProject(btn) {                           // чаты проекта — меню у значка, справа от полосы
   const p = projOf(btn.dataset.rp); if (!p) return;
@@ -1974,7 +1974,7 @@ function renderNav() {
   const allShut = !NAV.exp.size && [...$("navList").querySelectorAll("[data-nsec]")].every((b) => NAV.shut.has(b.dataset.nsec));
   $("navFoldBtn").setAttribute("aria-label", allShut ? "Развернуть всё" : "Свернуть всё"); $("navFoldBtn").title = allShut ? "Развернуть всё" : "Свернуть всё";
   $("navFoldBtn").classList.toggle("shut", allShut); $("navSet").hidden = $("settingsBtn").hidden;
-  $("navSpend").hidden = $("settingsBtn").hidden || !spendOn(); if (!$("navSpend").hidden) spendTick();
+  $("navSpend").hidden = $("settingsBtn").hidden || !spendOn(); if (!$("navSpend").hidden) spendLabel();
   renderRail();
 }
 // Палитра команд (план UX, пункт 5): Ctrl+K / ⌘K — тот же поиск панели чатов (#149), только в выдаче, кроме чатов и
@@ -2036,17 +2036,14 @@ $("navFoldBtn").onclick = () => {                     // «Свернуть вс
 };
 $("navSet").onclick = () => { navOpen(false); $("settingsBtn").click(); };
 // Расход по ценам API (владелец 22.11: строки «💰 По ценам API» — не в чаты): строка над «Настройками» и значок
-// в свёрнутой панели — только владельцу. Сумма за сегодня — GET /api/spend не чаще раза в 5 минут; экран — js/spend.js.
+// в свёрнутой панели — только владельцу. Сумма за сегодня — todayText() (одно число с главной); экран — js/spend.js.
 function spendOn() { return meta?.role === "owner" && !FOCUS && !SLINK; }
-function spendText() { return "Расход" + (spendTick.usd == null ? "" : ` · $${spendTick.usd.toFixed(2)} сегодня`); }
-function spendTick(force) {
-  if (!force && Date.now() - (spendTick.t || 0) < 300000) return;
-  spendTick.t = Date.now(); spendLabel();
-  api("/api/spend?period=today").then((r) => { spendTick.usd = +r.total || 0; spendLabel(); }).catch(() => {});
-}
+function spendText() { return costInfo?.today ? todayText() : "Расход"; }   // «Сегодня $8.36 · оценка» — как чип на главной
+const spendTip = () => costInfo?.today ? "Расход: " + todayText() : "Расход";
 function spendLabel() {
   $("navSpend").innerHTML = ic("coin") + `<span>${esc(spendText())}</span>`;
-  const r = $("railSpend"); if (r) r.title = r.ariaLabel = spendText();
+  $("navSpend").title = "Расход за сегодня: " + COST_WHAT;
+  const r = $("railSpend"); if (r) r.title = r.ariaLabel = spendTip();
 }
 function spendOpen() { navOpen(false); part("spend").then((m) => m.open()); }
 $("navSpend").onclick = spendOpen;
@@ -3599,7 +3596,14 @@ const usd = (x) => x == null ? "цена неизвестна" : "$" + (x >= 100
 const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n || 0);
 // откуда цена (usage.py, задача 51): прайс Anthropic, счёт OpenRouter или оценка по тарифу Z.ai / DeepSeek
 const costSrc = (c) => ({ estimate: "оценка: токены × цены поставщика (Z.ai, DeepSeek)", provider: "по счёту OpenRouter", anthropic: "по ценам API Anthropic" })[c?.cost_source] || "по ценам API";
-const estTag = (c) => c?.cost_source === "estimate" ? " · оценка" : "";
+// «оценка» — сумму считаем мы (токены × прайс: Anthropic — с подпиской это не счёт; Z.ai, DeepSeek), а не счёт
+// OpenRouter; c.estimate — с 22.11, у старого сервера — по cost_source
+const estTag = (c) => c && (c.estimate ?? (!!c.cost_source && c.cost_source !== "provider")) ? " · оценка" : "";
+// Расход за сегодня — одно число везде (владелец 22.11: было «$28.70» в меню и «$8.36» на главной): меню и свёрнутая
+// панель, главная, лист «Расход», экран «Расход по ценам API». Источник один — d.cost.today (usage.py Meter.day: все
+// чаты Claude Code на учётке, с 00:00 по времени сервера, без задержки); почасовая сводка spend.py отстаёт до часа.
+const COST_WHAT = "все чаты Claude Code на вашей учётке с 00:00 по времени сервера; модели Claude — по прайсу API (с подпиской это оценка, а не счёт)";
+function todayText(c = costInfo?.today) { return c ? `Сегодня ${c.usd == null ? "цена ?" : usd(c.usd)}${estTag(c)}` : ""; }
 const tokLine = (c) => `ввод ${tok(c.tokens.in)} · вывод ${tok(c.tokens.out)} · кэш: запись ${tok(c.tokens.cw)}, чтение ${tok(c.tokens.cr)}`;
 // расход на карточке — только когда близко к лимиту сессии (≥ 80 %); иначе — «Подробнее» (20.11)
 const costNear = (s) => !!(s.cost?.limit && s.cost.usd != null && s.cost.usd >= s.cost.limit * 0.8);
@@ -3626,7 +3630,7 @@ function costSummary() {
   }
   if (!c?.today) return "";
   const lim = c.limits?.day, over = lim && c.today.usd != null && c.today.usd >= lim * 0.8;
-  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="Расход за сегодня по вашей учётке, ${esc(costSrc(c.today))}">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}${estTag(c.today)}</button>`;
+  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="${esc("Расход за сегодня: " + COST_WHAT)}">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}${estTag(c.today)}</button>`;
 }
 async function costDecide(id, act, btn) {
   await busy(btn, act === "go" ? "Продолжаю…" : "…", async () => {
@@ -3647,7 +3651,7 @@ function costSheet() {
   helpSheet("settings.cost");
   sheet("Расход", [
     ...(c.budget ? [{ info: true, icon: "coin", label: c.budget.text, sub: T("bud.sub", { r: usd(c.budget.reserve), d: c.budget.period_days }) }] : []),
-    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)}${estTag(c.today)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.pending ? ` · ${c.today.pending} отв. ждут счёта OpenRouter` : c.today.unknown ? " · часть ответов — модели без цены" : "") },
+    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)}${estTag(c.today)} · ${tok(c.today.total)} токенов`, sub: COST_WHAT + ". " + tokLine(c.today) + (c.today.pending ? ` · ${c.today.pending} отв. ждут счёта OpenRouter` : c.today.unknown ? " · часть ответов — модели без цены" : "") },
     ...(own ? [{ info: true, icon: "pause", label: `Лимит на чат: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
                { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
                { label: "Изменить лимиты", icon: "edit", run: limitsForm }] : []),

@@ -85,3 +85,27 @@ def test_api_owner_only(server, queue):
     assert code == 200 and set(body) >= {"total", "projects", "hours", "updated"}
     assert call(base, "/api/spend?period=7d", tok=p.auth.issue(1))[1]["days"]
     assert call(base, "/api/spend", tok=p.auth.issue(2))[0] == 403            # не владельцу — нет
+
+
+def test_today_one_number_everywhere(server, queue):
+    """Одно число «сегодня» (22.11): /api/spend?period=today → live, /api/sessions и /api/projects → cost.today — один
+    источник (usage.py Meter.day через Panel.cost_summary), а не почасовая сводка spend.py (она отстаёт до часа)."""
+    from test_project_chats import put
+
+    from gas_pult import transcripts
+    p, base, _w, _pid, shop = server
+    queue(rec(datetime.now().timestamp(), f"{datetime.now().hour:02d}:00–00:00", 28.70, shtab=28.70))
+    reply = {"type": "assistant", "timestamp": "", "requestId": "req_1",
+             "message": {"id": "msg_1", "model": "claude-opus-5-5", "stop_reason": "end_turn",
+                         "content": [{"type": "text", "text": "готово"}],
+                         "usage": {"input_tokens": 1000, "output_tokens": 2000, "cache_read_input_tokens": 0,
+                                   "cache_creation_input_tokens": 0}}}
+    put(transcripts.project_dir(str(shop.parent / "misc")), "11111111-2222-3333-4444-555555555555", [reply], 5)
+    p.pult.meter._day.clear()
+    tok = p.auth.issue(1)
+    live = call(base, "/api/spend?period=today", tok=tok)[1]["live"]
+    homes = [call(base, path, tok=tok)[1]["cost"]["today"] for path in ("/api/sessions", "/api/projects")]
+    assert live["usd"] == pytest.approx(0.044) and live["estimate"] is True     # 1000 × $4 + 2000 × $20 за 1 млн
+    assert all(h["usd"] == live["usd"] and h["estimate"] for h in homes)
+    assert call(base, "/api/spend?period=today", tok=tok)[1]["total"] == 28.70  # сводка по часам — отдельно
+    assert "live" not in call(base, "/api/spend?period=7d", tok=tok)[1]
