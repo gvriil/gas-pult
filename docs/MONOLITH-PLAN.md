@@ -100,7 +100,11 @@
    только перенос; `effort_ok`, `find_auth`, `CONTEXT`, `MODEL_LINE`, `AUTH_WITH`, `URL_TAIL` реэкспортирует
    `webapp`); `BUSY` — из `bot.py` в `humanize.py` (`bot.BUSY` жив). В `webapp` остались `command` и `key` (им нужны
    `PROMPTS`, `KEYS` бота), `space_welcome` и сессии пространства (`space_close`…`space_restore`) — к шагу 6.
-6. `panel/spaces.py`, `panel/people.py`.
+6. ✓ `panel/spaces.py` — 22.11: приглашения и вход по приглашению (`invite_*`, `device_link`), тестировщики
+   («Позвать на помощь», бюджет пространства, задача от владельца, `owner_join`), пространство в панели (`space_info`,
+   `space_fields`), первый вход (`space_welcome`) и сессии пространства (`space_close`…`space_restore`) → примесь
+   `SpacesPart` (29 имён, ≈350 строк, только перенос; `BUSY` — из `humanize.py`). Фокус-ссылки (`focus_*`, в том числе
+   «Ссылка на пространство») и мост пространства (`bridge_space*`) остались в `webapp`. `panel/people.py` — далее.
 7. `routes/*` — по области за PR, тем же порядком.
 8. `bot/*` — по модулю за PR.
 
