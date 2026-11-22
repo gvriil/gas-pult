@@ -135,8 +135,9 @@ def test_ok_needs_auth_ok_one_task_one_receipt(tmp_path):
     p.fail_tick(clock[0])
     assert len(p.sent) == 2 and "снова на связи" in p.sent[1]
     evs = [json.loads(x) for x in (tmp_path / "chat-events.jsonl").read_text().splitlines()]
-    assert [e["ev"] for e in evs] == ["connector_down", "connector_up"]
-    assert set(evs[0]) == {"ts", "ev", "harness", "name", "state"}       # без текстов ошибок
+    assert [e["ev"] for e in evs] == ["connector_relogin", "connector_down", "connector_up"]
+    assert evs[0]["result"] == "failed" and "браузер агента" in evs[0]["reason"]   # тестам Chrome недоступен
+    assert set(evs[1]) == {"ts", "ev", "harness", "name", "state"}       # без текстов ошибок
     clock[0] += 1800                                                     # снова отвалился — новая задача
     w.run(conn("failed"), pats)
     ts = open_tasks(tmp_path)
@@ -162,12 +163,12 @@ def test_unknown_keeps_state_and_removed_closes_task(tmp_path):
 
 
 def test_relogin_success_makes_no_task(tmp_path):
-    w = connwatch.Watch(tmp_path, relogin_fn=lambda c: connwatch.Result(True))
+    w = connwatch.Watch(tmp_path, relogin_fn=lambda c, fp=None: connwatch.Result(True))
     acts = w.run(conn("needs_auth"))
     assert "автоматически" in acts[0] and open_tasks(tmp_path) == []
 
 
-def test_relogin_phase1_is_human_task():
+def test_relogin_without_browser_is_human_task():
     r = connwatch.relogin(conn("needs_auth", "claude.ai Notion")[0])
     assert not r.done and "claude.ai" in r.hint and "Коннекторы" in r.hint
     assert "pi mcp login linear" in connwatch.relogin(conn("needs_auth", harness="pi")[0]).hint

@@ -844,7 +844,8 @@ def cmd_secrets(a):
 
 
 def cmd_connectors(a):
-    """Сторож входа коннекторов (``connwatch``, фаза 1): watch [--dry-run | --install | --uninstall] · vault init."""
+    """Сторож входа коннекторов (``connwatch``, ``relogin``): watch [--dry-run | --install | --uninstall] · vault init ·
+    forget [harness:имя] — забыть разрешённые права (следующий вход — через владельца)."""
     from gas_pult import connwatch
 
     if a.action == "vault":
@@ -854,6 +855,15 @@ def cmd_connectors(a):
             print(connwatch.vault_init())
         except RuntimeError as e:
             raise SystemExit(f"Ошибка: {e}") from None
+        return
+    if a.action == "forget":
+        gone = connwatch.forget(config.data_dir(), a.sub)
+        print("забыл: " + ", ".join(gone) if gone else "нечего забывать")
+        return
+    if (a.install or a.uninstall) and a.dry_run:
+        print("было бы (--dry-run, ничего не записано и не запущено):")
+        for x in connwatch.install(remove=a.uninstall, dry=True):
+            print("  " + x)
         return
     if a.install or a.uninstall:
         files = connwatch.install(remove=a.uninstall)
@@ -940,9 +950,10 @@ def main(argv: list[str] | None = None):
     s.add_argument("--config-dir", help="папка Claude Code (по умолчанию $CLAUDE_CONFIG_DIR или ~/.claude)")
     s.add_argument("--python", help="чем запускать хук (по умолчанию — этот Python)")
     s.set_defaults(fn=cmd_secrets)
-    s = sub.add_parser("connectors", help="вход коннекторов: watch [--dry-run|--install|--uninstall] · vault init")
-    s.add_argument("action", choices=["watch", "vault"])
-    s.add_argument("sub", nargs="?", default="", help="vault — init")
+    s = sub.add_parser("connectors", help="вход коннекторов: watch [--dry-run|--install|--uninstall] · vault init · "
+                                          "forget [harness:имя]")
+    s.add_argument("action", choices=["watch", "vault", "forget"])
+    s.add_argument("sub", nargs="?", default="", help="vault — init; forget — harness:имя (пусто — все)")
     s.add_argument("--dry-run", action="store_true", help="watch — только показать: ни состояния, ни задач, ни событий")
     s.add_argument("--install", action="store_true", help="watch — поставить systemd-таймер раз в 30 минут")
     s.add_argument("--uninstall", action="store_true", help="watch — убрать таймер")

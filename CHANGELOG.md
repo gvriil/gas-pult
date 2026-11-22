@@ -42,6 +42,22 @@
 - **Замер «1000 пространств»** — `tools/bench-spaces.py`, цифры — docs/STORAGE.md: json, dual, sqlite; `role` / `tenant` / списки, запись людей, ссылок и приглашений; 4 процесса по разным пространствам × 200 операций — без потерь.
 
 ### Добавлено
+- **Автовход коннекторов, фаза 2: «Разрешить» в Chrome агента** (GAS-49; docs/CONNECTORS.md, «Фаза 2»). Коннектор
+  потерял вход (needs_auth) — `relogin.py` запускает вход harness без сессии (`claude mcp login --no-browser` в своём
+  терминале, `pi mcp login`, `opencode mcp auth`), открывает адрес входа вкладкой в Chrome агента (DevTools) и смотрит
+  страницу. Согласие нажимается, только если отпечаток (домен + `scope` + список прав) совпал с тем, что владелец уже
+  разрешал для этого коннектора; первый раз и другие права — вкладка остаётся открытой, задача «Ждут вас», после
+  ручного успеха отпечаток запоминается. Пароль из `connectors.kdbx` — только для сервисов из
+  `relogin.PASSWORD_SERVICES` (пока пусто); Google и Telegram — никогда; 2FA и капча — владельцу. Событие
+  `connector_relogin` (harness, имя, clicked / needs_owner / failed, причина без query). `gas-pult connectors forget`
+  — забыть разрешённые права; `relogin = false` в `connwatch.toml` — выключить. Служба таймера — `KillMode=process`
+  (программа входа ждёт владельца до часа). Тесты — `tests/test_relogin.py` (поддельный DevTools).
+
+### Исправлено
+- **`gas-pult connectors watch --install --dry-run` ставил таймер по-настоящему.** Теперь только показывает шаги;
+  `--dry-run` у `watch` больше не запускает и автовход. Тест — `tests/test_relogin.py`.
+
+### Добавлено
 - **Сторож входа коннекторов, фаза 1** (решение владельца 22.11; docs/CONNECTORS.md, «Автовход»). `gas-pult connectors
   watch` собирает статус MCP-коннекторов: Claude Code и FCC (`claude mcp list`), Pi (`pi mcp list --json`), OpenCode
   (`opencode mcp list`); Hermes не проверяется — его `mcp list` показывает настройку, а не связь. Коннектор потерял вход

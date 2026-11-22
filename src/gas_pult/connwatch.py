@@ -2,7 +2,8 @@
 
 Коннектор (MCP-сервер, плагин) потерял вход — система входит заново сама; от владельца — самое большее одно окно с
 уже заполненными полями. Фаза 1 (здесь): **обнаружение, квитанции, задачи владельцу, заготовка базы паролей**.
-Фазы 2–3 (нажать «Разрешить» в Chrome агента, подставить пароль из базы) — потом, через ``relogin``.
+Фаза 2 — ``relogin.py``: «Разрешить» в Chrome агента — только по отпечатку, который владелец уже разрешал
+(``approved`` в состоянии); пароль из базы — только для сервисов из ``relogin.PASSWORD_SERVICES``.
 
 - ``collect`` — статус коннекторов по harness: Claude Code (и FCC — тот же ``claude`` и та же папка) — разбор
   ``claude mcp list``; Pi — ``pi mcp list --json``; OpenCode — разбор ``opencode mcp list`` (формат сверен с
@@ -201,6 +202,8 @@ class Result:
     done: bool                 # вошёл сам (фазы 2–3); False — нужен человек
     why: str = ""              # почему не сам
     hint: str = ""             # что нажать человеку — одна строка
+    outcome: str = ""          # clicked · needs_owner · failed; пусто — автовход не пробовали (без события)
+    fp: dict | None = None     # отпечаток страницы согласия (relogin.fingerprint) — запомнить после ручного успеха
 
 
 def hint(c: dict) -> str:
@@ -221,11 +224,24 @@ def hint(c: dict) -> str:
     return f"Войдите в «{name}» заново"
 
 
-def relogin(c: dict) -> Result:
-    """Войти заново без человека. Фаза 1: автоматически нельзя ничего — задача владельцу с готовой подсказкой.
-    Фаза 2 — нажать «Разрешить» в Chrome агента (CDP), фаза 3 — пароль из ``vault_get``. Обход 2FA и капчи, пароли
-    Google и Telegram — никогда."""
-    return Result(False, "автовход пока не умеет (фаза 1): нужен человек", hint(c))
+def enabled(cfg_dir: Path | None = None) -> bool:
+    """Автовход включён, пока в ``connwatch.toml`` нет ``relogin = false``."""
+    try:
+        raw = tomllib.loads((Path(cfg_dir or config.config_dir()) / "connwatch.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        raw = {}
+    return raw.get("relogin", True) is not False
+
+
+def relogin(c: dict, approved: dict | None = None) -> Result:
+    """Войти заново без человека (фаза 2, ``relogin.run``): только needs_auth; «Разрешить» — только при совпавшем
+    отпечатке ``approved``. Обход 2FA и капчи, пароли Google и Telegram — никогда."""
+    if c.get("state") != "needs_auth" or not enabled():
+        return Result(False, "автовход не пробовали: " + ("сервер не запускается" if c.get("state") != "needs_auth"
+                                                          else "выключен (relogin = false)"), hint(c))
+    from gas_pult import relogin as rl
+
+    return rl.run(c, approved)
 
 
 # ---------- сравнение с прошлым разом ----------
@@ -241,6 +257,7 @@ class Watch:
     """``<данные>/connwatch_state.json``: {"conns": {harness:имя: {state, task?, since}}, "checked": время}."""
 
     def __init__(self, data: Path, clock=time.time, relogin_fn=None):
+        # состояние: conns; approved / pending — отпечатки страницы согласия (harness:имя → relogin.fingerprint)
         self.data = Path(data)
         self.path = self.data / "connwatch_state.json"
         self.clock = clock
@@ -297,7 +314,18 @@ class Watch:
             if c["state"] == "unknown":
                 continue                                             # не знаем — прошлое состояние не трогаем
             if c["state"] in DOWN and not was:
-                r = self.relogin(c)
+                if dry:                                              # автовход — это вход по-настоящему
+                    out.append(f"{k}: {c['state']} → было бы: автовход; не выйдет — событие connector_down, "
+                               f"задача «{task_title(c)}»: {hint(c)}")
+                    continue
+                r = self.relogin(c, (st.get("approved") or {}).get(k))
+                if r.outcome:
+                    from gas_pult.relogin import scrub
+
+                    ev.event("connector_relogin", harness=c["harness"], name=c["name"][:80], result=r.outcome,
+                             reason=scrub(r.why)[:200])
+                if r.fp and r.outcome == "needs_owner":              # запомнить после ручного успеха
+                    st.setdefault("pending", {})[k] = r.fp
                 if r.done:
                     out.append(f"{k}: {c['state']} → вошёл автоматически")
                     if not dry:
@@ -314,6 +342,8 @@ class Watch:
             elif was:
                 out.append(f"{k}: снова ok → событие connector_up, задача закрыта")
                 if not dry:
+                    if fp := (st.get("pending") or {}).pop(k, None):     # владелец разрешил сам — запомнить права
+                        st.setdefault("approved", {})[k] = {**fp, "at": now}
                     ev.event("connector_up", harness=c["harness"], name=c["name"][:80], state="ok")
                     self._close_task(t, prev.get("task", ""))
                     conns[k] = {"state": "ok", "since": now}
@@ -329,6 +359,21 @@ class Watch:
             self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             store.save_json(self.path, st)
         return out
+
+
+def forget(data: Path, k: str = "") -> list[str]:
+    """Забыть разрешённые отпечатки: ``k`` — «harness:имя», пусто — все. Следующий вход — снова через владельца."""
+    path = Path(data) / "connwatch_state.json"
+    st = store.load_json(path)
+    gone = []
+    for part in ("approved", "pending"):
+        d = st.get(part) or {}
+        for x in [x for x in d if not k or x == k]:
+            d.pop(x)
+            gone.append(f"{part}: {x}")
+    if gone:
+        store.save_json(path, st)
+    return gone
 
 
 def receipt(evs: list[dict]) -> str:
@@ -367,6 +412,8 @@ After=network-online.target
 Type=oneshot
 ExecStart={python} -m gas_pult connectors watch
 {env}WorkingDirectory=%h
+# программа входа ждёт «Разрешить» владельца до часа (relogin.HOLD) — не убивать её вместе со службой
+KillMode=process
 Nice=10
 TimeoutStartSec=900
 """
@@ -385,11 +432,18 @@ WantedBy=timers.target
     return {f"{UNIT}.service": service, f"{UNIT}.timer": timer}
 
 
-def install(remove: bool = False, run=None, home: Path | None = None) -> list[str]:
-    """Поставить (или убрать) таймер в ``~/.config/systemd/user``. Возвращает записанные файлы."""
+def install(remove: bool = False, run=None, home: Path | None = None, dry: bool = False) -> list[str]:
+    """Поставить (или убрать) таймер в ``~/.config/systemd/user``. Возвращает записанные файлы; ``dry`` — только
+    шаги словами, ничего не пишет и не запускает."""
     run = run or RUN
     d = Path(home or Path.home()) / ".config/systemd/user"
     timer = f"{UNIT}.timer"
+    if dry:
+        if remove:
+            return [f"systemctl --user disable --now {timer}", *(f"удалить {d / n}" for n in units()),
+                    "systemctl --user daemon-reload"]
+        return [*(f"записать {d / n}" for n in units()), "systemctl --user daemon-reload",
+                f"systemctl --user enable --now {timer}"]
     if remove:
         run(["systemctl", "--user", "disable", "--now", timer], capture_output=True)
         for n in units():
@@ -433,14 +487,16 @@ def vault_init(run=None) -> str:
     return f"база создана: {db} · ключ-файл: {kf} (0600, без мастер-пароля)"
 
 
-def vault_get(entry: str, run=None) -> str | None:
-    """Пароль записи ``entry`` (например «claude/notion»). Нет базы, записи или keepassxc-cli — None.
-    Значение не логируется и не попадает в события: только возвращается вызывающему."""
+def vault_get(entry: str, run=None, attr: str = "password") -> str | None:
+    """Пароль (или ``attr="username"``) записи ``entry`` (например «claude/notion»). Нет базы, записи или
+    keepassxc-cli — None. Значение не логируется и не попадает в события: только возвращается вызывающему."""
+    if attr not in ("password", "username"):
+        return None
     db, kf = vault_paths()
     if not (db.exists() and kf.exists()) or not entry:
         return None
     try:
-        r = (run or RUN)(["keepassxc-cli", "show", "-q", "-s", "-a", "password", "--no-password", "-k", str(kf),
+        r = (run or RUN)(["keepassxc-cli", "show", "-q", "-s", "-a", attr, "--no-password", "-k", str(kf),
                           str(db), entry], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return None
