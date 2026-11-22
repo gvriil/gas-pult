@@ -334,6 +334,7 @@ function demoApi(path, body) {
   if (path.startsWith("/api/meeting") || path.startsWith("/api/mt")) return demoMeeting(path, body);   // протоколы встреч (22.11)
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
   if (path.startsWith("/api/brief")) return demoBrief(path, body);
+  if (path.startsWith("/api/desktop/tabs")) return demoTabs(path, body);   // вкладки Chrome стола на телефоне (22.11)
   if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)
   if (path === "/api/notify/level") { (demoApi.nl ||= {})[body.w] = body.level; R["/api/notify/level"] = { notify: body.level === "inherit" ? "all" : body.level }; }
   if (path === "/api/stopped/clear") { const st = (R["/api/sessions"]?.sessions || []).filter((x) => x.status === "stopped"); st.forEach((x) => { (demoApi.gone ||= {})[x.id] = 1; }); R["/api/stopped/clear"] = { closed: st.length, names: st.map((x) => x.name) }; }
@@ -695,7 +696,58 @@ function demoTasks(path, body) {
   return Promise.resolve({ ok: true });
 }
 
-Object.assign(window, { demoBridge, demoTasks, demoTaskCount, DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
+// Вкладки Chrome стола (desktabs.py, 22.11): вымышленные сайты; агент ищет билеты во второй вкладке
+const DEMO_SITES = [
+  ["T1", "Погода на неделю — Северный Город", "https://weather.example/north", "#2B6CB0"],
+  ["T2", "Билеты на поезд: Северный Город — Озёрск", "https://rail.example/search?from=north&to=ozersk", "#C05621", true],
+  ["T3", "Сырники: простой рецепт на завтрак", "https://cook.example/syrniki", "#2F855A"],
+  ["T4", "Аптека у дома — каталог", "https://apteka.example/catalog", "#6B46C1"],
+  ["T5", "Входящие — почта", "https://mail.example/inbox", "#B83280"],
+  ["T6", "Расписание автобусов", "https://bus.example/lines/12", "#2C7A7B"]];
+const svgEsc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Картинка «сайта» (миниатюра вкладки) и, с chrome, — весь стол: полоса вкладок и адресная строка Chrome сверху
+function demoSiteSvg(t, w, h, chrome = null) {
+  const top = chrome ? 81 : 0, host = (t.url.split("/")[2] || "").replace(/^www\./, ""), blank = t.url === "about:blank";
+  let g = `<rect width="${w}" height="${h}" fill="#fff"/>`;
+  if (chrome) {
+    const n = chrome.length, tw = Math.max(18, (w - 40) / n);
+    g += `<rect width="${w}" height="41" fill="#DEE1E6"/><rect y="41" width="${w}" height="40" fill="#fff"/><rect y="80" width="${w}" height="1" fill="#C4C7CC"/>`;
+    chrome.forEach((x, i) => { g += `<rect x="${8 + i * tw}" y="${i === 0 ? 6 : 10}" width="${tw - 4}" height="${i === 0 ? 35 : 24}" rx="7" fill="${i === 0 ? "#fff" : "#E8EAED"}"/><circle cx="${8 + i * tw + 10}" cy="24" r="5" fill="${x.c || "#9AA0A6"}"/>`; });
+    g += `<rect x="${w - 30}" y="12" width="20" height="20" rx="4" fill="#C4C7CC"/><rect x="70" y="47" width="${w - 110}" height="28" rx="14" fill="#F1F3F4"/>`
+      + `<text x="88" y="66" font-family="sans-serif" font-size="13" fill="#3C4043">${svgEsc(t.url.slice(0, Math.floor((w - 140) / 7)))}</text>`
+      + `<path d="M18 61h14M18 61l6-6M18 61l6 6" stroke="#5F6368" stroke-width="2" fill="none"/><path d="M50 61h-14M50 61l-6-6M50 61l-6 6" stroke="#BDC1C6" stroke-width="2" fill="none"/>`;
+  }
+  if (!blank) {
+    g += `<rect y="${top}" width="${w}" height="70" fill="${t.c}"/><text x="20" y="${top + 44}" font-family="sans-serif" font-size="22" font-weight="700" fill="#fff">${svgEsc(host)}</text>`
+      + `<text x="20" y="${top + 112}" font-family="sans-serif" font-size="24" font-weight="700" fill="#1F2937">${svgEsc(t.title.slice(0, Math.floor(w / 15)))}</text>`;
+    for (let y = top + 140, i = 0; y < h - 30; y += 30, i++) {
+      g += i % 5 === 3 ? `<rect x="20" y="${y}" width="${w - 40}" height="90" rx="10" fill="${t.c}" opacity=".14"/>` : `<rect x="20" y="${y}" width="${(w - 40) * (0.55 + ((i * 37) % 40) / 100)}" height="12" rx="6" fill="#D1D5DB"/>`;
+      if (i % 5 === 3) y += 70;
+    }
+  }
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${g}</svg>`);
+}
+function demoTabs(path, body) {
+  const st = demoApi.dt ||= { n: 6, back: true, fwd: false, tabs: DEMO_SITES.map(([id, title, url, c, agent]) => ({ id, title, url, c, agent: !!agent })) };
+  const cur = st.tabs[0], hostOf = (u) => (u.split("/")[2] || "").replace(/^www\./, "");
+  if (path === "/api/desktop/tabs") return Promise.resolve({ tabs: st.tabs.map((t, i) => ({ id: t.id, title: t.title, url: t.url, host: hostOf(t.url),
+    icon: "", active: i === 0, agent: t.agent })), active: cur?.id || "", back: st.back, fwd: st.fwd, top: params.has("tabs") ? 81 : 0 });
+  const t = st.tabs.find((x) => x.id === body?.id) || cur;
+  if (path === "/api/desktop/tabs/shot") return Promise.resolve({ id: t.id, img: demoSiteSvg(t, 360, 576), w: 390, h: 624 });
+  const op = body?.op;
+  if (op === "new") { const x = { id: "T" + ++st.n, title: "Новая вкладка", url: "about:blank", c: "#9AA0A6" }; st.tabs.unshift(x); st.back = st.fwd = false; return Promise.resolve({ ok: true, id: x.id }); }
+  if (op === "open") { st.tabs = [t, ...st.tabs.filter((x) => x !== t)]; st.back = t.id !== "T5"; st.fwd = false; }
+  if (op === "close") { st.tabs = st.tabs.filter((x) => x !== t); if (!st.tabs.length) st.tabs.push({ id: "T" + ++st.n, title: "Новая вкладка", url: "about:blank", c: "#9AA0A6" }); }
+  if (op === "go") {
+    let u = String(body.url || "").trim();
+    if (!/^https?:\/\//i.test(u)) { if (/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^[\w.-]+:\d+/.test(u)) return Promise.reject(new Error("открыть можно только адрес http:// или https://")); u = "https://" + u; }
+    Object.assign(t, { url: u, title: hostOf(u), c: "#4A5568" }); st.back = true; st.fwd = false;
+  }
+  if (op === "back" || op === "forward") { st.back = op === "forward"; st.fwd = op === "back"; }
+  return Promise.resolve({ ok: true, id: t.id });
+}
+
+Object.assign(window, { demoBridge, demoTasks, demoTabs, demoSiteSvg, demoTaskCount, DEMO_PERSONAS, demoTeam, demoUi, demoTty, demoTitle, demoProjects, demoChat, demoRepos, demoApi });
 
 // Брифинг (GAS-18): ?demo&brief=first — первый вход с выбором источников; иначе — готовый брифинг на сегодня
 function demoBrief(path, body) {
