@@ -1,0 +1,17 @@
+{
+  "00 GET /api/share/list": [200, "application/json", {"items": []}, [["share_list", [1], []]]],
+  "01 GET /api/share/list (viewer)": [200, "application/json", {"items": []}, [["share_list", [2], []]]],
+  "02 GET /api/share/file?id=s1&i=0": [200, "image/jpeg", "JPG", [["share_file", [1, "s1", "0"], []]]],
+  "03 GET /api/share/file?id=nope": [404, "application/json", {"error": "нет такого"}, [["share_file", [1, "nope", ""], []]]],
+  "04 GET /api/share/devices": [200, "application/json", {"devices": [{"id": "d1"}]}, [["share_tokens.mine", [1], []]]],
+  "05 POST /api/share/done": [200, "application/json", {"ok": true}, [["shares.done", [1, "s1"], []]]],
+  "06 POST /api/share/done": [404, "application/json", {"error": "нет такого"}, [["shares.done", [1, "nope"], []]]],
+  "07 POST /api/share/done": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "08 POST /api/share/done (viewer)": [403, "application/json", {"error": "у вас доступ только на просмотр"}, []],
+  "09 POST /api/share/devices/new": [200, "application/json", {"id": "d2", "token": "s"}, [["share_tokens.create", [1, "iPhone"], []]]],
+  "10 POST /api/share/devices/new": [400, "application/json", {"error": "неверный ввод"}, [["share_tokens.create", [1, "bad"], []]]],
+  "11 POST /api/share/devices/new": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "12 POST /api/share/devices/revoke": [200, "application/json", true, [["share_tokens.revoke", [1, "d1"], []]]],
+  "13 POST /api/share/devices/revoke": [404, "application/json", {"error": "нет такого"}, [["share_tokens.revoke", [1, "nope"], []]]],
+  "14 POST /api/share/devices/revoke": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []]
+}

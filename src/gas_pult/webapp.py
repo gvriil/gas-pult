@@ -359,7 +359,7 @@ def desktop_up(port: int = DESKTOP_PORT) -> bool:
         return False
 
 
-SENT = object()                         # обработчик сам отправил ответ (dispatch ничего не дописывает)
+SENT = routes.SENT                       # обработчик сам отправил ответ (dispatch ничего не дописывает)
 GZIP_LEVEL = 5                          # ответы API — быстро и в разы меньше; страница — заранее с уровнем 9
 GZIP_MIN = 1024                         # меньше — сжимать не стоит
 GZIP_TYPES = ("text/", "application/json", "application/javascript", "image/svg+xml")
@@ -1688,22 +1688,6 @@ def handler(panel: Panel):
                 if (sp := self.sp(q.get("id", "")))[0]:
                     return panel.space_project_chats(q.get("id", ""), sp[1], q.get("q", ""), before)
                 return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
-            if path == "/api/share/list":                # «Поделились» — только свои неразобранные записи
-                return panel.share_list(self.terms_uid())
-            if path == "/api/share/file":                # миниатюра картинки своей записи
-                return panel.share_file(self.terms_uid(), q.get("id", ""), q.get("i", ""))
-            if path == "/api/apitokens":                 # токены для 1С и CRM (apitokens.py) — свои
-                return {"tokens": panel.api_tokens.mine(*self.api_owner()), "terms": apitokens.TERMS,
-                        "groups": apitokens.GROUPS}
-            if path == "/api/share/devices":             # устройства «Поделиться» (iPhone) — свои
-                return {"devices": panel.share_tokens.mine(self.terms_uid())}
-            if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
-                return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
-            if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
-                etag = panel.tasks.etag()
-                body = json.dumps({"tasks": panel.task_list()}, ensure_ascii=False).encode()
-                self.reply(200, body, etag=etag)
-                return SENT
             if path == "/api/chat/trash":                # корзина чатов и скрытые чаты
                 return panel.chat_trash_list()
             if path == "/api/project/history":           # переписка завершённого чата — без окна
@@ -1732,15 +1716,6 @@ def handler(panel: Panel):
                 return self.terms_info()
             if path == "/api/prefs":
                 return panel.prefs(self.terms_uid(), self.who()[1])
-            if path == "/api/notify/prefs":                  # куда и о чём сообщать (notifyroute.py)
-                return panel.notify_info(self.push_uid())
-            if path in ("/api/push/key", "/api/push/devices", "/api/push/last"):   # уведомления на телефон — свои
-                uid = self.push_uid()
-                if path == "/api/push/key":
-                    return {"key": panel.push.public_key()}
-                if path == "/api/push/devices":
-                    return {"devices": panel.push.devices(uid)}
-                return {"items": panel.push.pending(uid, q.get("dev", [""])[0][:32])}
             if path == PERSONA:
                 return panel.ui(self.terms_uid(), self.who()[1])
             if path == "/api/team":
@@ -1825,12 +1800,6 @@ def handler(panel: Panel):
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] in ("owner", "admin"),
                                                      self.terms_uid()))
-            if path == "/api/q/list":                     # «Анкеты клиентов» (0010): ссылки без кодов и анкеты
-                fs = onboarding.forms(panel.cfg.data).values()
-                return {"links": panel.forms_links.listing(),
-                        "forms": [{"id": f["id"], "title": f["title"]} for f in fs]}
-            if path == "/api/q/answers":
-                return panel.anketa_answers(str(q.get("id") or ""))
             if path == "/api/focus/list":                 # «Настройки» → «Фокус-ссылки»: действующие, без токенов
                 return {"links": panel.focus.listing()}
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
@@ -2667,19 +2636,6 @@ def handler(panel: Panel):
             b = json.loads(self.body() or b"{}")
             if fn := routes.POST_P.get(path):           # развилка: несколько путей — одна функция (платежи и др.)
                 return fn(self, path, b)
-            if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
-                return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
-            if path == "/api/apitokens/new":               # токен для 1С и CRM: показываем один раз
-                by, sp = self.api_owner()
-                return panel.api_tokens.create(by, sp, str(b.get("name", "")), b.get("write") is True,
-                                               b.get("days", apitokens.DEFAULT_DAYS),
-                                               b.get("groups") if isinstance(b.get("groups"), list) else None)
-            if path == "/api/apitokens/revoke":
-                return panel.api_tokens.revoke(*self.api_owner(), str(b.get("id", "")))
-            if path == "/api/share/devices/new":           # токен «Быстрой команды»: показываем один раз
-                return panel.share_tokens.create(self.terms_uid(), str(b.get("name", "")))
-            if path == "/api/share/devices/revoke":
-                return panel.share_tokens.revoke(self.terms_uid(), str(b.get("id", "")))
             if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
                 sid = str(b.get("id", ""))[:40]
                 panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
@@ -2696,18 +2652,6 @@ def handler(panel: Panel):
                 return {"ok": True}
             if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
                 return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
-            if path == "/api/notify/prefs":
-                return panel.notify_set(self.push_uid(), b)
-            if path in ("/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test"):
-                uid = self.push_uid()
-                if path == "/api/push/subscribe":
-                    return panel.push.add(uid, b.get("sub") or {}, str(b.get("label") or ""),
-                                          "https://" + str(self.headers.get("Host") or "localhost"))
-                if path == "/api/push/unsubscribe":
-                    return {"ok": panel.push.remove(uid, str(b.get("id") or ""))}
-                n = panel.push.notify(uid, "Проверка уведомлений",
-                                      "Видите это — уведомления на это устройство работают.", wait=True)
-                return {"devices": n, "list": panel.push.devices(uid)}
             if path == "/api/prefs":                       # простой режим и язык — у каждого свои
                 lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
                 if b.get("simple") is True and panel.is_owner(uid):
@@ -2978,21 +2922,6 @@ def handler(panel: Panel):
                 if path == "/api/desktop/tabs/shot":
                     return desktabs.TABS.shot(str(b.get("id") or ""))
                 return desktabs.TABS.act(str(b.get("op") or ""), str(b.get("id") or ""), str(b.get("url") or ""))
-            if path == "/api/brief/prefs":                # брифинг: источники, время, дни, пояс — у каждого свои
-                return panel.brief_set(self.terms_uid(), b)
-            if path == "/api/brief/act":                  # «Да / Нет / Позже»; «Да» с действием — после confirm
-                out = panel.brief_act(self.terms_uid(), b)
-                if b.get("act") in ("yes", "no") and "ask" not in out:    # «Да» с действием — после подтверждения
-                    self.product(str(b["act"]), via="brief")
-                return out
-            if path == "/api/tasks/add":                  # задача владельца руками (#203)
-                return panel.tasks.add(b, by="owner")
-            if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
-                return panel.tasks.update(str(b.get("id") or ""), {k: v for k, v in b.items() if k != "id"})
-            if path == "/api/tasks/remove":
-                return {"ok": panel.tasks.remove(str(b.get("id") or ""))}
-            if path == "/api/tasks/run":                  # «Выполнить» команду задачи — с подтверждением кодом
-                return panel.task_run(str(b.get("id") or ""), b.get("confirmed") is True)
             if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
                 return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""),
                                          b.get("force") is True)
@@ -3052,12 +2981,6 @@ def handler(panel: Panel):
                 return {"ok": panel.focus.set_browser(str(b.get("id", "")), bool(b.get("on", True)))}
             if path == "/api/focus/revoke":
                 return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
-            if path == "/api/q/new":                      # новая личная ссылка на анкету клиента (0010)
-                fid = str(b.get("form") or "")
-                if fid not in onboarding.forms(panel.cfg.data):
-                    raise ValueError("нет такой анкеты")
-                r = panel.forms_links.new(fid, str(b.get("client") or ""), int(b.get("days") or onboarding.DAYS))
-                return r                                   # адрес собирает панель: свой origin + path
             if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
                 ttl = invites.TTLS.get(str(b.get("ttl") or "1d"))
                 if not ttl:

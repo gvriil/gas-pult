@@ -1,0 +1,13 @@
+{
+  "00 GET /api/apitokens": [200, "application/json", {"tokens": [{"id": "a1"}], "terms": [30, 90, 365, 730], "groups": ["sessions", "tasks", "drafts", "send"]}, [["api_tokens.mine", [1, ""], []]]],
+  "01 GET /api/apitokens (viewer)": [400, "application/json", {"error": "токены выпускает владелец пульта или пространства"}, []],
+  "02 GET /api/apitokens (v1)": [403, "application/json", {"error": "этот путь через токен закрыт", "code": "v1_scope"}, []],
+  "03 POST /api/apitokens/new": [200, "application/json", {"id": "a2", "token": "t"}, [["api_tokens.create", [1, "", "1С", true, 30, "list"], []]]],
+  "04 POST /api/apitokens/new": [200, "application/json", {"id": "a2", "token": "t"}, [["api_tokens.create", [1, "", "CRM", false, 365, null], []]]],
+  "05 POST /api/apitokens/new": [400, "application/json", {"error": "неверный ввод"}, [["api_tokens.create", [1, "", "bad", false, 365, null], []]]],
+  "06 POST /api/apitokens/new": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "07 POST /api/apitokens/revoke": [200, "application/json", true, [["api_tokens.revoke", [1, "", "a1"], []]]],
+  "08 POST /api/apitokens/revoke": [404, "application/json", {"error": "нет такого"}, [["api_tokens.revoke", [1, "", "nope"], []]]],
+  "09 POST /api/apitokens/revoke": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "10 POST /api/apitokens/revoke (viewer)": [403, "application/json", {"error": "у вас доступ только на просмотр"}, []]
+}
