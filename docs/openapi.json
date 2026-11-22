@@ -8284,8 +8284,7 @@
         "type": "object",
         "properties": {
          "id": {},
-         "sid": {},
-         "effort": {}
+         "sid": {}
         }
        }
       }
@@ -8335,7 +8334,6 @@
         "type": "object",
         "properties": {
          "id": {},
-         "sid": {},
          "effort": {},
          "profile": {},
          "mcp_off": {},

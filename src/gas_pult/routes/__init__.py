@@ -30,18 +30,23 @@ SENT = object()  # обработчик сам отправил ответ (``se
 from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут модули областей (routes/tasks.py)
     api_tokens,
     billing,
+    bridge,
+    focus,
     forms,
     integrations,
     meetings,
     messengers,
     model_keys,
     notify,
+    projects,
     share,
+    spaces,
     tasks,
     voice,
 )
 
-AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens, model_keys, integrations)
+AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens, model_keys, integrations,
+         projects, spaces, bridge, focus)
 KINDS = ("GET", "GET_W", "GET_P", "POST_RAW", "POST", "POST_P", "POST_W")
 
 

@@ -9,6 +9,7 @@
 """
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -147,13 +148,14 @@ def srv(monkeypatch, tmp_path):
     s = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(p))
     threading.Thread(target=s.serve_forever, daemon=True).start()
     yield {"base": f"http://127.0.0.1:{s.server_address[1]}", "tok": p.auth.issue(OWNER), "log": log,
-           "viewer": p.auth.issue(VIEWER)}
+           "viewer": p.auth.issue(VIEWER), "p": p, "rec": rec, "ok": ok}
     s.shutdown()
 
 
 # особые запросы владельца: свой заголовок (ETag, Host — адрес подписки не зависит от порта); "v1" — токен /api/v1
 HDR = {"etag": {"If-None-Match": "E1"}, "host": {"Host": "pult.test"}, "origin": {"Origin": "https://evil.test"}}
-V1 = {"v1": "v1tok", "v1d": "v1dtok"}          # токен с группой «tasks» и токен «drafts» (только чтение)
+V1 = {"v1": "v1tok", "v1d": "v1dtok", "v1s": "v1stok"}   # токены с группой «tasks», «drafts» (чтение), «sessions»
+FOC = {"focus": "fc1", "focusp": "fc2", "focusb": "fc3"}   # фокус-ссылка на сессию @5, на проект, с «Браузером»
 
 
 def call(srv, path, body: bytes | None = None, ctype="", tok=None):
@@ -163,8 +165,8 @@ def call(srv, path, body: bytes | None = None, ctype="", tok=None):
     if tok in V1:                                # /api/v1/<путь>: токен 1С и CRM вместо куки
         path, hdr = "/api/v1/" + path.removeprefix("/api/"), {"Authorization": f"Bearer {V1[tok]}",
                                                                 **({"Content-Type": ctype} if ctype else {})}
-    if tok == "focus":                           # фокус-ссылка на сессию @5: только cookie фокуса
-        hdr = {"Cookie": f"{focus.COOKIE}=fc1", focus.HEADER: "1", **({"Content-Type": ctype} if ctype else {})}
+    if tok in FOC:                               # фокус-ссылка: только cookie фокуса
+        hdr = {"Cookie": f"{focus.COOKIE}={FOC[tok]}", focus.HEADER: "1", **({"Content-Type": ctype} if ctype else {})}
     try:
         r = urllib.request.urlopen(urllib.request.Request(srv["base"] + path, body, hdr))
     except urllib.error.HTTPError as e:
@@ -477,12 +479,17 @@ def test_routes_answer_as_before(srv, area):
     assert got == json.loads((FIX / f"routes_{area}_snap.json").read_text(encoding="utf-8"))
 
 
+# своя ветка фокус-ссылки в ``H.focus_do`` (не цепочка): «Завершить» сессию пространства по ссылке — окно и
+# пространство из записи ссылки; обычный запрос того же пути — таблица routes/spaces.py
+FOCUS_OWN = {("POST", "/api/space/close")}
+
+
 def test_route_paths_not_in_old_chain():
     """Путь объявлен в одном месте: перенесённый в таблицу — не остался веткой в цепочке ``webapp.py``."""
     chain = api_spec.scan(api_spec.SRC.read_text(encoding="utf-8"))   # только webapp.py, без routes/
     both = [(m, p) for m, t in routes.TABLES.items() for p in t
             if ("GET" if m.startswith("GET") else "POST") in chain.get(p, {}).get("methods", ())]
-    assert both == []
+    assert [x for x in both if (("GET" if x[0].startswith("GET") else "POST"), x[1]) not in FOCUS_OWN] == []
 
 
 def test_tables_disjoint_and_named():
@@ -505,6 +512,9 @@ def test_spec_sees_route_tables():
     assert spec["/api/billing/invoice"]["methods"] == ["GET"] and spec["/api/billing/plan"]["methods"] == ["POST"]
     assert spec["/api/meeting/share"]["in"] == ["base", "id"]
     assert spec["/api/mcp/finish"]["in"] == ["w", "url", "name"]   # POST_W: окно — как после w = self.win(b…)
+    assert spec["/api/chat/mcp"]["in"][0] == "w" and spec["/api/space/connect"]["in"] == ["w"]
+    for p in ("/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private"):   # focus_bridge —
+        assert spec[p]["methods"] == ["POST"] and spec[p]["focus_only"], p        # в panel/focus.py, опись видит
 
 
 def test_fork_tables_keep_chain_paths():
@@ -513,12 +523,14 @@ def test_fork_tables_keep_chain_paths():
     (черновики, модули, репозитории — ``path in ("/api/…", "/api/…")``)."""
     push = set(webapp.PUSH_OWN) - {"/api/notify/prefs"}
     assert set(routes.notify.PUSH_GET) | set(routes.notify.PUSH_POST) == push
-    assert set(routes.GET_P) == set(billing_api.GET) | set(routes.notify.PUSH_GET)
+    assert set(routes.GET_P) == set(billing_api.GET) | set(routes.notify.PUSH_GET) | {"/api/space/files",
+                                                                                     "/api/space/download"}
     assert set(routes.POST_P) == set(billing_api.POST) | {p for p in webapp.OWNER_ONLY
                                                           if p.startswith("/api/messengers/")} | set(
         routes.notify.PUSH_POST) | {"/api/drafts/yes", "/api/drafts/no", "/api/module/schedule",
-                                    "/api/module/delete", "/api/repos/add", "/api/repos/remove"}
-    assert set(routes.POST_W) == {"/api/mcp/finish"}
+                                    "/api/module/delete", "/api/repos/add", "/api/repos/remove",
+                                    "/api/space/mcp/add", "/api/space/mcp/remove"}
+    assert set(routes.POST_W) == {"/api/mcp/finish", "/api/chat/mcp", "/api/space/connect"}
     assert all(routes.POST_P[p] is routes.messengers.messengers_post for p in routes.messengers.POST_PATHS)
 
 
@@ -533,3 +545,317 @@ def test_rights_checked_before_tables(srv):
     assert call(srv, "/api/stt/retry", b'{"id": "j1"}', tok=v)[0::3] == [403, []]          # POST — участник и выше
     assert call(srv, "/api/stt", b"AUDIO", "audio/webm", tok=v)[0::3] == [403, []]
     assert call(srv, "/api/voice/cards", tok=v)[0] == 200                                   # смотреть — можно
+
+
+# ---------------------------------------------------------------------- граница пространств: проекты, пространства,
+# мост, фокус-ссылки. Человек пространства A (SPACER, «alpha») просит данные пространства B («beta», окно @8,
+# проект «s:beta:…»): в снимке видно, куда ушёл запрос (вызовы Panel — с «alpha», не с «beta») или что он отклонён —
+# до и после переноса.
+SPACER = 3
+FOC_RECS = {"fc1": {"id": "f1", "w": "@5", "name": "Фокус", "space": None},
+            "fc2": {"id": "f2", "w": "", "proj": "pr1", "name": "Проект", "space": None},
+            "fc3": {"id": "f3", "w": "@5", "name": "Браузер", "space": None, "browser": True}}
+
+
+@pytest.fixture
+def wide(srv, monkeypatch):
+    """Подделки для областей «Проекты и чаты», «Пространства», «Мост», «Фокус-ссылки» и человек пространства A."""
+    from gas_pult import bridge, ctxsnap, fallback, projects, qr, space_files, space_mcp, tenants
+    p, rec, ok = srv["p"], srv["rec"], srv["ok"]
+    p.people.add(SPACER, "member", "Тестировщик A", tenant="alpha")
+    p.people.accept(SPACER)
+    p.people.set_country(SPACER, chosen="NL")
+    srv["spacer"] = p.auth.issue(SPACER)
+    monkeypatch.setattr(p.cfg, "host", "pult-test")      # имя сервера — не машины, где идёт тест
+    fakes = {"sessions": [{"id": "@1"}], "cost_summary": {"usd": 0}, "space_info": {"title": "Пространство A"},
+             "projects_list": [{"id": "pr1"}], "space_projects_list": [{"id": "s:alpha:p1"}],
+             "owner_space_projects": [], "project_data": {}, "check_budget": None,
+             "project_info": ok({"id": "pr1"}), "space_project_info": ok({"id": "s:alpha:p1"}),
+             "project_chats": ok({"chats": []}), "space_project_chats": ok({"chats": []}),
+             "chat_trash_list": {"items": []}, "project_history": ok({"items": []}),
+             "space_project_history": ok({"items": []}), "project_update": ok({"ok": True}),
+             "project_chat": ok({"ok": True}), "chat_delete": ok({"ok": True}), "move_api": ok({"ok": True}),
+             "chat_restore": ok({"ok": True}), "space_project_new": ok({"id": "s:alpha:new"}),
+             "project_new": ok({"id": "pr9"}), "project_session": ok({"w": "@1"}),
+             "project_resume": ok({"w": "@1"}), "space_project_session": ok({"w": "@7"}),
+             "space_project_resume": ok({"w": "@7"}), "chat_mcp": ok({"ok": True}),
+             "space_budget": {"usd": 5}, "space_list": ok({"sessions": []}), "budget_add": ok({"usd": 6}),
+             "space_close": ok({"result": "closed"}), "space_resume": ok({"w": "@7"}),
+             "space_delete": ok({"ok": True}), "space_restore": ok({"ok": True}), "space_task": ok({"ok": True}),
+             "owner_join": ok({"ok": True}), "bridge_dev_ok": True,
+             "focus_space": ok({"url": "https://x/#focus=t", "id": "f9"}),
+             "focus_new": ok({"url": "https://x/#focus=t", "id": "f8"}), "focus_send": ok({"ok": True}),
+             "focus_token": ok({"id": "f1"})}
+    for name, out in fakes.items():
+        monkeypatch.setattr(p, name, rec(name, out))
+    subs = {"focus": {"listing": [{"id": "f1", "name": "Фокус"}], "set_browser": ok(True), "revoke": ok(True),
+                      "end_window": None},
+            "devices": {"listing": [{"id": "dv1", "name": "Мак", "focus": "f3"}, {"id": "dv2", "name": "ПК"}],
+                        "pair_code": {"code": "123456"}, "revoke": ok(True), "set_private": ok(True)},
+            "hub": {"online": ["dv1"], "history": ok([{"act": "click"}])},
+            "approvals": {"grant": None, "pending": False}, "tasks": {"open_count": 2},
+            "pult": {"module_root": "/tmp/mod"}}
+    for obj, names in subs.items():
+        for name, out in names.items():
+            monkeypatch.setattr(getattr(p, obj), name, rec(f"{obj}.{name}", out))
+    mods = {ctxsnap: {"limits": {"5h": 1}}, fallback: {"recent": []},
+            projects: {"order_of": {"grp": []}, "tilde": "~/mod"},
+            tenants: {"status": {"tenants": [{"slug": "alpha"}, {"slug": "beta"}]}},
+            space_mcp: {"listing": [{"name": "gh"}], "presets": [{"id": "github"}], "add": ok({"ok": True}),
+                        "remove": ok({"ok": True})},
+            space_files: {"folder_of": "/tmp/sf", "listing": ok({"files": []}), "get": ok(("x.txt", b"DATA")),
+                          "put": ok("x.txt")},
+            bridge: {"drafts": [{"id": "bd1", "device": "dv1"}, {"id": "bd2", "device": "dvX"}],
+                     "reject": ok(None)},
+            bridge._core: {"_load": ok({"action": "click", "params": {}}), "_digest": "DG"},
+            qr: {"png_of": b"PNG"}}
+    for mod, names in mods.items():
+        for name, out in names.items():
+            monkeypatch.setattr(mod, name, rec(f"{mod.__name__.rsplit('.', 1)[1]}.{name}", out))
+    wins = {"@5": {"id": "@5", "path": "/tmp/m"}, "@7": {"id": "@7", "path": "/tmp/a", "space": "alpha"},
+            "@8": {"id": "@8", "path": "/tmp/b", "space": "beta"}}
+    monkeypatch.setattr(p.tmux, "window", lambda wid: wins.get(wid))
+    monkeypatch.setattr(p, "focus_rec", lambda c: FOC_RECS[c] if c in FOC_RECS else
+                        (_ for _ in ()).throw(focus.Gone("нет")))
+    monkeypatch.setattr(p, "focus_owns", lambda r, wid: (wid == r["w"]) if not r.get("proj") else wid == "@1")
+    check = p.api_tokens.check
+    monkeypatch.setattr(p.api_tokens, "check", lambda t: {"id": "a4", "by": OWNER, "space": "", "groups": ["sessions"],
+                                                          "write": True} if t == "v1stok" else check(t))
+    return srv
+
+
+B_PROJ = "s:beta:secret"                            # проект пространства B
+PROJECTS = [
+    ("/api/projects", None, ""),
+    ("/api/projects?q=x&archived=1", None, ""),
+    ("/api/projects", None, "", "viewer"),
+    ("/api/projects", None, "", "spacer"),               # человек A — проекты своего пространства
+    ("/api/projects?archived=1", None, "", "spacer"),
+    ("/api/projects", None, "", "v1s"),
+    ("/api/projects", None, "", "focus"),                # не из FOCUS_* — 403
+    ("/api/project?id=pr1", None, ""),
+    ("/api/project?id=nope", None, ""),
+    (f"/api/project?id={B_PROJ}", None, ""),              # владелец — проект пространства (любого)
+    (f"/api/project?id={B_PROJ}", None, "", "viewer"),    # не владелец — «проекта нет»
+    (f"/api/project?id={B_PROJ}", None, "", "spacer"),    # человек A — только в своё пространство («alpha»)
+    ("/api/project?id=pr1", None, "", "spacer"),
+    ("/api/project?id=pr1", None, "", "v1s"),
+    ("/api/project?id=pr1", None, "", "focusp"),         # ссылка на проект pr1
+    ("/api/project?id=pr2", None, "", "focusp"),         # чужой проект — 403
+    ("/api/project/sessions?id=pr1&q=x&before=12.5", None, ""),
+    ("/api/project/sessions?id=pr1&before=bad", None, ""),
+    (f"/api/project/sessions?id={B_PROJ}", None, "", "spacer"),
+    (f"/api/project/sessions?id={B_PROJ}", None, ""),
+    ("/api/project/sessions?id=pr1", None, "", "v1s"),
+    ("/api/project/sessions?id=pr1", None, "", "focusp"),
+    ("/api/chat/trash", None, ""),
+    ("/api/chat/trash", None, "", "viewer"),
+    ("/api/chat/trash", None, "", "spacer"),
+    ("/api/project/history?id=pr1&sid=s1&before=5", None, ""),
+    ("/api/project/history?id=nope&sid=s1", None, ""),
+    (f"/api/project/history?id={B_PROJ}&sid=s1", None, "", "spacer"),
+    (f"/api/project/history?id={B_PROJ}&sid=s1", None, ""),
+    ("/api/project/history?id=pr1&sid=s1", None, "", "v1s"),
+    ("/api/project/history?id=pr2&sid=s1", None, "", "focusp"),
+    ("/api/project/session", J({"id": "pr1", "profile": "claude", "model": "m", "mcp_off": ["gh"],
+                                "effort": "high"}).encode(), JS),
+    ("/api/project/session", J({"id": "nope"}).encode(), JS),
+    ("/api/project/session", b"{bad", JS),
+    ("/api/project/session", J({"id": B_PROJ, "effort": "low"}).encode(), JS),
+    ("/api/project/session", J({"id": B_PROJ}).encode(), JS, "spacer"),
+    ("/api/project/session", J({"id": "pr1"}).encode(), JS, "spacer"),
+    ("/api/project/session", J({"id": B_PROJ}).encode(), JS, "viewer"),
+    ("/api/project/session", J({"id": "pr1"}).encode(), JS, "focusp"),
+    ("/api/project/session", J({"id": "pr2"}).encode(), JS, "focusp"),
+    ("/api/project/resume", J({"id": "pr1", "sid": "s1"}).encode(), JS),
+    ("/api/project/resume", J({"id": "nope", "sid": "s1"}).encode(), JS),
+    ("/api/project/resume", b"{bad", JS),
+    ("/api/project/resume", J({"id": B_PROJ, "sid": "s1"}).encode(), JS),
+    ("/api/project/resume", J({"id": B_PROJ, "sid": "s1"}).encode(), JS, "spacer"),
+    ("/api/project/resume", J({"id": "pr1", "sid": "s1"}).encode(), JS, "focusp"),
+    ("/api/project/update", J({"id": "pr1", "name": "Новый", "archived": True}).encode(), JS),
+    ("/api/project/update", J({"id": "nope"}).encode(), JS),
+    ("/api/project/update", b"{bad", JS),
+    ("/api/project/update", J({"id": B_PROJ}).encode(), JS, "spacer"),
+    ("/api/project/chat", J({"id": "pr1", "sid": "s1", "title": "Т", "hidden": False}).encode(), JS),
+    ("/api/project/chat", J({"id": "nope"}).encode(), JS),
+    ("/api/project/chat", J({"id": "pr1"}).encode(), JS, "viewer"),
+    ("/api/project/chat", J({"id": B_PROJ}).encode(), JS, "spacer"),
+    ("/api/chat/delete", J({"w": "@1", "id": "pr1", "sid": "s1", "force": True}).encode(), JS),
+    ("/api/chat/delete", J({"id": "nope"}).encode(), JS),
+    ("/api/chat/delete", J({"w": "@8"}).encode(), JS, "spacer"),
+    ("/api/chat/move", J({"sid": "s1", "to": "pr2"}).encode(), JS),
+    ("/api/chat/move", J({"sid": "bad"}).encode(), JS),
+    ("/api/chat/restore", J({"id": "c1"}).encode(), JS),
+    ("/api/chat/restore", J({"id": "nope"}).encode(), JS),
+    ("/api/chat/restore", b"{bad", JS),
+    ("/api/project/new", J({"name": "Сайт", "folder": "site", "instructions": "И", "profile": "claude",
+                            "model": "m"}).encode(), JS),
+    ("/api/project/new", J({"name": "bad"}).encode(), JS),
+    ("/api/project/new", b"{bad", JS),
+    ("/api/project/new", J({"name": "Сайт", "instructions": "И", "folder": "/home/b"}).encode(), JS, "spacer"),
+    ("/api/project/new", J({"name": "Сайт"}).encode(), JS, "viewer"),
+    ("/api/chat/mcp", J({"w": "@1", "off": ["gh"]}).encode(), JS),
+    ("/api/chat/mcp", J({"w": "@9", "off": []}).encode(), JS),          # окна нет — 404 (POST_W)
+    ("/api/chat/mcp", J({"off": []}).encode(), JS),
+    ("/api/chat/mcp", J({"w": "@1", "off": "bad"}).encode(), JS),
+    ("/api/chat/mcp", b"{bad", JS),
+    ("/api/chat/mcp", J({"w": "@8", "off": []}).encode(), JS, "spacer"),
+    ("/api/chat/mcp", J({"w": "@1", "off": []}).encode(), JS, "viewer"),
+]
+SPACES = [
+    ("/api/spaces", None, ""),
+    ("/api/spaces", None, "", "viewer"),
+    ("/api/spaces", None, "", "spacer"),
+    ("/api/space/sessions?space=beta", None, ""),           # владелец — пространство из запроса
+    ("/api/space/sessions?space=..", None, ""),
+    ("/api/space/sessions", None, ""),                   # владельцу без space — 400
+    ("/api/space/sessions?space=beta", None, "", "spacer"),  # человек A — только «alpha»
+    ("/api/space/sessions", None, "", "viewer"),
+    ("/api/space/mcp?space=beta", None, ""),
+    ("/api/space/mcp?space=beta", None, "", "spacer"),
+    ("/api/space/files?w=%407", None, "", "spacer"),
+    ("/api/space/files?w=%408", None, "", "spacer"),     # окно пространства B — «окна уже нет»
+    ("/api/space/files?w=%408", None, ""),               # владелец — окно любого пространства
+    ("/api/space/files?w=%405", None, ""),               # не окно пространства — 404
+    ("/api/space/files?w=%405", None, "", "focus"),
+    ("/api/space/files?w=%401", None, "", "focus"),      # не окно ссылки — 403
+    ("/api/space/download?w=%407&f=x.txt", None, "", "spacer"),
+    ("/api/space/download?w=%408&f=x.txt", None, "", "spacer"),
+    ("/api/space/download?w=%407&f=nope", None, "", "spacer"),
+    ("/api/space/download?w=%408&f=x.txt", None, ""),
+    ("/api/space/upload?w=%407", b"FILE", "application/octet-stream", "spacer"),
+    ("/api/space/upload?w=%408", b"FILE", "application/octet-stream", "spacer"),
+    ("/api/space/upload?w=%408", b"FILE", "application/octet-stream"),
+    ("/api/space/upload?w=%407", b"FILE", "application/octet-stream", "viewer"),
+    ("/api/space/upload?w=%405", b"FILE", "application/octet-stream", "focus"),
+    ("/api/space/budget/add", J({"space": "beta", "usd": 5}).encode(), JS),
+    ("/api/space/budget/add", J({"space": "..", "usd": 5}).encode(), JS),
+    ("/api/space/budget/add", b"{bad", JS),
+    ("/api/space/budget/add", J({"space": "beta", "usd": 5}).encode(), JS, "spacer"),
+    ("/api/space/close", J({"space": "beta", "w": "@8", "force": True}).encode(), JS),
+    ("/api/space/close", J({"space": "beta", "w": "nope"}).encode(), JS),
+    ("/api/space/close", J({"w": "@8"}).encode(), JS),
+    ("/api/space/close", b"{bad", JS),
+    ("/api/space/close", J({"space": "beta", "w": "@8"}).encode(), JS, "spacer"),   # человек A — только «alpha»
+    ("/api/space/close", J({"space": "beta", "w": "@8"}).encode(), JS, "viewer"),
+    ("/api/space/close", J({"w": "@5"}).encode(), JS, "focus"),                  # фокус — focus_do, не цепочка
+    ("/api/space/mcp/add", J({"preset": "github", "name": "gh", "values": {}}).encode(), JS),   # владелец — 400
+    ("/api/space/mcp/add", J({"preset": "github", "name": "gh", "space": "beta"}).encode(), JS, "spacer"),
+    ("/api/space/mcp/add", J({"preset": "bad"}).encode(), JS, "spacer"),
+    ("/api/space/mcp/add", b"{bad", JS, "spacer"),
+    ("/api/space/mcp/remove", J({"name": "gh", "space": "beta"}).encode(), JS, "spacer"),
+    ("/api/space/mcp/remove", J({"name": "nope"}).encode(), JS, "spacer"),
+    ("/api/space/mcp/remove", J({"name": "gh"}).encode(), JS, "viewer"),
+    ("/api/space/resume", J({"space": "beta", "folder": "f1"}).encode(), JS),
+    ("/api/space/resume", J({"space": "beta", "folder": "f1"}).encode(), JS, "spacer"),
+    ("/api/space/resume", J({"folder": "nope"}).encode(), JS, "spacer"),
+    ("/api/space/resume", J({"folder": "f1"}).encode(), JS),
+    ("/api/space/delete", J({"space": "beta", "folder": "f1", "confirm": "да"}).encode(), JS),
+    ("/api/space/delete", J({"space": "beta", "folder": "f1", "confirm": "да"}).encode(), JS, "spacer"),
+    ("/api/space/delete", J({"folder": "f1", "confirm": "bad"}).encode(), JS, "spacer"),
+    ("/api/space/delete", b"{bad", JS),
+    ("/api/space/restore", J({"space": "beta", "id": "c1"}).encode(), JS),
+    ("/api/space/restore", J({"space": "beta", "id": "c1"}).encode(), JS, "spacer"),
+    ("/api/space/restore", J({"id": "nope"}).encode(), JS, "spacer"),
+    ("/api/space/task", J({"space": "beta", "name": "Задача", "task": "Сделай"}).encode(), JS),
+    ("/api/space/task", J({"space": "nope"}).encode(), JS),
+    ("/api/space/task", b"{bad", JS),
+    ("/api/space/task", J({"space": "beta"}).encode(), JS, "spacer"),
+    ("/api/space/connect", J({"w": "@1"}).encode(), JS),
+    ("/api/space/connect", J({"w": "@9"}).encode(), JS),          # окна нет — 404 (POST_W)
+    ("/api/space/connect", J({}).encode(), JS),
+    ("/api/space/connect", b"{bad", JS),
+    ("/api/space/connect", J({"w": "@8"}).encode(), JS, "spacer"),
+    ("/api/space/connect", J({"w": "@1"}).encode(), JS, "viewer"),
+]
+BRIDGE = [
+    ("/api/bridge/devices", None, ""),
+    ("/api/bridge/devices", None, "", "viewer"),
+    ("/api/bridge/devices", None, "", "spacer"),
+    ("/api/bridge/devices", None, "", "focus"),
+    ("/api/bridge/log?id=dv1", None, ""),
+    ("/api/bridge/log?id=nope", None, ""),
+    ("/api/bridge/log", None, ""),
+    ("/api/bridge/drafts", None, ""),
+    ("/api/bridge/drafts", None, "", "spacer"),
+    ("/api/bridge/pair", J({}).encode(), JS),
+    ("/api/bridge/pair", b"{bad", JS),
+    ("/api/bridge/pair", J({}).encode(), JS, "viewer"),
+    ("/api/bridge/pair", J({}).encode(), JS, "spacer"),
+    ("/api/bridge/revoke", J({"id": "dv1"}).encode(), JS),
+    ("/api/bridge/revoke", J({"id": "nope"}).encode(), JS),
+    ("/api/bridge/revoke", J({"id": "dv1"}).encode(), JS, "focus"),
+    ("/api/bridge/private", J({"id": "dv1", "on": False}).encode(), JS),
+    ("/api/bridge/private", J({"id": "dv1"}).encode(), JS),
+    ("/api/bridge/private", J({"id": "nope"}).encode(), JS),
+    ("/api/bridge/confirm", J({"id": "p1"}).encode(), JS),
+    ("/api/bridge/confirm", J({"id": "nope"}).encode(), JS),
+    ("/api/bridge/confirm", J({"id": "p1"}).encode(), JS, "origin"),   # чужой сайт — 400
+    ("/api/bridge/confirm", b"{bad", JS),
+    ("/api/bridge/confirm", J({"id": "p1"}).encode(), JS, "spacer"),
+    ("/api/bridge/reject", J({"id": "p1"}).encode(), JS),
+    ("/api/bridge/reject", J({"id": "nope"}).encode(), JS),
+    ("/api/bridge/reject", J({"id": "p1"}).encode(), JS, "viewer"),
+]
+FOCUS = [
+    ("/api/focus/list", None, ""),
+    ("/api/focus/list", None, "", "viewer"),
+    ("/api/focus/list", None, "", "spacer"),
+    ("/api/focus/list", None, "", "focus"),
+    ("/api/focus/new", J({"w": "@1", "base": "https://x", "proj": "pr1", "mode": "demo"}).encode(), JS),
+    ("/api/focus/new", J({"w": "nope"}).encode(), JS),
+    ("/api/focus/new", J({"space": "beta", "base": "https://x", "ttl": "1d", "max": 2, "rights": "view",
+                          "name": "Клиент", "audience": "self"}).encode(), JS),
+    ("/api/focus/new", J({"space": "nope"}).encode(), JS),
+    ("/api/focus/new", J({"space": "beta", "max": 0}).encode(), JS),
+    ("/api/focus/new", b"{bad", JS),
+    ("/api/focus/new", J({"space": "beta"}).encode(), JS, "spacer"),
+    ("/api/focus/new", J({"w": "@1"}).encode(), JS, "viewer"),
+    ("/api/focus/new", J({"w": "@5"}).encode(), JS, "focus"),
+    ("/api/focus/send", J({"url": "https://x/#focus=t"}).encode(), JS),
+    ("/api/focus/send", J({"url": "nope"}).encode(), JS),
+    ("/api/focus/qr", J({"url": "https://x/#focus=t"}).encode(), JS),
+    ("/api/focus/qr", J({"url": "nope"}).encode(), JS),
+    ("/api/focus/qr", J({}).encode(), JS),                 # без url — 404 (KeyError из b["url"], как в цепочке)
+    ("/api/focus/browser", J({"id": "f1", "on": False}).encode(), JS),
+    ("/api/focus/browser", J({"id": "nope"}).encode(), JS),
+    ("/api/focus/revoke", J({"id": "f1"}).encode(), JS),
+    ("/api/focus/revoke", J({"id": "nope"}).encode(), JS),
+    ("/api/focus/revoke", b"{bad", JS),
+    ("/api/focus/revoke", J({"id": "f1"}).encode(), JS, "spacer"),
+    # свой компьютер по фокус-ссылке (focus_bridge): только с «Браузером» и только устройства этой ссылки
+    ("/api/focus/bridge", None, "", "focusb"),
+    ("/api/focus/bridge", None, "", "focus"),              # «Браузер» не разрешён — 403
+    ("/api/focus/bridge", None, ""),                       # обычной панели такого пути нет — 404
+    ("/api/focus/bridge/pair", J({}).encode(), JS, "focusb"),
+    ("/api/focus/bridge/pair", J({}).encode(), JS, "focus"),
+    ("/api/focus/bridge/pair", J({}).encode(), JS),
+    ("/api/focus/bridge/revoke", J({"id": "dv1"}).encode(), JS, "focusb"),
+    ("/api/focus/bridge/revoke", J({"id": "dv2"}).encode(), JS, "focusb"),   # чужое устройство — 403
+    ("/api/focus/bridge/revoke", b"{bad", JS, "focusb"),
+    ("/api/focus/bridge/private", J({"id": "dv1", "on": False}).encode(), JS, "focusb"),
+    ("/api/focus/bridge/private", J({"id": "dv2"}).encode(), JS, "focusb"),
+    ("/api/focus/bridge/private", J({"id": "dv1"}).encode(), JS, "spacer"),
+]
+# Снимки — код до переноса (origin/refactor/routes-models-integr, 31569e8): владелец, наблюдатель, человек
+# пространства A с данными пространства B, фокус-ссылки (сессия, проект, «Браузер»), /api/v1 (группа «sessions»).
+# «now» и «build» — часы и версия страницы — в снимке нулями.
+WIDE = {"projects": PROJECTS, "spaces": SPACES, "bridge": BRIDGE, "focus": FOCUS}
+
+
+HOME = os.path.expanduser("~")                   # домашняя папка машины — в снимке «~» (CI и сервер разные)
+
+
+def _still(x):
+    if isinstance(x, dict):
+        return {k: 0 if k in ("now", "build") else _still(v) for k, v in x.items()}
+    if isinstance(x, str):
+        return x.replace(HOME, "~") if HOME not in ("", "/") else x
+    return [_still(v) for v in x] if isinstance(x, list) else x
+
+
+@pytest.mark.parametrize("area", WIDE)
+def test_border_routes_answer_as_before(wide, area):
+    got = _still(json.loads(json.dumps(snap_of(wide, WIDE[area]))))
+    assert got == json.loads((FIX / f"routes_{area}_snap.json").read_text(encoding="utf-8"))
