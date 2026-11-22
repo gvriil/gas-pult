@@ -194,7 +194,7 @@ if __name__ == "__main__":
 Unknown прошлое состояние не меняет. Программа не ответила — строка «не проверено» с причиной, остальные harness
 проверяются дальше.
 
-**Исключения** (не проверяются): `plugin:design:*`, `plugin:gitlab:*`. Свои — в `~/.config/gas-pult/connwatch.toml`:
+**Исключения** (не проверяются): `plugin:design:*`, `plugin:gitlab:*`, `browser-local` (мост к компьютеру — выключенный компьютер не потеря входа) и `plugin:telegram:*` (канал бота есть только в сессиях, запущенных с ним). Свои — в `~/.config/gas-pult/connwatch.toml`:
 
 ```toml
 exclude = ["browser-local", "plugin:telegram:*", "pi/linear"]   # шаблоны fnmatch; «harness/имя» — для одного harness

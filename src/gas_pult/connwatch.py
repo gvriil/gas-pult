@@ -39,7 +39,9 @@ RUN = subprocess.run                     # тесты подменяют: без
 TIMEOUT = 180                            # с: claude mcp list проверяет все серверы — бывает минута и больше
 STATES = ("ok", "needs_auth", "failed", "unknown")
 DOWN = ("needs_auth", "failed")
-DEFAULT_EXCLUDE = ("plugin:design:*", "plugin:gitlab:*")   # плагины без входа владельцу не нужны (22.11)
+# плагины без входа владельцу не нужны (22.11); browser-local — мост к компьютеру (выключен компьютер — не потеря
+# входа, его видно в «Настройки → Компьютеры»); plugin:telegram — канал бота есть только в сессиях, запущенных с ним
+DEFAULT_EXCLUDE = ("plugin:design:*", "plugin:gitlab:*", "browser-local", "plugin:telegram:*")
 TITLES = {"claude": "Claude Code", "pi": "Pi", "opencode": "OpenCode", "hermes": "Hermes"}
 NOT_CHECKED = {
     "hermes": "hermes mcp list показывает только «включён в настройках» (✓ enabled), а не связь: отказавший сервер "
