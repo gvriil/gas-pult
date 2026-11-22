@@ -6628,6 +6628,7 @@
         "type": "object",
         "properties": {
          "w": {},
+         "keep": {},
          "name": {},
          "effort": {}
         }
@@ -10367,10 +10368,10 @@
           "now": {},
           "cost": {},
           "fallback": {},
+          "focus": {},
           "space": {},
           "limits": {},
-          "tasks": {},
-          "focus": {}
+          "tasks": {}
          }
         }
        }
@@ -13718,10 +13719,10 @@
           "now": {},
           "cost": {},
           "fallback": {},
+          "focus": {},
           "space": {},
           "limits": {},
-          "tasks": {},
-          "focus": {}
+          "tasks": {}
          }
         }
        }

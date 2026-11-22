@@ -14,7 +14,7 @@ import pytest
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import deskmobile, webapp, wsock
+from gas_pult import deskmobile, desktop, wsock
 
 EMU = ["Emulation.setDeviceMetricsOverride", "Emulation.setUserAgentOverride", "Emulation.setTouchEmulationEnabled"]
 
@@ -164,7 +164,7 @@ def test_api_owner_and_confirm_only(server, monkeypatch):
             return {"on": on, "tabs": 0, "error": ""}
 
     monkeypatch.setattr(deskmobile, "MOBILE", Fake())
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     tok = p.auth.issue(1)
     code, e = call(base, "/api/desktop/mobile", {"on": True}, tok)
     assert code == 403 and e.get("confirm") == "code" and not got        # свежий вход — сперва код, как у стола
@@ -175,7 +175,7 @@ def test_api_owner_and_confirm_only(server, monkeypatch):
     code, d = call(base, "/api/desktop/mobile", {"on": True, "w": 390, "h": 844, "dpr": 3}, tok)
     assert code == 200 and d["on"] is True and got[-1] == (True, 390, 844, 3)
     assert call(base, "/api/desktop/mobile", {"on": False}, tok)[1]["on"] is False
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: False)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: False)
     code, e = call(base, "/api/desktop/mobile", {"on": True}, tok)
     assert code == 400 and "не запущен" in e["error"]
     assert call(base, "/api/desktop/mobile", {"on": False}, tok)[0] == 200   # выключить можно всегда

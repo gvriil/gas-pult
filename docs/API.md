@@ -56,7 +56,7 @@
 | `/api/key` | POST | участник и выше | `SPACE_OK`, `FOCUS`, `DEMO` | Клавиша в окно (Enter, Esc, стрелки, Ctrl+C); по демо-ссылке — только выбор варианта | `key`, `w` | `lines` |
 | `/api/last` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Последний ответ агента текстом (для «Скопировать» и озвучки) | `w` | `text` |
 | `/api/media` | GET | владелец | `FOCUS` | Картинка из ленты: inbox и Диск (по фокус-ссылке — только её папки) | `p` | — |
-| `/api/model` | POST | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Сменить модель сессии; `keep` — только запомнить для перезапуска | `w`, `name`, `effort` | — |
+| `/api/model` | POST | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Сменить модель сессии; `keep` — только запомнить для перезапуска | `w`, `keep`, `name`, `effort` | — |
 | `/api/model/default` | GET | владелец | — | Модель Claude по умолчанию для новых сессий | `model` | — |
 | `/api/model/default` | POST | владелец | — | Модель Claude по умолчанию для новых сессий | `model` | — |
 | `/api/new` | POST | участник и выше | `SPACE_OK`, `BUDGET` | Новая сессия (окно) в папке; тестировщику — в его пространстве | `name`, `effort`, `i`, `profile` | — |
@@ -73,7 +73,7 @@
 | `/api/screen` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO`, `cap:cap.dev_terminal` | Последние строки экрана окна; вход в сервис и вопрос, если на экране | `w` | `lines`, `auth`, `login`, `ask` |
 | `/api/select` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS`, `DEMO` | Выбрать вариант в вопросе Claude (номер или текст) | `go`, `w`, `n`, `text` | `lines` |
 | `/api/send` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS` | Отправить текст в сессию; повтор того же текста — `dup` | `text`, `w`, `id` | `ok`, `dup` |
-| `/api/sessions` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи | — | `sessions`, `host`, `build`, `now`, `cost`, `fallback`, `space`, `limits`, `tasks`, `focus` |
+| `/api/sessions` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи | — | `sessions`, `host`, `build`, `now`, `cost`, `fallback`, `focus`, `space`, `limits`, `tasks` |
 | `/api/starter` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Нажали бейджик: текст для агента и замер (без текста) | `id`, `w` | `prompt` |
 | `/api/starters` | GET | любой вошедший | `SPACE_OK`, `FOCUS` | Бейджики-сценарии первого разговора (GAS-37) | `occ` | — |
 | `/api/steps` | GET | любой вошедший | `SPACE_OK` | «Шаги»: сообщение → инструменты → ответ (GAS-16) | `w`, `q` | `turns`, `note` |
@@ -432,7 +432,7 @@
 | `/api/v1/project/sessions` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project/sessions` — Завершённые чаты проекта (журналы без окна), страницами (белый список `access.V1_*`, docs/API-V1.md) | `before`, `id`, `q` | — |
 | `/api/v1/projects` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/projects` — «Проекты» для главной: проекты, порядок, сессии, лимиты — одним запросом (белый список `access.V1_*`, docs/API-V1.md) | `archived`, `q` | `projects`, `order`, `sessions`, `now`, `host`, `build`, `limits`, `tasks`, `new_root`, `cost`, `fallback`, `space`, `space_projects` |
 | `/api/v1/send` | POST | по токену | `V1`, `v1:send` | По токену: `/api/send` — Отправить текст в сессию; повтор того же текста — `dup` (белый список `access.V1_*`, docs/API-V1.md) | `text`, `w`, `id` | `ok`, `dup` |
-| `/api/v1/sessions` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/sessions` — Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи (белый список `access.V1_*`, docs/API-V1.md) | — | `sessions`, `host`, `build`, `now`, `cost`, `fallback`, `space`, `limits`, `tasks`, `focus` |
+| `/api/v1/sessions` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/sessions` — Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи (белый список `access.V1_*`, docs/API-V1.md) | — | `sessions`, `host`, `build`, `now`, `cost`, `fallback`, `focus`, `space`, `limits`, `tasks` |
 | `/api/v1/tasks` | GET | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks` — Задачи владельца (#203); не менялись — 304 без тела (белый список `access.V1_*`, docs/API-V1.md) | — | — |
 | `/api/v1/tasks/add` | POST | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks/add` — Добавить задачу руками (белый список `access.V1_*`, docs/API-V1.md) | — | — |
 | `/api/v1/tasks/update` | POST | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks/update` — Статус, «что дальше» и поля задачи (белый список `access.V1_*`, docs/API-V1.md) | `id` | — |

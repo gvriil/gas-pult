@@ -6,10 +6,9 @@
 его ``Panel``. Права (``access.py``: ``OWNER_ONLY``, ``TERM``, ``TTY`` и режим разработчика ``H.dev_tty``, код
 подтверждения нового входа ``CONFIRM``) проверены до вызова — ``H.permit``; фокус-ссылка — ``H.focus_call``
 (``FOCUS_POST`` и окно ссылки). Живой терминал — развилка ``POST_P``; «Выполнить» из ответа — ``POST_W`` (ветки шли
-после ``w = self.win(b.get("w"))``). Выполняют команды ``Panel`` (``panel/work.py``) и ``termwin``. Остались в
-цепочке: «Рабочий стол» (``/api/desktop/*``), «Терминал» ``/api/shell/open`` и ``/api/links/prefs`` — им нужны
-``desktop_up``, ``desktop_tab``, ``desk_*``, ``shell_window``, ``link_pref*`` верхнего уровня ``webapp`` (тесты
-подменяют их там); ``/api/gate/desktop`` — до входа, в ``do_GET``. Таблицы и подписи — ``routes/__init__.py``.
+после ``w = self.win(b.get("w"))``). Выполняют команды ``Panel`` (``panel/work.py``) и ``termwin``. «Рабочий стол»
+(``/api/desktop/*``), «Терминал» ``/api/shell/open`` и ``/api/links/prefs`` — ``routes/desktop.py``;
+``/api/gate/desktop`` — до входа, в ``do_GET``. Таблицы и подписи — ``routes/__init__.py``.
 """
 
 from gas_pult import termwin

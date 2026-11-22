@@ -40,7 +40,8 @@ def test_target_for_command_file_and_question():
 
 
 def test_screen_api_returns_ask():
-    src = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "webapp.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "routes" / "sessions.py").read_text(
+        encoding="utf-8")                                  # /api/screen — routes/sessions.py (шаг 7)
     assert '"ask": humanize.parse(lines, target=True)' in src
     assert "target" not in humanize.parse(BASH)                     # простой режим (/api/ask) — без имён и команд
 

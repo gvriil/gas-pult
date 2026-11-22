@@ -1,0 +1,400 @@
+{
+ "00 POST /api/desktop/url": [
+  200,
+  "application/json",
+  {
+   "ok": true,
+   "id": "T1"
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktop_tab",
+    [
+     "https://example.com"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "01 POST /api/desktop/url": [
+  404,
+  "application/json",
+  {
+   "error": "нет такого"
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktop_tab",
+    [
+     "nope"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "02 POST /api/desktop/url (viewer)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ],
+ "03 POST /api/links/prefs": [
+  200,
+  "application/json",
+  {
+   "sites": {
+    "github.com": "desk"
+   }
+  },
+  [],
+  []
+ ],
+ "04 POST /api/links/prefs": [
+  200,
+  "application/json",
+  {
+   "sites": {}
+  },
+  [],
+  []
+ ],
+ "05 POST /api/links/prefs": [
+  400,
+  "application/json",
+  {
+   "error": "неверное имя сайта"
+  },
+  [],
+  []
+ ],
+ "06 POST /api/links/prefs": [
+  400,
+  "application/json",
+  {
+   "error": "где открыть — desk или here"
+  },
+  [],
+  []
+ ],
+ "07 POST /api/links/prefs": [
+  400,
+  "application/json",
+  {
+   "error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  },
+  [],
+  []
+ ],
+ "08 POST /api/links/prefs (member)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ],
+ "09 POST /api/shell/open": [
+  200,
+  "application/json",
+  {
+   "id": "@4",
+   "name": "ubuntu-shell"
+  },
+  [
+   [
+    "shell_window",
+    [
+     "Routed"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "10 POST /api/shell/open (fresh)": [
+  403,
+  "application/json",
+  {
+   "error": "новый вход: подтвердите кодом, что команды выполняете вы",
+   "code": "confirm",
+   "confirm": "code"
+  },
+  [],
+  []
+ ],
+ "11 POST /api/shell/open (member)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ],
+ "12 POST /api/desktop/open": [
+  200,
+  "application/json",
+  {
+   "url": "/desktop/vnc.html?autoconnect=1&resize=scale&reconnect=1&path=desktop/websockify",
+   "tab": "/desktop-enter?t=*"
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ]
+  ],
+  [
+   "gp_desk=*; Path=/desktop/; Max-Age=43200; HttpOnly; Secure; SameSite=None; Partitioned"
+  ]
+ ],
+ "13 POST /api/desktop/open (fresh)": [
+  403,
+  "application/json",
+  {
+   "error": "новый вход: подтвердите кодом, что команды выполняете вы",
+   "code": "confirm",
+   "confirm": "code"
+  },
+  [],
+  []
+ ],
+ "14 POST /api/desktop/open (admin)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ],
+ "15 POST /api/desktop/open (focus)": [
+  403,
+  "application/json",
+  {
+   "error": "по фокус-ссылке доступна только её сессия",
+   "code": "focus_scope"
+  },
+  [],
+  []
+ ],
+ "16 POST /api/desktop/mobile": [
+  200,
+  "application/json",
+  {
+   "on": true
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "deskmobile.set",
+    [
+     true,
+     390,
+     844,
+     3
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "17 POST /api/desktop/mobile": [
+  200,
+  "application/json",
+  {
+   "on": true
+  },
+  [
+   [
+    "deskmobile.set",
+    [
+     false,
+     null,
+     null,
+     null
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "18 POST /api/desktop/mobile": [
+  400,
+  "application/json",
+  {
+   "error": "неверный ввод"
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "deskmobile.set",
+    [
+     true,
+     "bad",
+     null,
+     null
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "19 POST /api/desktop/tabs": [
+  200,
+  "application/json",
+  {
+   "tabs": []
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktabs.list",
+    [
+     5
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "20 POST /api/desktop/tabs/shot": [
+  200,
+  "application/json",
+  {
+   "tabs": []
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktabs.shot",
+    [
+     "T1"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "21 POST /api/desktop/tabs/shot": [
+  404,
+  "application/json",
+  {
+   "error": "нет такого"
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktabs.shot",
+    [
+     "nope"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "22 POST /api/desktop/tabs/act": [
+  200,
+  "application/json",
+  {
+   "tabs": []
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktabs.act",
+    [
+     "close",
+     "T1",
+     ""
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "23 POST /api/desktop/tabs/act": [
+  400,
+  "application/json",
+  {
+   "error": "неверный ввод"
+  },
+  [
+   [
+    "desktop_up",
+    [],
+    []
+   ],
+   [
+    "desktabs.act",
+    [
+     "bad",
+     "",
+     ""
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "24 POST /api/desktop/tabs": [
+  400,
+  "application/json",
+  {
+   "error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  },
+  [],
+  []
+ ],
+ "25 POST /api/desktop/tabs (viewer)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ]
+}

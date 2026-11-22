@@ -15,7 +15,8 @@
   ключ — кортеж путей (ветка ``if path in ТАБЛИЦА`` цепочки: ответ собирает модуль области по ``path``, например
   ``billing.api``). Ищутся после ``GET``/``GET_W`` и ``POST`` — как ветки, что шли ниже.
 
-``H.get``/``H.post`` сначала ищут путь в ``TABLES``, потом — старая цепочка. Права здесь не проверяются: ``get`` и
+``H.get``/``H.post`` ищут путь только в ``TABLES`` (цепочка ``if path == …`` пуста с 22.11; путь не из таблиц —
+как раньше: сначала окно ``self.win``, потом 404 «нет такого метода»). Права здесь не проверяются: ``get`` и
 ``post`` вызываются только после ``H.permit`` (вход, условия, пространство ``SPACE_OK``, роль, потолок, код
 подтверждения), ``H.focus_call`` (фокус- и демо-ссылка: ``FOCUS_*``/``DEMO_*`` и окно ссылки) или ``H.v1_call``
 (токен: белый список ``V1_*``, затем ``permit``) — таблицы прав в ``access.py``, одна точка проверки на запрос.
@@ -32,6 +33,7 @@ from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут
     billing,
     bridge,
     commands,
+    desktop,
     focus,
     forms,
     integrations,
@@ -41,6 +43,7 @@ from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут
     notify,
     people,
     projects,
+    sessions,
     share,
     spaces,
     tasks,
@@ -49,7 +52,7 @@ from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут
 )
 
 AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens, model_keys, integrations,
-         projects, spaces, bridge, focus, people, commands, team)
+         projects, spaces, bridge, focus, people, commands, team, sessions, desktop)
 KINDS = ("GET", "GET_W", "GET_P", "POST_RAW", "POST", "POST_P", "POST_W")
 
 
