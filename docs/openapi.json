@@ -4559,7 +4559,8 @@
       "TERMS_FREE",
       "SPACE_OK",
       "FOCUS",
-      "DEMO"
+      "DEMO",
+      "MEETING"
      ]
     },
     "security": [
@@ -4913,6 +4914,211 @@
       "schema": {
        "type": "string"
       }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/meeting": {
+   "get": {
+    "summary": "Протокол встречи: оглавление, «Что сделать», текст, ссылки на него",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_meeting",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/meeting/audio": {
+   "get": {
+    "summary": "Запись встречи (звук)",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_meeting_audio",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/meeting/card": {
+   "get": {
+    "summary": "Карточка-превью протокола (SVG 1200×630)",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_meeting_card",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/meeting/share": {
+   "post": {
+    "summary": "«Ссылка на протокол»: фокус-ссылка на один протокол, 30 дней, до 50 устройств",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "post_meeting_share",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "base": {},
+         "id": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/meetings": {
+   "get": {
+    "summary": "Протоколы встреч: список",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_meetings",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
      }
     ],
     "responses": {
@@ -5330,6 +5536,114 @@
       }
      }
     },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/mt": {
+   "get": {
+    "summary": "По ссылке на протокол: протокол без черновика и ссылок (id — из записи ссылки)",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_mt",
+    "x-access": {
+     "role": "focus",
+     "tags": [
+      "MEETING"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "exp": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/mt/audio": {
+   "get": {
+    "summary": "По ссылке на протокол: запись встречи",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_mt_audio",
+    "x-access": {
+     "role": "focus",
+     "tags": [
+      "MEETING"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/mt/card": {
+   "get": {
+    "summary": "По ссылке на протокол: карточка-превью",
+    "tags": [
+     "Протоколы встреч"
+    ],
+    "operationId": "get_mt_card",
+    "x-access": {
+     "role": "focus",
+     "tags": [
+      "MEETING"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
     "responses": {
      "200": {
       "description": "успех",

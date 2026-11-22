@@ -29,8 +29,12 @@ DOCS = Path(__file__).resolve().parents[2] / "docs"
 GET_FN = {"do_GET", "get"}                   # ветки GET; do_GET — до проверки входа (свои правила)
 POST_FN = {"do_POST", "post", "focus_bridge"}  # ветки POST; do_POST — до проверки входа
 OPEN_FN = {"do_GET", "do_POST"}              # путь здесь — обработка до ``permit`` (вход, коды, токены)
-FOCUS_FN = {"focus_do"}                      # фокус-ссылка: метод — по таблицам FOCUS_GET / FOCUS_POST
-FOCUS_ONLY_FN = {"focus_do", "focus_bridge"}  # путь только здесь — его нет вне фокус-ссылки
+# Фокус-ссылки: функция → (пути GET, пути POST) — метод по таблицам access.py. focus_do — ссылка на сессию, проект и
+# демо; meeting_public — ссылка на протокол встречи (focus.MEETING, ветка в focus_call)
+FOCUS_TABLES = {"focus_do": (access.FOCUS_GET | access.DEMO_GET, access.FOCUS_POST | access.DEMO_POST),
+                "meeting_public": (access.MEETING_GET, access.MEETING_POST)}
+FOCUS_FN = set(FOCUS_TABLES)
+FOCUS_ONLY_FN = FOCUS_FN | {"focus_bridge"}   # путь только здесь — его нет вне фокус-ссылки
 PATH_VARS = {"path", "url.path"}
 # Пути по префиксу (``path.startswith``) — разбор внутри обработчика: префикс → (путь, метод)
 PREFIX_ROUTES = {
@@ -213,7 +217,7 @@ def scan(src: str | None = None) -> dict[str, dict]:
         elif fn in POST_FN:
             put(p, "POST", fn, br)
         elif fn in FOCUS_FN:
-            for m, ok in (("GET", access.FOCUS_GET | access.DEMO_GET), ("POST", access.FOCUS_POST | access.DEMO_POST)):
+            for m, ok in zip(("GET", "POST"), FOCUS_TABLES[fn], strict=True):
                 if p in ok:
                     put(p, m, fn, br)
     for r in out.values():
@@ -262,6 +266,8 @@ def who(path: str, method: str, r: dict, free: set[str]) -> dict:
         tags.append("FOCUS_PROJ")
     if path in (a.DEMO_GET if method == "GET" else a.DEMO_POST):
         tags.append("DEMO")
+    if path in (a.MEETING_GET if method == "GET" else a.MEETING_POST):
+        tags.append("MEETING")
     if cap := personas.PATH_CAP.get(path):
         tags.append(f"cap:{cap}")
     return {"role": role, "tags": tags}
@@ -278,6 +284,7 @@ TAGS_RU = {
     "FOCUS": "по фокус-ссылке (только её сессия)",
     "FOCUS_PROJ": "по фокус-ссылке на проект (только её проект)",
     "DEMO": "по демо-ссылке (просмотр и выбор вариантов)",
+    "MEETING": "по ссылке на протокол встречи (только её протокол)",
     "cap:": "потолок возможностей человека (personas.PATH_CAP)",
 }
 
@@ -504,6 +511,15 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/help/ask": ("Помощник «? Подсказать»: ответ по карте помощи", "q, chip, ctx", ""),
     "/api/help/feedback": ("Помощник: полезен ли ответ", "id, useful, action", ""),
     "/api/help/call": "Тестировщик: «Позвать на помощь» — владельцу в бот",
+    # --- протоколы встреч (meetings.py)
+    "/api/meetings": "Протоколы встреч: список",
+    "/api/meeting": "Протокол встречи: оглавление, «Что сделать», текст, ссылки на него",
+    "/api/meeting/audio": ("Запись встречи (звук)", "id", "аудио"),
+    "/api/meeting/card": ("Карточка-превью протокола (SVG 1200×630)", "id", "image/svg+xml"),
+    "/api/meeting/share": "«Ссылка на протокол»: фокус-ссылка на один протокол, 30 дней, до 50 устройств",
+    "/api/mt": "По ссылке на протокол: протокол без черновика и ссылок (id — из записи ссылки)",
+    "/api/mt/audio": ("По ссылке на протокол: запись встречи", "", "аудио"),
+    "/api/mt/card": ("По ссылке на протокол: карточка-превью", "", "image/svg+xml"),
     # --- уведомления
     "/api/push/key": "Уведомления на телефон: ключ VAPID",
     "/api/push/devices": "Уведомления: свои устройства",
@@ -570,6 +586,7 @@ GROUPS = (   # раздел документа → первые части пу�
     ("Уведомления", ("push", "notify")),
     ("«Поделиться»", ("share",)),
     ("Пространства", ("spaces", "space")),
+    ("Протоколы встреч", ("meetings", "meeting", "mt")),
     ("Анкеты и предложения клиентам", ("q", "offer")),
 )
 
