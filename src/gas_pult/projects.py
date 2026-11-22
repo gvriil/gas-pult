@@ -17,19 +17,18 @@ import hashlib
 import json
 import os
 import re
-import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
 from gas_pult import harness, modules, transcripts
+from gas_pult import store as jstore
 from gas_pult.config import write_private
 
 VERSION = 1
 FILE = "projects.json"
 HOME_NAME = "Домашняя"
 TITLE_MAX = 60
-_lock = threading.Lock()
 
 
 def pid_of(real: str) -> str:
@@ -140,7 +139,7 @@ class Store:
         рабочая копия worktree → доп. папка проекта основного репозитория; ``add_dirs`` (#123) → ``repos``.
         Существующие проекты не меняются (имя, архив, настройки — как оставил человек). Пишем, только если что-то
         добавилось. Возвращает данные."""
-        with _lock:
+        with jstore.locked(self.file):
             d = self.read()
             before = json.dumps(d, sort_keys=True)
             home_real = os.path.realpath(self.home)
@@ -179,7 +178,7 @@ class Store:
     def create(self, folder: str, name: str, by: int | None = None, profile: str = "", model: str = "") -> str:
         """«Новый проект»: запись для только что созданной папки — имя человека, кто создал, поставщик и модель по
         умолчанию (пусто — как у пульта). Проект с этой папкой уже есть — его id, запись не трогаем."""
-        with _lock:
+        with jstore.locked(self.file):
             d = self.read()
             real = os.path.realpath(folder)
             pid = pid_of(real)
@@ -241,7 +240,7 @@ class Store:
 
     def set_chat(self, sid: str, pid: str, title=None, hidden=None) -> dict:
         """Своё название и «скрыт» у чата (``sessions``) — единственное, что пульт хранит о сессии сверх журнала."""
-        with _lock:
+        with jstore.locked(self.file):
             d = self.read()
             rec = dict(d["sessions"].get(sid) or {})
             rec["project"] = pid
@@ -257,7 +256,7 @@ class Store:
 
     def set_project(self, pid: str, name=None, archived=None) -> dict:
         """Название и архив проекта — только в ``projects.json``: папку на диске и журналы Claude Code не трогаем."""
-        with _lock:
+        with jstore.locked(self.file):
             d = self.read()
             p = d["projects"].get(pid)
             if p is None:
@@ -278,7 +277,7 @@ class Store:
         if not self.ORDER_GROUP.match(str(grp or "")):
             raise ValueError("неизвестная группа")
         clean = [str(x)[:200] for x in (ids or []) if str(x).strip()][:500]
-        with _lock:
+        with jstore.locked(self.file):
             d = self.read()
             mine = d.setdefault("order", {}).setdefault(str(who), {})
             if clean:
@@ -294,7 +293,7 @@ class Store:
         у старого окна без метки). Значение — время закрепления: порядок в группе «Закреплённые». Возвращает его
         или 0."""
         ts = int(time.time()) if on else 0
-        with _lock:
+        with jstore.locked(self.file):
             d = self.read()
             if pid and pid not in d["projects"]:
                 raise LookupError("проекта нет — обновите список")

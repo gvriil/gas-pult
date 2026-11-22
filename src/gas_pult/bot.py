@@ -30,6 +30,7 @@ import urllib.parse
 import uuid
 from contextlib import contextmanager, suppress
 from datetime import date, datetime
+from functools import cached_property
 from pathlib import Path
 from typing import ClassVar
 
@@ -70,6 +71,7 @@ from gas_pult import (
     space_budget,
     spaces,
     speech,
+    store,
     tasks,
     tenants,
     terms,
@@ -84,7 +86,7 @@ from gas_pult import (
 )
 from gas_pult import tmux as tmux_mod
 from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
-from gas_pult.config import Config, write_private
+from gas_pult.config import Config
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux, prompt_draft
@@ -200,6 +202,11 @@ class Pult:
     skipped = 0                # сколько сообщений не отправили за паузу — сказать одним сообщением после неё
     BURST = 3                  # больше ответов окна за один обход монитора — шлём последний и счётчик
     actor = threading.local()  # кто сейчас действует (Telegram ID; у каждого потока свой) — для проверки страны
+
+    @cached_property
+    def focus(self) -> focus.Focus:
+        """Фокус-ссылки — один экземпляр на бот (как People); бот и панель пишут focus.json под store.locked."""
+        return focus.Focus(self.cfg.data / "focus.json")
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -1049,7 +1056,7 @@ class Pult:
         if r["result"] == "busy":
             return self.send(chat, f"«{self.label(w)}»: Claude не вышел за {self.QUIT_WAIT:.0f} с (возможно, занят). "
                                    "Посмотри 📺 Экран или закрой принудительно." + tail, reply_markup=force)
-        focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])   # фокус-ссылки этой сессии гаснут
+        self.focus.end_window(w["id"])   # фокус-ссылки этой сессии гаснут
         self.send(chat, f"«{self.label(w)}» завершена." + tail)
 
     # ---------- голос ----------
@@ -1447,7 +1454,7 @@ class Pult:
                     continue
                 if self.quit_ex(w)["result"] != "closed":
                     continue                                # фоновые задачи или не вышла — оставляем
-            focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])
+            self.focus.end_window(w["id"])
             closed.append(self.label(w))                    # человеку — название, не имя окна
         if closed:
             self.broadcast(f"🗄 Закрыты сессии без активности дольше {days} дн.: {', '.join(closed)}. Переписка — "
@@ -2429,7 +2436,7 @@ class Pult:
             self.close(chat, w)
         elif kind == "fclose":                             # «Закрыть принудительно»: фоновые задачи остановятся
             self.tmux.kill(w["id"])
-            focus.Focus(self.cfg.data / "focus.json").end_window(w["id"])
+            self.focus.end_window(w["id"])
             send(f"«{self.label(w)}» закрыта принудительно. Переписка — в журнале, «Продолжить» в панели её поднимет.")
 
     def react(self, m: dict, emoji: str):
@@ -2605,21 +2612,17 @@ class Pult:
     def rebind_keys(self, old: int, new: int):
         """Ключи входа (passkeys.json) гостя — под его Telegram ID: Face ID продолжает работать."""
         f = self.cfg.data / "passkeys.json"
-        try:
-            d = json.loads(f.read_text())
-        except (OSError, ValueError):
-            return
-        if not isinstance(d, dict):
-            return
-        changed = False
-        for c in (d.get("creds") or {}).values():
-            if c.get("uid") == old:
-                c["uid"], changed = new, True
-        if str(old) in (d.get("handles") or {}):
-            d["handles"][str(new)] = d["handles"].pop(str(old))
-            changed = True
-        if changed:
-            write_private(f, json.dumps(d))
+        with store.locked(f):                       # панель пишет тот же файл (passkeys.Passkeys) — один замок
+            d = store.load(f)
+            changed = False
+            for c in (d.get("creds") or {}).values():
+                if c.get("uid") == old:
+                    c["uid"], changed = new, True
+            if str(old) in (d.get("handles") or {}):
+                d["handles"][str(new)] = d["handles"].pop(str(old))
+                changed = True
+            if changed:
+                store.save(f, d)
 
     def invited(self, u: dict, inv: dict) -> str:
         """Вход по приглашению (invites.py): роль и пространство из него, без ожидания владельца."""

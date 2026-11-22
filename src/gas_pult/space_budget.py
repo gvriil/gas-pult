@@ -20,16 +20,14 @@
 
 from __future__ import annotations
 
-import json
-import threading
 from datetime import date, timedelta
 from pathlib import Path
 
-from gas_pult.config import data_dir, write_private
+from gas_pult import store as jstore
+from gas_pult.config import data_dir
 
 PERIOD_DAYS = 30
 WARN_AT = (0.8, 1.0)
-_lock = threading.Lock()
 
 
 def config(raw: dict | None, fallback_start: date | None = None) -> dict | None:
@@ -112,23 +110,18 @@ def store(slug: str) -> Path:
 
 
 def load_store(slug: str) -> dict:
-    try:
-        d = json.loads(store(slug).read_text())
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return jstore.load(store(slug))
 
 
 def save_store(slug: str, d: dict):
-    p = store(slug)
-    p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    write_private(p, json.dumps(d, ensure_ascii=False))
+    """Вызывать под ``jstore.locked(store(slug))``: пополняют и бот, и панель."""
+    jstore.save(store(slug), d, ensure_ascii=False)
 
 
 def remember(slug: str, seen: dict[str, float], keep_from: date) -> dict[str, float]:
     """Расход по дням: максимум из уже записанного и увиденного сейчас (удалённые журналы не уменьшают расход).
     Дни до ``keep_from`` (прошлые периоды) — убираем."""
-    with _lock:
+    with jstore.locked(store(slug)):
         d = load_store(slug)
         days = {k: float(v) for k, v in (d.get("days") or {}).items() if k >= keep_from.isoformat()}
         for k, v in seen.items():
@@ -152,7 +145,7 @@ def top_up(slug: str, usd: float, first: date, by: int | None = None, at: float 
     if not 0 < usd <= 1000:
         raise ValueError("пополнение — от $0.01 до $1000")
     import time
-    with _lock:
+    with jstore.locked(store(slug)):
         d = load_store(slug)
         d.setdefault("topups", []).append({"usd": usd, "period": first.isoformat(), "at": int(at or time.time()),
                                            **({"by": int(by)} if by else {})})
@@ -165,7 +158,7 @@ def warn_due(slug: str, b: dict) -> float | None:
     hit = [x for x in WARN_AT if b["pct"] >= x]
     if not hit:
         return None
-    with _lock:
+    with jstore.locked(store(slug)):
         d = load_store(slug)
         told = d.setdefault("warned", {}).setdefault(b["start"], [])
         hit = [f"{x}@{b['reserve']}" for x in hit]              # пополнили запас — пороги считаются заново

@@ -30,6 +30,7 @@ from importlib import resources
 from pathlib import Path
 
 from gas_pult import modules
+from gas_pult import store as jstore
 from gas_pult.config import config_dir, write_private
 
 CODE = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
@@ -508,22 +509,19 @@ class TgDemos:
     ``<data>/offer_tg.json`` — его пишет панель и читает бот. Людей здесь нет: ни ID, ни имён."""
 
     def __init__(self, store: Path):
-        self.store, self.lock = store, threading.Lock()
+        self.store = store
 
     def _load(self) -> dict:
-        try:
-            d = json.loads(self.store.read_text())
-        except (OSError, ValueError):
-            return {}
+        d = jstore.load(self.store)
         now = time.time()
         return {k: v for k, v in d.items() if isinstance(v, dict) and v.get("exp", 0) > now}
 
     def _save(self, d: dict):
-        write_private(self.store, json.dumps(d))
+        jstore.save(self.store, d)       # под jstore.locked: выпускает панель, запуски считает бот
 
     def issue(self, code: str, module: str, back: str = "") -> str:
         tok = secrets.token_urlsafe(18)
-        with self.lock:
+        with jstore.locked(self.store):
             d = self._load()
             if len(d) >= 200:
                 raise ValueError("слишком много демо сразу — попробуйте через несколько минут")
@@ -540,7 +538,7 @@ class TgDemos:
         """Запуск сценария: не больше ``TG_STARTS`` раз на токен; иначе None («демо закончилось»)."""
         if not TOKEN.match(tok or ""):
             return None
-        with self.lock:
+        with jstore.locked(self.store):
             d = self._load()
             rec = d.get(tok)
             if not rec or rec["starts"] >= TG_STARTS:
