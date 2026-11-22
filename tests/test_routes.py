@@ -496,8 +496,9 @@ def test_routes_answer_as_before(srv, area):
 
 
 # своя ветка фокус-ссылки в ``H.focus_do`` (не цепочка): «Завершить» сессию пространства по ссылке — окно и
-# пространство из записи ссылки, «Выйти» по ссылке — cookie фокуса; обычный запрос того же пути — таблица routes/
-FOCUS_OWN = {("POST", "/api/space/close"), ("POST", "/api/logout")}
+# пространство из записи ссылки, «Выйти» по ссылке — cookie фокуса, «Открыть на другом устройстве» — токен для её
+# записи; обычный запрос того же пути — таблица routes/
+FOCUS_OWN = {("POST", "/api/space/close"), ("POST", "/api/logout"), ("POST", "/api/focus/device")}
 # своя ветка до входа в ``do_POST`` (не цепочка): помощник на экране входа без входа (``HELP_OPEN``, ``help_anon``);
 # вошедшему — таблица routes/people.py
 OPEN_OWN = {("POST", "/api/help/ask"), ("POST", "/api/help/feedback")}

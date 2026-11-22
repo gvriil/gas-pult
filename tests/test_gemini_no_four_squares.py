@@ -14,4 +14,4 @@ def test_layout():
 
 
 def test_commands_for_developer():
-    assert '...(dev() && meta?.role !== "viewer" && !FOCUS ? [{ label: "Команды Claude", icon: "bolt"' in PAGE
+    assert '...(dev() && meta?.role !== "viewer" && !FOCUS_DEMO() ? [{ label: "Команды Claude", icon: "bolt"' in PAGE

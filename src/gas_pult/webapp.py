@@ -92,7 +92,7 @@ from gas_pult import (
     pi_journal,  # noqa: F401 — webapp.* жив (panel/sessions.py)
     projects,
     providers,
-    qr,  # noqa: F401 — webapp.* жив (routes/)
+    qr,
     recparts,
     repos,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     router,
@@ -471,6 +471,8 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         self.offer_misses = offers.Misses()                          # перебор кодов предложений — по IP
         self.forms_links = onboarding.Links(cfg.data)                # анкеты клиентов по ссылке (решение 0010)
         self.q_misses = offers.Misses()                              # перебор кодов анкет — по IP
+        self.ask_guard = apitokens.Guard()                           # «Попросить доступ» по фокус-ссылке — по IP
+        self.ask_guard.LIMIT, self.ask_guard.WINDOW = 3, 600
         self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")   # «Попробовать в Telegram» — токены для бота
         # дежурный помощник «? Подсказать» (helper.py): карта экранов, ответы без модели
         self.helper = helper.Helper(cfg.data)
@@ -1812,6 +1814,8 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: self.invite_login(path))
             if path == "/api/focus/open":                  # фокус-ссылка: первое открытие привязывает устройство
                 return self.dispatch(self.focus_open)
+            if path == "/api/focus/ask":                   # «Попросить доступ»: ссылка не открылась (до входа)
+                return self.dispatch(self.focus_ask)
             if path == "/share":                           # «Поделиться» Android (share_target): форма, кука входа
                 return self.share_post()
             if path == "/api/share":                       # «Поделиться» iPhone: токен устройства, не кука
@@ -2143,9 +2147,23 @@ def handler(panel: Panel):
                 with contextlib.suppress(Exception):
                     panel.space_welcome(focus.vuid(rec["id"]), rec["space"], accept=rec.get("aud") == "self")
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
-            return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""),
+            return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""), "id": rec["id"],
                                        **({"mode": rec["mode"]} if rec.get("mode") in (focus.SPACE, focus.MEETING)
                                           else {})})
+
+        def focus_ask(self):
+            """«Попросить доступ» со страницы, где ссылка не открылась: ``{token?, id?, why, note}`` — владельцам.
+            Защита от перебора и спама: не больше ``ask_guard.LIMIT`` запросов с адреса за ``WINDOW`` (429)."""
+            ip = self.client_ip()
+            if panel.ask_guard.blocked(ip):
+                self.json({"error": "Запрос уже отправлен. Подождите 10 минут.", "code": "ask_limit"}, 429)
+                return SENT
+            panel.ask_guard.fail(ip)
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            b = b if isinstance(b, dict) else {}
+            return panel.focus_ask(str(b.get("token") or "")[:64], str(b.get("id") or "")[:12],
+                                   str(b.get("why") or ""), str(b.get("note") or ""),
+                                   webauth.device(self.client()[1]))
 
         def focus_call(self, method: str, path: str, q: dict):
             """Запрос страницы в режиме фокуса: действующая ссылка этого устройства, путь из ``FOCUS_*``, окно — только
@@ -2153,7 +2171,7 @@ def handler(panel: Panel):
             try:
                 rec = panel.focus_rec(self.focus_cookie())
             except focus.Gone as e:
-                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+                return self.json({"error": str(e), "code": "focus_gone", "why": e.why}, 410)
             except focus.Wait as e:                      # сессию перезапускают — ссылка жива, страница повторит
                 return self.json({"error": str(e), "code": "focus_wait"}, 503)
             if focus.Focus.is_meeting(rec):              # ссылка на протокол: только он, ни сессий, ни прав владельца
@@ -2211,6 +2229,8 @@ def handler(panel: Panel):
                 return panel.demo_answer(str(b.get("w") or ""), b.get("go", True) is not False, lambda: self.post(path))
             if path.startswith("/api/focus/bridge"):
                 return panel.focus_bridge(rec, path, b)
+            if path == "/api/focus/device":                # «Открыть на другом устройстве»: только своя запись
+                return panel.focus_device(rec["id"], str(b.get("base") or ""))
             if path == "/api/sessions":
                 ss = panel.focus_sessions(rec)
                 return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
@@ -2249,8 +2269,13 @@ def handler(panel: Panel):
             if code and not invites.check(code, short=False):    # через Telegram — только ссылкой (без перебора)
                 raise ValueError("приглашение недействительно: истёк срок, уже использовано или отозвано")
             rid, nonce = panel.logins.start(*self.client(), invite=code)
-            return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
-                    "ttl": webauth.LOGIN_TTL}
+            bot = panel.bot_username()
+            link = f"https://t.me/{bot}?start=login_{nonce}"
+            # запасные пути (штаб 22.11: на Mac ссылка t.me не открыла Telegram): tg:// — приложение напрямую, QR — с
+            # телефона; поле добавлено, старые поля — как были
+            return {"id": rid, "link": link, "ttl": webauth.LOGIN_TTL,
+                    "app": f"tg://resolve?domain={bot}&start=login_{nonce}",
+                    "qr": "data:image/png;base64," + base64.b64encode(qr.png_of(link, 6)).decode()}
 
         def invite_login(self, path: str):
             """«Есть код приглашения?» → проверка кода; «Как вас зовут?» → гость и cookie-сессия на 30 дней."""
@@ -2667,7 +2692,7 @@ def handler(panel: Panel):
             except KeyError:
                 return self.json({"error": "нет такого метода"}, 404)
             except focus.Gone as e:                      # фокус-ссылка не действует: страница покажет почему
-                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+                return self.json({"error": str(e), "code": "focus_gone", "why": e.why}, 410)
             except focus.Denied as e:                    # демо-ссылке нельзя (403) или уже ответили (409)
                 return self.json({"error": str(e), "code": e.code}, e.status)
             except LookupError as e:

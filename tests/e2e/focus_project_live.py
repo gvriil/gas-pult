@@ -101,7 +101,9 @@ def run(shots: str = ""):
             pa.wait_for_selector("#focusExp:not([hidden])", state="attached", timeout=10000)
             # 21.11: сверху у человека — только название и ⋯; срок входа и «Чаты проекта» — в ⋯
             assert pa.evaluate("document.body.classList.contains('clean-top')")
-            assert not pa.is_visible("#focusExp") and pa.is_visible("#chatMoreBtn")
+            # 22.11: из полосы видна только «На другом устройстве»; срок и «Чаты проекта» — в ⋯
+            assert not pa.is_visible("#focusExp > span") and not pa.is_visible("#focusExp [data-fproj]")
+            assert pa.is_visible("#focusExp [data-fdev]") and pa.is_visible("#chatMoreBtn")
             assert pa.evaluate("document.body.classList.contains('focus-proj')")
             assert pa.evaluate("sessions.map((s) => s.id)") == [shop]
             exp = pa.text_content("#focusExp")
