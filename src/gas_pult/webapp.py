@@ -53,11 +53,11 @@ from gas_pult import (
     apitokens,
     approvals,
     asr,
-    balance,
+    balance,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     brand,
     bridge,
     bridge_install,
-    calkeys,
+    calkeys,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     chat_trash,  # noqa: F401 — корзина чатов в panel/projects.py; имя webapp.chat_trash живо
     chatlog,
     chatmcp,  # noqa: F401 — webapp.* жив (panel/sessions.py)
@@ -98,7 +98,7 @@ from gas_pult import (
     router,
     routes,
     scenarios,
-    selftest,
+    selftest,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     setup,
     share,
     space_budget,  # noqa: F401 — webapp.* жив (panel/spaces.py)
@@ -108,7 +108,7 @@ from gas_pult import (
     space_sessions,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     spaces,
     speech,  # noqa: F401 — webapp.speech: голос в panel/voice.py, имя живо
-    spend,
+    spend,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     starters,
     steps,
     tasks,
@@ -178,7 +178,7 @@ from gas_pult.billing import api as billing_api  # noqa: F401 — платежи
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult  # noqa: F401 — webapp.BUSY жив (panel/spaces.py)
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space  # noqa: F401 — реэкспорт
 from gas_pult.config import Config
-from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
+from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp  # noqa: F401 — webapp.* живы (routes/)
 from gas_pult.messengers import panel as messengers_panel  # noqa: F401 — маршруты в routes/messengers.py
 from gas_pult.openrouter import CALLBACK, OpenRouter
 from gas_pult.panel.clients import ClientsPart
@@ -1736,43 +1736,10 @@ def handler(panel: Panel):
                 # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
                 return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
                                           self.space() or "", str(q.get("occ") or ""))
-            if path == "/api/calendars/keys":             # что подключено — без значений секретов
-                return {"calendars": calkeys.status()}
-            if path == "/api/setup/status":
-                return panel.setup_status(q.get("fresh") == "1")
-            if path == "/api/mcp":
-                home = self.home()
-                return {"servers": panel.mcp.list(q.get("fresh") == "1", home=home),
-                        "presets": [p for p in PRESETS if not home or p["id"] not in OWNER_PRESETS],
-                        "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL,
-                        "personal": home is not None}          # список — свой у человека, не общий с владельцем
-            if path == "/api/modules":
-                return panel.modules_list()
             if path == "/api/scenarios":                 # «Примерить на себя»: роли, день с агентом, польза
                 errors: list[str] = []
                 d = scenarios.api_data(errors)
                 return {**d, "errors": errors if self.who()[1] == "owner" else []}
-            if path == "/api/mcp/connected":
-                c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
-                if not c:
-                    raise LookupError("нет такого сервиса")
-                s = panel.mcp.connected(c["match"], self.home())
-                return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
-            if path == "/api/openrouter/info":
-                return panel.openrouter_info()
-            if path == "/api/openrouter/models":
-                return {"models": panel.openrouter.models()}
-            if path == "/api/fallback":
-                return panel.fallback_info(self.terms_uid())
-            if path == SELFTEST:
-                return selftest.public(panel.cfg.data, panel.pult.state())
-            if path == "/api/cost/limits":
-                return panel.cost_limits()
-            if path == "/api/spend":                      # расход по ценам API за период (spend.py) — только владельцу
-                return spend.summary(q.get("period", "today"))
-            if path == "/api/providers":
-                vs = panel.voice_settings()
-                return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
             if path == "/api/commands":
                 return panel.command_log(self.who()[1] == "owner")
             if path == "/api/commands/output":
@@ -1819,18 +1786,6 @@ def handler(panel: Panel):
                 return st
             if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
                 return panel.space_list(self.space_of(q))
-            if path == "/api/funnel":                    # воронка продукта: вход → первый ответ → «Да» (funnel.py)
-                if (u := self.who()[2]) not in (None, webauth.LEGACY) and panel.people.tenant(u):
-                    raise ValueError("воронка — только владельцу пульта")
-                days = int(q["days"]) if q.get("days", "").isdigit() else 30
-                sp = tenants.check_slug(q["space"]) if q.get("space") else None
-                return funnel.report(panel.funnel.read(), min(days, 400), sp)
-            if path == "/api/drafts":                    # черновики коннекторов «Ждут вашего Да» (drafts.py)
-                slug = self.drafts_scope()
-                tm = tenants.tmux_of(slug) if slug else panel.tmux
-                yes = panel.approvals.pending                # «Да» уже нажато — ждёт агента, снова не показываем
-                return {"drafts": drafts.pending(slug, chat_of=lambda pane: drafts.chat_of(tm, pane, slug),
-                                                 approved=lambda svc, pid: yes(slug or "", svc, pid))}
             if path == "/api/space/mcp":                 # свои интеграции пространства (GAS-38 (в)): без ключей
                 slug = self.space_of(q)                      # тестировщику — своё; владельцу и админу — по ``space``
                 return {"servers": space_mcp.listing(slug), "space": slug,
@@ -1845,8 +1800,6 @@ def handler(panel: Panel):
                 return ("application/octet-stream", data, {"Content-Disposition": disp})
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
-            if path == "/api/repos":                     # подключённые и что можно добавить (задача 43)
-                return panel.repo_list(self.repo_win(q))
             w = self.win(q.get("w"))
             if path == "/api/last":
                 return {"text": harness.of(w).last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
@@ -2636,6 +2589,8 @@ def handler(panel: Panel):
             b = json.loads(self.body() or b"{}")
             if fn := routes.POST_P.get(path):           # развилка: несколько путей — одна функция (платежи и др.)
                 return fn(self, path, b)
+            if fn := routes.POST_W.get(path):           # ветки после «w = self.win(b.get("w"))»: окно — до вызова
+                return fn(self, b, self.win(b.get("w")))
             if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
                 sid = str(b.get("id", ""))[:40]
                 panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
@@ -2745,44 +2700,6 @@ def handler(panel: Panel):
             if path == "/api/logout":
                 panel.auth.logout(self.session())
                 return ("cookie", webauth.set_cookie("", 0), {"ok": True})
-            if path == "/api/mcp/add":
-                home, preset = self.home(), str(b.get("preset", ""))
-                if home and preset in OWNER_PRESETS:
-                    raise ValueError("свою программу на сервере подключает только владелец")
-                return {"result": panel.mcp.add(preset, str(b.get("name", "")), b.get("values") or {}, home=home)}
-            if path == "/api/mcp/remove":
-                return {"result": panel.mcp.remove(str(b.get("name", "")), home=self.home())}
-            if path == "/api/keys":
-                return panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))
-            if path == "/api/calendars/key":              # секрет календаря → файл 0600 и проверка (calkeys.py)
-                return calkeys.save(str(b.get("kind", "")), b)
-            if path == "/api/calendars/key/remove":
-                return calkeys.remove(str(b.get("kind", "")))
-            if path == "/api/keys/remove":
-                panel.remove_key(str(b.get("provider", "")))
-                return {"ok": True}
-            if path == "/api/providers":
-                panel.set_providers(b)
-                return {"ok": True}
-            if path == "/api/mcp/login":
-                return panel.mcp_login(str(b.get("name", "")), self.home())
-            if path == "/api/setup/login":                  # окно входа и ссылка с экрана (до 20 с)
-                return panel.login.start()
-            if path == "/api/setup/code":
-                r = panel.login.send_code(str(b.get("code", "")))
-                panel._setup = (0, {})
-                return r
-            if path == "/api/login/code":                   # шторка «Нужен вход»: код или адрес — в окно, одной строкой
-                w = self.win(b.get("w"))
-                if in_space(w):
-                    raise PermissionError("окно пространства — вход только из него самого")
-                panel.tmux.paste(w["id"], logins.clean_code(b.get("code")))   # код в журналы не пишем
-                return {"ok": True}
-            if path == "/api/login/check":
-                return panel.login_check(self.win(b.get("w")), str(b.get("kind") or ""), self.home())
-            if path == "/api/setup/cancel":
-                panel.login.cancel()
-                return {"ok": True}
             if path == "/api/new" and (slug := self.space()):
                 return panel.new_in_space(slug, str(b.get("name", "")), str(b.get("effort") or ""))
             if path == "/api/model/default":             # только явной настройкой — не из чата
@@ -2813,10 +2730,6 @@ def handler(panel: Panel):
                 termwin.tty_type(panel.tmux, w["id"], str(b.get("text", "")))
                 panel.pult.deliv.record(w["id"], "tty", str(b.get("text", "")), res="typed")   # без Enter, без текста
                 return {"ok": True}
-            if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
-                st = panel.pult.state()
-                panel.pult.set_state(no_balance=balance.clear(st, str(b.get("profile", ""))))
-                return {"ok": True}
             if path == "/api/space/budget/add":         # владелец: «+ добавить» к запасу пространства
                 return panel.budget_add(tenants.check_slug(str(b.get("space", ""))), float(b.get("usd") or 0),
                                         self.terms_uid())
@@ -2824,17 +2737,6 @@ def handler(panel: Panel):
                 r = panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
                 if r.get("result") == "closed":
                     panel.focus.end_window(str(b.get("w", "")))
-                return r
-            if path in ("/api/drafts/yes", "/api/drafts/no"):   # «Да» / «Нет» ровно этому черновику — только своему
-                self.same_origin()
-                slug, svc, pid = self.drafts_scope(), str(b.get("svc", "")), str(b.get("id", ""))
-                if path.endswith("/yes"):                   # «Да» — только в памяти панели (approvals.py), не на диске
-                    panel.approvals.grant(slug or "", svc, pid, drafts.digest(slug, svc, pid))
-                    r = {"ok": True}
-                else:
-                    r = drafts.reject(slug, svc, pid)
-                panel.events.event("draft_" + path.rsplit("/", 1)[1], "", svc=svc[:24])
-                self.product("yes" if path.endswith("/yes") else "no", via="drafts")
                 return r
             if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
                 if not (slug := self.space()):
@@ -2940,28 +2842,6 @@ def handler(panel: Panel):
             if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
                 return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
                                         self.terms_uid())
-            if path == "/api/modules/create":
-                return panel.module_create(str(b.get("id", "")), str(b.get("name", "")), str(b.get("profile", "")),
-                                           self.person(), self.terms_uid(), str(b.get("lang", "")),
-                                           b.get("again") is True)
-            if path == "/api/openrouter/start":
-                base = panel.public_url or f"https://{self.headers.get('Host', '')}"
-                return {"url": panel.openrouter.start(base)}
-            if path == "/api/fallback":
-                return panel.set_fallback(b.get("chain"), self.terms_uid())
-            if path == SELFTEST:                          # «Проверить сейчас» — в фоне, итог — GET
-                started = selftest.start(panel.cfg.data, panel.pult.state())
-                return {"started": started, **selftest.public(panel.cfg.data, panel.pult.state())}
-            if path == "/api/cost/limits":
-                return panel.set_cost_limits(b)
-            if path == "/api/cost/decide":                  # пауза по расходу: «go» — продолжить, «stop» — оставить
-                return {"result": panel.pult.cost_decide(str(b.get("w", "")), str(b.get("act", ""))),
-                        **panel.cost_limits()}
-            if path == "/api/models":
-                url = b.get("base_url")
-                panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")),
-                                 None if url is None else str(url))
-                return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
             if path == "/api/focus/new" and b.get("space"):   # «Ссылка на пространство» (GAS-38)
@@ -3006,18 +2886,6 @@ def handler(panel: Panel):
                         "ttl": webauth.LOGIN_TTL}
             if path == "/api/space/task":
                 return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
-            if path in ("/api/module/schedule", "/api/module/delete"):   # пространство из модуля (задача 39)
-                w = panel.tmux.window(str(b.get("w") or ""))
-                if not w:
-                    raise LookupError("окна уже нет")
-                if path == "/api/module/schedule":
-                    return panel.set_schedule(w["path"], str(b.get("state", "")), self.terms_uid())
-                return panel.module_delete(w, str(b.get("confirm", "")))
-            if path in ("/api/repos/add", "/api/repos/remove"):   # задача 43: клон и /add-dir; «Отключить»
-                w = self.repo_win(b)
-                if path == "/api/repos/add":
-                    return panel.repo_add(w, str(b.get("repo", "")))
-                return panel.repo_remove(w, str(b.get("path", "")))
             if path == "/api/close":                       # и остановленную: окно с оболочкой просто закрыть
                 w = panel.session_window(b.get("w"))
                 if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
@@ -3093,8 +2961,6 @@ def handler(panel: Panel):
                 if go:
                     self.product_pick(w, n=str(b.get("n", "")))
                 return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
-            if path == "/api/mcp/finish":
-                return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
             if path == "/api/chat/mcp":                  # интеграции посреди чата: запомнить и перезапустить с --resume
                 return panel.chat_mcp(w, b.get("off"), self.terms_uid())
             if path == "/api/restart":

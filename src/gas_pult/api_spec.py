@@ -2,8 +2,8 @@
 
 Пути и поля собираются из кода ``webapp.py`` разбором ``ast`` (без запуска): ветки ``if path == …``,
 ``if path in (…)``, ``path.startswith(…)`` и регулярки маршрутов; и из таблиц маршрутов ``routes/<область>.py``
-(словари ``GET``, ``GET_W``, ``GET_P``, ``POST_RAW``, ``POST``, ``POST_P``: путь или кортеж путей → функция, поля —
-из её тела).
+(словари ``GET``, ``GET_W``, ``GET_P``, ``POST_RAW``, ``POST``, ``POST_P``, ``POST_W``: путь или кортеж путей →
+функция, поля — из её тела).
 Права — из таблиц ``access.py`` по той же формуле,
 что ``Handler.permit``. Описания — вручную, коротко, в ``DESCR`` (поля, которых разбор не видит, — там же).
 
@@ -31,7 +31,7 @@ from gas_pult import access, personas
 SRC = Path(__file__).with_name("webapp.py")
 ROUTES = Path(__file__).with_name("routes")  # таблицы маршрутов по областям (MONOLITH-PLAN §3.2, routes/__init__.py)
 ROUTE_KINDS = {"GET": "GET", "GET_W": "GET", "GET_P": "GET", "POST_RAW": "POST", "POST": "POST",
-               "POST_P": "POST"}   # таблица → метод
+               "POST_P": "POST", "POST_W": "POST"}   # таблица → метод
 DOCS = Path(__file__).resolve().parents[2] / "docs"
 
 GET_FN = {"do_GET", "get"}                   # ветки GET; do_GET — до проверки входа (свои правила)
@@ -211,8 +211,8 @@ def _free(tree: ast.Module, env: dict[str, list[str]]) -> set[str]:
 
 def _route_tables(files, env: dict[str, list[str]], with_w: set[int]) -> list[tuple[str, str, ast.AST]]:
     """Таблицы ``routes/*.py``: ``GET = {"/api/…": fn, …}`` → (путь, метод, тело ``fn``) — как ветка цепочки.
-    ``GET_W`` — окно сессии ``w`` на входе (как ветки после ``w = self.win(…)``). Ключ ``GET_P``/``POST_P`` — кортеж
-    путей: имя таблицы (``billing_api.GET``) или константа модуля области (``POST_PATHS``)."""
+    ``GET_W``/``POST_W`` — окно сессии ``w`` на входе (как ветки после ``w = self.win(…)``). Ключ ``GET_P``/``POST_P`` —
+    кортеж путей: имя таблицы (``billing_api.GET``) или константа модуля области (``POST_PATHS``)."""
     out = []
     for f in files:
         tree = ast.parse(Path(f).read_text(encoding="utf-8"))
@@ -234,7 +234,7 @@ def _route_tables(files, env: dict[str, list[str]], with_w: set[int]) -> list[tu
                 if not paths or fn is None:
                     raise LookupError(f"{f}: {kind} — ключ {ast.unparse(k) if k else '**'} или функция "
                                       f"{ast.unparse(v)} не разобраны")
-                if kind == "GET_W":
+                if kind in ("GET_W", "POST_W"):
                     with_w.add(id(fn))
                 out += [(p, ROUTE_KINDS[kind], fn) for p in paths]
     return out

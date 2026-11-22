@@ -3,7 +3,8 @@
 ``AREAS`` — по области: запросы и снимок ответов (код, тип, тело) и вызовов ``Panel`` и модулей (``billing.api``,
 ``messengers.panel``) по каждому её пути, снятый на коде до переноса (ветки в ``webapp.H.get``/``post``): успех,
 ошибка (404/400), битый JSON для POST, наблюдатель (403 до таблиц или свой ответ), через ``/api/v1`` — где путь в
-белом списке ``V1_*`` (и 403 для ``V1_NEVER``). Перенос — только перенос: снимок не меняется.
+белом списке ``V1_*`` (и 403 для ``V1_NEVER``), по фокус-ссылке — где путь в ``FOCUS_*``. Ключи поставщиков —
+только поддельные «test-key-…». Перенос — только перенос: снимок не меняется.
 Ещё: путь не объявлен в двух местах (таблица и цепочка), таблицы видны описи API, права — до таблиц.
 """
 
@@ -16,7 +17,21 @@ from pathlib import Path
 
 import pytest
 
-from gas_pult import api_spec, onboarding, routes, webapp, webauth
+from gas_pult import (
+    api_spec,
+    balance,
+    calkeys,
+    drafts,
+    focus,
+    funnel,
+    models,
+    onboarding,
+    routes,
+    selftest,
+    spend,
+    webapp,
+    webauth,
+)
 from gas_pult.billing import api as billing_api
 from gas_pult.config import Config
 from gas_pult.messengers import panel as messengers_panel
@@ -37,7 +52,7 @@ def srv(monkeypatch, tmp_path):
     def rec(name, out):
         def f(*a, **kw):
             log.append([name, [x if isinstance(x, (str, int, bool, type(None))) else type(x).__name__ for x in a],
-                        sorted(kw.items())])
+                        sorted((k, type(v).__name__ if callable(v) else v) for k, v in kw.items())])
             return out(*a, **kw) if callable(out) else out
         return f
 
@@ -68,7 +83,18 @@ def srv(monkeypatch, tmp_path):
              "brief_act": ok({"ok": True}), "task_run": ok({"ok": True, "out": "готово"}),
              "share_list": {"items": []}, "share_file": ok(("image/jpeg", b"JPG")),
              "notify_info": {"channels": []}, "notify_set": ok({"ok": True}),
-             "anketa_answers": ok({"answers": []})}
+             "anketa_answers": ok({"answers": []}),
+             # модели, ключи, расход: ключи поставщиков — только поддельные «test-key-…», настоящие не читаются
+             "setup_status": {"logged_in": True}, "openrouter_info": {"key": False}, "fallback_info": {"chain": []},
+             "set_fallback": ok({"chain": ["a"]}), "cost_limits": {"day": 5}, "set_cost_limits": ok({"day": 7}),
+             "voice_settings": {"keys": ["elevenlabs"], "tts": "el"}, "el_voices": [{"id": "e1"}],
+             "set_key": ok({"ok": True, "provider": "openai"}), "remove_key": ok(None), "set_providers": ok(None),
+             "login_check": ok({"state": "ok"}), "set_models": ok(None), "countries": ["NL"],
+             # интеграции, репозитории, модули
+             "modules_list": {"modules": []}, "mcp_login": ok({"url": "https://x/login"}),
+             "module_create": ok({"w": "@6"}), "set_schedule": ok({"ok": True}), "module_delete": ok({"ok": True}),
+             "repo_list": {"repos": []}, "repo_add": ok({"ok": True}), "repo_remove": ok({"ok": True}),
+             "mcp_finish": ok("подключено")}
     for name, out in fakes.items():
         monkeypatch.setattr(p, name, rec(name, out))
     subs = {"tasks": {"etag": "E1", "add": ok({"id": "t2"}), "update": ok({"id": "t1"}), "remove": ok(True)},
@@ -78,13 +104,36 @@ def srv(monkeypatch, tmp_path):
                      "remove": ok(True), "notify": 1},
             "forms_links": {"listing": [{"id": "l1"}], "new": ok({"code": "c1"})},
             "api_tokens": {"mine": [{"id": "a1"}], "create": ok({"id": "a2", "token": "t"}), "revoke": ok(True)},
-            "funnel": {"event": None}}
+            "funnel": {"event": None, "read": [{"ev": "login"}]},
+            "openrouter": {"models": [{"id": "m1"}], "start": "https://openrouter.test/auth"},
+            "login": {"start": {"url": "https://claude.test/login"}, "send_code": ok({"ok": True}), "cancel": None},
+            "mcp": {"list": [{"name": "gh"}], "connected": lambda m, h: {"ok": True, "state": "on"} if m == "Gmail"
+                    else None, "add": ok("добавлено"), "remove": ok("удалено")},
+            "approvals": {"grant": None}, "events": {"event": None},
+            "pult": {"set_state": None, "cost_decide": ok("продолжено")}}
     for obj, names in subs.items():
         for name, out in names.items():
             monkeypatch.setattr(getattr(p, obj), name, rec(f"{obj}.{name}", out))
     monkeypatch.setattr(p.api_tokens, "check", lambda t: {"id": "a1", "by": OWNER, "space": "", "groups": ["tasks"],
-                                                          "write": True} if t == "v1tok" else None)
+                                                          "write": True} if t == "v1tok" else
+                        {"id": "a3", "by": OWNER, "space": "", "groups": ["drafts"], "write": False}
+                        if t == "v1dtok" else None)
     monkeypatch.setattr(onboarding, "forms", rec("onboarding.forms", {"f1": {"id": "f1", "title": "Анкета"}}))
+    monkeypatch.setattr(p.tmux, "paste", rec("tmux.paste", None))
+    mods = {selftest: {"public": {"state": "idle"}, "start": True}, spend: {"summary": ok({"usd": 1.5})},
+            funnel: {"report": {"steps": []}}, balance: {"clear": {}}, models: {"public": [{"profile": "glm"}]},
+            calkeys: {"status": [{"kind": "caldav", "ok": True}], "save": ok({"ok": True}), "remove": ok({"ok": True})},
+            drafts: {"pending": [{"id": "d1"}], "digest": "H1", "reject": ok({"ok": True})}}
+    for mod, names in mods.items():
+        for name, out in names.items():
+            monkeypatch.setattr(mod, name, rec(f"{mod.__name__.rsplit('.', 1)[1]}.{name}", out))
+    for mod in (webapp, *routes.AREAS):              # каталог интеграций — короткий (где имя импортировано)
+        if hasattr(mod, "PRESETS"):
+            monkeypatch.setattr(mod, "PRESETS", [{"id": "github"}, {"id": "stdio"}])
+            monkeypatch.setattr(mod, "CONNECTORS", [{"id": "gmail", "match": "Gmail"}])
+            monkeypatch.setattr(mod, "CONNECTORS_URL", "https://connectors.test")
+    rfoc = {"id": "f1", "w": "@5", "name": "Фокус", "space": None}       # фокус-ссылка на сессию @5
+    monkeypatch.setattr(p, "focus_rec", lambda c: rfoc if c == "fc1" else (_ for _ in ()).throw(focus.Gone("нет")))
     monkeypatch.setattr(p.recparts, "status", rec("recparts.status", {"segs": 0}))
     monkeypatch.setattr(p.recparts, "add", rec("recparts.add", {"ok": True}))
     monkeypatch.setattr(p.recparts, "drop", rec("recparts.drop", True))
@@ -93,8 +142,8 @@ def srv(monkeypatch, tmp_path):
     monkeypatch.setattr(messengers_panel, "get", rec("messengers_panel.get", {"services": []}))
     monkeypatch.setattr(messengers_panel, "post", rec("messengers_panel.post", area))
     monkeypatch.setattr(p.auth, "needs_confirm", lambda *a, **k: False)   # платежи: код подтверждения — не здесь
-    monkeypatch.setattr(p, "window", lambda wid: {"id": "@1", "path": "/tmp"} if wid == "@1" else None)
-    monkeypatch.setattr(p.tmux, "window", lambda wid: None)
+    monkeypatch.setattr(p, "window", lambda wid: {"id": wid, "path": "/tmp"} if wid in ("@1", "@5") else None)
+    monkeypatch.setattr(p.tmux, "window", lambda wid: {"id": "@5", "path": "/tmp/m"} if wid == "@5" else None)
     s = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(p))
     threading.Thread(target=s.serve_forever, daemon=True).start()
     yield {"base": f"http://127.0.0.1:{s.server_address[1]}", "tok": p.auth.issue(OWNER), "log": log,
@@ -103,16 +152,19 @@ def srv(monkeypatch, tmp_path):
 
 
 # особые запросы владельца: свой заголовок (ETag, Host — адрес подписки не зависит от порта); "v1" — токен /api/v1
-HDR = {"etag": {"If-None-Match": "E1"}, "host": {"Host": "pult.test"}}
+HDR = {"etag": {"If-None-Match": "E1"}, "host": {"Host": "pult.test"}, "origin": {"Origin": "https://evil.test"}}
+V1 = {"v1": "v1tok", "v1d": "v1dtok"}          # токен с группой «tasks» и токен «drafts» (только чтение)
 
 
 def call(srv, path, body: bytes | None = None, ctype="", tok=None):
     extra = HDR.get(tok, {})
     tok = None if tok in HDR else srv.get(tok, tok)   # "viewer" — вход наблюдателя
     hdr = {"Cookie": f"{webauth.COOKIE}={tok or srv['tok']}", **({"Content-Type": ctype} if ctype else {}), **extra}
-    if tok == "v1":                              # /api/v1/<путь>: токен 1С и CRM вместо куки
-        path, hdr = "/api/v1/" + path.removeprefix("/api/"), {"Authorization": "Bearer v1tok",
+    if tok in V1:                                # /api/v1/<путь>: токен 1С и CRM вместо куки
+        path, hdr = "/api/v1/" + path.removeprefix("/api/"), {"Authorization": f"Bearer {V1[tok]}",
                                                                 **({"Content-Type": ctype} if ctype else {})}
+    if tok == "focus":                           # фокус-ссылка на сессию @5: только cookie фокуса
+        hdr = {"Cookie": f"{focus.COOKIE}=fc1", focus.HEADER: "1", **({"Content-Type": ctype} if ctype else {})}
     try:
         r = urllib.request.urlopen(urllib.request.Request(srv["base"] + path, body, hdr))
     except urllib.error.HTTPError as e:
@@ -281,12 +333,137 @@ APITOKENS = [
     ("/api/apitokens/revoke", J({"id": "a1"}).encode(), JS, "viewer"),
 ]
 
+MODELS = [   # ключи — только поддельные «test-key-…»
+    ("/api/setup/status", None, ""),
+    ("/api/setup/status?fresh=1", None, ""),
+    ("/api/setup/status", None, "", "viewer"),          # только владельцу — 403 до таблиц
+    ("/api/openrouter/info", None, ""),
+    ("/api/openrouter/models", None, ""),
+    ("/api/fallback", None, ""),
+    ("/api/selftest", None, ""),
+    ("/api/cost/limits", None, ""),
+    ("/api/spend?period=week", None, ""),
+    ("/api/spend", None, ""),
+    ("/api/spend?period=bad", None, ""),
+    ("/api/providers", None, ""),
+    ("/api/providers", None, "", "viewer"),
+    ("/api/funnel", None, ""),
+    ("/api/funnel?days=7&space=sp1", None, ""),
+    ("/api/funnel?days=9999", None, ""),
+    ("/api/funnel?space=..%2Fx", None, ""),            # неверное имя пространства — 400
+    ("/api/funnel", None, "", "viewer"),
+    ("/api/keys", J({"provider": "openai", "key": "test-key-abc"}).encode(), JS),
+    ("/api/keys", J({"provider": "bad", "key": "test-key-x"}).encode(), JS),
+    ("/api/keys", b"{bad", JS),
+    ("/api/keys", J({"provider": "openai", "key": "test-key-v"}).encode(), JS, "viewer"),
+    ("/api/keys", J({"provider": "openai", "key": "test-key-t"}).encode(), JS, "v1"),   # V1_NEVER — 403
+    ("/api/keys/remove", J({"provider": "openai"}).encode(), JS),
+    ("/api/keys/remove", J({"provider": "nope"}).encode(), JS),
+    ("/api/providers", J({"tts": "el", "el_key": "test-key-el"}).encode(), JS),
+    ("/api/providers", J({"tts": "bad"}).encode(), JS),
+    ("/api/providers", b"{bad", JS),
+    ("/api/setup/login", J({}).encode(), JS),
+    ("/api/setup/code", J({"code": "123"}).encode(), JS),
+    ("/api/setup/code", J({"code": "bad"}).encode(), JS),
+    ("/api/login/code", J({"w": "@1", "code": " abc \n"}).encode(), JS),
+    ("/api/login/code", J({"w": "@9", "code": "abc"}).encode(), JS),        # окна нет — 404
+    ("/api/login/code", b"{bad", JS),
+    ("/api/login/check", J({"w": "@1", "kind": "claude"}).encode(), JS),
+    ("/api/login/check", J({"w": "@9"}).encode(), JS),
+    ("/api/login/check", J({"w": "@1", "kind": "bad"}).encode(), JS),
+    ("/api/setup/cancel", J({}).encode(), JS),
+    ("/api/balance/clear", J({"profile": "glm"}).encode(), JS),
+    ("/api/balance/clear", b"{bad", JS),
+    ("/api/openrouter/start", J({}).encode(), JS, "host"),
+    ("/api/fallback", J({"chain": ["a"]}).encode(), JS),
+    ("/api/fallback", J({"chain": "bad"}).encode(), JS),
+    ("/api/selftest", J({}).encode(), JS),
+    ("/api/cost/limits", J({"day": 7}).encode(), JS),
+    ("/api/cost/limits", J({"day": "bad"}).encode(), JS),
+    ("/api/cost/decide", J({"w": "@1", "act": "go"}).encode(), JS),
+    ("/api/cost/decide", J({"w": "@1", "act": "bad"}).encode(), JS),
+    ("/api/models", J({"profile": "glm", "main": "m", "fast": "f", "base_url": "https://x"}).encode(), JS),
+    ("/api/models", J({"profile": "glm", "main": "m"}).encode(), JS),
+    ("/api/models", J({"profile": "bad"}).encode(), JS),
+    ("/api/models", b"{bad", JS),
+    ("/api/models", J({"profile": "glm"}).encode(), JS, "viewer"),
+]
+INTEGR = [
+    ("/api/calendars/keys", None, ""),
+    ("/api/calendars/keys", None, "", "viewer"),
+    ("/api/mcp", None, ""),
+    ("/api/mcp?fresh=1", None, ""),
+    ("/api/mcp", None, "", "viewer"),                    # участник и выше
+    ("/api/mcp", None, "", "focus"),                     # фокус-ссылка — список своей сессии
+    ("/api/modules", None, ""),
+    ("/api/mcp/connected?id=gmail", None, ""),
+    ("/api/mcp/connected?id=nope", None, ""),
+    ("/api/mcp/connected", None, ""),
+    ("/api/mcp/connected?id=gmail", None, "", "focus"),
+    ("/api/drafts", None, ""),
+    ("/api/drafts", None, "", "viewer"),
+    ("/api/drafts", None, "", "v1d"),                    # /api/v1/drafts — токен с группой «drafts»
+    ("/api/drafts", None, "", "v1"),                     # без группы — 403
+    ("/api/repos?w=%405", None, ""),
+    ("/api/repos?w=%409", None, ""),
+    ("/api/repos?w=%405", None, "", "focus"),
+    ("/api/repos?w=%401", None, "", "focus"),            # не окно ссылки — 403
+    ("/api/mcp/add", J({"preset": "github", "name": "gh", "values": {"token": "test-key-gh"}}).encode(), JS),
+    ("/api/mcp/add", J({"preset": "stdio", "name": "my"}).encode(), JS),
+    ("/api/mcp/add", J({"preset": "bad"}).encode(), JS),
+    ("/api/mcp/add", b"{bad", JS),
+    ("/api/mcp/add", J({"preset": "github"}).encode(), JS, "focus"),   # не из FOCUS_POST — 403
+    ("/api/mcp/remove", J({"name": "gh"}).encode(), JS),
+    ("/api/mcp/remove", J({"name": "nope"}).encode(), JS),
+    ("/api/calendars/key", J({"kind": "caldav", "password": "test-key-cal"}).encode(), JS),
+    ("/api/calendars/key", J({"kind": "bad"}).encode(), JS),
+    ("/api/calendars/key", b"{bad", JS),
+    ("/api/calendars/key", J({"kind": "caldav"}).encode(), JS, "viewer"),
+    ("/api/calendars/key/remove", J({"kind": "caldav"}).encode(), JS),
+    ("/api/calendars/key/remove", J({"kind": "nope"}).encode(), JS),
+    ("/api/mcp/login", J({"name": "gh"}).encode(), JS),
+    ("/api/mcp/login", J({"name": "nope"}).encode(), JS),
+    ("/api/drafts/yes", J({"svc": "mail", "id": "d1"}).encode(), JS),
+    ("/api/drafts/yes", J({"svc": "mail", "id": "d1"}).encode(), JS, "origin"),   # чужой сайт — 400
+    ("/api/drafts/no", J({"svc": "mail", "id": "d1"}).encode(), JS),
+    ("/api/drafts/no", J({"svc": "mail", "id": "nope"}).encode(), JS),
+    ("/api/drafts/no", b"{bad", JS),
+    ("/api/drafts/yes", J({"svc": "mail", "id": "d1"}).encode(), JS, "viewer"),
+    ("/api/drafts/yes", J({"svc": "mail", "id": "d1"}).encode(), JS, "v1d"),     # V1_NEVER — 403
+    ("/api/modules/create", J({"id": "m1", "name": "Модуль", "lang": "ru", "again": True}).encode(), JS),
+    ("/api/modules/create", J({"id": "bad"}).encode(), JS),
+    ("/api/modules/create", b"{bad", JS),
+    ("/api/module/schedule", J({"w": "@5", "state": "pause"}).encode(), JS),
+    ("/api/module/schedule", J({"w": "@9", "state": "pause"}).encode(), JS),
+    ("/api/module/schedule", J({"w": "@5", "state": "bad"}).encode(), JS),
+    ("/api/module/delete", J({"w": "@5", "confirm": "да"}).encode(), JS),
+    ("/api/module/delete", J({"w": "@5", "confirm": "bad"}).encode(), JS),
+    ("/api/module/delete", b"{bad", JS),
+    ("/api/module/delete", J({"w": "@5"}).encode(), JS, "viewer"),
+    ("/api/repos/add", J({"w": "@5", "repo": "o/r"}).encode(), JS),
+    ("/api/repos/add", J({"w": "@9", "repo": "o/r"}).encode(), JS),
+    ("/api/repos/add", J({"w": "@5", "repo": "bad"}).encode(), JS),
+    ("/api/repos/add", J({"w": "@5", "repo": "o/r"}).encode(), JS, "focus"),
+    ("/api/repos/remove", J({"w": "@5", "path": "/tmp/r"}).encode(), JS),
+    ("/api/repos/remove", J({"w": "@5", "path": "nope"}).encode(), JS),
+    ("/api/repos/remove", b"{bad", JS),
+    ("/api/mcp/finish", J({"w": "@1", "url": "https://x/cb", "name": "gh"}).encode(), JS),
+    ("/api/mcp/finish", J({"w": "@9", "url": "https://x/cb"}).encode(), JS),     # окна нет — 404
+    ("/api/mcp/finish", J({"url": "https://x/cb"}).encode(), JS),                # без окна — тоже 404
+    ("/api/mcp/finish", J({"w": "@1", "url": "bad"}).encode(), JS),
+    ("/api/mcp/finish", b"{bad", JS),
+    ("/api/mcp/finish", J({"w": "@5", "url": "https://x/cb", "name": "gh"}).encode(), JS, "focus"),
+    ("/api/mcp/finish", J({"w": "@1", "url": "https://x/cb"}).encode(), JS, "focus"),   # не окно ссылки — 403
+]
+
 # Снимки — код до переноса: голос — origin/refactor/panel-focus (eca3a81), мессенджеры, платежи, протоколы встреч —
-# main 5412efd; задачи и брифинг, «Поделиться», уведомления, анкеты, токены 1С и CRM — f6fdf33 (#456).
+# main 5412efd; задачи и брифинг, «Поделиться», уведомления, анкеты, токены 1С и CRM — f6fdf33 (#456); модели, ключи,
+# расход и интеграции, репозитории, модули — a187689 (#457; фокус-ссылка, /api/v1/drafts, POST_W /api/mcp/finish).
 # [код, тип, тело, вызовы Panel и модулей].
 FIX = Path(__file__).with_name("fixtures")
 AREAS = {"voice": VOICE, "messengers": MESSENGERS, "billing": BILLING, "meetings": MEETINGS, "tasks": TASKS,
-         "share": SHARE, "notify": NOTIFY, "forms": FORMS, "apitokens": APITOKENS}
+         "share": SHARE, "notify": NOTIFY, "forms": FORMS, "apitokens": APITOKENS, "models": MODELS,
+         "integr": INTEGR}
 
 
 def snap_of(srv, cases) -> dict:
@@ -327,17 +504,21 @@ def test_spec_sees_route_tables():
     assert spec["/api/rec/finish"]["in"] == ["id"] and "Panel.rec_finish" in spec["/api/rec/finish"]["calls"]
     assert spec["/api/billing/invoice"]["methods"] == ["GET"] and spec["/api/billing/plan"]["methods"] == ["POST"]
     assert spec["/api/meeting/share"]["in"] == ["base", "id"]
+    assert spec["/api/mcp/finish"]["in"] == ["w", "url", "name"]   # POST_W: окно — как после w = self.win(b…)
 
 
 def test_fork_tables_keep_chain_paths():
     """``GET_P``/``POST_P`` — те же пути, что развилки цепочки: ``path in billing_api.GET``/``POST``,
-    ``path.startswith("/api/messengers/") and path in OWNER_ONLY`` и ``path in ("/api/push/…", …)``."""
+    ``path.startswith("/api/messengers/") and path in OWNER_ONLY`` и ``path in ("/api/push/…", …)``
+    (черновики, модули, репозитории — ``path in ("/api/…", "/api/…")``)."""
     push = set(webapp.PUSH_OWN) - {"/api/notify/prefs"}
     assert set(routes.notify.PUSH_GET) | set(routes.notify.PUSH_POST) == push
     assert set(routes.GET_P) == set(billing_api.GET) | set(routes.notify.PUSH_GET)
     assert set(routes.POST_P) == set(billing_api.POST) | {p for p in webapp.OWNER_ONLY
                                                           if p.startswith("/api/messengers/")} | set(
-        routes.notify.PUSH_POST)
+        routes.notify.PUSH_POST) | {"/api/drafts/yes", "/api/drafts/no", "/api/module/schedule",
+                                    "/api/module/delete", "/api/repos/add", "/api/repos/remove"}
+    assert set(routes.POST_W) == {"/api/mcp/finish"}
     assert all(routes.POST_P[p] is routes.messengers.messengers_post for p in routes.messengers.POST_PATHS)
 
 
