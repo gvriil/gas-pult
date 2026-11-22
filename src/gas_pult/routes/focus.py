@@ -54,6 +54,19 @@ def focus_revoke(self, b: dict):
     return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
 
 
-GET = {"/api/focus/list": focus_list}
+def focus_asks(self, q: dict):
+    """GET /api/focus/asks — запрос доступа «Попросить доступ» и его ссылка (кнопка в сообщении владельцу)"""
+    panel = self.panel
+    return panel.focus.ask_get(str(q.get("id", "")))
+
+
+def focus_device(self, b: dict):
+    """POST /api/focus/device — «Добавить устройство»: одноразовая ссылка той же записи на 15 минут и QR.
+    С устройства по фокус-ссылке тот же путь обрабатывает ``H.focus_do`` — только своя запись."""
+    panel = self.panel
+    return panel.focus_device(str(b.get("id", "")), str(b.get("base", "")))
+
+
+GET = {"/api/focus/list": focus_list, "/api/focus/asks": focus_asks}
 POST = {"/api/focus/new": focus_new, "/api/focus/send": focus_send, "/api/focus/qr": focus_qr,
-        "/api/focus/browser": focus_browser, "/api/focus/revoke": focus_revoke}
+        "/api/focus/browser": focus_browser, "/api/focus/revoke": focus_revoke, "/api/focus/device": focus_device}

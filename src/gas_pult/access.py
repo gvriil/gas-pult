@@ -28,6 +28,7 @@ OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "
               "/api/desktop/open",
               "/api/tasks", "/api/tasks/add", "/api/tasks/update", "/api/tasks/remove", "/api/tasks/run",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
+              "/api/focus/device", "/api/focus/asks",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
               "/api/login/code", "/api/login/check"}          # шторка «Нужен вход» (logins.py) — только владельцу
@@ -169,9 +170,11 @@ FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
 FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
 FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private"}
+# «Открыть на другом устройстве» (владелец 22.11): одноразовая ссылка своей записи — H.focus_do, id из записи
+FOCUS_POST |= {"/api/focus/device"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private",
-              "/api/mcp/connected", "/api/uses"}   # без окна в запросе
+              "/api/mcp/connected", "/api/uses", "/api/focus/device"}   # без окна в запросе
 FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about", "/api/starters", "/api/media"}
 FOCUS_GET |= {"/api/media"}           # картинки в переписке по фокус-ссылке (papasan 19.11): только папки ссылки
 # Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,

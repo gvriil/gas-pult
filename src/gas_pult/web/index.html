@@ -93,7 +93,7 @@
   body:not(.focus) #title .caret { display: none; }
   /* Шапка чата у человека (фокус-ссылка, роль без терминала): только название и ⋯ (владелец 21.11); остальное — в ⋯ */
   body.clean-top #subtitle, body.clean-top #helpBtn, body.clean-top #settingsBtn, body.clean-top #tabsBar,
-  body.clean-top:not(.tab-screen) #screenBtn, body.clean-top #focusExp:not(.soon) { display: none !important; }
+  body.clean-top:not(.tab-screen) #screenBtn, body.clean-top #focusExp:not(.soon) > :not([data-fdev]) { display: none !important; }   /* фокус: срок — в меню; «На другом устройстве» — видно (22.11) */
   body.clean-top #chatMoreBtn, body.clean-top.tab-screen #screenBtn { display: grid !important; }
   .gmark { flex: none; display: inline-block; color: var(--text-primary); background: currentColor;   /* знак v2: цвет — из темы */
            -webkit-mask: url(brand/gavrila-mark.svg) center / contain no-repeat; mask: url(brand/gavrila-mark.svg) center / contain no-repeat; }
@@ -1187,6 +1187,7 @@
       <p class="note" style="margin:0 0 12px" data-l="login.note">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
       <div id="loginStep1">
         <div class="result ok" id="inviteNote" hidden></div>
+        <div id="loginFocus" hidden></div>
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
@@ -2365,7 +2366,7 @@ async function api(path, body, raw, extra, signal) {
   let r;
   try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined, signal }); }
   catch (e) { if (signal?.aborted) throw e; throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
-  if ((FOCUS || SLINK) && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Чат завершён"); }
+  if ((FOCUS || SLINK) && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error, err.why); throw new Error(err.error || "Чат завершён"); }
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
@@ -2821,7 +2822,12 @@ function mdLoad() {
 function setSub(html) { setHTML($("subtitle"), html); }
 
 // ---------- вход ----------
-function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck(); }
+function showLogin() {
+  simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck();
+  let fm = null; try { fm = localStorage.getItem("gp.focus"); } catch (e) { /* приватный режим */ }
+  if (fm) part("focusdev").then((m) => m.loginNote($("loginFocus"))).catch(() => {});   // открывали фокус-ссылку: вход не нужен
+  if (DEMO && params.get("tgwait")) part("tglogin").then((m) => m.demoState(params.get("tgwait")));   // снимки состояний ожидания
+}
 // Приглашение (/invite/<код> → /?invite=<код>): пометка над «Войти через Telegram»; после входа доступ — сразу.
 // Лёгкий вход (задача 34): если на пульте есть демо-пространства (guest) — сразу экран «Как вас зовут?» → панель,
 // без Telegram; ссылка для входа на другое устройство (kind=device) — одна кнопка «Войти», имя не спрашиваем.
@@ -2914,27 +2920,8 @@ const showCountry = (change) => part("country").then((m) => m.open(change));
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
-let tgTimer = null;
-$("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Готовлю вход…"), async () => {
-  try {
-    const d = await api("/api/login/tg", INVITE ? { invite: INVITE } : {});
-    tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");   // в браузере — новой вкладкой, не уходя со страницы
-    $("tgWait").hidden = false;
-    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>${esc(LL("login.wait", "В Telegram нажмите «Запустить» (Start), затем «Войти». Жду подтверждения…"))}</span></div>
-      <p class="note" style="margin:6px 2px">${esc(LL("login.wait.note", "Не открылся Telegram или нет кнопки? Внизу чата с ботом нажмите «Запустить» (Start) — даже если бот уже запущен."))}</p>
-      <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}${esc(LL("login.again", "Открыть Telegram ещё раз"))}</a>`;
-    clearInterval(tgTimer); const t0 = Date.now();
-    tgTimer = setInterval(async () => {
-      if (Date.now() - t0 > d.ttl * 1000) { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(LL("login.expired", "Ссылка устарела — нажмите «Войти через Telegram» ещё раз."))}</span></div>`; return; }
-      try {
-        const r = await api("/api/login/tg?id=" + encodeURIComponent(d.id));
-        if (r.state === "ok") { clearInterval(tgTimer); $("tgWait").hidden = true; haptic("notificationOccurred", "success"); await start(); }
-        else if (r.state === "2fa") { clearInterval(tgTimer); $("tgWait").hidden = true; askSecond(r); }
-        else if (r.state !== "wait") { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(r.state === "no" ? LL("login.rejected", "Вход отклонён в Telegram.") : LL("login.restart", "Ссылка устарела — начните заново."))}</span></div>`; }
-      } catch (err) { /* сеть моргнула — следующая попытка через 2 с */ }
-    }, 2000);
-  } catch (err) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
-});
+// Вход «через Telegram» — js/tglogin.js: ожидание, «Telegram не ответил» через минуту, запасные пути, «Время вышло».
+$("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Готовлю вход…"), () => part("tglogin").then((m) => m.start()));
 $("resend").onclick = (e) => requestCode(e.target);
 async function requestCode(btn) {
   await busy(btn, "Отправляю…", async () => {
@@ -4156,15 +4143,16 @@ function sessionSheet(id) {
     ...(cleanTop() && FOCUS_PROJ() ? [{ label: `Чаты проекта «${meta.focus.name}»`, icon: "folder", run: () => focusProjSheet() }] : []),
     ...(cleanTop() && FOCUS && meta?.focus?.exp ? [{ label: (FOCUS_DEMO() ? "Демо до " : "Вход по ссылке — до ") + new Date(meta.focus.exp * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), icon: "lock", run: () => {} }] : []),
     ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
-    ...(dev() && meta?.role !== "viewer" && !FOCUS ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
+    ...(dev() && meta?.role !== "viewer" && !FOCUS_DEMO() ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
-    ...(s.space || !dev() ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
+    ...(s.space || !dev() || FOCUS ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этого чата" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
-    ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role !== "viewer" && !FOCUS_DEMO() ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
     ...(meta?.role === "owner" && !FOCUS && !s.space && (s.harness || "claude") === "claude" && projOn() ? [{ label: "Перенести в проект…", icon: "folder", sub: "переписка та же — чат продолжится в папке другого проекта", run: () => part("chatmove").then((m) => m.open(s)) }] : []),
+    ...(FOCUS && !FOCUS_DEMO() ? [{ label: "Открыть на другом устройстве", icon: "qr", sub: "компьютер или планшет — QR и ссылка на 15 минут", run: focusDev }] : []),
     ...(FOCUS && meta?.focus?.browser ? [{ label: "Подключить браузер", icon: "monitor", sub: "пульт будет работать в Chrome/Edge на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только этот чат на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
     ...(canRepos(s) && dev() ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этому чату — без перезапуска", run: () => repoSheet(id) }] : []),
@@ -6639,13 +6627,15 @@ function focusExp() {                               // «вход действу
   const text = FOCUS_DEMO() ? (days < 1 ? "Демо до сегодня" : `Демо до ${date}`)
     : !soon ? `Вход действует до ${date} (через ${days} дн.)` : days < 1 ? `Вход истекает сегодня — попросите новую ссылку` : `Перезайти через ${n} — вход до ${date}`;
   const h = (FOCUS_PROJ() ? `<button type="button" data-fproj aria-label="Сессии проекта «${esc(f.name)}»">${ic("folder", "s16")}<b>${esc(f.name)}</b>${ic("chev", "s16")}</button>` : "")
-    + `<span title="Ссылка действует до ${esc(new Date(f.exp * 1000).toLocaleString("ru-RU"))}">${ic(soon ? "warn" : "lock", "s16")}${esc(text)}</span>`;
+    + `<span title="Ссылка действует до ${esc(new Date(f.exp * 1000).toLocaleString("ru-RU"))}">${ic(soon ? "warn" : "lock", "s16")}${esc(text)}</span>`
+    + (FOCUS_DEMO() ? "" : `<button type="button" data-fdev aria-label="Открыть этот чат на другом устройстве">${ic("qr", "s16")}<b>На другом устройстве</b></button>`);
   const cls = "focus-exp" + (soon ? " soon" : "");
   if (el.className !== cls) el.className = cls;
   if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
   if (el.hidden) el.hidden = false;
 }
-$("focusExp").addEventListener("click", (e) => { if (e.target.closest("[data-fproj]")) focusProjSheet(); });
+$("focusExp").addEventListener("click", (e) => { if (e.target.closest("[data-fproj]")) focusProjSheet(); if (e.target.closest("[data-fdev]")) focusDev(); });
+const focusDev = (id) => part("focusdev").then((m) => m.device(id));   // «Открыть на другом устройстве» (22.11)
 const byLast = (a, b) => lastMsg(b) - lastMsg(a);
 function focusProjSheet() {
   const f = meta.focus, list = [...sessions].sort(byLast);
@@ -6681,7 +6671,7 @@ function focusEmpty() {                             // в проекте нет 
   if (!$("content").querySelector("[data-key=fempty]")) $("content").innerHTML = h;
 }
 $("content").addEventListener("click", (e) => { const b = e.target.closest("[data-fnew], [data-fdone]"); if (!b || !FOCUS_PROJ() || FOCUS_DEMO()) return; b.dataset.fnew != null ? focusProjNew(b) : focusProjDone(); });
-function focusEnd(text) {
+function focusEnd(text, why) {
   if ($("focusEnd")) return;
   start.poll = null;
   document.querySelectorAll(".sheet-bg").forEach((b) => b.remove());
@@ -6689,6 +6679,7 @@ function focusEnd(text) {
   const d = document.createElement("div"); d.id = "focusEnd"; d.className = "focus-end"; d.setAttribute("role", "alert");
   d.innerHTML = `<div>${ic(done ? "power" : "lock")}<h2 class="serif">${done ? "Чат завершён" : "Ссылка не действует"}</h2>${done ? "" : `<p>${esc(text)}</p>`}<p class="note">Эту страницу можно закрыть.</p></div>`;
   document.body.append(d);
+  if (why && why !== "closed") part("focusdev").then((m) => m.gone(text, why)).catch(() => {});   // свой экран и «Попросить доступ»
 }
 async function focusStart() {
   document.body.classList.add("focus");             // экран сессии — openSession, когда известна сессия
@@ -6698,6 +6689,7 @@ async function focusStart() {
     if (o?.mode === "meeting" || (DEMO && params.get("focus") === "meeting")) return part("meeting").then((m) => m.publicView());   // ссылка на протокол   // ссылка на пространство — полная панель
     if (o?.owner_here) return location.replace(location.pathname + (o.w ? "?session=" + encodeURIComponent(o.w) : ""));   // владелец — обычная панель
     meta = await api("/api/meta"); BUILD = meta.build;
+    try { localStorage.setItem("gp.focus", JSON.stringify({ id: meta.focus?.id, name: meta.focus?.name })); } catch (e) { /* приватный режим */ }
   } catch (e) { return focusEnd(e.message); }
   document.body.dataset.role = FOCUS_DEMO() ? "demo" : "owner";   // демо: сервер — «наблюдатель», кнопки вопроса — есть
   document.body.classList.toggle("focus-demo", FOCUS_DEMO());
@@ -7022,6 +7014,7 @@ async function enableAndGo(c, id) {
 }
 function goFromLink() {                                // #go=<id> из бота («📱 Открыть в панели») — сразу на нужный экран
   if (!FOCUS && (params.has("share") || meta?.shares)) part("share").then((m) => m.open()).catch(() => {});   // «Поделились»
+  if (!FOCUS && params.get("focusask") && meta?.role === "owner") part("focusdev").then((m) => m.ask(params.get("focusask"), params.get("do"))).catch(() => {});   // «Просят доступ» (22.11)
   const id = new URLSearchParams(location.hash.slice(1)).get("go") || params.get("go");
   if (id && /^go:[a-z0-9.\-]+$/.test(id)) setTimeout(() => go(id), 300);
   const sid = params.get("session");                  // «📱 Открыть сессию» из бота (зов тестировщика на помощь)

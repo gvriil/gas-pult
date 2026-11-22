@@ -3431,6 +3431,104 @@
     }
    }
   },
+  "/api/focus/ask": {
+   "post": {
+    "summary": "«Попросить доступ»: ссылка не открылась — запрос владельцам (до входа, 3 за 10 минут с адреса)",
+    "tags": [
+     "Фокус-ссылки"
+    ],
+    "operationId": "post_focus_ask",
+    "x-access": {
+     "role": "open",
+     "tags": []
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "token": {},
+         "id": {},
+         "why": {},
+         "note": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "ok": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/focus/asks": {
+   "get": {
+    "summary": "Запрос доступа по фокус-ссылке и его ссылка — для владельца",
+    "tags": [
+     "Фокус-ссылки"
+    ],
+    "operationId": "get_focus_asks",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "id": {},
+          "rid": {},
+          "name": {},
+          "why": {},
+          "note": {},
+          "device": {},
+          "at": {},
+          "link": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/focus/bridge": {
    "get": {
     "summary": "Фокус-ссылка: свой компьютер с мостом",
@@ -3640,6 +3738,61 @@
          "type": "object",
          "properties": {
           "ok": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/focus/device": {
+   "post": {
+    "summary": "«Открыть на другом устройстве»: одноразовая ссылка той же записи на 15 минут и QR; с фокус-ссылки — своя запись, у владельца — id",
+    "tags": [
+     "Фокус-ссылки"
+    ],
+    "operationId": "post_focus_device",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {},
+         "base": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "url": {},
+          "exp": {},
+          "used": {},
+          "max": {},
+          "qr": {}
          }
         }
        }

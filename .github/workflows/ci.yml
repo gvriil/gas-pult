@@ -100,13 +100,15 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev,browser]"
-      - run: python -m playwright install --with-deps chromium
+      # 22.11: фокус-ссылка на нескольких устройствах — три движка (tests/e2e/focus_devices_live.py): chromium (он же
+      # Chrome и Edge), firefox, webkit (Safari, iPhone). Установка firefox и webkit — около минуты, проверка — секунды
+      - run: python -m playwright install --with-deps chromium firefox webkit
       - name: все тесты, браузерные — без пропусков
         # pipefail: без него код шага — код tee (0), и упавшие тесты не валили задание (16.11: 35 упавших — «зелёный»)
         run: |
           set -o pipefail
           pytest -q -rs --cov=gas_pult --cov-report=term:skip-covered | tee browser.log
-          ! grep -E "SKIPPED.*(playwright|браузер|chromium)" browser.log
+          ! grep -E "SKIPPED.*(playwright|браузер|chromium|firefox|webkit)" browser.log
 
   build:
     runs-on: ubuntu-latest

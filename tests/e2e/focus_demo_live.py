@@ -149,7 +149,8 @@ def run(shots: str = ""):
             po.locator(".sheet button", has_text="Отозвать эту ссылку").click()   # подтверждение — confirm(), принято
             for pg in (pa, pb):
                 pg.wait_for_selector("#focusEnd", timeout=20000)
-                assert "Ссылка не действует" in pg.inner_text("#focusEnd")
+                pg.wait_for_selector("#focusEnd[data-why=revoked]", timeout=5000)   # 22.11: свой экран
+                assert "Владелец отозвал ссылку" in pg.inner_text("#focusEnd")
             if shots:
                 pa.screenshot(path=f"{shots}/demo-revoked-390.png")
             log("(д) «Отозвать» — оба устройства: «Ссылка не действует»")

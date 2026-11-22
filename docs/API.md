@@ -2,7 +2,7 @@
 
 <!-- Файл собран генератором: python -m gas_pult.api_spec. Руками не править — правьте src/gas_pult/api_spec.py (описания) или webapp.py (маршруты) и перезапустите генератор. -->
 
-Путей: **293**, пар «путь + метод»: **306**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
+Путей: **296**, пар «путь + метод»: **309**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
 
 Все пути — под адресом панели, ответы — JSON (кроме отмеченных). Ошибка — `{"error": "…", "code": …}` с кодом HTTP: 401 — нужен вход, 403 — не хватает прав (`code`: `terms`, `space`, `focus_scope`, `confirm`, `cap`, `dev`, `budget`), 404 — нет метода, 409/410 — конфликт или ссылка погасла, 429 — лимит.
 
@@ -267,14 +267,17 @@
 
 | Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
 |---|---|---|---|---|---|---|
+| `/api/focus/ask` | POST | без входа | — | «Попросить доступ»: ссылка не открылась — запрос владельцам (до входа, 3 за 10 минут с адреса) | `token`, `id`, `why`, `note` | `ok` |
+| `/api/focus/asks` | GET | владелец | — | Запрос доступа по фокус-ссылке и его ссылка — для владельца | `id` | `id`, `rid`, `name`, `why`, `note`, `device`, `at`, `link` |
 | `/api/focus/bridge` | GET | только по фокус-ссылке | `FOCUS` | Фокус-ссылка: свой компьютер с мостом | — | — |
 | `/api/focus/bridge/pair` | POST | только по фокус-ссылке | `FOCUS` | Фокус-ссылка: код пары своего компьютера | — | — |
 | `/api/focus/bridge/private` | POST | только по фокус-ссылке | `FOCUS` | Фокус-ссылка: «Личные данные не уходят модели» | `id`, `on` | `ok` |
 | `/api/focus/bridge/revoke` | POST | только по фокус-ссылке | `FOCUS` | Фокус-ссылка: отключить свой компьютер | `id` | `ok` |
 | `/api/focus/browser` | POST | владелец | — | Разрешить фокус-ссылке подключить свой браузер | `id`, `on` | `ok` |
+| `/api/focus/device` | POST | владелец | `FOCUS` | «Открыть на другом устройстве»: одноразовая ссылка той же записи на 15 минут и QR; с фокус-ссылки — своя запись, у владельца — id | `id`, `base` | `url`, `exp`, `used`, `max`, `qr` |
 | `/api/focus/list` | GET | владелец | — | Действующие фокус-ссылки — без токенов | — | `links` |
 | `/api/focus/new` | POST | владелец | — | Новая фокус-ссылка: сессия, проект или пространство; права и срок | `space`, `base`, `ttl`, `max`, `rights`, `name`, `audience`, `w`, `proj`, `mode` | — |
-| `/api/focus/open` | POST | без входа | — | Первое открытие фокус-ссылки: привязать устройство (cookie) | `token` | `ok, name, mode; cookie` |
+| `/api/focus/open` | POST | без входа | — | Первое открытие фокус-ссылки: привязать устройство (cookie) | `token` | `ok, name, id, mode; cookie` |
 | `/api/focus/qr` | POST | владелец | — | QR ссылки (POST — адрес с токеном не попадает в журнал прокси) | `url` | — |
 | `/api/focus/revoke` | POST | владелец | — | Погасить фокус-ссылку | `id` | `ok`, `links` |
 | `/api/focus/send` | POST | владелец | — | Отправить ссылку себе в Telegram | `url` | — |
@@ -313,8 +316,8 @@
 | `/api/login/passkey/options` | POST | без входа | — | Вход по ключу (passkey): параметры WebAuthn | — | — |
 | `/api/login/passkey/verify` | POST | без входа | — | Вход по ключу: проверить подпись | `id`, `credential` | `state; cookie` |
 | `/api/login/start` | POST | без входа | — | Вход кодом из бота: начать | — | `id` |
-| `/api/login/tg` | GET | без входа | — | Вход через Telegram: POST — начать (ссылка на бота), GET — ждать подтверждения | `POST: invite; GET: id (query)` | `POST: id, link, ttl; GET: state (+cookie)` |
-| `/api/login/tg` | POST | без входа | — | Вход через Telegram: POST — начать (ссылка на бота), GET — ждать подтверждения | `POST: invite; GET: id (query)` | `POST: id, link, ttl; GET: state (+cookie)` |
+| `/api/login/tg` | GET | без входа | — | Вход через Telegram: POST — начать (ссылка на бота), GET — ждать подтверждения | `POST: invite; GET: id (query)` | `POST: id, link, app, qr, ttl; GET: state (+cookie)` |
+| `/api/login/tg` | POST | без входа | — | Вход через Telegram: POST — начать (ссылка на бота), GET — ждать подтверждения | `POST: invite; GET: id (query)` | `POST: id, link, app, qr, ttl; GET: state (+cookie)` |
 | `/api/login/verify` | POST | без входа | — | Вход кодом из бота: проверить код | `id`, `code` | `ok; cookie` |
 | `/api/logout` | POST | любой вошедший | `TERMS_FREE`, `SPACE_OK`, `FOCUS`, `DEMO`, `MEETING` | Выйти на этом устройстве | — | — |
 | `/api/meta` | GET | любой вошедший | `TERMS_FREE`, `SPACE_OK`, `FOCUS`, `DEMO` | Кто я и что видно: роль, сборка, новое, настройки | — | `via`, `role`, `uid`, `build`, `whatsnew`, `prefs`, `ui`, `terms`, `tty`, `desktop`, `projects_ui`, `shares`, `country` |

@@ -27,6 +27,13 @@ SHA-256 от токена и секрета устройства (``focus.json``
 Ссылка на протокол встречи (``mode: "meeting"``, владелец 22.11): только один протокол — плеер, оглавление, текст,
 «Что сделать» (``access.MEETING_GET``). Окна и сессии у неё нет; протокол — поле ``mt`` записи, не из запроса.
 Несколько устройств (участники встречи), не больше ``MEETING_MAX``; срок — 30 дней; «Отозвать» гасит все сразу.
+
+«Открыть на другом устройстве» (владелец 22.11: на телефоне ссылка открылась, на компьютере — «Ссылка не действует»):
+страница убирает токен из адреса, и адрес «/?focus» без cookie ничего не открывает. Поэтому открытое устройство (или
+владелец) выпускает **дополнительный токен** той же записи (``extra``): на сервере — только SHA-256 и срок, токен
+одноразовый, живёт ``EXTRA_TTL`` (15 минут) и не даёт устройств сверх лимита записи (``limit_of``). Ответ «не действует»
+несёт причину (``Gone.why``): ``nodevice`` — на этом устройстве ссылку не открывали, ``limit`` — все места заняты,
+``expired``/``revoked``/``closed``/``bad`` — по записи. По ней страница показывает свой экран и «Попросить доступ».
 """
 
 from __future__ import annotations
@@ -57,6 +64,9 @@ FOREVER = 100 * 365 * 86400             # «без срока» — запись
 MEETING = "meeting"                     # вид ссылки: один протокол встречи (meetings.py)
 MEETING_MAX = 50                        # устройств на ссылку на протокол: участники встречи
 MEETING_TTL = 30 * 86400
+EXTRA_TTL = 15 * 60                     # дополнительный токен «Открыть на другом устройстве»: одноразовый, 15 минут
+ASKS_KEEP = 86400                       # запросы доступа «Попросить доступ» — сутки, не больше ASKS_MAX
+ASKS_MAX = 50
 VUID_BASE = 2 ** 50                     # виртуальный человек ссылки: −(VUID_BASE + id записи); не Telegram ID
 
 
@@ -79,7 +89,12 @@ def _h(s: str) -> str:
 
 
 class Gone(Exception):
-    """Ссылка больше не действует: текст — для экрана «Чат завершён»."""
+    """Ссылка больше не действует: текст — для экрана «Чат завершён». ``why`` — причина для своего экрана страницы
+    (nodevice, limit, expired, revoked, closed, bad); ``rid`` — запись, если она известна (для «Попросить доступ»)."""
+
+    def __init__(self, text: str, why: str = "", rid: str = ""):
+        super().__init__(text)
+        self.why, self.rid = why, rid
 
 
 class Denied(Exception):
@@ -147,18 +162,106 @@ class Focus:
             self._save(d)
         return {"token": token, "id": rid, "exp": int(now + ttl)}
 
-    def _by_token(self, d: dict, token: str) -> str | None:
+    def _by_token(self, d: dict, token: str, now: float | None = None) -> str | None:
+        """Запись по токену: основному или дополнительному (``extra``, пока не истёк его срок)."""
         token = str(token or "")
         if not TOKEN_LEN[0] <= len(token) <= TOKEN_LEN[1]:
             return None
-        h = _h(token)
-        return next((k for k, v in d.items() if hmac.compare_digest(v.get("h", ""), h)), None)
+        h, now = _h(token), time.time() if now is None else now
+        for k, v in d.items():
+            if hmac.compare_digest(v.get("h", ""), h):
+                return k
+            if any(hmac.compare_digest(x, h) and now < e for x, e in (v.get("extra") or {}).items()):
+                return k
+        return None
 
     def check_token(self, token: str) -> dict | None:
         """Действующая ссылка по токену (для «Отправить себе», QR): запись или None."""
         d = self._load()
         k = self._by_token(d, token)
         return {**d[k], "id": k} if k and self.live(d[k]) else None
+
+    @staticmethod
+    def limit_of(rec: dict) -> int:
+        """Сколько устройств у записи (0 — без ограничения)."""
+        if rec.get("mode") == SPACE:
+            return int(rec.get("max") or 0)
+        return {DEMO: DEMO_MAX, MEETING: MEETING_MAX}.get(rec.get("mode") or "", FOCUS_MAX)
+
+    @staticmethod
+    def _devs(rec: dict) -> dict:
+        devs = rec.setdefault("devs", {})
+        if rec.get("dev") and rec["dev"] not in devs:         # старая запись: одно устройство в поле dev
+            devs[rec["dev"]] = {"device": rec.get("device", ""), "opened": rec.get("opened")}
+        return devs
+
+    def seats(self, rid: str) -> dict:
+        """Места устройств записи: {used, max, live} — для «Открыть на другом устройстве» и запроса доступа."""
+        rec = self._load().get(str(rid or ""))
+        if not rec:
+            raise LookupError("ссылки нет")
+        return {"used": len(self._devs(dict(rec))), "max": self.limit_of(rec), "live": self.live(rec)}
+
+    def add_device(self, rid: str) -> dict:
+        """«Открыть на другом устройстве»: одноразовый токен той же записи на ``EXTRA_TTL`` — {token, exp, used, max}.
+        Мест нет — ``Denied`` (409 full): дополнительный токен не даёт устройств сверх лимита записи."""
+        with self._locked():
+            d, now = self._load(), time.time()
+            rec = d.get(str(rid or ""))
+            if not rec or not self.live(rec, now):
+                raise Gone(self.why(rec) if rec else "Ссылки уже нет.", self.reason(rec) if rec else "bad")
+            if rec.get("mode") == MEETING:
+                raise Denied("ссылку на протокол пересылают целиком — она открывается на нескольких устройствах")
+            lim, used = self.limit_of(rec), len(self._devs(rec))
+            if lim and used >= lim:
+                raise Denied(f"Все места заняты: ссылка открыта на {used} из {lim} устройств. Попросите владельца "
+                             "отозвать ссылку и выпустить новую.", "full", 409)
+            token = secrets.token_urlsafe(32)
+            extra = {h: e for h, e in (rec.get("extra") or {}).items() if now < e}
+            extra[_h(token)] = int(now + EXTRA_TTL)
+            rec["extra"] = dict(list(extra.items())[-10:])        # не больше 10 неиспользованных — память не растёт
+            self._save(d)
+            return {"token": token, "exp": int(now + EXTRA_TTL), "used": used, "max": lim}
+
+    def _spend_extra(self, rec: dict, token: str):
+        """Дополнительный токен одноразовый: после открытия устройства — стираем его хэш."""
+        h = _h(str(token or ""))
+        if h in (rec.get("extra") or {}):
+            rec["extra"].pop(h)
+
+    # ---------- «Попросить доступ» (страница без действующей ссылки) ----------
+    def _asks_path(self) -> Path:
+        return self.store.with_name("focus_asks.json")
+
+    def ask(self, rid: str, why: str, note: str, device: str) -> dict:
+        """Запрос доступа: {id, rid, name, why, note, device, at}. ``rid`` — запись, если её удалось узнать."""
+        rec = self._load().get(rid) if rid else None
+        aid, now = secrets.token_hex(6), int(time.time())
+        a = {"rid": rid if rec else "", "name": (rec or {}).get("name", ""), "why": str(why or "")[:20],
+             "note": " ".join(str(note or "").split())[:120], "device": str(device or "")[:60], "at": now}
+        p = self._asks_path()
+        with jstore.locked(p):
+            d = {k: v for k, v in jstore.load(p).items() if now - v.get("at", 0) < ASKS_KEEP}
+            d[aid] = a
+            jstore.save(p, dict(list(d.items())[-ASKS_MAX:]), ensure_ascii=False)
+        return {"id": aid, **a}
+
+    def ask_get(self, aid: str) -> dict:
+        """Запрос доступа и его ссылка (для владельца): {id, ..., link: {id, name, w, proj, mode, used, max, live}}."""
+        a = jstore.load(self._asks_path()).get(str(aid or ""))
+        if not a:
+            raise LookupError("запроса нет или прошли сутки")
+        rec = self._load().get(a["rid"]) if a.get("rid") else None
+        link = None
+        if rec:
+            link = {"id": a["rid"], "name": rec.get("name", ""), "w": rec.get("w") or "", "proj": rec.get("proj"),
+                    "mode": rec.get("mode") or "", "used": len(self._devs(dict(rec))), "max": self.limit_of(rec),
+                    "live": self.live(rec), "why": "" if self.live(rec) else self.why(rec)}
+        return {"id": str(aid), **a, "link": link}
+
+    def rid_by_token(self, token: str) -> str:
+        """Запись по токену — любая, даже погасшая (для «Попросить доступ» сверх лимита и после срока); нет — ""."""
+        return self._by_token(self._load(), token) or ""
 
     def open(self, token: str, cookie: str, device: str = "") -> tuple[str, dict]:
         """Открыть ссылку: первое открытие привязывает устройство — (значение cookie, запись). Уже привязана — только
@@ -167,29 +270,29 @@ class Focus:
             d = self._load()
             k = self._by_token(d, token)
             if not k:
-                raise Gone("Ссылка неверна или устарела — попросите новую.")
+                raise Gone("Ссылка неверна или устарела — попросите новую.", "bad")
             rec = d[k]
             if not self.live(rec):
-                raise Gone(self.why(rec))
+                raise Gone(self.why(rec), self.reason(rec), k)
             if self.is_demo(rec) or self.is_meeting(rec):
-                return self._open_demo(d, k, rec, cookie, device)
+                return self._open_demo(d, k, rec, cookie, device, token)
             if self._match(k, rec, cookie):
                 return cookie, {**rec, "id": k}
-            devs = rec.setdefault("devs", {})
-            if rec.get("dev") and rec["dev"] not in devs:         # старая запись: одно устройство в поле dev
-                devs[rec["dev"]] = {"device": rec.get("device", ""), "opened": rec.get("opened")}
-            lim = int(rec.get("max") or 0) if rec.get("mode") == SPACE else FOCUS_MAX
+            devs = self._devs(rec)
+            lim = self.limit_of(rec)
             if lim and len(devs) >= lim:
                 raise Gone(f"Ссылку уже открыли на {lim} {'устройстве' if lim == 1 else 'устройствах'}. Попросите "
-                           "новую ссылку или отзовите эту: «Настройки» → «Команда и клиенты» → «Фокус-ссылки».")
+                           "новую ссылку или отзовите эту: «Настройки» → «Команда и клиенты» → «Фокус-ссылки».",
+                           "limit", k)
             secret, now = secrets.token_urlsafe(32), int(time.time())
             devs[_h(secret)] = {"device": device[:60], "opened": now}
+            self._spend_extra(rec, token)
             rec.setdefault("dev", _h(secret))                    # первое устройство — как раньше (совместимость)
             rec.update(device=device[:60], opened=now)
             self._save(d)
             return f"{k}.{secret}", {**rec, "id": k}
 
-    def _open_demo(self, d: dict, k: str, rec: dict, cookie: str, device: str) -> tuple[str, dict]:
+    def _open_demo(self, d: dict, k: str, rec: dict, cookie: str, device: str, token: str = "") -> tuple[str, dict]:
         """Демо-ссылка (и ссылка на протокол): то же устройство — его cookie; новое — своё cookie, пока устройств меньше
         ``DEMO_MAX`` (у протокола — ``MEETING_MAX``)."""
         if self._match(k, rec, cookie):
@@ -197,9 +300,10 @@ class Focus:
         devs = rec.setdefault("devs", {})
         lim = MEETING_MAX if self.is_meeting(rec) else DEMO_MAX
         if len(devs) >= lim:
-            raise Gone(f"Ссылку уже открыли на {lim} устройствах — попросите новую.")
+            raise Gone(f"Ссылку уже открыли на {lim} устройствах — попросите новую.", "limit", k)
         secret, now = secrets.token_urlsafe(32), int(time.time())
         devs[_h(secret)] = {"device": device[:60], "opened": now}
+        self._spend_extra(rec, token)
         rec["opens"] = int(rec.get("opens") or 0) + 1
         rec.update(device=device[:60], opened=now)           # последнее открытие — для списка у владельца
         self._save(d)
@@ -220,9 +324,9 @@ class Focus:
         rid = str(cookie or "").partition(".")[0]
         rec = self._load().get(rid) if rid else None
         if not rec or not self._match(rid, rec, cookie):
-            raise Gone("Фокус-ссылка не открыта на этом устройстве. Откройте ссылку ещё раз.")
+            raise Gone("Фокус-ссылка не открыта на этом устройстве. Откройте ссылку ещё раз.", "nodevice")
         if not self.live(rec):
-            raise Gone(self.why(rec))
+            raise Gone(self.why(rec), self.reason(rec), rid)
         return {**rec, "id": rid}
 
     def space_by_cookie(self, cookie: str) -> dict | None:
@@ -232,7 +336,7 @@ class Focus:
         if not rec or rec.get("mode") != SPACE or not self._match(rid, rec, cookie):
             return None
         if not self.live(rec):
-            raise Gone(self.why(rec))
+            raise Gone(self.why(rec), self.reason(rec), rid)
         return {**rec, "id": rid}
 
     def person(self, uid) -> dict | None:
@@ -242,6 +346,11 @@ class Focus:
         if not rec or rec.get("mode") != SPACE or not self.live(rec) or not rec.get("space"):
             return None
         return {"role": "viewer" if rec.get("rights") == "read" else "member", "tenant": rec["space"]}
+
+    @staticmethod
+    def reason(rec: dict) -> str:
+        """Причина погасшей записи — для экрана страницы: closed, revoked или expired."""
+        return rec.get("state") if rec.get("state") in ("closed", "revoked") else "expired"
 
     @staticmethod
     def why(rec: dict) -> str:

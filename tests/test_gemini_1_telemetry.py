@@ -28,7 +28,7 @@ def test_home_quiet_for_user():                                         # №4
 
 def test_chat_menu_short_for_user():                                    # №10
     assert "sheet(dn(s), shortMenu([" in PAGE
-    assert '...(s.space || !dev() ? [] : [{ label: "Сделать активной",' in PAGE
+    assert '...(s.space || !dev() || FOCUS ? [] : [{ label: "Сделать активной",'   # по ссылке /api/active — 403 in PAGE
     assert '...(canRepos(s) && dev() ? [{ label: "Подключить репозитории",' in PAGE
     assert "return dev() ? out : out.map(({ sub, ...x }) => x);" in PAGE
     assert "it.sep ? '<hr class=\"ssep\">'" in PAGE

@@ -8,13 +8,16 @@
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import hashlib
 import re
 import secrets
 import threading
 import time
+from typing import ClassVar
 
-from gas_pult import focus, harness, tenants
+from gas_pult import focus, harness, qr, tenants
 from gas_pult.humanize import DIALOG
 
 
@@ -69,6 +72,50 @@ class FocusPart:
         return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": title, "space": slug,
                 "space_title": t.get("title") or slug, "mode": focus.SPACE, "max": limit, "rights": rights,
                 "forever": ttl == "none", "audience": audience}
+
+    def focus_device(self, rid: str, base: str) -> dict:
+        """«Открыть на другом устройстве» (владелец 22.11): одноразовая ссылка той же записи на 15 минут и её QR —
+        для устройства, открытого по ссылке (своя запись), и для владельца (по запросу доступа). Мест нет — 409."""
+        base = (self.public_url or base or "").rstrip("/")
+        if not self.FOCUS_BASE.match(base):
+            raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
+        f = self.focus.add_device(rid)
+        url = f"{base}/#focus={f['token']}"
+        png = base64.b64encode(qr.png_of(url, 6)).decode()
+        return {"url": url, "exp": f["exp"], "used": f["used"], "max": f["max"], "qr": "data:image/png;base64," + png}
+
+    ASK_WHY: ClassVar[dict] = {
+        "nodevice": "открыли адрес без ключа (без полной ссылки)", "limit": "все места для устройств заняты",
+        "expired": "срок ссылки вышел", "revoked": "ссылку отозвали", "bad": "ссылка не найдена",
+        "closed": "чат завершён"}
+
+    def focus_ask(self, token: str, rid: str, why: str, note: str, device: str) -> dict:
+        """«Попросить доступ» со страницы без действующей ссылки (до входа): запрос — владельцам (``broadcast``) с
+        кнопкой в панель. Запись ссылки — по токену (если он ещё в странице) или по id, который эта страница запомнила
+        раньше; без них — только текст человека и вид устройства. Ответ всегда один и тот же: по нему нельзя
+        проверить, есть ли ссылка с таким id."""
+        hint = str(rid or "")
+        rid = self.focus.rid_by_token(token) if token else ""
+        if not rid and re.fullmatch(r"[0-9a-f]{12}", hint):
+            rid = hint
+        if not rid and not str(note or "").strip():
+            raise ValueError("напишите, кто вы или о какой ссылке речь — владельцу нужно понять, кому ответить")
+        a = self.focus.ask(rid, why, note, device)
+        base = (self.public_url or self.pult.panel_url() or "").split("?")[0].rstrip("/")
+        lines = ["🔑 Просят доступ по фокус-ссылке" + (f" «{a['name']}»" if a["name"] else "") + ".",
+                 f"Почему: {self.ASK_WHY.get(a['why'], 'ссылка не открылась')}.",
+                 *([f"Пишет: «{a['note']}»"] if a["note"] else []),
+                 *([f"Устройство: {a['device']}"] if a["device"] else []),
+                 "Ссылка не определена — выберите её в «Настройки» → «Фокус-ссылки» или создайте новую."
+                 if not a["rid"] else "Добавьте устройство — панель покажет ссылку и QR; перешлите их человеку."]
+        kb = None
+        if base and self.FOCUS_BASE.match(base):
+            url = f"{base}/?focusask={a['id']}"
+            kb = {"inline_keyboard": [[{"text": "Добавить устройство", "web_app": {"url": url + "&do=add"}},
+                                       {"text": "Новая ссылка", "web_app": {"url": url + "&do=new"}}]]}
+        with contextlib.suppress(Exception):
+            self.pult.broadcast("\n".join(lines), kind="people", **({"reply_markup": kb} if kb else {}))
+        return {"ok": True}
 
     def focus_sessions(self, rec: dict) -> list[dict]:
         """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""

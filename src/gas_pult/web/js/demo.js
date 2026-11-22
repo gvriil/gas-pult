@@ -342,8 +342,16 @@ function demoApi(path, body) {
     { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" },
     ...(params.has("spaces") ? [{ id: "f4", name: "Кафе — показ партнёру", w: "", space: "demo", mode: "space", devices: 2, max: 3, rights: "full", forever: false, created: Date.now() / 1000 - 900, exp: Date.now() / 1000 + 7 * 86400, opened: Date.now() / 1000 - 600, device: "iPhone · Safari" },
       { id: "f5", name: "Демо для бухгалтерии", w: "", space: "demo", mode: "space", devices: 0, max: 0, rights: "read", forever: true, created: Date.now() / 1000 - 1900, exp: Date.now() / 1000 + 36500 * 86400, opened: null, device: "" }] : [])] };
+  // «Открыть на другом устройстве» и «Просят доступ» (22.11): ?demo&focusask=a1 — владелец открыл кнопку из сообщения
+  R["/api/focus/device"] = { url: location.origin + "/#focus=demo-extra-demo-extra-demo-extra", exp: Math.floor(Date.now() / 1000) + 900, used: 1, max: 3, qr: demoQr() };
+  R["/api/focus/ask"] = { ok: true };
+  R["/api/focus/asks"] = { id: "a1", rid: "f1", name: "gas-pult", why: "nodevice", note: "Ольга, ноутбук в офисе", device: "Mac · Chrome", at: Math.floor(Date.now() / 1000) - 120,
+    link: { id: "f1", name: "gas-pult", w: "@1", proj: null, mode: "", used: 1, max: 3, live: true, why: "" } };
   if (FOCUS) {
     if (params.get("focus") === "gone") { focusEnd("Чат завершён."); return Promise.reject(new Error("Чат завершён.")); }
+    // &focus=nodevice | limit | expired | revoked | bad — ссылка не открылась: свой экран и «Попросить доступ» (22.11)
+    const FWHY = { nodevice: "Фокус-ссылка не открыта на этом устройстве.", limit: "Ссылку уже открыли на 3 устройствах.", expired: "Срок фокус-ссылки вышел.", revoked: "Владелец отозвал эту фокус-ссылку.", bad: "Ссылка неверна или устарела." };
+    if (FWHY[params.get("focus")] && path !== "/api/focus/ask") { focusEnd(FWHY[params.get("focus")], params.get("focus")); return Promise.reject(new Error(FWHY[params.get("focus")])); }
     // &focus=proj — ссылка на проект сессии @1 (все его окна); &fexp=1 — до конца срока сутки (предупреждение)
     const fp = params.get("focus") === "proj", pw = "p-" + folder(R["/api/sessions"].sessions.find((x) => x.id === "@1")?.path || "");
     const fexp = Math.floor(Date.now() / 1000) + (params.has("fexp") ? +params.get("fexp") || 1 : 7) * 86400 - 600;
