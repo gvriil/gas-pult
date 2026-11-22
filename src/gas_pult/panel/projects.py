@@ -597,7 +597,7 @@ class ProjectsPart:
 
         base = os.path.basename(folder) if folder != os.path.realpath(self.pult.home) else "home"
         out = self.restart(w, w.get("profile") or w.get("mark") or "claude", True, uid, path=folder,
-                           wname=f"{base}-{time.strftime('%H%M')}", closed=closed)
+                           wname=self.free_wname(base), closed=closed)
         if out.get("failed"):
             self.events.event("chat_move", w=w["id"], to=out["id"], project=p["id"], state="failed")
             raise chat_move.Failed(f"не перенёс: {out['failed']} — чат продолжается на прежнем месте", out["id"])

@@ -558,7 +558,7 @@ class SessionsPart:
             h = harness.HARNESSES[profile]
             sid = (pi_journal.valid_sid(resume) or str(uuid.uuid4())) if profile == "pi" else resume   # у OC/Hermes id
             cmd = h.launch(sid, resume=bool(resume), path=path)             # + автопамять проекта папки
-            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
+            wid = self.tmux.new_window(self.free_wname(base), path, cmd,
                                        mark=profile, sid=sid)       # сессии создаёт сама программа — по папке окна
             self.mark_by(wid, uid)
             return {"id": wid, "sid": sid}
@@ -577,7 +577,7 @@ class SessionsPart:
             chatmcp.put(self.CHAT_MCP, sid, mcp_off)
         cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, sid))
         cmd += f" --resume {sid}" if resume else f" --session-id {sid}"
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
+        wid = self.tmux.new_window(self.free_wname(base), path, cmd,
                                    mark=profile or "claude", by=str(person) if home else "", sid=sid)
         if not home:
             self.mark_by(wid, uid)
@@ -688,6 +688,19 @@ class SessionsPart:
         chatmcp.put(self.CHAT_MCP, w["sid"], off)
         return {**self.restart(w, w.get("profile") or w.get("mark") or "claude", True, uid), "off": chatmcp.get(
             self.CHAT_MCP, w["sid"])}
+
+    def free_wname(self, base: str) -> str:
+        """Имя нового окна ``<папка>-ЧЧММ``; занято (два окна за минуту) — ``-2``, ``-3``…: штаб и люди зовут окна
+        по имени (``tmux send-keys -t main:<имя>``), два одинаковых имени — письмо уходит не туда (22.11)."""
+        name = f"{base}-{time.strftime('%H%M')}"
+        try:
+            taken = {w.get("name") for w in self.tmux.windows()}
+        except OSError:
+            return name
+        n, out = 2, name
+        while out in taken:
+            out, n = f"{name}-{n}", n + 1
+        return out
 
     def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None,
                 effort: str | None = None, path: str = "", wname: str = "", closed=None) -> dict:
