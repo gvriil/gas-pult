@@ -1,0 +1,44 @@
+{
+ "_source": "не проверено на песочнице: по примеру из документации Яндекс Метрики, https://yandex.ru/dev/metrika/ru/intro/quick-start; названия, сайты и цифры выдуманы (22.11.2026)",
+ "rows": 2,
+ "counters": [
+  {
+   "id": 880000,
+   "status": "Active",
+   "owner_login": "example-owner",
+   "code_status": "CS_OK",
+   "activity_status": "medium",
+   "name": "Кофейня «Пример»",
+   "type": "simple",
+   "favorite": 0,
+   "permission": "own",
+   "create_time": "2025-03-25T15:59:52+03:00",
+   "time_zone_name": "Europe/Moscow",
+   "time_zone_offset": 180,
+   "site": "coffee-example.ru",
+   "site2": {
+    "site": "coffee-example.ru",
+    "domain": "coffee-example.ru"
+   }
+  },
+  {
+   "id": 87686941,
+   "status": "Active",
+   "owner_login": "example-agency",
+   "code_status": "CS_ERR_UNKNOWN",
+   "activity_status": "low",
+   "name": "Лендинг доставки",
+   "type": "simple",
+   "favorite": 0,
+   "permission": "view",
+   "create_time": "2025-03-02T16:06:27+03:00",
+   "time_zone_name": "Europe/Moscow",
+   "time_zone_offset": 180,
+   "site": "delivery-example.ru",
+   "site2": {
+    "site": "delivery-example.ru",
+    "domain": "delivery-example.ru"
+   }
+  }
+ ]
+}

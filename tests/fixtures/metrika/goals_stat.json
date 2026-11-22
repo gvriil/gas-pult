@@ -1,0 +1,45 @@
+{
+ "_source": "не проверено на песочнице: по примеру из документации Яндекс Метрики, https://yandex.ru/dev/metrika/ru/stat/examples; названия, сайты и цифры выдуманы (22.11.2026)",
+ "query": {
+  "timezone": "+03:00",
+  "dimensions": [],
+  "metrics": [
+   "ym:s:goal30606879reaches",
+   "ym:s:goal30606879conversionRate",
+   "ym:s:goal30606884reaches",
+   "ym:s:goal30606884conversionRate"
+  ],
+  "sort": [],
+  "date1": "2026-11-14",
+  "date2": "2026-11-20",
+  "limit": 100,
+  "offset": 1
+ },
+ "data": [],
+ "total_rows": 1,
+ "total_rows_rounded": false,
+ "sampled": false,
+ "contains_sensitive_data": false,
+ "sample_share": 1.0,
+ "sample_size": 0,
+ "sample_space": 0,
+ "data_lag": 120,
+ "totals": [
+  42.0,
+  3.04347826,
+  17.0,
+  1.23188406
+ ],
+ "min": [
+  0,
+  0,
+  0,
+  0
+ ],
+ "max": [
+  0,
+  0,
+  0,
+  0
+ ]
+}
