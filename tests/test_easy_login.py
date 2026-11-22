@@ -337,12 +337,12 @@ def read_format(m) -> tuple[int, int]:
     return v >> 13, (v >> 10) & 7
 
 
-@pytest.mark.parametrize("n", [20, 60, 120, 213])
+@pytest.mark.parametrize("n", [20, 60, 120, 213, 280, 412])     # 280 — QR WhatsApp (версия 12), 412 — потолок
 def test_qr_structure(n):
-    text = ("https://panel.example:8443/invite/" + "AbC-_9" * 40)[:n]
+    text = ("https://panel.example:8443/invite/" + "AbC-_9" * 80)[:n]
     m = qr.encode(text)
     size = len(m)
-    assert (size - 17) % 4 == 0 and 1 <= (size - 17) // 4 <= 10
+    assert (size - 17) % 4 == 0 and 1 <= (size - 17) // 4 <= 15
     for x0, y0 in ((0, 0), (size - 7, 0), (0, size - 7)):
         assert finder_ok(m, x0, y0)
     assert [m[6][i] for i in range(8, size - 8)] == [i % 2 == 0 for i in range(8, size - 8)]   # синхронизация
@@ -354,7 +354,7 @@ def test_qr_structure(n):
     assert rows[0] == b"\xff" * w                                                          # тихая зона
     assert rows[16][16] == 0                                                               # угол поискового узора
     with pytest.raises(ValueError):
-        qr.encode("x" * 300)
+        qr.encode("x" * 413)
 
 
 @pytest.mark.skipif(not shutil.which("qrencode"), reason="нет qrencode — сверка с эталоном пропущена")
