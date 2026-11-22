@@ -152,7 +152,11 @@ remount,hidepid=off /proc`.
 ### Шаг 4. Claude Code и ключ модели
 
 Claude Code в пространстве — свой, в его домашней папке (ваш `~/.local/bin/claude` пространству не виден):
-`sudo -u pult_t_demo env HOME=/srv/pult/tenants/demo/home bash -c 'curl -fsSL https://claude.ai/install.sh | bash'`.
+`sudo bin/pult-tenant claude demo` (или без пароля — `sudo -n /usr/local/lib/pult-tenant/bin/pult-tenant claude demo`,
+см. «Если окна пространств не открываются (sudo)»). Скрипт запускает установщик Anthropic от имени `pult_t_demo` с
+чистым окружением (`runuser -u pult_t_demo -- env -i HOME=… PATH=/usr/bin:/bin bash -c 'cd "$HOME" && curl -fsSL
+https://claude.ai/install.sh | bash'`): ваши переменные, PATH и подписка в пространство не попадают. Уже стоит —
+печатает версию и ничего не ставит; `--update` — поставить заново. Запись — в `audit.jsonl`.
 Он займёт около 200 МБ диска пространства. Откат: `sudo rm -rf /srv/pult/tenants/demo/home/.local/{bin,share}/claude`.
 
 Ключ: `sudo bin/pult-tenant key demo openrouter --default` — ключ вводится скрыто (или со стандартного ввода).
@@ -212,6 +216,8 @@ Claude Code в пространстве — свой, в его домашней
 `sudo bin/pult-tenant login demo` — скрипт покажет предупреждение («только для ваших тестов; подписку не давать
 клиентам и не копировать её токены»), попросит ввести «да» и подскажет команду, которой вы **сами** войдёте
 (`/login` в окне пространства). Ничего не копируется. Для юрисдикции RU вход недоступен.
+Окно для входа без терминала: `sudo bin/pult-tenant login-screen demo` — открывает в tmux пространства сессию `login`
+с Claude Code (от имени `pult_t_demo`); в панели — пространство demo → окно login → `/login`. Только после `login`.
 Откат: `sudo bin/pult-tenant logout demo` — удаляет вход (`.credentials.json` пространства) и возвращает профиль с
 ключом API.
 
@@ -390,6 +396,43 @@ Claude Code в пространстве — свой, в его домашней
 - API: `GET /api/space/files?w=`, `POST /api/space/upload?w=` (тело — байты, имя — `X-File-Name`), `GET
   /api/space/download?w=&f=` (`Content-Disposition: filename*=UTF-8''…`). Тестировщику — своё пространство, владельцу —
   любое.
+
+## Если окна пространств не открываются (sudo)
+
+Признак: панель пишет «sudo не пускает пульт в пространство», а `sudo -n -u pult_t_demo /usr/bin/tmux -S
+/srv/pult/tenants/demo/run/tmux/default -V` от вашего пользователя спрашивает пароль.
+
+Причина 22.11: файл `/etc/sudoers.d/gas-pult-tenants` перезаписали правилом администратора
+(`<владелец> ALL=(root) NOPASSWD: /usr/local/lib/pult-tenant/bin/pult-tenant` — копия скрипта, поставленная вручную).
+Правило пульта (tmux и claude от имени пользователей пространств) пропало. Теперь у правил — **два файла**:
+
+| Файл | Что разрешает | Кто пишет |
+|---|---|---|
+| `/etc/sudoers.d/gas-pult-tenants` | пульт → `%pult-tenants`: только tmux и claude | `pult-tenant-setup install`, `pult-tenant repair-sudo` |
+| `/etc/sudoers.d/gas-pult-tenant-admin` | владелец → root: только копия `/usr/local/lib/pult-tenant/bin/pult-tenant` | `pult-tenant-root-install` |
+
+Друг друга они не трогают. Текст правила пульта — в одном месте: `tenant_admin.sudoers_text` (setup берёт его через
+`pult-tenant sudoers-text`).
+
+Восстановить — один раз, в терминале (пароль sudo):
+`sudo bin/pult-tenant-root-install` (сначала можно `--dry-run`). Скрипт: бэкап копии и обоих файлов
+в `/srv/pult/etc-backup/root-install.<время>/` → копия `src` и `bin` репозитория в `/usr/local/lib/pult-tenant`
+(root:root, без записи для других) → правило администратора (`visudo -cf` до установки) → `pult-tenant-setup install`
+(правило пульта) → `visudo -c`. Любая ошибка — всё возвращается из бэкапа. После обновления репозитория — та же
+команда (копия обновится).
+Откат: `sudo bin/pult-tenant-root-install --uninstall` (убирает копию и правило администратора,
+правило пульта остаётся; убрать и его — `sudo bin/pult-tenant-setup uninstall`). Проверить: `sudo bin/pult-tenant-setup status`.
+
+Дальше — без пароля и без терминала владельца (агент или кнопка «Выполнить»):
+
+- `sudo -n /usr/local/lib/pult-tenant/bin/pult-tenant repair-sudo` — вернуть правило пульта, если его нет или оно
+  другое (меняет только `gas-pult-tenants`: `visudo -cf`, бэкап, 0440; ошибка `visudo -c` — файл из бэкапа);
+- `sudo -n /usr/local/lib/pult-tenant/bin/pult-tenant claude demo` — поставить Claude Code в пространство (шаг 4);
+- `sudo -n /usr/local/lib/pult-tenant/bin/pult-tenant login-screen demo` — окно для `/login` (шаг 5).
+
+Правило администратора даёт root на любую команду `pult-tenant` (в том числе `destroy` и `purge` — у них свои
+подтверждения). Копию в `/usr/local/lib` может менять только root: правка репозитория в домашней папке на неё не
+влияет, пока снова не запущен `pult-tenant-root-install`.
 
 ## Чего здесь нет
 

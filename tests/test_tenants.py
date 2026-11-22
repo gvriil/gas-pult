@@ -482,7 +482,7 @@ def test_setup_script_syntax_and_strict_mode():
     text = SETUP.read_text()
     assert "set -euo pipefail" in text and os.access(SETUP, os.X_OK)
     assert subprocess.run(["bash", "-n", str(SETUP)]).returncode == 0
-    assert "NOPASSWD: $tmux\n" in text and "(%$GROUP_TENANTS)" in text and " ALL\n" not in text
+    assert "sudoers-text" in text and " ALL\n" not in text
     assert "visudo" in text and "hidepid=invisible" in text and "hidepid-off" in text
 
 
@@ -584,3 +584,163 @@ def test_space_starters_only_own_connections():
     assert "docs" in [x["id"] for x in starters.listing({"docs"}, "member", space=True)]
     ids = [x["id"] for x in starters.listing(set(), "member", space=True)]
     assert "docs" not in ids and "connect-docs" not in ids and "mail" not in ids
+
+
+# --- правило sudo: один источник, repair-sudo, pult-tenant-root-install (22.11) -----------------------------------
+
+ROOT_INSTALL = ROOT / "bin/pult-tenant-root-install"
+
+
+def test_sudoers_text_one_source_same_bytes_in_setup():
+    """Текст правила пульта — только в tenant_admin.sudoers_text; setup берёт его через pult-tenant sudoers-text."""
+    text = tenant_admin.sudoers_text("alice", "/usr/bin/tmux")
+    assert "alice ALL=(%pult-tenants) NOPASSWD: /usr/bin/tmux\n" in text and " ALL\n" not in text
+    assert "/srv/pult/tenants/*/home/.local/bin/claude, /usr/local/bin/claude\n" in text and "(root)" not in text
+    r = subprocess.run([sys.executable, str(ROOT / "bin/pult-tenant"), "sudoers-text", "--owner", "alice",
+                        "--tmux", "/usr/bin/tmux"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.encode() == text.encode()
+    setup = SETUP.read_text()
+    assert '"$HERE/pult-tenant" sudoers-text' in setup and "NOPASSWD" not in setup.split("sudoers_text() {")[1][:300]
+    for bad in ("root", "Bad", "a b", ""):
+        with pytest.raises(ValueError):
+            tenant_admin.sudoers_text(bad, "/usr/bin/tmux")
+    with pytest.raises(ValueError):
+        tenant_admin.sudoers_text("alice", "/usr/bin/tmux, ALL")
+
+
+def test_repair_sudo_writes_only_its_file(tmp_path, monkeypatch):
+    fs = FakeSystem(monkeypatch)
+    fs.users.add("alice")
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    sd = lay.etc / "sudoers.d"
+    sd.mkdir(parents=True)
+    rule, admin = sd / "gas-pult-tenants", sd / "gas-pult-tenant-admin"
+    rule.write_text("alice ALL=(root) NOPASSWD: /usr/local/lib/pult-tenant/bin/pult-tenant\n")   # 22.11: затёрто
+    admin.write_text("admin rule\n")
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file() and p != rule}
+    out = []
+    s = tenant_admin.Sys(out=out.append, runner=fs.runner)
+    monkeypatch.delenv("SUDO_USER", raising=False)
+    assert tenant_admin.repair_sudo(lay, s, owner="alice") is True
+    assert rule.read_text() == tenant_admin.sudoers_text("alice", "/usr/bin/tmux", lay)
+    assert oct(rule.stat().st_mode & 0o777) == "0o440"
+    after = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file() and p != rule
+             and lay.etc_backup not in p.parents}
+    assert after == before                                                 # ничего, кроме своего файла и бэкапа
+    baks = list(lay.etc_backup.iterdir())
+    assert len(baks) == 1 and "pult-tenant/bin/pult-tenant" in baks[0].read_text()
+    assert [c[1] for c in fs.cmds if "visudo" in c[0]] == ["-cf", "-c"]
+    fs.cmds.clear()
+    assert tenant_admin.repair_sudo(lay, s, owner="alice") is False        # уже как надо — без записи
+    assert fs.cmds == [] and len(list(lay.etc_backup.iterdir())) == 1
+    monkeypatch.setenv("SUDO_USER", "root")
+    with pytest.raises(ValueError, match="не root"):
+        tenant_admin.repair_sudo(lay, s)
+
+
+def test_repair_sudo_rejected_by_visudo_changes_nothing(tmp_path, monkeypatch):
+    fs = FakeSystem(monkeypatch)
+    fs.users.add("alice")
+    lay = lay_of(tmp_path)
+    (lay.etc / "sudoers.d").mkdir(parents=True)
+
+    def runner(argv, **kw):
+        if "visudo" in argv[0]:
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        return fs.runner(argv, **kw)
+    s = tenant_admin.Sys(out=lambda *_: None, runner=runner)
+    with pytest.raises(SystemExit, match="visudo"):
+        tenant_admin.repair_sudo(lay, s, owner="alice", tmux="/usr/bin/tmux")
+    assert not (lay.etc / "sudoers.d/gas-pult-tenants").exists()
+
+
+def test_claude_install_as_tenant_user_clean_env(tmp_path, monkeypatch):
+    fs = FakeSystem(monkeypatch)
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    s0 = tenant_admin.Sys(out=lambda *_: None, runner=fs.runner)
+    tenant_admin.create(lay, s0, "demo")
+    p = tenants.paths("demo", lay.tenants)
+    exe = p["home"] / ".local/bin/claude"
+    calls = []
+
+    def runner(argv, **kw):
+        calls.append(argv)
+        if argv[-1] == "--version":
+            return subprocess.CompletedProcess(argv, 0, "2.1.0 (Claude Code)\n" if exe.exists() else "", "")
+        if "bash" in argv:
+            exe.parent.mkdir(parents=True, exist_ok=True)
+            exe.write_text("")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setenv("SUDO_USER", "owner-secret-user")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-owner")
+    out = []
+    s = tenant_admin.Sys(out=out.append, runner=runner)
+    assert tenant_admin.install_claude(lay, s, "demo") == "2.1.0 (Claude Code)"
+    inst = next(c for c in calls if "bash" in c)
+    assert inst[:4] == ["runuser", "-u", "pult_t_demo", "--"] and inst[4:6] == ["env", "-i"]
+    assert f"HOME={p['home']}" in inst and "PATH=/usr/bin:/bin" in inst
+    assert not any("owner" in a or "sk-owner" in a or "/home/" in a for a in inst)
+    assert inst[-1] == 'cd "$HOME" && curl -fsSL https://claude.ai/install.sh | bash' and "demo" not in inst[-1]
+    assert "claude_install" in p["audit"].read_text()
+    calls.clear()
+    tenant_admin.install_claude(lay, s, "demo")                            # уже стоит — только версия
+    assert not any("bash" in c for c in calls) and any("уже установлен" in o for o in out)
+    calls.clear()
+    tenant_admin.install_claude(lay, s, "demo", update=True)
+    assert any("bash" in c for c in calls)
+    for bad in ("../x", "demo;rm", "Demo"):
+        with pytest.raises(ValueError):
+            tenant_admin.install_claude(lay, s, bad)
+    with pytest.raises(ValueError):
+        tenants.check_slug("../x")
+
+
+def test_login_screen_needs_login_and_opens_window(tmp_path, monkeypatch):
+    fs = FakeSystem(monkeypatch)
+    lay = lay_of(tmp_path)
+    enable(lay.tenants)
+    s = tenant_admin.Sys(out=lambda *_: None, runner=fs.runner)
+    tenant_admin.create(lay, s, "demo", jurisdiction="NL")
+    with pytest.raises(SystemExit, match="login"):
+        tenant_admin.login_screen(lay, s, "demo")
+    tenant_admin.login(lay, s, "demo", yes="да")
+    exe = tenants.paths("demo", lay.tenants)["home"] / ".local/bin/claude"
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_text("")
+    fs.cmds.clear()
+
+    def runner(argv, **kw):
+        fs.cmds.append(argv)
+        return subprocess.CompletedProcess(argv, 1 if "has-session" in argv else 0, "", "")
+    s.runner = runner
+    tenant_admin.login_screen(lay, s, "demo")
+    new = next(c for c in fs.cmds if "new-session" in c)
+    assert new[:3] == ["runuser", "-u", "pult_t_demo"] and new[-1] == str(exe) and "login" in new
+
+
+def test_cli_sudoers_text_and_new_commands_dry(tmp_path, capsys):
+    assert tenant_admin.main(["sudoers-text", "--owner", "root", "--tmux", "/usr/bin/tmux"]) == 2
+    assert tenant_admin.main(["--dry-run", "--srv", str(tmp_path / "s"), "--etc", str(tmp_path / "e"),
+                              "repair-sudo", "--owner", "nosuchuser-xyz"]) == 2
+    assert tenant_admin.main(["--dry-run", "claude", "../x"]) == 2
+
+
+def test_root_install_script_dry_run(tmp_path):
+    text = ROOT_INSTALL.read_text()
+    assert "set -Eeuo pipefail" in text and os.access(ROOT_INSTALL, os.X_OK)
+    assert subprocess.run(["bash", "-n", str(ROOT_INSTALL)]).returncode == 0
+    assert "/etc/sudoers.d/gas-pult-tenant-admin" in text and "trap rollback ERR" in text and "visudo" in text
+    assert "ALL=(root) NOPASSWD: $DEST/bin/pult-tenant\n" in text
+    r = subprocess.run(["bash", str(ROOT_INSTALL), "--owner", "root", "--dry-run"], capture_output=True, text=True)
+    assert r.returncode == 1 and "не root" in r.stderr
+    import pwd
+    me = pwd.getpwuid(os.getuid()).pw_name
+    if me == "root" or not shutil.which("getent"):
+        return
+    r = subprocess.run(["bash", str(ROOT_INSTALL), "--owner", me, "--dry-run"], capture_output=True, text=True,
+                       env={**os.environ, "TMPDIR": str(tmp_path)})
+    assert r.returncode == 0, r.stderr
+    assert "gas-pult-tenant-admin" in r.stdout and "pult-tenant-setup install" in r.stdout
+    assert "сухой прогон" in r.stdout and list(tmp_path.iterdir()) == []          # временные файлы убраны

@@ -11,6 +11,8 @@ set -euo pipefail
 SRV=/srv/pult
 TENANTS=$SRV/tenants
 SUDOERS=/etc/sudoers.d/gas-pult-tenants
+ADMIN_SUDOERS=/etc/sudoers.d/gas-pult-tenant-admin   # правило администратора — его пишет только pult-tenant-root-install
+HERE=$(dirname "$(readlink -f "$0")")
 FSTAB=/etc/fstab
 BACKUP=$SRV/etc-backup
 GROUP_RO=${PULT_GROUP_RO:-pult-ro}   # переменная — только для тестов (sudo её не пропустит)
@@ -75,17 +77,8 @@ check_home() {  # пространства не должны видеть дом
   fi
 }
 
-sudoers_text() {
-  local tmux=$1
-  cat <<EOF
-# gas-pult: пульт ($OWNER) управляет окнами демо-пространств — tmux и claude от имени их пользователей
-# (группа $GROUP_TENANTS), без пароля. Создано bin/pult-tenant-setup. Откат: sudo bin/pult-tenant-setup uninstall
-# (или sudo rm $SUDOERS).
-# tmux — с любыми аргументами: сузить их нечем (sudo-rs не знает шаблонов в аргументах), и это не даёт больше,
-# чем само право открыть окно в пространстве (а в нём — любую команду от имени его пользователя).
-$OWNER ALL=(%$GROUP_TENANTS) NOPASSWD: $tmux
-$OWNER ALL=(%$GROUP_TENANTS) NOPASSWD: $TENANTS/*/home/.local/bin/claude, /usr/local/bin/claude
-EOF
+sudoers_text() {  # текст правила — один источник: src/gas_pult/tenant_admin.py (sudoers_text), им же чинит repair-sudo
+  python3 "$HERE/pult-tenant" sudoers-text --owner "$OWNER" --tmux "$1"
 }
 
 cmd_install() {
@@ -116,7 +109,11 @@ cmd_install() {
   say "== 3. Правило sudo: $SUDOERS"
   local tmp
   tmp=$(mktemp)
-  sudoers_text "$tmux" >"$tmp"
+  sudoers_text "$tmux" >"$tmp" || { rm -f "$tmp"; die "не получил текст правила (python3 $HERE/pult-tenant)"; }
+  if [ -f "$SUDOERS" ] && grep -qs 'pult-tenant/bin/pult-tenant' "$SUDOERS"; then
+    say "! в $SUDOERS — правило администратора (pult-tenant от root); install заменит его правилом пульта."
+    [ -f "$ADMIN_SUDOERS" ] || say "  Чтобы оно осталось: sudo bin/pult-tenant-root-install (кладёт его в $ADMIN_SUDOERS)."
+  fi
   if [ -f "$SUDOERS" ] && cmp -s "$tmp" "$SUDOERS"; then
     say "✓ правило уже такое"
   else
@@ -245,6 +242,12 @@ pult_groups() {  # процессы пульта (gas_pult run / webapp) и ес
 cmd_status() {
   if [ -f "$TENANTS/.enabled" ]; then say "отметка: $(cat "$TENANTS/.enabled")"; else say "отметки нет — функция выключена"; fi
   if [ -e "$SUDOERS" ]; then say "правило sudo: $SUDOERS"; else say "правила sudo нет (или не видно без root)"; fi
+  if [ -e "$ADMIN_SUDOERS" ]; then say "правило администратора: $ADMIN_SUDOERS"
+  else say "правила администратора нет: $ADMIN_SUDOERS (ставит bin/pult-tenant-root-install)"; fi
+  if [ -r "$SUDOERS" ]; then
+    if grep -q 'NOPASSWD: .*tmux' "$SUDOERS"; then say "✓ в $SUDOERS — правило пульта (tmux, claude)"
+    else say "✗ в $SUDOERS нет правила пульта (tmux, claude) — окна пространств не откроются: sudo -n pult-tenant repair-sudo"; fi
+  fi
   if getent group "$GROUP_RO" >/dev/null; then
     say "группа $GROUP_RO: $(getent group "$GROUP_RO" | cut -d: -f4)"
   else
