@@ -30,6 +30,7 @@ from gas_pult import access, personas
 
 SRC = Path(__file__).with_name("webapp.py")
 ROUTES = Path(__file__).with_name("routes")  # таблицы маршрутов по областям (MONOLITH-PLAN §3.2, routes/__init__.py)
+FOCUS_PART = Path(__file__).parent / "panel" / "focus.py"   # Panel.focus_bridge: пути /api/focus/bridge/* (шаг 7)
 ROUTE_KINDS = {"GET": "GET", "GET_W": "GET", "GET_P": "GET", "POST_RAW": "POST", "POST": "POST",
                "POST_P": "POST", "POST_W": "POST"}   # таблица → метод
 DOCS = Path(__file__).resolve().parents[2] / "docs"
@@ -242,15 +243,20 @@ def _route_tables(files, env: dict[str, list[str]], with_w: set[int]) -> list[tu
 
 def scan(src: str | None = None, routes=None) -> dict[str, dict]:
     """Маршруты из кода: путь → {methods, open, focus_only, in, out, calls}. ``routes`` — файлы таблиц маршрутов;
-    по умолчанию ``routes/*.py``, если ``src`` не задан (с ``src`` — только он)."""
+    по умолчанию ``routes/*.py`` и ``Panel.focus_bridge`` (``panel/focus.py``), если ``src`` не задан (с ``src`` —
+    только он)."""
+    whole = src is None
     if routes is None:
-        routes = sorted(p for p in ROUTES.glob("*.py") if p.name != "__init__.py") if src is None else ()
+        routes = sorted(p for p in ROUTES.glob("*.py") if p.name != "__init__.py") if whole else ()
     src = SRC.read_text(encoding="utf-8") if src is None else src
     tree = ast.parse(src)
     env = _env(tree)
     regexes = _regexes(tree)
     w = _Walk(env)
     w.visit(tree)
+    if whole:                                    # свой компьютер по фокус-ссылке: ветки путей в Panel.focus_bridge
+        w.visit(next(n for n in ast.walk(ast.parse(FOCUS_PART.read_text(encoding="utf-8")))
+                     if isinstance(n, ast.FunctionDef) and n.name == "focus_bridge"))
     out: dict[str, dict] = {}
     v1 = False
 

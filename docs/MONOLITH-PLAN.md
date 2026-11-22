@@ -134,7 +134,7 @@
    (`demo_answer`, `DEMO_*`) и мост (`bridge_dev_ok`, `bridge_allowed`, `bridge_space`, `bridge_space_allowed`) →
    примесь `FocusPart` (16 имён, 189 строк, только перенос). В `webapp` остались `focus_meta` (нужны `KEYS` бота,
    `PANEL_KEYS` и `server_tz` из `webapp`), `focus_bridge` (ветки путей `/api/focus/bridge/*` — их читает
-   `api_spec` из `webapp.py`; к шагу 7), `bridge_local_token` и `BRIDGE_MAX` (верхний уровень: секрет и предел
+   `api_spec` из `webapp.py`; ✓ шаг 7 — в `FocusPart`), `bridge_local_token` и `BRIDGE_MAX` (верхний уровень: секрет и предел
    сообщения для маршрутов `/api/bridge/*` и `cli`), «Поделиться» (`share_*` — приём файлов в Гаврилу, другая
    область, не ссылки) и протоколы встреч (`meeting_*`, в том числе ссылка на протокол).
 7. `routes/*` — по области за PR, тем же порядком. ✓ Инфраструктура и голос — 22.11: `routes/voice.py` (13 путей:
@@ -149,9 +149,7 @@
    `/api/share/list|file|done`, `/api/share/devices*`; приём `/share`, `/api/share` — в `do_POST`), `routes/notify.py`
    (7 путей / 8 пар: `/api/notify/prefs`, развилка `/api/push/*`), `routes/forms.py` (3: `/api/q/list|answers|new`;
    анкета по ссылке и `/api/offer/*` — до входа, в `do_GET`/`do_POST`), `routes/api_tokens.py` (3: `/api/apitokens*`);
-   24 ветки, 77 строк цепочки. Проекты и чаты 14/14 — следующим PR: две ветки на путь (проект пространства через
-   `self.sp`/`self.space()`), `/api/project/session|resume` разнесены по цепочке, `/api/chat/mcp` — после
-   `w = self.win(b["w"])`, нужен `POST_W`.
+   24 ветки, 77 строк цепочки.
    ✓ Модели, ключи, расход и интеграции, репозитории, модули — 22.11: `routes/model_keys.py` (20 путей / 24 пары:
    вход в Claude Code `/api/setup/*`, `/api/login/code|check`; ключи `/api/keys*`, `/api/providers`; OpenRouter,
    `/api/fallback`, `/api/selftest`, `/api/cost/*`, `/api/spend`, `/api/balance/clear`, `/api/models`, `/api/funnel`;
@@ -160,10 +158,23 @@
    — до входа, в `do_POST`); 40 веток, 136 строк цепочки. Связанной оказалась одна ветка — `/api/mcp/finish` после
    `w = self.win(b.get("w"))`: добавлен `POST_W` (§3.2), область не заменялась. Снимки — и по фокус-ссылке
    (`/api/mcp`, `/api/repos*`, `/api/mcp/finish`) и через `/api/v1/drafts`.
+   ✓ Проекты и чаты, пространства, мост, фокус-ссылки — 22.11 (граница пространств, одним PR):
+   `routes/projects.py` (14 путей: `/api/projects`, `/api/project*`, `/api/chat/trash|delete|move|restore`,
+   `/api/chat/mcp` — в `POST_W`), `routes/spaces.py` (15: `/api/spaces`, `/api/space/*`; `/api/space/upload` —
+   `POST_RAW`, развилки `/api/space/files|download` и `/api/space/mcp/add|remove`, `/api/space/connect` — `POST_W`;
+   «Завершить» по фокус-ссылке — своя ветка `H.focus_do`), `routes/bridge.py` (8: `/api/bridge/devices|log|drafts|
+   pair|revoke|private|confirm|reject`; установка, `ws`, `claim`, `rpc`, `code` — до входа, в `do_GET`/`do_POST`),
+   `routes/focus.py` (6: `/api/focus/list|new|send|qr|browser|revoke`; `/api/focus/open` — в `do_POST`); 45 веток,
+   168 строк цепочки. Две ветки одного пути (проект пространства через `self.sp`/`self.space()`, «Ссылка на
+   пространство») — одна функция, ветвление по пространству внутри неё как было; общая ветка
+   `/api/project/session|resume` — своей частью в каждой из двух функций. Версия страницы для `/api/projects` —
+   `H.build` (как `H.panel`). `Panel.focus_bridge` (пути `/api/focus/bridge/*`, только по фокус-ссылке) — в
+   `panel/focus.py`, опись (`api_spec.scan`) читает его оттуда. Снимки — владелец, наблюдатель, человек
+   пространства A с данными пространства B, гость фокус-ссылки (сессия, проект, «Браузер»), `/api/v1` (группа
+   «sessions»); `tests/test_space_isolation.py` — зелёный до и после.
    Осталось в `get`/`post` (замер 22.11, `api_spec.group`; путей / пар «путь, метод»), порядок — от замкнутых
-   к связанным: проекты и чаты 14/14 (`/api/chat/mcp` — в готовый `POST_W`) → пространства 15/15 → люди и
-   вход 38/43 → команды и терминал 23/24 → мост 8/8 и фокус-ссылки 6/6 (вместе с `focus_bridge`) → сессии и чат
-   36/37 (последней: общий `w = self.win(…)`). Всего в цепочке 140 путей / 147 пар (до этого шага — 179 / 190).
+   к связанным: люди и вход 38/43 → команды и терминал 23/24 → сессии и чат 36/37 (последней: общий
+   `w = self.win(…)`). Всего в цепочке 97 путей / 104 пары (до этого шага — 140 / 147).
 8. `bot/*` — по модулю за PR.
 
 Всего ~16 PR. Темп — 2–3 в день между продуктовыми задачами.

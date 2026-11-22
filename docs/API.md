@@ -115,8 +115,8 @@
 | `/api/project/chat` | POST | участник и выше | — | Переименовать или скрыть чат проекта | `title`, `hidden`, `id`, `sid` | — |
 | `/api/project/history` | GET | любой вошедший | `SPACE_OK`, `FOCUS_PROJ` | Переписка завершённого чата — без окна | `before`, `id`, `sid` | — |
 | `/api/project/new` | POST | участник и выше | `SPACE_OK`, `cap:cap.dev_sessions` | «Новый проект»: папка, инструкции, первая сессия | `name`, `instructions`, `folder`, `profile`, `model` | — |
-| `/api/project/resume` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS_PROJ` | «Продолжить» завершённый чат проекта | `id`, `sid`, `effort` | — |
-| `/api/project/session` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS_PROJ` | «Новая сессия в проекте» — ещё одно окно со своим журналом | `id`, `sid`, `effort`, `profile`, `mcp_off`, `model` | — |
+| `/api/project/resume` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS_PROJ` | «Продолжить» завершённый чат проекта | `id`, `sid` | — |
+| `/api/project/session` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS_PROJ` | «Новая сессия в проекте» — ещё одно окно со своим журналом | `id`, `effort`, `profile`, `mcp_off`, `model` | — |
 | `/api/project/sessions` | GET | любой вошедший | `SPACE_OK`, `FOCUS_PROJ` | Завершённые чаты проекта (журналы без окна), страницами | `before`, `id`, `q` | — |
 | `/api/project/update` | POST | владелец | — | Меню проекта: название и архив | `name`, `archived`, `id` | — |
 | `/api/projects` | GET | любой вошедший | `SPACE_OK` | «Проекты» для главной: проекты, порядок, сессии, лимиты — одним запросом | `archived`, `q` | `projects`, `order`, `sessions`, `now`, `host`, `build`, `limits`, `tasks`, `new_root`, `cost`, `fallback`, `space`, `space_projects` |

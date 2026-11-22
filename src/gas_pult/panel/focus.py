@@ -113,6 +113,27 @@ class FocusPart:
                 if v.get("space") == slug and v.get("browser") and focus.Focus.live(v)}
         return {d["id"] for d in self.devices.listing() if d.get("focus") in rids}
 
+    def focus_bridge(self, rec: dict, path: str, b: dict) -> dict:
+        """Фокус-пользователь и его компьютер: список своих устройств, код пары, отзыв. Только если владелец разрешил
+        «Браузер» для этой ссылки; чужие устройства (владельца, других ссылок) не видны и не отзываются."""
+        if not rec.get("browser"):
+            raise focus.Denied("владелец не разрешил подключать браузер по этой ссылке")
+        mine = [d for d in self.devices.listing() if d.get("focus") == rec["id"]]
+        if path == "/api/focus/bridge/pair":
+            return self.devices.pair_code(focus=rec["id"])
+        if path == "/api/focus/bridge/revoke":
+            did = str(b.get("id") or "")
+            if did not in {d["id"] for d in mine}:
+                raise focus.Denied("это устройство не из вашей ссылки")
+            return {"ok": self.devices.revoke(did)}
+        if path == "/api/focus/bridge/private":          # свой компьютер: «Личные данные не уходят модели»
+            did = str(b.get("id") or "")
+            if did not in {d["id"] for d in mine}:
+                raise focus.Denied("это устройство не из вашей ссылки")
+            return {"ok": self.devices.set_private(did, b.get("on") is not False)}
+        on = set(self.hub.online())
+        return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
+
     def focus_owns(self, rec: dict, wid: str) -> bool:
         """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта."""
         if not rec.get("proj"):

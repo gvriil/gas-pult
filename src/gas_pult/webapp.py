@@ -92,7 +92,7 @@ from gas_pult import (
     pi_journal,  # noqa: F401 — webapp.* жив (panel/sessions.py)
     projects,
     providers,
-    qr,
+    qr,  # noqa: F401 — webapp.* жив (routes/)
     recparts,
     repos,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     router,
@@ -102,8 +102,8 @@ from gas_pult import (
     setup,
     share,
     space_budget,  # noqa: F401 — webapp.* жив (panel/spaces.py)
-    space_files,
-    space_mcp,
+    space_files,  # noqa: F401 — webapp.* жив (routes/)
+    space_mcp,  # noqa: F401 — webapp.* жив (routes/)
     space_projects,
     space_sessions,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     spaces,
@@ -582,27 +582,6 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         if path == "/api/mt/card":
             return self.meeting_card(mid)
         raise focus.Denied("по ссылке на протокол — только этот протокол")
-
-    def focus_bridge(self, rec: dict, path: str, b: dict) -> dict:
-        """Фокус-пользователь и его компьютер: список своих устройств, код пары, отзыв. Только если владелец разрешил
-        «Браузер» для этой ссылки; чужие устройства (владельца, других ссылок) не видны и не отзываются."""
-        if not rec.get("browser"):
-            raise focus.Denied("владелец не разрешил подключать браузер по этой ссылке")
-        mine = [d for d in self.devices.listing() if d.get("focus") == rec["id"]]
-        if path == "/api/focus/bridge/pair":
-            return self.devices.pair_code(focus=rec["id"])
-        if path == "/api/focus/bridge/revoke":
-            did = str(b.get("id") or "")
-            if did not in {d["id"] for d in mine}:
-                raise focus.Denied("это устройство не из вашей ссылки")
-            return {"ok": self.devices.revoke(did)}
-        if path == "/api/focus/bridge/private":          # свой компьютер: «Личные данные не уходят модели»
-            did = str(b.get("id") or "")
-            if did not in {d["id"] for d in mine}:
-                raise focus.Denied("это устройство не из вашей ссылки")
-            return {"ok": self.devices.set_private(did, b.get("on") is not False)}
-        on = set(self.hub.online())
-        return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
 
     def focus_meta(self, rec: dict) -> dict:
         """«meta» для фокуса: только то, что нужно одной сессии и её настройкам — без папок и имени сервера.
@@ -1655,46 +1634,6 @@ def handler(panel: Panel):
                         "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
                         "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
                                      for x in fallback.recent(panel.pult.state())]}
-            if path == "/api/projects" and (slug := self.space()):   # тестировщик: проекты своего пространства
-                sp, ss = panel.space_info(self.terms_uid()) or {}, panel.sessions(self.pool(), self.pinner())
-                return {"projects": panel.space_projects_list(slug, ss, q.get("q", "")) if q.get("archived") != "1"
-                        else [], "order": projects.order_of(panel.project_data(), self.pinner()), "sessions": ss,
-                        "now": time.time(), "host": sp.get("title", ""), "build": build, "limits": None,
-                        "tasks": None, "new_root": "projects", "cost": panel.cost_summary(self.pool()), "fallback": [],
-                        "space": sp}
-            if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
-                pool = self.pool()
-                with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
-                    ss = panel.sessions(pool, self.pinner())
-                # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
-                return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
-                        "order": projects.order_of(panel.project_data(), self.pinner()),   # свой порядок (20.11)
-                        "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
-                        "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
-                        "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
-                        "new_root": projects.tilde(str(panel.pult.module_root()), panel.pult.home),   # «Новый проект»
-                        # проекты пространств — владельцу и админу, в группе «Пространства» (GAS-38, добавлено)
-                        "space_projects": panel.owner_space_projects(ss) if self.who()[1] in ("owner", "admin")
-                        else [],
-                        "cost": panel.cost_summary(pool),
-                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
-                                     for x in fallback.recent(panel.pult.state())]}
-            if path == "/api/project":
-                if (sp := self.sp(q.get("id", "")))[0]:      # проект пространства (GAS-38)
-                    return panel.space_project_info(q.get("id", ""), sp[1])
-                return panel.project_info(q.get("id", ""), self.pinner())
-            if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
-                before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
-                if (sp := self.sp(q.get("id", "")))[0]:
-                    return panel.space_project_chats(q.get("id", ""), sp[1], q.get("q", ""), before)
-                return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
-            if path == "/api/chat/trash":                # корзина чатов и скрытые чаты
-                return panel.chat_trash_list()
-            if path == "/api/project/history":           # переписка завершённого чата — без окна
-                before = int(q["before"]) if q.get("before", "").isdigit() else None
-                if (sp := self.sp(q.get("id", "")))[0]:
-                    return panel.space_project_history(q.get("id", ""), sp[1], q.get("sid", ""), before)
-                return panel.project_history(q.get("id", ""), q.get("sid", ""), before)
             if path == "/api/meta":
                 kind, role, uid = self.who()
                 tu = self.terms_uid()
@@ -1749,26 +1688,11 @@ def handler(panel: Panel):
                 return {"out": out}
             if path == "/api/links/prefs":               # где открывать ссылки сайтов (только владелец)
                 return {"sites": link_prefs(panel.cfg.data)}
-            if path == "/api/bridge/devices":            # компьютеры с мостом к браузеру (только владелец)
-                on, names = set(panel.hub.online()), {x["id"]: x["name"] for x in panel.focus.listing()}
-                return {"devices": [{**d, "online": d["id"] in on and panel.bridge_dev_ok(d),
-                                     **({"focus_name": names.get(d["focus"], "ссылка погасла")}
-                                        if d.get("focus") else {})}
-                                    for d in panel.devices.listing()]}
-            if path == "/api/bridge/log":                # журнал действий по устройству (только владелец)
-                return {"log": panel.hub.history(str(q.get("id") or ""))}
-            if path == "/api/bridge/drafts":             # что ждёт «Да» человека: кнопка, команда, запись на Маке
-                names = {d["id"]: d["name"] for d in panel.devices.listing()}
-                said = lambda pid: panel.approvals.pending("", bridge.CONFIRM_SVC, pid)   # noqa: E731 — «Да» в памяти
-                return {"drafts": [{**x, "device_name": names.get(x["device"], "компьютер")}
-                                   for x in bridge.drafts(said) if x["device"] in names]}
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
                 return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] in ("owner", "admin"),
                                                      self.terms_uid()))
-            if path == "/api/focus/list":                 # «Настройки» → «Фокус-ссылки»: действующие, без токенов
-                return {"links": panel.focus.listing()}
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
                 return panel.default_model()
             if path == "/api/term":                       # окно терминала панели: что на экране, живо ли
@@ -1779,25 +1703,6 @@ def handler(panel: Panel):
                                     q.get("color") == "1")             # color — экран для xterm.js (добавлено)
                 return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
                         "path": w.get("path", ""), "login": self.login_of(w, d.get("lines") or [])}   # низ — экран
-            if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
-                st = tenants.status(check=True)
-                for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
-                    x["budget"] = panel.space_budget(x["slug"])
-                return st
-            if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
-                return panel.space_list(self.space_of(q))
-            if path == "/api/space/mcp":                 # свои интеграции пространства (GAS-38 (в)): без ключей
-                slug = self.space_of(q)                      # тестировщику — своё; владельцу и админу — по ``space``
-                return {"servers": space_mcp.listing(slug), "space": slug,
-                        "presets": space_mcp.presets() if self.space() else []}
-            if path in ("/api/space/files", "/api/space/download"):   # файлы папки сессии пространства
-                slug, w = self.space_win(q)
-                folder = space_files.folder_of(slug, w)
-                if path == "/api/space/files":
-                    return space_files.listing(slug, folder)
-                name, data = space_files.get(slug, folder, q.get("f", ""))
-                disp = "attachment; filename*=UTF-8''" + urllib.parse.quote(name)
-                return ("application/octet-stream", data, {"Content-Disposition": disp})
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
@@ -2569,10 +2474,6 @@ def handler(panel: Panel):
                 return fn(self)
             if fn := routes.POST.get(path):             # тело — JSON, как «b = json.loads(…)» ниже
                 return fn(self, json.loads(self.body() or b"{}"))
-            if path == "/api/space/upload":              # файл — в папку сессии пространства (от его пользователя)
-                slug, w = self.space_win(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)))
-                name = urllib.parse.unquote(self.headers.get("X-File-Name", "file"))
-                return {"name": space_files.put(slug, space_files.folder_of(slug, w), name, self.body())}
             if path == "/api/upload":                    # поток в файл, не в память; ``w`` — проект на Диске
                 w = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)).get("w", "")
                 if w and self.focused and not panel.focus_owns(self.focused, w):
@@ -2730,42 +2631,10 @@ def handler(panel: Panel):
                 termwin.tty_type(panel.tmux, w["id"], str(b.get("text", "")))
                 panel.pult.deliv.record(w["id"], "tty", str(b.get("text", "")), res="typed")   # без Enter, без текста
                 return {"ok": True}
-            if path == "/api/space/budget/add":         # владелец: «+ добавить» к запасу пространства
-                return panel.budget_add(tenants.check_slug(str(b.get("space", ""))), float(b.get("usd") or 0),
-                                        self.terms_uid())
-            if path == "/api/space/close":
-                r = panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
-                if r.get("result") == "closed":
-                    panel.focus.end_window(str(b.get("w", "")))
-                return r
-            if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
-                if not (slug := self.space()):
-                    raise ValueError("интеграции пространства меняет его человек; владелец — pult-tenant mcp")
-                if path.endswith("/add"):
-                    return space_mcp.add(slug, str(b.get("preset", "")), str(b.get("name", "")), b.get("values") or {})
-                return space_mcp.remove(slug, str(b.get("name", "")))
-            if path == "/api/space/resume":
-                return panel.space_resume(self.space_of(b), str(b.get("folder", "")))
-            if path == "/api/space/delete":
-                return panel.space_delete(self.space_of(b), str(b.get("folder", "")), str(b.get("confirm", "")))
-            if path == "/api/space/restore":
-                return panel.space_restore(self.space_of(b), str(b.get("id", "")))
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
-            if path in ("/api/project/session", "/api/project/resume") and (sp := self.sp(b.get("id", "")))[0]:
-                if path == "/api/project/resume":         # проект пространства (GAS-38): окно — в его tmux
-                    return panel.space_project_resume(str(b.get("id", "")), sp[1], str(b.get("sid", "")))
-                return panel.space_project_session(str(b.get("id", "")), sp[1], str(b.get("effort") or ""))
-            if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
-                return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
-                                             self.terms_uid(), model=str(b.get("model") or ""),
-                                             mcp_off=b.get("mcp_off") if isinstance(b.get("mcp_off"), list) else None,
-                                             effort=str(b.get("effort") or ""))
             if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
                 return panel.route(str(b.get("text", ""))[:2000], self.terms_uid())
-            if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
-                return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
-                                            self.terms_uid())
             if path == "/api/order":                     # свой порядок: закреплённые, проекты, чаты (20.11)
                 ids = panel.projects.set_order(self.pinner(), str(b.get("grp") or ""), b.get("ids") or [])
                 panel._proj = (0.0, {})
@@ -2773,28 +2642,6 @@ def handler(panel: Panel):
             if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
                 return panel.pin(self.pinner(), b.get("on", True) is not False, str(b.get("project") or ""),
                                  str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
-            if path == "/api/project/update":            # меню проекта: название и архив (projects.json)
-                return panel.project_update(str(b.get("id", "")), b.get("name"), b.get("archived"))
-            if path == "/api/project/chat":              # переименовать / скрыть чат проекта
-                return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
-                                          b.get("hidden"))
-            if path == "/api/bridge/pair":               # одноразовый код пары (10 мин) для моста на компьютере
-                return panel.devices.pair_code()
-            if path == "/api/bridge/revoke":
-                return {"ok": panel.devices.revoke(str(b.get("id") or ""))}
-            if path == "/api/bridge/private":            # «Личные данные не уходят модели» для устройства
-                return {"ok": panel.devices.set_private(str(b.get("id") or ""), b.get("on") is not False)}
-            if path == "/api/bridge/confirm":            # «Да» человека в панели — только в памяти (approvals.py)
-                self.same_origin()
-                pid = str(b.get("id") or "")
-                rec = bridge._core._load(bridge.CONFIRM_SVC, pid)
-                panel.approvals.grant("", bridge.CONFIRM_SVC, pid, bridge._core._digest(rec["action"], rec["params"]))
-                self.product("yes", via="bridge")
-                return {"ok": True}
-            if path == "/api/bridge/reject":             # «Нет»: черновик убран, выполнить его нельзя
-                bridge.reject(str(b.get("id") or ""))
-                self.product("no", via="bridge")
-                return {"ok": True}
             if path == "/api/desktop/url":                # ссылка — вкладкой в Chrome рабочего стола (владелец 17.11)
                 if not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
@@ -2824,43 +2671,13 @@ def handler(panel: Panel):
                 if path == "/api/desktop/tabs/shot":
                     return desktabs.TABS.shot(str(b.get("id") or ""))
                 return desktabs.TABS.act(str(b.get("op") or ""), str(b.get("id") or ""), str(b.get("url") or ""))
-            if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
-                return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""),
-                                         b.get("force") is True)
-            if path == "/api/chat/move":                  # «Перенести в проект…» (chat_move.py)
-                return panel.move_api(b, self.terms_uid())
             if path == "/api/stopped/clear":              # «Убрать все остановленные» — окна, журналы остаются
                 return panel.clear_stopped()
-            if path == "/api/chat/restore":               # «Вернуть» из корзины
-                return panel.chat_restore(str(b.get("id") or ""))
-            if path == "/api/project/new" and (slug := self.space()):   # тестировщик: папка в его пространстве
-                return panel.space_project_new(slug, str(b.get("name") or ""), str(b.get("instructions") or ""))
-            if path == "/api/project/new":                # «Новый проект»: папка, CLAUDE.md, запись; чат — при отправке
-                return panel.project_new(str(b.get("name") or ""), str(b.get("folder") or ""),
-                                         str(b.get("instructions") or ""), str(b.get("profile") or ""),
-                                         str(b.get("model") or ""), self.person())
             if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
                 return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
                                         self.terms_uid())
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
-            if path == "/api/focus/new" and b.get("space"):   # «Ссылка на пространство» (GAS-38)
-                return panel.focus_space(str(b["space"]), self.terms_uid(), str(b.get("base", "")),
-                                         str(b.get("ttl") or "7d"), int(b.get("max", 3) or 0),
-                                         str(b.get("rights") or "full"), str(b.get("name") or ""),
-                                         str(b.get("audience") or "client"))
-            if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
-                return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
-                                       str(b.get("proj") or ""), str(b.get("mode") or ""))
-            if path == "/api/focus/send":                  # «Отправить себе в Telegram»
-                return panel.focus_send(str(b.get("url", "")), self.terms_uid())
-            if path == "/api/focus/qr":                    # QR — POST: адрес с токеном не попадает в журнал прокси
-                panel.focus_token(str(b.get("url", "")))
-                return ("image/png", qr.png_of(str(b["url"])))
-            if path == "/api/focus/browser":               # фокус-ссылка: разрешить подключить свой браузер
-                return {"ok": panel.focus.set_browser(str(b.get("id", "")), bool(b.get("on", True)))}
-            if path == "/api/focus/revoke":
-                return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
             if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
                 ttl = invites.TTLS.get(str(b.get("ttl") or "1d"))
                 if not ttl:
@@ -2884,8 +2701,6 @@ def handler(panel: Panel):
                 rid, nonce = panel.logins.start(*self.client(), link=uid)
                 return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
                         "ttl": webauth.LOGIN_TTL}
-            if path == "/api/space/task":
-                return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
             if path == "/api/close":                       # и остановленную: окно с оболочкой просто закрыть
                 w = panel.session_window(b.get("w"))
                 if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
@@ -2895,8 +2710,6 @@ def handler(panel: Panel):
                     panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
                 return r
             w = self.win(b.get("w"))
-            if path == "/api/space/connect":
-                return panel.owner_join(w)
             if path == "/api/help/call":                    # тестировщик: «Позвать на помощь» — владельцу в бот
                 return panel.call_help(self.terms_uid(), w)
             helper = self.who()[1] in ("owner", "admin")
@@ -2961,8 +2774,6 @@ def handler(panel: Panel):
                 if go:
                     self.product_pick(w, n=str(b.get("n", "")))
                 return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
-            if path == "/api/chat/mcp":                  # интеграции посреди чата: запомнить и перезапустить с --resume
-                return panel.chat_mcp(w, b.get("off"), self.terms_uid())
             if path == "/api/restart":
                 if self.who()[1] == "admin" and str(b.get("profile", "")) not in ("", w.get("profile") or ""):
                     raise ValueError("админ перезапускает сессию без смены модели: модель и расход — у владельца")
@@ -3001,6 +2812,7 @@ def handler(panel: Panel):
             return self.json(out)
 
     H.panel = panel                             # для таблиц маршрутов (routes/): их функции получают обработчик
+    H.build = build                             # версия страницы — для таблиц маршрутов («/api/projects»)
     return H
 
 
