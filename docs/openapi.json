@@ -227,6 +227,366 @@
     }
    }
   },
+  "/api/billing/invoice": {
+   "get": {
+    "summary": "Платежи: один счёт с суммами строкой",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "get_billing_invoice",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/invoice/issue": {
+   "post": {
+    "summary": "Платежи: выставить счёт",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "post_billing_invoice_issue",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "key": {},
+         "id": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/invoice/new": {
+   "post": {
+    "summary": "Платежи: новый счёт",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "post_billing_invoice_new",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "key": {},
+         "client": {},
+         "currency": {},
+         "lines": {},
+         "space": {},
+         "due_days": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/invoice/pay": {
+   "post": {
+    "summary": "Платежи: отметить оплату",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "post_billing_invoice_pay",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "key": {},
+         "id": {},
+         "reason": {},
+         "ref": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/invoice/void": {
+   "post": {
+    "summary": "Платежи: аннулировать счёт",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "post_billing_invoice_void",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "key": {},
+         "id": {},
+         "reason": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/invoices": {
+   "get": {
+    "summary": "Платежи: счета",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "get_billing_invoices",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/plan": {
+   "post": {
+    "summary": "Платежи: новый тариф; `key` — повтор не дублирует",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "post_billing_plan",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "key": {},
+         "code": {},
+         "title": {},
+         "price": {},
+         "amount": {},
+         "currency": {},
+         "period": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/billing/plans": {
+   "get": {
+    "summary": "Платежи: тарифы",
+    "tags": [
+     "Платежи"
+    ],
+    "operationId": "get_billing_plans",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/bridge/bridge.mjs": {
    "get": {
     "summary": "Файл моста для установщика",
@@ -871,6 +1231,18 @@
       "session": []
      }
     ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "act": {}
+        }
+       }
+      }
+     }
+    },
     "responses": {
      "200": {
       "description": "успех",
@@ -2076,6 +2448,156 @@
     }
    }
   },
+  "/api/desktop/tabs": {
+   "post": {
+    "summary": "Вкладки Chrome рабочего стола (для телефона)",
+    "tags": [
+     "Команды на сервере и терминал"
+    ],
+    "operationId": "post_desktop_tabs",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "idle": {},
+         "id": {},
+         "op": {},
+         "url": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/desktop/tabs/act": {
+   "post": {
+    "summary": "Действие с вкладкой: open, new, close, go, back, forward",
+    "tags": [
+     "Команды на сервере и терминал"
+    ],
+    "operationId": "post_desktop_tabs_act",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "op": {},
+         "id": {},
+         "url": {},
+         "idle": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/desktop/tabs/shot": {
+   "post": {
+    "summary": "Снимок вкладки рабочего стола",
+    "tags": [
+     "Команды на сервере и терминал"
+    ],
+    "operationId": "post_desktop_tabs_shot",
+    "x-access": {
+     "role": "owner",
+     "tags": [
+      "CONFIRM"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {},
+         "idle": {},
+         "op": {},
+         "url": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/desktop/url": {
    "post": {
     "summary": "Открыть ссылку вкладкой в Chrome рабочего стола",
@@ -2151,6 +2673,48 @@
          "properties": {
           "drafts": {}
          }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/drafts/check": {
+   "post": {
+    "summary": "Коннектор перед выполнением: нажал ли человек «Да» ровно на этот черновик (одноразово); секрет — заголовок X-GP-Local или X-GP-Space-Token",
+    "tags": [
+     "Интеграции, репозитории, модули"
+    ],
+    "operationId": "post_drafts_check",
+    "x-access": {
+     "role": "open",
+     "tags": []
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {},
+         "id": {},
+         "digest": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
         }
        }
       }
@@ -3153,6 +3717,55 @@
       }
      }
     },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/funnel": {
+   "get": {
+    "summary": "Воронка продукта: вход → первый ответ → «Да» (funnel.py); арендатору — нет",
+    "tags": [
+     "Модели, ключи, расход"
+    ],
+    "operationId": "get_funnel",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "space",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "успех",
@@ -5121,6 +5734,416 @@
       "session": []
      }
     ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers": {
+   "get": {
+    "summary": "Мессенджеры: состояние подключений без секретов",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "get_messengers",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/allow": {
+   "post": {
+    "summary": "Мессенджеры: какие чаты видит модель",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_allow",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {},
+         "chats": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "allowed": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/chats": {
+   "post": {
+    "summary": "Мессенджеры: чаты для «Чаты для модели»",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_chats",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "chats": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/consent": {
+   "post": {
+    "summary": "Мессенджеры: согласие «Понимаю, подключить» или отмена",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_consent",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {},
+         "accepted": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/link": {
+   "post": {
+    "summary": "Signal / WhatsApp: привязка — QR картинкой",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_link",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "linked": {},
+          "qr": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/off": {
+   "post": {
+    "summary": "Мессенджеры: отключить",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_off",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/tg/code": {
+   "post": {
+    "summary": "Telegram: код входа",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_tg_code",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {},
+         "code": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/tg/login": {
+   "post": {
+    "summary": "Telegram: api_id/api_hash в файл 0600, номер → код в Telegram",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_tg_login",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {},
+         "api_id": {},
+         "api_hash": {},
+         "phone": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/messengers/tg/password": {
+   "post": {
+    "summary": "Telegram: пароль двухэтапной проверки",
+    "tags": [
+     "Мессенджеры"
+    ],
+    "operationId": "post_messengers_tg_password",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "svc": {},
+         "password": {}
+        }
+       }
+      }
+     }
+    },
     "responses": {
      "200": {
       "description": "успех",
@@ -7992,6 +9015,186 @@
     }
    }
   },
+  "/api/rec/chunk": {
+   "post": {
+    "summary": "Кусок записи (~10 с) на сервер: не теряется при блокировке телефона",
+    "tags": [
+     "Голос"
+    ],
+    "operationId": "post_rec_chunk",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/rec/drop": {
+   "post": {
+    "summary": "«Отменить запись»: куски удалить",
+    "tags": [
+     "Голос"
+    ],
+    "operationId": "post_rec_drop",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "ok": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/rec/finish": {
+   "post": {
+    "summary": "«Стоп»: куски с сервера — в распознавание",
+    "tags": [
+     "Голос"
+    ],
+    "operationId": "post_rec_finish",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/rec/status": {
+   "get": {
+    "summary": "Какие куски записи уже на сервере (после обрыва)",
+    "tags": [
+     "Голос"
+    ],
+    "operationId": "get_rec_status",
+    "x-access": {
+     "role": "viewer",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/rename": {
    "post": {
     "summary": "Переименовать окно сессии",
@@ -8592,8 +9795,8 @@
         "properties": {
          "go": {},
          "w": {},
-         "text": {},
-         "n": {}
+         "n": {},
+         "text": {}
         }
        }
       }
@@ -9915,6 +11118,48 @@
     "security": [
      {
       "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/spend": {
+   "get": {
+    "summary": "Расход по ценам API за период (spend.py)",
+    "tags": [
+     "Модели, ключи, расход"
+    ],
+    "operationId": "get_spend",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "period",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
      }
     ],
     "responses": {

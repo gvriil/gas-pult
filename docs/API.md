@@ -2,7 +2,7 @@
 
 <!-- Файл собран генератором: python -m gas_pult.api_spec. Руками не править — правьте src/gas_pult/api_spec.py (описания) или webapp.py (маршруты) и перезапустите генератор. -->
 
-Путей: **247**, пар «путь + метод»: **260**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
+Путей: **274**, пар «путь + метод»: **287**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
 
 Все пути — под адресом панели, ответы — JSON (кроме отмеченных). Ошибка — `{"error": "…", "code": …}` с кодом HTTP: 401 — нужен вход, 403 — не хватает прав (`code`: `terms`, `space`, `focus_scope`, `confirm`, `cap`, `dev`, `budget`), 404 — нет метода, 409/410 — конфликт или ссылка погасла, 429 — лимит.
 
@@ -68,7 +68,7 @@
 | `/api/route` | POST | участник и выше | — | Подсказка модели по первому сообщению (router.py) | `text` | — |
 | `/api/scenarios` | GET | любой вошедший | `SPACE_OK` | «Примерить на себя»: роли, день с агентом, польза | — | `errors` |
 | `/api/screen` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO`, `cap:cap.dev_terminal` | Последние строки экрана окна; вход в сервис и вопрос, если на экране | `w` | `lines`, `auth`, `login`, `ask` |
-| `/api/select` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS`, `DEMO` | Выбрать вариант в вопросе Claude (номер или текст) | `go`, `w`, `text`, `n` | `lines` |
+| `/api/select` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS`, `DEMO` | Выбрать вариант в вопросе Claude (номер или текст) | `go`, `w`, `n`, `text` | `lines` |
 | `/api/send` | POST | участник и выше | `SPACE_OK`, `BUDGET`, `FOCUS` | Отправить текст в сессию; повтор того же текста — `dup` | `text`, `w`, `id` | `ok`, `dup` |
 | `/api/sessions` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи | — | `sessions`, `host`, `build`, `now`, `cost`, `fallback`, `space`, `limits`, `tasks`, `focus` |
 | `/api/starter` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Нажали бейджик: текст для агента и замер (без текста) | `id`, `w` | `prompt` |
@@ -84,6 +84,10 @@
 |---|---|---|---|---|---|---|
 | `/api/providers` | GET | владелец | — | Голосовые поставщики: настройки и голоса ElevenLabs; POST — сохранить | — | `el_voices`, `ok` |
 | `/api/providers` | POST | владелец | — | Голосовые поставщики: настройки и голоса ElevenLabs; POST — сохранить | — | `el_voices`, `ok` |
+| `/api/rec/chunk` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Кусок записи (~10 с) на сервер: не теряется при блокировке телефона | `id, seg, seq (query); тело — звук` | — |
+| `/api/rec/drop` | POST | участник и выше | `SPACE_OK`, `FOCUS` | «Отменить запись»: куски удалить | `id` | `ok` |
+| `/api/rec/finish` | POST | участник и выше | `SPACE_OK`, `FOCUS` | «Стоп»: куски с сервера — в распознавание | `id` | — |
+| `/api/rec/status` | GET | любой вошедший | `SPACE_OK`, `FOCUS` | Какие куски записи уже на сервере (после обрыва) | `id` | — |
 | `/api/stt` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Распознать голос; `?job=1` — фоново (GAS-34) | `тело — звук, Content-Type` | `text`, `fallback` |
 | `/api/stt/job` | GET | любой вошедший | `SPACE_OK`, `FOCUS` | Фоновое распознавание: состояние и текст | `id` | — |
 | `/api/stt/retry` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Повторить нераспознанную запись (она хранится на сервере) | `id` | — |
@@ -124,6 +128,9 @@
 | `/api/commands/term` | POST | владелец | `CONFIRM` | Команда из журнала — в окне терминала | `id`, `confirmed` | — |
 | `/api/desktop/mobile` | POST | владелец | `CONFIRM` | Мобильный вид сайтов, пока стол смотрят с телефона | `on`, `w`, `h`, `dpr` | — |
 | `/api/desktop/open` | POST | владелец | `CONFIRM` | Открыть «Рабочий стол» (noVNC): одноразовая ссылка | — | — |
+| `/api/desktop/tabs` | POST | владелец | `CONFIRM` | Вкладки Chrome рабочего стола (для телефона) | `idle`, `id`, `op`, `url` | — |
+| `/api/desktop/tabs/act` | POST | владелец | `CONFIRM` | Действие с вкладкой: open, new, close, go, back, forward | `op`, `id`, `url`, `idle` | — |
+| `/api/desktop/tabs/shot` | POST | владелец | `CONFIRM` | Снимок вкладки рабочего стола | `id`, `idle`, `op`, `url` | — |
 | `/api/desktop/url` | POST | владелец | `CONFIRM` | Открыть ссылку вкладкой в Chrome рабочего стола | `url` | — |
 | `/api/gate/desktop` | GET | без входа | — | Проверка входа для Caddy (forward_auth) рабочего стола: только владелец | — | — |
 | `/api/links/prefs` | GET | владелец | — | Где открывать ссылки сайтов: на рабочем столе или здесь | `open`, `host` | `sites` |
@@ -145,7 +152,7 @@
 | Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
 |---|---|---|---|---|---|---|
 | `/api/brief` | GET | владелец | — | Брифинг первого лица (GAS-18): почта и календарь, собирает код | `fresh` | — |
-| `/api/brief/act` | POST | владелец | — | Ответ на пункт брифинга: «Да / Нет / Позже» | — | — |
+| `/api/brief/act` | POST | владелец | — | Ответ на пункт брифинга: «Да / Нет / Позже» | `act` | — |
 | `/api/brief/prefs` | POST | владелец | — | Настройки брифинга: источники, время, дни, пояс | — | — |
 | `/api/tasks` | GET | владелец | — | Задачи владельца (#203); не менялись — 304 без тела | — | — |
 | `/api/tasks/add` | POST | владелец | — | Добавить задачу руками | — | — |
@@ -163,6 +170,7 @@
 | `/api/cost/limits` | POST | владелец | — | Пороги расхода; POST — сохранить | — | — |
 | `/api/fallback` | GET | владелец | — | Запасная цепочка поставщиков при лимите; POST — сохранить | `chain` | — |
 | `/api/fallback` | POST | владелец | — | Запасная цепочка поставщиков при лимите; POST — сохранить | `chain` | — |
+| `/api/funnel` | GET | владелец | — | Воронка продукта: вход → первый ответ → «Да» (funnel.py); арендатору — нет | `days`, `space` | — |
 | `/api/keys` | POST | владелец | — | Сохранить ключ поставщика модели | `provider`, `key` | — |
 | `/api/keys/remove` | POST | владелец | — | Удалить ключ поставщика | `provider` | `ok` |
 | `/api/login/check` | POST | владелец | — | Шторка «Нужен вход»: проверить, вошла ли сессия | `w`, `kind` | — |
@@ -177,6 +185,20 @@
 | `/api/setup/code` | POST | владелец | — | Мастер: код входа — в окно | `code` | — |
 | `/api/setup/login` | POST | владелец | — | Мастер: окно входа Claude Code и ссылка с экрана | — | — |
 | `/api/setup/status` | GET | владелец | — | Мастер: вошёл ли Claude Code на сервере | `fresh` | — |
+| `/api/spend` | GET | владелец | — | Расход по ценам API за период (spend.py) | `period` | — |
+
+## Платежи
+
+| Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
+|---|---|---|---|---|---|---|
+| `/api/billing/invoice` | GET | владелец | — | Платежи: один счёт с суммами строкой | `id` | — |
+| `/api/billing/invoice/issue` | POST | владелец | `CONFIRM` | Платежи: выставить счёт | `key`, `id` | — |
+| `/api/billing/invoice/new` | POST | владелец | `CONFIRM` | Платежи: новый счёт | `key`, `client`, `currency`, `lines`, `space`, `due_days` | — |
+| `/api/billing/invoice/pay` | POST | владелец | `CONFIRM` | Платежи: отметить оплату | `key`, `id`, `reason`, `ref` | — |
+| `/api/billing/invoice/void` | POST | владелец | `CONFIRM` | Платежи: аннулировать счёт | `key`, `id`, `reason` | — |
+| `/api/billing/invoices` | GET | владелец | — | Платежи: счета | — | — |
+| `/api/billing/plan` | POST | владелец | `CONFIRM` | Платежи: новый тариф; `key` — повтор не дублирует | `key`, `code`, `title`, `price`, `amount`, `currency`, `period` | — |
+| `/api/billing/plans` | GET | владелец | — | Платежи: тарифы | — | — |
 
 ## Интеграции, репозитории, модули
 
@@ -186,6 +208,7 @@
 | `/api/calendars/key/remove` | POST | владелец | — | Удалить секрет календаря | `kind` | — |
 | `/api/calendars/keys` | GET | владелец | — | Подключённые календари — без значений секретов | — | `calendars` |
 | `/api/drafts` | GET | любой вошедший | `SPACE_OK` | Черновики действий коннекторов: «Ждут вашего Да» | — | `drafts` |
+| `/api/drafts/check` | POST | без входа | — | Коннектор перед выполнением: нажал ли человек «Да» ровно на этот черновик (одноразово); секрет — заголовок X-GP-Local или X-GP-Space-Token | `svc`, `id`, `digest` | — |
 | `/api/drafts/no` | POST | участник и выше | `SPACE_OK` | «Нет» черновику | `svc`, `id` | — |
 | `/api/drafts/yes` | POST | участник и выше | `CONFIRM`, `SPACE_OK` | «Да» черновику — выполнить ровно его | `svc`, `id` | — |
 | `/api/mcp` | GET | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Интеграции: подключённые, готовые наборы, коннекторы | `fresh` | `servers`, `presets`, `connectors`, `connectors_url`, `personal` |
@@ -221,6 +244,20 @@
 | `/api/bridge/revoke` | POST | владелец | — | Отключить компьютер | `id` | `ok` |
 | `/api/bridge/rpc` | POST | без входа | — | Агент (gas-pult bridge-mcp) → мост; секрет — файл 0600 на сервере | — | — |
 | `/api/bridge/ws` | GET | без входа | — | Мост: WebSocket с компьютера; токен — в подпротоколе | `WebSocket` | — |
+
+## Мессенджеры
+
+| Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
+|---|---|---|---|---|---|---|
+| `/api/messengers` | GET | владелец | — | Мессенджеры: состояние подключений без секретов | — | — |
+| `/api/messengers/allow` | POST | владелец | — | Мессенджеры: какие чаты видит модель | `svc`, `chats` | `allowed` |
+| `/api/messengers/chats` | POST | владелец | — | Мессенджеры: чаты для «Чаты для модели» | `svc` | `chats` |
+| `/api/messengers/consent` | POST | владелец | — | Мессенджеры: согласие «Понимаю, подключить» или отмена | `svc`, `accepted` | — |
+| `/api/messengers/link` | POST | владелец | — | Signal / WhatsApp: привязка — QR картинкой | `svc` | `linked`, `qr` |
+| `/api/messengers/off` | POST | владелец | — | Мессенджеры: отключить | `svc` | — |
+| `/api/messengers/tg/code` | POST | владелец | — | Telegram: код входа | `svc`, `code` | — |
+| `/api/messengers/tg/login` | POST | владелец | — | Telegram: api_id/api_hash в файл 0600, номер → код в Telegram | `svc`, `api_id`, `api_hash`, `phone` | — |
+| `/api/messengers/tg/password` | POST | владелец | — | Telegram: пароль двухэтапной проверки | `svc`, `password` | — |
 
 ## Фокус-ссылки
 

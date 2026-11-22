@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import importlib.util
 import json
 import re
 import sys
@@ -54,6 +56,14 @@ def _env(tree: ast.Module) -> dict[str, list[str]]:
             env[k] = [v]
         elif isinstance(v, (tuple, set, frozenset)) and all(isinstance(x, str) for x in v):
             env[k] = sorted(v)
+    for node in tree.body:                        # «from gas_pult.billing import api as billing_api» → billing_api.GET
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("gas_pult"):
+            for al in node.names:
+                if al.asname and importlib.util.find_spec(f"{node.module}.{al.name}"):
+                    mod = importlib.import_module(f"{node.module}.{al.name}")
+                    for k, v in vars(mod).items():
+                        if isinstance(v, (tuple, set, frozenset)) and v and all(isinstance(x, str) for x in v):
+                            env[f"{al.asname}.{k}"] = sorted(v)
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             got = _lit(node.value, env)
@@ -65,8 +75,8 @@ def _env(tree: ast.Module) -> dict[str, list[str]]:
 def _lit(n: ast.AST, env: dict[str, list[str]]) -> list[str] | None:
     if isinstance(n, ast.Constant) and isinstance(n.value, str):
         return [n.value]
-    if isinstance(n, ast.Name):
-        return env.get(n.id)
+    if isinstance(n, (ast.Name, ast.Attribute)):
+        return env.get(ast.unparse(n))
     if isinstance(n, (ast.Tuple, ast.Set, ast.List)):
         out: list[str] = []
         for e in n.elts:
@@ -119,6 +129,23 @@ class _Walk(ast.NodeVisitor):
     def _add(self, kind: str, path: str):
         if self.fn:
             self.found.append((self.fn[-1], kind, path, self.branch[-1] if self.branch else None))
+
+    def visit_BoolOp(self, n: ast.BoolOp):
+        """``path.startswith(P) and path in ТАБЛИЦА`` — маршруты: пути таблицы под префиксом P (не вся таблица)."""
+        pre = [x for x in n.values if isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and
+               x.func.attr == "startswith" and ast.unparse(x.func.value) in PATH_VARS and x.args]
+        tab = [x for x in n.values if isinstance(x, ast.Compare) and ast.unparse(x.left) in PATH_VARS and
+               len(x.ops) == 1 and isinstance(x.ops[0], ast.In)]
+        if isinstance(n.op, ast.And) and pre and tab:
+            ps = _lit(pre[0].args[0], self.env) or []
+            for p in _lit(tab[0].comparators[0], self.env) or ():
+                if any(p.startswith(x) for x in ps):
+                    self._add("eq", p)
+            for x in n.values:
+                if x is not pre[0] and x is not tab[0]:
+                    self.visit(x)
+            return
+        self.generic_visit(n)
 
     def visit_Compare(self, n: ast.Compare):
         if ast.unparse(n.left) in PATH_VARS:
@@ -376,6 +403,9 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/desktop/open": "Открыть «Рабочий стол» (noVNC): одноразовая ссылка",
     "/api/desktop/url": "Открыть ссылку вкладкой в Chrome рабочего стола",
     "/api/desktop/mobile": "Мобильный вид сайтов, пока стол смотрят с телефона",
+    "/api/desktop/tabs": ("Вкладки Chrome рабочего стола (для телефона)", "idle", ""),
+    "/api/desktop/tabs/shot": ("Снимок вкладки рабочего стола", "id", ""),
+    "/api/desktop/tabs/act": ("Действие с вкладкой: open, new, close, go, back, forward", "op, id, url", ""),
     "/api/links/prefs": "Где открывать ссылки сайтов: на рабочем столе или здесь",
     "/api/gate/desktop": "Проверка входа для Caddy (forward_auth) рабочего стола: только владелец",
     # --- задачи и брифинг
@@ -423,6 +453,8 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/drafts": "Черновики действий коннекторов: «Ждут вашего Да»",
     "/api/drafts/yes": "«Да» черновику — выполнить ровно его",
     "/api/drafts/no": "«Нет» черновику",
+    "/api/drafts/check": ("Коннектор перед выполнением: нажал ли человек «Да» ровно на этот черновик (одноразово); "
+                          "секрет — заголовок X-GP-Local или X-GP-Space-Token", "svc, id, digest", ""),
     "/api/calendars/keys": "Подключённые календари — без значений секретов",
     "/api/calendars/key": "Секрет календаря: в файл 0600 и проверка",
     "/api/calendars/key/remove": "Удалить секрет календаря",
@@ -511,6 +543,35 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/help/ask": ("Помощник «? Подсказать»: ответ по карте помощи", "q, chip, ctx", ""),
     "/api/help/feedback": ("Помощник: полезен ли ответ", "id, useful, action", ""),
     "/api/help/call": "Тестировщик: «Позвать на помощь» — владельцу в бот",
+    # --- запись голоса по кускам (recparts)
+    "/api/rec/chunk": ("Кусок записи (~10 с) на сервер: не теряется при блокировке телефона",
+                       "id, seg, seq (query); тело — звук", ""),
+    "/api/rec/status": "Какие куски записи уже на сервере (после обрыва)",
+    "/api/rec/finish": "«Стоп»: куски с сервера — в распознавание",
+    "/api/rec/drop": "«Отменить запись»: куски удалить",
+    # --- расход, воронка, платежи
+    "/api/spend": "Расход по ценам API за период (spend.py)",
+    "/api/funnel": "Воронка продукта: вход → первый ответ → «Да» (funnel.py); арендатору — нет",
+    "/api/billing/plans": "Платежи: тарифы",
+    "/api/billing/invoices": "Платежи: счета",
+    "/api/billing/invoice": ("Платежи: один счёт с суммами строкой", "id", ""),
+    "/api/billing/plan": ("Платежи: новый тариф; `key` — повтор не дублирует",
+                          "key, code, title, price, amount, currency, period", ""),
+    "/api/billing/invoice/new": ("Платежи: новый счёт", "key, client, currency, lines, space, due_days", ""),
+    "/api/billing/invoice/issue": ("Платежи: выставить счёт", "key, id", ""),
+    "/api/billing/invoice/pay": ("Платежи: отметить оплату", "key, id, reason, ref", ""),
+    "/api/billing/invoice/void": ("Платежи: аннулировать счёт", "key, id, reason", ""),
+    # --- мессенджеры «как пользователь» (messengers/panel.py)
+    "/api/messengers": "Мессенджеры: состояние подключений без секретов",
+    "/api/messengers/consent": ("Мессенджеры: согласие «Понимаю, подключить» или отмена", "svc, accepted", ""),
+    "/api/messengers/off": ("Мессенджеры: отключить", "svc", ""),
+    "/api/messengers/tg/login": ("Telegram: api_id/api_hash в файл 0600, номер → код в Telegram",
+                                 "svc, api_id, api_hash, phone", ""),
+    "/api/messengers/tg/code": ("Telegram: код входа", "svc, code", ""),
+    "/api/messengers/tg/password": ("Telegram: пароль двухэтапной проверки", "svc, password", ""),
+    "/api/messengers/link": ("Signal / WhatsApp: привязка — QR картинкой", "svc", "linked, qr"),
+    "/api/messengers/chats": ("Мессенджеры: чаты для «Чаты для модели»", "svc", "chats"),
+    "/api/messengers/allow": ("Мессенджеры: какие чаты видит модель", "svc, chats", "allowed"),
     # --- протоколы встреч (meetings.py)
     "/api/meetings": "Протоколы встреч: список",
     "/api/meeting": "Протокол встречи: оглавление, «Что сделать», текст, ссылки на него",
@@ -571,14 +632,16 @@ GROUPS = (   # раздел документа → первые части пу�
                       "key", "select", "command", "active", "new", "folder", "rename", "title", "close", "restart",
                       "revive", "model", "effort", "route", "pin", "order", "upload", "media", "steps", "starters",
                       "starter", "scenarios", "stopped", "notify-done", "notify/level")),
-    ("Голос", ("stt", "tts", "voice", "providers")),
+    ("Голос", ("stt", "tts", "voice", "providers", "rec")),
     ("Проекты и чаты", ("projects", "project", "chat")),
     ("Команды на сервере и терминал", ("run", "commands", "term", "tty", "shell", "desktop", "links", "gate")),
     ("Задачи и брифинг", ("tasks", "brief")),
     ("Модели, ключи, расход", ("keys", "models", "model/default", "openrouter", "fallback", "balance", "cost",
-                               "selftest", "setup", "login/code", "login/check")),
+                               "selftest", "setup", "login/code", "login/check", "spend", "funnel")),
+    ("Платежи", ("billing",)),
     ("Интеграции, репозитории, модули", ("mcp", "repos", "modules", "module", "drafts", "calendars")),
     ("Мост к браузеру", ("bridge",)),
+    ("Мессенджеры", ("messengers",)),
     ("Фокус-ссылки", ("focus",)),
     ("Люди, вход, приглашения", ("meta", "prefs", "persona", "tour", "uses", "clientlog", "feedback", "terms",
                                  "country", "logout", "people", "team", "invite", "link", "login", "email",
