@@ -102,6 +102,7 @@ from gas_pult import (
     space_sessions,
     spaces,
     speech,
+    spend,
     starters,
     steps,
     tasks,
@@ -4644,6 +4645,8 @@ def handler(panel: Panel):
                 return selftest.public(panel.cfg.data, panel.pult.state())
             if path == "/api/cost/limits":
                 return panel.cost_limits()
+            if path == "/api/spend":                      # расход по ценам API за период (spend.py) — только владельцу
+                return spend.summary(q.get("period", "today"))
             if path == "/api/providers":
                 vs = panel.voice_settings()
                 return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}

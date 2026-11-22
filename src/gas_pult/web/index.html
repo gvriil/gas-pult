@@ -1050,6 +1050,7 @@
   @media (pointer: coarse) { .nav-sec.fold { min-height: 44px; } .nav-h .icon, .nav-sec .nav-add { min-width: 44px; min-height: 44px; } }
   .nav-foot { display: flex; align-items: center; gap: 10px; flex: none; min-height: 44px; margin: 4px 8px 8px; padding: 0 12px; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; }
   .nav-foot:hover { background: var(--bg-subtle); } .nav-foot svg { width: 18px; height: 18px; }
+  #navSpend { margin-bottom: 0; } #navSpend:not([hidden]) + #navSet { border-top: 0; margin-top: 0; }
   .nav-sec.has-add { display: flex; align-items: center; margin-right: 2px; } .nav-sec.has-add span { flex: 1; }
   .nav-add { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
              display: grid; place-items: center; cursor: pointer; flex: none; }
@@ -1145,6 +1146,7 @@
   <button class="nav-new nav-row" id="navToday" type="button" hidden></button><button class="nav-new nav-row" id="navTasks" type="button" hidden></button><button class="nav-new nav-row" id="navMeet" type="button" hidden></button>
   <div class="nav-q" id="navQBox" hidden><input id="navQ" type="search" placeholder="Чаты, проекты, команды…" autocomplete="off" aria-label="Поиск по чатам, проектам и командам (Ctrl+K)"></div>
   <div class="nav-list" id="navList" role="list"></div>
+  <button class="nav-foot" id="navSpend" type="button" hidden></button>
   <button class="nav-foot" id="navSet" type="button"></button>
 </aside>
 <div class="nav-bg" id="navBg"></div>
@@ -1851,7 +1853,7 @@ function renderRail() {
   const head = railTool("railOpen", "sideopen", "Развернуть панель чатов", ' aria-expanded="false"')
     + (rw ? railTool("railNew", "compose", "Новый чат") : "") + railTool("railSearch", "search", "Поиск (Ctrl+K)");
   const f = $("rail").contains(document.activeElement) ? document.activeElement : null;   // опрос перерисовал — фокус на месте
-  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
+  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + (spendOn() ? railTool("railSpend", "coin", spendText()) : "") + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
 }
 function railProject(btn) {                           // чаты проекта — меню у значка, справа от полосы
   const p = projOf(btn.dataset.rp); if (!p) return;
@@ -1869,6 +1871,7 @@ $("rail").addEventListener("click", (e) => {
   if (t.id === "railNew") return newChat();
   if (t.id === "railSearch") return navSearch(true);
   if (t.id === "railSettings") return go("go:settings");
+  if (t.id === "railSpend") return spendOpen();
   if (t.dataset.rp) return railProject(t);
   if (t.dataset.id) openSession(t.dataset.id);
 });
@@ -1957,6 +1960,7 @@ function renderNav() {
   const allShut = !NAV.exp.size && [...$("navList").querySelectorAll("[data-nsec]")].every((b) => NAV.shut.has(b.dataset.nsec));
   $("navFoldBtn").setAttribute("aria-label", allShut ? "Развернуть всё" : "Свернуть всё"); $("navFoldBtn").title = allShut ? "Развернуть всё" : "Свернуть всё";
   $("navFoldBtn").classList.toggle("shut", allShut); $("navSet").hidden = $("settingsBtn").hidden;
+  $("navSpend").hidden = $("settingsBtn").hidden || !spendOn(); if (!$("navSpend").hidden) spendTick();
   renderRail();
 }
 // Палитра команд (план UX, пункт 5): Ctrl+K / ⌘K — тот же поиск панели чатов (#149), только в выдаче, кроме чатов и
@@ -2017,6 +2021,21 @@ $("navFoldBtn").onclick = () => {                     // «Свернуть вс
   navSave();
 };
 $("navSet").onclick = () => { navOpen(false); $("settingsBtn").click(); };
+// Расход по ценам API (владелец 22.11: строки «💰 По ценам API» — не в чаты): строка над «Настройками» и значок
+// в свёрнутой панели — только владельцу. Сумма за сегодня — GET /api/spend не чаще раза в 5 минут; экран — js/spend.js.
+function spendOn() { return meta?.role === "owner" && !FOCUS && !SLINK; }
+function spendText() { return "Расход" + (spendTick.usd == null ? "" : ` · $${spendTick.usd.toFixed(2)} сегодня`); }
+function spendTick(force) {
+  if (!force && Date.now() - (spendTick.t || 0) < 300000) return;
+  spendTick.t = Date.now(); spendLabel();
+  api("/api/spend?period=today").then((r) => { spendTick.usd = +r.total || 0; spendLabel(); }).catch(() => {});
+}
+function spendLabel() {
+  $("navSpend").innerHTML = ic("coin") + `<span>${esc(spendText())}</span>`;
+  const r = $("railSpend"); if (r) r.title = r.ariaLabel = spendText();
+}
+function spendOpen() { navOpen(false); part("spend").then((m) => m.open()); }
+$("navSpend").onclick = spendOpen;
 $("navHome").onclick = () => { navOpen(false); current = null; show("home"); setHome("sessions"); };
 $("composeBtn").onclick = () => newChat();
 // Проект: название и архив (GAS-24) — только projects.json; удаление папки отсюда не делаем (необратимо).

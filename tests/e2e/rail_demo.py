@@ -44,7 +44,7 @@ def run(base: str, shots: str = ""):
             assert abs(top["x"] - 60) < 1, f"{tag}: шапка не сдвинута на ширину полосы ({top})"
             assert not pg.is_visible("#navBtn") and not pg.is_visible("#composeBtn"), f"{tag}: дубль ☰/✎ в шапке"
             ids = pg.eval_on_selector_all("#rail button", "els => els.map((e) => e.id)")
-            assert ids == ["railOpen", "railNew", "railSearch", "railSettings"], ids   # 20.11: без значков проектов
+            assert ids == ["railOpen", "railNew", "railSearch", "railSpend", "railSettings"], ids
             for b in pg.locator("#rail button").all():
                 assert b.get_attribute("title") and b.get_attribute("aria-label"), f"{tag}: значок без подсказки"
             if shots:

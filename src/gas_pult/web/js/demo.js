@@ -195,6 +195,20 @@ function demoRepos(key, path, body) {             // задача 43: списо
     { full: "gvriil/gas-pult", private: false, about: "Telegram-пульт и панель для сессий Claude Code" }, { full: "gvriil/gas-pult-docs", private: false, about: "Документация" },
     { full: "gvriil/shop-bot", private: true, about: "Бот магазина" }, { full: "gvriil/gastech-digest", private: true, about: "" }] }), 400));
 }
+// Расход по ценам API (/api/spend, js/spend.js): часы — до текущего, проекты — доли итога; 7 дней — по дням
+function demoSpend(path) {
+  const p = new URLSearchParams(path.split("?")[1] || "").get("period") || "today", now = new Date(), iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const W = [0, 0, 0, 0, 0, 0, 0, 0, 0.4, 1.9, 3.1, 2.6, 1.2, 2.2, 4.8, 3.9, 2.7, 1.5, 0.9, 1.4, 2.1, 0.8, 0.3, 0];
+  const last = p === "today" ? Math.max(now.getHours() - 1, 16) : 23, k = p === "yesterday" ? 0.8 : 1;
+  const hours = W.map((v, h) => ({ h, usd: h <= last ? Math.round(v * k * 100) / 100 : 0 }));
+  const dd = (i) => { const d = new Date(now); d.setDate(d.getDate() - i); return d; };
+  const days = [31.2, 18.4, 26.9, 12.1, 9.6, 24.3, 0].map((v, i) => ({ date: iso(dd(6 - i)), usd: i === 6 ? Math.round(hours.reduce((a, x) => a + x.usd, 0) * 100) / 100 : v }));
+  const total = Math.round((p === "7d" ? days : hours).reduce((a, x) => a + x.usd, 0) * 100) / 100;
+  const SH = [["shtab", 0.41], ["gas-pult", 0.27], ["shop", 0.14], ["books", 0.09], ["news", 0.06], ["прочее", 0.03]];
+  const from = p === "7d" ? dd(6) : p === "yesterday" ? dd(1) : now;
+  return Promise.resolve({ period: p, total, updated: Math.floor(now.setMinutes(1, 0, 0) / 1000), from: iso(from), to: iso(p === "yesterday" ? dd(1) : new Date()),
+    projects: total ? SH.map(([name, f]) => ({ name, usd: Math.round(total * f * 100) / 100 })) : [], ...(p === "7d" ? { days } : { hours }) });
+}
 function demoApi(path, body) {
   // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
   const t0 = demoApi.t0 ||= Math.floor(Date.now() / 1000) - 8, H = 3600, D = 86400;
@@ -240,6 +254,7 @@ function demoApi(path, body) {
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
   const TT = demoApi.titles ||= {};                   // «Название чата» (/api/title) — живёт до перезагрузки
   for (const x of S) if (x.id in TT) { x.title = TT[x.id] || x.title; x.title_own = !!TT[x.id]; }
+  if (path.split("?")[0] === "/api/spend") return demoSpend(path);
   if (path.split("?")[0] === "/api/chat/mcp") return Promise.resolve({ id: body.w, off: body.off || [] });
   if (path.split("?")[0] === "/api/steps") { const t0 = Date.now() / 1000; const all = [
     { at: t0 - 600, dur: 74, prompt: "Проверь сборку и запусти тесты", answer: "Тесты прошли: 58 из 58. Сборку можно запускать командой ниже.", steps: [
