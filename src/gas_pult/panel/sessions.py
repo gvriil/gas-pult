@@ -695,7 +695,7 @@ class SessionsPart:
         name = f"{base}-{time.strftime('%H%M')}"
         try:
             taken = {w.get("name") for w in self.tmux.windows()}
-        except OSError:
+        except (OSError, AttributeError):                  # нет tmux; у подделок в тестах нет windows()
             return name
         n, out = 2, name
         while out in taken:
