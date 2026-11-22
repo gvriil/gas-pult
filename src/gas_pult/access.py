@@ -183,3 +183,10 @@ OWNER_ONLY |= set(MEETINGS)
 # берётся из записи ссылки, не из запроса; остального API (сессии, задачи, другие протоколы) у неё нет — 403.
 MEETING_GET = {"/api/mt", "/api/mt/audio", "/api/mt/card"}
 MEETING_POST = {"/api/logout"}
+# Запись по кускам (recparts.py, владелец 22.11: запись не теряется при блокировке): там же, где /api/stt. Сеанс
+# записи — только того, кто его начал (человек, пространство, фокус-ссылка): чужой — «записи нет».
+REC = ("/api/rec/chunk", "/api/rec/finish", "/api/rec/drop", "/api/rec/status")
+SPACE_OK |= set(REC)
+FOCUS_POST |= {"/api/rec/chunk", "/api/rec/finish", "/api/rec/drop"}
+FOCUS_GET |= {"/api/rec/status"}
+FOCUS_NO_W |= set(REC)

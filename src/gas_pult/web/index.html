@@ -2705,6 +2705,7 @@ function saveDraft() {
 addEventListener("pagehide", saveDraft);
 function restoreDraft() {
   if (store("vj")) part("voicejob").then((m) => m.leftover()).catch(() => {});   // нераспознанная запись (GAS-34)
+  if (store("rec:live") && !DEMO) part("recsafe").then((m) => m.leftover()).catch(() => {});   // запись прервалась (22.11)
   let d = null;
   try { d = JSON.parse(sessionStorage.getItem("draft") || "null"); sessionStorage.removeItem("draft"); } catch (e) {}
   if (!d) return;
@@ -5478,7 +5479,7 @@ function micBarClose() {
   for (const id of micHidden) $(id).hidden = false; sync(); padDock();
 }
 async function toggleMic() {
-  if (rec) return rec.stop();                       // нажатие во время записи — как «Стоп»: текст в поле
+  if (rec) return rec.gpStop ? rec.gpStop() : rec.stop();   // нажатие во время записи — как «Стоп»: текст в поле
   if (micBar) return;                               // идёт распознавание — ждём ответа
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
     return toast("Этот Telegram не даёт панели микрофон — диктуйте кнопкой микрофона на клавиатуре", 5000);
@@ -5486,10 +5487,27 @@ async function toggleMic() {
   try { stream = await micGet(); }
   catch (e) { return toast("Нет доступа к микрофону: " + e.message, 5000); }
   const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
-  const chunks = []; let cancelled = false, sendNow = false, raf = 0;
-  rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
+  // Запись не теряется (владелец 22.11, js/recsafe.js): куски по 10 с — сразу на сервер; обрыв — новый отрезок той же записи
+  const RS = await part("recsafe").catch(() => null), S = RS?.session(type);
+  const chunks = []; let cancelled = false, sendNow = false, raf = 0, ended = false, lost = 0;
+  const mk = (st) => {
+    const r = new MediaRecorder(st, type ? { mimeType: type } : {});
+    r.ondataavailable = (e) => { if (e.data.size) { chunks.push(e.data); S?.push(e.data); } };
+    r.onstop = () => (ended || !S ? fin() : lose());
+    st.getAudioTracks().forEach((t) => t.addEventListener("ended", () => r.state !== "inactive" && r.stop(), { once: true }));
+    r.gpStop = () => end(); r.start(S ? RS.SLICE : undefined); return r;
+  };
+  const end = (how) => { ended = true; cancelled ||= how === "no"; sendNow ||= how === "ok"; rec?.state === "inactive" ? fin() : rec?.stop(); };
+  const lose = () => { lost ||= Date.now(); micStream = null; if (!document.hidden) again(); };   // оборвалась сама
+  const again = async () => {
+    if (!lost || ended) return;
+    try { const st = await micGet(); ac.createMediaStreamSource(st).connect(an); S.next(); rec = mk(st); RS.resumed(micBar, Date.now() - lost); lost = 0; }
+    catch (e) { toast("Микрофон не вернулся: " + e.message + " — нажмите «Стоп», записанное не потеряется", 5000); }
+  };
+  const vis = () => { if (document.hidden) { if (rec?.state === "recording") rec.requestData(); } else { S?.wake(); again(); } };
+  document.addEventListener("visibilitychange", vis);
+  rec = mk(stream);
   setBars(true);                                     // идёт запись — панель с записью не прячем
-  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const bar = micBarOpen(); bar.className = "recbar";
   bar.innerHTML = `<span class="dotrec"></span><canvas title="Остановить и вставить текст"></canvas><span class="t">0:00</span>
     <button class="no" aria-label="Отменить запись" title="Отменить">${ic("x", "s16")}</button>
@@ -5508,17 +5526,21 @@ async function toggleMic() {
     bar.querySelector(".t").textContent = mmss((Date.now() - t0) / 1000);
     raf = requestAnimationFrame(draw);
   })();
-  bar.querySelector(".no").onclick = () => { cancelled = true; rec.stop(); };
-  bar.querySelector(".txt").onclick = cv.onclick = () => rec.stop();
-  bar.querySelector(".ok").onclick = () => { sendNow = true; rec.stop(); };
-  rec.onstop = () => {
+  bar.querySelector(".no").onclick = () => end("no");
+  bar.querySelector(".txt").onclick = cv.onclick = () => end();
+  bar.querySelector(".ok").onclick = () => end("ok");
+  const fin = () => {
+    if (fin.done) return; fin.done = true;
+    document.removeEventListener("visibilitychange", vis);
     cancelAnimationFrame(raf); ac.close(); rec = null; micPark();
-    if (cancelled) { micBarClose(); return toast("Запись отменена"); }
+    if (cancelled) { S?.drop(); micBarClose(); return toast("Запись отменена"); }
     const blob = new Blob(chunks, { type: (type || "audio/webm").split(";")[0] });
-    if (!blob.size) return sttFail("Запись пустая — проверьте микрофон и попробуйте ещё раз", null);
+    if (S) blob.rec = S;                             // распознавание возьмёт куски с сервера (voicejob.sttJob)
+    if (!blob.size && !S) return sttFail("Запись пустая — проверьте микрофон и попробуйте ещё раз", null);
     sttRun(blob, sendNow);
   };
-  rec.start(); haptic("impactOccurred", "medium"); padDock();
+  if (DEMO && params.get("mic") === "lost") setTimeout(() => { S?.next(); RS?.resumed(bar, 12000); }, 1200);   // ?demo&mic=lost — снимок «прервалась»
+  haptic("impactOccurred", "medium"); padDock();
 }
 // Распознавание: строка остаётся на месте с «Распознаю…» и секундами, пока сервер не ответит (до 90 с).
 async function sttRun(blob, sendNow, where = MIC_FULL) {
