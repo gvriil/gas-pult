@@ -752,6 +752,161 @@ def bridge_off(lay: Layout, s: Sys, slug: str):
     s.out(f"Мост в {slug} выключен.")
 
 
+SUDOERS = "sudoers.d/gas-pult-tenants"            # правило пульта: tmux и claude от имени пользователей пространства
+OWNER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+CLAUDE_INSTALL = "https://claude.ai/install.sh"
+
+
+def check_owner(owner: str | None, exists: bool = True) -> str:
+    """Пользователь пульта — как ``check_owner`` в bin/pult-tenant-setup: задан, не root, обычное имя, есть."""
+    owner = str(owner or "")
+    if not owner:
+        raise ValueError("не знаю пользователя пульта: --owner ПОЛЬЗОВАТЕЛЬ (тот, под кем работает пульт)")
+    if owner == "root":
+        raise ValueError("пользователь пульта — не root: --owner ПОЛЬЗОВАТЕЛЬ")
+    if not OWNER_NAME.match(owner):
+        raise ValueError(f"странное имя пользователя: {owner}")
+    if exists and not user_exists(owner):
+        raise ValueError(f"нет пользователя {owner}")
+    return owner
+
+
+def sudoers_text(owner: str, tmux: str, lay: Layout | None = None) -> str:
+    """Правило sudo пульта — единственный источник: его же пишет ``pult-tenant-setup install`` (зовёт
+    ``pult-tenant sudoers-text``) и чинит ``pult-tenant repair-sudo``. Пульт (owner) — tmux и claude от имени
+    пользователей пространств (группа pult-tenants), без пароля; root и другие команды правило не даёт."""
+    lay = lay or Layout()
+    owner = check_owner(owner, exists=False)
+    if not tmux.startswith("/") or any(c.isspace() or c in ",:=\\" for c in tmux):
+        raise ValueError(f"путь к tmux — абсолютный, без пробелов и запятых: {tmux}")
+    f = lay.etc / SUDOERS
+    return (f"# gas-pult: пульт ({owner}) управляет окнами демо-пространств — tmux и claude от имени их пользователей\n"
+            f"# (группа {GROUP_TENANTS}), без пароля. Создано bin/pult-tenant-setup. Откат: sudo bin/pult-tenant-setup "
+            f"uninstall\n# (или sudo rm {f}).\n"
+            "# tmux — с любыми аргументами: сузить их нечем (sudo-rs не знает шаблонов в аргументах), и это не даёт "
+            "больше,\n# чем само право открыть окно в пространстве (а в нём — любую команду от имени его "
+            "пользователя).\n"
+            f"{owner} ALL=(%{GROUP_TENANTS}) NOPASSWD: {tmux}\n"
+            f"{owner} ALL=(%{GROUP_TENANTS}) NOPASSWD: {lay.tenants}/*/home/.local/bin/claude, /usr/local/bin/claude\n")
+
+
+def _visudo(s: Sys, *args) -> bool:
+    """visudo -c… — только проверка, ничего не меняет (выполняется и в сухом прогоне)."""
+    exe = shutil.which("visudo") or "/usr/sbin/visudo"
+    try:
+        return s.runner([exe, *map(str, args)], capture_output=True, text=True).returncode == 0
+    except OSError:
+        return False
+
+
+def repair_sudo(lay: Layout, s: Sys, owner: str | None = None, tmux: str | None = None) -> bool:
+    """Вернуть правило пульта (tmux/claude) в ``/etc/sudoers.d/gas-pult-tenants``, если его нет или оно другое
+    (22.11 его затёрло правило администратора). Меняет только этот файл: проверка ``visudo -cf`` до установки,
+    бэкап в ``etc-backup``, 0440 root:root, затем ``visudo -c`` всего sudoers — ошибка: файл из бэкапа.
+    Правило администратора (``gas-pult-tenant-admin``) не трогает. Вернёт True, если файл переписан."""
+    caller = os.environ.get("SUDO_USER")
+    if caller and caller != "root":
+        # вызов через «sudo -n» без пароля (правило администратора): правило — только для того, кто вызвал, и только
+        # для настоящего tmux — иначе команда root без пароля выдавала бы права другому пользователю или программе
+        if owner and owner != caller:
+            raise SystemExit(f"--owner {owner}: через sudo правило ставится только для вызвавшего ({caller})")
+        if tmux:
+            raise SystemExit("--tmux через sudo не принимается: путь — из отметки настройки или системный tmux")
+    marker = tenants.marker(lay.tenants) or {}
+    owner = check_owner(owner or caller or marker.get("owner"))
+    tmux = tmux or marker.get("tmux") or shutil.which("tmux") or "/usr/bin/tmux"
+    text, f = sudoers_text(owner, tmux, lay), lay.etc / SUDOERS
+    try:
+        old = f.read_text(encoding="utf-8")
+    except OSError:
+        old = None
+    if old == text:
+        s.out(f"✓ правило пульта в {f} — как надо")
+        return False
+    s.out(f"! правило пульта в {f} " + ("отсутствует" if old is None else "другое") + " — ставлю:")
+    s.out("".join(f"    {line}\n" for line in text.splitlines()).rstrip("\n"))
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d) / "gas-pult-tenants"
+        tmp.write_text(text, encoding="utf-8")
+        ok = _visudo(s, "-cf", tmp)
+    if s.dry:
+        s.out("  (сухой прогон: правило не ставлю) visudo: " + ("правило верно" if ok else "правило НЕ принято"))
+        return False
+    if not ok:
+        raise SystemExit("visudo не принял правило — ничего не поставлено")
+    bak = backup_file(s, lay, f) if old is not None else None
+    s.write(f, text, 0o440)
+    if not _visudo(s, "-c"):
+        if bak:
+            s.run("cp", "-a", bak, f)
+        else:
+            s.run("rm", "-f", f)
+        raise SystemExit("visudo -c: ошибка во всём sudoers — файл возвращён как был")
+    s.out(f"Готово: пульт снова открывает окна пространств. Откат: sudo cp -a {bak} {f}" if bak else
+          f"Готово: пульт снова открывает окна пространств. Откат: sudo rm {f}")
+    return True
+
+
+def _as_tenant(lay: Layout, slug: str, *argv) -> list[str]:
+    """Команда от имени пользователя пространства с чистым окружением: ни переменных владельца, ни его PATH и HOME."""
+    p = tenants.paths(slug, lay.tenants)
+    return ["runuser", "-u", tenants.user_of(slug), "--", "env", "-i", f"HOME={p['home']}", f"TMPDIR={p['tmp']}",
+            f"CLAUDE_CONFIG_DIR={p['claude']}", "PATH=/usr/bin:/bin", "LANG=C.UTF-8", *map(str, argv)]
+
+
+def install_claude(lay: Layout, s: Sys, slug: str, update: bool = False) -> str:
+    """Claude Code в домашнюю папку пространства (``home/.local/bin/claude``) — установщиком Anthropic от имени
+    пользователя пространства. Уже стоит — только версия (``--update`` — поставить заново, свежий). Подписку и
+    ``~/.claude`` владельца не трогает: вход — отдельно (ключ API или ``login``)."""
+    slug = tenants.check_slug(slug)
+    if not tenants.load(slug, lay.tenants):
+        raise SystemExit(f"нет пространства {slug}")
+    p = tenants.paths(slug, lay.tenants)
+    if not p["home"].is_dir() and not s.dry:
+        raise SystemExit(f"нет {p['home']}: пространство не смонтировано — sudo bin/pult-tenant create {slug}")
+    exe = p["home"] / ".local/bin/claude"
+    version = s.read(*_as_tenant(lay, slug, exe, "--version")) if exe.exists() else ""
+    if version and not update:
+        s.out(f"✓ Claude Code в {slug} уже установлен: {version} (обновить — --update)")
+        return version
+    # строка для bash — постоянная: имя пространства в неё не попадает (оно только в runuser -u и HOME=)
+    s.run(*_as_tenant(lay, slug, "bash", "-c", f'cd "$HOME" && curl -fsSL {CLAUDE_INSTALL} | bash'))
+    if s.dry:
+        return ""
+    version = s.read(*_as_tenant(lay, slug, exe, "--version"))
+    if not version:
+        raise SystemExit(f"Claude Code в {slug} не отвечает: {exe} --version — пусто. Повторите или смотрите вывод "
+                         "выше.")
+    audit(s, p, "claude_install", version=version, update=update)
+    s.out(f"Claude Code в {slug}: {version}. Дальше — ключ модели: "
+          f"sudo bin/pult-tenant key {slug} <профиль> --default")
+    return version
+
+
+def login_screen(lay: Layout, s: Sys, slug: str) -> None:
+    """Окно ``login`` с Claude Code в tmux пространства — для ``/login`` через панель (окно видно в списке окон
+    пространства). Только после ``pult-tenant login`` (вход в Claude — для тестов владельца)."""
+    slug = tenants.check_slug(slug)
+    t = tenants.load(slug, lay.tenants)
+    if not t:
+        raise SystemExit(f"нет пространства {slug}")
+    if not t.get("claude_login"):
+        raise SystemExit(f"вход в Claude в {slug} не разрешён: сначала sudo bin/pult-tenant login {slug}")
+    p, tmux = tenants.paths(slug, lay.tenants), tenants.tmux_bin(lay.tenants)
+    sock, exe = p["socket"], p["home"] / ".local/bin/claude"
+    if not exe.exists() and not s.dry:
+        raise SystemExit(f"Claude Code в {slug} не установлен: sudo bin/pult-tenant claude {slug}")
+    r = s.runner(_as_tenant(lay, slug, tmux, "-S", sock, "has-session", "-t", "=login"), capture_output=True,
+                 text=True) if not s.dry else None
+    if r is not None and r.returncode == 0:
+        s.out(f"✓ окно login в {slug} уже открыто — панель → пространство {slug} → окно login")
+        return
+    s.run(*_as_tenant(lay, slug, tmux, "-S", sock, "new-session", "-d", "-s", "login", "-c", p["home"], exe))
+    audit(s, p, "claude_login_screen")
+    s.out(f"Окно login открыто: панель → пространство {slug} → окно login → /login. Закрыть: в окне /exit.")
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="pult-tenant", description="Демо-пространства gas-pult (запускать через sudo). "
                                  "Подробно — docs/TENANTS.md.")
@@ -807,6 +962,17 @@ def parser() -> argparse.ArgumentParser:
     lg.add_argument("--yes", metavar="да")
     lo = sub.add_parser("logout", help="выключить вход в Claude в пространстве")
     lo.add_argument("slug")
+    rs = sub.add_parser("repair-sudo", help="вернуть правило sudo пульта (tmux, claude), если его нет или оно другое")
+    rs.add_argument("--owner", help="пользователь пульта (по умолчанию — тот, кто запустил sudo)")
+    rs.add_argument("--tmux", help="путь к tmux (по умолчанию — из отметки настройки)")
+    st = sub.add_parser("sudoers-text", help=argparse.SUPPRESS)       # для bin/pult-tenant-setup: один источник
+    st.add_argument("--owner", required=True)
+    st.add_argument("--tmux", required=True)
+    cl = sub.add_parser("claude", help="поставить Claude Code в пространство (от имени его пользователя)")
+    cl.add_argument("slug")
+    cl.add_argument("--update", action="store_true", help="поставить заново (свежую версию)")
+    ls = sub.add_parser("login-screen", help="окно login с Claude в пространстве — для /login через панель")
+    ls.add_argument("slug")
     ck = sub.add_parser("check", help="автотест изоляции: из A — к файлам, процессам и tmux B и к ~владельца")
     ck.add_argument("a")
     ck.add_argument("b")
@@ -817,6 +983,13 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     lay, s = Layout(Path(a.srv), Path(a.etc)), Sys(dry=a.dry_run)
+    if a.cmd == "sudoers-text":
+        try:
+            sys.stdout.write(sudoers_text(a.owner, a.tmux, lay))
+        except ValueError as e:
+            print(f"Ошибка: {e}", file=sys.stderr)
+            return 2
+        return 0
     if a.cmd not in ("list",) and not a.dry_run and os.geteuid() != 0:
         print("Нужны права root: sudo bin/pult-tenant … (или --dry-run — только показать шаги)", file=sys.stderr)
         return 2
@@ -851,6 +1024,12 @@ def main(argv: list[str] | None = None) -> int:
             login(lay, s, a.slug, a.yes)
         elif a.cmd == "logout":
             logout(lay, s, a.slug)
+        elif a.cmd == "repair-sudo":
+            repair_sudo(lay, s, a.owner, a.tmux)
+        elif a.cmd == "claude":
+            install_claude(lay, s, a.slug, a.update)
+        elif a.cmd == "login-screen":
+            login_screen(lay, s, a.slug)
         elif a.cmd == "check":
             from gas_pult import tenant_check
             return tenant_check.main(lay.tenants, a.a, a.b, a.owner)
