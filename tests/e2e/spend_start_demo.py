@@ -45,6 +45,11 @@ def run(base: str, shots: str = ""):
         st = pg.evaluate("({ view, current })")
         assert st["view"] == "session" and st["current"], f"390: ожидался последний чат, а не {st}"
         assert pg.evaluate(BAR)["on"], "390: полоски демо нет в разметке"
+        pg.evaluate("document.getElementById('scroller').scrollTop = 99999")   # полоска закреплена (штаб 22.11)
+        pg.mouse.wheel(0, 3000)
+        pg.wait_for_timeout(600)
+        bar = pg.evaluate(BAR)
+        assert bar["seen"], f"390: после прокрутки чата полоска демо уехала: {bar}"
         ctx.close()
         for kw, q, tag in ((phone, "home", "390 ?home"), (desk, "", "1366")):
             ctx, pg = page(kw, q)
