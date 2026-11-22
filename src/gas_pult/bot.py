@@ -54,14 +54,14 @@ from gas_pult import (
     funnel,
     harness,
     humanize,
-    injection_guard,
+    injection_guard,  # noqa: F401 — bot.injection_guard: Telegram в botparts/telegram.py, имя живо
     invites,
     limitretry,
     meetings,
     models,
     modules,
     notifylevel,
-    notifyroute,
+    notifyroute,  # noqa: F401 — bot.notifyroute: Telegram в botparts/telegram.py, имя живо
     offers,
     people,
     projects,
@@ -72,7 +72,7 @@ from gas_pult import (
     selftest,
     setup,
     space_budget,
-    spaces,
+    spaces,  # noqa: F401 — bot.spaces: Telegram в botparts/telegram.py, имя живо
     speech,  # noqa: F401 — bot.speech: озвучка в botparts/voice.py, имя живо
     store,
     tasks,
@@ -80,14 +80,16 @@ from gas_pult import (
     terms,
     termwin,
     testers,
-    tglinks,
+    tglinks,  # noqa: F401 — bot.tglinks: Telegram в botparts/telegram.py, имя живо
     tgroutes,
     transcripts,
     usage,
     voice,
-    webpush,
+    webpush,  # noqa: F401 — bot.webpush: Telegram в botparts/telegram.py, имя живо
 )
 from gas_pult import tmux as tmux_mod
+from gas_pult.botparts.meetings import MeetingsPart
+from gas_pult.botparts.telegram import MENU, TelegramPart
 from gas_pult.botparts.voice import VoicePart
 from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
 from gas_pult.config import Config
@@ -172,9 +174,6 @@ class Denied(RuntimeError):
 
 PHONE_KB = {"keyboard": [[{"text": "📱 Поделиться номером", "request_contact": True}], [{"text": "Позже"}]],
             "resize_keyboard": True, "one_time_keyboard": True}
-MENU = {"keyboard": [[{"text": "🆕 Новая"}, {"text": "🔀 Переключить"}, {"text": "📊 Сводка"}],
-                     [{"text": "⚡ Команды"}, {"text": "📋 Окна"}, {"text": "⚙️ Настройки"}]],
-        "resize_keyboard": True, "is_persistent": True}
 MENU_PREFIXES = ("🆕", "🔀", "📊", "⚡", "📋", "⚙️")
 KEYS = [("1", "1"), ("2", "2"), ("3", "3"), ("↑", "Up"), ("↓", "Down"), ("⏎", "Enter"), ("Esc", "Escape")]
 COMMANDS = [("🧠 Модель", "models"), ("🔌 MCP", "/mcp"), ("📏 Контекст", "/context"),
@@ -204,9 +203,7 @@ def escalate_rows(wid: str, level: int) -> list:
     return rows
 
 
-class Pult(VoicePart):
-    pause_until = 0.0          # Telegram ответил 429 — до этого времени не шлём (повторы только продлевают запрет)
-    skipped = 0                # сколько сообщений не отправили за паузу — сказать одним сообщением после неё
+class Pult(TelegramPart, MeetingsPart, VoicePart):
     BURST = 3                  # больше ответов окна за один обход монитора — шлём последний и счётчик
     actor = threading.local()  # кто сейчас действует (Telegram ID; у каждого потока свой) — для проверки страны
 
@@ -267,54 +264,6 @@ class Pult(VoicePart):
         self.mt_wait: dict[int, dict] = {}                           # кусок ждёт «продолжение / новая встреча»
         self.cost_at = 0.0                                 # когда монитор последний раз сверял лимиты
 
-    # ---------- Telegram ----------
-    def send(self, chat: int, text: str, wid: str | None = None, **kw) -> dict:
-        """``wid`` — окно, о котором сообщение: ответ (reply) на любой его кусок уйдёт в это окно (``tgroutes``)."""
-        if (left := self.pause_until - time.time()) > 0:
-            self.skipped += 1
-            raise TelegramError("sendMessage", f"лимит Telegram — пауза ещё {left:.0f} с")
-        parts = [text[i:i + 4000] for i in range(0, max(len(text), 1), 4000)] or ["—"]   # лимит — 4096
-        r = {}
-        try:
-            for i, c in enumerate(parts):  # кнопки — под последним куском
-                r = self.api("sendMessage", chat_id=chat, text=c or "—", **(kw if i == len(parts) - 1 else {}))
-                if wid:
-                    self.bind(chat, r, wid)
-        except TelegramError as e:
-            if e.retry_after:
-                self.pause_until = time.time() + e.retry_after
-                self.skipped += 1
-            raise
-        return r or {}
-
-    def bind(self, chat, r, wid: str):
-        """Запомнить окно сообщения бота (заготовки ``Pult.__new__`` в тестах — без карты)."""
-        routes = getattr(self, "routes", None)
-        if routes and isinstance(r, dict):
-            routes.bind(chat, r.get("message_id"), wid)
-
-    def send_answer(self, chat: int, head: str, text: str, wid: str | None = None, **kw) -> dict:
-        """Ответ Claude — HTML (tglinks): адреса нажимаемые и в `коде`, и без схемы; под блоком кода — «Ссылки: …».
-        Куски по 4000 с целыми тегами, кнопки — под последним. Telegram не разобрал разметку — тот же ответ текстом."""
-        if spaces.split(wid)[0]:                         # пространство клиента: ПДн в ответе — маской (GAS-16)
-            text = injection_guard.mask_pii(text)[0]
-        chunks, r = tglinks.messages(text, head), {}
-        try:
-            for i, c in enumerate(chunks):
-                r = self.send(chat, c, parse_mode="HTML", wid=wid, **(kw if i == len(chunks) - 1 else {}))
-        except TelegramError as e:
-            if e.retry_after or "parse" not in e.description.lower() or i:
-                raise
-            return self.send(chat, f"{head}\n{text}", wid=wid, **kw)
-        return r
-
-    def after_pause(self):
-        """Пауза 429 кончилась — одно сообщение вместо пропущенных."""
-        if self.skipped and time.time() >= self.pause_until:
-            n, self.skipped = self.skipped, 0
-            self.broadcast(f"⏸ Telegram на время ограничил частоту сообщений — {n} уведомл. не отправлено. "
-                           "Ответы Claude — в панели.")
-
     def show_dialog(self, w: dict, scr: str, shown: dict):
         """Открытое меню/вопрос = одно сообщение каждому владельцу; изменилось — правим его, без новых уведомлений."""
         h, ep, now = dialog_hash(scr), shown.get(w["id"]), time.time()
@@ -340,68 +289,6 @@ class Pult(VoicePart):
             except TelegramError as e:
                 print("send:", e, flush=True)
         shown[w["id"]] = {"msgs": msgs, "hash": h, "t": now}
-
-    def broadcast(self, text: str, kind: str = "error", **kw):
-        """Одна точка доставки владельцам (notifyroute.py): Telegram, телефон и почта — что выбрал каждый.
-        ``kind`` — вид события (answer, dialog, error, brief, people); кнопки решения — всегда и в Telegram."""
-        for chat in self.cfg.owners:
-            ch = self.channels(chat, kind, action="reply_markup" in kw)
-            if "telegram" in ch:
-                try:
-                    self.send(chat, text, **kw)
-                except TelegramError as e:
-                    print("send:", e, flush=True)
-            if "push" in ch:
-                self.push_one(chat, text)
-            if "email" in ch:
-                self.mail_one(chat, text)
-
-    def _hub(self):
-        return self.__dict__.setdefault("_push", webpush.Hub(self.cfg.data / "push"))
-
-    def channels(self, uid: int, kind: str, action: bool = False) -> set[str]:
-        """Каналы владельца ``uid`` для события ``kind``. Бот без данных (заготовка в тестах) — только Telegram."""
-        cfg = getattr(self, "cfg", None)
-        if cfg is None or not getattr(cfg, "data", None):
-            return {"telegram"}
-        try:
-            push = bool(self._hub().devices(uid))
-        except (OSError, ValueError):
-            push = False
-        mail, email = getattr(self, "mail", None), False
-        try:
-            rec = mail.people.email(uid) if mail is not None and mail.enabled else {}
-            email = bool(rec.get("notify") and rec.get("address"))
-        except (AttributeError, OSError, ValueError):
-            email = False
-        rec = notifyroute.Store(cfg.data / "notify_channels.json").get(uid)
-        return notifyroute.route(rec, kind, push=push, email=email, action=action)
-
-    def push_one(self, uid: int, text: str, w: str = "", title: str = brand.NAME_RU):
-        try:
-            self._hub().notify(uid, title, self.PUSH_PLAIN.sub("", str(text or "")).strip(), w)
-        except (OSError, ValueError) as e:
-            print("push:", e, flush=True)
-
-    def mail_one(self, uid: int, text: str, subject: str = ""):
-        """Письмо в фоне: SMTP не задерживает монитор."""
-        body = self.PUSH_PLAIN.sub("", str(text or "")).strip()
-        subject = subject or body.split("\n", 1)[0][:80] or brand.NAME_RU
-        threading.Thread(target=emailcode.notify_email, args=(self.mail, uid, subject, body), daemon=True).start()
-
-    PUSH_PLAIN = re.compile(r"^[^\w«\[(]+")                       # значок-эмодзи в начале — не в заголовок пуша
-
-    def push_owners(self, text: str, w: str = "", title: str = brand.NAME_RU, kind: str = "dialog"):
-        """На телефон (Web Push, webpush.py) тем владельцам, у кого есть устройства и выбран этот вид событий."""
-        cfg = getattr(self, "cfg", None)
-        if cfg is None or not getattr(cfg, "data", None):
-            return
-        for uid in cfg.owners:
-            if "push" in self.channels(uid, kind):
-                self.push_one(uid, text, w, title)
-
-    def to(self, chat: int):
-        return lambda text, **kw: self.send(chat, text, **kw)
 
     # ---------- состояние ----------
     def state(self) -> dict:
@@ -933,89 +820,6 @@ class Pult(VoicePart):
             time.sleep(3)
             if w := self.tmux.window(wid):
                 self.to_claude(w, first)
-
-    # ---------- протоколы встреч (GAS-36, meetings.py) ----------
-    MT_KB: ClassVar[dict] = {"consent": [[("✅ Предупредил — начать", "mt:ok"), ("✖️ Отмена", "mt:cancel")]],
-             "open": [[("📝 Готово — протокол", "mt:done"), ("✖️ Отменить встречу", "mt:cancel")]],
-             "stale": [[("➕ Это продолжение", "mt:cont"), ("🆕 Новая встреча", "mt:new")]]}
-
-    def meeting_start(self, chat: int):
-        if self.meetings.current(chat):
-            return self.send(chat, "Встреча уже идёт — присылайте куски. Всё — «Готово — протокол».",
-                             reply_markup=kb(self.MT_KB["open"]))
-        self.send(chat, "📝 Протокол встречи.\n\n" + meetings.CONSENT, reply_markup=kb(self.MT_KB["consent"]))
-
-    def meeting_piece(self, chat: int, m: dict):
-        if self.meetings.stale(chat):
-            self.mt_wait[chat] = m
-            return self.send(chat, f"Встреча начата больше {meetings.CONTINUE_H} ч назад. Это продолжение или новая?",
-                             reply_markup=kb(self.MT_KB["stale"]))
-        f = m.get("voice") or m.get("audio") or m.get("video_note") or m.get("document")
-        if not f:
-            t = (m.get("text") or m.get("caption") or "").strip()
-            if not t:
-                return self.send(chat, "Пришлите голосовое, аудиофайл или текст встречи.")
-            n = len(self.meetings.add(chat, t, "текст")["pieces"])
-            return self.send(chat, f"✍ Кусок {n} добавлен (текст).", reply_markup=kb(self.MT_KB["open"]))
-        self.react(m, "✍")
-        threading.Thread(target=self._meeting_audio, args=(chat, f), daemon=True).start()
-
-    def _meeting_audio(self, chat: int, f: dict):
-        try:
-            path = self.api.download(f["file_id"], self.cfg.data / "inbox", f.get("file_name") or "meeting.ogg")
-            text = voice.transcribe_any(path, self.cfg.whisper_model, 40 * 60, data=self.cfg.data)
-            if not text:
-                return self.send(chat, "Не разобрал запись — пришлите ещё раз или текстом.")
-            n = len(self.meetings.add(chat, text, "запись", file=str(path))["pieces"])
-            self.send(chat, f"✍ Кусок {n}: {text[:120]}{'…' if len(text) > 120 else ''}",
-                      reply_markup=kb(self.MT_KB["open"]))
-        except Exception as e:
-            self.send(chat, f"Не разобрал запись: {e}. Файл пришлите ещё раз.")
-
-    def meeting_button(self, chat: int, arg: str):
-        if arg == "ok":
-            self.meetings.open(chat)
-            self.send(chat, "▶️ Встреча начата. Присылайте голосовые, аудиофайлы из Диктофона или текст — кусками "
-                            "можно. Скажите вслух «Клод, запиши …» — это станет поручением в протоколе; «Клод, "
-                            "отправь …» — черновик, отправка после «Да». Всё — «Готово — протокол».",
-                      reply_markup=kb(self.MT_KB["open"]))
-            if m := self.mt_wait.pop(chat, None):
-                self.meeting_piece(chat, m)
-            return None
-        if arg == "cancel":
-            self.mt_wait.pop(chat, None)
-            self.meetings.close(chat)
-            return self.send(chat, "Встреча отменена — куски удалены.")
-        if arg == "cont":
-            mt = self.meetings.current(chat)
-            if mt:
-                mt["started"] = time.time() - 60             # продолжение — счётчик «давно» заново
-                with self.meetings.lock:
-                    d = self.meetings._load()
-                    d[str(chat)] = mt
-                    self.meetings._save(d)
-            if m := self.mt_wait.pop(chat, None):
-                self.meeting_piece(chat, m)
-            return None
-        if arg == "new":
-            self.meeting_done(chat)
-            return self.meeting_start(chat)
-        if arg == "done":
-            return self.meeting_done(chat)
-        return None
-
-    def meeting_done(self, chat: int):
-        mt = self.meetings.close(chat)
-        if not mt or not mt["pieces"]:
-            return self.send(chat, "Во встрече нет ни одного куска — протокол не из чего делать.")
-        drive = drive_inbox.drive_root(self.cfg.drive_root)
-        folder, on_drive = meetings.save(mt, drive, self.cfg.data)
-        self.send(chat, f"📁 Расшифровка ({len(mt['pieces'])} кусков) — {'на Диске' if on_drive else 'на сервере'}: "
-                        f"{folder}\nДелаю протокол в чате «Встречи» — ответ придёт сюда.")
-        root = self.cfg.roots()[0] / "meetings"
-        root.mkdir(parents=True, exist_ok=True)
-        self.open_session(chat, "meetings", str(root), first=meetings.prompt(folder, on_drive, meetings.commands(mt),
-                                                                             meetings.saved_dur(folder)))
 
     QUIT_WAIT, QUIT_STEP = 20.0, 0.5                # длинная переписка: Claude выходит дольше 4 с — ждём до 20 с
 
@@ -2375,13 +2179,6 @@ class Pult(VoicePart):
             self.focus.end_window(w["id"])
             send(f"«{self.label(w)}» закрыта принудительно. Переписка — в журнале, «Продолжить» в панели её поднимет.")
 
-    def react(self, m: dict, emoji: str):
-        try:
-            self.api("setMessageReaction", chat_id=m["chat"]["id"], message_id=m["message_id"],
-                     reaction=[{"type": "emoji", "emoji": emoji}])
-        except TelegramError:
-            pass
-
     # ---------- мастер: Claude Code без оператора (setup.py) ----------
     def setup_status(self) -> dict:
         try:
@@ -2981,29 +2778,6 @@ class Pult(VoicePart):
             return send("Пришли текст, голосовое или файл.")
         self.to_claude_live(chat, w, t)
         self.react(m, "👀")
-
-    def reply_target(self, chat: int, m: dict):
-        """Окно, на сообщение которого человек ответил (reply) в Telegram; None — не ответ на сообщение окна
-        (пишем в активное); False — окно найдено, но его уже нет или Claude там остановлен: сказали человеку.
-        Порядок: карта ``tg_routes.json`` → кнопки исходного сообщения → «[имя]», если такое окно одно."""
-        rt = m.get("reply_to_message") or {}
-        if not rt or not (rt.get("from") or {}).get("is_bot"):
-            return None
-        routes = getattr(self, "routes", None)
-        wid = (routes.get(chat, rt.get("message_id")) if routes else None) or tgroutes.markup_wid(rt)
-        ws = self.tmux.windows() if not wid else []
-        if not wid and (name := tgroutes.head_name(rt)):
-            same = [x for x in ws if x["name"] == name] or [x for x in ws if self.label(x) == name]   # 20.11
-            wid = same[0]["id"] if len(same) == 1 else None
-        if not wid:
-            return None
-        w = self.tmux.window(wid)
-        if w and harness.is_agent(w):
-            return w
-        self.send(chat, ("Сессии этого сообщения уже нет" if not w else f"В «{self.label(w)}» Claude остановлен")
-                  + " — текст не отправил. Ответьте на сообщение живой сессии или выберите окно в 🔀 Переключить.",
-                  reply_markup=MENU)
-        return False
 
     def on_review(self, m: dict, t: str) -> bool:
         """«#ревью» владельца (и продолжение длинной посылки) — файлом в inbox, не в сессию (review_inbox.py).
