@@ -804,8 +804,17 @@ def repair_sudo(lay: Layout, s: Sys, owner: str | None = None, tmux: str | None 
     (22.11 его затёрло правило администратора). Меняет только этот файл: проверка ``visudo -cf`` до установки,
     бэкап в ``etc-backup``, 0440 root:root, затем ``visudo -c`` всего sudoers — ошибка: файл из бэкапа.
     Правило администратора (``gas-pult-tenant-admin``) не трогает. Вернёт True, если файл переписан."""
-    owner = check_owner(owner or os.environ.get("SUDO_USER") or (tenants.marker(lay.tenants) or {}).get("owner"))
-    tmux = tmux or (tenants.marker(lay.tenants) or {}).get("tmux") or shutil.which("tmux") or "/usr/bin/tmux"
+    caller = os.environ.get("SUDO_USER")
+    if caller and caller != "root":
+        # вызов через «sudo -n» без пароля (правило администратора): правило — только для того, кто вызвал, и только
+        # для настоящего tmux — иначе команда root без пароля выдавала бы права другому пользователю или программе
+        if owner and owner != caller:
+            raise SystemExit(f"--owner {owner}: через sudo правило ставится только для вызвавшего ({caller})")
+        if tmux:
+            raise SystemExit("--tmux через sudo не принимается: путь — из отметки настройки или системный tmux")
+    marker = tenants.marker(lay.tenants) or {}
+    owner = check_owner(owner or caller or marker.get("owner"))
+    tmux = tmux or marker.get("tmux") or shutil.which("tmux") or "/usr/bin/tmux"
     text, f = sudoers_text(owner, tmux, lay), lay.etc / SUDOERS
     try:
         old = f.read_text(encoding="utf-8")

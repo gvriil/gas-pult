@@ -744,3 +744,15 @@ def test_root_install_script_dry_run(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "gas-pult-tenant-admin" in r.stdout and "pult-tenant-setup install" in r.stdout
     assert "сухой прогон" in r.stdout and list(tmp_path.iterdir()) == []          # временные файлы убраны
+
+
+def test_repair_sudo_via_sudo_only_for_caller(tmp_path, monkeypatch):
+    """Через «sudo -n» (правило администратора) repair-sudo не выдаёт права другому пользователю и чужой программе."""
+    from gas_pult import tenant_admin
+    monkeypatch.setenv("SUDO_USER", "alice")
+    lay = tenant_admin.Layout(srv=tmp_path / "srv", etc=tmp_path / "etc")
+    s = tenant_admin.Sys(dry=True)
+    with pytest.raises(SystemExit, match="только для вызвавшего"):
+        tenant_admin.repair_sudo(lay, s, owner="mallory")
+    with pytest.raises(SystemExit, match="--tmux"):
+        tenant_admin.repair_sudo(lay, s, tmux="/bin/bash")
