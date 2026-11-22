@@ -8,6 +8,7 @@
 - хранение, «Да», воронка, расход, запись, платежи, мессенджеры, токены API (``DOMAIN``) — тоже нижний слой;
 - ``panel/*`` (части класса ``Panel`` по областям, MONOLITH-PLAN п.3.1) не импортируют ``bot`` и ``webapp``:
   ``webapp`` собирает из них ``Panel``, а не наоборот;
+- ``botparts/*`` (части класса ``Pult``, MONOLITH-PLAN п.3.3) — так же: не импортируют ни ``bot``, ни ``webapp``;
 - ``connectors/*`` — отдельные процессы MCP: только свой ``_core`` и стандартная библиотека, ядро пульта — нет.
 Интерфейс панели (``web/``) — не Python, здесь не проверяется.
 
@@ -97,6 +98,8 @@ def violations() -> set[tuple[str, str]]:
         bad |= hits(g, low, {"gas_pult.bot", "gas_pult.webapp"})
     for part in sorted(m for m in g if m.startswith("gas_pult.panel.")):     # части Panel (MONOLITH-PLAN п.3.1)
         bad |= hits(g, part, {"gas_pult.bot", "gas_pult.webapp"})
+    for part in sorted(m for m in g if m.startswith("gas_pult.botparts.")):  # части Pult (MONOLITH-PLAN п.3.3)
+        bad |= hits(g, part, {"gas_pult.bot", "gas_pult.webapp"})
     std = set(sys.stdlib_module_names) | {"__future__"}
     for name, deps in g.items():
         if not name.startswith("gas_pult.connectors"):
@@ -119,6 +122,13 @@ def test_panel_parts_are_checked():
     g = graph()
     assert {"gas_pult.panel.clients", "gas_pult.panel.voice"} <= set(g)
     assert "gas_pult.panel.voice" in g["gas_pult.webapp"]
+
+
+def test_bot_parts_are_checked():
+    """Части ``Pult`` видны правилу (пакет переименуют — тест скажет)."""
+    g = graph()
+    assert "gas_pult.botparts.voice" in g
+    assert "gas_pult.botparts.voice" in g["gas_pult.bot"]
 
 
 def test_graph_sees_known_imports():
