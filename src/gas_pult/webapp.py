@@ -35,6 +35,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import urllib.parse
 import urllib.request
 import uuid
@@ -47,6 +48,7 @@ from typing import BinaryIO, ClassVar
 
 from gas_pult import (
     ago,
+    alerts,
     apitokens,
     approvals,
     asr,
@@ -4066,7 +4068,31 @@ def handler(panel: Panel):
             self.renew = ""                     # соединение keep-alive: у каждого запроса своё
             self.sl = None                      # ссылка на пространство — проверяется заново на каждый запрос
             self.apitok = None                  # токен /api/v1 — тоже на каждый запрос
+            self.sent_code = 0                  # ответа ещё нет: упадёт обработчик — можно ответить 500 (crash)
             return super().parse_request()
+
+        def handle_one_request(self):
+            try:
+                super().handle_one_request()
+            except (ConnectionError, TimeoutError):      # человек ушёл, не дождавшись ответа — не сбой
+                raise
+            except Exception as e:                       # упало мимо dispatch: 500 JSON, а не обрыв (502 у Caddy)
+                self.crash(e)
+                self.close_connection = True
+
+        def crash(self, e: Exception):
+            """Необработанное исключение: трассировка — в журнал службы, событие ``server_error`` (путь без query,
+            класс, id) — сводкой владельцу (alerts.py), человеку — 500 JSON с тем же id."""
+            eid = secrets.token_hex(4)
+            path = urllib.parse.urlparse(getattr(self, "path", "") or "").path
+            print(f"server_error {eid} {path}:", file=sys.stderr, flush=True)
+            traceback.print_exception(e, file=sys.stderr)
+            panel.events.event("server_error", path=path[:120], exc=type(e).__name__, id=eid)
+            if not self.sent_code:                       # заголовки ещё не ушли — ответ ещё можно дать
+                try:
+                    self.json({"error": "внутренняя ошибка", "code": "server_error", "id": eid}, 500)
+                except OSError:
+                    pass
 
         def send_response(self, code, message=None):
             self.sent_code = code               # журнал /api/v1 пишет код ответа
@@ -4085,6 +4111,8 @@ def handler(panel: Panel):
             if gz:                                       # #191: страница 887 КБ и опрос раз в 3 с — сжатием в 4–7 раз
                 body = packed or gzip.compress(body, GZIP_LEVEL)
             self.send_response(code)
+            if code < 500:                               # отметка жизни панели — не чаще раза в минуту
+                alerts.beat(panel.cfg.data, "web")
             if cookie or self.renew:
                 self.send_header("Set-Cookie", cookie or self.renew)
             self.renew = ""
@@ -6161,6 +6189,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "retry": e.retry}, 429)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
+            except Exception as e:                       # прочее — 500 JSON и событие, а не обрыв (502 у Caddy)
+                return self.crash(e)
             if out is SENT:                              # ответ уже отправлен (свой заголовок: ETag)
                 return None
             if isinstance(out, tuple) and out[0] == "cookie":

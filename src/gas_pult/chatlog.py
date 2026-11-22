@@ -79,6 +79,22 @@ class Log:
                 out.append(r)
         return out
 
+    def since(self, ts: float, evs: set[str]) -> list[dict]:
+        """События видов ``evs`` новее ``ts`` (сводка сбоев владельцу, alerts.py)."""
+        try:
+            lines = self.path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        out = []
+        for x in lines:
+            try:
+                r = json.loads(x)
+            except ValueError:
+                continue
+            if isinstance(r, dict) and r.get("ev") in evs and float(r.get("ts") or 0) > ts:
+                out.append(r)
+        return out
+
 
 def _ts(line: str) -> float:
     try:
