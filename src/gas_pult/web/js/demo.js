@@ -602,6 +602,7 @@ function demoApi(path, body) {
   if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: { "7d": 604800, "30d": 2592000, "90d": 7776000, "365d": 31536000 }[body?.ttl] || 86400,
     ...(key === "/api/invite/new" && body?.uses !== undefined ? { uses: body.uses, access: body.access } : {}) });
   if (key === "/api/route") return Promise.resolve({ route: /сайт|браузер|форм/i.test(body?.text || "") ? { type: "browser", title: "рутина в браузере", profile: "claude", model: "haiku", name: "Haiku 5.5", why: "80/80 и 16/16, ≈ $0.04 за 8 задач" } : null });
+  if (key === "/api/messengers" || key.startsWith("/api/messengers/")) return Promise.resolve(demoMsg(key, body || {}));
   if (key === "/api/calendars/keys") return Promise.resolve({ calendars: [{ kind: "google", title: "Google Календарь", on: false }] });
   if (key === "/api/calendars/key") return Promise.resolve({ ok: true, checked: "событий в календаре: 12" });
   if (key === "/api/tts/about") {                     // «Что здесь умеет» → «Прослушать»: в демо — секунда тишины (WAV)
@@ -850,4 +851,37 @@ function demoMeeting(path, body) {
   if (p.endsWith("/card")) return demoCard(p === "/api/mt/card" ? DEMO_MT.list[0] : v);
   if (p === "/api/meeting/share") return Promise.resolve({ url: location.origin + "/#focus=demo-meeting-demo-meeting-demo", id: "f8", exp: Math.floor(Date.now() / 1000) + 30 * 86400, name: v.title, mode: "meeting", max: 50 });
   return Promise.reject(new Error("нет такого метода"));
+}
+// «Мессенджеры» в демо (js/messengers.js): выбор, вход и QR — на примерах; QR — нарисованный образец, не настоящий
+function demoMsg(key, b) {
+  const m = demoApi.msg ||= { telegram: { c: false, on: false }, signal: { c: false, on: false }, whatsapp: { c: false, on: false } };
+  const txt = { telegram: "Модель будет читать переписку в чатах, которые вы откроете ей. По условиям Telegram для ИИ (п. 1.5 Telegram API Terms) нужно явное согласие собеседников этого чата — спросите их. Отправить сообщение модель может только черновиком и только после вашего «Да» в панели.",
+    signal: "Неофициальный способ. Нарушает условия Signal. Номер могут заблокировать. Лучше отдельный номер. Решаете вы.",
+    whatsapp: "Неофициальный способ. Нарушает условия WhatsApp. Номер могут заблокировать. Лучше отдельный номер. Решаете вы." };
+  const T = { telegram: "Telegram", signal: "Signal", whatsapp: "WhatsApp" };
+  if (key === "/api/messengers") return { idle: 600, catalog: [
+    { id: "telegram", title: "Telegram", about: "Ваш аккаунт: читать чаты, отвечать — после вашего «Да»", kind: "consent" },
+    { id: "signal", title: "Signal", about: "Связанное устройство: читать, отвечать — после вашего «Да»", kind: "risk" },
+    { id: "whatsapp", title: "WhatsApp", about: "Связанное устройство: читать, отвечать — после вашего «Да»", kind: "risk" },
+    { id: "max", title: "MAX", about: "Только бот организации", kind: "off" }],
+    services: Object.keys(T).map((id) => ({ id, title: T[id], consented: m[id].c, connected: m[id].on, who: m[id].on ? "*** 4567" : "", running: false, install: null, text: txt[id], api: m[id].on, allowed: 0 })) };
+  const what = key.slice("/api/messengers/".length), svc = what.startsWith("tg/") ? "telegram" : b.svc;
+  if (what === "consent") { m[svc].c = b.accepted === true; return { ok: true, consented: m[svc].c }; }
+  if (what === "off") { m[svc] = { c: false, on: false }; return { ok: true }; }
+  if (what === "tg/login") return { sent: "app" };
+  if (what === "tg/code" || what === "tg/password") { m.telegram.on = true; return { ok: true, who: "*** 4567" }; }
+  if (what === "link") return { qr: demoQr() };
+  if (what === "chats") return { allowed: ["1"], chats: [{ id: "1", name: "Анна (согласна)", kind: "user", unread: 2 }, { id: "2", name: "Семья", kind: "group", unread: 0 }, { id: "3", name: "Новости района", kind: "channel", unread: 5 }] };
+  if (what === "allow") return { allowed: b.chats || [] };
+  return { ok: true };
+}
+function demoQr() {                                   // образец «ДЕМО»: узоры по углам и случайные клетки — камера его не прочтёт
+  const n = 33, cell = (x, y) => { const f = (a, b) => x >= a && x < a + 7 && y >= b && y < b + 7;
+    for (const [a, b] of [[0, 0], [n - 7, 0], [0, n - 7]]) if (f(a, b)) { const dx = x - a, dy = y - b; return dx === 0 || dx === 6 || dy === 0 || dy === 6 || (dx > 1 && dx < 5 && dy > 1 && dy < 5); }
+    if ((x < 8 && (y < 8 || y > n - 9)) || (x > n - 9 && y < 8)) return false;
+    return ((x * 7 + y * 13 + x * y) % 5) < 2; };
+  let r = "";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (cell(x, y)) r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#fff"/><g fill="#111">${r}</g><rect x="9" y="13" width="15" height="7" fill="#fff"/><text x="16.5" y="18.4" font-size="5" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="#c00">ДЕМО</text></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }

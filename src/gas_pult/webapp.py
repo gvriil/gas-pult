@@ -170,6 +170,7 @@ from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
+from gas_pult.messengers import panel as messengers_panel
 from gas_pult.openrouter import CALLBACK, OpenRouter
 from gas_pult.people import STAFF_ROLES, TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError
@@ -4663,6 +4664,8 @@ def handler(panel: Panel):
                 return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
                 return {"calendars": calkeys.status()}
+            if path == "/api/messengers":                 # «Мессенджеры»: состояние без секретов (messengers/panel.py)
+                return messengers_panel.get()
             if path == "/api/setup/status":
                 return panel.setup_status(q.get("fresh") == "1")
             if path == "/api/mcp":
@@ -5672,6 +5675,8 @@ def handler(panel: Panel):
                 return calkeys.save(str(b.get("kind", "")), b)
             if path == "/api/calendars/key/remove":
                 return calkeys.remove(str(b.get("kind", "")))
+            if path.startswith("/api/messengers/") and path in OWNER_ONLY:   # выбор, вход, QR, чаты, «Отключить»
+                return messengers_panel.post(path, b, self.terms_uid())
             if path == "/api/keys/remove":
                 panel.remove_key(str(b.get("provider", "")))
                 return {"ok": True}

@@ -6028,9 +6028,9 @@ function renderMcp() {
       ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${isOn(c) ? "подключено" : esc(c.about)}</small><small class="chip space">${esc(T("int.claude.chip"))}</small></button>`).join("")}
       <button class="tile" data-more="1"><span class="mono">${ic("plus")}</span><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
     </div>
-    <div id="calKeys"></div>
+    <div id="calKeys"></div><div id="msgKeys"></div>
     <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">${ic("refresh")}Обновить список</button>`;
-  if (meta?.role === "owner" && !FOCUS) paintCalKeys();              // «Календари»: секреты — полем, не в чат (js/calkeys.js)
+  if (meta?.role === "owner" && !FOCUS) { paintCalKeys(); part("messengers").then((m) => m.section($("msgKeys"))).catch(() => {}); }   // + «Мессенджеры» (js/messengers.js)
 }
 function paintCalKeys() { part("calkeys").then(async (m) => { const h = await m.calendarsSection(); if ($("calKeys")) $("calKeys").innerHTML = h; }).catch(() => {}); }
 $("integrationsView").addEventListener("click", (e) => {

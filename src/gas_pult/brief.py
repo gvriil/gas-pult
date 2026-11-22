@@ -29,7 +29,8 @@ from gas_pult import digest, store
 
 # id → подпись; «скоро» — видно на экране выбора, но не подключается
 SOURCES = {"mail": "Почта", "calendar": "Календарь", "linear": "Задачи Linear", "github": "GitHub",
-           "pult": "Пульт: окна, задачи, «Ждут «да»»", "apple": "Apple: почта и календарь iCloud"}
+           "pult": "Пульт: окна, задачи, «Ждут «да»»", "messengers": "Мессенджеры",
+           "apple": "Apple: почта и календарь iCloud"}
 SOON = {"apple"}
 MAX_ROWS = 6                                     # строк на блок: один экран телефона
 MAIL_MAX = 5
@@ -177,7 +178,12 @@ def available(cfg) -> dict:
         keys = calkeys.status()
     except Exception:
         keys = []
-    return {"boxes": boxes, "calendars": calendar_mcp.calendars(), "calkeys": keys,
+    try:                                        # мессенджеры «как пользователь» (messengers/): что подключено
+        from gas_pult import messengers
+        msg = [{"id": s, "title": messengers.TITLES[s]} for s in messengers.connected()]
+    except Exception:
+        msg = []
+    return {"boxes": boxes, "calendars": calendar_mcp.calendars(), "calkeys": keys, "messengers": msg,
             "linear": (_core.SECRETS_DIR / "linear.token").is_file(), "github": bool(getattr(cfg, "digest_github", ""))}
 
 
@@ -186,7 +192,7 @@ def chosen(prefs: dict, avail: dict) -> dict:
     if prefs.get("chosen"):
         return {"sources": list(prefs.get("sources") or []), "boxes": list(prefs.get("boxes") or []),
                 "calendars": list(prefs.get("calendars") or []), "chosen": True}
-    src = {"mail", "calendar", "pult"} | {k for k in ("github", "linear") if avail.get(k)}
+    src = {"mail", "calendar", "pult"} | {k for k in ("github", "linear", "messengers") if avail.get(k)}
     return {"sources": [s for s in SOURCES if s in src], "chosen": False,
             "boxes": [b["id"] for b in avail.get("boxes", []) if b["gmail"]],
             "calendars": list(avail.get("calendars", []))}
@@ -324,6 +330,23 @@ def linear(since: str, today: str, http=None) -> tuple[list[dict], list[dict]]:
     return rows(done), rows(late)
 
 
+# ---------- мессенджеры: входящие за сутки ----------
+def messenger_rows(since_ts: float, recent=None) -> tuple[list[dict], list[dict]]:
+    """Входящие мессенджеров (messengers.recent) → строки «Сегодня»: «14:05 · Анна: текст». Читает код, не модель."""
+    if recent is None:
+        from gas_pult.messengers import recent
+    items, status = recent(since_ts)
+    out = []
+    for x in sorted(items, key=lambda m: m.get("ts") or 0, reverse=True)[:MAX_ROWS * 2]:
+        t = datetime.fromtimestamp(float(x.get("ts") or 0))
+        who = x.get("from") or x.get("name") or "собеседник"
+        chat = x.get("name") if x.get("name") and x.get("name") != who else ""
+        title = {"telegram": "Telegram", "signal": "Signal", "whatsapp": "WhatsApp"}.get(x.get("svc"), "Мессенджер")
+        out.append(row(f"{t:%H:%M} · {who}: {digest.cut(str(x.get('text') or ''), 120)}",
+                       {"kind": "msg", "label": f"{title} · {chat or who}"}, at=t.strftime("%H:%M")))
+    return rows(out), status
+
+
 # ---------- задачи пульта ----------
 def pult_tasks(items: list[dict], since_ts: float, today: str) -> tuple[list[dict], list[dict]]:
     from gas_pult import tasks
@@ -437,6 +460,14 @@ def collect(cfg, *, sel: dict, digest_items: list[dict], tasks_list: list[dict],
             status.append({"id": "linear", "label": SOURCES["linear"], "state": "error", "note": str(e)[:200]})
     else:
         off("linear")
+    if "messengers" in src:
+        try:
+            r, st = messenger_rows((now - timedelta(days=1)).timestamp())
+            today += r
+            status += st or [{"id": "messengers", "label": SOURCES["messengers"], "state": "none",
+                              "note": "мессенджер не подключён — «Подключения» → «Мессенджеры»"}]
+        except Exception as e:                   # мост не ответил — брифинг без мессенджеров
+            status.append({"id": "messengers", "label": SOURCES["messengers"], "state": "error", "note": str(e)[:200]})
     if "pult" in src:
         d, f = pult_tasks(tasks_list, (now - timedelta(days=1)).timestamp(), day)
         done += d
