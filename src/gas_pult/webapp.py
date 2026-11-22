@@ -5637,7 +5637,10 @@ def handler(panel: Panel):
                 sid = str(b.get("id", ""))[:40]
                 panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
                 wid = str(b.get("w") or "")             # «добавь задачу» — только в чатах владельца (задачи — его)
-                win = next((x for x in panel.tmux.windows() if x["id"] == wid), None) if wid else None
+                try:                                    # без tmux (macOS в CI, сбой) — бейджик всё равно работает
+                    win = next((x for x in panel.tmux.windows() if x["id"] == wid), None) if wid else None
+                except OSError:
+                    win = None
                 return {"prompt": starters.prompt(sid, tasks=self.who()[1] == "owner" and not (win and in_space(win)))}
             if path == "/api/clientlog":                   # ошибка JS в браузере (GAS-31): тип, экран, место
                 panel.events.event("js_error", str(b.get("mid") or ""), kind=str(b.get("kind") or "")[:40],
