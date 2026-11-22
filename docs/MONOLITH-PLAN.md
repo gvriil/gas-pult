@@ -69,6 +69,10 @@
 | `bot/screens.py` | экраны бота, мастер, условия, страна, люди, вход, тестировщики, предложения | 800 |
 | `bot.py` остаётся | `Pult.__init__`, обработчики сообщений и кнопок (диспетчер) | ~500 |
 
+Пакет — `botparts/`, а не `bot/` (22.11): пакет `gas_pult/bot/` заслонил бы модуль `bot.py` (импорт `gas_pult.bot`
+нашёл бы пакет). Модули таблицы выше — `botparts/<имя>.py`; `bot.py` остаётся модулем и реэкспортирует старые имена.
+Граница — как у `panel/*`: `botparts/*` не импортируют ни `bot`, ни `webapp` (`tests/test_module_boundaries.py`).
+
 ### 3.4. Панель (`index.html`) — отдельный трек
 
 Ядро заполнено. Правило уже есть (решение 14.11, #191): части — `web/js/<имя>.js`. План: вынести самые большие
@@ -81,7 +85,10 @@
 2. ✓ `panel/clients.py` — верхний уровень 0010 (маленький, новый код — проще всего проверить подход) — 22.11:
    анкета (`anketa*`), «Что здесь умеет» (`about_text`), бейджики (`starters_for`).
 3. `panel/voice.py` и `bot/voice.py` (замкнутые области). ✓ `panel/voice.py` — 22.11 (вместе с шагом 2: голос,
-   карточки, распознавание, озвучка; `STT_*`, `brief`, `head_of` реэкспортирует `webapp`); `bot/voice.py` — дальше.
+   карточки, распознавание, озвучка; `STT_*`, `brief`, `head_of` реэкспортирует `webapp`); ✓ `botparts/voice.py` —
+   22.11: `say`, `el_voice_id`, `choose_voice`, `voice_preview`, `current_voice`, `voice_rows`, `voice_text`,
+   `show_voice`, `on_voice` → примесь `VoicePart` (138 строк, только перенос); распознавание входящего голоса осталось
+   в `on_message` (диспетчер).
 4. `panel/projects.py`, `panel/work.py`.
 5. `panel/sessions.py` (самый связанный — после того как подход проверен).
 6. `panel/spaces.py`, `panel/people.py`.
