@@ -26,7 +26,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import secrets
 import threading
@@ -34,8 +33,9 @@ import time
 import unicodedata
 from pathlib import Path
 
+from gas_pult import store as jstore
 from gas_pult import tenants
-from gas_pult.config import data_dir, write_private
+from gas_pult.config import data_dir
 
 TTL = 24 * 3600
 TTLS = {"1d": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "90d": 90 * 86400, "365d": 365 * 86400}
@@ -51,7 +51,6 @@ WORDS = ("RAKETA", "KASKAD", "VESNA", "ZVEZDA", "KAKTUS", "MAYAK", "PLANETA", "P
 TRANSLIT = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
                     ["A", "B", "V", "G", "D", "E", "E", "ZH", "Z", "I", "Y", "K", "L", "M", "N", "O", "P", "R", "S",
                      "T", "U", "F", "KH", "TS", "CH", "SH", "SCH", "", "Y", "", "E", "YU", "YA"], strict=True))
-_lock = threading.Lock()
 
 
 def store() -> Path:
@@ -63,15 +62,16 @@ def _h(code: str) -> str:
 
 
 def _load() -> dict:
-    try:
-        d = json.loads(store().read_text())
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return jstore.load(store())
 
 
 def _save(d: dict):
-    write_private(store(), json.dumps(d, ensure_ascii=False))
+    jstore.save(store(), d, ensure_ascii=False)
+
+
+def _locked():
+    """Бот и панель выпускают и гасят приглашения — разные процессы: замок файла (store.py)."""
+    return jstore.locked(store())
 
 
 def state(rec: dict, now: float | None = None) -> str:
@@ -130,7 +130,7 @@ def new(tenant: str, role: str = "member", ttl: int = TTL, by: int | None = None
     while (code := secrets.token_urlsafe(18)).startswith("-"):    # «-» в начале — CLI примет код за ключ (revoke)
         pass
     short, now = short_code(tenant), time.time()
-    with _lock:
+    with _locked():
         d = {k: v for k, v in _load().items() if now - v.get("exp", 0) < 30 * 86400}   # месяц после срока — чистим
         d[_h(code)] = {"tenant": tenant, "role": role, "created": int(now), "exp": int(now + ttl),
                        "hint": code[:HINT], "short": _h("s:" + norm_short(short)), "used": None, "revoked": False,
@@ -173,7 +173,7 @@ def check(code: str, short: bool = True) -> dict | None:
 def redeem(code: str, uid: int, bind: bool = False) -> dict | None:
     """Использовать приглашение (один раз — и ссылка, и короткий код): запись помечается, возвращается
     {tenant, role, title?, uid?}; иначе None."""
-    with _lock:
+    with _locked():
         d = _load()
         k = _find(d, code)
         rec = d.get(k) if k else None
@@ -196,7 +196,7 @@ def until_of(inv: dict, now: float | None = None) -> int | None:
 def drop_for(uid: int) -> int:
     """Отозвать все действующие ссылки для входа человека ``uid`` (его отключили). Возвращает, сколько."""
     n = 0
-    with _lock:
+    with _locked():
         d = _load()
         for v in d.values():
             if v.get("uid") == int(uid) and state(v) == "active":
@@ -211,7 +211,7 @@ def revoke(code_or_hint: str) -> str:
     x = str(code_or_hint or "").strip()
     if len(x) < HINT:
         raise ValueError(f"укажите код или хотя бы {HINT} первых знаков")
-    with _lock:
+    with _locked():
         d = _load()
         k = _find(d, x)                              # код ссылки или короткий код — точно; иначе первые знаки
         keys = [k] if k else [k for k, v in d.items() if v.get("hint") == x[:HINT]]

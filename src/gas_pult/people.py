@@ -47,16 +47,14 @@ dev, at}`` (``"done"`` — проходил, ``"dismissed"`` — «Не сейч
 
 from __future__ import annotations
 
-import json
 import secrets
 import sys
-import threading
 import time
 from pathlib import Path
 
 from gas_pult import country as geo
-from gas_pult import injection_guard, secrets_guard, tenants
-from gas_pult.config import data_dir, write_private
+from gas_pult import injection_guard, secrets_guard, store, tenants
+from gas_pult.config import data_dir
 from gas_pult.terms import VERSION as TERMS_VERSION
 
 ROLES = ("member", "viewer", "admin")
@@ -94,7 +92,8 @@ def has_telegram(uid) -> bool:
 
 class People:
     def __init__(self, store: Path, owners: list[int]):
-        self.store, self.owners, self.lock = store, list(owners), threading.Lock()
+        self.store, self.owners = store, list(owners)
+        # замок — один на people.json и файлы рядом (terms, countries…): бот и панель — разные процессы (store.py)
         self.terms_store = store.with_name("terms.json")      # согласие владельцев и тех, кого нет в people.json
         self.country_store = store.with_name("countries.json")   # их же страна (признаки — country.py)
         self.prefs_store = store.with_name("prefs.json")          # их же настройки панели (простой режим, язык)
@@ -104,25 +103,22 @@ class People:
         # «Человек» фокус-ссылки на пространство (focus.py, GAS-38): номер → {role, tenant} или None. Задаёт панель.
         self.virtual = None
 
+    def _locked(self):
+        """Чтение-изменение-запись people.json и файлов рядом: замок потоков и процессов (бот и панель)."""
+        return store.locked(self.store)
+
     def _load(self) -> dict:
-        try:
-            return json.loads(self.store.read_text())
-        except (OSError, ValueError):
-            return {}
+        return store.load(self.store)
 
     def _save(self, d: dict):
-        write_private(self.store, json.dumps(d, ensure_ascii=False))
+        store.save(self.store, d, ensure_ascii=False)
 
     def _load_terms(self) -> dict:
         return self._load_side(self.terms_store)
 
     @staticmethod
     def _load_side(f: Path) -> dict:
-        try:
-            d = json.loads(f.read_text())
-            return d if isinstance(d, dict) else {}
-        except (OSError, ValueError):
-            return {}
+        return store.load(f)
 
     def role(self, uid) -> str | None:
         """«owner», «member», «viewer» или None (нет доступа)."""
@@ -146,7 +142,7 @@ class People:
             raise ValueError("роль: участник, наблюдатель или админ")
         if int(uid) in self.owners:
             raise ValueError("это владелец — у него и так всё")
-        with self.lock:
+        with self._locked():
             d = self._load()
             old = d.get(str(int(uid))) or {}
             rec = {"role": role, "name": name[:60], "username": username[:40],
@@ -174,7 +170,7 @@ class People:
         if role not in ROLES:
             raise ValueError("роль: участник или наблюдатель")
         tenant = tenants.check_slug(tenant)
-        with self.lock:
+        with self._locked():
             d = self._load()
             while str(uid := GUEST_FLOOR - secrets.randbelow(10 ** 15)) in d:
                 pass
@@ -190,7 +186,7 @@ class People:
             key = str(int(uid))
         except (TypeError, ValueError):
             return
-        with self.lock:
+        with self._locked():
             d = self._load()
             if key in d:
                 d[key]["last"] = {"at": int(time.time()), "device": str(device or "")[:60]}
@@ -204,7 +200,7 @@ class People:
             raise ValueError("привязать можно только вход без Telegram")
         if tg_uid in self.owners:
             raise ValueError("это Telegram владельца пульта")
-        with self.lock:
+        with self._locked():
             d = self._load()
             if str(tg_uid) in d:
                 raise ValueError("этот Telegram уже есть в пульте — войдите через него")
@@ -233,7 +229,7 @@ class People:
 
     def remove(self, uid: int):
         """Отключить человека: роль и согласие удаляются, любой его вход перестаёт работать сразу."""
-        with self.lock:
+        with self._locked():
             d = self._load()
             if d.pop(str(int(uid)), None) is not None:
                 self._save(d)
@@ -241,19 +237,19 @@ class People:
                       self.ui_store):
                 t = self._load_side(f)
                 if t.pop(str(int(uid)), None) is not None:
-                    write_private(f, json.dumps(t))
+                    store.save(f, t)
 
     def accept(self, uid: int, version: str = TERMS_VERSION):
         """Человек принял условия версии ``version`` — запомнить с датой."""
         uid, rec = int(uid), {"version": version, "at": int(time.time())}
-        with self.lock:
+        with self._locked():
             d = self._load()
             if uid not in self.owners and str(uid) in d:
                 d[str(uid)]["terms"] = rec
                 return self._save(d)
             t = self._load_terms()
             t[str(uid)] = rec
-            write_private(self.terms_store, json.dumps(t))
+            store.save(self.terms_store, t)
 
     def terms(self, uid) -> dict | None:
         """Последнее согласие человека: {version, at} или None."""
@@ -283,7 +279,7 @@ class People:
         """Обновить признаки страны. Возвращает (запись, сказать ли владельцам): признаки разошлись впервые или
         набор стран при расхождении поменялся."""
         uid = int(uid)
-        with self.lock:
+        with self._locked():
             d = self._load()
             mine = uid not in self.owners and str(uid) in d
             side = {} if mine else self._load_side(self.country_store)
@@ -296,7 +292,7 @@ class People:
                 self._save(d)
             else:
                 side[str(uid)] = rec
-                write_private(self.country_store, json.dumps(side))
+                store.save(self.country_store, side)
         return rec, tell
 
     def prefs(self, uid) -> dict:
@@ -319,7 +315,7 @@ class People:
         if rate is not None and rate not in RATES:
             raise ValueError("скорость — 1, 1.25, 1.5 или 2")
         uid = int(uid)
-        with self.lock:
+        with self._locked():
             d = self._load()
             mine = uid not in self.owners and str(uid) in d
             side = {} if mine else self._load_side(self.prefs_store)
@@ -336,7 +332,7 @@ class People:
                 self._save(d)
             else:
                 side[str(uid)] = rec
-                write_private(self.prefs_store, json.dumps(side))
+                store.save(self.prefs_store, side)
         return {**rec, "rate": rec.get("rate", 1.0), "saved": True}
 
     def tour(self, uid) -> dict:
@@ -357,7 +353,7 @@ class People:
         if kind not in TOURS or state not in TOUR_STATES:
             raise ValueError("тур: business, dev или brief; отметка: done или dismissed")
         uid = int(uid)
-        with self.lock:
+        with self._locked():
             rec = {**self.tour(uid), kind: state, "at": int(time.time())}
             d = self._load()
             if uid not in self.owners and str(uid) in d:
@@ -366,7 +362,7 @@ class People:
             else:
                 side = self._load_side(self.tour_store)
                 side[str(uid)] = rec
-                write_private(self.tour_store, json.dumps(side))
+                store.save(self.tour_store, side)
         return rec
     def ui(self, uid) -> dict:
         """Вид панели человека (``personas.py``): {persona, added, hidden, onboarded}; нет — пустая запись."""
@@ -382,7 +378,7 @@ class People:
         """Сохранить вид панели целиком (запись готовит ``personas.change``)."""
         uid = int(uid)
         rec = {**{k: rec[k] for k in ("persona", "added", "hidden", "onboarded") if k in rec}, "at": int(time.time())}
-        with self.lock:
+        with self._locked():
             d = self._load()
             if uid not in self.owners and str(uid) in d:
                 d[str(uid)]["ui"] = rec
@@ -390,7 +386,7 @@ class People:
             else:
                 side = self._load_side(self.ui_store)
                 side[str(uid)] = rec
-                write_private(self.ui_store, json.dumps(side))
+                store.save(self.ui_store, side)
 
     def email(self, uid) -> dict:
         """Почта человека: {address, at, second_factor, notify} или пустая запись."""
@@ -407,7 +403,7 @@ class People:
         uid = int(uid)
         if not self.role(uid):
             raise ValueError("у этого человека нет доступа к пульту")
-        with self.lock:
+        with self._locked():
             d = self._load()
             mine = uid not in self.owners and str(uid) in d
             side = {} if mine else self._load_side(self.email_store)
@@ -429,7 +425,7 @@ class People:
                     side.pop(str(uid), None)
                 else:
                     side[str(uid)] = rec
-                write_private(self.email_store, json.dumps(side))
+                store.save(self.email_store, side)
 
     def by_email(self, addr: str) -> int | None:
         """Кому из людей с ролью принадлежит адрес (в нижнем регистре) — или None."""

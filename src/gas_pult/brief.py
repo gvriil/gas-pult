@@ -25,7 +25,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from gas_pult import digest
+from gas_pult import digest, store
 
 # id → подпись; «скоро» — видно на экране выбора, но не подключается
 SOURCES = {"mail": "Почта", "calendar": "Календарь", "linear": "Задачи Linear", "github": "GitHub",
@@ -119,25 +119,19 @@ class Prefs:
         self.path = path
 
     def _all(self) -> dict:
-        try:
-            d = json.loads(self.path.read_text())
-            return d if isinstance(d, dict) else {}
-        except (OSError, ValueError):
-            return {}
+        return store.load(self.path)
 
     def get(self, uid) -> dict:
         rec = self._all().get(str(uid))
         return rec if isinstance(rec, dict) else {}
 
     def _put(self, uid, **fields) -> dict:
-        d = self._all()
-        rec = {**(d.get(str(uid)) if isinstance(d.get(str(uid)), dict) else {}), **fields, "saved": int(time.time())}
-        d[str(uid)] = rec
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d, ensure_ascii=False))
-        tmp.chmod(0o600)
-        tmp.replace(self.path)
+        with store.locked(self.path):           # бот (отметка «отправлено») и панель (настройки) — разные процессы
+            d = self._all()
+            rec = {**(d.get(str(uid)) if isinstance(d.get(str(uid)), dict) else {}), **fields,
+                   "saved": int(time.time())}
+            d[str(uid)] = rec
+            store.save(self.path, d, ensure_ascii=False)
         return rec
 
     def set(self, uid, sources: list, boxes: list | None = None, calendars: list | None = None) -> dict:

@@ -28,6 +28,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from gas_pult import store
+
 PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com", "push.services.mozilla.com",
               ".push.apple.com", ".notify.windows.com")
 INBOX_MAX = 30
@@ -120,18 +122,17 @@ class Hub:
             return {}
 
     def _save(self, name: str, d: dict):
-        self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        f = self.dir / name
-        tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        tmp.replace(f)
+        """Атомарно, 0600 (store.save). Вызывать под ``self._locked(name)``: бот и панель пишут одни файлы."""
+        store.save(self.dir / name, d, ensure_ascii=False)
+
+    def _locked(self, name: str):
+        return store.locked(self.dir / name)
 
     def add(self, uid, sub: dict, label: str = "", origin: str = "") -> dict:
         ep = str((sub or {}).get("endpoint") or "")
         if not allowed_endpoint(ep):
             raise ValueError("адрес подписки не похож на службу уведомлений браузера")
-        with self.lock:
+        with self._locked("subs.json"):
             d = self._load("subs.json")
             mine = [x for x in d.get(str(uid), []) if x["endpoint"] != ep]
             rec = {"endpoint": ep, "label": (label or "Устройство")[:60], "origin": origin[:200],
@@ -141,7 +142,7 @@ class Hub:
         return {"id": ep_id(ep), "label": rec["label"]}
 
     def remove(self, uid, dev: str) -> bool:
-        with self.lock:
+        with self._locked("subs.json"):
             d = self._load("subs.json")
             was = d.get(str(uid), [])
             left = [x for x in was if ep_id(x["endpoint"]) != dev and x["endpoint"] != dev]
@@ -157,7 +158,7 @@ class Hub:
     def notify(self, uid, title: str, body: str = "", w: str = "", wait: bool = False) -> int:
         """Положить сообщение в ящик человека и разбудить все его устройства. Возвращает число устройств."""
         item = {"id": b64u(os.urandom(9)), "t": int(time.time()), "title": title[:120], "body": body[:300], "w": w}
-        with self.lock:
+        with self._locked("inbox.json"):
             box = self._load("inbox.json")
             box[str(uid)] = [*box.get(str(uid), []), item][-INBOX_MAX:]
             self._save("inbox.json", box)
@@ -173,7 +174,7 @@ class Hub:
     def _send_all(self, uid, subs: list[dict]):
         for s in subs:
             code = self.send(s)
-            with self.lock:
+            with self._locked("subs.json"):
                 d = self._load("subs.json")
                 cur = d.get(str(uid), [])
                 if code in (404, 410):                    # подписка устарела — убрать
@@ -205,7 +206,7 @@ class Hub:
     def pending(self, uid, dev: str = "") -> list[dict]:
         """Что показать устройству: свежие сообщения, которых это устройство ещё не забирало."""
         now = time.time()
-        with self.lock:
+        with self._locked("seen.json"):
             box = self._load("inbox.json").get(str(uid), [])
             seen = self._load("seen.json")
             k = f"{uid}:{dev}"

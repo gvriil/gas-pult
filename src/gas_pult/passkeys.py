@@ -30,12 +30,11 @@ import importlib
 import importlib.util
 import json
 import secrets
-import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 
-from gas_pult.config import write_private
+from gas_pult import store
 from gas_pult.emailcode import LimitError, log
 
 CHALLENGE_TTL = 300
@@ -77,7 +76,6 @@ def origins(section: dict) -> list[str]:
 class Passkeys:
     def __init__(self, section: dict | None, people, store: Path, clock: Callable[[], float] = time.time):
         self.section, self.people, self.store, self.clock = dict(section or {}), people, store, clock
-        self.lock = threading.Lock()
 
     # ---------- настройки ----------
     @property
@@ -97,10 +95,7 @@ class Passkeys:
 
     # ---------- файл ----------
     def _load(self) -> dict:
-        try:
-            d = json.loads(self.store.read_text())
-        except (OSError, ValueError):
-            d = {}
+        d = store.load(self.store)
         now = self.clock()
         return {"creds": d.get("creds") or {}, "handles": d.get("handles") or {},
                 "challenges": {k: v for k, v in (d.get("challenges") or {}).items() if v.get("exp", 0) > now},
@@ -108,7 +103,7 @@ class Passkeys:
 
     def _save(self, d: dict):
         d["starts"] = {k: v for k, v in d["starts"].items() if v}
-        write_private(self.store, json.dumps(d))
+        store.save(self.store, d)
 
     def _begin(self, d: dict, ip: str, kind: str, challenge: bytes, **extra) -> str:
         """Лимит по IP и новый одноразовый вызов; браузеру — только номер церемонии."""
@@ -142,7 +137,7 @@ class Passkeys:
         )
 
         uid = int(uid)
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             mine = [k for k, c in d["creds"].items() if c["uid"] == uid]
             if len(mine) >= MAX_KEYS:
@@ -168,7 +163,7 @@ class Passkeys:
         from webauthn.helpers.exceptions import InvalidRegistrationResponse
 
         uid = int(uid)
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             st = self._take(d, cid, "reg")
             self._save(d)                                         # вызов снят — повтор того же ответа не пройдёт
@@ -184,7 +179,7 @@ class Passkeys:
         cred_id = b64url(v.credential_id)
         resp = credential.get("response") if isinstance(credential, dict) else None
         transports = (resp.get("transports") if isinstance(resp, dict) else None) or []
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             if cred_id in d["creds"]:
                 raise ValueError("Этот ключ уже сохранён.")
@@ -206,7 +201,7 @@ class Passkeys:
 
         opts = wa.generate_authentication_options(
             rp_id=self.rp_id, user_verification=UserVerificationRequirement.REQUIRED, timeout=CHALLENGE_TTL * 1000)
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             cid = self._begin(d, ip, "auth", opts.challenge)
             self._save(d)
@@ -217,7 +212,7 @@ class Passkeys:
         wa = _wa()
         from webauthn.helpers.exceptions import InvalidAuthenticationResponse
 
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             st = self._take(d, cid, "auth")
             self._save(d)
@@ -242,7 +237,7 @@ class Passkeys:
         except (InvalidAuthenticationResponse, KeyError, TypeError, ValueError) as e:
             log("passkey_login_failed", uid=stored["uid"], ip=ip, why=type(e).__name__)
             raise ValueError("Не удалось войти по ключу.") from None
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             if key in d["creds"]:
                 d["creds"][key].update(sign_count=int(v.new_sign_count), last_used=int(self.clock()))
@@ -257,7 +252,7 @@ class Passkeys:
                        for k, c in d["creds"].items() if c["uid"] == int(uid)), key=lambda x: x["created"])
 
     def remove(self, uid, cred_id: str) -> list[dict]:
-        with self.lock:
+        with store.locked(self.store):
             d = self._load()
             c = d["creds"].get(str(cred_id))
             if not c or c["uid"] != int(uid):

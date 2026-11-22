@@ -33,13 +33,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import secrets
-import threading
 import time
 from pathlib import Path
 
-from gas_pult.config import write_private
+from gas_pult import store as jstore
 
 TTL = 7 * 86400                         # не дольше недели, даже если сессию не завершили
 COOKIE = "gp_focus"
@@ -98,17 +96,17 @@ class Wait(Exception):
 
 class Focus:
     def __init__(self, store: Path):
-        self.store, self.lock = store, threading.Lock()
+        self.store = store
+
+    def _locked(self):
+        """Чтение-изменение-запись focus.json: замок потоков и процессов — бот гасит ссылки, панель их выпускает."""
+        return jstore.locked(self.store)
 
     def _load(self) -> dict:
-        try:
-            d = json.loads(self.store.read_text())
-            return d if isinstance(d, dict) else {}
-        except (OSError, ValueError):
-            return {}
+        return jstore.load(self.store)
 
     def _save(self, d: dict):
-        write_private(self.store, json.dumps(d, ensure_ascii=False))
+        jstore.save(self.store, d, ensure_ascii=False)
 
     @staticmethod
     def live(rec: dict, now: float | None = None) -> bool:
@@ -133,7 +131,7 @@ class Focus:
         token, rid, now = secrets.token_urlsafe(32), secrets.token_hex(6), time.time()
         forever = mode == SPACE and not ttl
         ttl = FOREVER if forever else ttl
-        with self.lock:
+        with self._locked():
             d = {k: v for k, v in self._load().items() if self.live(v, now) or now - v.get("ended", now) < KEEP}
             d[rid] = {"h": _h(token), "w": w["id"], "path": w.get("path", ""), "name": w.get("name", ""),
                       **({"proj": proj} if proj else {}),
@@ -165,7 +163,7 @@ class Focus:
     def open(self, token: str, cookie: str, device: str = "") -> tuple[str, dict]:
         """Открыть ссылку: первое открытие привязывает устройство — (значение cookie, запись). Уже привязана — только
         к тому же устройству (cookie совпадает). Иначе ``Gone`` с объяснением."""
-        with self.lock:
+        with self._locked():
             d = self._load()
             k = self._by_token(d, token)
             if not k:
@@ -260,7 +258,7 @@ class Focus:
         return "Срок фокус-ссылки вышел — попросите новую."
 
     def end(self, rid: str, state: str = "closed") -> bool:
-        with self.lock:
+        with self._locked():
             d = self._load()
             rec = d.get(rid)
             if not rec or not self.live(rec):
@@ -271,7 +269,7 @@ class Focus:
 
     def end_window(self, wid: str) -> int:
         """Сессию завершили — гасим все её ссылки сразу."""
-        with self.lock:
+        with self._locked():
             d, n = self._load(), 0
             for rec in d.values():
                 if wid and rec.get("w") == wid and not rec.get("proj") and self.live(rec):
@@ -283,7 +281,7 @@ class Focus:
 
     def move(self, old: str, new: str) -> int:
         """Сессию перезапустили (модель, поставщик) — окно новое, разговор тот же: ссылки переходят на него."""
-        with self.lock:
+        with self._locked():
             d, n = self._load(), 0
             for rec in d.values():
                 if old and rec.get("w") == old and not rec.get("proj") and self.live(rec):
@@ -295,7 +293,7 @@ class Focus:
 
     def set_browser(self, rid: str, on: bool) -> bool:
         """Разрешить (или запретить) фокус-пользователю подключить свой браузер (владелец 17.11)."""
-        with self.lock:
+        with self._locked():
             d = self._load()
             rec = d.get(str(rid or ""))
             if not rec or not self.live(rec) or self.is_demo(rec) or rec.get("mode") in (SPACE, MEETING):
