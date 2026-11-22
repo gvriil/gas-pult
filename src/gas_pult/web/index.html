@@ -2354,6 +2354,8 @@ async function api(path, body, raw, extra, signal) {
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
+    // значок с экрана «Домой», поставленный до 22.11, открывает «/», а на устройстве — cookie фокуса: сразу в фокус
+    if (r.status === 403 && err.code === "focus_scope" && !FOCUS && !SLINK) { location.replace("/?focus"); return new Promise(() => {}); }
     if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
     if (r.status === 403 && err.code === "country") showCountry();  // страна ещё не выбрана
     if (r.status === 403 && err.confirm === "code") { await confirmCode(); return api(path, body, raw, extra, signal); }

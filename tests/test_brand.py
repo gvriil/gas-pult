@@ -33,3 +33,8 @@ def test_focus_manifest_opens_focus():
     assert m["start_url"] == m["id"] == "/?focus" and m["scope"] == "/" and "share_target" not in m
     assert brand.manifest()["start_url"] == "/"
     assert '"/manifest.webmanifest?focus"' in INDEX and 'if (FOCUS) document.querySelector' in INDEX
+
+
+def test_old_home_icon_redirects_to_focus():
+    """Значок, поставленный до исправления, открывает «/»: ответ focus_scope ведёт в фокус (скриншот владельца 22.11)."""
+    assert 'err.code === "focus_scope" && !FOCUS && !SLINK) { location.replace("/?focus")' in INDEX
