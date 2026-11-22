@@ -60,7 +60,7 @@ function body(v) {
   const done = added(v.id);
   const text = v.md ? md(noTitle(v.actions?.length ? noActions(v.md) : v.md)) : v.transcript ? `<p class="note">Протокол ещё готовится — пока видна расшифровка.</p><pre class="mt-tr">${esc(v.transcript)}</pre>` : `<p class="note">Протокол ещё готовится.</p>`;
   return `<header class="mt-head"><h2 class="serif">${esc(v.title)}</h2><p class="mt-sub">${esc(sub(v))}</p>${v.gist && v.gist !== v.title ? `<p class="mt-gist">${esc(v.gist)}</p>` : ""}</header>
-    ${PUB ? "" : `<div class="mt-tools"><button class="btn ghost" type="button" data-card>${ic("image", "s16")}Карточка</button><button class="btn ghost" type="button" data-share>${ic("link", "s16")}Ссылка на протокол</button></div>`}
+    ${PUB ? "" : `<div class="mt-tools"><button class="btn ghost" type="button" data-card>${ic("image", "s16")}Карточка</button><button class="btn ghost" type="button" data-share>${ic("qr", "s16")}Ссылка на протокол</button></div>`}
     ${v.audio ? `<section class="mt-player" aria-label="Запись"><button class="btn" type="button" data-listen>${ic("play", "s16")}<span>Слушать запись</span></button><audio controls preload="metadata" hidden></audio></section>` : ""}
     ${v.chapters?.length ? `<section class="mt-sec"><h3>Оглавление</h3><ol class="mt-ch">${v.chapters.map((c, i) => `<li><button type="button" data-ch="${i}"${v.audio ? "" : " disabled"}><time>${esc(clock(c.start))}</time><span>${esc(c.topic)}</span>${c.end ? `<small>${esc(mins(c.end - c.start))}</small>` : ""}</button></li>`).join("")}</ol>${v.audio ? "" : `<p class="note">Записи нет — только текст.</p>`}</section>` : ""}
     <section class="mt-sec mt-md md">${text}</section>
