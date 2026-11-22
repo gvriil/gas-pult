@@ -179,8 +179,10 @@ if __name__ == "__main__":
 | 2 | Нажать «Разрешить» в Chrome агента (CDP) — только для уже разрешённых прав | сделано (`relogin.py`) |
 | 3 | Подставить логин и пароль из базы `connectors.kdbx` | код есть; список сервисов пуст — ни один не проверен |
 
-Точка расширения — `connwatch.relogin(conn, approved) -> Result`; работу делает `relogin.run`. Выключить —
-`relogin = false` в `~/.config/gas-pult/connwatch.toml`.
+Точка расширения — `connwatch.relogin(conn, approved) -> Result`; работу делает `relogin.run`. **По умолчанию
+выключен**: `claude mcp login` перед входом стирает старые токены коннектора, поэтому автовход включается
+(`relogin = true` в `~/.config/gas-pult/connwatch.toml`) только после живой проверки на сервере. Выключен — сторож
+работает как в фазе 1: квитанция и задача «Ждут вас».
 
 ### Что проверяется
 

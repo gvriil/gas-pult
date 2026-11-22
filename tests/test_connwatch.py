@@ -135,9 +135,8 @@ def test_ok_needs_auth_ok_one_task_one_receipt(tmp_path):
     p.fail_tick(clock[0])
     assert len(p.sent) == 2 and "снова на связи" in p.sent[1]
     evs = [json.loads(x) for x in (tmp_path / "chat-events.jsonl").read_text().splitlines()]
-    assert [e["ev"] for e in evs] == ["connector_relogin", "connector_down", "connector_up"]
-    assert evs[0]["result"] == "failed" and "браузер агента" in evs[0]["reason"]   # тестам Chrome недоступен
-    assert set(evs[1]) == {"ts", "ev", "harness", "name", "state"}       # без текстов ошибок
+    assert [e["ev"] for e in evs] == ["connector_down", "connector_up"]                # автовход выключен по умолчанию
+    assert set(evs[0]) == {"ts", "ev", "harness", "name", "state"}       # без текстов ошибок
     clock[0] += 1800                                                     # снова отвалился — новая задача
     w.run(conn("failed"), pats)
     ts = open_tasks(tmp_path)

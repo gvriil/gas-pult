@@ -225,12 +225,13 @@ def hint(c: dict) -> str:
 
 
 def enabled(cfg_dir: Path | None = None) -> bool:
-    """Автовход включён, пока в ``connwatch.toml`` нет ``relogin = false``."""
+    """Автовход выключен, пока в ``connwatch.toml`` нет ``relogin = true``: ``claude mcp login`` стирает старые токены
+    коннектора, поэтому включается только после живой проверки на сервере (22.11)."""
     try:
         raw = tomllib.loads((Path(cfg_dir or config.config_dir()) / "connwatch.toml").read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         raw = {}
-    return raw.get("relogin", True) is not False
+    return raw.get("relogin", False) is True
 
 
 def relogin(c: dict, approved: dict | None = None) -> Result:
@@ -238,7 +239,7 @@ def relogin(c: dict, approved: dict | None = None) -> Result:
     отпечатке ``approved``. Обход 2FA и капчи, пароли Google и Telegram — никогда."""
     if c.get("state") != "needs_auth" or not enabled():
         return Result(False, "автовход не пробовали: " + ("сервер не запускается" if c.get("state") != "needs_auth"
-                                                          else "выключен (relogin = false)"), hint(c))
+                                                          else "выключен (включить: relogin = true)"), hint(c))
     from gas_pult import relogin as rl
 
     return rl.run(c, approved)
