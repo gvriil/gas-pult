@@ -35,6 +35,19 @@ jobs:
       - name: shellcheck install.sh, bin/pult-tenant-setup
         run: shellcheck install.sh bin/pult-tenant-setup
 
+  # «4 правила» (docs/FOUR-RULES.md): ключевые тесты, сверка API, деньги без float. ПРЕДУПРЕЖДЕНИЕ — ход работ, не
+  # ломает; ОШИБКА — правило нарушено, задание красное.
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: python tools/four_rules.py
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -98,7 +111,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint, test, passkeys, browser]
+    needs: [lint, rules, test, passkeys, browser]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
