@@ -73,6 +73,13 @@ CONFIRM |= {"/api/desktop/mobile"}
 DESK_TABS = ("/api/desktop/tabs", "/api/desktop/tabs/shot", "/api/desktop/tabs/act")
 OWNER_ONLY |= set(DESK_TABS)
 CONFIRM |= set(DESK_TABS)
+# Платежи (billing/, владелец 22.11: «не экономим на безопасности платежей») — только владельцу; изменения — после
+# кода подтверждения. Список путей совпадает с ``billing.api.PATHS`` (тест test_billing_boundary).
+BILLING_GET = ("/api/billing/plans", "/api/billing/invoices", "/api/billing/invoice")
+BILLING_POST = ("/api/billing/plan", "/api/billing/invoice/new", "/api/billing/invoice/issue",
+                "/api/billing/invoice/pay", "/api/billing/invoice/void")
+OWNER_ONLY |= {*BILLING_GET, *BILLING_POST}
+CONFIRM |= set(BILLING_POST)
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
 PERSONA = "/api/persona"

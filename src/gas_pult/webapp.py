@@ -164,6 +164,7 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     TTY,
     USES,
 )
+from gas_pult.billing import api as billing_api  # платежи (billing/): панель знает только billing.api
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space
 from gas_pult.config import Config
@@ -4477,6 +4478,8 @@ def handler(panel: Panel):
                 self.dispatch(lambda: self.get(url.path, q))
 
         def get(self, path: str, q: dict):
+            if path in billing_api.GET:                 # платежи (billing/, 22.11): права — access.BILLING_GET
+                return billing_api.get(panel.cfg.data, path, q)
             if path == "/api/sessions":
                 pool = self.pool()
                 if self.space():                          # тестировщик: без имени сервера и событий владельца
@@ -5470,6 +5473,8 @@ def handler(panel: Panel):
                                         cloud=not self.space())
             if path == "/api/rec/drop":                    # «Отменить запись»: куски — прочь
                 return {"ok": panel.recparts.drop(self.rec_owner(), str(b.get("id", "")))}
+            if path in billing_api.POST:                # платежи (billing/, 22.11): владелец + код подтверждения
+                return billing_api.post(panel.cfg.data, path, b, actor=f"owner:{self.terms_uid()}")
             if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
                 return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
             if path == "/api/share/devices/new":           # токен «Быстрой команды»: показываем один раз
