@@ -9,7 +9,8 @@ DOCS = Path(__file__).resolve().parents[1] / "docs"
 
 
 def test_every_route_described_and_back():
-    code, descr = set(api_spec.scan()), set(api_spec.DESCR)
+    code = {p for p, r in api_spec.scan().items() if not r.get("v1")}   # /api/v1/… — описание исходного пути
+    descr = set(api_spec.DESCR)
     assert not code - descr, "новые пути без описания — допишите api_spec.DESCR: " + ", ".join(sorted(code - descr))
     assert not descr - code, "описаны пути, которых в коде нет — уберите из DESCR: " + ", ".join(sorted(descr - code))
 
@@ -18,10 +19,12 @@ def test_access_tables_name_real_routes():
     """Каждый путь из таблиц прав — настоящий маршрут (таблица не держит мёртвых строк)."""
     named = set(personas.PATH_CAP)
     for v in vars(access).values():
-        if isinstance(v, str) and v.startswith("/api/"):
+        if isinstance(v, str) and v.startswith("/api/") and not v.endswith("/"):   # V1_PREFIX — префикс, не путь
             named.add(v)
         elif isinstance(v, (set, tuple, frozenset)) and all(isinstance(x, str) for x in v):
             named |= {x for x in v if x.startswith("/api/")}
+        elif isinstance(v, dict) and all(isinstance(x, tuple) for x in v.values()):    # V1_GET / V1_POST: группа → пути
+            named |= {x for xs in v.values() for x in xs}
     assert named - set(api_spec.scan()) == set()
 
 
@@ -51,6 +54,10 @@ def test_roles_follow_access_tables():
     assert es["/api/focus/bridge/pair", "POST"]["role"] == "focus"
     assert es["/api/q/{code}", "GET"]["role"] == "open" and es["/api/q/list", "GET"]["role"] == "owner"
     assert es["/api/login/oidc/{provider}/{step}", "GET"]["role"] == "open"
+    assert es["/api/v1/sessions", "GET"]["role"] == "token" and "v1:sessions" in es["/api/v1/sessions", "GET"]["tags"]
+    assert es["/api/v1/send", "POST"]["role"] == "token" and "/api/send" in es["/api/v1/send", "POST"]["summary"]
+    tok = es["/api/apitokens/new", "POST"]
+    assert tok["role"] == "member" and "SLINK_NO" in tok["tags"]
     assert es["/api/history", "GET"]["in"][:2] == ["w", "before"]  # окно сессии — из общего w = self.win(…)
 
 

@@ -2,7 +2,7 @@
 
 <!-- Файл собран генератором: python -m gas_pult.api_spec. Руками не править — правьте src/gas_pult/api_spec.py (описания) или webapp.py (маршруты) и перезапустите генератор. -->
 
-Путей: **274**, пар «путь + метод»: **287**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
+Путей: **290**, пар «путь + метод»: **303**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
 
 Все пути — под адресом панели, ответы — JSON (кроме отмеченных). Ошибка — `{"error": "…", "code": …}` с кодом HTTP: 401 — нужен вход, 403 — не хватает прав (`code`: `terms`, `space`, `focus_scope`, `confirm`, `cap`, `dev`, `budget`), 404 — нет метода, 409/410 — конфликт или ссылка погасла, 429 — лимит.
 
@@ -18,6 +18,7 @@
 | любой вошедший | чтение и личные настройки — и наблюдателю |
 | без входа | обрабатывается до проверки входа: свой код, токен или подпись (вход, приглашение, мост, анкета) |
 | только по фокус-ссылке | путь есть только в режиме фокуса (`focus_do`); обычной панели — 404 |
+| по токену | `/api/v1/…`: Bearer-токен из «Токены для 1С и CRM», путь — из белого списка `access.V1_*` |
 
 Метки:
 
@@ -35,6 +36,8 @@
 | `DEMO` | по демо-ссылке (просмотр и выбор вариантов) |
 | `MEETING` | по ссылке на протокол встречи (только её протокол) |
 | `cap:…` | потолок возможностей человека (personas.PATH_CAP) |
+| `V1` | псевдоним `/api/<путь>` для 1С и CRM: `Authorization: Bearer`, права выпустившего; запись — у токена с «запись» (docs/API-V1.md) |
+| `v1:…` | группа прав токена (`access.V1_GET` / `access.V1_POST`) |
 
 ## Сессии и чат
 
@@ -407,3 +410,24 @@
 | `/api/q/{code}` | GET | без входа | — | Анкета по личному коду: форма и черновик | — | `form`, `draft`, `sent` |
 | `/api/q/{code}/save` | POST | без входа | — | Анкета: сохранить черновик | `answers` | `ok` |
 | `/api/q/{code}/submit` | POST | без входа | — | Анкета: отправить | `answers` | — |
+
+## API v1 для 1С и CRM
+
+| Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
+|---|---|---|---|---|---|---|
+| `/api/apitokens` | GET | любой вошедший | `SPACE_OK`, `SLINK_NO` | Свои токены для 1С и CRM (без значений), условия и группы прав | — | `tokens`, `terms`, `groups` |
+| `/api/apitokens/new` | POST | участник и выше | `SPACE_OK`, `SLINK_NO` | Новый токен: показывается один раз; группы прав, «запись», срок | `name`, `write`, `days`, `groups` | — |
+| `/api/apitokens/revoke` | POST | участник и выше | `SPACE_OK`, `SLINK_NO` | Отозвать свой токен | `id` | — |
+| `/api/v1/activity` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/activity` — Строка статуса чата: что агент делает сейчас (белый список `access.V1_*`, docs/API-V1.md) | `w` | — |
+| `/api/v1/drafts` | GET | по токену | `V1`, `v1:drafts` | По токену: `/api/drafts` — Черновики действий коннекторов: «Ждут вашего Да» (белый список `access.V1_*`, docs/API-V1.md) | — | `drafts` |
+| `/api/v1/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше) (белый список `access.V1_*`, docs/API-V1.md) | `w`, `before`, `rev` | `same`, `rev`, `items`, `more` |
+| `/api/v1/last` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/last` — Последний ответ агента текстом (для «Скопировать» и озвучки) (белый список `access.V1_*`, docs/API-V1.md) | `w` | `text` |
+| `/api/v1/project` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project` — Карточка проекта: папка, сессии, инструкции (белый список `access.V1_*`, docs/API-V1.md) | `id` | — |
+| `/api/v1/project/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project/history` — Переписка завершённого чата — без окна (белый список `access.V1_*`, docs/API-V1.md) | `before`, `id`, `sid` | — |
+| `/api/v1/project/sessions` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project/sessions` — Завершённые чаты проекта (журналы без окна), страницами (белый список `access.V1_*`, docs/API-V1.md) | `before`, `id`, `q` | — |
+| `/api/v1/projects` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/projects` — «Проекты» для главной: проекты, порядок, сессии, лимиты — одним запросом (белый список `access.V1_*`, docs/API-V1.md) | `archived`, `q` | `projects`, `order`, `sessions`, `now`, `host`, `build`, `limits`, `tasks`, `new_root`, `cost`, `fallback`, `space`, `space_projects` |
+| `/api/v1/send` | POST | по токену | `V1`, `v1:send` | По токену: `/api/send` — Отправить текст в сессию; повтор того же текста — `dup` (белый список `access.V1_*`, docs/API-V1.md) | `text`, `w`, `id` | `ok`, `dup` |
+| `/api/v1/sessions` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/sessions` — Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи (белый список `access.V1_*`, docs/API-V1.md) | — | `sessions`, `host`, `build`, `now`, `cost`, `fallback`, `space`, `limits`, `tasks`, `focus` |
+| `/api/v1/tasks` | GET | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks` — Задачи владельца (#203); не менялись — 304 без тела (белый список `access.V1_*`, docs/API-V1.md) | — | — |
+| `/api/v1/tasks/add` | POST | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks/add` — Добавить задачу руками (белый список `access.V1_*`, docs/API-V1.md) | — | — |
+| `/api/v1/tasks/update` | POST | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks/update` — Статус, «что дальше» и поля задачи (белый список `access.V1_*`, docs/API-V1.md) | `id` | — |

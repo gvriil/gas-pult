@@ -12,6 +12,11 @@
     "in": "cookie",
     "name": "gp_session",
     "description": "Сессия браузера; в Mini App — подпись Telegram"
+   },
+   "bearer": {
+    "type": "http",
+    "scheme": "bearer",
+    "description": "Токен для 1С и CRM (/api/v1, docs/API-V1.md)"
    }
   },
   "responses": {
@@ -113,6 +118,146 @@
       }
      }
     ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/apitokens": {
+   "get": {
+    "summary": "Свои токены для 1С и CRM (без значений), условия и группы прав",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_apitokens",
+    "x-access": {
+     "role": "viewer",
+     "tags": [
+      "SPACE_OK",
+      "SLINK_NO"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "tokens": {},
+          "terms": {},
+          "groups": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/apitokens/new": {
+   "post": {
+    "summary": "Новый токен: показывается один раз; группы прав, «запись», срок",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "post_apitokens_new",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "SLINK_NO"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {},
+         "write": {},
+         "days": {},
+         "groups": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/apitokens/revoke": {
+   "post": {
+    "summary": "Отозвать свой токен",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "post_apitokens_revoke",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "SLINK_NO"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {}
+        }
+       }
+      }
+     }
+    },
     "responses": {
      "200": {
       "description": "успех",
@@ -12755,6 +12900,655 @@
          "properties": {
           "n": {}
          }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/activity": {
+   "get": {
+    "summary": "По токену: `/api/activity` — Строка статуса чата: что агент делает сейчас (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_activity",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "w",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/drafts": {
+   "get": {
+    "summary": "По токену: `/api/drafts` — Черновики действий коннекторов: «Ждут вашего Да» (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_drafts",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:drafts"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "drafts": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/history": {
+   "get": {
+    "summary": "По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше) (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_history",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "w",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "before",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "rev",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "same": {},
+          "rev": {},
+          "items": {},
+          "more": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/last": {
+   "get": {
+    "summary": "По токену: `/api/last` — Последний ответ агента текстом (для «Скопировать» и озвучки) (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_last",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "w",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "text": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/project": {
+   "get": {
+    "summary": "По токену: `/api/project` — Карточка проекта: папка, сессии, инструкции (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_project",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/project/history": {
+   "get": {
+    "summary": "По токену: `/api/project/history` — Переписка завершённого чата — без окна (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_project_history",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "before",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "sid",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/project/sessions": {
+   "get": {
+    "summary": "По токену: `/api/project/sessions` — Завершённые чаты проекта (журналы без окна), страницами (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_project_sessions",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "before",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/projects": {
+   "get": {
+    "summary": "По токену: `/api/projects` — «Проекты» для главной: проекты, порядок, сессии, лимиты — одним запросом (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_projects",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "archived",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "projects": {},
+          "order": {},
+          "sessions": {},
+          "now": {},
+          "host": {},
+          "build": {},
+          "limits": {},
+          "tasks": {},
+          "new_root": {},
+          "cost": {},
+          "fallback": {},
+          "space": {},
+          "space_projects": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/send": {
+   "post": {
+    "summary": "По токену: `/api/send` — Отправить текст в сессию; повтор того же текста — `dup` (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "post_v1_send",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:send"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "text": {},
+         "w": {},
+         "id": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "ok": {},
+          "dup": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/sessions": {
+   "get": {
+    "summary": "По токену: `/api/sessions` — Список сессий (окна tmux) для главной: статус, расход, лимиты (владельцу), задачи (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_sessions",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:sessions"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "sessions": {},
+          "host": {},
+          "build": {},
+          "now": {},
+          "cost": {},
+          "fallback": {},
+          "space": {},
+          "limits": {},
+          "tasks": {},
+          "focus": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/tasks": {
+   "get": {
+    "summary": "По токену: `/api/tasks` — Задачи владельца (#203); не менялись — 304 без тела (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "get_v1_tasks",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:tasks"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/tasks/add": {
+   "post": {
+    "summary": "По токену: `/api/tasks/add` — Добавить задачу руками (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "post_v1_tasks_add",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:tasks"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
+  "/api/v1/tasks/update": {
+   "post": {
+    "summary": "По токену: `/api/tasks/update` — Статус, «что дальше» и поля задачи (белый список `access.V1_*`, docs/API-V1.md)",
+    "tags": [
+     "API v1 для 1С и CRM"
+    ],
+    "operationId": "post_v1_tasks_update",
+    "x-access": {
+     "role": "token",
+     "tags": [
+      "V1",
+      "v1:tasks"
+     ]
+    },
+    "security": [
+     {
+      "bearer": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
         }
        }
       }
