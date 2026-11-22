@@ -203,19 +203,23 @@ function demoRepos(key, path, body) {             // задача 43: списо
     { full: "gvriil/gas-pult", private: false, about: "Telegram-пульт и панель для сессий Claude Code" }, { full: "gvriil/gas-pult-docs", private: false, about: "Документация" },
     { full: "gvriil/shop-bot", private: true, about: "Бот магазина" }, { full: "gvriil/gastech-digest", private: true, about: "" }] }), 400));
 }
-// Расход по ценам API (/api/spend, js/spend.js): часы — до текущего, проекты — доли итога; 7 дней — по дням
+// Расход владельца за сегодня (usage.py) — одно число в меню, на главной, в листе «Расход» и на экране расхода (22.11)
+const DEMO_TODAY = { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", estimate: true, pending: 0 };
+// Расход по ценам API (/api/spend, js/spend.js): часы — до прошлого полного (сводка раз в час), их сумма не больше
+// DEMO_TODAY; проекты — доли итога; 7 дней — по дням; live — итог дня, как в /api/sessions
 function demoSpend(path) {
   const p = new URLSearchParams(path.split("?")[1] || "").get("period") || "today", now = new Date(), iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const W = [0, 0, 0, 0, 0, 0, 0, 0, 0.4, 1.9, 3.1, 2.6, 1.2, 2.2, 4.8, 3.9, 2.7, 1.5, 0.9, 1.4, 2.1, 0.8, 0.3, 0];
+  const W = [0, 0, 0, 0, 0, 0, 0, 0, 0.11, 0.53, 0.87, 0.73, 0.34, 0.62, 1.34, 1.09, 0.76, 0.42, 0.25, 0.39, 0.59, 0.22, 0.08, 0];
   const last = p === "today" ? Math.max(now.getHours() - 1, 16) : 23, k = p === "yesterday" ? 0.8 : 1;
   const hours = W.map((v, h) => ({ h, usd: h <= last ? Math.round(v * k * 100) / 100 : 0 }));
   const dd = (i) => { const d = new Date(now); d.setDate(d.getDate() - i); return d; };
-  const days = [31.2, 18.4, 26.9, 12.1, 9.6, 24.3, 0].map((v, i) => ({ date: iso(dd(6 - i)), usd: i === 6 ? Math.round(hours.reduce((a, x) => a + x.usd, 0) * 100) / 100 : v }));
+  const days = [8.7, 5.2, 7.5, 3.4, 2.7, 6.8, 0].map((v, i) => ({ date: iso(dd(6 - i)), usd: i === 6 ? Math.round(hours.reduce((a, x) => a + x.usd, 0) * 100) / 100 : v }));
   const total = Math.round((p === "7d" ? days : hours).reduce((a, x) => a + x.usd, 0) * 100) / 100;
   const SH = [["shtab", 0.41], ["gas-pult", 0.27], ["shop", 0.14], ["books", 0.09], ["news", 0.06], ["прочее", 0.03]];
   const from = p === "7d" ? dd(6) : p === "yesterday" ? dd(1) : now;
   return Promise.resolve({ period: p, total, updated: Math.floor(now.setMinutes(1, 0, 0) / 1000), from: iso(from), to: iso(p === "yesterday" ? dd(1) : new Date()),
-    projects: total ? SH.map(([name, f]) => ({ name, usd: Math.round(total * f * 100) / 100 })) : [], ...(p === "7d" ? { days } : { hours }) });
+    projects: total ? SH.map(([name, f]) => ({ name, usd: Math.round(total * f * 100) / 100 })) : [], ...(p === "7d" ? { days } : { hours }),
+    ...(p === "today" ? { live: DEMO_TODAY } : {}) });
 }
 function demoApi(path, body) {
   // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
@@ -290,7 +294,7 @@ function demoApi(path, body) {
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Подключения» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
     "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, tasks: demoTaskCount(), limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", notify: x.status === "stopped" ? "" : (demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit" ? demoApi.nl[x.id] : "all"), notify_own: !!demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
-      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
+      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? DEMO_TODAY
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
     "/api/cost/limits": { limits: demoApi.lim, paused: {}, prices_checked: "2026-11-02" },

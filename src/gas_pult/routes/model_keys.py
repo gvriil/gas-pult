@@ -49,8 +49,14 @@ def cost_limits(self, q: dict):
 
 
 def spend_get(self, q: dict):
-    """GET /api/spend — расход по ценам API за период (spend.py) — только владельцу"""
-    return spend.summary(q.get("period", "today"))
+    """GET /api/spend — расход по ценам API за период (spend.py) — только владельцу. За сегодня добавлено (22.11)
+    ``live`` — итог дня пула владельца из журналов (``Panel.cost_summary`` → ``usage.Meter.day``): то же число, что в
+    меню и на главной. Почасовая сводка (``total``, ``hours``, ``projects``) отстаёт до часа — её итог не «сегодня»."""
+    period = q.get("period", "today")
+    out = spend.summary(period)
+    if period == "today":
+        out["live"] = self.panel.cost_summary("owner")["today"]
+    return out
 
 
 def providers_get(self, q: dict):

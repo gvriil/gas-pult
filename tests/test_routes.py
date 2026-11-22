@@ -75,6 +75,7 @@ def srv(monkeypatch, tmp_path):
         return {"ok": True, "path": next((x for x in a if isinstance(x, str) and x.startswith("/api/")), "")}
 
     fakes = {"tts_text": b"MP3-about", "about_text": "о пульте", "stt_job_get": {"state": "done", "text": "т"},
+             "cost_summary": {"today": {"usd": 2.0}},
              "voice_cards": {"cards": []}, "voice_preview": b"MP3-preview", "tts": b"MP3-tts",
              "tts_warm": {"warm": True}, "stt_job": {"id": "j1"}, "stt": "привет", "fallback_note": "",
              "rec_finish": {"id": "j2"}, "stt_retry": {"id": "j3"}, "choose_voice": None,
