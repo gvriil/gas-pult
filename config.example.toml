@@ -69,6 +69,10 @@ personal_voices = false
 auto_close_days = 0
 # События продукта для воронки (`gas-pult funnel`): сколько дней хранить product-events.jsonl. Без текстов и ID.
 events_keep_days = 400
+# Хранение служебных данных (docs/STORAGE.md): "json" — файлы, как раньше (по умолчанию); "dual" — JSON и копия в
+# SQLite; "sqlite" — только SQLite. Включать командой `gas-pult storage enable dual` (снимет копию JSON и перенесёт
+# данные), вернуть — `gas-pult storage disable`. Пока переводится модуль «люди» (people.json и файлы рядом).
+# storage = "json"
 
 # Вход в панель по коду на почту, второй фактор и письма-оповещения (docs/AUTH.md). Нет секции — функция выключена.
 # Секция — в самом конце файла (всё, что ниже [email], TOML отнесёт к ней).

@@ -283,6 +283,56 @@ def cmd_geoip(a):
         print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
 
 
+def cmd_storage(a):
+    """Хранение служебных данных (``sqlstore.py``, docs/STORAGE.md): status | backup | verify | enable dual|sqlite |
+    disable (= json). Включение снимает копию JSON (один раз) и переносит данные; disable выгружает новое из SQLite."""
+    from gas_pult import sqlstore
+
+    data = config.data_dir()
+    if a.action == "enable":
+        if a.mode not in ("dual", "sqlite"):
+            raise SystemExit("Укажите режим: gas-pult storage enable dual  (или sqlite)")
+        r = sqlstore.enable(data, a.mode)
+        print(f"✓ Режим «{a.mode}» включён (storage в config.toml). Службы подхватят его без перезапуска.")
+        print(f"  Копия JSON: {r['backup'] or 'снималась раньше — см. gas-pult storage status'}")
+        for n, k in r["imported"].items():
+            print(f"  {n}: {'уже в SQLite' if k is None else f'перенесено записей — {k}'}")
+        print("  Проверить: gas-pult storage verify · вернуть JSON: gas-pult storage disable")
+        return
+    if a.action == "disable":
+        r = sqlstore.disable(data)
+        for n, k in r["exported"].items():
+            print(f"  {n}: из SQLite в JSON — записей {k}")
+        print("✓ Режим «json»: служебные данные снова только в JSON-файлах. База pult.sqlite3 осталась копией.")
+        return
+    if a.action == "backup":
+        print(f"✓ Копия JSON: {sqlstore.backup(data, force=True)}")
+        return
+    if a.action == "verify":
+        if not sqlstore.db_path(data).exists():
+            return print("Базы SQLite нет — сравнивать не с чем (режим json). Включить: gas-pult storage enable dual")
+        bad = 0
+        for n, r in sqlstore.verify(data).items():
+            diff = r["missing"] + r["extra"] + r["differ"]
+            bad += len(diff)
+            line = "совпадает" if not diff else (f"расходится: нет в SQLite {r['missing'][:5]}, лишние "
+                                                 f"{r['extra'][:5]}, разные {r['differ'][:5]}")
+            print(f"  {n}: JSON {r['json']} · SQLite {r['sqlite']} — {line}")
+        if bad:
+            raise SystemExit(f"✗ Расхождений: {bad}. В режиме sqlite это нормально (JSON не пишется); в dual — "
+                             "перенести заново: gas-pult storage enable dual")
+        return print("✓ JSON и SQLite совпадают.")
+    st = sqlstore.status(data)
+    print(f"Режим: {st['mode']} · база: {st['db']}" + ("" if st["exists"] else " (ещё не создана)"))
+    if st["exists"]:
+        print(f"  схема {st['schema']} · журнал {st['journal']} · {st['size'] // 1024} КБ · "
+              f"копия JSON: {st['backup'] or 'нет'}")
+        for n, c in st["collections"].items():
+            where = "новое только в SQLite" if c["sqlite_only"] else ("JSON = SQLite" if c["json_in_sync"] and
+                                                                      c["imported"] else "JSON менялся отдельно")
+            print(f"  {n}: строк {c['rows']} · {where if c['imported'] else 'не переносилось'}")
+
+
 def cmd_usage(a):
     """Отчёт по функциям панели сейчас: файл ``usage-ГГГГ-ММ.md`` в данных пульта и текст в консоль. В Telegram
     его шлёт бот сам, 1-го числа."""
@@ -827,6 +877,10 @@ def main(argv: list[str] | None = None):
     s.add_argument("action", choices=["status", "update"], nargs="?", default="status")
     s.add_argument("ips", nargs="*", help="проверить адреса (только для status)")
     s.set_defaults(fn=cmd_geoip)
+    s = sub.add_parser("storage", help="хранение данных: status | backup | verify | enable dual|sqlite | disable")
+    s.add_argument("action", choices=["status", "backup", "verify", "enable", "disable"], nargs="?", default="status")
+    s.add_argument("mode", nargs="?", help="для enable: dual или sqlite")
+    s.set_defaults(fn=cmd_storage)
     s = sub.add_parser("offer", help="предложения бизнесу: new <файл> | new --name … | list | revoke <код> | example")
     s.add_argument("action", choices=["new", "list", "revoke", "example"])
     s.add_argument("file", nargs="?", help="new — файл-шаблон предложения; revoke — код")
