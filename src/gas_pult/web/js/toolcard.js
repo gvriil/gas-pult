@@ -2,7 +2,10 @@
 // (команда, правка файла, адрес, MCP), внизу переписки — карточка: что за действие, его параметры (команда или файл —
 // поле ``target`` из /api/screen → humanize.parse) и кнопки «Да» / «Нет»; «Ещё» раскрывает все пункты меню Claude
 // Code. Нажатие — те же /api/select и /api/key, что у списка вариантов. Список вариантов остаётся запасным путём:
-// незнакомый диалог, вопрос агента, меню без разбора — как раньше.
+// незнакомый диалог и меню без разбора — как раньше.
+// Вопрос с вариантами (22.11: AskUserQuestion, доверие к папке, план, «Отправить ответы?») — карточка «Claude
+// спрашивает»: вопрос и кнопки с текстом вариантов (разбор сервера — humanize.parse, он понимает и пояснения между
+// пунктами, и черту перед «Chat about this»), одно нажатие — выбор; у вопроса агента — ещё «Отмена» (Esc).
 
 const TC = { more: false, sig: "" };
 const TC_KIND = { bash: "Команда на сервере", edit: "Правка файла", create: "Новый файл", overwrite: "Перезапись файла",
@@ -23,11 +26,26 @@ function toolCard(a) {
     ${TC.more ? `<div class="tc-rest">${rest.map(([o, i]) => `<button class="opt" data-tc="${i}"><span>${esc(o.label_ru)}<small>${esc(o.note_ru || "")}</small></span></button>`).join("")}</div>` : ""}</div>`;
 }
 
+// Вопрос с вариантами. «Свой вариант» и «Обсудить» — Esc и курсор в поле (как в простом режиме); «Подробности» —
+// экран терминала (в режиме кода он рядом). «Отмена» — только где Esc закрывает вопрос, а не Claude (не у доверия).
+const CC_ESC = new Set(["question", "submit"]);
+function choiceCard(a) {
+  if (!a?.known || !a.options?.length) return "";
+  const opts = a.options.map((o, i) => [o, i]).filter(([o]) => !o.send.show);
+  if (!opts.length) return "";
+  const q = a.title_ru || "Claude ждёт выбора";
+  return `<div class="ask cc" data-help="${hv("sheet.toolcard")}"><p class="q">${ic("warn")}<span>${esc(q)}</span></p>
+    ${opts.map(([o, i]) => `<button class="opt${o.level === 2 ? " l2" : ""}" data-tc="${i}"><span>${esc(o.label_ru)}${o.level === 2 && o.note_ru ? `<small>${esc(o.note_ru)}</small>` : ""}</span></button>`).join("")}
+    ${CC_ESC.has(a.kind) && !a.options.some((o) => o.key === "cancel") ? `<button class="opt cc-esc" data-tcesc="1"><span>Отмена</span></button>` : ""}
+    <p class="tip" id="askTip" hidden></p></div>`;
+}
+
 let tcAsk = null;                                       // последний разбор — для нажатий
-function tcRender(a) { tcAsk = a; return toolCard(a); }
+function tcRender(a) { tcAsk = a; return a?.target !== undefined && TC_KIND[a.kind] ? toolCard(a) : choiceCard(a); }
 
 $("ask").addEventListener("click", async (e) => {
   if (e.target.closest("[data-tcmore]")) { TC.more = !TC.more; e.stopPropagation(); return setAsk(toolCard(tcAsk), "tc" + tcAsk.sig + TC.more); }
+  if (e.target.closest("[data-tcesc]")) { e.stopPropagation(); haptic("impactOccurred", "medium"); return press("Escape"); }
   const b = e.target.closest("[data-tc]"); if (!b || !tcAsk) return;
   e.stopPropagation();
   const o = tcAsk.options[+b.dataset.tc]; if (!o) return;
@@ -49,7 +67,9 @@ css.textContent = `.ask.tc .tc-target { margin: 0 0 10px; padding: 8px 10px; bac
 .ask.tc .tc-row button.opt.tc-more { flex: 0 0 auto; font-weight: 400; }
 .ask.tc button.opt.tc-yes { background: var(--accent-primary); color: var(--on-accent); border-color: var(--accent-primary); }
 .ask.tc .tc-rest { margin-top: 8px; }
-.ask.tc .tc-rest small { display: block; color: var(--text-secondary); font-weight: 400; }`;
+.ask.tc .tc-rest small, .ask.cc small { display: block; color: var(--text-secondary); font-weight: 400; }
+.ask.cc button.opt.l2 { border-style: dashed; }
+.ask.cc button.opt.cc-esc { color: var(--text-secondary); justify-content: center; }`;
 document.head.append(css);
 
 Object.assign(window, { toolCard: tcRender });

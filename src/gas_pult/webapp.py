@@ -177,7 +177,7 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     V1_PREFIX,
 )
 from gas_pult.billing import api as billing_api  # noqa: F401 — платежи: маршруты в routes/billing.py; имя живо
-from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult  # noqa: F401 — webapp.BUSY жив (panel/spaces.py)
+from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, AwaitsChoice, Pult  # noqa: F401 — webapp.BUSY жив (panel/spaces.py)
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space  # noqa: F401 — реэкспорт
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp  # noqa: F401 — webapp.* живы (routes/)
@@ -2701,6 +2701,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "code": "force"}, 409)
             except emailcode.LimitError as e:
                 return self.json({"error": str(e), "retry": e.retry}, 429)
+            except AwaitsChoice as e:                    # Claude ждёт выбора: панель подсветит варианты, текст — в поле
+                return self.json({"error": str(e), "code": e.code}, 400)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
             except Exception as e:                       # прочее — 500 JSON и событие, а не обрыв (502 у Caddy)

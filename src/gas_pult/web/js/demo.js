@@ -261,7 +261,9 @@ function demoApi(path, body) {
                        "@3": cst(pz ? 10.42 : 3.18, 900, 61000, 240000, 4100000, { paused: pz || null }),
                        "@4": cst(0.31, 2100, 48000, 0, 2250000, { cost_source: "estimate" }) } : role === "member" ? { "@2": cst(0.87, 300, 21000, 90000, 1100000, { limit: null }) } : {};
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
-  const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
+  // ?ask=question — вопрос агента с вариантами (вид экрана Claude Code 2.1, как в tests/fixtures/cc_question.txt)
+  const screen = demoApi.scr ||= params.get("ask") === "question" ? ["☐ Отчёт", "", "Какой отчёт прислать утром?", "", "❯ 1. Короткий — три цифры",
+    "     Выручка, машины, средний чек", "  2. Подробный — по каждой мойке", "  3. Type something.", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"] : ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
   const TT = demoApi.titles ||= {};                   // «Название чата» (/api/title) — живёт до перезагрузки
@@ -496,12 +498,16 @@ function demoApi(path, body) {
   if (key.startsWith("/api/repos")) return demoRepos(key, path, body);
   if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
+  if (key === "/api/key" && body?.key === "Escape" && params.get("ask") === "question" && !SIM.on) {   // «Отмена» — вопрос закрыт
+    demoApi.toolDone = true; demoApi.scr?.splice(0, demoApi.scr.length, "● Вопрос закрыт", "", "❯ ");
+    return Promise.resolve({ lines: demoApi.scr });
+  }
   // rev — как у сервера: меняется и когда растёт последний ответ (ход Claude дописывается в журнал по блоку)
   const demoRev = () => "demo0000-" + demoApi.h.length + "-" + (demoApi.h.at(-1)?.text.length || 0);
   if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
-    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
+    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 user       7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
   if (key === "/api/send") {                         // демо: вставка ~0,7 с, потом фазы строки статуса и ответ (&act=stuck — реакции нет)
@@ -610,12 +616,13 @@ function demoApi(path, body) {
     if (m === "slow") return new Promise(() => {});  // ответа нет — сработает таймаут 90 с
     return new Promise((ok, no) => setTimeout(() => m === "fail" ? no(new Error("распознавание не удалось")) : ok({ text }), 2500));
   }
-  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
+  const askW = (FOCUS || params.has("tester")) && params.get("ask") === "question" ? "@1" : "@2";   // фокус и пространство — их сессия @1
+  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes(askW) ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null,
     login: decodeURIComponent(path).includes("@1") ? DEMO_LOGIN[params.get("login")] || null : null,
     // ?tool=bash — карточка инструмента (#258): разбор как с сервера и команда в target
-    ask: decodeURIComponent(path).includes("@2") && SIMPLE_DEMO[params.get("tool")] && !demoApi.toolDone
-      ? { ...SIMPLE_DEMO[params.get("tool")], target: "rm -rf build && npm run build\nClean and rebuild the project" } : null });
+    ask: !decodeURIComponent(path).includes(askW) || demoApi.toolDone ? null : SIMPLE_DEMO[params.get("tool")]
+      ? { ...SIMPLE_DEMO[params.get("tool")], target: "rm -rf build && npm run build\nClean and rebuild the project" } : params.get("ask") === "question" ? SIMPLE_DEMO.question : null });
   if (key === "/api/login/code") { demoApi.loginCode = body?.code || ""; return Promise.resolve({ ok: true }); }
   if (key === "/api/login/check") return Promise.resolve(demoApi.loginCode ? { ok: true, text: "вход выполнен", login: null } : { ok: false, text: "окно всё ещё просит войти" });
   if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true, invite: true });
