@@ -44,7 +44,7 @@ def test_people_two_processes_lose_nothing(tmp_path):
     _race(_people_writer, f)
     got = [p for p in People(f, [1]).list() if p["role"] != "owner"]
     assert len(got) == 2 * N
-    assert json.loads(f.read_text())["_v"] == store.version("people.json")
+    assert store.file_version(f) == store.version("people.json") and "_v" not in json.loads(f.read_text())
 
 
 def test_focus_two_processes_lose_nothing(tmp_path):
@@ -52,7 +52,7 @@ def test_focus_two_processes_lose_nothing(tmp_path):
     _race(_focus_writer, f)
     focus = Focus(f)
     assert len(focus._load()) == 2 * N
-    assert len(focus.listing()) == 2 * N and all("_v" not in x["id"] for x in focus.listing())
+    assert len(focus.listing()) == 2 * N and "_v" not in json.loads(f.read_text())
 
 
 def test_threads_of_one_process_share_the_lock(tmp_path):
@@ -68,16 +68,44 @@ def test_threads_of_one_process_share_the_lock(tmp_path):
     assert len(a.list()) == 1 + 100
 
 
+def _old_people_list(f, owners=(1,)):
+    """Как читал people.json пульт до store.py (People.list): json.loads и перебор ключей с int()."""
+    d = json.loads(f.read_text())
+    return [{"id": o} for o in owners] + [{"id": int(k), **v} for k, v in d.items()]
+
+
+def _old_focus_listing(f):
+    """Как читал focus.json пульт до store.py (Focus.listing): у каждой записи — .get()."""
+    return [{"id": k, "name": v.get("name", "")} for k, v in json.loads(f.read_text()).items()]
+
+
 def test_old_file_without_version_reads_and_migrates_on_write(tmp_path):
     f = tmp_path / "people.json"
     f.write_text(json.dumps({"2": {"role": "member", "name": "Иван", "username": "", "added": 1}}))
     p = People(f, [1])
     assert p.role(2) == "member" and [x["id"] for x in p.list()] == [1, 2]   # старый вид читается как есть
-    assert "_v" not in f.read_text()                                      # чтение файл не трогает
+    assert store.file_version(f) == 0 and not store.vfile(f).exists()      # чтение ничего не пишет
     p.seen(2, "iPhone")
     d = json.loads(f.read_text())
-    assert d["_v"] == 1 and d["2"]["name"] == "Иван" and d["2"]["last"]["device"] == "iPhone"
-    assert [x["id"] for x in p.list()] == [1, 2]                         # «_v» наружу не выходит
+    assert d["2"]["name"] == "Иван" and d["2"]["last"]["device"] == "iPhone" and "_v" not in d
+    assert store.vfile(f).read_text().strip() == "1" and oct(store.vfile(f).stat().st_mode & 0o777) == "0o600"
+
+
+def test_rollback_old_code_reads_files_written_by_new(tmp_path):
+    """Откат: старый пульт читает people.json и focus.json после записи новым кодом без ошибок."""
+    pf, ff = tmp_path / "people.json", tmp_path / "focus.json"
+    People(pf, [1]).add(2, "member", name="Иван")
+    Focus(ff).new({"id": "@1", "path": "/x", "name": "чат"}, by=1)
+    assert [x["id"] for x in _old_people_list(pf)] == [1, 2]
+    assert [x["name"] for x in _old_focus_listing(ff)] == ["чат"]
+
+
+def test_leftover_version_key_removed_on_write(tmp_path):
+    """Файл с «_v» внутри (ранняя сборка ветки) — ключ уходит при первой записи, старый код снова читает файл."""
+    f = tmp_path / "people.json"
+    f.write_text(json.dumps({"_v": 1, "2": {"role": "member", "name": "Иван", "username": "", "added": 1}}))
+    People(f, [1]).seen(2, "iPhone")
+    assert "_v" not in json.loads(f.read_text()) and [x["id"] for x in _old_people_list(f)] == [1, 2]
 
 
 def test_migration_steps_apply_in_order(tmp_path, monkeypatch):
@@ -86,18 +114,22 @@ def test_migration_steps_apply_in_order(tmp_path, monkeypatch):
         (2, lambda d: {k: {**v, "kind": v.get("kind", "person")} for k, v in d.items()}),
     ])
     f = tmp_path / "demo.json"
-    f.write_text(json.dumps({"_v": 1, "a": {"n": 1}}))
+    f.write_text(json.dumps({"a": {"n": 1}}))
+    store.vfile(f).write_text("1\n")
     assert store.load(f) == {"a": {"n": 1, "kind": "person"}}
     store.update(f, lambda d: d.update(b={"n": 2}))
-    assert json.loads(f.read_text()) == {"_v": 2, "a": {"n": 1, "kind": "person"}, "b": {"n": 2}}
-    f.write_text(json.dumps({"_v": 2, "a": {"n": 1}}))                   # уже новая версия — шаги не повторяются
+    assert json.loads(f.read_text()) == {"a": {"n": 1, "kind": "person"}, "b": {"n": 2}}
+    assert store.file_version(f) == 2
+    f.write_text(json.dumps({"a": {"n": 1}}))                             # уже версия 2 — шаги не повторяются
     assert store.load(f) == {"a": {"n": 1}}
+    store.vfile(f).write_text("мусор")                                     # битая версия — как 0: все шаги
+    assert store.load(f) == {"a": {"n": 1, "kind": "person"}}
 
 
 def test_unversioned_file_has_no_version_field(tmp_path):
-    f = tmp_path / "space.json"                       # имени нет в MIGRATIONS — пишется как раньше, без «_v»
+    f = tmp_path / "space.json"                       # имени нет в MIGRATIONS — пишется как раньше, без версии
     store.update(f, lambda d: d.update(x=1))
-    assert json.loads(f.read_text()) == {"x": 1}
+    assert json.loads(f.read_text()) == {"x": 1} and not store.vfile(f).exists()
     assert store.load(tmp_path / "nope.json") == {} and store.load(f, list) == []   # нет файла, чужой вид
 
 
