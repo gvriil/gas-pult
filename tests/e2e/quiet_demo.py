@@ -20,7 +20,7 @@ WATCH = """() => { window.__m = 0;
   const all = { subtree: true, childList: true, characterData: true, attributes: true };
   ['top', 'dock'].forEach((id) => mo.observe(document.getElementById(id), all)); }"""
 VERBS = ("Начать", "Создать", "Открыть", "Показать", "Закрепить", "Открепить", "Переименовать", "Удалить", "Пригласить",
-         "Поднять", "Опустить")
+         "Поднять", "Опустить", "Перенести")
 
 
 def run(base: str, shots: str = ""):
