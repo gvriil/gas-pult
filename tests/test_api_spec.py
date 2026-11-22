@@ -98,6 +98,24 @@ POST = {"/api/b": b, "/api/c": b}
     assert not r["/api/b"]["focus_only"] and r["/api/b"]["open"] == []
 
 
+def test_scan_sees_fork_tables(tmp_path):
+    """``GET_P``/``POST_P`` — развилка: ключ — кортеж путей (имя таблицы импорта), одна функция на все."""
+    f = tmp_path / "fork.py"
+    f.write_text('''
+from gas_pult.billing import api as billing_api
+def g(self, path, q):
+    return billing_api.get(panel.cfg.data, path, q)
+def p(self, path, b):
+    return {"ok": b.get("id")}
+GET_P = {billing_api.GET: g}
+POST_P = {("/api/x/a", "/api/x/b"): p}
+''', encoding="utf-8")
+    r = api_spec.scan("class H:\n    pass\n", routes=[f])
+    from gas_pult.billing import api as billing_api
+    assert set(r) == {*billing_api.GET, "/api/x/a", "/api/x/b"}
+    assert r["/api/x/b"]["methods"] == ["POST"] and r["/api/x/b"]["in"] == ["id"]
+
+
 def test_openapi_shape():
     doc = json.loads(api_spec.openapi_json())
     assert doc["openapi"] == "3.1.0"

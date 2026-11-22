@@ -174,12 +174,12 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     V1_POST,
     V1_PREFIX,
 )
-from gas_pult.billing import api as billing_api  # платежи (billing/): панель знает только billing.api
+from gas_pult.billing import api as billing_api  # noqa: F401 — платежи: маршруты в routes/billing.py; имя живо
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult  # noqa: F401 — webapp.BUSY жив (panel/spaces.py)
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space  # noqa: F401 — реэкспорт
 from gas_pult.config import Config
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
-from gas_pult.messengers import panel as messengers_panel
+from gas_pult.messengers import panel as messengers_panel  # noqa: F401 — маршруты в routes/messengers.py
 from gas_pult.openrouter import CALLBACK, OpenRouter
 from gas_pult.panel.clients import ClientsPart
 from gas_pult.panel.focus import FocusPart
@@ -1636,8 +1636,8 @@ def handler(panel: Panel):
                 return fn(self, q)                       # focus_call, v1_call) — как у веток ниже
             if fn := routes.GET_W.get(path):            # ветки после «w = self.win(…)»: окно сессии — до вызова
                 return fn(self, q, self.win(q.get("w")))
-            if path in billing_api.GET:                 # платежи (billing/, 22.11): права — access.BILLING_GET
-                return billing_api.get(panel.cfg.data, path, q)
+            if fn := routes.GET_P.get(path):            # развилка: несколько путей — одна функция (платежи)
+                return fn(self, path, q)
             if path == "/api/sessions":
                 pool = self.pool()
                 if self.space():                          # тестировщик: без имени сервера и событий владельца
@@ -1699,14 +1699,6 @@ def handler(panel: Panel):
                 return {"devices": panel.share_tokens.mine(self.terms_uid())}
             if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
                 return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
-            if path == "/api/meetings":                  # протоколы встреч (владелец 22.11)
-                return panel.meeting_list()
-            if path == "/api/meeting":
-                return panel.meeting_view(str(q.get("id") or ""))
-            if path == "/api/meeting/audio":
-                return panel.meeting_audio(str(q.get("id") or ""))
-            if path == "/api/meeting/card":
-                return panel.meeting_card(str(q.get("id") or ""))
             if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
                 etag = panel.tasks.etag()
                 body = json.dumps({"tasks": panel.task_list()}, ensure_ascii=False).encode()
@@ -1771,8 +1763,6 @@ def handler(panel: Panel):
                                           self.space() or "", str(q.get("occ") or ""))
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
                 return {"calendars": calkeys.status()}
-            if path == "/api/messengers":                 # «Мессенджеры»: состояние без секретов (messengers/panel.py)
-                return messengers_panel.get()
             if path == "/api/setup/status":
                 return panel.setup_status(q.get("fresh") == "1")
             if path == "/api/mcp":
@@ -2675,8 +2665,8 @@ def handler(panel: Panel):
                 upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
                 return out
             b = json.loads(self.body() or b"{}")
-            if path in billing_api.POST:                # платежи (billing/, 22.11): владелец + код подтверждения
-                return billing_api.post(panel.cfg.data, path, b, actor=f"owner:{self.terms_uid()}")
+            if fn := routes.POST_P.get(path):           # развилка: несколько путей — одна функция (платежи и др.)
+                return fn(self, path, b)
             if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
                 return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
             if path == "/api/apitokens/new":               # токен для 1С и CRM: показываем один раз
@@ -2824,8 +2814,6 @@ def handler(panel: Panel):
                 return calkeys.save(str(b.get("kind", "")), b)
             if path == "/api/calendars/key/remove":
                 return calkeys.remove(str(b.get("kind", "")))
-            if path.startswith("/api/messengers/") and path in OWNER_ONLY:   # выбор, вход, QR, чаты, «Отключить»
-                return messengers_panel.post(path, b, self.terms_uid())
             if path == "/api/keys/remove":
                 panel.remove_key(str(b.get("provider", "")))
                 return {"ok": True}
@@ -3052,8 +3040,6 @@ def handler(panel: Panel):
                                          str(b.get("ttl") or "7d"), int(b.get("max", 3) or 0),
                                          str(b.get("rights") or "full"), str(b.get("name") or ""),
                                          str(b.get("audience") or "client"))
-            if path == "/api/meeting/share":               # «Ссылка на протокол»: только этот протокол, 30 дней
-                return panel.meeting_share(str(b.get("id") or ""), self.terms_uid(), str(b.get("base", "")))
             if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
                 return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
                                        str(b.get("proj") or ""), str(b.get("mode") or ""))

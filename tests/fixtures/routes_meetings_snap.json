@@ -1,0 +1,15 @@
+{
+  "00 GET /api/meetings": [200, "application/json", {"meetings": []}, [["meeting_list", [], []]]],
+  "01 GET /api/meeting?id=m1": [200, "application/json", {"id": "m1", "title": "Встреча"}, [["meeting_view", ["m1"], []]]],
+  "02 GET /api/meeting?id=nope": [404, "application/json", {"error": "нет такого"}, [["meeting_view", ["nope"], []]]],
+  "03 GET /api/meeting": [200, "application/json", {"id": "m1", "title": "Встреча"}, [["meeting_view", [""], []]]],
+  "04 GET /api/meeting/audio?id=m1": [200, "audio/webm", "AUD", [["meeting_audio", ["m1"], []]]],
+  "05 GET /api/meeting/audio?id=nope": [404, "application/json", {"error": "нет такого"}, [["meeting_audio", ["nope"], []]]],
+  "06 GET /api/meeting/card?id=m1": [200, "image/svg+xml", "<svg/>", [["meeting_card", ["m1"], []]]],
+  "07 GET /api/meeting/card?id=nope": [404, "application/json", {"error": "нет такого"}, [["meeting_card", ["nope"], []]]],
+  "08 POST /api/meeting/share": [200, "application/json", {"url": "https://x/#focus=t", "id": "f1"}, [["meeting_share", ["m1", 1, "https://x"], []]]],
+  "09 POST /api/meeting/share": [404, "application/json", {"error": "нет такого"}, [["meeting_share", ["nope", 1, ""], []]]],
+  "10 POST /api/meeting/share": [400, "application/json", {"error": "неверный ввод"}, [["meeting_share", ["m1", 1, "bad"], []]]],
+  "11 POST /api/meeting/share": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "12 GET /api/meetings (viewer)": [403, "application/json", {"error": "это может только владелец"}, []]
+}
