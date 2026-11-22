@@ -61,6 +61,10 @@ OWNER_ONLY |= {SELFTEST}
 # Ссылки и терминал (владелец 17.11): вкладка в Chrome рабочего стола, выбор «где открыть» по сайту, окно ubuntu-shell
 OWNER_ONLY |= {"/api/desktop/url", "/api/links/prefs", "/api/shell/open"}
 OWNER_ONLY |= {"/api/calendars/keys", "/api/calendars/key", "/api/calendars/key/remove"}   # секреты календарей
+# Мессенджеры «как пользователь» (messengers/, 22.11): сессии и переписка владельца — только ему; пространства — позже
+MESSENGERS = ("/api/messengers", *(f"/api/messengers/{x}" for x in ("consent", "off", "tg/login", "tg/code",
+                                                                   "tg/password", "link", "chats", "allow")))
+OWNER_ONLY |= set(MESSENGERS)
 OWNER_ONLY |= {"/api/project/update"}               # название и архив проекта — владельцу (GAS-24)
 # Брифинг первого лица (GAS-18, brief.py): почта и календарь владельца — только ему
 BRIEF = ("/api/brief", "/api/brief/prefs", "/api/brief/act")
