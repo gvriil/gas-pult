@@ -208,7 +208,39 @@ def remote_path(path: str) -> str:
     return f"{remote}:{path}"
 
 
+# ---------- данные Google — только моделям, которые на них не учатся (Google API Limited Use) ----------
+# Правило владельца 17.11 (CLAUDE.global): содержимое Диска через наш OAuth — Anthropic; OpenRouter — только с
+# provider.data_collection="deny" и zdr=true; нельзя: DeepSeek напрямую, любые «:free», NVIDIA trial. Окно пульта
+# знает свою модель и шлюз из окружения; отметку «у OpenRouter включены deny и zdr» ставит пульт или человек —
+# GAS_GOOGLE_OK=1 (GAS_CAL_GOOGLE_OK=1 — то же, как у календаря). Ночная проверка 22.11: у Диска охранника не было.
+def google_block_reason() -> str | None:
+    """Почему данные Диска нельзя отдать модели этого окна; None — можно."""
+    keys = ("GAS_PULT_MODEL", "OPENROUTER_MODEL", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+            "CLAUDE_CODE_SUBAGENT_MODEL")                 # окно пульта: models.env_of — основная, быстрая, помощники
+    models = [os.environ.get(k, "").strip().lower() for k in keys]
+    models = [m for m in models if m]
+    base = (os.environ.get("ANTHROPIC_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").lower()
+    ok = "1" in (os.environ.get("GAS_GOOGLE_OK"), os.environ.get("GAS_CAL_GOOGLE_OK"))
+    openrouter = "openrouter" in base or bool(os.environ.get("OPENROUTER_MODEL"))
+    why = None
+    if bad := next((m for m in models if ":free" in m), None):
+        why = f"бесплатная модель «{bad}» может учиться на данных"
+    elif "nvidia" in base:
+        why = "NVIDIA trial может учиться на данных"
+    elif "deepseek" in base or (not openrouter and any("deepseek" in m for m in models)):
+        why = "DeepSeek напрямую может учиться на данных"
+    elif openrouter and not ok:
+        why = "OpenRouter — только с data_collection=deny и zdr (пульт не подтвердил: GAS_GOOGLE_OK)"
+    if not why:
+        return None
+    return (f"данные Google Диска нельзя этой модели (Google API Limited Use): {why}. Откройте Диск в окне с Claude "
+            "или с OpenRouter, где включены deny и zdr")
+
+
 def rclone(*args: str) -> str:
+    if why := google_block_reason():                      # каждая операция Диска — через rclone: охранник здесь
+        raise ToolError(why)
     exe = os.environ.get("GAS_DRIVE_RCLONE") or "rclone"
     try:
         r = subprocess.run([exe, *args], capture_output=True, text=True, timeout=RCLONE_TIMEOUT,
