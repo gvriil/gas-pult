@@ -88,6 +88,7 @@ class Config:
     google: dict = field(default_factory=dict)              # [google]: вход через Google (oidc.py); {} — выкл.
     yandex: dict = field(default_factory=dict)              # [yandex]: вход через Яндекс ID (oidc.py); {} — выкл.
     drive_root: str = "~/drive"                             # Google Диск (rclone): <проект>/Входящие; "" — выкл.
+    events_keep_days: int = 400                             # события продукта (funnel.py): сколько дней хранить
 
     @property
     def data(self) -> Path:

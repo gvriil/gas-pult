@@ -50,7 +50,9 @@ from gas_pult import (
     fallback,
     features,
     focus,
+    funnel,
     harness,
+    humanize,
     injection_guard,
     invites,
     limitretry,
@@ -249,6 +251,7 @@ class Pult:
         self.sends = activity.Sends()                      # что и когда отправили в окно — фазы до хода (activity.py)
         self.deliv = deliveries.Log(cfg.data / "sends.jsonl")   # журнал доставок без текста (deliveries.py)
         self.events = chatlog.Log(cfg.data / "chat-events.jsonl")  # путь сообщения по id (GAS-31)
+        self.funnel = funnel.Funnel(cfg.data, cfg.events_keep_days)   # события продукта для воронки (funnel.py)
         self.drafts: dict[str, tuple[str, float]] = {}     # сторож черновиков: окно → (отпечаток, с какого времени)
         self.acts = activity.Journal()                     # разбор хвоста журнала для строки статуса (кэш)
         self.changes = ago.Screens()                       # когда менялся экран окна — «изменена N назад» (ago.py)
@@ -699,6 +702,7 @@ class Pult:
             print("status:", e, flush=True)
         try:
             self.to_claude(w, text)
+            self.product("send", chat, via="bot")
         except Exception:
             if mid:                                    # не дошло — служебное сообщение убрать, причину скажет handle
                 try:
@@ -1211,6 +1215,34 @@ class Pult:
         if (log := getattr(self, "events", None)) is not None:
             log.event(name, mid, **kw)
 
+    def product(self, ev: str, uid, **kw):
+        """Событие продукта (funnel.py) от человека ``uid``; пространство — его (``people.tenant``). Воронки нет
+        (бот собран в тесте без __init__) — молча дальше; ошибка воронки доставку не ломает."""
+        fn = getattr(self, "funnel", None)
+        if fn is None or uid is None:
+            return
+        try:
+            sp = self.people.tenant(uid) or "" if getattr(self, "people", None) else ""
+            if ev == "send":
+                fn.send(uid, sp, **kw)
+            elif ev == "first_reply":
+                fn.replied(uid, sp, **kw)
+            else:
+                fn.event(ev, uid, sp, **kw)
+        except Exception as e:  # аналитика не ломает работу пульта
+            print("funnel:", e, flush=True)
+
+    def product_pick(self, uid, wid: str, n: str = "", key: str = ""):
+        """Ответ на вопрос агента кнопкой (номер пункта или клавиша): «Да» / «Нет» — событием продукта."""
+        if getattr(self, "funnel", None) is None or (not n and key not in ("Enter", "Escape")):
+            return
+        try:
+            yn = funnel.choice(humanize.parse(self.tmux.screen(wid, 60)), n=n, key=key)
+        except Exception:
+            return
+        if yn:
+            self.product(yn, uid, via="bot")
+
     # ---------- монитор: ответы и диалоги всех окон ----------
     def deliver(self, w: dict, text: str):
         n = self.remember(w, text)
@@ -1223,6 +1255,7 @@ class Pult:
                 msgs[chat] = self.send_answer(chat, f"[{self.label(w)}]", text, wid=w["id"],
                                               reply_markup=kb(rows)).get("message_id")
                 self.ev("answer_tg", w=w["id"], len=len(text), sha=chatlog.sha(text))
+                self.product("first_reply", chat, via="bot")
             except TelegramError as e:
                 print("send:", e, flush=True)
                 self.ev("answer_tg_fail", w=w["id"], code=e.description[:60],
@@ -1725,6 +1758,7 @@ class Pult:
         if act == "c":
             self.digest.snooze(k, digest.GONE)
             brief.log(self.cfg.data, chat, k, "no", x["kind"], "убрано на месяц")
+            self.product("no", chat, via="digest")
             return send("Убрал из сводок на месяц.")
         if act == "l":
             self.digest.snooze(k, digest.LATER)
@@ -1749,6 +1783,7 @@ class Pult:
             return send(f"Окна с Claude в {x['project']} нет — откройте сессию (🆕 Новая) и повторите.")
         self.digest.snooze(k, digest.GONE)
         brief.log(self.cfg.data, chat, k, "yes", x["kind"], done)
+        self.product("yes", chat, via="digest")
 
     # ---------- модули-агенты (modules.py) ----------
     def module_root(self) -> Path:
@@ -2376,6 +2411,7 @@ class Pult:
                 return
             if not self.tmux.window(wid):
                 return send("Этого окна уже нет.")
+            self.product_pick(q["from"]["id"], wid, n=key if key.isdigit() else "", key="" if key.isdigit() else key)
             return self.tmux.keys(wid, key)
         if kind == "tk":                                   # задачи владельца: tk:done:<id> / tk:undo:<id>
             act, _, tid = arg.partition(":")
@@ -2411,6 +2447,7 @@ class Pult:
                  + ("\n⚠️ У окна свой Telegram-бот — ответы придут туда, а не сюда." if w["channel"] else ""))
         elif kind == "yes":
             self.to_claude(w, "да")
+            self.product("yes", q["from"]["id"], via="bot")
         elif kind == "w":
             lv = notifylevel.level(self.state(), w["id"])
             send(f"«{self.label(w)}» · {w['path']}\n🔔 Уведомления: {notifylevel.TITLES[lv]}", reply_markup=kb([

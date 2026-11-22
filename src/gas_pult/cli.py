@@ -295,6 +295,21 @@ def cmd_usage(a):
     print(f"Сохранено: {path}")
 
 
+def cmd_funnel(a):
+    """Воронка продукта из ``product-events.jsonl``: вошли → получили первый ответ → сказали «Да», по дням."""
+    from gas_pult import funnel
+
+    space = a.space
+    if space and space != "-":
+        from gas_pult import tenants
+        try:
+            space = tenants.check_slug(space)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+    r = funnel.report(funnel.Funnel(config.data_dir()).read(), a.days, "" if space == "-" else space)
+    print(funnel.text(r))
+
+
 def cmd_inbox(a):
     """Старый inbox пульта → Google Диск (#217): в папку проекта, если проект известен по журналам Claude Code,
     иначе в ``gas-pult/Входящие-архив``. Локальная копия удаляется только после сверки размера на Диске."""
@@ -842,6 +857,10 @@ def main(argv: list[str] | None = None):
     s = sub.add_parser("usage", help="функции панели: report — что не открывали 30 дней и что в ходу (файл и текст)")
     s.add_argument("action", choices=["report"], nargs="?", default="report")
     s.set_defaults(fn=cmd_usage)
+    s = sub.add_parser("funnel", help="воронка продукта: вошли → первый ответ → «Да» (события без ПД, funnel.py)")
+    s.add_argument("--days", type=int, default=30, help="за сколько дней (по умолчанию 30)")
+    s.add_argument("--space", help="только это пространство; «-» — только без пространства")
+    s.set_defaults(fn=cmd_funnel)
     s = sub.add_parser("notify", help="своё уведомление владельцам в бот (агенту: «готово, нужен ответ»)")
     s.add_argument("text", nargs="*", help="текст; пусто — из stdin")
     s.add_argument("--window", default="", help="окно (@N), куда пойдёт ответ; по умолчанию — своё окно tmux")

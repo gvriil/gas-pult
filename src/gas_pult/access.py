@@ -80,6 +80,8 @@ BILLING_POST = ("/api/billing/plan", "/api/billing/invoice/new", "/api/billing/i
                 "/api/billing/invoice/pay", "/api/billing/invoice/void")
 OWNER_ONLY |= {*BILLING_GET, *BILLING_POST}
 CONFIRM |= set(BILLING_POST)
+FUNNEL = "/api/funnel"                   # воронка продукта (funnel.py, аудит 22.11): свод по всем людям — владельцу
+OWNER_ONLY |= {FUNNEL}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
 PERSONA = "/api/persona"

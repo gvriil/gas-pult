@@ -68,6 +68,7 @@ from gas_pult import (
     features,
     feedback,
     focus,
+    funnel,
     harness,
     helper,
     humanize,
@@ -504,6 +505,7 @@ class Panel:
         self.start_q: list[dict] = []                    # новые сессии, ждущие памяти (mem_gate)
         self.lock_q, self.q_thread = threading.Lock(), None
         self.events = chatlog.Log(cfg.data / "chat-events.jsonl")   # путь сообщения по id (GAS-31, отладка)
+        self.funnel = funnel.Funnel(cfg.data, cfg.events_keep_days)  # события продукта для воронки (funnel.py)
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
@@ -4182,6 +4184,7 @@ def handler(panel: Panel):
                 return
             seen[uid] = now
             self.renew = webauth.set_cookie(panel.auth.issue(uid, self.client()[1]))
+            self.product("login", uid, "miniapp")
 
         def person(self) -> int | None:
             """Telegram ID вошедшего, если это не владелец: его окна и интеграции — в его папке Claude Code."""
@@ -4273,6 +4276,48 @@ def handler(panel: Panel):
             if not w or not slug or w.get("space") != slug:
                 raise LookupError("окна уже нет")
             return slug, w
+
+        def product(self, ev: str, uid=None, via: str = "", sp: str | None = None):
+            """Событие продукта (funnel.py): login / send / first_reply / yes / no. Человек — вошедший
+            (вход кодом владельцу — первый владелец), пространство — его. Ошибка аналитики запрос не ломает."""
+            try:
+                if uid is None and self.focused is not None:   # фокус-ссылка: человек не известен (права — автора)
+                    return
+                uid = self.terms_uid() if uid is None else uid
+                if uid == webauth.LEGACY:
+                    uid = (panel.cfg.owners or [None])[0]
+                if uid is None:
+                    return
+                sp = (panel.people.tenant(uid) or "") if sp is None else sp
+                if ev == "send":
+                    panel.funnel.send(uid, sp, via)
+                elif ev == "first_reply":
+                    panel.funnel.replied(uid, sp, via)
+                else:
+                    panel.funnel.event(ev, uid, sp, via)
+            except Exception as e:  # аналитика не ломает работу панели
+                print("funnel:", e, flush=True)
+
+        def product_seen(self, items: list[dict]):
+            """Переписка показана человеку: первый ответ агента после его сообщения — ``first_reply`` (один раз)."""
+            try:
+                uid = None if self.focused is not None else self.terms_uid()
+                if uid is not None and panel.funnel.sent_at(uid) is not None:
+                    panel.funnel.answered(uid, items, panel.people.tenant(uid) or "")
+            except Exception as e:
+                print("funnel:", e, flush=True)
+
+        def product_pick(self, w: dict, n: str = "", key: str = ""):
+            """Ответ на вопрос агента в чате (пункт меню или клавиша): «Да» / «Нет» — событием продукта. Экран читаем
+            до нажатия, ошибка — без события. Стрелки и «выделить» — не ответ: экран не читаем."""
+            if not n and key not in ("Enter", "Escape"):
+                return
+            try:
+                yn = funnel.choice(humanize.parse(panel.tmux.screen(w["id"], 60)), n=n, key=key)
+            except Exception:
+                return
+            if yn:
+                self.product(yn, via="chat")
 
         def terms_uid(self) -> int | None:
             """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
@@ -4709,6 +4754,12 @@ def handler(panel: Panel):
                 return st
             if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
                 return panel.space_list(self.space_of(q))
+            if path == "/api/funnel":                    # воронка продукта: вход → первый ответ → «Да» (funnel.py)
+                if (u := self.who()[2]) not in (None, webauth.LEGACY) and panel.people.tenant(u):
+                    raise ValueError("воронка — только владельцу пульта")
+                days = int(q["days"]) if q.get("days", "").isdigit() else 30
+                sp = tenants.check_slug(q["space"]) if q.get("space") else None
+                return funnel.report(panel.funnel.read(), min(days, 400), sp)
             if path == "/api/drafts":                    # черновики коннекторов «Ждут вашего Да» (drafts.py)
                 slug = self.drafts_scope()
                 tm = tenants.tmux_of(slug) if slug else panel.tmux
@@ -4766,6 +4817,7 @@ def handler(panel: Panel):
                 for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
                     if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
                         it["human"] = h
+                self.product_seen(items)
                 return {"items": items, "more": more, "rev": rev}
             raise KeyError
 
@@ -5200,6 +5252,7 @@ def handler(panel: Panel):
                 return panel.invite_check(str(b.get("code") or ""), ip)
             uid = panel.invite_enter(str(b.get("code") or ""), str(b.get("name") or ""), ip, ua)
             panel.seen_ip(uid, ip, force=True)
+            self.product("login", uid, "invite")
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def tg_poll(self, q: dict):
@@ -5209,6 +5262,7 @@ def handler(panel: Panel):
                     return panel.email.second_start(uid, self.client_ip())
                 panel.seen_ip(uid, self.client_ip(), force=True)            # вход — сверяем страну по IP
                 panel.people.seen(uid, webauth.device(self.client()[1]))   # «вошёл: устройство, время»
+                self.product("login", uid, "telegram")
                 return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
             return {"state": state}
 
@@ -5225,6 +5279,7 @@ def handler(panel: Panel):
                 return panel.email.second_start(uid, ip)
             panel.seen_ip(uid, ip, force=True)
             panel.people.seen(uid, webauth.device(ua))
+            self.product("login", uid, "passkey")
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def email_login(self, path: str):
@@ -5240,6 +5295,7 @@ def handler(panel: Panel):
             else:
                 uid = panel.email.second_verify(str(b.get("id", "")), b.get("code"), ip)
             panel.seen_ip(uid, ip, force=True)
+            self.product("login", uid, "email" if path == "/api/login/email/verify" else "2fa")
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def oidc_page(self, code: int, title: str, text: str, cookies: tuple[str, ...] = ()):
@@ -5288,12 +5344,14 @@ def handler(panel: Panel):
                 frag = urllib.parse.urlencode({"2fa": d["id"], "to": d["to"]})
                 return self.go(f"/#{frag}", (drop,))                 # номер — во фрагменте: на сервер он не уходит
             panel.seen_ip(uid, ip, force=True)
+            self.product("login", uid, p)
             return self.go("/", (drop, webauth.set_cookie(panel.auth.issue(uid, ua))))
 
         def login(self):
             b = json.loads(self.body() or b"{}")
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
             panel.seen_ip((panel.cfg.owners or [None])[0], self.client_ip(), force=True)   # вход кодом — владелец
+            self.product("login", webauth.LEGACY, "code")
             return ("cookie", webauth.set_cookie(token), {"ok": True})
 
         # ---------- страница предложения: без входа, ничего из панели ----------
@@ -5693,6 +5751,7 @@ def handler(panel: Panel):
                 else:
                     r = drafts.reject(slug, svc, pid)
                 panel.events.event("draft_" + path.rsplit("/", 1)[1], "", svc=svc[:24])
+                self.product("yes" if path.endswith("/yes") else "no", via="drafts")
                 return r
             if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
                 if not (slug := self.space()):
@@ -5745,9 +5804,11 @@ def handler(panel: Panel):
                 pid = str(b.get("id") or "")
                 rec = bridge._core._load(bridge.CONFIRM_SVC, pid)
                 panel.approvals.grant("", bridge.CONFIRM_SVC, pid, bridge._core._digest(rec["action"], rec["params"]))
+                self.product("yes", via="bridge")
                 return {"ok": True}
             if path == "/api/bridge/reject":             # «Нет»: черновик убран, выполнить его нельзя
                 bridge.reject(str(b.get("id") or ""))
+                self.product("no", via="bridge")
                 return {"ok": True}
             if path == "/api/desktop/url":                # ссылка — вкладкой в Chrome рабочего стола (владелец 17.11)
                 if not desktop_up():
@@ -5781,7 +5842,10 @@ def handler(panel: Panel):
             if path == "/api/brief/prefs":                # брифинг: источники, время, дни, пояс — у каждого свои
                 return panel.brief_set(self.terms_uid(), b)
             if path == "/api/brief/act":                  # «Да / Нет / Позже»; «Да» с действием — после confirm
-                return panel.brief_act(self.terms_uid(), b)
+                out = panel.brief_act(self.terms_uid(), b)
+                if b.get("act") in ("yes", "no") and "ask" not in out:    # «Да» с действием — после подтверждения
+                    self.product(str(b["act"]), via="brief")
+                return out
             if path == "/api/tasks/add":                  # задача владельца руками (#203)
                 return panel.tasks.add(b, by="owner")
             if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
@@ -5931,6 +5995,8 @@ def handler(panel: Panel):
                     panel.events.event("send_error", mid, w=w["id"], err=f"{type(e).__name__}: {e}")
                     raise
                 panel.events.event("dup" if dup else "inserted", mid, w=w["id"])
+                if not dup:
+                    self.product("send", via="focus" if self.focused is not None else "panel")
                 panel.repeat.done(w["id"], text, mid=mid)
                 return {"ok": True, "dup": dup}
             if path == "/api/resend":                     # «Отправить» у строки «Не отправлено» — Enter после проверки
@@ -5958,9 +6024,12 @@ def handler(panel: Panel):
             if path == "/api/effort":
                 return {"lines": panel.effort(w, str(b.get("level", "")))}
             if path == "/api/key":
+                self.product_pick(w, key=str(b.get("key", "")))
                 return {"lines": panel.key(w, str(b.get("key", "")))}
             if path == "/api/select":
                 go = b.get("go", True) is not False            # go: false — только выделить пункт
+                if go:
+                    self.product_pick(w, n=str(b.get("n", "")))
                 return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
             if path == "/api/mcp/finish":
                 return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
