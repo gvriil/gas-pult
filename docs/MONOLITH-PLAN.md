@@ -111,9 +111,14 @@
    `confirm_start`, `bot_where`, `confirm_done`) → примесь `PeoplePart` (24 имени, ≈230 строк, только перенос;
    `STAFF_ROLES`, `TITLES` реэкспортирует `webapp`). В `webapp` остались уведомления (`notify_*`), отзыв, расход
    (`cost_*`), ключи поставщиков моделей (`set_key`, `remove_key`), предложения (`offer_*`), «Поделиться», встречи.
-6а. `panel/focus.py` — фокус-ссылки (`focus_*`, в том числе «Ссылка на пространство») и мост (`bridge_*`,
-   `bridge_space*`): своя область (ссылки без входа, права гостя ссылки), связана с людьми только через `self` —
-   отдельным PR.
+6а. ✓ `panel/focus.py` — 22.11: фокус-ссылки (`focus_new`, `focus_space` — «Ссылка на пространство»,
+   `focus_sessions`, `focus_owns`, `focus_token`, `focus_send`, `focus_rec`, `FOCUS_BASE`), демо-ссылка
+   (`demo_answer`, `DEMO_*`) и мост (`bridge_dev_ok`, `bridge_allowed`, `bridge_space`, `bridge_space_allowed`) →
+   примесь `FocusPart` (16 имён, 189 строк, только перенос). В `webapp` остались `focus_meta` (нужны `KEYS` бота,
+   `PANEL_KEYS` и `server_tz` из `webapp`), `focus_bridge` (ветки путей `/api/focus/bridge/*` — их читает
+   `api_spec` из `webapp.py`; к шагу 7), `bridge_local_token` и `BRIDGE_MAX` (верхний уровень: секрет и предел
+   сообщения для маршрутов `/api/bridge/*` и `cli`), «Поделиться» (`share_*` — приём файлов в Гаврилу, другая
+   область, не ссылки) и протоколы встреч (`meeting_*`, в том числе ссылка на протокол).
 7. `routes/*` — по области за PR, тем же порядком.
 8. `bot/*` — по модулю за PR.
 
