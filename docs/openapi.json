@@ -1658,6 +1658,39 @@
     }
    }
   },
+  "/api/chat/move": {
+   "post": {
+    "summary": "«Перенести в проект…»: журнал и окно (--resume) — в папку проекта; идёт ход — после",
+    "tags": [
+     "Проекты и чаты"
+    ],
+    "operationId": "post_chat_move",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/chat/restore": {
    "post": {
     "summary": "«Вернуть» чат из корзины",
