@@ -5,6 +5,7 @@
 Правила:
 - ``bot`` не знает о панели (``webapp``): бот и панель — два входа в одно ядро;
 - ``people``, ``access``, ``webauth`` (люди, права, вход) — нижний слой: не импортируют ни ``bot``, ни ``webapp``;
+- хранение, «Да», воронка, расход, запись, платежи, мессенджеры (``DOMAIN``) — тоже нижний слой;
 - ``connectors/*`` — отдельные процессы MCP: только свой ``_core`` и стандартная библиотека, ядро пульта — нет.
 Интерфейс панели (``web/``) — не Python, здесь не проверяется.
 
@@ -16,6 +17,11 @@ import sys
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parents[1] / "src" / "gas_pult"
+
+# Модули предметной области (22.11): хранение, «Да», воронка, платежи, мессенджеры — нижний слой, как люди и права:
+# не тянут ни бот, ни панель, чтобы любой из них можно было вынести отдельно. Пакеты — со всеми подмодулями.
+DOMAIN = ("gas_pult.store", "gas_pult.approvals", "gas_pult.drafts", "gas_pult.funnel", "gas_pult.spend",
+          "gas_pult.recparts", "gas_pult.billing", "gas_pult.messengers")
 
 # (модуль, кого импортирует) → почему так и какая задача уберёт. Пусто — нарушений нет (22.11).
 KNOWN: dict[tuple[str, str], str] = {}
@@ -83,7 +89,9 @@ def hits(g: dict[str, set[str]], who: str, banned: set[str]) -> set[tuple[str, s
 def violations() -> set[tuple[str, str]]:
     g = graph()
     bad = hits(g, "gas_pult.bot", {"gas_pult.webapp"})
-    for low in ("gas_pult.people", "gas_pult.access", "gas_pult.webauth"):
+    lows = {"gas_pult.people", "gas_pult.access", "gas_pult.webauth"}
+    lows |= {m for m in g for d in DOMAIN if m == d or m.startswith(d + ".")}
+    for low in sorted(lows):
         bad |= hits(g, low, {"gas_pult.bot", "gas_pult.webapp"})
     std = set(sys.stdlib_module_names) | {"__future__"}
     for name, deps in g.items():
@@ -92,6 +100,14 @@ def violations() -> set[tuple[str, str]]:
         ok = {"gas_pult.connectors", "gas_pult.connectors._core"}
         bad |= {(name, d) for d in deps if d not in ok and d not in std}
     return bad
+
+
+def test_domain_modules_are_checked():
+    """Все модули предметной области на месте и попадают под правило (переименуют — тест скажет)."""
+    g = graph()
+    for d in DOMAIN:
+        assert d in g, f"модуля {d} нет — поправьте DOMAIN"
+    assert {"gas_pult.messengers.host", "gas_pult.billing.api"} <= set(g)
 
 
 def test_graph_sees_known_imports():
