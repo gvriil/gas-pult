@@ -42,6 +42,7 @@ FOOT = re.compile(r"^\s*" + HINT + r"(Enter to (confirm|select)|Esc to (cancel|c
 # сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
 DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model)|^\s*" + HINT +
                     r"(Enter to (confirm|select)|Esc to (cancel|close|go back))", re.M)
+BUSY = re.compile(r"esc to interrupt", re.I)              # Claude работает (из bot.py, 22.11: нужен panel/*)
 OPT = re.compile(r"^(❯\s*)?(\d{1,2})\.\s+(?:\[[ ✔✓x×]\]\s*)?(.+?)$")
 PLAIN_SEL = re.compile(r"^❯\s*(?!\d+\.)(\S.*)$")
 QUESTION = re.compile(r"\?\s*$")
