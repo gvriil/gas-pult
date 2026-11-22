@@ -150,6 +150,8 @@ HTTP-сервер на `http.server` (поток на запрос). Вход �
 `login/*`, `logout`, `terms*`, `country`), MCP (`mcp*`), мастер (`setup/*`), модули (`modules`, `modules/create`),
 «Примерочная» (`scenarios`), роли интерфейса (`persona`; `team` — только владельцу), простой режим (`prefs`, `ask`; словари `/i18n/ru.json`, `/i18n/en.json` — и до входа),
 предложения (`/offer/<код>`, `/api/offer/<код>/…`).
+Полная опись путей — [`API.md`](API.md) и [`openapi.json`](openapi.json) (OpenAPI 3.1): метод, кто может, что делает,
+поля. Собирает `python -m gas_pult.api_spec` из `webapp.py` и `access.py`; расхождение ловит `tests/test_api_spec.py`.
 
 | Модуль | Что делает |
 |---|---|
