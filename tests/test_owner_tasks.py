@@ -11,8 +11,9 @@ import pytest
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import bot, cli, tasks, webapp, webauth
+from gas_pult import bot, cli, tasks, webauth
 from gas_pult.config import Config
+from gas_pult.panel import work
 
 
 @pytest.fixture
@@ -108,7 +109,7 @@ def test_api_owner_only_etag_and_run(server, monkeypatch):
     assert d["tasks"] == {"open": 1, "waiting": 0, "q1": 0, "doing": 0, "urgent": 0}
     monkeypatch.setattr(p.auth, "needs_confirm", lambda token, fresh=None: False)
     ran = []
-    monkeypatch.setattr(webapp, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))
+    monkeypatch.setattr(work, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))
     code, r = call(base, "/api/tasks/run", {"id": x["id"]}, tok)
     assert code == 200 and r["code"] == 0 and "привет" in r["out"]
     assert p.tasks.get(x["id"])["result"]["code"] == 0 and ran[0][0] == "echo привет"

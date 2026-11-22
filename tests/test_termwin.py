@@ -18,6 +18,7 @@ import pytest
 
 from gas_pult import bot, commands, termwin, webapp, webauth
 from gas_pult.config import SUDO_ALLOW, Config
+from gas_pult.panel import work
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -184,7 +185,7 @@ def call(base, path, body=None, tok="", headers=None):
 def test_panel_run_refuses_and_terminal_opens(server, monkeypatch, tmp_path):
     _p, base, tok = server
     ran, opened = [], []
-    monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: ran.append(cmd) or (0, 0.1, "ok"))
+    monkeypatch.setattr(work, "execute", lambda cmd, cwd: ran.append(cmd) or (0, 0.1, "ok"))
     monkeypatch.setattr(termwin, "open_window", lambda tm, cmd, cwd: opened.append((cmd, cwd)) or "@9")
     code, d = call(base, "/api/run", {"w": "@1", "i": 0, "sha": "aaa"}, tok)
     assert code == 400 and "терминале" in d["error"] and ran == []          # вслепую не запускаем

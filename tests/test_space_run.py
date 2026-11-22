@@ -6,6 +6,7 @@ import pytest
 from gas_pult import commands, webapp
 from gas_pult.commands import Commands, in_space
 from gas_pult.config import Config
+from gas_pult.panel import work
 
 
 @pytest.fixture
@@ -32,7 +33,7 @@ def panel(monkeypatch, tmp_path, troot):
             {"i": 1, "cmd": "keepassxc-cli ls db", "kind": "tty", "danger": False, "sha": "bbb"}]
     monkeypatch.setattr(p, "commands", lambda w: cmds)
     ran = []
-    monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: ran.append(cmd) or (0, 0.1, "ok"))
+    monkeypatch.setattr(work, "execute", lambda cmd, cwd: ran.append(cmd) or (0, 0.1, "ok"))
     monkeypatch.setattr(webapp.termwin, "open_window", lambda *a: ran.append("term") or "@9")
     p.ran = ran
     return p

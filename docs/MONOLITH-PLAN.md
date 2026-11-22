@@ -91,7 +91,10 @@
    в `on_message` (диспетчер).
 4. ✓ `panel/projects.py` — 22.11: «Проекты», закрепление, корзина чатов, название чата и «Проекты» пространства →
    примесь `ProjectsPart` (51 имя, только перенос; `NeedForce`, `EFFORTS`, `effort_flag` реэкспортирует `webapp`);
-   `temp_tick` (остатки озвучки) остался в `webapp`. `panel/work.py` — далее.
+   `temp_tick` (остатки озвучки) остался в `webapp`. ✓ `panel/work.py` — 22.11: задачи, брифинг, команды из ответов,
+   окно терминала, модули-агенты, репозитории → примесь `WorkPart` (28 имён, ≈340 строк, только перенос; `utc_now`
+   реэкспортирует `webapp`); `DIALOG` — из `bot.py` в `humanize.py` (`bot.DIALOG` жив), чтобы `panel/*` не
+   импортировал `bot`; тесты подменяют `execute` в `panel.work`, а не в `webapp`.
 5. `panel/sessions.py` (самый связанный — после того как подход проверен).
 6. `panel/spaces.py`, `panel/people.py`.
 7. `routes/*` — по области за PR, тем же порядком.

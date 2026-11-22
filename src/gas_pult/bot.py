@@ -91,6 +91,7 @@ from gas_pult import tmux as tmux_mod
 from gas_pult.botparts.voice import VoicePart
 from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
 from gas_pult.config import Config
+from gas_pult.humanize import DIALOG  # переехал в humanize.py (признаки диалога); bot.DIALOG жив
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux, prompt_draft
@@ -98,11 +99,7 @@ from gas_pult.tmux import is_ours as tmux_is_ours
 from gas_pult.voice import catalog
 from gas_pult.webauth import Auth, TgConfirm, TgLogins
 
-# Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
-# сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
 HINT = r"(?:[^·\n]{1,40}·\s*)*"          # подсказки внизу меню могут идти после других: «↑/↓ to navigate · Enter to …»
-DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model)|^\s*" + HINT +
-                    r"(Enter to (confirm|select)|Esc to (cancel|close|go back))", re.M)
 BUSY = re.compile(r"esc to interrupt", re.I)
 # Готовность окна к тексту. Вопрос Claude (разрешение, выбор пункта): Esc там значит «нет» — за человека не отвечаем.
 # Меню и панели (/status, /model, /config, /usage…): Esc безопасен — закрываем, иначе текст уйдёт в меню и пропадёт.
