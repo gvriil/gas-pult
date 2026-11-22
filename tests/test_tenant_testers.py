@@ -40,6 +40,8 @@ def wait(cond, timeout=10):
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
+    if not shutil.which("tmux"):                          # настоящие серверы tmux пространств (на macOS в CI его нет)
+        pytest.skip("нужен tmux")
     d = tempfile.mkdtemp(prefix="gp-", dir="/tmp")
     socks = {k: os.path.join(d, k[0]) for k in ("owner", "demo", "other")}
     monkeypatch.setenv("GAS_PULT_TMUX_SOCKET", socks["owner"])
