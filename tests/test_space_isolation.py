@@ -361,3 +361,13 @@ def test_logout_ends_only_own_session(iso):
     assert call(w, "/api/logout", {})[0] == 200
     assert call(w, "/api/sessions")[0] == 401
     assert call(w, "/api/sessions", who=OWNER)[0] == 200
+
+
+def test_space_cannot_move_chats(iso):
+    """«Перенести в проект…» (chat_move.py) — только владельцу: человек пространства не переносит ни свой чат в чужой
+    проект, ни чужой чат; очередь переносов не меняется."""
+    w = iso
+    for body in ({"w": w["other_w"], "project": "pnone"}, {"w": w["other_w"], "cancel": True},
+                 {"w": "@1", "project": "p0"}):
+        code, out = call(w, "/api/chat/move", body)
+        assert code == 403 and not leaks(out)

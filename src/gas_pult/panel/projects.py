@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 
 from gas_pult import (
+    chat_move,
     chat_trash,
     chatmcp,
     harness,
@@ -523,6 +524,135 @@ class ProjectsPart:
         self.projects.set_chat(rec["sid"], rec["project"], hidden=False)
         self._proj = (0.0, {})
         return rec
+
+    # ---------- «Перенести в проект…»: чат продолжается в папке другого проекта (chat_move.py) ----------
+    MOVE_SPACE = ("В пространстве перенос чата пока недоступен: журналы чатов там пишет только пользователь "
+                  "пространства, а пульт может лишь открывать окна. Начните новый чат в нужном проекте.")
+
+    @property
+    def moves(self) -> chat_move.Pending:
+        return chat_move.Pending(self.cfg.data / chat_move.FILE)
+
+    def chat_move(self, wid: str, pid: str, uid=None, defer: bool = True) -> dict:
+        """«Перенести в проект…» окна ``wid`` в проект ``pid``. Идёт ход — не прерываем: ``defer`` — перенос встаёт
+        в очередь (``move_tick`` сделает его, когда окно освободится), иначе — отказ «чат занят» (CLI ждёт сам)."""
+        w, p, f = self.move_check(wid, pid)
+        if self.turn_busy(w):
+            if not defer:
+                raise chat_move.Busy("чат сейчас отвечает — перенесу, когда закончит")
+            self.moves.add(w["id"], p["id"], "" if uid is None else str(uid))
+            self.events.event("chat_move", w=w["id"], project=p["id"], state="pending")
+            return {"pending": True, "id": w["id"], "project": p["id"], "project_name": p["name"],
+                    "text": "Перенесу, как только закончит"}
+        return self.move_now(w, p, f, uid)
+
+    def move_check(self, wid: str, pid: str) -> tuple[dict, dict, Path]:
+        """Окно, проект и журнал для переноса — или понятный отказ до любых изменений."""
+        w = self.session_window(wid)
+        if w.get("space"):
+            raise ValueError(self.MOVE_SPACE)
+        if (w.get("mark") in harness.JOURNAL_ONLY) or harness.of(w).name != harness.DEFAULT:
+            raise ValueError("переносить можно только чаты Claude Code — у этого агента журнал в другом месте")
+        p = self.project(pid)
+        if p.get("space"):
+            raise ValueError(self.MOVE_SPACE)
+        folder = os.path.realpath(projects.untilde(p["path"], self.pult.home))
+        if not os.path.isdir(folder):
+            raise LookupError("папки проекта нет — обновите список")
+        if folder == os.path.realpath(w["path"]):
+            raise ValueError("чат уже в этом проекте")
+        sid = transcripts.valid_sid(self.follow_sid(w, self.tmux.windows(), self.pult.home_of(w)))
+        if not sid:
+            raise ValueError("у чата ещё нет разговора — напишите первое сообщение, потом переносите")
+        w["sid"] = sid
+        f = self.window_journal(w)
+        if not f or not f.is_file():
+            raise LookupError("журнала чата ещё нет — напишите первое сообщение, потом переносите")
+        if o := self.sid_owner(sid, w["id"]):
+            raise ValueError(f"этот разговор открыт ещё и в окне «{o['name']}» — закройте его, потом переносите")
+        return w, p, f
+
+    def turn_busy(self, w: dict) -> bool:
+        """Идёт ход — тем же признаком, что строка статуса панели (``Pult.activity``). Остановленное окно — свободно."""
+        if w.get("stopped"):
+            return False
+        try:
+            return chat_move.busy(self.pult.activity(w))
+        except (OSError, RuntimeError, LookupError):
+            return False
+
+    def move_now(self, w: dict, p: dict, f: Path, uid=None) -> dict:
+        """Перенос: окно закрыть, журнал скопировать в папку журналов новой папки, окно открыть там с ``--resume``
+        (модель, поставщик, усилие — как у перезапуска), старый журнал — в корзину чатов, название и закрепление —
+        за чатом (они по id разговора)."""
+        folder = os.path.realpath(projects.untilde(p["path"], self.pult.home))
+        home, sid = self.pult.home_of(w), f.stem
+        d = self.project_data(fresh=True)
+        old_pid = self.project_of(d, w) or ""
+        title = str(((d.get("sessions") or {}).get(sid) or {}).get("title") or "")
+        copied: list[Path] = []
+
+        def closed():                                   # Claude вышел и дописал журнал — теперь копируем
+            copied.append(chat_move.copy_journal(f, transcripts.project_dir(folder, home)))
+
+        base = os.path.basename(folder) if folder != os.path.realpath(self.pult.home) else "home"
+        out = self.restart(w, w.get("profile") or w.get("mark") or "claude", True, uid, path=folder,
+                           wname=f"{base}-{time.strftime('%H%M')}", closed=closed)
+        if out.get("failed"):
+            self.events.event("chat_move", w=w["id"], to=out["id"], project=p["id"], state="failed")
+            raise chat_move.Failed(f"не перенёс: {out['failed']} — чат продолжается на прежнем месте", out["id"])
+        trash = None
+        with contextlib.suppress(OSError, LookupError):
+            trash = chat_trash.put(self.cfg.data, f, (title or projects.title_of(copied[0]) or w.get("name", ""))
+                                   + f" (до переноса в «{p['name']}»)", old_pid)
+        self.projects.set_chat(sid, p["id"], hidden=False)
+        self._proj = (0.0, {})
+        self.events.event("chat_move", w=w["id"], to=out["id"], project=p["id"], src=old_pid, state="done")
+        print(f"перенос чата: окно {w['id']} → {out['id']}, проект {old_pid or '—'} → {p['id']}", flush=True)
+        return {"id": out["id"], "sid": sid, "project": p["id"], "project_name": p["name"], "moved": True,
+                "trash": trash, **({"model": out["model"]} if out.get("model") else {})}
+
+    def move_tick(self, now: float | None = None) -> list[str]:
+        """Из фонового цикла панели: отложенные переносы, чьё окно освободилось. Окна нет или ждёт дольше
+        ``PENDING_TTL`` — запись убираем. Возвращает id новых окон."""
+        now = time.time() if now is None else now
+        done = []
+        for wid, rec in self.moves.read().items():
+            w = self.tmux.window(wid)
+            if not w or now - int(rec.get("at") or 0) > chat_move.PENDING_TTL:
+                self.moves.take(wid)
+                continue
+            if self.turn_busy(w):
+                continue
+            if self.moves.take(wid) is None:            # уже забрал другой (CLI с --wait или второй цикл)
+                continue
+            try:
+                ww, p, f = self.move_check(wid, rec.get("project", ""))
+                by = rec.get("by")
+                done.append(self.move_now(ww, p, f, int(by) if str(by or "").isdigit() else None)["id"])
+            except (ValueError, LookupError, OSError, RuntimeError) as e:
+                print(f"перенос чата {wid}: {e}", flush=True)
+        return done
+
+    def move_pending(self, wid: str) -> dict | None:
+        """Ждёт ли окно переноса — для «⋯» чата (показать «Перенесу, как только закончит»)."""
+        rec = self.moves.get(wid)
+        if not rec:
+            return None
+        p = self.project_data().get("projects", {}).get(rec.get("project"))
+        return {"project": rec.get("project"), "project_name": (p or {}).get("name", "")}
+
+    def move_api(self, b: dict, uid=None) -> dict:
+        """``/api/chat/move``: ``{w, project}`` — перенести; ``{w, cancel: true}`` — отменить отложенный перенос.
+        Не удалось после закрытия окна — ответ с ``failed`` и id окна на прежнем месте (панель откроет его)."""
+        wid = str(b.get("w") or "")
+        if b.get("cancel") is True:
+            self.session_window(wid)
+            return {"cancelled": self.moves.take(wid) is not None}
+        try:
+            return self.chat_move(wid, str(b.get("project") or ""), uid)
+        except chat_move.Failed as e:
+            return {"failed": str(e), "id": e.wid}
 
     INSTR_MAX = 20000                                   # знаков CLAUDE.md в ответе: больше — обрезаем с пометкой
     FILES_MAX = 200

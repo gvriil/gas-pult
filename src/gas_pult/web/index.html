@@ -2128,6 +2128,7 @@ function navItems0(row) {
   const name = s.title || s.name;
   return [...(canPin(s) ? [{ label: s.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!s.pinned, run: () => pinSet({ w: s.id }, !s.pinned, name) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role === "owner" && !FOCUS && !s.space && (s.harness || "claude") === "claude" && projOn() ? [{ label: "Перенести в проект…", icon: "folder", sub: "переписка та же — чат продолжится в папке другого проекта", run: () => part("chatmove").then((m) => m.open(s)) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule ? [{ label: "Удалить", icon: "trash", danger: true, run: () => navDelete(s) }] : []),
     ...(meta?.role === "owner" && s.schedule && !s.space ? [{ label: "Удалить", icon: "trash", danger: true, sub: "расписание выключится, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(s.space && meta?.role !== "viewer" ? [{ label: T("ss.del.item"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) }] : []),
@@ -4144,6 +4145,7 @@ function sessionSheet(id) {
     ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этого чата" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role === "owner" && !FOCUS && !s.space && (s.harness || "claude") === "claude" && projOn() ? [{ label: "Перенести в проект…", icon: "folder", sub: "переписка та же — чат продолжится в папке другого проекта", run: () => part("chatmove").then((m) => m.open(s)) }] : []),
     ...(FOCUS && meta?.focus?.browser ? [{ label: "Подключить браузер", icon: "monitor", sub: "пульт будет работать в Chrome/Edge на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только этот чат на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
     ...(canRepos(s) && dev() ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этому чату — без перезапуска", run: () => repoSheet(id) }] : []),
