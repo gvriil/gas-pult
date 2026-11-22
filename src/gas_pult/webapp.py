@@ -59,6 +59,7 @@ from gas_pult import (
     country,
     ctxsnap,
     deskmobile,
+    desktabs,
     drafts,
     drive_inbox,
     emailcode,
@@ -5681,6 +5682,14 @@ def handler(panel: Panel):
                 if on and not desktop_up():
                     raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
                 return deskmobile.MOBILE.set(on, b.get("w"), b.get("h"), b.get("dpr"))
+            if path in ("/api/desktop/tabs", "/api/desktop/tabs/shot", "/api/desktop/tabs/act"):
+                if not desktop_up():                      # вкладки Chrome стола на телефоне (desktabs.py, 22.11)
+                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
+                if path == "/api/desktop/tabs":
+                    return desktabs.TABS.list(b.get("idle"))
+                if path == "/api/desktop/tabs/shot":
+                    return desktabs.TABS.shot(str(b.get("id") or ""))
+                return desktabs.TABS.act(str(b.get("op") or ""), str(b.get("id") or ""), str(b.get("url") or ""))
             if path == "/api/brief/prefs":                # брифинг: источники, время, дни, пояс — у каждого свои
                 return panel.brief_set(self.terms_uid(), b)
             if path == "/api/brief/act":                  # «Да / Нет / Позже»; «Да» с действием — после confirm

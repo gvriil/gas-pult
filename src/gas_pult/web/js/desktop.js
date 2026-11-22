@@ -74,6 +74,58 @@ const DESK_CSS = `
   .desk.desk-compact .desk-keys[hidden] { display: none; }
   .desk.desk-compact .desk-keys .desk-b { height: 38px; }
   .desk.desk-compact .desk-stage { padding-bottom: 0; }
+  /* Вкладки как в мобильных браузерах (владелец 22.11: «вкладки превращаются в мелкие точки … как в Safari»): своя строка
+     адреса и экран вкладок; полосу вкладок и адресную строку Chrome в картинке стола прячем (--desk-crop, desktabs.py) */
+  .desk-addr { display: none; }
+  .desk.desk-compact .desk-addr { display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 2px; background: var(--bg-canvas);
+    border-bottom: 1px solid var(--border-subtle); flex: none; }
+  .desk-addr .desk-b { width: 44px; min-width: 44px; height: 44px; padding: 0; }
+  .desk-addr .desk-b:disabled { opacity: .35; cursor: default; background: transparent; }
+  .desk-url, .desk-url-in { flex: 1; min-width: 0; height: 40px; box-sizing: border-box; border: 1px solid transparent; border-radius: var(--radius-sm);
+    background: var(--bg-subtle); color: var(--text-primary); font: inherit; font-size: 16px; }
+  .desk-url { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; cursor: pointer; }
+  .desk-url span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .desk-url .i { flex: none; color: var(--text-secondary); }
+  .desk-url-f { flex: 1; min-width: 0; display: flex; } .desk-url-f[hidden] { display: none; }
+  .desk-url-in { padding: 0 10px; border-color: var(--accent-primary); outline: none; }
+  .desk-cnt { min-width: 20px; height: 20px; padding: 0 3px; box-sizing: border-box; border: 2px solid currentColor; border-radius: 6px;
+    display: grid; place-items: center; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .desk.desk-crop .desk-stage { overflow: hidden; }
+  .desk.desk-crop .desk-view { top: calc(-1 * var(--desk-crop, 0px)); }
+  .desk-tabs { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: var(--bg-canvas);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  .desk-tabs[hidden] { display: none; }
+  .desk-tabs-h { display: flex; align-items: center; gap: 8px; padding: 12px 16px 6px; flex: none; }
+  .desk-tabs-h b { font-size: 17px; } .desk-tabs-h span { color: var(--text-secondary); font-size: 14px; }
+  .desk-tabs-g { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px 12px; padding: 8px 16px 16px; align-content: start; overscroll-behavior: contain; }
+  .dt-card { position: relative; min-width: 0; }
+  .dt-open { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 0; border: 0; background: none; color: var(--text-primary);
+    font: inherit; text-align: left; cursor: pointer; }
+  .dt-thumb { position: relative; display: block; width: 100%; aspect-ratio: 5 / 8; border-radius: var(--radius-md); overflow: hidden;
+    background: var(--bg-subtle); border: 1px solid var(--border-subtle); box-sizing: border-box; }
+  .dt-card.on .dt-thumb { border: 3px solid var(--accent-primary); }
+  .dt-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+  .dt-big { position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 700; color: var(--text-muted); }
+  .dt-agent { position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px 3px 5px;
+    border-radius: var(--radius-pill); background: var(--accent-primary); color: var(--on-accent); font-size: 12px; font-weight: 600; }
+  .dt-agent .i { width: 13px; height: 13px; }
+  .dt-title { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 2px; font-size: 13px; }
+  .dt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-fav { flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; overflow: hidden;
+    background: var(--accent-soft); color: var(--accent-primary); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .dt-fav img { width: 16px; height: 16px; }
+  /* крестик — зона 44 × 44 в углу миниатюры, кружок внутри */
+  .dt-x { position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer;
+    display: grid; place-items: center; color: var(--text-primary); }
+  .dt-x::before { content: ""; position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--bg-canvas); opacity: .92; box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
+  .dt-x .i { position: relative; width: 16px; height: 16px; margin: -6px -6px 0 0; }
+  .desk-tabs-f { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border-subtle); }
+  .desk-tabs-f .desk-b { height: 44px; font-size: 15px; padding: 0 14px; }
+  .desk-tabs-f .desk-b.on { color: var(--accent-primary); font-weight: 600; }
+  .desk-tabs-e { grid-column: 1 / -1; color: var(--text-secondary); text-align: center; padding: 32px 0; }
 `;
 if (!document.getElementById("desk-css")) {
   const s = document.createElement("style"); s.id = "desk-css"; s.textContent = DESK_CSS; document.head.append(s);
@@ -81,7 +133,8 @@ if (!document.getElementById("desk-css")) {
 // Телефон и альбом телефона: компактная панель (меню ≡, клавиши по кнопке) и мобильный вид сайтов (deskmobile.py)
 const NARROW = "(max-width: 700px), (max-height: 500px)";
 const MIN_W = 500;                                     // уже окно Chrome не бывает — стол не уже, показываем уменьшенным
-const BEAT = 20000;                                    // сердцебиение мобильного вида; сервер ждёт 60 с
+const BEAT = 20000;
+const TABS_POLL = 3000;                                // вкладки и адрес — раз в 3 с, пока стол открыт на телефоне                                    // сердцебиение мобильного вида; сервер ждёт 60 с
 const DESK_UI = "gp.desk.ui";                          // свёрнута ли панель, показан ли ряд клавиш — на этом устройстве
 const uiGet = () => { try { return JSON.parse(localStorage.getItem(DESK_UI) || "{}"); } catch (_) { return {}; } };
 const uiSet = (v) => { try { localStorage.setItem(DESK_UI, JSON.stringify({ ...uiGet(), ...v })); } catch (_) {} };
@@ -143,6 +196,7 @@ async function rfbScreen(view, st) {
 }
 
 function demoScreen(view, st) {                        // демо: «стол» 1600×900 с терминалом-заглушкой (для тестов)
+  if (typeof params !== "undefined" && params.has("tabs") && window.demoSiteSvg) return demoChrome(view, st);
   const box = document.createElement("div"); box.className = "desk-demo";
   box.innerHTML = `<pre class="desk-term" aria-label="Терминал на столе (демо)">Демо: терминал в Браузере агентов\n$ </pre>`;
   view.append(box);
@@ -177,6 +231,31 @@ function demoScreen(view, st) {                        // демо: «стол»
   return scr;
 }
 
+// ?demo&tabs: «стол» с Chrome (полоса вкладок и адресная строка сверху, страница — вымышленный сайт). Узкий экран —
+// стол шириной MIN_W и высотой по экрану (как Xvnc на живом столе), иначе 1600×900. Для снимков экрана вкладок (22.11)
+function demoChrome(view, st) {
+  const img = document.createElement("img"); img.className = "desk-demo"; img.alt = "Браузер агентов (демо)"; view.append(img);
+  let tabs = { tabs: [] };
+  const scr = {
+    w: 1600, h: 900, z: 1, fitted: true, typed: [], scroller: view, view() {}, close() {}, type(t) { scr.typed.push(t); }, key() {}, paste() {},
+    draw() { const a = tabs.tabs.find((t) => t.active); const site = (window.demoApi?.dt?.tabs || []).find((t) => t.id === a?.id) || { url: "about:blank", title: "", c: "#999" };
+      img.src = window.demoSiteSvg(site, scr.w, scr.h, (window.demoApi?.dt?.tabs || []).map((t) => ({ c: t.c }))); },
+    size(z) { img.style.width = scr.w * z + "px"; img.style.height = scr.h * z + "px"; },
+    scale(z) { scr.fitted = false; scr.z = z; scr.size(z); },
+    fit() {
+      const vw = view.clientWidth, vh = view.clientHeight, narrow = vw > 0 && vw < MIN_W;
+      const [w, h] = narrow ? [MIN_W, Math.round(vh * MIN_W / vw)] : matchMedia(NARROW).matches ? [vw, vh] : [1600, 900];
+      const redraw = w !== scr.w || h !== scr.h || !img.src; scr.w = w; scr.h = h; scr.fitted = true;
+      scr.z = Math.min(vw / w, vh / h); scr.size(scr.z); if (redraw) scr.draw();
+    },
+    paint(t) { tabs = t; scr.draw(); },
+  };
+  window.demoTabs?.("/api/desktop/tabs", {}).then((t) => scr.paint(t));   // широкий экран: вкладки не опрашиваются
+  setTimeout(() => { st.textContent = "демо"; scr.onready?.(); }, 30);
+  window.__deskDemo = scr;
+  return scr;
+}
+
 function deskShow(d) {
   deskClose();
   const touch = matchMedia("(pointer: coarse)").matches;   // палец: по умолчанию «Рука» (смотреть и двигать)
@@ -194,6 +273,13 @@ function deskShow(d) {
       ${b("clip", "Буфер", "Буфер обмена: вставить на стол, скопировать со стола", ' aria-expanded="false"')}
       ${b("full", ic("expand"), "Во весь экран")}${b("reload", ic("refresh"), "Переподключить")}
       ${d.demo ? "" : b("tab", ic("ext"), "Открыть в браузере")}${b("hide", ic("down"), "Скрыть панель")}${b("close", ic("x"), "Закрыть")}</div>
+    <div class="desk-addr" role="toolbar" aria-label="Адрес и вкладки">
+      <button class="desk-b" data-desk="back" aria-label="Назад" title="Назад" disabled>${ic("back")}</button>
+      <button class="desk-b" data-desk="fwd" aria-label="Вперёд" title="Вперёд" disabled>${ic("chevron")}</button>
+      <button class="desk-url" data-desk="url" aria-label="Адрес страницы — нажмите, чтобы открыть другой">${ic("globe", "s16")}<span>…</span></button>
+      <form class="desk-url-f" novalidate hidden><input class="desk-url-in" type="text" inputmode="url" enterkeyhint="go" autocapitalize="off"
+        autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Адрес сайта" aria-label="Адрес сайта"></form>
+      <button class="desk-b" data-desk="tabs" aria-label="Вкладки" title="Вкладки" aria-haspopup="dialog"><span class="desk-cnt">0</span></button></div>
     <div class="desk-keys" role="toolbar" aria-label="Клавиши"${keysOn ? "" : " hidden"}>${KEYROW.map(([k, t, l]) =>
       `<button class="desk-b" data-key="${k}" title="${l}" aria-label="${l}"${k.startsWith("mod:") ? ' aria-pressed="false"' : ""}>${t}</button>`).join("")}</div>
     <div class="desk-clip" hidden>
@@ -203,6 +289,11 @@ function deskShow(d) {
         <button class="desk-t" data-desk="clip-type" title="Если вставка не сработала: набрать текст посимвольно">Напечатать</button></div>
       <div class="desk-clip-out" hidden><span>Скопировано на столе:</span><code class="desk-clip-text"></code>
         <button class="desk-t on" data-desk="clip-copy">Скопировать</button></div></div>
+    <div class="desk-tabs" role="dialog" aria-label="Вкладки" hidden>
+      <div class="desk-tabs-h"><b>Вкладки</b><span class="desk-tabs-n"></span></div>
+      <div class="desk-tabs-g" role="list"></div>
+      <div class="desk-tabs-f"><button class="desk-b" data-desk="tab-new">${ic("plus")}Новая вкладка</button>
+        <button class="desk-b on" data-desk="tabs-done">Готово</button></div></div>
     <div class="desk-stage"><div class="desk-view"></div><div class="desk-pan"${touch ? "" : " hidden"}></div></div>
     <textarea class="desk-kbd" aria-label="Ввод на рабочий стол" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="enter"></textarea>
     <button class="desk-fab" data-desk="show" aria-label="Показать панель стола" title="Показать панель (можно перетащить)" hidden>${ic("monitor")}</button>
@@ -210,6 +301,8 @@ function deskShow(d) {
       ${b("keys", ic("keyboard"), "Клавиши: Enter, Esc, стрелки, Ctrl", ' aria-pressed="false"')}
       ${b("menu", ic("lines"), "Меню стола", ' aria-haspopup="true" aria-expanded="false"')}</div>`;
   const st = el.querySelector(".desk-st"), view = el.querySelector(".desk-view"), pan = el.querySelector(".desk-pan");
+  let human = 0;                                       // когда человек последний раз трогал стол (не «Рукой»)
+  view.addEventListener("pointerdown", () => { human = Date.now(); }, true);
   const zl = el.querySelector(".desk-z"), kbd = el.querySelector(".desk-kbd");
   const later = () => setTimeout(() => relayout(), 80);
   document.body.append(el); document.body.classList.add("desk-on");
@@ -228,7 +321,16 @@ function deskShow(d) {
     const k = nz / (z || f), sx = (sc().scrollLeft + cx) * k - cx, sy = (sc().scrollTop + cy) * k - cy;
     fitted = false; z = nz; deskScr.scale(z); sc().scrollLeft = sx; sc().scrollTop = sy; show();
   };
-  function relayout() { if (!deskEl) return; if (fitted) fit(); else zoom(z); }   // без переподключения
+  function relayout() { if (!deskEl) return; if (fitted) fit(); else zoom(z); crop(); }   // без переподключения
+  // Телефон: полосу вкладок и адресную строку Chrome прячем — вид сдвинут вверх на верх страницы (desktabs.py: окно минус
+  // область страницы) в масштабе картинки; вид выше сцены на столько же — стол просит у Xvnc высоту с запасом
+  let pageTop = 0, cropPx = 0;
+  function crop() {
+    const k = el.classList.contains("desk-compact") && pageTop > 0 && deskScr?.w ? (fitted ? fitZ() : z) : 0;
+    const px = Math.round(pageTop * k);
+    if (px === cropPx) return;
+    cropPx = px; el.style.setProperty("--desk-crop", px + "px"); el.classList.toggle("desk-crop", px > 0); later();
+  }
   for (const [t, ev] of [[window, "resize"], [window, "orientationchange"], [window.visualViewport, "resize"]])
     if (t) { t.addEventListener(ev, later); deskOff.push(() => t.removeEventListener(ev, later)); }
   try { if (tg?.onEvent) { tg.onEvent("viewportChanged", later); deskOff.push(() => tg.offEvent?.("viewportChanged", later)); } } catch (_) {}
@@ -283,6 +385,7 @@ function deskShow(d) {
       e.preventDefault(); send("Enter");           // keydown Enter уже отменён — тогда beforeinput не приходит: без двойных
     } else if (e.inputType === "deleteContentBackward" && !kbd.value) { e.preventDefault(); send("Backspace"); }
   });
+  kbd.addEventListener("keydown", () => { human = Date.now(); }, true);
   kbd.addEventListener("input", () => { if (kbd.value) { const v = kbd.value; kbd.value = ""; sendText(v); } });
 
   // панель скрыта — плавающий значок (перетаскивается, место запоминается)
@@ -318,15 +421,104 @@ function deskShow(d) {
     const on = mq.matches; el.classList.toggle("desk-compact", on); menu(false);
     if (on) { el.classList.remove("desk-hidden"); fab.hidden = true; keysShow(!!uiGet().keysC); }
     else { keysShow(uiGet().keys ?? touch); if (uiGet().hidden) hideBar(true); }
-    mobile(on); later();
+    if (!on) { tabsOpen(false); urlEdit(false); }
+    mobile(on); tabsPoll(on); later();
   };
   const turn = () => { clearTimeout(mobT); mobT = setTimeout(() => { if (mob) mobSend(); }, 400); };   // поворот — новый размер
-  const vis = () => mobile(mq.matches);
+  const vis = () => { mobile(mq.matches); tabsPoll(mq.matches); };
+
+  // Вкладки (владелец 22.11): строка адреса, «Назад / Вперёд», экран вкладок; опрос раз в TABS_POLL, пока стол виден
+  const tabsEl = el.querySelector(".desk-tabs"), grid = el.querySelector(".desk-tabs-g"), urlB = el.querySelector(".desk-url");
+  const urlF = el.querySelector(".desk-url-f"), urlIn = el.querySelector(".desk-url-in");
+  let tabs = { tabs: [] }, tabsT = 0, tabsBusy = false;
+  const thumbs = new Map();                            // id → картинка (последняя): карточка не мигает при обновлении
+  async function tabsLoad() {
+    if (tabsBusy || deskEl !== el) return; tabsBusy = true;
+    try { tabs = await api("/api/desktop/tabs", { idle: human ? Math.round((Date.now() - human) / 1000) : null }); tabsShow(); }
+    catch (_) {} finally { tabsBusy = false; }       // сбой опроса — тихо: стол работает и без строки адреса
+  }
+  function tabsPoll(on) {
+    on = on && !document.hidden; clearInterval(tabsT); tabsT = 0;
+    if (on) { tabsLoad(); tabsT = setInterval(tabsLoad, TABS_POLL); } else { pageTop = 0; crop(); }
+  }
+  const act = async (op, id = "", url = "") => {
+    human = Date.now();
+    try { const r = await api("/api/desktop/tabs/act", { op, id, url }); setTimeout(tabsLoad, 250); setTimeout(tabsLoad, 1500); return r; }
+    catch (e) { toast(e.message, 4500); return null; }
+  };
+  function tabsShow() {
+    const a = tabs.tabs.find((t) => t.active) || {}, blank = !a.url || a.url === "about:blank", https = /^https:/.test(a.url || "");
+    urlB.innerHTML = ic(https ? "lock" : "globe", "s16") + `<span>${esc(blank ? "Введите адрес" : a.host || a.url)}</span>`;
+    urlB.title = blank ? "" : a.url;
+    el.querySelector("[data-desk=back]").disabled = !tabs.back; el.querySelector("[data-desk=fwd]").disabled = !tabs.fwd;
+    const n = tabs.tabs.length, tb = el.querySelector("[data-desk=tabs]");
+    tb.querySelector(".desk-cnt").textContent = n > 99 ? "∞" : n; tb.setAttribute("aria-label", `Вкладки: ${n}`); tb.title = `Вкладки: ${n}`;
+    pageTop = +tabs.top || 0; deskScr?.paint?.(tabs); crop();
+    if (!tabsEl.hidden) tabsGrid();
+  }
+  function tabsGrid() {
+    const l = tabs.tabs;
+    el.querySelector(".desk-tabs-n").textContent = l.length ? String(l.length) : "";
+    if (!l.length) { grid.innerHTML = '<div class="desk-tabs-e">Вкладок нет — «Новая вкладка» внизу</div>'; return; }
+    grid.innerHTML = l.map((t) => {
+      const name = t.title || t.host || "Новая вкладка", letter = (t.host || name).replace(/^www\./, "").charAt(0) || "·";
+      return `<div class="dt-card${t.active ? " on" : ""}" role="listitem" data-id="${esc(t.id)}">
+        <button class="dt-open" data-tab-open="${esc(t.id)}" aria-label="${esc(name + (t.host ? " — " + t.host : "") + (t.active ? ", открыта" : "") + (t.agent ? ", здесь работает агент" : ""))}"${t.active ? ' aria-current="true"' : ""}>
+          <span class="dt-thumb">${thumbs.get(t.id) ? `<img alt="" src="${esc(thumbs.get(t.id))}">` : `<span class="dt-big">${esc(letter)}</span>`}
+            ${t.agent ? `<span class="dt-agent">${ic("bolt")}агент</span>` : ""}</span>
+          <span class="dt-title"><span class="dt-fav">${t.icon ? `<img alt="" src="${esc(t.icon)}">` : esc(letter)}</span><span class="dt-name">${esc(name)}</span></span></button>
+        <button class="dt-x" data-tab-close="${esc(t.id)}" aria-label="${esc("Закрыть вкладку: " + name)}" title="Закрыть">${ic("x")}</button></div>`;
+    }).join("");
+  }
+  async function tabsThumbs() {                        // миниатюры — по три сразу; сервер держит их в кэше несколько секунд
+    const ids = tabs.tabs.map((t) => t.id);
+    const one = async () => {
+      for (let id; (id = ids.shift()) && !tabsEl.hidden && deskEl === el;) {
+        try {
+          const r = await api("/api/desktop/tabs/shot", { id });
+          if (!r.img) continue;
+          thumbs.set(id, r.img);
+          const box = grid.querySelector(`[data-id="${CSS.escape(id)}"] .dt-thumb`);
+          if (box) { box.querySelector(".dt-big")?.remove(); let im = box.querySelector("img"); if (!im) { im = document.createElement("img"); im.alt = ""; box.prepend(im); } im.src = r.img; }
+        } catch (_) {}
+      }
+    };
+    await Promise.all([one(), one(), one()]);
+  }
+  const tabsOpen = async (on) => {
+    tabsEl.hidden = !on; el.querySelector("[data-desk=tabs]").setAttribute("aria-expanded", String(on));
+    if (!on) return;
+    menu(false); tabsGrid(); await tabsLoad();
+    grid.querySelector(".dt-card.on")?.scrollIntoView({ block: "nearest" }); tabsThumbs();
+  };
+  const urlEdit = (on) => {
+    urlF.hidden = !on; urlB.hidden = on;
+    if (on) { const a = tabs.tabs.find((t) => t.active); urlIn.value = a && a.url !== "about:blank" ? a.url : ""; urlIn.focus(); urlIn.select(); }
+  };
+  urlF.addEventListener("submit", async (e) => {
+    e.preventDefault(); const u = urlIn.value.trim(); if (!u) return urlIn.focus();
+    urlIn.blur(); urlEdit(false); urlB.querySelector("span").textContent = u;
+    if (!await act("go", tabs.active, u)) tabsShow();   // не открылось — вернуть прежний адрес
+  });
+  urlIn.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== urlIn) urlEdit(false); }, 150));
+  urlIn.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); urlEdit(false); } });
+  grid.addEventListener("click", async (e) => {
+    const x = e.target.closest("[data-tab-close]"), o = e.target.closest("[data-tab-open]");
+    if (x) {
+      const id = x.dataset.tabClose; tabs.tabs = tabs.tabs.filter((t) => t.id !== id); thumbs.delete(id);
+      x.closest(".dt-card")?.remove(); el.querySelector(".desk-tabs-n").textContent = String(tabs.tabs.length || "");
+      haptic("impactOccurred", "light"); await act("close", id); return;
+    }
+    if (o) { const id = o.dataset.tabOpen; tabsOpen(false); if (!tabs.tabs.find((t) => t.id === id)?.active) await act("open", id); }
+  });
   mq.addEventListener("change", compact); addEventListener("resize", turn); document.addEventListener("visibilitychange", vis);
   deskOff.push(() => { mq.removeEventListener("change", compact); removeEventListener("resize", turn);
-    document.removeEventListener("visibilitychange", vis); clearTimeout(mobT); mobile(false); });
+    document.removeEventListener("visibilitychange", vis); clearTimeout(mobT); mobile(false); tabsPoll(false); });
   el.querySelector(".desk-stage").addEventListener("pointerdown", () => menu(false), true);   // касание стола — меню закрыть
-  el.addEventListener("keydown", (e) => { if (e.key === "Escape" && el.classList.contains("desk-menu")) { e.stopPropagation(); menu(false); } });
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !tabsEl.hidden) { e.stopPropagation(); return tabsOpen(false); }
+    if (e.key === "Escape" && el.classList.contains("desk-menu")) { e.stopPropagation(); menu(false); }
+  });
   compact();
   el.addEventListener("click", (e) => {
     const kk = e.target.closest("[data-key]");
@@ -339,6 +531,11 @@ function deskShow(d) {
     const t = e.target.closest("[data-desk]"); if (!t) return;
     const k = t.dataset.desk;
     if (k === "menu") return menu(!el.classList.contains("desk-menu"));
+    if (k === "tabs") return tabsOpen(tabsEl.hidden);
+    if (k === "tabs-done") return tabsOpen(false);
+    if (k === "tab-new") { tabsOpen(false); return act("new").then((r) => r && urlEdit(true)); }
+    if (k === "back" || k === "fwd") return act(k === "back" ? "back" : "forward", tabs.active);
+    if (k === "url") return urlEdit(true);
     if (el.classList.contains("desk-menu") && t.closest(".desk-bar") && !["in", "out"].includes(k)) menu(false);   // выбрали — закрыть
     if (k === "close") return deskClose();
     if (k === "tab") return deskTab();
