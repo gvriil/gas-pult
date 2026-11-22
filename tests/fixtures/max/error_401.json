@@ -1,0 +1,2 @@
+{"_source": "Собрано по схеме OpenAPI MAX Bot API v0.0.34 (https://github.com/max-messenger/api-schema, коммит 0016ff3) и https://dev.max.ru/docs-api, сверено 20.11.2026. Данные выдуманные. Формат ошибки {code, message} — по docs-api; значение code для 401 в документации не указано, выдумано. НЕ ПРОВЕРЕНО НА ПЕСОЧНИЦЕ.",
+ "code": "verify.token", "message": "Invalid access_token"}
