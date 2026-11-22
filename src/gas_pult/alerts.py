@@ -8,6 +8,8 @@
   число, маршруты ``/api/…`` и классы исключений.
 - ``main_ci`` и ``Watch.ci`` — последний законченный push-прогон CI в ``main`` (через ``gh``): красный — строка
   брифинга, а вне брифинга одно сообщение, если красный дольше часа (не чаще раза в 6 часов).
+- ``Watch.connectors`` — квитанция владельцу о коннекторах: события ``connector_down`` / ``connector_up`` от сторожа
+  ``connwatch`` (по одному на переход) — одним сообщением.
 """
 
 from __future__ import annotations
@@ -177,6 +179,25 @@ class Watch:
         if out:
             self.save(st)
         return out
+
+    def connectors(self, events, now: float | None = None) -> list[str]:
+        """Квитанция о коннекторах (``connwatch``): новые ``connector_down`` / ``connector_up`` — одним сообщением.
+        Сторож пишет событие только на переход — значит, одна квитанция на переход. Первый запуск — «отсюда»."""
+        from gas_pult import connwatch
+
+        now = time.time() if now is None else now
+        st = self.load()
+        seen = st.get("conn_seen")
+        if seen is None:
+            st["conn_seen"] = now
+            self.save(st)
+            return []
+        evs = [e for e in events.since(seen, {"connector_down", "connector_up"}) if e.get("ts", 0) > seen]
+        if not evs:
+            return []
+        st["conn_seen"] = max(e["ts"] for e in evs)
+        self.save(st)
+        return [connwatch.receipt(evs)]
 
     def ci(self, m: dict | None, now: float | None = None) -> str:
         """Сообщение о красном ``main``: красный дольше часа и раз в 6 часов не слали. Иначе — ""."""

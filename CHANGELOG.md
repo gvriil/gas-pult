@@ -42,6 +42,15 @@
 - **Замер «1000 пространств»** — `tools/bench-spaces.py`, цифры — docs/STORAGE.md: json, dual, sqlite; `role` / `tenant` / списки, запись людей, ссылок и приглашений; 4 процесса по разным пространствам × 200 операций — без потерь.
 
 ### Добавлено
+- **Сторож входа коннекторов, фаза 1** (решение владельца 22.11; docs/CONNECTORS.md, «Автовход»). `gas-pult connectors
+  watch` собирает статус MCP-коннекторов: Claude Code и FCC (`claude mcp list`), Pi (`pi mcp list --json`), OpenCode
+  (`opencode mcp list`); Hermes не проверяется — его `mcp list` показывает настройку, а не связь. Коннектор потерял вход
+  или не запускается — событие `connector_down`, задача «ждёт вас» с тем, что нажать (одна на коннектор), и квитанция
+  владельцу от бота; вернулся — `connector_up`, задача закрыта, квитанция «вошёл заново». Исключения — `plugin:design:*`,
+  `plugin:gitlab:*` и `exclude` в `connwatch.toml`. `--dry-run` ничего не пишет; `--install` ставит systemd-таймер раз
+  в 30 минут (служба oneshot). `gas-pult connectors vault init` — отдельная база паролей `connectors.kdbx` с ключ-файлом
+  без мастер-пароля; агентам она закрыта (`secrets_guard`, а для Pi, OpenCode и Hermes — `injection_guard` через
+  адаптер). Автовход (`relogin`) пока только ставит задачу человеку: фазы 2–3 — потом.
 - **Хранение в SQLite — сессии, фокус-ссылки, приглашения, задачи** (шаги 2–5 плана 22.11). В `sqlstore.COLLECTIONS` — `web_sessions.json`, `focus.json`, `invites.json`, `tasks.json`; режим общий (`storage`), откат тем же флагом. Сессии браузера (`webauth.Auth`) и задачи (`tasks.Tasks`) переведены на `store.load` / `store.save` / `store.locked` — тот же файл замка, поведение и API без изменений. `tasks.json` — список: строка SQLite на задачу (по `id`), порядок — по времени добавления; ETag задач в режиме sqlite — по данным. Копия JSON: для коллекций, которых нет в первой копии, — ещё одна при первом включении; в режиме dual копия снимается до первой записи, а не после. `verify` — по всем коллекциям. Прогон тестов в другом режиме — `GAS_PULT_TEST_STORAGE=dual|sqlite pytest …`. По умолчанию — json, на боевом ничего не меняется. Замер — docs/STORAGE.md; проверка — `tests/test_sqlstore_modules.py`.
 - **Сбои пульта — владельцу** (разбор 22.11: ночью 6×502 на `/api/projects` и красный CI `main` семь слияний подряд —
   никто не узнал; docs/ALERTS.md). Панель: любое необработанное исключение в обработчике — ответ `500`

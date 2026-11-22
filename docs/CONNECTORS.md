@@ -165,3 +165,79 @@ if __name__ == "__main__":
 
 Каркас без ключа (пункт 1 не выполнен) — PR с пометкой «не проверено на песочнице», статус в очереди «PR открыт
 (каркас)»; после появления ключа ночной конвейер перезаписывает fixtures настоящими ответами в той же ветке.
+
+## Автовход: сторож входа коннекторов
+
+Решение владельца 22.11: коннектор (MCP-сервер, плагин) потерял вход — система входит заново сама; от владельца —
+самое большее одно окно с уже заполненными полями. Код — `src/gas_pult/connwatch.py`, тесты — `tests/test_connwatch.py`.
+
+### Фазы
+
+| Фаза | Что | Статус |
+|---|---|---|
+| 1 | Обнаружение, квитанции, задачи владельцу, заготовка базы паролей | сделано |
+| 2 | Нажать «Разрешить» в Chrome агента (CDP) | потом |
+| 3 | Подставить логин и пароль из базы `connectors.kdbx` | потом |
+
+Точка расширения — `connwatch.relogin(conn) -> Result`. Сейчас она всегда отвечает «нельзя автоматически» и
+отдаёт подсказку человеку.
+
+### Что проверяется
+
+| Harness | Как | Состояния |
+|---|---|---|
+| Claude Code и FCC | `claude mcp list` (FCC — тот же `claude` и та же папка) | `✔ Connected` → ok · `! Needs authentication` → needs_auth · `✘ Failed …` → failed · `- Not configured` → unknown |
+| Pi | `pi mcp list --json` | connected → ok · needs-auth → needs_auth · failed → failed · disabled, connecting → unknown |
+| OpenCode | `opencode mcp list` (машиночитаемого вывода нет; строки сверены с программой) | connected → ok · needs authentication, needs client registration → needs_auth · failed → failed |
+| Hermes | не проверяется | `hermes mcp list` показывает только «✓ enabled» (настройка), а не связь: отказавший сервер там тоже «✓ enabled» |
+
+Unknown прошлое состояние не меняет. Программа не ответила — строка «не проверено» с причиной, остальные harness
+проверяются дальше.
+
+**Исключения** (не проверяются): `plugin:design:*`, `plugin:gitlab:*`, `browser-local` (мост к компьютеру — выключенный компьютер не потеря входа) и `plugin:telegram:*` (канал бота есть только в сессиях, запущенных с ним). Свои — в `~/.config/gas-pult/connwatch.toml`:
+
+```toml
+exclude = ["browser-local", "plugin:telegram:*", "pi/linear"]   # шаблоны fnmatch; «harness/имя» — для одного harness
+```
+
+### Что происходит при сбое
+
+1. Коннектор перешёл в needs_auth или failed → событие `connector_down` в `<данные>/chat-events.jsonl` (только
+   harness, имя и состояние — без текстов ошибок).
+2. `relogin` — в фазе 1 «нельзя автоматически».
+3. Задача «Войти заново: <имя> (<harness>)» со статусом «ждёт вас» и строкой «что нажать». Одна на коннектор:
+   повторная проверка её не дублирует.
+4. Бот (цикл `monitor`, раз в 5 минут) читает новые события и шлёт владельцу одну квитанцию на переход
+   (`broadcast`, как сводка сбоев — docs/ALERTS.md).
+5. Коннектор снова ok → событие `connector_up`, задача закрыта, квитанция «снова на связи — вошёл заново».
+
+Состояние — `<данные>/connwatch_state.json`. `gas-pult connectors watch --dry-run` показывает статус и что было бы
+сделано, но ничего не пишет.
+
+### Таймер
+
+`gas-pult connectors watch --install` ставит `~/.config/systemd/user/gas-pult-connwatch.{service,timer}`: служба
+`Type=oneshot` (постоянного процесса нет), таймер — через 10 минут после загрузки и затем раз в 30 минут.
+Убрать — `--uninstall`. Проверить — `systemctl --user list-timers gas-pult-connwatch.timer`.
+
+### База паролей коннекторов
+
+Отдельная от основной базы владельца база: `~/.local/share/gas-pult/connectors.kdbx`, ключ-файл
+`~/.config/gas-pult/connectors.key` (0600), мастер-пароля нет — её читает служба без человека. Агентам оба файла
+закрыты: в Claude Code — `secrets_guard` (Read, Grep, Bash), в Pi, OpenCode и Hermes — `injection_guard` через адаптер
+ловушек.
+
+Как владельцу положить логин (в терминале, не кнопкой «Выполнить»):
+
+1. Создайте базу (уже есть — команда ничего не делает): `gas-pult connectors vault init`.
+2. Добавьте запись; пароль программа спросит сама, в историю команд он не попадёт:
+   `keepassxc-cli add --no-password -k ~/.config/gas-pult/connectors.key -u <логин> --url <адрес входа> -p ~/.local/share/gas-pult/connectors.kdbx <harness>/<имя коннектора>`
+3. Проверьте, что запись есть (без пароля): `keepassxc-cli ls --no-password -k ~/.config/gas-pult/connectors.key ~/.local/share/gas-pult/connectors.kdbx`.
+
+Пульт читает пароль функцией `connwatch.vault_get("<harness>/<имя>")`. Значение не пишется в журнал, события и задачи.
+
+### Чего сторож не делает никогда
+
+- Не обходит двухфакторную проверку и капчу.
+- Не вводит пароль Google и Telegram: вход в них — только живая сессия человека.
+- Не входит в сервисы на фазе 1: только сообщает и ставит задачу.
