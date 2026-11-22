@@ -1508,6 +1508,8 @@ if (DEMO) part("demo");                               // демо — сразу
 const FOCUS_TOKEN = (/(?:^#|&)focus=([A-Za-z0-9_-]{24,64})/.exec(location.hash) || [])[1] || "";
 const FOCUS = !!FOCUS_TOKEN || params.has("focus");
 if (FOCUS_TOKEN) history.replaceState(null, "", location.pathname + (params.has("focus") ? location.search : (location.search ? location.search + "&" : "?") + "focus"));
+// экран «Домой» из фокуса: значок открывает фокус (/?focus), а не вход в пульт — манифест для фокуса (brand.manifest)
+if (FOCUS) document.querySelector('link[rel="manifest"]')?.setAttribute("href", "/manifest.webmanifest?focus");
 const SLINK = params.has("slink") && !FOCUS_TOKEN;  // ссылка на пространство (GAS-38): полная панель пространства, js/spacelink.js
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
@@ -2353,6 +2355,8 @@ async function api(path, body, raw, extra, signal) {
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
+    // значок с экрана «Домой», поставленный до 22.11, открывает «/», а на устройстве — cookie фокуса: сразу в фокус
+    if (r.status === 403 && err.code === "focus_scope" && !FOCUS && !SLINK) { location.replace("/?focus"); return new Promise(() => {}); }
     if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
     if (r.status === 403 && err.code === "country") showCountry();  // страна ещё не выбрана
     if (r.status === 403 && err.confirm === "code") { await confirmCode(); return api(path, body, raw, extra, signal); }
