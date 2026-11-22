@@ -1,0 +1,4598 @@
+{
+ "00 GET /api/sessions": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "pult-test",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "limits": {
+    "5h": 1
+   },
+   "tasks": 2,
+   "fallback": []
+  },
+  [
+   [
+    "sessions",
+    [
+     "owner",
+     "owner"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ctxsnap.limits",
+    [],
+    []
+   ],
+   [
+    "tasks.open_count",
+    [],
+    []
+   ],
+   [
+    "fallback.recent",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "01 GET /api/sessions (etag)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "pult-test",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "limits": {
+    "5h": 1
+   },
+   "tasks": 2,
+   "fallback": []
+  },
+  [
+   [
+    "sessions",
+    [
+     "owner",
+     "owner"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ctxsnap.limits",
+    [],
+    []
+   ],
+   [
+    "tasks.open_count",
+    [],
+    []
+   ],
+   [
+    "fallback.recent",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "02 GET /api/sessions (viewer)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "pult-test",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "limits": null,
+   "tasks": null,
+   "fallback": []
+  },
+  [
+   [
+    "sessions",
+    [
+     null,
+     "2"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     null
+    ],
+    []
+   ],
+   [
+    "fallback.recent",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "03 GET /api/sessions (admin)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "pult-test",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "limits": null,
+   "tasks": null,
+   "fallback": []
+  },
+  [
+   [
+    "sessions",
+    [
+     null,
+     "6"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     null
+    ],
+    []
+   ],
+   [
+    "fallback.recent",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "04 GET /api/sessions (spacer)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "Пространство A",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "fallback": [],
+   "space": {
+    "title": "Пространство A"
+   }
+  },
+  [
+   [
+    "space_info",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "sessions",
+    [
+     "space:alpha",
+     "3"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     "space:alpha"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "05 GET /api/sessions (slink)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "Пространство A",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "fallback": [],
+   "space": {
+    "title": "Пространство A"
+   }
+  },
+  [
+   [
+    "space_info",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "sessions",
+    [
+     "space:alpha",
+     "-1125899906842634"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     "space:alpha"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "06 GET /api/sessions (v1s)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@1"
+    }
+   ],
+   "host": "pult-test",
+   "build": 0,
+   "now": 0,
+   "cost": {
+    "usd": 0
+   },
+   "limits": {
+    "5h": 1
+   },
+   "tasks": 2,
+   "fallback": []
+  },
+  [
+   [
+    "sessions",
+    [
+     "owner",
+     "owner"
+    ],
+    []
+   ],
+   [
+    "cost_summary",
+    [
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ctxsnap.limits",
+    [],
+    []
+   ],
+   [
+    "tasks.open_count",
+    [],
+    []
+   ],
+   [
+    "fallback.recent",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "07 GET /api/sessions (focus)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@5"
+    }
+   ],
+   "host": "Фокус",
+   "build": 0,
+   "now": 0,
+   "cost": null,
+   "fallback": [],
+   "focus": true
+  },
+  [
+   [
+    "focus_sessions",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "08 GET /api/sessions (focusd)": [
+  200,
+  "application/json",
+  {
+   "sessions": [
+    {
+     "id": "@5"
+    }
+   ],
+   "host": "Демо",
+   "build": 0,
+   "now": 0,
+   "cost": null,
+   "fallback": [],
+   "focus": true
+  },
+  [
+   [
+    "focus_sessions",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "09 GET /api/sessions (anon)": [
+  401,
+  "application/json",
+  {
+   "error": "нужен вход"
+  },
+  [],
+  []
+ ],
+ "10 GET /api/meta": [
+  200,
+  "application/json",
+  {
+   "name": "пульт",
+   "via": "browser",
+   "role": "owner",
+   "uid": 1,
+   "build": 0,
+   "whatsnew": 0,
+   "prefs": {
+    "simple": false,
+    "lang": "ru",
+    "rate": 1.0,
+    "saved": false
+   },
+   "ui": {
+    "persona": "developer",
+    "chosen": true,
+    "onboarded": true,
+    "added": [],
+    "hidden": [
+     "cap.audit_journal"
+    ],
+    "access": "guest",
+    "ceiling": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.audit_journal",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal",
+     "cap.four_tabs",
+     "cap.pm_tasks_deadlines",
+     "cap.sandbox_safe",
+     "cap.scenarios_try"
+    ],
+    "caps": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal"
+    ],
+    "simple": false,
+    "sections": [
+     "search",
+     "analytics",
+     "docs",
+     "comms"
+    ],
+    "can_team": false,
+    "catalog": {
+     "caps": [
+      {
+       "id": "cap.four_tabs",
+       "title": "4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.approvals_yes_no",
+       "title": "Карточки «Ждут вашего Да» наверху",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.scenarios_try",
+       "title": "Примерочная: сценарии и калькулятор",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.assistant_guide",
+       "title": "Помощник «Подсказать» на каждом экране",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.pm_tasks_deadlines",
+       "title": "Доска задач, сроков и отчётов",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.audit_journal",
+       "title": "Журнал действий и откат",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.sandbox_safe",
+       "title": "Учебная песочница с уроками",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.dev_sessions",
+       "title": "Сессии, папки и ветки",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_terminal",
+       "title": "Экран терминала и клавиши",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_models_mcp",
+       "title": "Модели, ключи и подключения (MCP)",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_cost_tokens",
+       "title": "Подробный расход: токены и стоимость",
+       "ready": true,
+       "dev": true
+      }
+     ],
+     "personas": [
+      {
+       "id": "business_owner",
+       "title": "Владелец или директор бизнеса",
+       "sub": "Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "point_admin",
+       "title": "Сотрудник или администратор точки",
+       "sub": "Заявки, расписание, клиенты и документы на точке.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "project_manager",
+       "title": "Руковожу проектами и задачами",
+       "sub": "Сроки, поручения помощникам, отчёты и журнал.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.pm_tasks_deadlines",
+        "cap.audit_journal"
+       ],
+       "simple": false
+      },
+      {
+       "id": "student",
+       "title": "Учусь или хочу примерить",
+       "sub": "Безопасно попробовать на готовых примерах.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide",
+        "cap.sandbox_safe"
+       ],
+       "simple": true
+      },
+      {
+       "id": "developer",
+       "title": "Разработчик или инженер",
+       "sub": "Сессии, терминал, модели, подключения и расход — как сейчас.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.audit_journal",
+        "cap.dev_sessions",
+        "cap.dev_terminal",
+        "cap.dev_models_mcp",
+        "cap.dev_cost_tokens"
+       ],
+       "simple": false
+      }
+     ],
+     "sections": [
+      {
+       "id": "search",
+       "title": "Поиск"
+      },
+      {
+       "id": "analytics",
+       "title": "Цифры"
+      },
+      {
+       "id": "docs",
+       "title": "Бумаги"
+      },
+      {
+       "id": "comms",
+       "title": "Общение"
+      }
+     ]
+    },
+    "own_space": true,
+    "fixed": [
+     "cap.dev_sessions"
+    ],
+    "space": {
+     "title": "Пространство A"
+    }
+   },
+   "terms": {
+    "version": "2026-11-02",
+    "accepted": true
+   },
+   "tty": true,
+   "desktop": true,
+   "projects_ui": true,
+   "shares": 0,
+   "country": {
+    "chosen": "NL",
+    "need": false,
+    "mismatch": false,
+    "phone": "",
+    "ip_cc": "",
+    "check": false
+   }
+  },
+  [
+   [
+    "country_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "meta",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "desktop_up",
+    [],
+    []
+   ]
+  ],
+  []
+ ],
+ "11 GET /api/meta (viewer)": [
+  200,
+  "application/json",
+  {
+   "name": "пульт",
+   "via": "browser",
+   "role": "viewer",
+   "uid": 2,
+   "build": 0,
+   "whatsnew": 0,
+   "prefs": {
+    "simple": false,
+    "lang": "ru",
+    "rate": 1.0,
+    "saved": false
+   },
+   "ui": {
+    "persona": "developer",
+    "chosen": true,
+    "onboarded": true,
+    "added": [],
+    "hidden": [
+     "cap.audit_journal"
+    ],
+    "access": "guest",
+    "ceiling": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.audit_journal",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal",
+     "cap.four_tabs",
+     "cap.pm_tasks_deadlines",
+     "cap.sandbox_safe",
+     "cap.scenarios_try"
+    ],
+    "caps": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal"
+    ],
+    "simple": false,
+    "sections": [
+     "search",
+     "analytics",
+     "docs",
+     "comms"
+    ],
+    "can_team": false,
+    "catalog": {
+     "caps": [
+      {
+       "id": "cap.four_tabs",
+       "title": "4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.approvals_yes_no",
+       "title": "Карточки «Ждут вашего Да» наверху",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.scenarios_try",
+       "title": "Примерочная: сценарии и калькулятор",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.assistant_guide",
+       "title": "Помощник «Подсказать» на каждом экране",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.pm_tasks_deadlines",
+       "title": "Доска задач, сроков и отчётов",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.audit_journal",
+       "title": "Журнал действий и откат",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.sandbox_safe",
+       "title": "Учебная песочница с уроками",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.dev_sessions",
+       "title": "Сессии, папки и ветки",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_terminal",
+       "title": "Экран терминала и клавиши",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_models_mcp",
+       "title": "Модели, ключи и подключения (MCP)",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_cost_tokens",
+       "title": "Подробный расход: токены и стоимость",
+       "ready": true,
+       "dev": true
+      }
+     ],
+     "personas": [
+      {
+       "id": "business_owner",
+       "title": "Владелец или директор бизнеса",
+       "sub": "Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "point_admin",
+       "title": "Сотрудник или администратор точки",
+       "sub": "Заявки, расписание, клиенты и документы на точке.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "project_manager",
+       "title": "Руковожу проектами и задачами",
+       "sub": "Сроки, поручения помощникам, отчёты и журнал.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.pm_tasks_deadlines",
+        "cap.audit_journal"
+       ],
+       "simple": false
+      },
+      {
+       "id": "student",
+       "title": "Учусь или хочу примерить",
+       "sub": "Безопасно попробовать на готовых примерах.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide",
+        "cap.sandbox_safe"
+       ],
+       "simple": true
+      },
+      {
+       "id": "developer",
+       "title": "Разработчик или инженер",
+       "sub": "Сессии, терминал, модели, подключения и расход — как сейчас.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.audit_journal",
+        "cap.dev_sessions",
+        "cap.dev_terminal",
+        "cap.dev_models_mcp",
+        "cap.dev_cost_tokens"
+       ],
+       "simple": false
+      }
+     ],
+     "sections": [
+      {
+       "id": "search",
+       "title": "Поиск"
+      },
+      {
+       "id": "analytics",
+       "title": "Цифры"
+      },
+      {
+       "id": "docs",
+       "title": "Бумаги"
+      },
+      {
+       "id": "comms",
+       "title": "Общение"
+      }
+     ]
+    },
+    "own_space": false,
+    "fixed": [],
+    "space": {
+     "title": "Пространство A"
+    }
+   },
+   "terms": {
+    "version": "2026-11-02",
+    "accepted": true
+   },
+   "tty": false,
+   "desktop": false,
+   "projects_ui": true,
+   "shares": 0,
+   "country": {
+    "chosen": "NL",
+    "need": false,
+    "mismatch": false,
+    "phone": "",
+    "ip_cc": "",
+    "check": false
+   }
+  },
+  [
+   [
+    "country_info",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "meta",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     2,
+     "viewer"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     2,
+     "viewer"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     2,
+     "viewer"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     2
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     2
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "12 GET /api/meta (member)": [
+  200,
+  "application/json",
+  {
+   "name": "пульт",
+   "via": "browser",
+   "role": "member",
+   "uid": 4,
+   "build": 0,
+   "whatsnew": 0,
+   "prefs": {
+    "simple": false,
+    "lang": "ru",
+    "rate": 1.0,
+    "saved": false
+   },
+   "ui": {
+    "persona": "developer",
+    "chosen": true,
+    "onboarded": true,
+    "added": [],
+    "hidden": [
+     "cap.audit_journal"
+    ],
+    "access": "guest",
+    "ceiling": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.audit_journal",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal",
+     "cap.four_tabs",
+     "cap.pm_tasks_deadlines",
+     "cap.sandbox_safe",
+     "cap.scenarios_try"
+    ],
+    "caps": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal"
+    ],
+    "simple": false,
+    "sections": [
+     "search",
+     "analytics",
+     "docs",
+     "comms"
+    ],
+    "can_team": false,
+    "catalog": {
+     "caps": [
+      {
+       "id": "cap.four_tabs",
+       "title": "4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.approvals_yes_no",
+       "title": "Карточки «Ждут вашего Да» наверху",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.scenarios_try",
+       "title": "Примерочная: сценарии и калькулятор",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.assistant_guide",
+       "title": "Помощник «Подсказать» на каждом экране",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.pm_tasks_deadlines",
+       "title": "Доска задач, сроков и отчётов",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.audit_journal",
+       "title": "Журнал действий и откат",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.sandbox_safe",
+       "title": "Учебная песочница с уроками",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.dev_sessions",
+       "title": "Сессии, папки и ветки",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_terminal",
+       "title": "Экран терминала и клавиши",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_models_mcp",
+       "title": "Модели, ключи и подключения (MCP)",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_cost_tokens",
+       "title": "Подробный расход: токены и стоимость",
+       "ready": true,
+       "dev": true
+      }
+     ],
+     "personas": [
+      {
+       "id": "business_owner",
+       "title": "Владелец или директор бизнеса",
+       "sub": "Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "point_admin",
+       "title": "Сотрудник или администратор точки",
+       "sub": "Заявки, расписание, клиенты и документы на точке.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "project_manager",
+       "title": "Руковожу проектами и задачами",
+       "sub": "Сроки, поручения помощникам, отчёты и журнал.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.pm_tasks_deadlines",
+        "cap.audit_journal"
+       ],
+       "simple": false
+      },
+      {
+       "id": "student",
+       "title": "Учусь или хочу примерить",
+       "sub": "Безопасно попробовать на готовых примерах.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide",
+        "cap.sandbox_safe"
+       ],
+       "simple": true
+      },
+      {
+       "id": "developer",
+       "title": "Разработчик или инженер",
+       "sub": "Сессии, терминал, модели, подключения и расход — как сейчас.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.audit_journal",
+        "cap.dev_sessions",
+        "cap.dev_terminal",
+        "cap.dev_models_mcp",
+        "cap.dev_cost_tokens"
+       ],
+       "simple": false
+      }
+     ],
+     "sections": [
+      {
+       "id": "search",
+       "title": "Поиск"
+      },
+      {
+       "id": "analytics",
+       "title": "Цифры"
+      },
+      {
+       "id": "docs",
+       "title": "Бумаги"
+      },
+      {
+       "id": "comms",
+       "title": "Общение"
+      }
+     ]
+    },
+    "own_space": false,
+    "fixed": [],
+    "space": {
+     "title": "Пространство A"
+    }
+   },
+   "terms": {
+    "version": "2026-11-02",
+    "accepted": true
+   },
+   "tty": true,
+   "desktop": false,
+   "projects_ui": true,
+   "shares": 0,
+   "country": {
+    "chosen": "NL",
+    "need": false,
+    "mismatch": false,
+    "phone": "",
+    "ip_cc": "",
+    "check": false
+   }
+  },
+  [
+   [
+    "country_info",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "meta",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     4,
+     "member"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     4,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     4,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     4,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     4,
+     "member"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     4,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     4
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "13 GET /api/meta (spacer)": [
+  200,
+  "application/json",
+  {
+   "name": "пульт",
+   "via": "browser",
+   "role": "member",
+   "uid": 3,
+   "build": 0,
+   "whatsnew": 0,
+   "prefs": {
+    "simple": false,
+    "lang": "ru",
+    "rate": 1.0,
+    "saved": false
+   },
+   "ui": {
+    "persona": "developer",
+    "chosen": true,
+    "onboarded": true,
+    "added": [],
+    "hidden": [
+     "cap.audit_journal"
+    ],
+    "access": "guest",
+    "ceiling": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.audit_journal",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal",
+     "cap.four_tabs",
+     "cap.pm_tasks_deadlines",
+     "cap.sandbox_safe",
+     "cap.scenarios_try"
+    ],
+    "caps": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal"
+    ],
+    "simple": false,
+    "sections": [
+     "search",
+     "analytics",
+     "docs",
+     "comms"
+    ],
+    "can_team": false,
+    "catalog": {
+     "caps": [
+      {
+       "id": "cap.four_tabs",
+       "title": "4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.approvals_yes_no",
+       "title": "Карточки «Ждут вашего Да» наверху",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.scenarios_try",
+       "title": "Примерочная: сценарии и калькулятор",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.assistant_guide",
+       "title": "Помощник «Подсказать» на каждом экране",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.pm_tasks_deadlines",
+       "title": "Доска задач, сроков и отчётов",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.audit_journal",
+       "title": "Журнал действий и откат",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.sandbox_safe",
+       "title": "Учебная песочница с уроками",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.dev_sessions",
+       "title": "Сессии, папки и ветки",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_terminal",
+       "title": "Экран терминала и клавиши",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_models_mcp",
+       "title": "Модели, ключи и подключения (MCP)",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_cost_tokens",
+       "title": "Подробный расход: токены и стоимость",
+       "ready": true,
+       "dev": true
+      }
+     ],
+     "personas": [
+      {
+       "id": "business_owner",
+       "title": "Владелец или директор бизнеса",
+       "sub": "Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "point_admin",
+       "title": "Сотрудник или администратор точки",
+       "sub": "Заявки, расписание, клиенты и документы на точке.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "project_manager",
+       "title": "Руковожу проектами и задачами",
+       "sub": "Сроки, поручения помощникам, отчёты и журнал.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.pm_tasks_deadlines",
+        "cap.audit_journal"
+       ],
+       "simple": false
+      },
+      {
+       "id": "student",
+       "title": "Учусь или хочу примерить",
+       "sub": "Безопасно попробовать на готовых примерах.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide",
+        "cap.sandbox_safe"
+       ],
+       "simple": true
+      },
+      {
+       "id": "developer",
+       "title": "Разработчик или инженер",
+       "sub": "Сессии, терминал, модели, подключения и расход — как сейчас.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.audit_journal",
+        "cap.dev_sessions",
+        "cap.dev_terminal",
+        "cap.dev_models_mcp",
+        "cap.dev_cost_tokens"
+       ],
+       "simple": false
+      }
+     ],
+     "sections": [
+      {
+       "id": "search",
+       "title": "Поиск"
+      },
+      {
+       "id": "analytics",
+       "title": "Цифры"
+      },
+      {
+       "id": "docs",
+       "title": "Бумаги"
+      },
+      {
+       "id": "comms",
+       "title": "Общение"
+      }
+     ]
+    },
+    "own_space": false,
+    "fixed": [],
+    "space": {
+     "title": "Пространство A"
+    }
+   },
+   "terms": {
+    "version": "2026-11-02",
+    "accepted": true
+   },
+   "tty": true,
+   "desktop": false,
+   "projects_ui": true,
+   "shares": 0,
+   "country": {
+    "chosen": "NL",
+    "need": false,
+    "mismatch": false,
+    "phone": "",
+    "ip_cc": "",
+    "check": false
+   }
+  },
+  [
+   [
+    "country_info",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "meta",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     3,
+     "member"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     3,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     3,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     3,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     3,
+     "member"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     3,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     3
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "14 GET /api/meta (slink)": [
+  200,
+  "application/json",
+  {
+   "name": "пульт",
+   "via": "slink",
+   "role": "member",
+   "uid": -1125899906842634,
+   "build": 0,
+   "whatsnew": 0,
+   "prefs": {
+    "simple": false,
+    "lang": "ru",
+    "rate": 1.0,
+    "saved": false
+   },
+   "ui": {
+    "persona": "developer",
+    "chosen": true,
+    "onboarded": true,
+    "added": [],
+    "hidden": [
+     "cap.audit_journal"
+    ],
+    "access": "guest",
+    "ceiling": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.audit_journal",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal",
+     "cap.four_tabs",
+     "cap.pm_tasks_deadlines",
+     "cap.sandbox_safe",
+     "cap.scenarios_try"
+    ],
+    "caps": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal"
+    ],
+    "simple": false,
+    "sections": [
+     "search",
+     "analytics",
+     "docs",
+     "comms"
+    ],
+    "can_team": false,
+    "catalog": {
+     "caps": [
+      {
+       "id": "cap.four_tabs",
+       "title": "4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.approvals_yes_no",
+       "title": "Карточки «Ждут вашего Да» наверху",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.scenarios_try",
+       "title": "Примерочная: сценарии и калькулятор",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.assistant_guide",
+       "title": "Помощник «Подсказать» на каждом экране",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.pm_tasks_deadlines",
+       "title": "Доска задач, сроков и отчётов",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.audit_journal",
+       "title": "Журнал действий и откат",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.sandbox_safe",
+       "title": "Учебная песочница с уроками",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.dev_sessions",
+       "title": "Сессии, папки и ветки",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_terminal",
+       "title": "Экран терминала и клавиши",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_models_mcp",
+       "title": "Модели, ключи и подключения (MCP)",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_cost_tokens",
+       "title": "Подробный расход: токены и стоимость",
+       "ready": true,
+       "dev": true
+      }
+     ],
+     "personas": [
+      {
+       "id": "business_owner",
+       "title": "Владелец или директор бизнеса",
+       "sub": "Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "point_admin",
+       "title": "Сотрудник или администратор точки",
+       "sub": "Заявки, расписание, клиенты и документы на точке.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "project_manager",
+       "title": "Руковожу проектами и задачами",
+       "sub": "Сроки, поручения помощникам, отчёты и журнал.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.pm_tasks_deadlines",
+        "cap.audit_journal"
+       ],
+       "simple": false
+      },
+      {
+       "id": "student",
+       "title": "Учусь или хочу примерить",
+       "sub": "Безопасно попробовать на готовых примерах.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide",
+        "cap.sandbox_safe"
+       ],
+       "simple": true
+      },
+      {
+       "id": "developer",
+       "title": "Разработчик или инженер",
+       "sub": "Сессии, терминал, модели, подключения и расход — как сейчас.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.audit_journal",
+        "cap.dev_sessions",
+        "cap.dev_terminal",
+        "cap.dev_models_mcp",
+        "cap.dev_cost_tokens"
+       ],
+       "simple": false
+      }
+     ],
+     "sections": [
+      {
+       "id": "search",
+       "title": "Поиск"
+      },
+      {
+       "id": "analytics",
+       "title": "Цифры"
+      },
+      {
+       "id": "docs",
+       "title": "Бумаги"
+      },
+      {
+       "id": "comms",
+       "title": "Общение"
+      }
+     ]
+    },
+    "own_space": false,
+    "fixed": [],
+    "space": {
+     "title": "Пространство A"
+    }
+   },
+   "terms": {
+    "version": "2026-11-02",
+    "accepted": true
+   },
+   "tty": true,
+   "desktop": false,
+   "projects_ui": true,
+   "shares": 0,
+   "country": {
+    "chosen": "NL",
+    "need": false,
+    "mismatch": false,
+    "phone": "",
+    "ip_cc": "",
+    "check": false
+   },
+   "slink": {
+    "name": "Клиент",
+    "exp": 0,
+    "forever": true,
+    "rights": "full",
+    "terms_line": false
+   }
+  },
+  [
+   [
+    "country_info",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "meta",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     -1125899906842634,
+     "member"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     -1125899906842634,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     -1125899906842634,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     -1125899906842634,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     -1125899906842634,
+     "member"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     -1125899906842634,
+     "member"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     -1125899906842634
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "15 GET /api/meta (slinkg)": [
+  410,
+  "application/json",
+  {
+   "error": "ссылка отозвана",
+   "code": "focus_gone"
+  },
+  [],
+  []
+ ],
+ "16 GET /api/meta (focus)": [
+  200,
+  "application/json",
+  {
+   "name": "фокус",
+   "via": "focus",
+   "role": "owner",
+   "uid": null,
+   "build": 0
+  },
+  [
+   [
+    "focus_meta",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "17 GET /api/meta (focusd)": [
+  200,
+  "application/json",
+  {
+   "name": "фокус",
+   "via": "focus",
+   "role": "viewer",
+   "uid": null,
+   "build": 0
+  },
+  [
+   [
+    "focus_meta",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "18 GET /api/meta (tgh)": [
+  200,
+  "application/json",
+  {
+   "name": "пульт",
+   "via": "browser",
+   "role": "owner",
+   "uid": 1,
+   "build": 0,
+   "whatsnew": 0,
+   "prefs": {
+    "simple": false,
+    "lang": "ru",
+    "rate": 1.0,
+    "saved": false
+   },
+   "ui": {
+    "persona": "developer",
+    "chosen": true,
+    "onboarded": true,
+    "added": [],
+    "hidden": [
+     "cap.audit_journal"
+    ],
+    "access": "guest",
+    "ceiling": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.audit_journal",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal",
+     "cap.four_tabs",
+     "cap.pm_tasks_deadlines",
+     "cap.sandbox_safe",
+     "cap.scenarios_try"
+    ],
+    "caps": [
+     "cap.approvals_yes_no",
+     "cap.assistant_guide",
+     "cap.dev_cost_tokens",
+     "cap.dev_sessions",
+     "cap.dev_terminal"
+    ],
+    "simple": false,
+    "sections": [
+     "search",
+     "analytics",
+     "docs",
+     "comms"
+    ],
+    "can_team": false,
+    "catalog": {
+     "caps": [
+      {
+       "id": "cap.four_tabs",
+       "title": "4 раздела бизнеса: Поиск, Цифры, Бумаги, Общение",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.approvals_yes_no",
+       "title": "Карточки «Ждут вашего Да» наверху",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.scenarios_try",
+       "title": "Примерочная: сценарии и калькулятор",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.assistant_guide",
+       "title": "Помощник «Подсказать» на каждом экране",
+       "ready": true,
+       "dev": false
+      },
+      {
+       "id": "cap.pm_tasks_deadlines",
+       "title": "Доска задач, сроков и отчётов",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.audit_journal",
+       "title": "Журнал действий и откат",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.sandbox_safe",
+       "title": "Учебная песочница с уроками",
+       "ready": false,
+       "dev": false
+      },
+      {
+       "id": "cap.dev_sessions",
+       "title": "Сессии, папки и ветки",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_terminal",
+       "title": "Экран терминала и клавиши",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_models_mcp",
+       "title": "Модели, ключи и подключения (MCP)",
+       "ready": true,
+       "dev": true
+      },
+      {
+       "id": "cap.dev_cost_tokens",
+       "title": "Подробный расход: токены и стоимость",
+       "ready": true,
+       "dev": true
+      }
+     ],
+     "personas": [
+      {
+       "id": "business_owner",
+       "title": "Владелец или директор бизнеса",
+       "sub": "Выручка, документы и клиенты; решения — кнопкой «Да», без сложных настроек.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "point_admin",
+       "title": "Сотрудник или администратор точки",
+       "sub": "Заявки, расписание, клиенты и документы на точке.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.assistant_guide"
+       ],
+       "simple": true
+      },
+      {
+       "id": "project_manager",
+       "title": "Руковожу проектами и задачами",
+       "sub": "Сроки, поручения помощникам, отчёты и журнал.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.pm_tasks_deadlines",
+        "cap.audit_journal"
+       ],
+       "simple": false
+      },
+      {
+       "id": "student",
+       "title": "Учусь или хочу примерить",
+       "sub": "Безопасно попробовать на готовых примерах.",
+       "caps": [
+        "cap.four_tabs",
+        "cap.approvals_yes_no",
+        "cap.scenarios_try",
+        "cap.assistant_guide",
+        "cap.sandbox_safe"
+       ],
+       "simple": true
+      },
+      {
+       "id": "developer",
+       "title": "Разработчик или инженер",
+       "sub": "Сессии, терминал, модели, подключения и расход — как сейчас.",
+       "caps": [
+        "cap.approvals_yes_no",
+        "cap.assistant_guide",
+        "cap.audit_journal",
+        "cap.dev_sessions",
+        "cap.dev_terminal",
+        "cap.dev_models_mcp",
+        "cap.dev_cost_tokens"
+       ],
+       "simple": false
+      }
+     ],
+     "sections": [
+      {
+       "id": "search",
+       "title": "Поиск"
+      },
+      {
+       "id": "analytics",
+       "title": "Цифры"
+      },
+      {
+       "id": "docs",
+       "title": "Бумаги"
+      },
+      {
+       "id": "comms",
+       "title": "Общение"
+      }
+     ]
+    },
+    "own_space": true,
+    "fixed": [
+     "cap.dev_sessions"
+    ],
+    "space": {
+     "title": "Пространство A"
+    }
+   },
+   "terms": {
+    "version": "2026-11-02",
+    "accepted": true
+   },
+   "tty": true,
+   "desktop": true,
+   "projects_ui": true,
+   "shares": 0,
+   "country": {
+    "chosen": "NL",
+    "need": false,
+    "mismatch": false,
+    "phone": "",
+    "ip_cc": "",
+    "check": false
+   }
+  },
+  [
+   [
+    "country_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "meta",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "prefs",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "ui",
+    [
+     1,
+     "owner"
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "space_info",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "is_owner",
+    [
+     1
+    ],
+    []
+   ],
+   [
+    "desktop_up",
+    [],
+    []
+   ]
+  ],
+  []
+ ],
+ "19 GET /api/starters?occ=dev": [
+  200,
+  "application/json",
+  {
+   "starters": [
+    {
+     "id": "s1"
+    }
+   ]
+  },
+  [
+   [
+    "starters_for",
+    [
+     "owner",
+     false,
+     "",
+     "dev"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "20 GET /api/starters (spacer)": [
+  200,
+  "application/json",
+  {
+   "starters": [
+    {
+     "id": "s1"
+    }
+   ]
+  },
+  [
+   [
+    "starters_for",
+    [
+     "member",
+     true,
+     "alpha",
+     ""
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "21 GET /api/starters (focus)": [
+  200,
+  "application/json",
+  {
+   "starters": [
+    {
+     "id": "s1"
+    }
+   ]
+  },
+  [
+   [
+    "starters_for",
+    [
+     "owner",
+     true,
+     "",
+     ""
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "22 GET /api/scenarios": [
+  200,
+  "application/json",
+  {
+   "roles": [],
+   "errors": []
+  },
+  [
+   [
+    "scenarios.api_data",
+    [
+     "list"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "23 GET /api/scenarios (viewer)": [
+  200,
+  "application/json",
+  {
+   "roles": [],
+   "errors": []
+  },
+  [
+   [
+    "scenarios.api_data",
+    [
+     "list"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "24 GET /api/links/prefs": [
+  200,
+  "application/json",
+  {
+   "sites": {}
+  },
+  [],
+  []
+ ],
+ "25 GET /api/links/prefs (viewer)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ],
+ "26 GET /api/media?p=%2Ftmp%2Fa.png": [
+  200,
+  "image/png",
+  "PNG",
+  [
+   [
+    "media",
+    [
+     "/tmp/a.png"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "27 GET /api/media?p=nope": [
+  404,
+  "application/json",
+  {
+   "error": "нет такого"
+  },
+  [
+   [
+    "media",
+    [
+     "nope"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "28 GET /api/media?p=%2Ftmp%2Fm%2Fa.png (focus)": [
+  200,
+  "image/png",
+  "PNG",
+  [
+   [
+    "focus_roots",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "media",
+    [
+     "/tmp/m/a.png"
+    ],
+    [
+     [
+      "roots",
+      [
+       "/tmp/m"
+      ]
+     ]
+    ]
+   ]
+  ],
+  []
+ ],
+ "29 GET /api/media?p=%2Ftmp%2Fa.png (spacer)": [
+  403,
+  "application/json",
+  {
+   "error": "в демо-пространстве этого нет",
+   "code": "space"
+  },
+  [],
+  []
+ ],
+ "30 GET /api/model/default": [
+  200,
+  "application/json",
+  {
+   "model": "opus"
+  },
+  [
+   [
+    "default_model",
+    [],
+    []
+   ]
+  ],
+  []
+ ],
+ "31 GET /api/model/default (viewer)": [
+  403,
+  "application/json",
+  {
+   "error": "это может только владелец"
+  },
+  [],
+  []
+ ],
+ "32 GET /api/activity?w=%401": [
+  200,
+  "application/json",
+  {
+   "state": "думает"
+  },
+  [
+   [
+    "activity",
+    [
+     "@1"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "33 GET /api/activity?w=%405 (focusd)": [
+  200,
+  "application/json",
+  {
+   "state": "думает"
+  },
+  [
+   [
+    "activity",
+    [
+     "@5"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "34 GET /api/activity?w=%401 (v1s)": [
+  200,
+  "application/json",
+  {
+   "state": "думает"
+  },
+  [
+   [
+    "activity",
+    [
+     "@1"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "35 GET /api/activity?w=nope": [
+  404,
+  "application/json",
+  {
+   "error": "нет такого"
+  },
+  [
+   [
+    "activity",
+    [
+     "nope"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "36 GET /api/last?w=%401": [
+  200,
+  "application/json",
+  {
+   "text": "ответ s1"
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "37 GET /api/last?w=%409": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "38 GET /api/last?w=%403": [
+  404,
+  "application/json",
+  {
+   "error": "Claude в этой сессии остановлен — текст в командную строку не отправляю. Нажмите «Перезапустить»"
+  },
+  [],
+  []
+ ],
+ "39 GET /api/last?w=%401 (v1s)": [
+  200,
+  "application/json",
+  {
+   "text": "ответ s1"
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "40 GET /api/last?w=%405 (focusd)": [
+  200,
+  "application/json",
+  {
+   "text": "ответ s5"
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "41 GET /api/screen?w=%401": [
+  200,
+  "application/json",
+  {
+   "lines": [
+    "$ ls",
+    "Done."
+   ],
+   "auth": null,
+   "login": null,
+   "ask": null
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@1",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "42 GET /api/screen?w=%405": [
+  200,
+  "application/json",
+  {
+   "lines": [
+    "",
+    " ▐▛███▛█   Claude Code v2.1.330",
+    "▝▜██████▀  Haiku 5.5 with medium effort · Claude Ultra",
+    " ▝▝   ▝▝   ~/projects/shop",
+    "",
+    "",
+    "❯ Используй инструмент AskUserQuestion: спроси меня одним вопросом «Какой отчёт прислать утром?» с тремя",
+    "  вариантами (Короткий, Подробный, Без отчёта), у каждого короткое описание. Больше ничего не делай.",
+    "──────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    " ☐ Отчёт",
+    "",
+    "Какой отчёт прислать утром?",
+    "",
+    "❯ 1. Короткий",
+    "     Несколько строк: главное и что нужно решить.",
+    "  2. Подробный",
+    "     Полный отчёт с деталями, шагами и ссылками на файлы.",
+    "  3. Без отчёта",
+    "     Утром ничего не присылать.",
+    "  4. Type something.",
+    "──────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "  5. Chat about this",
+    "",
+    "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ""
+   ],
+   "auth": null,
+   "login": null,
+   "ask": {
+    "kind": "question",
+    "known": true,
+    "title_ru": "Какой отчёт прислать утром?",
+    "title_en": "Какой отчёт прислать утром?",
+    "detail_ru": "Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.",
+    "detail_en": "Pick an answer. If none fits, tap «Your own answer» and write it.",
+    "options": [
+     {
+      "key": "q1",
+      "label_ru": "Короткий",
+      "label_en": "Короткий",
+      "send": {
+       "n": "1"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q2",
+      "label_ru": "Подробный",
+      "label_en": "Подробный",
+      "send": {
+       "n": "2"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q3",
+      "label_ru": "Без отчёта",
+      "label_en": "Без отчёта",
+      "send": {
+       "n": "3"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "type",
+      "label_ru": "Свой вариант",
+      "label_en": "Your own answer",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите ответ своими словами в поле внизу.",
+      "note_en": "Write your answer in the field below."
+     },
+     {
+      "key": "chat",
+      "label_ru": "Обсудить с агентом",
+      "label_en": "Discuss with the agent",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите агенту, что непонятно, — он объяснит.",
+      "note_en": "Write to the agent what is unclear — it will explain."
+     }
+    ],
+    "sig": "2c55a11df235"
+   }
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@5",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "43 GET /api/screen?w=%405 (focus)": [
+  200,
+  "application/json",
+  {
+   "lines": [
+    "",
+    " ▐▛███▛█   Claude Code v2.1.330",
+    "▝▜██████▀  Haiku 5.5 with medium effort · Claude Ultra",
+    " ▝▝   ▝▝   ~/projects/shop",
+    "",
+    "",
+    "❯ Используй инструмент AskUserQuestion: спроси меня одним вопросом «Какой отчёт прислать утром?» с тремя",
+    "  вариантами (Короткий, Подробный, Без отчёта), у каждого короткое описание. Больше ничего не делай.",
+    "──────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    " ☐ Отчёт",
+    "",
+    "Какой отчёт прислать утром?",
+    "",
+    "❯ 1. Короткий",
+    "     Несколько строк: главное и что нужно решить.",
+    "  2. Подробный",
+    "     Полный отчёт с деталями, шагами и ссылками на файлы.",
+    "  3. Без отчёта",
+    "     Утром ничего не присылать.",
+    "  4. Type something.",
+    "──────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "  5. Chat about this",
+    "",
+    "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ""
+   ],
+   "auth": null,
+   "login": null,
+   "ask": {
+    "kind": "question",
+    "known": true,
+    "title_ru": "Какой отчёт прислать утром?",
+    "title_en": "Какой отчёт прислать утром?",
+    "detail_ru": "Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.",
+    "detail_en": "Pick an answer. If none fits, tap «Your own answer» and write it.",
+    "options": [
+     {
+      "key": "q1",
+      "label_ru": "Короткий",
+      "label_en": "Короткий",
+      "send": {
+       "n": "1"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q2",
+      "label_ru": "Подробный",
+      "label_en": "Подробный",
+      "send": {
+       "n": "2"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q3",
+      "label_ru": "Без отчёта",
+      "label_en": "Без отчёта",
+      "send": {
+       "n": "3"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "type",
+      "label_ru": "Свой вариант",
+      "label_en": "Your own answer",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите ответ своими словами в поле внизу.",
+      "note_en": "Write your answer in the field below."
+     },
+     {
+      "key": "chat",
+      "label_ru": "Обсудить с агентом",
+      "label_en": "Discuss with the agent",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите агенту, что непонятно, — он объяснит.",
+      "note_en": "Write to the agent what is unclear — it will explain."
+     }
+    ],
+    "sig": "2c55a11df235"
+   }
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@5",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "44 GET /api/screen?w=%401 (focus)": [
+  403,
+  "application/json",
+  {
+   "error": "по фокус-ссылке доступна только её сессия",
+   "code": "focus_scope"
+  },
+  [],
+  []
+ ],
+ "45 GET /api/screen?w=%405 (focusd)": [
+  200,
+  "application/json",
+  {
+   "lines": [
+    "",
+    " ▐▛███▛█   Claude Code v2.1.330",
+    "▝▜██████▀  Haiku 5.5 with medium effort · Claude Ultra",
+    " ▝▝   ▝▝   ~/projects/shop",
+    "",
+    "",
+    "❯ Используй инструмент AskUserQuestion: спроси меня одним вопросом «Какой отчёт прислать утром?» с тремя",
+    "  вариантами (Короткий, Подробный, Без отчёта), у каждого короткое описание. Больше ничего не делай.",
+    "──────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    " ☐ Отчёт",
+    "",
+    "Какой отчёт прислать утром?",
+    "",
+    "❯ 1. Короткий",
+    "     Несколько строк: главное и что нужно решить.",
+    "  2. Подробный",
+    "     Полный отчёт с деталями, шагами и ссылками на файлы.",
+    "  3. Без отчёта",
+    "     Утром ничего не присылать.",
+    "  4. Type something.",
+    "──────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "  5. Chat about this",
+    "",
+    "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ""
+   ],
+   "auth": null,
+   "login": null,
+   "ask": {
+    "kind": "question",
+    "known": true,
+    "title_ru": "Какой отчёт прислать утром?",
+    "title_en": "Какой отчёт прислать утром?",
+    "detail_ru": "Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.",
+    "detail_en": "Pick an answer. If none fits, tap «Your own answer» and write it.",
+    "options": [
+     {
+      "key": "q1",
+      "label_ru": "Короткий",
+      "label_en": "Короткий",
+      "send": {
+       "n": "1"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q2",
+      "label_ru": "Подробный",
+      "label_en": "Подробный",
+      "send": {
+       "n": "2"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q3",
+      "label_ru": "Без отчёта",
+      "label_en": "Без отчёта",
+      "send": {
+       "n": "3"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "type",
+      "label_ru": "Свой вариант",
+      "label_en": "Your own answer",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите ответ своими словами в поле внизу.",
+      "note_en": "Write your answer in the field below."
+     },
+     {
+      "key": "chat",
+      "label_ru": "Обсудить с агентом",
+      "label_en": "Discuss with the agent",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите агенту, что непонятно, — он объяснит.",
+      "note_en": "Write to the agent what is unclear — it will explain."
+     }
+    ],
+    "sig": "2c55a11df235"
+   }
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@5",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "46 GET /api/screen?w=%407 (spacer)": [
+  200,
+  "application/json",
+  {
+   "lines": [
+    "$ ls",
+    "Done."
+   ],
+   "auth": null,
+   "login": null,
+   "ask": null
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@7",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "47 GET /api/screen?w=%408 (spacer)": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "48 GET /api/screen?w=%401 (spacer)": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "49 GET /api/screen?w=%408": [
+  200,
+  "application/json",
+  {
+   "lines": [
+    "$ ls",
+    "Done."
+   ],
+   "auth": null,
+   "login": null,
+   "ask": null
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@8",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "50 GET /api/screen?w=%409": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "51 GET /api/screen": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "52 GET /api/ask?w=%405": [
+  200,
+  "application/json",
+  {
+   "ask": {
+    "kind": "question",
+    "known": true,
+    "title_ru": "Какой отчёт прислать утром?",
+    "title_en": "Какой отчёт прислать утром?",
+    "detail_ru": "Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.",
+    "detail_en": "Pick an answer. If none fits, tap «Your own answer» and write it.",
+    "options": [
+     {
+      "key": "q1",
+      "label_ru": "Короткий",
+      "label_en": "Короткий",
+      "send": {
+       "n": "1"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q2",
+      "label_ru": "Подробный",
+      "label_en": "Подробный",
+      "send": {
+       "n": "2"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "q3",
+      "label_ru": "Без отчёта",
+      "label_en": "Без отчёта",
+      "send": {
+       "n": "3"
+      },
+      "level": 1,
+      "note_ru": "",
+      "note_en": "",
+      "raw": true
+     },
+     {
+      "key": "type",
+      "label_ru": "Свой вариант",
+      "label_en": "Your own answer",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите ответ своими словами в поле внизу.",
+      "note_en": "Write your answer in the field below."
+     },
+     {
+      "key": "chat",
+      "label_ru": "Обсудить с агентом",
+      "label_en": "Discuss with the agent",
+      "send": {
+       "key": "Escape",
+       "compose": true
+      },
+      "level": 1,
+      "note_ru": "Напишите агенту, что непонятно, — он объяснит.",
+      "note_en": "Write to the agent what is unclear — it will explain."
+     }
+    ],
+    "sig": "2c55a11df235"
+   }
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@5",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "53 GET /api/ask?w=%401 (viewer)": [
+  200,
+  "application/json",
+  {
+   "ask": null
+  },
+  [
+   [
+    "tmux.screen",
+    [
+     "@1",
+     60
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "54 GET /api/hint?w=%401": [
+  200,
+  "application/json",
+  {
+   "hint": "подсказка"
+  },
+  [
+   [
+    "tmux.hint",
+    [
+     "@1"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "55 GET /api/hint?w=%405 (focusd)": [
+  200,
+  "application/json",
+  {
+   "hint": "подсказка"
+  },
+  [
+   [
+    "tmux.hint",
+    [
+     "@5"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "56 GET /api/cmds?w=%401": [
+  200,
+  "application/json",
+  {
+   "cmds": [
+    {
+     "i": 0,
+     "cmd": "ls"
+    }
+   ],
+   "host": "pult-test"
+  },
+  [
+   [
+    "commands",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "57 GET /api/cmds?w=%405 (focus)": [
+  200,
+  "application/json",
+  {
+   "cmds": [
+    {
+     "i": 0,
+     "cmd": "ls"
+    }
+   ],
+   "host": "pult-test"
+  },
+  [
+   [
+    "commands",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "58 GET /api/cmds?w=%405 (focusd)": [
+  403,
+  "application/json",
+  {
+   "error": "по демо-ссылке — только просмотр и выбор вариантов",
+   "code": "focus_scope"
+  },
+  [],
+  []
+ ],
+ "59 GET /api/steps?w=%401&q=x": [
+  200,
+  "application/json",
+  {
+   "turns": [
+    {
+     "n": 1
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "transcripts.current",
+    [
+     "/tmp/o",
+     "/tmp/home",
+     "s1"
+    ],
+    []
+   ],
+   [
+    "steps.turns",
+    [
+     "/tmp/t.jsonl",
+     "x"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "60 GET /api/steps?w=%406": [
+  200,
+  "application/json",
+  {
+   "turns": [],
+   "note": "шаги видны только у Claude Code"
+  },
+  [],
+  []
+ ],
+ "61 GET /api/steps?w=%407 (spacer)": [
+  200,
+  "application/json",
+  {
+   "turns": [
+    {
+     "n": 1
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "transcripts.current",
+    [
+     "/tmp/a",
+     "/tmp/home",
+     "s7"
+    ],
+    []
+   ],
+   [
+    "steps.turns",
+    [
+     "/tmp/t.jsonl",
+     ""
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "62 GET /api/history?w=%401": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     1
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "63 GET /api/history?w=%401 (etag)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     1
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "64 GET /api/history?w=%401&rev=R1": [
+  200,
+  "application/json",
+  {
+   "same": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "65 GET /api/history?w=%401&rev=R0": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     1
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "66 GET /api/history?w=%401&before=5": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 5"
+    }
+   ],
+   "more": false,
+   "rev": "R1"
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     1
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "67 GET /api/history?w=%401&before=x": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     1
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "68 GET /api/history?w=%409": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "69 GET /api/history?w=%401 (viewer)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     2
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "70 GET /api/history?w=%407 (spacer)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s7 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     3
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "71 GET /api/history?w=%408 (spacer)": [
+  404,
+  "application/json",
+  {
+   "error": "окна уже нет"
+  },
+  [],
+  []
+ ],
+ "72 GET /api/history?w=%407 (slink)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s7 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     -1125899906842634
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "73 GET /api/history?w=%401 (v1s)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "funnel.sent_at",
+    [
+     1
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "74 GET /api/history?w=%401 (v1)": [
+  403,
+  "application/json",
+  {
+   "error": "этот путь через токен закрыт",
+   "code": "v1_scope"
+  },
+  [],
+  []
+ ],
+ "75 GET /api/history?w=%405 (focus)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s5 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "76 GET /api/history?w=%401 (focusp)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s1 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "77 GET /api/history?w=%405 (focusd)": [
+  200,
+  "application/json",
+  {
+   "items": [
+    {
+     "role": "user",
+     "text": "привет"
+    },
+    {
+     "role": "assistant",
+     "text": "API Error: 529 Overloaded",
+     "human": {
+      "key": "overloaded",
+      "ru": "Сервис модели сейчас перегружен. Подождите минуту и напишите ещё раз.",
+      "en": "The model service is overloaded right now. Wait a minute and write again."
+     }
+    },
+    {
+     "role": "assistant",
+     "text": "готово s5 None"
+    }
+   ],
+   "more": true,
+   "rev": "R1",
+   "team": [
+    {
+     "from": "штаб",
+     "text": "привет"
+    }
+   ]
+  },
+  [
+   [
+    "pult.home_of",
+    [
+     "dict"
+    ],
+    []
+   ],
+   [
+    "team_for",
+    [
+     "dict"
+    ],
+    []
+   ]
+  ],
+  []
+ ],
+ "78 GET /api/history?w=%405 (slinkg)": [
+  410,
+  "application/json",
+  {
+   "error": "ссылка отозвана",
+   "code": "focus_gone"
+  },
+  [],
+  []
+ ]
+}

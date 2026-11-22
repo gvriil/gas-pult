@@ -498,8 +498,11 @@ def test_routes_answer_as_before(srv, area):
 
 # своя ветка фокус-ссылки в ``H.focus_do`` (не цепочка): «Завершить» сессию пространства по ссылке — окно и
 # пространство из записи ссылки, «Выйти» по ссылке — cookie фокуса, «Открыть на другом устройстве» — токен для её
-# записи; обычный запрос того же пути — таблица routes/
-FOCUS_OWN = {("POST", "/api/space/close"), ("POST", "/api/logout"), ("POST", "/api/focus/device")}
+# записи; сессии, «О пульте», фото ленты и «Завершить» по ссылке — из записи ссылки; ответ гостя демо-ссылки
+# (клавиша, пункт меню) — через ``Panel.demo_answer``; обычный запрос того же пути — таблица routes/
+FOCUS_OWN = {("POST", "/api/space/close"), ("POST", "/api/logout"), ("POST", "/api/focus/device"),
+             ("GET", "/api/meta"), ("GET", "/api/sessions"), ("GET", "/api/media"), ("POST", "/api/close"),
+             ("POST", "/api/key"), ("POST", "/api/select")}
 # своя ветка до входа в ``do_POST`` (не цепочка): помощник на экране входа без входа (``HELP_OPEN``, ``help_anon``);
 # вошедшему — таблица routes/people.py
 OPEN_OWN = {("POST", "/api/help/ask"), ("POST", "/api/help/feedback")}
@@ -554,9 +557,13 @@ def test_fork_tables_keep_chain_paths():
         routes.notify.PUSH_POST) | {"/api/drafts/yes", "/api/drafts/no", "/api/module/schedule",
                                     "/api/module/delete", "/api/repos/add", "/api/repos/remove",
                                     "/api/space/mcp/add", "/api/space/mcp/remove", *webapp.CONFIRM_API,
-                                    "/api/tty/type", "/api/tty/key", "/api/tty/size"}
+                                    "/api/tty/type", "/api/tty/key", "/api/tty/size", "/api/desktop/tabs",
+                                    "/api/desktop/tabs/shot", "/api/desktop/tabs/act"}
     assert set(routes.POST_W) == {"/api/mcp/finish", "/api/chat/mcp", "/api/space/connect", "/api/help/call",
-                                  "/api/run", "/api/run/term", "/api/bug"}
+                                  "/api/run", "/api/run/term", "/api/bug", webapp.NOTIFY_DONE, "/api/send",
+                                  "/api/resend", "/api/rename", "/api/title", "/api/active", "/api/notify/level",
+                                  "/api/command", "/api/model", "/api/effort", "/api/key", "/api/select",
+                                  "/api/restart"}
     assert all(routes.POST_P[p] is routes.messengers.messengers_post for p in routes.messengers.POST_PATHS)
 
 
@@ -1194,3 +1201,361 @@ def ppl_snap(srv, cases) -> dict:
 @pytest.mark.parametrize("area", PPL)
 def test_people_and_commands_answer_as_before(ppl, area):
     assert ppl_snap(ppl, PPL[area]) == json.loads((FIX / f"routes_{area}_snap.json").read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------- сессии и чат, рабочий стол, «Терминал», ссылки.
+# Самая нагруженная область: опрос раз в секунды (/api/sessions, /api/history с «rev», /api/screen, /api/activity),
+# отправка (повтор, пустое, «вопрос Claude» — 400 code=question), клавиши и пункты меню, модель и усилие, окно.
+# Окна — подделка tmux с границей пространств: человек A («alpha», окно @7) не видит окно @8 пространства B
+# («beta») и окна владельца; @3 — остановленное окно, @9 — окна нет (404 «окна уже нет»). Демо-ссылка (fc4, @5):
+# только выбор варианта, когда на экране вопрос; второе нажатие — 409 «уже ответили». Ничего не выполняется:
+# Panel.send/key/select/model/restart…, harness, tmux.screen/hint/rename — подделки; настоящие окна не трогаются.
+QUESTION = (FIX / "cc_screens" / "question.txt").read_text(encoding="utf-8").replace("/home/u/", "~/").split("\n")
+SES_WINS = {"@1": {"id": "@1", "path": "/tmp/o", "profile": "claude", "sid": "s1", "name": "main"},
+            "@5": {"id": "@5", "path": "/tmp/m", "profile": "claude", "sid": "s5"},
+            "@6": {"id": "@6", "path": "/tmp/g", "profile": "glm", "sid": "s6"},
+            "@7": {"id": "@7", "path": "/tmp/a", "space": "alpha", "profile": "claude", "sid": "s7"},
+            "@8": {"id": "@8", "path": "/tmp/b", "space": "beta", "profile": "claude", "sid": "s8"}}
+FOC_RECS["fc4"] = {"id": "f4", "w": "@5", "name": "Демо", "space": None, "mode": focus.DEMO}
+FOC["focusd"] = "fc4"
+V1["v1x"] = "v1xtok"                                     # токен с группой «send» (запись: /api/send)
+
+
+class _Harness:
+    def __init__(self, w):
+        self.name = "claude" if (w.get("profile") or "claude") == "claude" else "pi"
+
+    def last_answer(self, path, home, sid):
+        return f"ответ {sid}"
+
+    def revision(self, path, home, sid):
+        return "R1"
+
+    def history(self, path, n, before, home="", sid=""):
+        return ([{"role": "user", "text": "привет"},
+                 {"role": "assistant", "text": "API Error: 529 Overloaded"},
+                 {"role": "assistant", "text": f"готово {sid} {before}"}], before is None)
+
+
+@pytest.fixture
+def ses(ppl, monkeypatch):
+    from gas_pult import bot, deskmobile, desktabs, harness, scenarios, starters, steps, transcripts
+    p, rec, ok = ppl["p"], ppl["rec"], ppl["ok"]
+
+    def scoped(wid):                                     # граница пространств: в запросе пространства — только его окна
+        w = SES_WINS.get(str(wid or ""))
+        sc = getattr(p.tmux, "scoped", None)
+        return None if w is None or (sc is not None and w.get("space") != sc) else w
+
+    def tmux_window(wid):
+        return {"id": "@3", "stopped": True} if wid == "@3" else scoped(wid)
+
+    def session_window(wid):
+        if not (w := scoped(wid)):
+            raise LookupError("окна уже нет")
+        return w
+
+    def send(w, text, mid=""):
+        if text == "вопрос":                             # Claude ждёт выбора варианта — 400 code=question (#464)
+            raise bot.AwaitsChoice("Claude ждёт выбора варианта — выберите кнопкой")
+        if text == "сбой":
+            raise RuntimeError("tmux не ответил")
+        return text == "дубль"
+
+    def screen(wid, n=60):
+        return QUESTION if wid == "@5" else ["$ ls", "Done."]
+
+    monkeypatch.setattr(p, "window", scoped)
+    monkeypatch.setattr(p.tmux, "window", tmux_window)
+    monkeypatch.setattr(p.tmux, "windows", lambda: [w for w in SES_WINS.values() if scoped(w["id"])])
+    monkeypatch.setattr(p.tmux, "screen", rec("tmux.screen", screen))
+    monkeypatch.setattr(p.tmux, "hint", rec("tmux.hint", "подсказка"))
+    monkeypatch.setattr(p.tmux, "rename", rec("tmux.rename", ok("новое")))
+    fakes = {"media": ok(("image/png", b"PNG", {"Cache-Control": "private"})), "focus_roots": ["/tmp/m"],
+             "default_model": ok({"model": "opus"}), "activity": ok({"state": "думает"}),
+             "commands": [{"i": 0, "cmd": "ls"}], "team_for": [{"from": "штаб", "text": "привет"}],
+             "send": send, "set_title": ok({"title": "Чат"}), "command": ok({"ok": True}),
+             "keep_model": ok({"kept": True}), "model": ok({"ok": True}), "effort": ok(["$ effort"]),
+             "key": ok(["$ key"]), "select": ok(["$ select"]), "restart": ok({"w": "@1"}), "revive": ok({"w": "@1"}),
+             "close_ex": lambda w, force=False: {"result": "закрыто" if force or w["id"] == "@1" else "занято"},
+             "session_window": session_window, "new": ok({"w": "@2"}), "new_in_space": ok({"w": "@7"}),
+             "new_folder": ok({"w": "@2"}), "route": ok({"profile": "claude"}),
+             "pin": ok({"ok": True}), "clear_stopped": {"closed": 1}, "check": ok(None),
+             "upload": lambda name, data, size=None, w="": f"/tmp/in/{name}{'@' + w if w else ''}",
+             "starters_for": {"starters": [{"id": "s1"}]}, "meta": {"name": "пульт"},
+             "focus_meta": {"name": "фокус"}, "focus_sessions": [{"id": "@5"}],
+             "country_info": {"chosen": "NL", "need": False, "mismatch": False, "phone": "", "ip_cc": "",
+                              "check": False}}
+    for name, out in fakes.items():
+        monkeypatch.setattr(p, name, rec(name, out))
+    subs = {"pult": {"home_of": "/tmp/home", "ask_notify_done": ok("сообщу"), "push_enter": ok("отправлено"),
+                     "set_state": None},
+            "projects": {"set_order": ok(["a", "b"])},
+            "funnel": {"send": None, "replied": None, "sent_at": None, "answered": None, "event": None}}
+    for obj, names in subs.items():
+        for name, out in names.items():
+            monkeypatch.setattr(getattr(p, obj), name, rec(f"{obj}.{name}", out))
+    monkeypatch.setattr(harness, "of", _Harness)
+    monkeypatch.setattr(transcripts, "current", rec("transcripts.current", "/tmp/t.jsonl"))
+    monkeypatch.setattr(steps, "turns", rec("steps.turns", [{"n": 1}]))
+    monkeypatch.setattr(scenarios, "api_data", rec("scenarios.api_data", {"roles": []}))
+    monkeypatch.setattr(starters, "prompt", rec("starters.prompt", lambda sid, tasks=False: f"{sid}:{tasks}"))
+    monkeypatch.setattr(deskmobile.MOBILE, "set", rec("deskmobile.set", ok({"on": True})))
+    for name in ("list", "shot", "act"):
+        monkeypatch.setattr(desktabs.TABS, name, rec(f"desktabs.{name}", ok({"tabs": []})))
+    try:                                                 # рабочий стол, «Терминал», ссылки — модуль после переноса
+        from gas_pult import desktop as desk_mod
+    except ImportError:
+        desk_mod = None
+    for mod in (webapp, desk_mod):
+        if mod is not None:
+            monkeypatch.setattr(mod, "desktop_up", rec("desktop_up", lambda port=None: True))
+            monkeypatch.setattr(mod, "desktop_tab", rec("desktop_tab", ok({"ok": True, "id": "T1"})))
+            monkeypatch.setattr(mod, "shell_window", rec("shell_window", "@4"))
+    check = p.api_tokens.check
+    monkeypatch.setattr(p.api_tokens, "check", lambda t: {"id": "a5", "by": OWNER, "space": "", "groups": ["send"],
+                                                          "write": True} if t == "v1xtok" else check(t))
+    return ppl
+
+
+SESSIONS = [
+    ("/api/sessions", None, ""),
+    ("/api/sessions", None, "", "etag"),                  # ETag только у /api/tasks: здесь — обычный ответ
+    ("/api/sessions", None, "", "viewer"),
+    ("/api/sessions", None, "", "admin"),
+    ("/api/sessions", None, "", "spacer"),                # человек A — сессии своего пространства, без имени сервера
+    ("/api/sessions", None, "", "slink"),
+    ("/api/sessions", None, "", "v1s"),
+    ("/api/sessions", None, "", "focus"),                 # фокус — focus_do (только сессии ссылки)
+    ("/api/sessions", None, "", "focusd"),
+    ("/api/sessions", None, "", "anon"),
+    ("/api/meta", None, ""),
+    ("/api/meta", None, "", "viewer"),
+    ("/api/meta", None, "", "member"),
+    ("/api/meta", None, "", "spacer"),
+    ("/api/meta", None, "", "slink"),
+    ("/api/meta", None, "", "slinkg"),
+    ("/api/meta", None, "", "focus"),
+    ("/api/meta", None, "", "focusd"),
+    ("/api/meta", None, "", "tgh"),
+    ("/api/starters?occ=dev", None, ""),
+    ("/api/starters", None, "", "spacer"),
+    ("/api/starters", None, "", "focus"),
+    ("/api/scenarios", None, ""),
+    ("/api/scenarios", None, "", "viewer"),
+    ("/api/links/prefs", None, ""),
+    ("/api/links/prefs", None, "", "viewer"),
+    ("/api/media?p=%2Ftmp%2Fa.png", None, ""),
+    ("/api/media?p=nope", None, ""),
+    ("/api/media?p=%2Ftmp%2Fm%2Fa.png", None, "", "focus"),
+    ("/api/media?p=%2Ftmp%2Fa.png", None, "", "spacer"),
+    ("/api/model/default", None, ""),
+    ("/api/model/default", None, "", "viewer"),
+    ("/api/activity?w=%401", None, ""),
+    ("/api/activity?w=%405", None, "", "focusd"),
+    ("/api/activity?w=%401", None, "", "v1s"),
+    ("/api/activity?w=nope", None, ""),
+    ("/api/last?w=%401", None, ""),
+    ("/api/last?w=%409", None, ""),                       # окна нет — 404 «окна уже нет»
+    ("/api/last?w=%403", None, ""),                       # окно остановлено — 404 «Claude в этой сессии остановлен»
+    ("/api/last?w=%401", None, "", "v1s"),
+    ("/api/last?w=%405", None, "", "focusd"),
+    ("/api/screen?w=%401", None, ""),
+    ("/api/screen?w=%405", None, ""),                     # вопрос Claude на экране — «ask» с вариантами (#464)
+    ("/api/screen?w=%405", None, "", "focus"),
+    ("/api/screen?w=%401", None, "", "focus"),            # не окно ссылки — 403
+    ("/api/screen?w=%405", None, "", "focusd"),
+    ("/api/screen?w=%407", None, "", "spacer"),
+    ("/api/screen?w=%408", None, "", "spacer"),           # окно пространства B — «окна уже нет»
+    ("/api/screen?w=%401", None, "", "spacer"),           # окно владельца — тоже
+    ("/api/screen?w=%408", None, ""),                     # владелец — окно пространства видит
+    ("/api/screen?w=%409", None, ""),
+    ("/api/screen", None, ""),
+    ("/api/ask?w=%405", None, ""),
+    ("/api/ask?w=%401", None, "", "viewer"),
+    ("/api/hint?w=%401", None, ""),
+    ("/api/hint?w=%405", None, "", "focusd"),
+    ("/api/cmds?w=%401", None, ""),
+    ("/api/cmds?w=%405", None, "", "focus"),
+    ("/api/cmds?w=%405", None, "", "focusd"),             # не из DEMO_GET — 403
+    ("/api/steps?w=%401&q=x", None, ""),
+    ("/api/steps?w=%406", None, ""),                      # не Claude Code — «шаги видны только у Claude Code»
+    ("/api/steps?w=%407", None, "", "spacer"),
+    ("/api/history?w=%401", None, ""),
+    ("/api/history?w=%401", None, "", "etag"),
+    ("/api/history?w=%401&rev=R1", None, ""),             # журнал не менялся — {"same": true}
+    ("/api/history?w=%401&rev=R0", None, ""),
+    ("/api/history?w=%401&before=5", None, ""),
+    ("/api/history?w=%401&before=x", None, ""),
+    ("/api/history?w=%409", None, ""),
+    ("/api/history?w=%401", None, "", "viewer"),
+    ("/api/history?w=%407", None, "", "spacer"),
+    ("/api/history?w=%408", None, "", "spacer"),
+    ("/api/history?w=%407", None, "", "slink"),
+    ("/api/history?w=%401", None, "", "v1s"),
+    ("/api/history?w=%401", None, "", "v1"),              # группа «tasks» — 403
+    ("/api/history?w=%405", None, "", "focus"),
+    ("/api/history?w=%401", None, "", "focusp"),          # ссылка на проект: окно проекта
+    ("/api/history?w=%405", None, "", "focusd"),
+    ("/api/history?w=%405", None, "", "slinkg"),
+]
+CHAT = [
+    ("/api/upload", b"DATA", "application/octet-stream"),
+    ("/api/upload?w=%401", b"DATA", "application/octet-stream"),
+    ("/api/upload?w=%405", b"DATA", "application/octet-stream", "focus"),
+    ("/api/upload?w=%401", b"DATA", "application/octet-stream", "focus"),   # чужая сессия — в inbox (w="")
+    ("/api/upload", b"DATA", "application/octet-stream", "viewer"),
+    ("/api/upload", b"DATA", "application/octet-stream", "spacer"),
+    ("/api/starter", J({"id": "s1", "w": "@1"}).encode(), JS),
+    ("/api/starter", J({"id": "s1", "w": "@7"}).encode(), JS),   # окно пространства — без «добавь задачу»
+    ("/api/starter", J({"id": "s1", "w": "@7"}).encode(), JS, "spacer"),
+    ("/api/starter", J({"id": "s1", "w": "@5"}).encode(), JS, "focus"),
+    ("/api/starter", b"{bad", JS),
+    ("/api/new", J({"i": 0, "profile": "claude"}).encode(), JS),
+    ("/api/new", J({"i": "x"}).encode(), JS),
+    ("/api/new", J({"name": "Тест", "effort": "low"}).encode(), JS, "spacer"),   # человек A — в своём пространстве
+    ("/api/new", J({"i": 0, "profile": "bad"}).encode(), JS),
+    ("/api/new", b"{bad", JS),
+    ("/api/new", J({"i": 0}).encode(), JS, "viewer"),
+    ("/api/new", J({"i": 0}).encode(), JS, "focus"),
+    ("/api/model/default", J({"model": "sonnet"}).encode(), JS),
+    ("/api/model/default", J({"model": "bad"}).encode(), JS),
+    ("/api/model/default", J({"model": "sonnet"}).encode(), JS, "admin"),
+    ("/api/route", J({"text": "сделай сайт"}).encode(), JS),
+    ("/api/route", J({"text": "bad"}).encode(), JS),
+    ("/api/order", J({"grp": "pin", "ids": ["a", "b"]}).encode(), JS),
+    ("/api/order", J({"grp": "bad"}).encode(), JS),
+    ("/api/pin", J({"w": "@1"}).encode(), JS),
+    ("/api/pin", J({"on": False, "project": "pr1", "id": "c1", "sid": "s1"}).encode(), JS),
+    ("/api/pin", J({"w": "nope"}).encode(), JS),
+    ("/api/pin", J({"w": "@7"}).encode(), JS, "spacer"),
+    ("/api/stopped/clear", J({}).encode(), JS),
+    ("/api/stopped/clear", J({}).encode(), JS, "viewer"),
+    ("/api/folder", J({"name": "Папка", "profile": "claude"}).encode(), JS),
+    ("/api/folder", J({"name": "bad"}).encode(), JS),
+    ("/api/revive", J({"w": "@1"}).encode(), JS),
+    ("/api/revive", J({"w": "nope"}).encode(), JS),
+    ("/api/revive", J({"w": "@5"}).encode(), JS, "focus"),
+    ("/api/close", J({"w": "@1"}).encode(), JS),
+    ("/api/close", J({"w": "@6", "schedule": "pause"}).encode(), JS),
+    ("/api/close", J({"w": "@6", "force": True}).encode(), JS),
+    ("/api/close", J({"w": "@9"}).encode(), JS),
+    ("/api/close", J({"w": "@8"}).encode(), JS, "spacer"),
+    ("/api/close", J({"w": "@5"}).encode(), JS, "focus"),        # фокус — focus_do, не цепочка
+    ("/api/close", J({"w": "@1"}).encode(), JS, "v1x"),           # через токен — никогда
+    ("/api/notify-done", J({"w": "@1"}).encode(), JS),
+    ("/api/notify-done", J({"w": "@9"}).encode(), JS),
+    ("/api/notify-done", J({"w": "@7"}).encode(), JS, "slink"),   # ссылка на пространство — нет (SLINK_NO)
+    ("/api/send", J({"w": "@1", "text": "привет", "id": "m1"}).encode(), JS),
+    ("/api/send", J({"w": "@1", "text": "привет", "id": "m2"}).encode(), JS),   # повтор — «уже отправлен»
+    ("/api/send", J({"w": "@1", "text": "  "}).encode(), JS),     # пустое — 400
+    ("/api/send", J({"w": "@1", "text": "вопрос", "id": "m3"}).encode(), JS),   # вопрос Claude — 400 code=question
+    ("/api/send", J({"w": "@1", "text": "дубль", "id": "m4"}).encode(), JS),
+    ("/api/send", J({"w": "@1", "text": "сбой", "id": "m5"}).encode(), JS),
+    ("/api/send", J({"w": "@9", "text": "привет"}).encode(), JS),  # окна нет — 404
+    ("/api/send", J({"w": "@3", "text": "привет"}).encode(), JS),  # остановлено — 404 со словами
+    ("/api/send", J({"text": "привет"}).encode(), JS),
+    ("/api/send", b"{bad", JS),
+    ("/api/send", b"[1]", JS),
+    ("/api/send", J({"w": "@1", "text": "привет"}).encode(), JS, "viewer"),
+    ("/api/send", J({"w": "@7", "text": "тест A", "id": "a1"}).encode(), JS, "spacer"),
+    ("/api/send", J({"w": "@8", "text": "в чужое"}).encode(), JS, "spacer"),
+    ("/api/send", J({"w": "@8", "text": "владелец в B", "id": "o1"}).encode(), JS),
+    ("/api/send", J({"w": "@7", "text": "ссылка A", "id": "l1"}).encode(), JS, "slink"),
+    ("/api/send", J({"w": "@5", "text": "из фокуса", "id": "f1"}).encode(), JS, "focus"),
+    ("/api/send", J({"w": "@1", "text": "из фокуса"}).encode(), JS, "focus"),
+    ("/api/send", J({"w": "@5", "text": "демо"}).encode(), JS, "focusd"),     # демо — без текста (403)
+    ("/api/send", J({"w": "@1", "text": "из 1С", "id": "v1"}).encode(), JS, "v1x"),
+    ("/api/send", J({"w": "@1", "text": "из 1С"}).encode(), JS, "v1s"),      # группа «sessions» — без записи
+    ("/api/send", b"{bad", JS, "focus"),
+    ("/api/resend", J({"w": "@1", "sha": "abcdef0123456789"}).encode(), JS),
+    ("/api/resend", J({"w": "@1", "sha": "nope"}).encode(), JS),
+    ("/api/resend", J({"w": "@5", "sha": "a"}).encode(), JS, "focus"),
+    ("/api/rename", J({"w": "@1", "name": "новое"}).encode(), JS),
+    ("/api/rename", J({"w": "@1", "name": "nope"}).encode(), JS),
+    ("/api/rename", J({"w": "@5", "name": "x"}).encode(), JS, "focus"),
+    ("/api/title", J({"w": "@1", "title": "Чат"}).encode(), JS),
+    ("/api/title", J({"w": "@1", "title": "bad"}).encode(), JS),
+    ("/api/title", J({"w": "@7", "title": None}).encode(), JS, "spacer"),
+    ("/api/active", J({"w": "@1"}).encode(), JS),
+    ("/api/active", J({"w": "@8"}).encode(), JS),                   # окно пространства — 400
+    ("/api/active", J({"w": "@1"}).encode(), JS, "viewer"),
+    ("/api/notify/level", J({"w": "@1", "level": "all"}).encode(), JS),
+    ("/api/notify/level", J({"w": "@1", "level": "x"}).encode(), JS),
+    ("/api/command", J({"w": "@1", "i": 0}).encode(), JS),
+    ("/api/command", J({"w": "@1", "i": "x"}).encode(), JS),
+    ("/api/command", J({"w": "@5", "i": 0}).encode(), JS, "focus"),
+    ("/api/model", J({"w": "@1", "name": "opus", "keep": True}).encode(), JS),
+    ("/api/model", J({"w": "@1", "name": "opus", "effort": "high"}).encode(), JS),
+    ("/api/model", J({"w": "@1", "name": "bad"}).encode(), JS),
+    ("/api/model", J({"w": "@5", "name": "sonnet"}).encode(), JS, "focus"),
+    ("/api/model", J({"w": "@5", "name": "sonnet"}).encode(), JS, "focusd"),
+    ("/api/effort", J({"w": "@1", "level": "high"}).encode(), JS),
+    ("/api/effort", J({"w": "@1", "level": "bad"}).encode(), JS),
+    ("/api/key", J({"w": "@1", "key": "Escape"}).encode(), JS),
+    ("/api/key", J({"w": "@5", "key": "Enter"}).encode(), JS),     # ответ на вопрос — событие продукта
+    ("/api/key", J({"w": "@1", "key": "bad"}).encode(), JS),
+    ("/api/key", J({"w": "@8", "key": "Enter"}).encode(), JS),     # владелец отвечает в окне пространства
+    ("/api/key", J({"w": "@1", "key": "Enter"}).encode(), JS, "viewer"),
+    ("/api/key", J({"w": "@5", "key": "Down"}).encode(), JS, "focusd"),   # демо: стрелка — можно
+    ("/api/key", J({"w": "@5", "key": "x"}).encode(), JS, "focusd"),      # демо: не стрелка — 403
+    ("/api/select", J({"w": "@5", "text": "Короткий", "n": "1"}).encode(), JS),
+    ("/api/select", J({"w": "@5", "n": "2", "go": False}).encode(), JS),
+    ("/api/select", J({"w": "@1", "n": "bad"}).encode(), JS),
+    ("/api/select", J({"w": "@5", "n": "1"}).encode(), JS, "focusd"),     # демо: первый ответ проходит
+    ("/api/select", J({"w": "@5", "n": "1"}).encode(), JS, "focusd"),     # второй — 409 «уже ответили»
+    ("/api/select", J({"w": "@7", "n": "1"}).encode(), JS, "spacer"),
+    ("/api/restart", J({"w": "@1", "profile": "glm", "keep": False}).encode(), JS),
+    ("/api/restart", J({"w": "@1", "profile": "glm"}).encode(), JS, "admin"),   # админ — без смены модели (400)
+    ("/api/restart", J({"w": "@1"}).encode(), JS, "admin"),
+    ("/api/restart", J({"w": "@1", "profile": "bad"}).encode(), JS),
+    ("/api/restart", J({"w": "@5"}).encode(), JS, "focus"),
+    ("/api/nope", J({"w": "@1"}).encode(), JS),                     # нет такого пути
+]
+DESK = [
+    ("/api/desktop/url", J({"url": "https://example.com"}).encode(), JS),
+    ("/api/desktop/url", J({"url": "nope"}).encode(), JS),
+    ("/api/desktop/url", J({"url": "https://example.com"}).encode(), JS, "viewer"),
+    ("/api/links/prefs", J({"host": "GitHub.com", "open": "desk"}).encode(), JS),
+    ("/api/links/prefs", J({"host": "github.com", "open": None}).encode(), JS),
+    ("/api/links/prefs", J({"host": "bad host", "open": "desk"}).encode(), JS),
+    ("/api/links/prefs", J({"host": "a.test", "open": "x"}).encode(), JS),
+    ("/api/links/prefs", b"{bad", JS),
+    ("/api/links/prefs", J({"host": "a.test", "open": "here"}).encode(), JS, "member"),
+    ("/api/shell/open", J({}).encode(), JS),
+    ("/api/shell/open", J({}).encode(), JS, "fresh"),
+    ("/api/shell/open", J({}).encode(), JS, "member"),
+    ("/api/desktop/open", J({}).encode(), JS),
+    ("/api/desktop/open", J({}).encode(), JS, "fresh"),              # свежий вход — сначала код
+    ("/api/desktop/open", J({}).encode(), JS, "admin"),
+    ("/api/desktop/open", J({}).encode(), JS, "focus"),
+    ("/api/desktop/mobile", J({"on": True, "w": 390, "h": 844, "dpr": 3}).encode(), JS),
+    ("/api/desktop/mobile", J({"on": False}).encode(), JS),
+    ("/api/desktop/mobile", J({"on": True, "w": "bad"}).encode(), JS),
+    ("/api/desktop/tabs", J({"idle": 5}).encode(), JS),
+    ("/api/desktop/tabs/shot", J({"id": "T1"}).encode(), JS),
+    ("/api/desktop/tabs/shot", J({"id": "nope"}).encode(), JS),
+    ("/api/desktop/tabs/act", J({"op": "close", "id": "T1", "url": ""}).encode(), JS),
+    ("/api/desktop/tabs/act", J({"op": "bad"}).encode(), JS),
+    ("/api/desktop/tabs", b"{bad", JS),
+    ("/api/desktop/tabs", J({}).encode(), JS, "viewer"),
+]
+# Снимки — код до переноса (origin/main, 27c3c4a): владелец, наблюдатель, участник, админ, человек пространства A с
+# окном B, ссылка на пространство (действующая и погасшая), гость фокус-ссылки (сессия и проект), демо-ссылка,
+# /api/v1 (группы «sessions» и «send»), свежий вход без кода, Mini App. Пропуск стола в ссылке — «t=*».
+SES = {"sessions": SESSIONS, "chat": CHAT, "desk": DESK}
+
+
+def ses_snap(srv, cases) -> dict:
+    """Как ``ppl_snap``; ещё: «что нового» (меняется с каждым выпуском) — нулём, одноразовый пропуск стола и номер
+    сбоя (500, ``server_error``) — «*»."""
+    out = ppl_snap(srv, cases)
+    txt = re.sub(r"(desktop-enter\?t=)[A-Za-z0-9_-]+", r"\1*", json.dumps(out, ensure_ascii=False))
+    txt = re.sub(r'(\["exc", "\w+"\], \["id", ")\w+', r"\1*", txt)     # событие сбоя — тот же номер
+    return json.loads(txt, object_hook=lambda d: {k: 0 if k == "whatsnew" else "*" if k == "id" and d.get("code")
+                                                  == "server_error" else v for k, v in d.items()})
+
+
+@pytest.mark.parametrize("area", SES)
+def test_sessions_and_chat_answer_as_before(ses, area):
+    assert ses_snap(ses, SES[area]) == json.loads((FIX / f"routes_{area}_snap.json").read_text(encoding="utf-8"))

@@ -8,7 +8,7 @@ import urllib.request
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import focus, webapp, webauth
+from gas_pult import desktop, focus, webapp, webauth
 
 
 def gate(base, cookie=""):
@@ -40,10 +40,10 @@ def test_open_needs_desktop_and_confirm(server, monkeypatch):
     code, e = call(base, "/api/desktop/open", {}, tok)
     assert code == 403 and e.get("confirm") == "code"                         # свежий вход — код подтверждения
     monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: False)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: False)
     code, e = call(base, "/api/desktop/open", {}, tok)
     assert code == 400 and "не запущен" in e["error"]
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     assert call(base, "/api/desktop/open", {}, tok)[1]["url"] == webapp.DESKTOP_URL
     assert call(base, "/api/desktop/open", {}, p.auth.issue(2))[0] == 403     # участнику — нет
     assert call(base, "/api/meta", tok=tok)[1]["desktop"] is True
@@ -58,7 +58,7 @@ def test_pass_cookie_lets_iframe_in_without_panel_cookie(server, monkeypatch):
     p, base, *_ = server
     tok = p.auth.issue(1)
     monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     req = urllib.request.Request(base + "/api/desktop/open", data=b"{}", method="POST",
                                  headers={"Content-Type": "application/json", "Cookie": f"{webauth.COOKIE}={tok}"})
     with urllib.request.urlopen(req) as r:
@@ -110,7 +110,7 @@ def test_tab_link_one_time_sets_first_party_pass(server, monkeypatch):
     p, base, *_ = server
     tok = p.auth.issue(1)
     monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     d = call(base, "/api/desktop/open", {}, tok)[1]
     assert d["tab"].startswith("/desktop-enter?t=")
     u = urllib.parse.urlparse(base)

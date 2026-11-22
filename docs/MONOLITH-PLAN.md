@@ -50,7 +50,7 @@
 
 ### 3.2. Маршруты HTTP → таблицы по областям
 
-Сейчас: 229 веток `if path == …` в трёх функциях. Станет: `routes/<область>.py`, в каждом словарь
+Было (19.11): 229 веток `if path == …` в трёх функциях; с 22.11 цепочка `get`/`post` пуста (шаг 7 ✓). Станет: `routes/<область>.py`, в каждом словарь
 `GET = {"/api/…": fn}`, `POST = {…}`. `H.get`/`H.post` сначала ищут путь в таблицах, потом — старая цепочка.
 Переносим по одной области, пока старая цепочка не опустеет.
 
@@ -186,9 +186,26 @@
    вынести их в свой модуль). Снимки — с Set-Cookie (имя и атрибуты): без входа, наблюдатель, участник, админ,
    гость, человек пространства, фокус-ссылка, ссылка на пространство (действующая и погасшая), свежий вход без кода,
    Mini App; команды — только на подделках `Panel` и `termwin`.
-   Осталось в `get`/`post` (замер 22.11; путей / пар «путь, метод»): сессии и чат 36/37 (последней: общий
-   `w = self.win(…)`), команды и терминал 8/9, люди и вход 1/1 (`/api/meta`). Всего в цепочке 45 путей / 47 пар
-   (до этого шага — 97 / 104).
+   ✓ Сессии и чат, рабочий стол, «О пульте» — 22.11, последний PR шага: `routes/sessions.py` (36 путей / 37 пар:
+   `/api/sessions`, `/api/starters`, `/api/starter`, `/api/scenarios`, `/api/media`, `/api/model/default`,
+   `/api/activity`; `GET_W` — `/api/last|screen|ask|hint|cmds|steps|history`; `/api/upload` — `POST_RAW`; `/api/new`,
+   `/api/route`, `/api/order`, `/api/pin`, `/api/stopped/clear`, `/api/folder`, `/api/revive`, `/api/close`; `POST_W` —
+   `NOTIFY_DONE`, `/api/send|resend|rename|title|active|command|model|effort|key|select|restart`,
+   `/api/notify/level`), `routes/desktop.py` (8 / 9: `/api/desktop/url|open|mobile`, развилка `/api/desktop/tabs*`,
+   `/api/shell/open`, `/api/links/prefs`), `/api/meta` — в `routes/people.py`; 59 кусков, 229 строк цепочки. Общая часть
+   `post` после `self.win` — своей долей в функциях, как шла: `owner_seen` (владелец пишет в окно пространства) — у
+   `/api/send|select|key`, `panel.check` (страна поставщика) — у них и у `/api/command`, `/api/model`. Функции верхнего
+   уровня вынесены: `desktop_up`, `desktop_tab`, `desk_*`, `DESK_*`, `shell_window`, `link_pref*`, `CDP`, `LINK_OPEN`
+   → `gas_pult/desktop.py`; `MAX_BODY`, `upload_log` → `gas_pult/uploads.py` (`webapp` реэкспортирует; тесты подменяют
+   `desktop.desktop_up`, маршруты берут `desktop.x` при каждом вызове); `whatsnew` — `H.whatsnew`. Снимки до переноса
+   (`routes_sessions|chat|desk_snap.json`): владелец, наблюдатель, участник, админ, человек пространства A с окном B,
+   ссылка на пространство (действующая и погасшая), гость фокус-ссылки (сессия и проект), демо-ссылка (ответ и 409
+   «уже ответили»), `/api/v1` (группы «sessions» и «send»), «вопрос Claude» (400 `code=question`), битый JSON, 404
+   «окна уже нет» и «остановлен»; подделка tmux, настоящие окна не трогаются.
+   **Цепочка `get`/`post` пуста**: остались таблицы и строка `self.win(…)` перед `raise KeyError` — путь не из таблиц,
+   как раньше, сначала ищет окно (нет — 404 «окна уже нет», есть — 404 «нет такого метода»). До входа (`do_GET`/
+   `do_POST`: вход, приглашения, анкеты, предложения, мост, «Поделиться») и свои ветки ссылок (`focus_do`) — не
+   цепочка, остаются в `webapp.py` (2485 строк; до шага 7 — 3355, до этого PR — 2811).
 8. `bot/*` — по модулю за PR.
 
 Всего ~16 PR. Темп — 2–3 в день между продуктовыми задачами.

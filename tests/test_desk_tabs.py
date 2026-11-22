@@ -14,7 +14,7 @@ import pytest
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import desktabs, webapp, wsock
+from gas_pult import desktabs, desktop, wsock
 
 FAV = "data:image/png;base64,iVBORw0KGgo="
 
@@ -291,7 +291,7 @@ def test_api_owner_and_confirm_only(server, monkeypatch):
             return {"ok": True}
 
     monkeypatch.setattr(desktabs, "TABS", Fake())
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     tok = p.auth.issue(1)
     for path in ("/api/desktop/tabs", "/api/desktop/tabs/shot", "/api/desktop/tabs/act"):
         code, e = call(base, path, {}, tok)
@@ -305,6 +305,6 @@ def test_api_owner_and_confirm_only(server, monkeypatch):
     assert call(base, "/api/desktop/tabs/shot", {"id": "A1"}, tok)[0] == 200 and got[-1] == ("shot", "A1")
     code, _ = call(base, "/api/desktop/tabs/act", {"op": "go", "id": "A1", "url": "example.com"}, tok)
     assert code == 200 and got[-1] == ("go", "A1", "example.com")
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: False)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: False)
     code, e = call(base, "/api/desktop/tabs", {}, tok)
     assert code == 400 and "не запущен" in e["error"]

@@ -1,7 +1,8 @@
 """Маршруты области «Люди и вход» (MONOLITH-PLAN §3.2, шаг 7): условия, вид и язык панели (``/api/prefs``,
-«роль» ``/api/persona``, тур, страна), «Команда» и люди (роли, доступ, удаление), приглашения и вход на другое
-устройство, привязка Telegram, почты, ключей входа (passkeys) и Google / Яндекс ID, код подтверждения нового входа,
-помощник и «Позвать на помощь», ошибки JS и отметки функций, «Выйти».
+«роль» ``/api/persona``, тур, страна), «О пульте» ``/api/meta`` (роль, вид, условия, страна, рабочий стол),
+«Команда» и люди (роли, доступ, удаление), приглашения и вход на другое устройство, привязка Telegram, почты, ключей
+входа (passkeys) и Google / Яндекс ID, код подтверждения нового входа, помощник и «Позвать на помощь», ошибки JS и
+отметки функций, «Выйти».
 
 Ветки перенесены из ``webapp.H.get``/``H.post`` как есть: ``self`` — обработчик запроса (``webapp.H``), ``panel`` —
 его ``Panel``. Две ветки ``/api/logout`` — одна функция (``if path == P and X`` → ``if X``). Права проверены до
@@ -11,12 +12,12 @@
 вход из браузера — проверка внутри, как была; «Позвать на помощь» — ``POST_W`` (ветка шла после
 ``w = self.win(b.get("w"))``). Сам вход — до ``permit``, в ``do_GET``/``do_POST`` (не здесь): ``/api/login/*``
 (Telegram, код, ключ, почта, OIDC), ``/api/invite`` и ``/api/invite/check|enter``, помощник без входа
-(``HELP_OPEN``). ``/api/meta`` — в цепочке: ему нужны ``whatsnew`` (замыкание ``handler``) и ``desktop_up``
-(``webapp``, тесты подменяют его там). Ответ с cookie — ``("cookie", Set-Cookie, тело)``, как в цепочке
-(``H.dispatch``). Таблицы и подписи — ``routes/__init__.py``.
+(``HELP_OPEN``). ``/api/meta`` — ``whatsnew`` из ``H.whatsnew`` (замыкание ``handler``), ``desktop_up`` — из
+``gas_pult/desktop.py`` при каждом вызове (тесты подменяют его там). Ответ с cookie — ``("cookie", Set-Cookie,
+тело)``, как в цепочке (``H.dispatch``). Таблицы и подписи — ``routes/__init__.py``.
 """
 
-from gas_pult import focus, invites, personas, terms, webauth
+from gas_pult import desktop, focus, invites, personas, terms, webauth
 from gas_pult.access import CONFIRM_API, FEEDBACK, PERSONA, SLINK, TOUR, USES
 from gas_pult.people import is_guest
 
@@ -323,7 +324,32 @@ def help_call(self, b: dict, w: dict):
     return panel.call_help(self.terms_uid(), w)
 
 
-GET = {"/api/terms": terms_get, "/api/prefs": prefs_get, PERSONA: persona_get, "/api/team": team_get, TOUR: tour_get,
+def meta(self, q: dict):
+    """GET /api/meta"""
+    panel = self.panel
+    build = self.build
+    whatsnew = self.whatsnew
+    desktop_up = desktop.desktop_up
+    kind, role, uid = self.who()
+    tu = self.terms_uid()
+    cinfo = panel.country_info(tu)
+    return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
+            "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
+            "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
+            "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
+            "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
+            "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
+            "shares": panel.shares.pending(tu) if role and kind != "focus" else 0,   # «Поделились»
+            "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")},
+            **({"slink": {**{k: (self.slink()[0] or {}).get(k)
+                             for k in ("name", "exp", "forever", "rights")},
+                          "terms_line": (self.slink()[0] or {}).get("aud") != "self"
+                          and not panel.people.accepted(tu)}}
+               if kind == SLINK else {})}       # вход по ссылке на пространство: срок и права (GAS-38)
+
+
+GET = {"/api/meta": meta, "/api/terms": terms_get, "/api/prefs": prefs_get, PERSONA: persona_get,
+       "/api/team": team_get, TOUR: tour_get,
        "/api/country": country_get, "/api/email": email_get, "/api/passkeys": passkeys_get, "/api/oidc": oidc_get,
        "/api/people": people_get, "/api/invite/qr": invite_qr}
 POST = {"/api/clientlog": clientlog, USES: uses, "/api/prefs": prefs_set, PERSONA: persona_set, "/api/team": team_set,

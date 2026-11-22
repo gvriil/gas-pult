@@ -29,7 +29,7 @@ import re
 import secrets
 import shlex  # noqa: F401 — webapp.* жив (panel/sessions.py)
 import shutil  # noqa: F401 — webapp.* жив (panel/sessions.py)
-import socket
+import socket  # noqa: F401 — webapp.* жив (desktop.py)
 import stat
 import subprocess
 import sys
@@ -62,9 +62,9 @@ from gas_pult import (
     chatlog,
     chatmcp,  # noqa: F401 — webapp.* жив (panel/sessions.py)
     country,
-    ctxsnap,
-    deskmobile,
-    desktabs,
+    ctxsnap,  # noqa: F401 — webapp.* жив (routes/sessions.py)
+    deskmobile,  # noqa: F401 — webapp.* жив (routes/desktop.py)
+    desktabs,  # noqa: F401 — webapp.* жив (routes/desktop.py)
     drafts,
     drive_inbox,
     emailcode,
@@ -81,7 +81,7 @@ from gas_pult import (
     meetings,
     models,
     modules,
-    notifylevel,
+    notifylevel,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     notifyroute,
     offer_report,
     offers,
@@ -97,7 +97,7 @@ from gas_pult import (
     repos,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     router,
     routes,
-    scenarios,
+    scenarios,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     selftest,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     setup,
     share,
@@ -109,8 +109,8 @@ from gas_pult import (
     spaces,
     speech,  # noqa: F401 — webapp.speech: голос в panel/voice.py, имя живо
     spend,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
-    starters,
-    steps,
+    starters,  # noqa: F401 — webapp.* жив (routes/sessions.py)
+    steps,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     tasks,
     teammsg,
     tenants,
@@ -118,7 +118,7 @@ from gas_pult import (
     termwin,  # noqa: F401 — webapp.* жив (routes/)
     testers,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     tmux,  # noqa: F401 — webapp.* жив (panel/sessions.py)
-    transcripts,
+    transcripts,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     usage,
     voice,  # noqa: F401 — webapp.voice (тесты подменяют voice.synth): голос в panel/voice.py
     webauth,
@@ -180,6 +180,26 @@ from gas_pult.billing import api as billing_api  # noqa: F401 — платежи
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, AwaitsChoice, Pult  # noqa: F401 — webapp.BUSY жив (panel/spaces.py)
 from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space  # noqa: F401 — реэкспорт
 from gas_pult.config import Config
+from gas_pult.desktop import (  # noqa: F401 — рабочий стол, ссылки сайтов, «Терминал» — в desktop.py; webapp.* живы
+    CDP,
+    DESK_COOKIE,
+    DESK_PASSES,
+    DESK_TICKETS,
+    DESK_TTL,
+    DESKTOP_PORT,
+    DESKTOP_URL,
+    LINK_OPEN,
+    SHELL_WINDOW,
+    TICKET_TTL,
+    desk_cookie,
+    desk_pass,
+    desk_ticket,
+    desktop_tab,
+    desktop_up,
+    link_pref_set,
+    link_prefs,
+    shell_window,
+)
 from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp  # noqa: F401 — webapp.* живы (routes/)
 from gas_pult.messengers import panel as messengers_panel  # noqa: F401 — маршруты в routes/messengers.py
 from gas_pult.openrouter import CALLBACK, OpenRouter
@@ -218,59 +238,11 @@ from gas_pult.panel.work import WorkPart, utc_now  # noqa: F401 — задачи
 from gas_pult.people import STAFF_ROLES, TITLES, People, allowed, has_telegram, is_guest  # noqa: F401 — webapp.* живы
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.tmux import Tmux
+from gas_pult.uploads import MAX_BODY, upload_log  # noqa: F401 — загрузка файлов — в uploads.py; webapp.* живы
 from gas_pult.voice import catalog
 
 PART_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")   # имя части интерфейса: web/js/<имя>.js
 PART_PATH = re.compile(r"/js/([a-z0-9][a-z0-9-]{0,40})\.js")
-DESKTOP_PORT = 6080                     # noVNC/websockify рабочего стола агентов (agent-desktop.service, штаб)
-DESKTOP_URL = "/desktop/vnc.html?autoconnect=1&resize=scale&reconnect=1&path=desktop/websockify"
-DESK_COOKIE, DESK_TTL = "gp_desk", 12 * 3600
-# Пропуск рабочего стола: выдаёт «Рабочий стол» (владельцу, после кода подтверждения). Нужен потому, что встроенный
-# экран — iframe: в Mini App вход идёт заголовком Telegram, а iframe и WebSocket noVNC шлют только cookie. Живёт в
-# памяти панели (перезапуск — нажать кнопку снова), путь /desktop/, 12 часов; роль владельца — на каждый запрос.
-DESK_PASSES: dict[str, tuple[int, float]] = {}
-
-
-def desk_pass(uid: int, now: float | None = None) -> str:
-    now = now or time.time()
-    for k in [k for k, (_, exp) in DESK_PASSES.items() if exp < now]:
-        DESK_PASSES.pop(k, None)
-    tok = secrets.token_urlsafe(24)
-    DESK_PASSES[tok] = (uid, now + DESK_TTL)
-    return tok
-
-
-DESK_TICKETS: dict[str, tuple[int, float]] = {}   # одноразовые ссылки «Открыть в браузере»: билет → (uid, до)
-TICKET_TTL = 120
-
-
-def desk_ticket(uid: int, now: float | None = None) -> str:
-    """Вкладка браузера (особенно из Mini App: tg.openLink — внешний браузер без cookie панели) входит по одноразовой
-    ссылке /desktop-enter?t=… (2 минуты, один раз) — она ставит свой пропуск и ведёт на noVNC."""
-    now = now or time.time()
-    for k in [k for k, (_, exp) in DESK_TICKETS.items() if exp < now]:
-        DESK_TICKETS.pop(k, None)
-    t = secrets.token_urlsafe(24)
-    DESK_TICKETS[t] = (uid, now + TICKET_TTL)
-    return t
-
-
-def desk_cookie(tok: str, tab: bool = False) -> str:
-    if tab:                                       # своя вкладка браузера: обычный cookie первого лица
-        return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=Lax"
-    # SameSite=None + Partitioned: Mini App в Telegram Web сам открыт во фрейме — без этого cookie не дойдёт
-    return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=None; Partitioned"
-
-
-def upload_log(n: int, secs: float, src: str) -> str:
-    """Строка журнала на каждую загрузку (владелец 15.11: «почему так долго загружается фото»): байты, секунды,
-    скорость, откуда (telegram — Mini App, browser, focus, bot). Без имени файла и содержимого."""
-    line = (f"upload: {n / 1024:.0f} КБ за {secs:.1f} с ({n / 1024 / max(secs, 0.001):.1f} КБ/с) · "
-            f"{src or 'неизвестно'}")
-    print(line, flush=True)
-    return line
-
-
 BRIDGE_MAX = 16 << 20                      # сообщение моста: base64 снимка экрана или страницы
 
 
@@ -290,77 +262,6 @@ def bridge_local_token(data: Path) -> str:
     return t
 
 
-CDP = "http://127.0.0.1:9222"            # Chrome рабочего стола (agent-browser, профиль ~/.local/share/agent-browser)
-SHELL_WINDOW = "ubuntu-shell"            # «Терминал» в панели: bash в домашней папке; gp-term — для «Выполнить»
-LINK_OPEN = ("desk", "here")
-
-
-def desktop_tab(url: str, cdp: str = CDP) -> dict:
-    """Новая вкладка в Chrome рабочего стола: ``PUT /json/new?<адрес>`` (DevTools). Только http(s), без пробелов и
-    управляющих символов. Chrome не отвечает — понятная ошибка."""
-    u = str(url or "").strip()
-    p = urllib.parse.urlparse(u)
-    if p.scheme not in ("http", "https") or not p.netloc or len(u) > 4096 or re.search(r"[\s\x00-\x1f\x7f]", u):
-        raise ValueError("открыть можно только адрес http:// или https://")
-    req = urllib.request.Request(cdp + "/json/new?" + urllib.parse.quote(u, safe=":/?#[]@!$&'()*+,;=%-._~"),
-                                 method="PUT")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            d = json.loads(r.read() or b"{}")
-    except (OSError, ValueError) as e:
-        raise ValueError(f"браузер рабочего стола не ответил (agent-browser, порт 9222): {e}") from e
-    return {"ok": True, "id": d.get("id", ""), "url": d.get("url", u)}
-
-
-def link_prefs(data: Path) -> dict:
-    """Где открывать ссылки сайта: {сайт: "desk" | "here"} (``link_open.json``, 0600). Решение владельца 17.11:
-    «спрашивать один раз и запоминать»."""
-    try:
-        d = json.loads((Path(data) / "link_open.json").read_text(encoding="utf-8"))
-        return {str(k): v for k, v in d.items() if v in LINK_OPEN} if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def link_pref_set(data: Path, host: str, where: str | None) -> dict:
-    host = str(host or "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9.-]{1,253}(:\d{1,5})?", host):
-        raise ValueError("неверное имя сайта")
-    if where not in (*LINK_OPEN, None):
-        raise ValueError("где открыть — desk или here")
-    d = link_prefs(data)
-    if where:
-        d[host] = where
-    else:
-        d.pop(host, None)
-    from gas_pult.config import write_private
-    write_private(Path(data) / "link_open.json", json.dumps(d, ensure_ascii=False))
-    return d
-
-
-def shell_window(tmux) -> str:  # noqa: F811 — параметр заслоняет модуль tmux (webapp.tmux — реэкспорт)
-    """Окно ``ubuntu-shell`` (bash в домашней папке) — есть, вернуть; нет — открыть в фоне. id окна."""
-    w = next((x for x in tmux.windows() if x.get("name") == SHELL_WINDOW), None)
-    if w:
-        return w["id"]
-    if hasattr(tmux, "ensure_session"):
-        tmux.ensure_session()
-    out = tmux.run("new-window", "-d", "-P", "-F", "#{window_id}", "-t", f"{tmux.session}:", "-n", SHELL_WINDOW,
-                   "-c", str(Path.home()), "bash -l")
-    if not out.strip():
-        raise RuntimeError("tmux не открыл окно терминала")
-    return out.split()[0]
-
-
-def desktop_up(port: int = DESKTOP_PORT) -> bool:
-    """Рабочий стол запущен: кто-то слушает 127.0.0.1:<port> (без него кнопку не показываем)."""
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-            return True
-    except OSError:
-        return False
-
-
 SENT = routes.SENT                       # обработчик сам отправил ответ (dispatch ничего не дописывает)
 GZIP_LEVEL = 5                          # ответы API — быстро и в разы меньше; страница — заранее с уровнем 9
 GZIP_MIN = 1024                         # меньше — сжимать не стоит
@@ -374,7 +275,6 @@ def gzips(accept: str, ctype: str, body: bytes) -> bool:
 
 
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
-MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
@@ -1688,87 +1588,7 @@ def handler(panel: Panel):
                 return fn(self, q, self.win(q.get("w")))
             if fn := routes.GET_P.get(path):            # развилка: несколько путей — одна функция (платежи)
                 return fn(self, path, q)
-            if path == "/api/sessions":
-                pool = self.pool()
-                if self.space():                          # тестировщик: без имени сервера и событий владельца
-                    sp = panel.space_info(self.terms_uid()) or {}
-                    return {"sessions": panel.sessions(pool, self.pinner()), "host": sp.get("title", ""),
-                            "build": build,
-                            "now": time.time(), "cost": panel.cost_summary(pool), "fallback": [], "space": sp}
-                with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
-                    ss = panel.sessions(pool, self.pinner())  # владелец: и окна пространств (группа «Пространства»)
-                return {"sessions": ss, "host": panel.cfg.host, "build": build,
-                        "now": time.time(),                                   # часы сервера: «N назад» без сдвига
-                        "cost": panel.cost_summary(pool),
-                        # лимиты подписки (5 часов, неделя) и время сброса — учётка владельца, видит только он
-                        "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
-                        "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
-                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
-                                     for x in fallback.recent(panel.pult.state())]}
-            if path == "/api/meta":
-                kind, role, uid = self.who()
-                tu = self.terms_uid()
-                cinfo = panel.country_info(tu)
-                return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
-                        "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
-                        "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
-                        "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
-                        "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
-                        "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
-                        "shares": panel.shares.pending(tu) if role and kind != "focus" else 0,   # «Поделились»
-                        "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")},
-                        **({"slink": {**{k: (self.slink()[0] or {}).get(k)
-                                         for k in ("name", "exp", "forever", "rights")},
-                                      "terms_line": (self.slink()[0] or {}).get("aud") != "self"
-                                      and not panel.people.accepted(tu)}}
-                           if kind == SLINK else {})}       # вход по ссылке на пространство: срок и права (GAS-38)
-            if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
-                # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
-                return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
-                                          self.space() or "", str(q.get("occ") or ""))
-            if path == "/api/scenarios":                 # «Примерить на себя»: роли, день с агентом, польза
-                errors: list[str] = []
-                d = scenarios.api_data(errors)
-                return {**d, "errors": errors if self.who()[1] == "owner" else []}
-            if path == "/api/links/prefs":               # где открывать ссылки сайтов (только владелец)
-                return {"sites": link_prefs(panel.cfg.data)}
-            if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
-                return panel.media(str(q.get("p") or ""))
-            if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
-                return panel.default_model()
-            if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
-                return panel.activity(str(q.get("w") or ""))
-            w = self.win(q.get("w"))
-            if path == "/api/last":
-                return {"text": harness.of(w).last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
-            if path == "/api/screen":
-                lines = panel.tmux.screen(w["id"], 60)
-                return {"lines": lines[-40:], "auth": find_auth(lines), "login": self.login_of(w, lines),
-                        "ask": humanize.parse(lines, target=True)}     # карточка инструмента (#258), добавлено
-            if path == "/api/ask":                        # простой режим: вопрос Claude простыми словами и чипы
-                return {"ask": humanize.parse(panel.tmux.screen(w["id"], 60))}
-            if path == "/api/hint":
-                return {"hint": panel.tmux.hint(w["id"])}
-            if path == "/api/cmds":
-                return {"cmds": panel.commands(w), "host": panel.cfg.host}
-            if path == "/api/steps":                    # «Шаги» (GAS-16, слой 7): сообщение → инструменты → ответ
-                if harness.of(w).name != "claude":
-                    return {"turns": [], "note": "шаги видны только у Claude Code"}
-                f = transcripts.current(w["path"], panel.pult.home_of(w), w.get("sid") or "")
-                return {"turns": steps.turns(f, q.get("q", ""))}
-            if path == "/api/history":
-                before = int(q["before"]) if q.get("before", "").isdigit() else None
-                sid = w.get("sid") or ""                   # окно со своим журналом — его переписка
-                rev = harness.of(w).revision(w["path"], home := panel.pult.home_of(w), sid)
-                team = panel.team_for(w) if before is None else []   # сообщения команды (teammsg.py) — добавлено
-                if before is None and q.get("rev") and q["rev"] == rev:
-                    return {"same": True, "rev": rev, "team": team}   # журнал не менялся — переписку не пересчитываем
-                items, more = harness.of(w).history(w["path"], 30, before, home=home, sid=sid)
-                for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
-                    if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
-                        it["human"] = h
-                self.product_seen(items)
-                return {"items": items, "more": more, "rev": rev, **({"team": team} if before is None else {})}
+            self.win(q.get("w"))   # путь не из таблиц — как раньше: окна нет — 404 «окна уже нет», иначе «нет метода»
             raise KeyError
 
         def openrouter_back(self, q: dict):
@@ -2531,159 +2351,12 @@ def handler(panel: Panel):
                 return fn(self)
             if fn := routes.POST.get(path):             # тело — JSON, как «b = json.loads(…)» ниже
                 return fn(self, json.loads(self.body() or b"{}"))
-            if path == "/api/upload":                    # поток в файл, не в память; ``w`` — проект на Диске
-                w = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)).get("w", "")
-                if w and self.focused and not panel.focus_owns(self.focused, w):
-                    w = ""                               # фокус-ссылка — только её сессия; чужая — в inbox
-                if self.raw is not None:
-                    return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.raw, w=w)}
-                n = int(self.headers.get("Content-Length", 0))
-                if n > MAX_BODY:
-                    raise ValueError("слишком большой запрос")
-                t0 = time.monotonic()
-                out = {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
-                upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
-                return out
             b = json.loads(self.body() or b"{}")
             if fn := routes.POST_P.get(path):           # развилка: несколько путей — одна функция (платежи и др.)
                 return fn(self, path, b)
             if fn := routes.POST_W.get(path):           # ветки после «w = self.win(b.get("w"))»: окно — до вызова
                 return fn(self, b, self.win(b.get("w")))
-            if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
-                sid = str(b.get("id", ""))[:40]
-                panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
-                wid = str(b.get("w") or "")             # «добавь задачу» — только в чатах владельца (задачи — его)
-                try:                                    # без tmux (macOS в CI, сбой) — бейджик всё равно работает
-                    win = next((x for x in panel.tmux.windows() if x["id"] == wid), None) if wid else None
-                except OSError:
-                    win = None
-                return {"prompt": starters.prompt(sid, tasks=self.who()[1] == "owner" and not (win and in_space(win)))}
-            if path == "/api/new" and (slug := self.space()):
-                return panel.new_in_space(slug, str(b.get("name", "")), str(b.get("effort") or ""))
-            if path == "/api/model/default":             # только явной настройкой — не из чата
-                return panel.default_model(str(b.get("model") or ""))
-            if path == "/api/new":
-                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
-            if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
-                return panel.route(str(b.get("text", ""))[:2000], self.terms_uid())
-            if path == "/api/order":                     # свой порядок: закреплённые, проекты, чаты (20.11)
-                ids = panel.projects.set_order(self.pinner(), str(b.get("grp") or ""), b.get("ids") or [])
-                panel._proj = (0.0, {})
-                return {"ok": True, "ids": ids}
-            if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
-                return panel.pin(self.pinner(), b.get("on", True) is not False, str(b.get("project") or ""),
-                                 str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
-            if path == "/api/desktop/url":                # ссылка — вкладкой в Chrome рабочего стола (владелец 17.11)
-                if not desktop_up():
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                return desktop_tab(str(b.get("url") or ""))
-            if path == "/api/links/prefs":               # «Запомнить для этого сайта» / «Забыть» в Настройках
-                return {"sites": link_pref_set(panel.cfg.data, str(b.get("host") or ""), b.get("open"))}
-            if path == "/api/shell/open":                 # «Терминал» рядом с «Ubuntu»: окно ubuntu-shell
-                with panel.tmux.scope(None):
-                    return {"id": shell_window(panel.tmux), "name": SHELL_WINDOW}
-            if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
-                if not desktop_up():
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                uid = self.who()[2]
-                uid = uid if uid is not None else webauth.LEGACY
-                return ("cookie", desk_cookie(desk_pass(uid)),
-                        {"url": DESKTOP_URL, "tab": "/desktop-enter?t=" + desk_ticket(uid)})
-            if path == "/api/desktop/mobile":             # мобильный вид сайтов, пока стол смотрят с телефона (21.11)
-                on = bool(b.get("on"))
-                if on and not desktop_up():
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                return deskmobile.MOBILE.set(on, b.get("w"), b.get("h"), b.get("dpr"))
-            if path in ("/api/desktop/tabs", "/api/desktop/tabs/shot", "/api/desktop/tabs/act"):
-                if not desktop_up():                      # вкладки Chrome стола на телефоне (desktabs.py, 22.11)
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                if path == "/api/desktop/tabs":
-                    return desktabs.TABS.list(b.get("idle"))
-                if path == "/api/desktop/tabs/shot":
-                    return desktabs.TABS.shot(str(b.get("id") or ""))
-                return desktabs.TABS.act(str(b.get("op") or ""), str(b.get("id") or ""), str(b.get("url") or ""))
-            if path == "/api/stopped/clear":              # «Убрать все остановленные» — окна, журналы остаются
-                return panel.clear_stopped()
-            if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
-                return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
-                                        self.terms_uid())
-            if path == "/api/revive":
-                return panel.revive(str(b.get("w", "")), self.terms_uid())
-            if path == "/api/close":                       # и остановленную: окно с оболочкой просто закрыть
-                w = panel.session_window(b.get("w"))
-                if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
-                    panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
-                r = panel.close_ex(w, force=True) if b.get("force") is True else panel.close_ex(w)   # + черновик
-                if r["result"] == "закрыто":
-                    panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
-                return r
-            w = self.win(b.get("w"))
-            helper = self.who()[1] in ("owner", "admin")
-            if w.get("space") and helper and path in ("/api/send", "/api/select", "/api/key"):
-                panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
-            if path == NOTIFY_DONE:                       # одно сообщение в бот, когда ход закончится (бот следит)
-                return {"result": panel.pult.ask_notify_done(w["id"], self.terms_uid())}
-            if path in ("/api/send", "/api/command", "/api/select", "/api/key", "/api/model"):
-                panel.check(w.get("profile") or "claude", self.terms_uid())   # сессия этого поставщика — для страны?
-            if path == "/api/send":
-                text = str(b.get("text", "")).strip()
-                if not text:
-                    raise ValueError("пустое сообщение")
-                mid = str(b.get("id", ""))[:64]           # повтор после обрыва связи — не «тот же вопрос»
-                panel.events.event("recv", mid, w=w["id"], src="focus" if self.focused is not None else "panel",
-                                   len=len(text), sha=chatlog.sha(text), dev=webauth.device(self.client()[1]),
-                                   via=self.via() + ("·pwa" if self.headers.get("X-Pult-Pwa") == "1" else ""))
-                if (ago := panel.repeat.check(w["id"], text, mid=mid)) is not None:
-                    panel.events.event("repeat_stop", mid, w=w["id"], ago=ago)
-                    raise ValueError(f"Этот вопрос уже отправлен {max(1, ago // 60)} мин назад — ответ появится выше. "
-                                     "Нужно ещё раз — отправьте снова в течение 2 минут.")
-                try:
-                    with panel.pult.via("focus" if self.focused is not None else "panel"):
-                        dup = panel.send(w, text, str(b.get("id", ""))[:64])
-                except Exception as e:
-                    panel.events.event("send_error", mid, w=w["id"], err=f"{type(e).__name__}: {e}")
-                    raise
-                panel.events.event("dup" if dup else "inserted", mid, w=w["id"])
-                if not dup:
-                    self.product("send", via="focus" if self.focused is not None else "panel")
-                panel.repeat.done(w["id"], text, mid=mid)
-                return {"ok": True, "dup": dup}
-            if path == "/api/resend":                     # «Отправить» у строки «Не отправлено» — Enter после проверки
-                return {"result": panel.pult.push_enter(w["id"], str(b.get("sha", ""))[:12])}
-            if path == "/api/rename":
-                return {"name": panel.tmux.rename(w["id"], str(b.get("name", "")))}
-            if path == "/api/title":                      # название чата (вторая часть), не имя окна; "" — авто
-                return panel.set_title(w, b.get("title"))
-            if path == "/api/active" and w.get("space"):
-                raise ValueError("сессия демо-пространства не бывает активной в чате бота — откройте её в панели")
-            if path == "/api/active":
-                panel.pult.set_state(active=w["id"])
-                return {"ok": True}
-            if path == "/api/notify/level":               # уровень уведомлений этой сессии (notifylevel.py)
-                lv = str(b.get("level") or "")
-                panel.pult.set_state(notify_levels=notifylevel.updated(panel.pult.state(), w["id"], lv))
-                return {"notify": notifylevel.level(panel.pult.state(), w["id"])}
-            if path == "/api/command":
-                return panel.command(w, int(b.get("i", -1)))
-            if path == "/api/model" and b.get("keep"):   # только запомнить модель для перезапуска — без перезапуска
-                return panel.keep_model(w, str(b.get("name", "")))
-            if path == "/api/model":                     # модель — только этого чата (перезапуск с --model)
-                return panel.model(w, str(b.get("name", "")), self.terms_uid(),
-                                   effort=str(b["effort"]) if b.get("effort") is not None else None)
-            if path == "/api/effort":
-                return {"lines": panel.effort(w, str(b.get("level", "")))}
-            if path == "/api/key":
-                self.product_pick(w, key=str(b.get("key", "")))
-                return {"lines": panel.key(w, str(b.get("key", "")))}
-            if path == "/api/select":
-                go = b.get("go", True) is not False            # go: false — только выделить пункт
-                if go:
-                    self.product_pick(w, n=str(b.get("n", "")))
-                return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
-            if path == "/api/restart":
-                if self.who()[1] == "admin" and str(b.get("profile", "")) not in ("", w.get("profile") or ""):
-                    raise ValueError("админ перезапускает сессию без смены модели: модель и расход — у владельца")
-                return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
+            self.win(b.get("w"))   # путь не из таблиц — как раньше: окна нет — 404 «окна уже нет», иначе «нет метода»
             raise KeyError
 
         def dispatch(self, fn):
@@ -2717,6 +2390,7 @@ def handler(panel: Panel):
 
     H.panel = panel                             # для таблиц маршрутов (routes/): их функции получают обработчик
     H.build = build                             # версия страницы — для таблиц маршрутов («/api/projects»)
+    H.whatsnew = whatsnew                       # «Что нового» — для таблиц маршрутов («/api/meta»)
     return H
 
 
