@@ -89,6 +89,7 @@ class Config:
     yandex: dict = field(default_factory=dict)              # [yandex]: вход через Яндекс ID (oidc.py); {} — выкл.
     drive_root: str = "~/drive"                             # Google Диск (rclone): <проект>/Входящие; "" — выкл.
     events_keep_days: int = 400                             # события продукта (funnel.py): сколько дней хранить
+    storage: str = "json"                                   # json | dual | sqlite — хранение (sqlstore.py)
 
     @property
     def data(self) -> Path:
@@ -138,6 +139,8 @@ def load() -> Config:
     region = raw.get("region", "")
     if not isinstance(region, str) or (region and not re.fullmatch(r"[A-Za-z]{2}", region)):
         raise ConfigError(f"В {path} region — код страны из двух букв, например \"NL\"")
+    if raw.get("storage", "json") not in ("json", "dual", "sqlite"):
+        raise ConfigError(f"В {path} storage — \"json\", \"dual\" или \"sqlite\"")
     if not isinstance(raw.get("personal_voices", False), bool):
         raise ConfigError(f"В {path} personal_voices — true или false")
     for sec, keys in SECTIONS.items():
