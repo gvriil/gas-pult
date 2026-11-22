@@ -15,8 +15,8 @@
   Ссылка отозвана, истекла, сессия завершена — устройство не работает (проверка при подключении и каждом вызове).
 - Журнал по устройству — ``bridge_log.jsonl`` (0600, 30 дней): время, инструмент, адрес, итог; без содержимого страниц.
 - Заметки, Напоминания, Календарь Мака (GAS-15) — чтение мостом сразу; запись (``APPLE_WRITE``) — только черновиком:
-  первый вызов возвращает черновик, человек говорит «Да» в пульте (``gas-pult bridge-confirm <id>``, кнопка
-  «▶️ Выполнить»), второй вызов с ``draft`` уходит на мост с отметкой ``_confirmed``. Без «Да» мост не вызывается.
+  первый вызов возвращает черновик, человек нажимает «Да» в панели (``approvals.py``: «Да» — только в памяти
+  службы панели, команды подтверждения нет), второй вызов с ``draft`` уходит на мост с отметкой ``_confirmed``.
 - «Личные данные не уходят модели» (владелец 21.11, по умолчанию включено для новых устройств): ответы моста — без
   текста писем и введённого в поля, с маской почты, телефонов, карт; снимки экрана запрещены (``private_reply``).
 - «Да» на сервере перед «Отправить / Оплатить / Удалить» в браузере и перед командой терминала из белого списка
@@ -291,8 +291,9 @@ def check_command(cmd: str) -> list[str]:
 DRAFT_TTL = 86400
 
 
-def drafts() -> list[dict]:
-    """Черновики, которые ждут «Да» человека (панель → «Компьютеры»): свежее сутки, новые — сверху."""
+def drafts(confirmed=None) -> list[dict]:
+    """Черновики, которые ждут «Да» человека (панель → «Компьютеры»): свежее сутки, новые — сверху.
+    ``confirmed(id)`` — «Да» уже нажато (в памяти службы панели, approvals.py)."""
     d, now, out = _core._dir(CONFIRM_SVC), time.time(), []
     for f in sorted(d.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:50]:
         if now - f.stat().st_mtime > DRAFT_TTL:
@@ -303,7 +304,7 @@ def drafts() -> list[dict]:
             continue
         out.append({"id": rec.get("id"), "summary": rec.get("summary", ""), "created": int(f.stat().st_mtime),
                     "tool": rec.get("action", ""), "device": (rec.get("params") or {}).get("device", ""),
-                    "confirmed": (d / f"{rec.get('id')}.ok").is_file()})
+                    "confirmed": bool(confirmed and confirmed(str(rec.get("id"))))})
     return out
 
 
@@ -312,7 +313,6 @@ def reject(pid: str) -> None:
     _core._load(CONFIRM_SVC, pid)                      # неверный id или нет черновика — ToolError
     d = _core._dir(CONFIRM_SVC)
     (d / f"{pid}.json").rename(d / f"{pid}.no")
-    (d / f"{pid}.ok").unlink(missing_ok=True)
 
 
 class Devices:
@@ -418,6 +418,7 @@ class Hub:
     """Подключённые мосты и их ответы: запрос агента (JSON-RPC) → мост → ответ, с подменой id (несколько агентов)."""
 
     def __init__(self, log: Path | None = None, clock=time.time):
+        self.approve = None                       # «Да» человека: служба панели ставит approvals.take (approvals.py)
         self.lock, self.log, self.clock = threading.Lock(), Path(log) if log else None, clock
         self.conns: dict[str, dict] = {}              # id устройства → {"ws", "allowed": [домены]}
         self.wait: dict[str, tuple[threading.Event, list]] = {}
@@ -593,11 +594,11 @@ class Hub:
             d = _core.propose(CONFIRM_SVC, tool, {"device": did, "args": clean}, text)
             return {"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": (
                 f"Черновик {d['id']}: {text}. На компьютере ничего не сделано. Покажите это человеку дословно. Если "
-                f"он скажет «Да» — он подтверждает в панели («Компьютеры» → «Ждут вашего «Да»») или командой "
-                f"(кнопка «▶️ Выполнить» в пульте):\n\ngas-pult bridge-confirm {d['id']}\n\n"
+                f"он скажет «Да» — он нажимает «Да» в панели Гаврилы («Ждут вашего «Да»»); команды подтверждения "
+                f"нет — сами не подтверждайте. "
                 f"Затем вызовите {tool} с draft=\"{d['id']}\". Без его «Да» действие не выполнится.")}]}}, msg
         try:
-            rec = _core.take_confirmed(CONFIRM_SVC, draft, need_flag=False)
+            rec = _core.take_confirmed(CONFIRM_SVC, draft, need_flag=False, approve=self.approve)
         except _core.ToolError as e:
             return fail(str(e))
         if rec.get("action") != tool or (rec.get("params") or {}).get("device") != did:

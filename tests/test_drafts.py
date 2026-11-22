@@ -74,18 +74,32 @@ def test_each_sees_only_own(three):
     assert code != 200 and "drafts" not in d
 
 
-def test_tester_yes_confirms_exactly_own_draft(three, monkeypatch):
+def test_tester_yes_confirms_exactly_own_draft(three, monkeypatch, tmp_path):
+    """«Да» тестировщика — в памяти панели (не файлом); коннектор пространства спрашивает панель своим токеном
+    моста и выполняет ровно этот черновик, один раз."""
     w, _own, ids = three
     demo = w["root"] / "demo/home" / CONF
     code, d = call(w, "/api/drafts/yes", {"svc": "moysklad", "id": ids["demo"]}, who=TESTER)
     assert code == 200 and d == {"ok": True}, d
-    ok = demo / "moysklad" / f"{ids['demo']}.ok"
-    assert ok.is_file() and oct(ok.stat().st_mode & 0o777) == "0o600"
-    monkeypatch.setenv("GAS_CONFIRM_DIR", str(demo))           # коннектор пространства выполняет — ровно этот
+    assert not list(demo.rglob("*.ok"))                         # на диске «Да» нет
+    code, d = call(w, "/api/drafts", who=TESTER)
+    assert code == 200 and d["drafts"] == []                    # уже «Да» — снова не показываем
+    tok = space_token(w, "demo", tmp_path)
+    monkeypatch.setenv("GAS_CONFIRM_DIR", str(demo))
+    monkeypatch.setenv("GAS_PULT_PANEL_URL", w["base"])
+    monkeypatch.setenv("GAS_PULT_BRIDGE_TOKEN_FILE", str(tok))
     rec = _core.take_confirmed("moysklad", ids["demo"], need_flag=False)
     assert rec["summary"] == "Заказ пространства demo"
-    code, d = call(w, "/api/drafts", who=TESTER)
-    assert code == 200 and d["drafts"] == []
+
+
+def space_token(w, slug, tmp_path):
+    """Токен моста пространства (как ``pult-tenant bridge``): у пульта — только хэш, у пространства — файл."""
+    import hashlib
+    t = "space-token-" + slug
+    (w["root"] / slug / "bridge.sha256").write_text(hashlib.sha256(t.encode()).hexdigest())
+    f = tmp_path / f"{slug}.token"
+    f.write_text(t)
+    return f
 
 
 def test_no_cross_space_or_owner(three):
@@ -133,27 +147,26 @@ def test_yes_is_confirm_protected():
 
 
 def test_digest_matches_core(tmp_path, monkeypatch):
-    """Отметка «Да» из панели — та же, что у ``<svc>_mcp.py confirm`` (отпечаток черновика)."""
+    """Отпечаток, который панель берёт для «Да», — тот же, что проверит коннектор (``_core._digest``)."""
     monkeypatch.setenv("GAS_CONFIRM_DIR", str(tmp_path))
     pid = put(tmp_path, "bitrix24", "Сделка", {"title": "Х", "sum": 5})
-    drafts.decide(None, "bitrix24", pid, True)
-    a = (tmp_path / "bitrix24" / f"{pid}.ok").read_text()
-    (tmp_path / "bitrix24" / f"{pid}.ok").unlink()
-    _core.confirm("bitrix24", pid)
-    assert (tmp_path / "bitrix24" / f"{pid}.ok").read_text() == a
+    rec = json.loads((tmp_path / "bitrix24" / f"{pid}.json").read_text())
+    assert drafts.digest(None, "bitrix24", pid) == _core._digest(rec["action"], rec["params"])
 
 
 def test_tampered_params_not_executed(tmp_path, monkeypatch):
     """Подменили параметры после «Да» — коннектор не выполнит: отпечаток не сходится."""
+    from gas_pult import approvals
     monkeypatch.setenv("GAS_CONFIRM_DIR", str(tmp_path))
+    ap = approvals.Approvals()
     pid = put(tmp_path, "wildberries", "Цена 100")
-    drafts.decide(None, "wildberries", pid, True)
+    ap.grant("", "wildberries", pid, drafts.digest(None, "wildberries", pid))
     f = tmp_path / "wildberries" / f"{pid}.json"
     rec = json.loads(f.read_text())
     rec["params"] = {"sum": 1}
     f.write_text(json.dumps(rec))
     with pytest.raises(_core.ToolError):
-        _core.take_confirmed("wildberries", pid, need_flag=False)
+        _core.take_confirmed("wildberries", pid, need_flag=False, approve=lambda s, i, d: ap.take("", s, i, d))
 
 
 def test_origin_chat_pane(three):

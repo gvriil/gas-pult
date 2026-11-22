@@ -3,8 +3,8 @@
 Коннектор (``connectors/_core.propose``) ничего не пишет в сервис: он кладёт черновик в папку подтверждений
 ``~/.local/state/gas-pult/confirm/<svc>/<id>.json`` того, от чьего имени работает (владелец или пользователь
 пространства). Выполнить черновик коннектор может, только когда рядом лежит ``<id>.ok`` с отпечатком ровно этого
-черновика (``_core.take_confirmed``). Раньше ``.ok`` ставила только команда ``<svc>_mcp.py confirm <id>``; теперь —
-кнопки «Да» / «Нет» в панели.
+черновика. «Да» — только в памяти службы панели (``approvals.py``, штаб 22.11): кнопка «Да» кладёт его туда,
+коннектор спрашивает панель перед выполнением (``_core.take_confirmed``); отметки ``.ok`` на диске больше не в счёт.
 
 Изоляция: владелец видит и подтверждает только свои черновики (своя домашняя папка), человек пространства — только
 свои: пульт в пространство не пишет, всё — одной программой от пользователя пространства (``space_sessions.sh``,
@@ -43,7 +43,7 @@ if op == "list":
     items = []
     for f in sorted(root.glob("*/*.json"), key=lambda p: p.stat().st_mtime):
         d = f.parent.name
-        if not SVC.match(d) or not ID.match(f.stem) or (f.parent / (f.stem + ".ok")).exists():
+        if not SVC.match(d) or not ID.match(f.stem):
             continue
         try:
             r = json.loads(f.read_text(encoding="utf-8"))
@@ -58,16 +58,12 @@ if not SVC.match(svc) or not ID.match(pid):
 f = root / svc / (pid + ".json")
 if f.is_symlink() or not f.is_file():
     out({"error": "черновик не найден или уже выполнен"})
-if op == "yes":
+if op == "peek":                                # отпечаток черновика — для «Да» в памяти панели
     try:
         r = json.loads(f.read_text(encoding="utf-8"))
-        dg = str(r["digest"])
+        out({"digest": str(r["digest"])})
     except (OSError, ValueError, KeyError):
         out({"error": "черновик повреждён"})
-    ok = root / svc / (pid + ".ok")
-    ok.write_text(dg, encoding="utf-8")
-    ok.chmod(0o600)
-    out({"ok": True})
 if op == "no":
     f.rename(f.with_suffix(".rejected"))
     out({"ok": True})
@@ -98,19 +94,31 @@ def _check(svc: str, pid: str) -> None:
         raise ValueError("неверный черновик")
 
 
-def pending(slug: str | None, chat_of=None) -> list[dict]:
-    """Черновики, ждущие «Да». ``chat_of(pane)`` → id окна чата, откуда пришёл черновик (или None)."""
+def pending(slug: str | None, chat_of=None, approved=None) -> list[dict]:
+    """Черновики, ждущие «Да». ``chat_of(pane)`` → id окна чата, откуда пришёл черновик (или None);
+    ``approved(svc, id)`` — «Да» уже нажато, ждёт выполнения агентом (такие не показываем)."""
     items = _run(slug, "list").get("drafts", [])[-LIMIT:]
+    if approved:
+        items = [x for x in items if not approved(x["svc"], x["id"])]
     for x in items:
         pane = x.pop("pane", "")
         x["w"] = (chat_of(pane) if chat_of and re.fullmatch(r"%\d+", pane or "") else None) or None
     return items
 
 
-def decide(slug: str | None, svc: str, pid: str, yes: bool) -> dict:
-    """«Да» — отметка ровно этого черновика (коннектор выполнит его при следующем вызове); «Нет» — отказ."""
+def digest(slug: str | None, svc: str, pid: str) -> str:
+    """Отпечаток черновика (от того, чей он: владелец или пространство) — для «Да» в памяти панели."""
     _check(svc, pid)
-    r = _run(slug, "yes" if yes else "no", svc, pid)
+    r = _run(slug, "peek", svc, pid)
+    if r.get("error"):
+        raise ValueError(r["error"])
+    return r["digest"]
+
+
+def reject(slug: str | None, svc: str, pid: str) -> dict:
+    """«Нет» — черновик переименовывается в ``.rejected``: выполнить его уже нельзя."""
+    _check(svc, pid)
+    r = _run(slug, "no", svc, pid)
     if r.get("error"):
         raise ValueError(r["error"])
     return {"ok": True}

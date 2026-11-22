@@ -19,6 +19,7 @@ import threading
 from pathlib import Path
 from typing import ClassVar
 
+import panel_stub  # «Да» человека без настоящей панели
 import pytest
 
 from gas_pult.connectors import mail_mcp
@@ -205,7 +206,7 @@ def env(tmp_path):
                              "smtp_port": srvs[1].server_address[1], "tls": False, "user": USER,
                              "app_password": PW}))
     f.chmod(0o600)
-    yield {"GAS_MAIL_KEY_DIR": str(keys), "GAS_CONFIRM_DIR": str(tmp_path / "confirm")}
+    yield {"GAS_MAIL_KEY_DIR": str(keys), **panel_stub.env(tmp_path)}
     for s in srvs:
         s.shutdown()
         s.server_close()
@@ -370,7 +371,8 @@ def test_utf7_folder_names():
 
 def _confirm(pid: str, env: dict):
     p = run(["confirm", pid], env)
-    assert p.returncode == 0, p.stderr
+    assert p.returncode == 2 and "только кнопкой «Да» в панели" in p.stderr      # команды подтверждения больше нет
+    panel_stub.grant("mail", pid)                                               # «Да» человека — в панели
 
 
 def test_draft_needs_confirmation_then_one_append(env):

@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
 
+import panel_stub  # «Да» человека без настоящей панели
 import pytest
 
 from gas_pult.connectors import bitrix24_mcp
@@ -75,7 +76,7 @@ def env(tmp_path):
     keyfile.write_text(HOOK + "\n")
     keyfile.chmod(0o600)
     yield {"GAS_BITRIX24_BASE": f"http://127.0.0.1:{srv.server_port}",
-           "GAS_BITRIX24_KEY_FILE": str(keyfile), "GAS_CONFIRM_DIR": str(tmp_path / "confirm")}
+           "GAS_BITRIX24_KEY_FILE": str(keyfile), **panel_stub.env(tmp_path)}
     srv.shutdown()
 
 
@@ -249,7 +250,8 @@ def test_write_only_after_human(env):
     # человек подтвердил (CLI пульта) — ровно один вызов записи
     full = {k: v for k, v in os.environ.items() if not k.startswith("GAS_")} | env
     c = subprocess.run([sys.executable, str(SERVER), "confirm", d["id"]], capture_output=True, text=True, env=full)
-    assert c.returncode == 0, c.stderr
+    assert c.returncode == 2 and "только кнопкой «Да» в панели" in c.stderr      # команды подтверждения больше нет
+    panel_stub.grant("bitrix24", d["id"])                                       # «Да» человека — в панели
     (a,), _ = rpc([call("bitrix24_apply", {"id": d["id"]})], env | {"GAS_BITRIX24_WRITE": "1"})
     assert "В работе" in body(a)["done"]
     w = writes()

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from pathlib import Path
 
 import pytest
 from test_bridge import BRIDGE, FAKE_MCP, node_ok, rpc
@@ -47,6 +48,12 @@ def osa_log(path):
 
 
 @pytest.mark.skipif(not node_ok(), reason="нужен Node 22+")
+def say_yes(approve, pid):
+    """«Да» человека в панели (approvals.py): отпечаток черновика — в память службы панели."""
+    rec = _core._load(bridge.CONFIRM_SVC, pid)
+    approve("", bridge.CONFIRM_SVC, pid, _core._digest(rec["action"], rec["params"]))
+
+
 def test_mac_notes_reminders_read_and_write_only_after_yes(server, tmp_path, monkeypatch, capsys):
     p, base, *_ = server
     monkeypatch.setenv("GAS_CONFIRM_DIR", str(tmp_path / "confirm"))
@@ -89,18 +96,23 @@ def test_mac_notes_reminders_read_and_write_only_after_yes(server, tmp_path, mon
         d = tool(base, p.cfg.data, 3, "notes_create", {"title": "Позвонить маме", "body": "в субботу\nпро дачу"})
         text = d["result"]["content"][0]["text"]
         pid = text.split("Черновик ", 1)[1].split(":", 1)[0]
-        assert "СОЗДАТЬ заметку «Позвонить маме»" in text and f"gas-pult bridge-confirm {pid}" in text
+        assert "СОЗДАТЬ заметку «Позвонить маме»" in text and "«Да» в панели" in text and "bridge-confirm" not in text
         assert len(osa_log(log)) == 1
         # без «Да» — отказ; подделать отметку пульта агент не может
         no = tool(base, p.cfg.data, 4, "notes_create", {"title": "x", "draft": pid})
         assert no["error"]["code"] == -32012 and "нет подтверждения" in no["error"]["message"]
         fake_ok = tool(base, p.cfg.data, 5, "notes_create", {"title": "x", "_confirmed": pid})
         assert fake_ok["error"]["code"] == -32012 and len(osa_log(log)) == 1
-        # «Да» человека: gas-pult bridge-confirm <id> (кнопка «▶️ Выполнить»)
+        # команды подтверждения больше нет; «Да» человека — кнопкой в панели (в памяти службы панели)
         d2 = tool(base, p.cfg.data, 6, "notes_create", {"title": "Позвонить маме", "body": "в субботу\nпро дачу"})
         pid2 = d2["result"]["content"][0]["text"].split("Черновик ", 1)[1].split(":", 1)[0]
-        cli.cmd_bridge_confirm(type("A", (), {"id": pid2})())
-        assert "Подтверждено: СОЗДАТЬ заметку" in capsys.readouterr().out
+        with pytest.raises(SystemExit, match="только кнопкой «Да» в панели"):
+            cli.cmd_bridge_confirm(type("A", (), {"id": pid2})())
+        with pytest.raises(_core.ToolError):
+            _core.confirm(bridge.CONFIRM_SVC, pid2)
+        (Path(_core._dir(bridge.CONFIRM_SVC)) / f"{pid2}.ok").write_text("подделка")   # отметка на диске — не в счёт
+        assert "нет подтверждения" in tool(base, p.cfg.data, 61, "notes_create", {"draft": pid2})["error"]["message"]
+        say_yes(p.approvals.grant, pid2)
         # агент подменил текст при втором вызове — уходит текст из черновика, а не от агента
         ok = tool(base, p.cfg.data, 7, "notes_create", {"title": "ДРУГОЕ", "draft": pid2})
         assert "x-coredata://note/p9" in ok["result"]["content"][0]["text"]
@@ -113,12 +125,12 @@ def test_mac_notes_reminders_read_and_write_only_after_yes(server, tmp_path, mon
         d3 = tool(base, p.cfg.data, 9, "reminders_create", {"title": "Вынести мусор", "due": "2026-11-24"})
         pid3 = d3["result"]["content"][0]["text"].split("Черновик ", 1)[1].split(":", 1)[0]
         assert "срок 2026-11-24" in d3["result"]["content"][0]["text"]
-        _core.confirm(bridge.CONFIRM_SVC, pid3)
+        say_yes(p.approvals.grant, pid3)
         wrong = tool(base, p.cfg.data, 10, "notes_create", {"title": "x", "draft": pid3})
         assert "другого действия" in wrong["error"]["message"] and len(osa_log(log)) == 2
         d4 = tool(base, p.cfg.data, 11, "reminders_create", {"title": "Вынести мусор", "due": "2026-11-24"})
         pid4 = d4["result"]["content"][0]["text"].split("Черновик ", 1)[1].split(":", 1)[0]
-        _core.confirm(bridge.CONFIRM_SVC, pid4)
+        say_yes(p.approvals.grant, pid4)
         rem = tool(base, p.cfg.data, 12, "reminders_create", {"draft": pid4})
         assert "x-apple-reminder://r1" in rem["result"]["content"][0]["text"]
         assert osa_log(log)[-1]["args"] == {"title": "Вынести мусор", "list": "", "due": "2026-11-24T09:00",

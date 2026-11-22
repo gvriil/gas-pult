@@ -56,7 +56,7 @@ https://dev.wildberries.ru/api/swagger/yaml/ru/12-reports.yaml (заказы).
 категорий (тесты). Токен в заголовке `Authorization` без слова `Bearer` (схема `HeaderApiKey` в спецификации).
 
 Запись (ответы покупателям) выключена, пока не задано `GAS_WILDBERRIES_WRITE=1`, и каждый ответ — только после
-подтверждения человека (`propose` → кнопка в пульте или `python3 wildberries_mcp.py confirm <id>` → `apply`).
+подтверждения человека (`propose` → кнопка «Да» в панели → `apply`).
 
 ## Лимиты (документация WB, на профиль продавца)
 

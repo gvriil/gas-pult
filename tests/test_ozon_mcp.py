@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
 
+import panel_stub  # «Да» человека без настоящей панели
 import pytest
 
 from gas_pult.connectors import ozon_mcp as oz
@@ -76,7 +77,7 @@ def env(tmp_path):
     keyfile.write_text(json.dumps({"client_id": CID, "api_key": KEY}) + "\n")
     keyfile.chmod(0o600)
     yield {"GAS_OZON_BASE": f"http://127.0.0.1:{srv.server_port}", "GAS_OZON_KEY_FILE": str(keyfile),
-           "GAS_CONFIRM_DIR": str(tmp_path / "confirm")}
+           **panel_stub.env(tmp_path)}
     srv.shutdown()
 
 
@@ -245,7 +246,8 @@ def test_propose_no_writes_apply_needs_confirm(env):
     assert "нет подтверждения" in err(r) and not writes()
     c = subprocess.run([sys.executable, str(SERVER), "confirm", p["id"]], capture_output=True, text=True,
                        timeout=30, env=full_env(env))
-    assert c.returncode == 0, c.stderr
+    assert c.returncode == 2 and "только кнопкой «Да» в панели" in c.stderr      # команды подтверждения больше нет
+    panel_stub.grant("ozon", p["id"])                                           # «Да» человека — в панели
     (r,) = rpc([call("ozon_apply", {"id": p["id"]})], env)                  # GAS_OZON_WRITE не задан = 0
     assert "запись выключена" in err(r) and not writes()
 
@@ -255,8 +257,7 @@ def test_apply_after_confirm_exactly_one_write(env):
     rid = "017c0d1c-66d3-b838-3d29-cf9b95a6ac48"
     (r1,) = rpc([call("ozon_propose_review_comment", {"review_id": rid, "text": "Спасибо!"})], e)
     pid = body(r1)["id"]
-    subprocess.run([sys.executable, str(SERVER), "confirm", pid], check=True, capture_output=True, timeout=30,
-                   env=full_env(e))
+    panel_stub.grant("ozon", pid)
     a1, again = rpc([call("ozon_apply", {"id": pid}), call("ozon_apply", {"id": pid})], e)
     d = body(a1)
     assert "отзыв" in d["done"] and d["comment_id"].startswith("c0ffee00")

@@ -57,16 +57,22 @@ def test_write_needs_flag_and_human(tmp_path, monkeypatch):
     monkeypatch.setenv("GAS_SVC_WRITE", "1")
     with pytest.raises(_core.ToolError, match="нет подтверждения"):
         _core.take_confirmed("svc", d["id"])
-    _core.confirm("svc", d["id"])
-    rec = (tmp_path / "svc" / f"{d['id']}.json")
-    rec.write_text(rec.read_text().replace('"sum": 100', '"sum": 999'))   # черновик подменили после подтверждения
+    with pytest.raises(_core.ToolError, match="только кнопкой «Да» в панели"):   # штаб 22.11: «Да» — только в панели
+        _core.confirm("svc", d["id"])
+    assert _core.main({}, "svc", ["confirm", d["id"]]) == 2
+    from gas_pult import approvals
+    ap = approvals.Approvals()
+    yes = lambda svc, pid, dg: ap.take("", svc, pid, dg)                           # noqa: E731 — память панели
+    rec = tmp_path / "svc" / f"{d['id']}.json"
+    ap.grant("", "svc", d["id"], json.loads(rec.read_text())["digest"])
+    rec.write_text(rec.read_text().replace('"sum": 100', '"sum": 999'))   # черновик подменили после «Да»
     with pytest.raises(_core.ToolError, match="нет подтверждения"):
-        _core.take_confirmed("svc", d["id"])
+        _core.take_confirmed("svc", d["id"], approve=yes)
     d2 = _core.propose("svc", "create_order", {"sum": 100}, "заказ на 100 ₽")
-    assert _core.main({}, "svc", ["confirm", d2["id"]]) == 0
-    assert _core.take_confirmed("svc", d2["id"])["params"] == {"sum": 100}
+    ap.grant("", "svc", d2["id"], _core._digest("create_order", {"sum": 100}))
+    assert _core.take_confirmed("svc", d2["id"], approve=yes)["params"] == {"sum": 100}
     with pytest.raises(_core.ToolError, match="не найден"):          # одноразово
-        _core.take_confirmed("svc", d2["id"])
+        _core.take_confirmed("svc", d2["id"], approve=yes)
     with pytest.raises(_core.ToolError, match="неверный id"):
         _core.take_confirmed("svc", "../../etc")
 
