@@ -193,7 +193,11 @@ def test_host_sleeps_when_idle_and_socket_is_private():
     assert not (d / "host.sock").exists() and fake.stopped
 
 
-def test_send_only_through_confirmed_draft():
+def test_send_only_through_confirmed_draft(tmp_path, monkeypatch):
+    import panel_stub  # «Да» человека — в памяти службы панели (approvals.py, #421)
+    for k, v in panel_stub.env(tmp_path).items():
+        if k != "GAS_CONFIRM_DIR":
+            monkeypatch.setenv(k, v)
     M.consent("whatsapp", 1, True)
     d, fake = M.svc_dir("whatsapp"), Fake()
     host = H.Host("whatsapp", d, fake, idle=30, tick=0.05)
@@ -202,7 +206,7 @@ def test_send_only_through_confirmed_draft():
         assert "нет такой операции" in (await host_call(host, {"op": "send", "chat": "1", "text": "x"}))["error"]
         pid = _core.propose("whatsapp", "send", {"chat": "1", "text": "Привет"}, "Отправить")["id"]
         assert "нет подтверждения" in (await host_call(host, {"op": "apply", "id": pid}))["error"]
-        _core.confirm("whatsapp", pid)                # «Да» в панели (drafts.py пишет тот же .ok)
+        panel_stub.grant("whatsapp", pid)             # «Да» в панели (команды confirm больше нет)
         assert (await host_call(host, {"op": "apply", "id": pid}))["sent"]
         assert "не найден" in (await host_call(host, {"op": "apply", "id": pid}))["error"]   # один раз
     asyncio.run(go())
