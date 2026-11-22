@@ -676,12 +676,12 @@ class Pult:
         """Сообщение человека в окно и одно служебное сообщение «⏳ Отправлено», которое бот правит по фазам.
 
         Ключ, токен или пароль в сообщении — в окно уходит текст с заглушкой «[скрыт: тип]» (``secrets_guard``),
-        человеку — пояснение: модель значения не видела, ключ — в «Интеграции», сообщение в Telegram — удалить."""
+        человеку — пояснение: модель значения не видела, ключ — в «Подключения», сообщение в Telegram — удалить."""
         text, found = secrets_guard.redact(text)
         if found:
             try:
                 self.send(chat, f"🔒 Убрал из сообщения: {', '.join(found)} — модель значения не увидит, в сессию ушла "
-                                "заглушка. Положите ключ в «Интеграции» панели пульта, а это сообщение удалите из "
+                                "заглушка. Положите ключ в «Подключения» панели пульта, а это сообщение удалите из "
                                 "Telegram: ключ остался в переписке.")
             except TelegramError as e:
                 print("secrets:", e, flush=True)
@@ -1092,7 +1092,7 @@ class Pult:
         ``tts_provider=elevenlabs`` (голос ElevenLabs — выбранный раньше или первый из аккаунта)."""
         if vid == "elevenlabs":
             if "elevenlabs" not in providers.key_info():
-                raise ValueError("нужен ключ ElevenLabs — панель → Интеграции → Ключи API")
+                raise ValueError("нужен ключ ElevenLabs — панель → Подключения → Ключи API")
             upd = {"tts_provider": "elevenlabs"}
             if not self.state().get("el_voice") and (first := self.el_voice_id()):
                 upd["el_voice"] = first
@@ -1166,7 +1166,7 @@ class Pult:
     def on_voice(self, chat: int, kind: str, vid: str, q: dict):
         if kind == "vi":
             if vid == "elevenlabs":
-                return self.send(chat, "Ключ ElevenLabs — в панели: Интеграции → Голос → Ключи API.")
+                return self.send(chat, "Ключ ElevenLabs — в панели: Подключения → Голос → Ключи API.")
             return self.send(chat, f"«{catalog.label(vid)}» не установлен. На сервере: gas-pult voices install {vid}")
         if kind == "vs":
             try:
@@ -1800,7 +1800,7 @@ class Pult:
     def module_text(self, m: dict) -> str:
         out = [f"🧩 {m['title']} · {m['industry']}", "", m["description"] or m["about"]]
         if m["integrations"]:
-            out += ["", "Интеграции (панель → Интеграции):"]
+            out += ["", "Подключения (в панели):"]
             out += [f"• {x['title']}{' — по желанию' if x['optional'] else ''}: {x['why']}" for x in m["integrations"]]
         if m["schedule"]:
             out += ["", "Расписание:"]
@@ -2494,7 +2494,7 @@ class Pult:
         if arg in ("int", "keys"):
             what = ("Интеграции (Notion, GitHub, почта…)" if arg == "int" else
                     "Ключи поставщиков моделей (OpenRouter, GLM, DeepSeek)")
-            return send(f"{what} подключаются в панели: «Интеграции». Панель запускается командой "
+            return send(f"{what} подключаются в панели: «Подключения». Панель запускается командой "
                         "gas-pult webapp --url https://<ваш адрес> (или --tunnel) — после этого у бота появится "
                         "кнопка «📱 Панель». Подробно — docs/MINI_APP.md в репозитории."
                         + ("\n\nПоставщик — только тот, что поддерживает страну, откуда идёт работа. Для российских "

@@ -129,7 +129,7 @@
   body:not(.tester) .tester-only { display: none; }
   /* Фокус (задача 41): одна сессия — без списка, переключения, создания и общих настроек */
   body:not(.focus) .focus-only { display: none; }
-  body:not(.focus):not(.tester) #menuBtn { display: none !important; }   /* «4 квадрата» нет (Gemini №2): режим и интеграции — в строке поля */
+  body:not(.focus):not(.tester) #menuBtn { display: none !important; }   /* «4 квадрата» нет (Gemini №2): режим и подключения — в строке поля */
   body.drafting #modeChip, body.drafting #mcpChip, body.focus-demo #modeChip, body.focus #mcpChip { display: none !important; }
   #modeChip { flex: none; max-width: 40%; } body:not(.split):not(.focus) #target { display: none; }   /* телефон: чат — в шапке */
   body:not(.split):not(.focus) #modeChip { margin-left: auto; }
@@ -762,7 +762,7 @@
   body.split .chat .ai .md > :is(p, ul, ol, h1, h2, h3, h4, blockquote) { max-width: 780px; }
   .sidebtn, .grip, .rail { display: none; }
   body.no-dup.has-nav:not(.side-mini) #top .titles { visibility: hidden; }
-  #homeSeg { display: none !important; }   /* главная без вкладок (владелец 20.11): чаты — в панели, интеграции — в Настройках, команды — «⋯» разработчику */
+  #homeSeg { display: none !important; }   /* главная без вкладок (владелец 20.11): чаты — в панели, подключения — в Настройках, команды — «⋯» разработчику */
   body.split #homeSeg button { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* узкий список — «Интегр…», а не наружу */
   body.split .sidebtn { display: grid; }
   body.split:not(.side-mini) .grip { display: block; position: fixed; top: 0; bottom: 0; left: calc(var(--side) - 4px); width: 8px; z-index: 7; cursor: col-resize; touch-action: none; }
@@ -815,6 +815,8 @@
 
   /* ===== Дежурный помощник «? Подсказать» (helper.py, docs/HELPER.md): пилюля в шапке и в каждом листе; шторка на 55 %
      высоты — поверх экрана или листа, закрылась — вы там же. */
+  /* Обзор UI 21.11 (В): в открытом чате на компьютере «Подсказать» — 0 нажатий из 4; в шапке — ⋯, подсказка — в нём */
+  body.in-chat.split:not(.focus) #helpBtn { display: none; } body.in-chat.split:not(.focus) #chatMoreBtn { display: grid; }
   .hpill { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 32px; padding: 0 10px 0 7px; border: 1px solid var(--border-subtle);
            border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--accent-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
   .hpill .i { width: 18px; height: 18px; }
@@ -1248,7 +1250,7 @@
 
   <section id="home" hidden>
     <div class="brand"><h1 class="serif brand-text">Гаврила</h1><div class="sub"><span id="brandSub"></span></div></div>
-    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Чаты</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Интеграции</button></div>
+    <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Чаты</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Подключения</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
     <div id="projectsView" hidden></div>
@@ -1348,7 +1350,7 @@
   "dev": {
     "title": "для разработчика",
     "steps": [
-      {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, интеграции", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
+      {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, подключения", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
       {"target": "sessions", "screen": "home", "title": "Чаты", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
       {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — квадратами: цифра — активные чаты, точка — ждёт ответа или новое. Нажатие — чаты проекта; сверху — развернуть, новый чат, поиск."},
       {"target": "new", "screen": "home", "title": "Новый чат", "text": "В папке проекта; «Новая папка» — пустой проект; «Из модуля» — агент с готовыми правилами и навыками."},
@@ -1360,7 +1362,7 @@
       {"target": "composer", "screen": "session", "title": "Сообщение", "text": "Уходит в окно этой сессии. Голос, фото и файлы — кнопками рядом."},
       {"target": "menu", "screen": "session", "title": "Меню сессии", "text": "Слэш-команды, модель и усилия, озвучка, активная сессия для бота, другие сессии."},
       {"target": "target", "screen": "session", "title": "Куда уйдёт", "text": "Имя сессии у поля ввода — чтобы не написать не туда. Нажмите, чтобы сменить сессию."},
-      {"target": "integrations", "screen": "integrations", "title": "Интеграции", "text": "MCP-серверы и коннекторы: GitHub, Notion, Google и свои. У каждого человека — свои, в его папке Claude Code."},
+      {"target": "integrations", "screen": "integrations", "title": "Подключения", "text": "MCP-серверы и коннекторы: GitHub, Notion, Google и свои. У каждого человека — свои, в его папке Claude Code."},
       {"target": "models", "screen": "integrations", "title": "Модели и ключи", "text": "Сессии не только на Claude: OpenRouter, GLM, DeepSeek. Ключи поставщиков и запасные — здесь."},
       {"target": "help", "screen": "any", "title": "? Подсказать", "text": "На каждом экране: что делать и куда перейти. Там же — «Показать тур по этому экрану»."},
       {"target": "settings", "screen": "any", "title": "Настройки", "text": "Тема, страна, расход и лимиты, люди. Тур — снова: «Настройки» → «Пройти тур»."}
@@ -1968,7 +1970,7 @@ function palCmds() {
     rw && !meta?.space && { id: "modules", label: "Создать из модуля", icon: "puzzle", kw: "агент модули", run: () => go("go:modules") },
     { id: "home", label: "Открыть главную: сессии", icon: "chat", kw: "список", run: () => go("go:sessions") },
     { id: "commands", label: "Открыть команды из ответов", icon: "term", kw: "код блоки", run: () => go("go:commands") },
-    rw && { id: "integrations", label: "Открыть интеграции", icon: "puzzle", kw: "модели голос подключения mcp", run: () => go("go:integrations") },
+    rw && { id: "integrations", label: "Открыть подключения", icon: "puzzle", kw: "модели голос подключения mcp", run: () => go("go:integrations") },
     view === "session" && current && { id: "screen", label: "Показать экран терминала", icon: "monitor", kw: "tmux", run: () => go("go:session.screen") },
     view === "session" && current && { id: "chat", label: "Показать переписку", icon: "chat", run: () => go("go:session.chat") },
     { id: "settings", label: "Открыть настройки", icon: "settings", kw: "тема шрифт язык", run: () => go("go:settings") },
@@ -3015,7 +3017,7 @@ function setHome(v) {
   const two = split();
   if (view === "home") {                               // вложенный экран — его имя в шапке, «Пульт» — на главной
     const sub = (v !== "sessions" || inProj) && !two;
-    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Интеграции" }[v]) : brandName();
+    $("title").textContent = sub ? (inProj ? projOf(proj)?.name || "Проект" : { commands: "Команды", integrations: "Подключения" }[v]) : brandName();
     $("title").classList.toggle("brand-text", !sub); noDup();
     $("homeSeg").hidden = sub;                         // на вложенном экране — «‹ Назад», а не вкладки
   }
@@ -3055,15 +3057,17 @@ const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // се
 // Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
 // лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
 const EFFORT_RU = { auto: "авто", low: "низкие", medium: "средние", high: "высокие", xhigh: "очень высокие", max: "максимум" };
-function resetAt(ts) {
+function resetAt(ts) {                               // «до вс 00:30» / «до 14:30» — когда лимит обнулится
   if (!ts) return "";
   const d = new Date(ts * 1000), today = new Date().toDateString() === d.toDateString();
-  return " ↻" + d.toLocaleString(LANG === "en" ? "en-GB" : "ru-RU", today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return (LANG === "en" ? " until " : " до ") + d.toLocaleString(LANG === "en" ? "en-GB" : "ru-RU", today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
+// Обзор UI 21.11 (А): вместо шифра «5 ч 21% ↻вс 00:30 · неделя 91% ↻пн 21:30» — «Лимит: 21% до вс 00:30»;
+// недельный — только когда больше 80 %.
 function limitsLine(L) {
   const x = L?.limits; if (!x) return "";
-  const one = (k, name) => x[k] ? `<span class="${x[k].used >= 80 ? "warn" : ""}" title="Лимит подписки: использовано за ${name}; ↻ — когда обнулится">${name} ${x[k].used}%${resetAt(x[k].resets_at)}</span>` : "";
-  return one("five_hour", "5 ч") + one("seven_day", "неделя");
+  const one = (k, name) => `<span class="${x[k].used >= 80 ? "warn" : ""}" title="Лимит подписки ${name}: сколько использовано и когда обнулится">${name === "на неделю" ? "Лимит на неделю" : "Лимит"}: ${x[k].used}%${resetAt(x[k].resets_at)}</span>`;
+  return (x.five_hour ? one("five_hour", "на 5 часов") : "") + (x.seven_day?.used > 80 ? one("seven_day", "на неделю") : "");
 }
 function usageLine(u) {                                // как у Pi: ↑ ввод, ↓ вывод, $; tok() — из раздела «расход»
   if (!u) return "";
@@ -3716,7 +3720,7 @@ function paintSession(s) {
   setSub(`${loud(s) || WAKING.has(s.id) ? `<span class="chip ${st.cls}"><span class="sdot ${st.cls}"></span>${st.label}</span>` : ""}${spaceChips(s)}${split() ? ag : ""}`);   // техническое — в «Подробнее»
   const cb = costBar(s); setHidden($("costPause"), !cb); setHTML($("costPause"), cb);     // пауза по расходу — над полем ввода
   setHTML($("target"), `<span class="sdot ${st.cls}"></span><b>${esc(dn(s))}</b><span class="caret">${ic("chev", "s16")}</span><span>${loud(s) && (split() || !ag) ? st.label : ""}</span>${split() ? "" : ag}`);
-  const ph = hint || "Сообщение для " + dn(s) + "…";     // куда уйдёт — видно в поле; подсказка Claude — вместо
+  const ph = hint || "Напишите…";     // имя чата — в шапке (обзор UI 21.11, А); подсказка Claude — вместо
   if ($("input").placeholder !== ph) $("input").placeholder = ph;
   sinfo(s);                                         // под полем ввода — только предупреждения (контекст, лимиты)
   paintWorking(s);
@@ -4102,7 +4106,7 @@ function sessionSheet(id) {
   const s = sessions.find((x) => x.id === id); if (!s) return;
   helpSheet("sheet.session");
   sheet(dn(s), shortMenu([
-    ...(!split() && !FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // шапка телефона — без «?» (Gemini №3)
+    ...(!FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // в шапке чата «?» нет (Gemini №3, обзор UI 21.11)
     ...(cleanTop() && dev() && tab === "chat" ? [{ label: "Экран терминала", icon: "term", run: () => setTab("screen") }] : []),
     ...(cleanTop() && FOCUS_PROJ() ? [{ label: `Чаты проекта «${meta.focus.name}»`, icon: "folder", run: () => focusProjSheet() }] : []),
     ...(cleanTop() && FOCUS && meta?.focus?.exp ? [{ label: (FOCUS_DEMO() ? "Демо до " : "Вход по ссылке — до ") + new Date(meta.focus.exp * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), icon: "lock", run: () => {} }] : []),
@@ -5227,7 +5231,7 @@ function openSwitcher() {
     run: () => openSession(s.id), hold: () => sessionActions(s) })),
     ...(meta?.role !== "viewer" ? [{ label: "Новый чат", icon: "plus", run: () => newSession() }] : []),
     { label: "Команды из всех чатов", icon: "term", run: () => { back(); setHome("commands"); } },
-    { label: "Все чаты и интеграции", icon: "menu", run: back },
+    { label: "Все чаты и подключения", icon: "menu", run: back },
     { label: "Обозначения", icon: "help", sub: "что значат цвета точек", run: legend }]);
 }
 const sessionActions = (s) => sessionSheet(s.id);          // долгое нажатие в шторке — то же, что «⋯» на карточке
@@ -5274,7 +5278,7 @@ let secretPass = null;                               // «Отправить к�
 function secretSheet(typed, s) {
   helpSheet("sheet.secret");
   sheet("Похоже на ключ: " + s.found.join(", "), [
-    { info: true, icon: "lock", label: "Модель не должна видеть ключи", sub: "Уберите его из сообщения, а сам ключ положите в «Интеграции» — там он хранится на сервере и модели не показывается." },
+    { info: true, icon: "lock", label: "Модель не должна видеть ключи", sub: "Уберите его из сообщения, а сам ключ положите в «Подключениях» — там он хранится на сервере и модели не показывается." },
     { label: "Убрать и отправить", icon: "check", sub: "вместо ключа уйдёт «[скрыт: …]»", run: () => { $("input").value = s.text; secretPass = null; sendText(); } },
     { label: "Отправить как есть", icon: "warn", sub: "если это не ключ; в сессии с защитой пульта сообщение с ключом модель не получит", run: () => { secretPass = typed; sendText(); } },
   ], "Отмена");
@@ -5389,7 +5393,7 @@ function sync() { const has = !!$("input").value.trim() || files.length > 0; $("
 function setHint(h) {
   if (h === hint) return;
   hint = h; sync();
-  const s = cur(); if (s) $("input").placeholder = hint || "Сообщение для " + dn(s) + "…";
+  const s = cur(); if (s) $("input").placeholder = hint || "Напишите…";
 }
 async function loadHint(s) {
   if (s.status !== "idle" || tab !== "chat" || meta?.role === "viewer") return setHint("");
@@ -5890,7 +5894,7 @@ async function voiceGridClick(e) {
     if (c.install) return copyText(c.install, "Команда скопирована — выполните её на сервере");
     const k = $("elKey");
     if (k?.isConnected && !k.closest(".sheet-bg")) { k.scrollIntoView({ block: "center", behavior: "smooth" }); return k.focus({ preventScroll: true }); }
-    return toast("Нужен ключ ElevenLabs: Интеграции → Голос → Ключи API", 4000);
+    return toast("Нужен ключ ElevenLabs: Подключения → Голос → Ключи API", 4000);
   }
   if (!vcards.can_choose) return toast("Голос выбирает владелец пульта — здесь можно послушать", 3500);
   if (c.id === vcards.current) return c.id === "elevenlabs" ? elVoiceSheet() : undefined;
@@ -5965,8 +5969,8 @@ function renderMcp() {
   const srv = mcpData.servers, ok = srv.filter((s) => s.ok), bad = srv.filter((s) => !s.ok && s.removable);
   const anyTiles = mcpData.presets.filter((p) => p.providers === "all" && !["http", "stdio"].includes(p.id));   // задача 38
   $("mcpBox").innerHTML = `
-    <p class="note">${mcpData.personal ? "Интеграции у каждого свои: здесь — ваши, они работают в сессиях, которые открыли вы. В первой своей сессии войдите в Claude на «Экране» — без входа коннекторы claude.ai не появятся."
-      : "Интеграции у каждого человека пульта свои — здесь ваши."}</p>
+    <p class="note">${mcpData.personal ? "Подключения у каждого свои: здесь — ваши, они работают в сессиях, которые открыли вы. В первой своей сессии войдите в Claude на «Экране» — без входа коннекторы claude.ai не появятся."
+      : "Подключения у каждого человека пульта свои — здесь ваши."}</p>
     <div class="section">Подключено</div>
     ${ok.length ? `<div class="conn">${ok.map((s) => `<span class="chip ok">${LOGOS?.byName(s.name) || ic("check", "s16")}${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
     ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row">${LOGOS?.byName(s.name) || ""}<span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span>
@@ -6165,7 +6169,7 @@ function moduleView(m) {
   $("mcpForm").innerHTML = `<div class="mod">
     <div class="hero"><span class="mono">${ic("puzzle")}</span><h2 class="serif">${esc(m.title)}</h2><p>${esc(m.about)}</p></div>
     ${m.description ? `<div class="panel"><p style="margin:0">${esc(m.description)}</p></div>` : ""}
-    <div class="section">Интеграции</div><div class="panel" id="modIntegr">${moduleIntegr(m)}</div>
+    <div class="section">Подключения</div><div class="panel" id="modIntegr">${moduleIntegr(m)}</div>
     ${m.data_sources?.length ? `<div class="section">Откуда данные</div><div class="panel">${m.data_sources.map((x) => `<div class="mrow">${ic("file")}<div class="ctext"><b>${esc(x.title)}</b><small>${esc(x.kind_title)}${x.about ? " · " + esc(x.about) : ""}</small></div></div>`).join("")}
       <p class="note" style="margin:8px 0 0">Только официальные API и выгрузки клиента.</p></div>` : ""}
     <div class="section">Расписание</div><div class="panel">${m.schedule.length ? m.schedule.map((x) => `<div class="mrow">${ic("wait")}<div class="ctext"><b>${esc(x.when || x.at)} · ${esc(daysText(x.days))}</b><small>${esc(x.title)}</small></div></div>`).join("")
@@ -6188,7 +6192,7 @@ function moduleView(m) {
 function moduleConnect(id) {
   const m = modData.modules.find((x) => x.integrations.some((i) => i.id === id) && $("modCreate")?.dataset.id === x.id) || modData.modules.find((x) => x.integrations.some((i) => i.id === id));
   const c = mcpData?.connectors.find((x) => x.id === id), p = mcpData?.presets.find((x) => x.id === id);
-  if (!c && !p) return toast("Этот сервис подключается в «Интеграциях»", 4000);
+  if (!c && !p) return toast("Этот сервис подключается в «Подключениях»", 4000);
   c ? connectorView(c) : mcpForm(p); formBack = () => moduleView(m);
 }
 function moduleCreate(btn) {
@@ -6534,9 +6538,9 @@ async function focusMcp() {                         // интеграции се
   let d; try { d = await api("/api/mcp"); } catch (e) { return toast(e.message, 5000); }
   helpSheet("focus.mcp");
   sheet("Подключено у поставщика", [
-    { info: true, icon: "puzzle", label: "Подключено у Claude Code", sub: "работают в этой сессии; добавить или убрать — в полном пульте («Интеграции»)" },
+    { info: true, icon: "puzzle", label: "Подключено у Claude Code", sub: "работают в этой сессии; добавить или убрать — в полном пульте («Подключения»)" },
     ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
-    ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Интеграций нет" }])]);
+    ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Подключений нет" }])]);
 }
 // Фокус на проект (меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новый чат в проекте», завершённые
 // чаты — и ничего вне проекта (сервер отвечает 403). Под шапкой — имя проекта (шторка сессий) и срок входа.
@@ -6732,7 +6736,7 @@ function renderSetup() {
     <div id="suResult">${setupMsg}</div>
     <div class="acts">
       ${inst ? `<button class="btn sm" data-su="login">${ic("key", "s16")}${lg?.url ? "Начать заново" : "Войти в Claude"}</button>` : ""}
-      <button class="btn quiet sm" data-su="int">${ic("plus", "s16")}Интеграции</button>
+      <button class="btn quiet sm" data-su="int">${ic("plus", "s16")}Подключения</button>
       <button class="btn quiet sm" data-su="keys">${ic("key", "s16")}Ключ провайдера</button>
       <button class="btn quiet sm" data-su="check">${ic("refresh", "s16")}Проверка</button>
       <button class="btn ghost sm" data-su="doc">${ic("book", "s16")}Инструкция</button></div></div>`;
@@ -7015,7 +7019,7 @@ async function startTour(kind = tourKind(), here = false) {
   if (here) segs.push({ screen: "here", steps: all.filter((s) => tourEl(s.target)) });   // только то, что на экране сейчас
   else all.forEach((s) => (segs.at(-1)?.screen === s.screen ? segs.at(-1).steps.push(s) : segs.push({ screen: s.screen, steps: [s] })));
   const reach = (g) => g.screen !== "session" || sessions.length;
-  const NAMES = { home: "Главная", session: "Сессия", integrations: "Интеграции", any: "Везде", here: "Этот экран" };
+  const NAMES = { home: "Главная", session: "Сессия", integrations: "Подключения", any: "Везде", here: "Этот экран" };
   tourOn = true;
   let shown = 0, how = "close";
   try {

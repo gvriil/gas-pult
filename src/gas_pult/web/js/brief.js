@@ -213,8 +213,8 @@ function pickView(bg, first) {
   let every = sch.every || "workdays", days = [...(sch.days || [0, 1, 2, 3, 4])];
   bg.innerHTML = `<div class="brief bpick">${head(first ? "Что показывать в «Сегодня»?" : "«Сегодня»: что, во сколько, откуда")}
     <p class="more">${first ? "Выберите, что подключить. Поменять можно всегда: «Настройки» → «Брифинг». " : ""}Письма и события читает код, а не модель; ничего не отправляется без вашего «Да».</p>
-    <h3>${ic("mail")}Почта</h3>${(av.boxes || []).map(box).join("") || '<div class="empty">Ящик не подключён — «Интеграции» → «Почта».</div>'}
-    <h3>${ic("cal")}Календарь</h3>${(av.calendars || []).map(cal).join("") || '<div class="empty">Календарь не подключён — «Интеграции» → «Календари»${(av.calkeys || []).length ? ": " + av.calkeys.filter((k) => !k.on).map((k) => esc(k.title)).join(", ") : ""}.</div>'}
+    <h3>${ic("mail")}Почта</h3>${(av.boxes || []).map(box).join("") || '<div class="empty">Ящик не подключён — «Подключения» → «Почта».</div>'}
+    <h3>${ic("cal")}Календарь</h3>${(av.calendars || []).map(cal).join("") || '<div class="empty">Календарь не подключён — «Подключения» → «Календари»${(av.calkeys || []).length ? ": " + av.calkeys.filter((k) => !k.on).map((k) => esc(k.title)).join(", ") : ""}.</div>'}
     <h3>${ic("tasks")}Задачи и работа</h3>
     ${opt("pult", "Пульт", "окна, где Claude ждёт ответа, задачи, «Ждут «да»» из HANDOFF", true)}
     ${opt("linear", "Задачи Linear", av.linear ? "закрытые вчера и просроченные" : "нет ключа Linear", av.linear)}

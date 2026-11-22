@@ -118,7 +118,7 @@ def test_chips_answer_from_map(tmp_path):
             if c["id"] != helper.WHAT:
                 assert r["text"] == next(f["a"] for f in helper.faq_for(sid, role) if f["id"] == c["id"])
     r = h.ask("owner", {"screen": "home.sessions"}, "как подключить notion", who=["t"])
-    assert "Интеграции" in r["text"] and r["actions"][0]["id"] == "go:integrations"
+    assert "Подключения" in r["text"] and r["actions"][0]["id"] == "go:integrations"
 
 
 def test_guest_real_numbers_chip(tmp_path):

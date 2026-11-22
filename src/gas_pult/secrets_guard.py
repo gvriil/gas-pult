@@ -3,7 +3,7 @@
 Работает хуками Claude Code (команда из ``settings.json`` папки Claude — ``CLAUDE_CONFIG_DIR``):
 
 - ``UserPromptSubmit`` — в сообщении человека секрет: сообщение **не отправляется** (Claude Code 2.1 не даёт хуку
-  заменить текст сообщения — только остановить его), человек видит «Убрал ключ …: положите его в «Интеграции» и
+  заменить текст сообщения — только остановить его), человек видит «Убрал ключ …: положите его в «Подключения» и
   отправьте сообщение без ключа». ``suppressOriginalPrompt`` — текст с ключом не попадает в запись разговора.
 - ``PreToolUse`` — чтение ``.env*`` (Read, Grep, команды Bash) закрыто; ``.env.example`` (и ``.sample``, ``.template``)
   — открыт.
@@ -33,7 +33,7 @@ from pathlib import Path
 SCRIPT = "gas-pult-secrets.py"           # имя копии в <папка Claude>/hooks/
 TAG = "gas-pult-secrets"                 # по нему install узнаёт свои записи в settings.json
 EVENTS = {"UserPromptSubmit": None, "PreToolUse": "Read|Grep|Bash|NotebookRead", "PostToolUse": "*"}
-KEYS_PLACE = "«Интеграции» панели пульта"
+KEYS_PLACE = "«Подключения» панели пульта"
 ALLOWED_ENV = (".env.example", ".env.sample", ".env.template", ".env.dist")
 
 # Имя переменной с секретом: …_KEY, …TOKEN, …SECRET, …PASSWORD (и PASSWD, PWD, PASS, CREDENTIALS), apikey.

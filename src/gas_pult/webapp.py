@@ -2414,7 +2414,7 @@ class Panel:
     def mcp_finish(self, w: dict, url: str, name: str, home=None) -> str:
         """Адрес страницы после входа (http://localhost…/callback?code=…) → в поле «URL >» Claude Code."""
         if self.pult.home_of(w) != home:
-            raise ValueError("это сессия другого человека — вход начните заново из своих «Интеграций»")
+            raise ValueError("это сессия другого человека — вход начните заново из своих «Подключений»")
         u = urllib.parse.urlparse(url.strip())
         if u.scheme != "http" or u.hostname not in ("localhost", "127.0.0.1") or "code=" not in u.query:
             raise ValueError("нужен адрес страницы после входа: начинается с http://localhost и содержит code=")

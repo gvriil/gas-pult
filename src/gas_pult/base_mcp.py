@@ -63,7 +63,7 @@ def _key() -> str:
         try:
             return Path(f).read_text(encoding="utf-8").strip()
         except OSError:
-            raise ToolError("нет файла ключа поиска — подключите «Веб-поиск» заново в «Интеграциях» панели") from None
+            raise ToolError("нет файла ключа поиска — подключите «Веб-поиск» заново в «Подключениях» панели") from None
     return os.environ.get("GAS_SEARCH_KEY", "").strip()
 
 
@@ -118,7 +118,7 @@ def search(query: str, n: int = 5, region: str = "") -> list[dict]:
         raise ToolError(f"неизвестный сервис поиска «{engine}»: {', '.join(ENGINES)}")
     key = _key()
     if not key:
-        raise ToolError("нет ключа поиска — подключите «Веб-поиск» в «Интеграциях» панели")
+        raise ToolError("нет ключа поиска — подключите «Веб-поиск» в «Подключениях» панели")
     base = (os.environ.get("GAS_SEARCH_BASE") or ENGINES[engine]).rstrip("/")
     n = max(1, min(int(n or 5), MAX_RESULTS))
     if engine == "brave":
@@ -222,7 +222,7 @@ def rclone(*args: str) -> str:
         msg = lines[-1] if lines else f"код {r.returncode}"
         msg = re.sub(r'("?(access_token|refresh_token|token)"?\s*[:=]\s*)\S+', r"\1***", msg)
         if "didn't find section" in msg:
-            msg = "Диск не настроен — подключите «Google Диск (rclone)» в «Интеграциях» панели"
+            msg = "Диск не настроен — подключите «Google Диск (rclone)» в «Подключениях» панели"
         raise ToolError(f"rclone: {msg[-400:]}")
     return r.stdout
 
