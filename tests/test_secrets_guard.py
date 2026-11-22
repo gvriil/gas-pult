@@ -137,7 +137,8 @@ def test_hook_prompt_blocked_without_value(tmp_path):
     key = j("sk-", "ant-api03-", A40)
     out, r = run_hook({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path), "prompt": "вот " + key})
     assert out["decision"] == "block" and out["hookSpecificOutput"]["suppressOriginalPrompt"] is True
-    assert "Убрал ключ" in out["reason"] and "ключ Anthropic" in out["reason"] and "«Подключения»" in out["reason"]
+    assert "Убрал из сообщения" in out["reason"] and "ключ Anthropic" in out["reason"]
+    assert "Ключи и пароли не показываются" in out["reason"] and "«Настройки → Подключения» в Гавриле" in out["reason"]
     assert key not in r.stdout + r.stderr
     assert run_hook({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path), "prompt": "привет"})[0] is None
 
@@ -263,7 +264,7 @@ def test_transcript_shows_block_note_not_key(tmp_path):
     (proj / "s.jsonl").write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines) + "\n")
     items, _ = transcripts.history("/w", home=tmp_path)
     assert key not in json.dumps(items, ensure_ascii=False)
-    assert [x["role"] for x in items] == ["assistant"] and items[0]["text"].startswith("Убрал ключ")
+    assert [x["role"] for x in items] == ["assistant"] and items[0]["text"].startswith("Убрал из сообщения")
     assert items[0]["note"] == "blocked"
 
 
