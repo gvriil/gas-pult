@@ -214,3 +214,78 @@ def test_store_version_kept_in_sqlite(tmp_path, mode):
     _people(tmp_path).add(2, "member")
     info = sqlstore._info(sqlstore.connect(tmp_path), "people.json")
     assert info["version"] == store.version("people.json") and info["imported"]
+
+
+# ---------- точечное чтение и кэш коллекции (замер «1000 пространств», 22.11) ----------
+
+def _add_one(path: str, uid: int):
+    People(Path(path), [1]).add(uid, "viewer", name="из другого процесса")
+
+
+def test_sqlite_role_reads_one_row(tmp_path, mode, monkeypatch):
+    """role/tenant в режиме sqlite — одна строка по ключу, коллекция целиком не читается."""
+    mode("sqlite")
+    p = _people(tmp_path)
+    p.add(2, "member", name="Иван", tenant="sp0001")
+    p.accept(2)
+    monkeypatch.setattr(sqlstore, "_rows", lambda *a: pytest.fail("прочитана вся коллекция"))
+    assert p.role(2) == "member" and p.tenant(2) == "sp0001" and p.role(9) is None
+    assert p.accepted(2)
+
+
+def test_sqlite_cache_sees_other_process(tmp_path, mode):
+    """Кэш коллекции не прячет запись другого процесса — ни при чтении, ни при следующей записи."""
+    mode("sqlite")
+    f = tmp_path / "people.json"
+    p = People(f, [1])
+    p.add(2, "member")
+    assert {x["id"] for x in p.list()} == {1, 2}            # кэш заполнен
+    x = mp.get_context("spawn").Process(target=_add_one, args=(str(f), 3))
+    x.start()
+    x.join(60)
+    assert x.exitcode == 0
+    assert p.role(3) == "viewer" and {x["id"] for x in p.list()} == {1, 2, 3}
+    p.add(4, "member")                                      # своя запись не затирает чужую
+    assert {x["id"] for x in People(f, [1]).list()} == {1, 2, 3, 4}
+
+
+def test_sqlite_write_keeps_value_types(tmp_path, mode):
+    """Сравнение «не менялась ли запись» различает 1, 1.0 и True — как текст JSON."""
+    mode("sqlite")
+    f = tmp_path / "prefs.json"
+    for v in (1, True, 1.0, 1, {"a": 1}, {"a": True}):
+        store.update(f, lambda d, v=v: d.__setitem__("k", {"v": v}))
+        con = sqlstore.connect(tmp_path)
+        raw = con.execute("SELECT json FROM kv WHERE collection = 'prefs.json' AND key = 'k'").fetchone()[0]
+        assert raw == json.dumps({"v": v}, separators=(",", ":"))
+        assert repr(store.load(f)["k"]["v"]) == repr(v)
+
+
+def test_sqlite_rollback_drops_cache(tmp_path, mode):
+    mode("sqlite")
+    f = tmp_path / "people.json"
+    p = People(f, [1])
+    p.add(2, "member")
+    with pytest.raises(RuntimeError), store.locked(f), sqlstore.wtx(tmp_path) as con:
+        sqlstore._remember(con, f, *sqlstore._write(con, f, {"9": {"role": "member"}}))
+        raise RuntimeError("обрыв")
+    assert {x["id"] for x in p.list()} == {1, 2} and p.role(9) is None
+
+
+def _two_files(data: str, base: int):
+    for i in range(N // 2):
+        store.update(Path(data) / "people.json", lambda d, i=i: d.__setitem__(str(base + i), {"role": "viewer"}))
+        store.update(Path(data) / "focus.json", lambda d, i=i: d.__setitem__(f"f{base + i}", {"w": "x"}))
+
+
+def test_sqlite_two_processes_two_collections_lose_nothing(tmp_path, mode):
+    """Разные коллекции одной базы из разных процессов: кэш, верный «пока держим замок файла», ничего не теряет."""
+    mode("sqlite")
+    ctx = mp.get_context("spawn")
+    ps = [ctx.Process(target=_two_files, args=(str(tmp_path), base)) for base in (100_000, 200_000)]
+    for x in ps:
+        x.start()
+    for x in ps:
+        x.join(120)
+        assert x.exitcode == 0
+    assert len(store.load(tmp_path / "people.json")) == N and len(store.load(tmp_path / "focus.json")) == N
