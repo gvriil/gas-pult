@@ -974,6 +974,7 @@
 - Команды, которые спрашивают пароль (pass, gpg, ssh-add, read -s), приходят без кнопки «Выполнить» — и в боте, и в панели.
 
 ### Изменено
+- **Модульный монолит, шаг 5: окна сессий панели — в `panel/sessions.py`** (docs/MONOLITH-PLAN.md п.3.1): список сессий, открыть, перезапустить, оживить, закрыть, модель и усилие, пропуск по памяти, интеграции чата, вход в MCP, файлы (46 имён, ≈750 строк) → примесь `SessionsPart`; только перенос, `webapp.effort_ok`, `webapp.find_auth`, `webapp.CONTEXT`, `webapp.MODEL_LINE` и `bot.BUSY` (теперь в `humanize.py`) живы.
 - **Модульный монолит, шаг 4: задачи и команды панели — в `panel/work.py`** (docs/MONOLITH-PLAN.md п.3.1): задачи, брифинг, команды из ответов, окно терминала, модули-агенты, репозитории (28 имён, ≈340 строк) → примесь `WorkPart`; только перенос, `webapp.utc_now` и `bot.DIALOG` (теперь в `humanize.py`) живы.
 - **Модульный монолит, шаг 4: «Проекты» панели — в `panel/projects.py`** (docs/MONOLITH-PLAN.md п.3.1): проекты, закрепление, корзина чатов, название чата и «Проекты» пространства (51 имя, ≈660 строк) → примесь `ProjectsPart`; только перенос, старые имена `webapp.*` (`NeedForce`, `EFFORTS`, `effort_flag`) живы.
 - **Модульный монолит, шаг 3: голос бота — в `botparts/voice.py`** (docs/MONOLITH-PLAN.md п.3.3). Озвучка и выбор голоса (`say`, `choose_voice`, `voice_preview`, `show_voice`, `on_voice` …) переехали из `Pult` в примесь `VoicePart` без изменений; старые имена `bot.*` и атрибуты `Pult` живы (`tests/test_monolith_names.py`).

@@ -95,7 +95,11 @@
    окно терминала, модули-агенты, репозитории → примесь `WorkPart` (28 имён, ≈340 строк, только перенос; `utc_now`
    реэкспортирует `webapp`); `DIALOG` — из `bot.py` в `humanize.py` (`bot.DIALOG` жив), чтобы `panel/*` не
    импортировал `bot`; тесты подменяют `execute` в `panel.work`, а не в `webapp`.
-5. `panel/sessions.py` (самый связанный — после того как подход проверен).
+5. ✓ `panel/sessions.py` — 22.11: список сессий, открыть/перезапустить/оживить/закрыть окно, модель и усилие,
+   пропуск по памяти, интеграции чата, вход в MCP, файлы из панели → примесь `SessionsPart` (46 имён, ≈750 строк,
+   только перенос; `effort_ok`, `find_auth`, `CONTEXT`, `MODEL_LINE`, `AUTH_WITH`, `URL_TAIL` реэкспортирует
+   `webapp`); `BUSY` — из `bot.py` в `humanize.py` (`bot.BUSY` жив). В `webapp` остались `command` и `key` (им нужны
+   `PROMPTS`, `KEYS` бота), `space_welcome` и сессии пространства (`space_close`…`space_restore`) — к шагу 6.
 6. `panel/spaces.py`, `panel/people.py`.
 7. `routes/*` — по области за PR, тем же порядком.
 8. `bot/*` — по модулю за PR.

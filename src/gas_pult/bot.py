@@ -91,7 +91,7 @@ from gas_pult import tmux as tmux_mod
 from gas_pult.botparts.voice import VoicePart
 from gas_pult.commands import DANGER, SPACE_RUN, TAIL, Commands, Journal, fail_key, in_space, triage_text
 from gas_pult.config import Config
-from gas_pult.humanize import DIALOG  # переехал в humanize.py (признаки диалога); bot.DIALOG жив
+from gas_pult.humanize import BUSY, DIALOG  # переехали в humanize.py (признаки экрана); bot.BUSY, bot.DIALOG живы
 from gas_pult.people import TITLES, People, allowed, has_telegram, is_guest
 from gas_pult.telegram import Api, TelegramError, kb
 from gas_pult.tmux import Tmux, prompt_draft
@@ -100,7 +100,6 @@ from gas_pult.voice import catalog
 from gas_pult.webauth import Auth, TgConfirm, TgLogins
 
 HINT = r"(?:[^·\n]{1,40}·\s*)*"          # подсказки внизу меню могут идти после других: «↑/↓ to navigate · Enter to …»
-BUSY = re.compile(r"esc to interrupt", re.I)
 # Готовность окна к тексту. Вопрос Claude (разрешение, выбор пункта): Esc там значит «нет» — за человека не отвечаем.
 # Меню и панели (/status, /model, /config, /usage…): Esc безопасен — закрываем, иначе текст уйдёт в меню и пропадёт.
 QUESTION = re.compile(r"^\s*Do you (want|trust)|^\s*" + HINT + r"Enter to (confirm|select)", re.M)
