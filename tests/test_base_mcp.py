@@ -186,8 +186,8 @@ def drive(tmp_path):
     log = tmp_path / "log.jsonl"
     log.write_text("")
     env = {"GAS_DRIVE_RCLONE": str(exe), "FAKE_DRIVE": str(remote), "FAKE_LOG": str(log),
-           "RCLONE_CONFIG": str(tmp_path / "rclone.conf")}
-    return {"env": env, "work": work, "remote": remote, "log": log}
+           "RCLONE_CONFIG": str(tmp_path / "rclone.conf"), "GAS_GUARD_LOG": str(tmp_path / "guard.jsonl")}
+    return {"env": env, "work": work, "remote": remote, "log": log, "guard": tmp_path / "guard.jsonl"}
 
 
 def rclone_calls(d) -> list[list[str]]:
@@ -360,3 +360,69 @@ def test_add_icloud_validates(claude):
     assert claude.calls == []
     mcp.Mcp().add("icloud", "ic2", {"user": "name@icloud.com", "token": APW.replace("-", ""), "write": "1"})
     assert json.loads(claude.calls[0][2])["env"]["GAS_CAL_WRITE"] == "1"
+
+
+# ---------- данные Google — только моделям, которые на них не учатся (ночная проверка 22.11) ----------
+@pytest.mark.parametrize("model_env, why", [
+    ({"OPENROUTER_MODEL": "meta-llama/llama-3.3-70b:free", "GAS_GOOGLE_OK": "1"}, "бесплатная"),   # :free — всегда
+    ({"ANTHROPIC_BASE_URL": "https://integrate.api.nvidia.com/v1", "GAS_PULT_MODEL": "nvidia/x"}, "NVIDIA"),
+    ({"ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic", "ANTHROPIC_MODEL": "deepseek-chat"}, "DeepSeek"),
+    ({"GAS_PULT_MODEL": "deepseek-v4", "GAS_GOOGLE_OK": "1"}, "DeepSeek"),         # напрямую — и с отметкой нельзя
+    ({"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "z-ai/glm-4.6"}, "deny и zdr"),
+])
+def test_drive_refuses_models_that_learn(drive, model_env, why):
+    (r,), _ = rpc("drive", [call("drive_list", {})], drive["env"] | model_env, drive["work"])
+    assert r["result"]["isError"] and "Limited Use" in text(r) and why in text(r), text(r)
+    assert rclone_calls(drive) == []                                            # до Диска запрос не дошёл
+
+
+@pytest.mark.parametrize("model_env", [
+    {},                                                                         # Claude по подписке
+    {"ANTHROPIC_MODEL": "claude-opus-5-5"},
+    {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "deepseek/deepseek-v4",
+     "GAS_GOOGLE_OK": "1"},                                                     # OpenRouter с deny и zdr — можно
+    {"OPENROUTER_MODEL": "anthropic/claude-sonnet-5-5", "GAS_CAL_GOOGLE_OK": "1"},
+])
+def test_drive_allows_models_that_do_not_learn(drive, model_env):
+    (r,), _ = rpc("drive", [call("drive_list", {"limit": 1})], drive["env"] | model_env, drive["work"])
+    assert not r["result"]["isError"], text(r)
+    assert rclone_calls(drive)[0][:2] == ["lsjson", "gdrive:"]
+
+
+def test_drive_guard_sees_pult_profiles():
+    """Окна пульта получают модель и шлюз из профиля (models.env_of): охранник узнаёт DeepSeek, FCC (:free) и
+    OpenRouter по тем же переменным."""
+    import importlib.util
+
+    from gas_pult import models
+    spec = importlib.util.spec_from_file_location("base_mcp_g", SERVER)
+    bm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bm)
+    for pid, blocked in (("deepseek", True), ("fcc", True), ("openrouter", True)):
+        p = next(x for x in models.PROFILES if x["id"] == pid)
+        env = models.env_of(p, "k", {})
+        old = dict(os.environ)
+        try:
+            for k in list(os.environ):
+                if k.startswith(("ANTHROPIC_", "GAS_", "OPENROUTER", "CLAUDE_CODE")):
+                    del os.environ[k]
+            os.environ.update({k: str(v) for k, v in env.items()}, GAS_GUARD_LOG=os.devnull)
+            assert bool(bm.google_block_reason()) is blocked, (pid, env.get("ANTHROPIC_BASE_URL"))
+        finally:
+            os.environ.clear()
+            os.environ.update(old)
+
+
+def test_guard_logs_what_it_decided(drive):
+    """Журнал охранника (штаб 22.11): какая модель, из какой переменной, шлюз, итог; «allow-default» — модель не
+    определилась (ночная проверка ловит такие строки). Ключей и путей Диска в журнале нет."""
+    ds = {"ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic", "ANTHROPIC_MODEL": "deepseek-chat",
+          "ANTHROPIC_AUTH_TOKEN": "sk-FAKE-guard-0000"}
+    rpc("drive", [call("drive_list", {})], drive["env"] | ds, drive["work"])
+    rpc("drive", [call("drive_list", {})], drive["env"], drive["work"])
+    rows = [json.loads(x) for x in drive["guard"].read_text().splitlines()]
+    assert rows[0]["decision"] == "deny" and rows[0]["gateway"] == "api.deepseek.com"
+    assert {"from": "ANTHROPIC_MODEL", "model": "deepseek-chat"} in rows[0]["models"] and "DeepSeek" in rows[0]["why"]
+    assert rows[1]["decision"] == "allow-default" and rows[1]["models"] == [] and rows[1]["gateway"] == ""
+    assert "sk-FAKE" not in drive["guard"].read_text()
+    assert oct(drive["guard"].stat().st_mode & 0o777) == "0o600"
