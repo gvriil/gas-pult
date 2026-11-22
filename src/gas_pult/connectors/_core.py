@@ -8,7 +8,8 @@
 - ``hide`` / ``secret_values`` — ключ (и все строковые значения JSON-файла ключа) не попадает в ответы и stderr;
 - ``http`` — запрос к API: понятные ошибки 401/403/404/429, троттлинг под лимиты вендора, адрес подменяется
   ``GAS_<SVC>_BASE`` (песочница, тесты);
-- ``propose`` / ``take_confirmed`` / ``confirm`` — запись только через черновик и подтверждение человека;
+- ``propose`` / ``take_confirmed`` — запись только через черновик и «Да» человека в панели: «Да» хранит служба
+  панели в памяти, коннектор спрашивает её перед выполнением (``approvals.py``); отметки на диске не в счёт;
 - ``serve`` / ``main`` — MCP по stdio (JSON-RPC 2.0 построчно: initialize, tools/list, tools/call, ping).
 """
 
@@ -161,12 +162,33 @@ def propose(svc: str, action: str, params: dict, summary: str) -> dict:
             "status": "черновик: ждёт подтверждения человеком в пульте; затем вызовите apply с этим id"}
 
 
+CONFIRM_ONLY_PANEL = "подтверждение — только кнопкой «Да» в панели Гаврилы (черновик виден в «Ждут вашего «Да»»)"
+
+
 def confirm(svc: str, pid: str) -> None:
-    """Подтверждение человека (кнопка в пульте или CLI ``<svc>_mcp.py confirm <id>``). Модель это не вызывает."""
-    rec = _load(svc, pid)
-    ok = _dir(svc) / f"{pid}.ok"
-    ok.write_text(rec["digest"], encoding="utf-8")
-    ok.chmod(0o600)
+    """Раньше — «Да» файлом ``.ok`` (команда или пульт). Убрано (штаб 22.11): агент от того же пользователя Linux
+    мог вызвать это сам. «Да» — только в панели, сессией человека (``approvals.py``)."""
+    raise ToolError(CONFIRM_ONLY_PANEL)
+
+
+def _panel_ok(svc: str, pid: str, digest: str) -> bool:
+    """Спросить службу панели: человек нажал «Да» ровно на этот черновик? Одноразово. Пространство — своим токеном
+    моста (``GAS_PULT_BRIDGE_TOKEN_FILE``), владелец — ``bridge-local.token`` из папки данных пульта."""
+    url = os.environ.get("GAS_PULT_PANEL_URL", "http://127.0.0.1:8765").rstrip("/") + "/api/drafts/check"
+    space = os.environ.get("GAS_PULT_BRIDGE_TOKEN_FILE", "")
+    own = os.environ.get("GAS_PULT_LOCAL_TOKEN_FILE") or str(
+        Path(os.environ.get("GAS_PULT_DATA_DIR") or Path.home() / ".local/share/gas-pult") / "bridge-local.token")
+    try:
+        tok = Path(space or own).read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    head = {"Content-Type": "application/json", ("X-GP-Space-Token" if space else "X-GP-Local"): tok}
+    req = urllib.request.Request(url, json.dumps({"svc": svc, "id": pid, "digest": digest}).encode(), head)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read() or b"{}").get("ok") is True
+    except (OSError, ValueError):
+        return False
 
 
 def _load(svc: str, pid: str) -> dict:
@@ -179,19 +201,20 @@ def _load(svc: str, pid: str) -> dict:
         raise ToolError("черновик не найден (или уже выполнен)") from None
 
 
-def take_confirmed(svc: str, pid: str, need_flag: bool = True) -> dict:
+def take_confirmed(svc: str, pid: str, need_flag: bool = True, approve=None) -> dict:
     """Черновик к выполнению — только если запись включена (``GAS_<SVC>_WRITE=1``) и человек подтвердил ровно его.
     Одноразово: после выдачи черновик помечается выполненным. ``need_flag=False`` — без флага записи: мост на Маке
-    (запись включает сам человек разрешением macOS, каждое действие — его «Да»)."""
+    (запись включает сам человек разрешением macOS, каждое действие — его «Да»). ``approve(svc, id, отпечаток)`` —
+    проверка «Да» в том же процессе (мост в службе панели); без неё — запрос к службе панели."""
     if need_flag and os.environ.get(f"GAS_{svc.upper()}_WRITE", "0") != "1":
         raise ToolError(f"запись выключена (GAS_{svc.upper()}_WRITE=0): коннектор работает только на чтение")
     rec = _load(svc, pid)
-    ok = _dir(svc) / f"{pid}.ok"
-    if not ok.is_file() or ok.read_text(encoding="utf-8").strip() != _digest(rec["action"], rec["params"]):
-        raise ToolError("нет подтверждения человека для этого черновика — покажите его владельцу в пульте")
+    dg = _digest(rec["action"], rec["params"])
+    if not (approve or _panel_ok)(svc, pid, dg):
+        raise ToolError("нет подтверждения человека для этого черновика — покажите его человеку: «Да» — в панели "
+                        "Гаврилы («Ждут вашего «Да»»). Отметки на диске и команды подтверждения не действуют")
     d = _dir(svc)
     (d / f"{pid}.json").rename(d / f"{pid}.done")
-    ok.unlink()
     return rec
 
 
@@ -254,18 +277,13 @@ def serve(server: dict, inp=None, out=None):
 
 
 def main(server: dict, svc: str, argv: list[str] | None = None) -> int:
-    """Без аргументов — MCP-сервер. ``confirm <id>`` — подтверждение черновика человеком (из терминала/пульта)."""
+    """Без аргументов — MCP-сервер. ``confirm`` больше нет: «Да» — только в панели."""
     argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] == ["confirm"] and len(argv) == 2:
-        try:
-            confirm(svc, argv[1])
-        except ToolError as e:
-            print(e, file=sys.stderr)
-            return 1
-        print(f"подтверждено: {argv[1]}")
-        return 0
+    if argv[:1] == ["confirm"]:                     # убрано (штаб 22.11): «Да» — только в панели
+        print(CONFIRM_ONLY_PANEL, file=sys.stderr)
+        return 2
     if argv:
-        print(f"использование: {svc}_mcp.py [confirm <id>]", file=sys.stderr)
+        print(f"использование: {svc}_mcp.py (без аргументов — MCP-сервер)", file=sys.stderr)
         return 2
     serve(server)
     return 0

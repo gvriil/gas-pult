@@ -11,7 +11,7 @@ import pytest
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import bridge, bridge_install
+from gas_pult import approvals, bridge, bridge_install
 from gas_pult.connectors import _core
 
 PANEL = "https://pult.example.org:8443"
@@ -164,6 +164,7 @@ def answer(m):
 
 def hub_with(tmp_path, private=True):
     hub = bridge.Hub(tmp_path / "log.jsonl")
+    hub.approve = lambda svc, pid, dg: False                                     # «Да» нет, пока тест не даст
     ws = FakeWS(hub, "d1", answer)
     hub.attach("d1", ws)
     hub.private = lambda did: private
@@ -197,9 +198,17 @@ def draft_id(out):
     return out["result"]["content"][0]["text"].split("Черновик ", 1)[1].split(":", 1)[0]
 
 
+def say_yes(approve, pid):
+    """«Да» человека в панели (approvals.py): отпечаток черновика — в память службы панели."""
+    rec = _core._load(bridge.CONFIRM_SVC, pid)
+    approve("", bridge.CONFIRM_SVC, pid, _core._digest(rec["action"], rec["params"]))
+
+
 def test_send_click_needs_yes_once(tmp_path, monkeypatch):
+    ap = approvals.Approvals()                                                   # память службы панели
     monkeypatch.setenv("GAS_CONFIRM_DIR", str(tmp_path / "confirm"))
     hub, ws = hub_with(tmp_path)
+    hub.approve = lambda svc, pid, dg: ap.take("", svc, pid, dg)
     tools = hub.call({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
     click = next(t for t in tools if t["name"] == "browser_click")
     assert "draft" in click["inputSchema"]["properties"] and "«Да» человека" in click["description"]
@@ -216,7 +225,7 @@ def test_send_click_needs_yes_once(tmp_path, monkeypatch):
     no = tc(hub, 6, "browser_click", {"target": "e8", "draft": pid})
     assert "нет подтверждения" in no["error"]["message"] and len(ws.sent) == n + 1
     assert [x["id"] for x in bridge.drafts()] == [pid]
-    _core.confirm(bridge.CONFIRM_SVC, pid)                                       # «Да» человека
+    say_yes(ap.grant, pid)                                                           # «Да» человека — в панели
     yes = tc(hub, 7, "browser_click", {"target": "e1", "draft": pid})            # агент подменил элемент
     assert "ok browser_click" in yes["result"]["content"][0]["text"]
     assert ws.sent[-1]["params"]["arguments"] == {"element": "кнопка", "target": "e8"}   # из черновика, без draft
@@ -237,7 +246,7 @@ def test_send_click_needs_yes_once(tmp_path, monkeypatch):
     assert "ЗАГРУЗИТЬ НА САЙТ" in bridge.drafts()[0]["summary"]
     bridge.reject(rej)
     with pytest.raises(_core.ToolError):
-        _core.confirm(bridge.CONFIRM_SVC, rej)                                    # «Нет» — подтвердить уже нельзя
+        _core._load(bridge.CONFIRM_SVC, rej)                                      # «Нет» — подтвердить уже нельзя
 
 
 def test_panel_shows_drafts_and_confirms(server, tmp_path, monkeypatch):

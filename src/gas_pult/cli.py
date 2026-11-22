@@ -523,15 +523,10 @@ def cmd_bridge_code(a):
 
 
 def cmd_bridge_confirm(a):
-    """«Да» человека на запись на Маке (заметка, напоминание): черновик из ответа агента → можно выполнить один раз."""
-    from gas_pult import bridge
+    """Убрано (штаб 22.11): агент от того же пользователя Linux мог вызвать команду сам и обойти «Да» человека.
+    «Да» — только кнопкой в панели (approvals.py). Команда оставлена, чтобы объяснить это, а не молча пропасть."""
     from gas_pult.connectors import _core
-    try:
-        rec = _core._load(bridge.CONFIRM_SVC, a.id)
-        _core.confirm(bridge.CONFIRM_SVC, a.id)
-    except _core.ToolError as e:
-        raise SystemExit(str(e)) from None
-    print(f"Подтверждено: {rec['summary']}\nАгент выполнит это один раз.")
+    raise SystemExit(_core.CONFIRM_ONLY_PANEL)
 
 
 def cmd_bridge_mcp(a):
@@ -887,7 +882,7 @@ def main(argv: list[str] | None = None):
     s.add_argument("--panel", default=os.environ.get("GAS_PULT_PANEL_URL", "http://127.0.0.1:8765"))
     s.add_argument("--url", default="", help="адрес панели снаружи — для готовой команды")
     s.set_defaults(fn=cmd_bridge_code)
-    s = sub.add_parser("bridge-confirm", help="«Да» на запись на Маке (заметка, напоминание) по id черновика")
+    s = sub.add_parser("bridge-confirm", help="убрано: «Да» — только кнопкой в панели")
     s.add_argument("id")
     s.set_defaults(fn=cmd_bridge_confirm)
     s = sub.add_parser("bridge-mcp", help="MCP «browser-local»: браузер пользователя через мост (stdio, для агентов)")

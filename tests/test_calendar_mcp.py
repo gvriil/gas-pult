@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import ClassVar
 from zoneinfo import ZoneInfo
 
+import panel_stub  # «Да» человека без настоящей панели
 import pytest
 
 from gas_pult.connectors import calendar_mcp as cal
@@ -154,7 +155,7 @@ def env(tmp_path):
         f = keys / f"calendar-{name}.json"
         f.write_text(json.dumps(cfg))
         f.chmod(0o600)
-    yield {"GAS_CAL_KEY_DIR": str(keys), "GAS_CONFIRM_DIR": str(tmp_path / "confirm"), "GAS_CAL_TZ": "Europe/Moscow",
+    yield {"GAS_CAL_KEY_DIR": str(keys), **panel_stub.env(tmp_path), "GAS_CAL_TZ": "Europe/Moscow",
            "_base": base}
     srv.shutdown()
     srv.server_close()
@@ -369,7 +370,8 @@ def test_google_host_detected(monkeypatch, tmp_path):
 # ---------- запись ----------
 def _confirm(pid: str, env: dict):
     p = run(["confirm", pid], env)
-    assert p.returncode == 0, p.stderr
+    assert p.returncode == 2 and "только кнопкой «Да» в панели" in p.stderr      # команды подтверждения больше нет
+    panel_stub.grant("cal", pid)                                                # «Да» человека — в панели
 
 
 def test_create_only_after_confirmation_then_one_put(env):

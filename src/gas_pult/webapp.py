@@ -47,6 +47,7 @@ from typing import BinaryIO, ClassVar
 
 from gas_pult import (
     ago,
+    approvals,
     asr,
     balance,
     brand,
@@ -522,6 +523,8 @@ class Panel:
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
         self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
+        self.approvals = approvals.Approvals()                 # «Да» человека — только здесь, в памяти (штаб 22.11)
+        self.hub.approve = lambda svc, pid, dg: self.approvals.take("", svc, pid, dg)   # мост — в этом процессе
         self.hub.private = self.devices.private          # «Личные данные не уходят модели» — флаг устройства
         self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Гаврилу (share.py)
         self.share_tokens = share.Tokens(cfg.data / "share_tokens.json")  # iPhone: токены «Быстрой команды»
@@ -4128,6 +4131,27 @@ def handler(panel: Panel):
             _, role, uid = self.who()
             return None if role == "owner" or uid is None else panel.people.tenant(uid)
 
+        def same_origin(self) -> None:
+            """«Да» — только со страницы панели: чужой сайт с нашей cookie не пройдёт (cookie и так SameSite=Strict)."""
+            origin = self.headers.get("Origin", "")
+            if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host", ""):
+                raise ValueError("запрос не со страницы панели")
+
+        def drafts_check(self):
+            """Коннектор спрашивает перед выполнением: человек нажал «Да» ровно на этот черновик? Одноразово.
+            Кто спрашивает — по секрету: владелец — ``bridge-local.token``, пространство — токен его моста.
+            Этот путь «Да» не даёт — только забирает данное человеком в панели."""
+            space = panel.bridge_space(self.headers.get("X-GP-Space-Token", ""))
+            if not space and not secrets.compare_digest(self.headers.get("X-GP-Local", ""),
+                                                        bridge_local_token(panel.cfg.data)):
+                self.json({"error": "нет доступа"}, 403)
+                return SENT
+            b = json.loads(self.body() or b"{}")
+            svc, pid, dg = str(b.get("svc", "")), str(b.get("id", "")), str(b.get("digest", ""))
+            ok = drafts.SVC.match(svc) and drafts.ID.match(pid) and panel.approvals.take(space or "", svc, pid, dg)
+            panel.events.event("draft_check", "", svc=svc[:24], ok=bool(ok))
+            return {"ok": bool(ok)}
+
         def drafts_scope(self) -> str | None:
             """Чьи черновики коннекторов: человека пространства — его пространства; владельца — его; остальным — нет."""
             if slug := self.space():
@@ -4550,8 +4574,9 @@ def handler(panel: Panel):
                 return {"log": panel.hub.history(str(q.get("id") or ""))}
             if path == "/api/bridge/drafts":             # что ждёт «Да» человека: кнопка, команда, запись на Маке
                 names = {d["id"]: d["name"] for d in panel.devices.listing()}
+                said = lambda pid: panel.approvals.pending("", bridge.CONFIRM_SVC, pid)   # noqa: E731 — «Да» в памяти
                 return {"drafts": [{**x, "device_name": names.get(x["device"], "компьютер")}
-                                   for x in bridge.drafts() if x["device"] in names]}
+                                   for x in bridge.drafts(said) if x["device"] in names]}
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
             if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
@@ -4585,7 +4610,9 @@ def handler(panel: Panel):
             if path == "/api/drafts":                    # черновики коннекторов «Ждут вашего Да» (drafts.py)
                 slug = self.drafts_scope()
                 tm = tenants.tmux_of(slug) if slug else panel.tmux
-                return {"drafts": drafts.pending(slug, chat_of=lambda pane: drafts.chat_of(tm, pane, slug))}
+                yes = panel.approvals.pending                # «Да» уже нажато — ждёт агента, снова не показываем
+                return {"drafts": drafts.pending(slug, chat_of=lambda pane: drafts.chat_of(tm, pane, slug),
+                                                 approved=lambda svc, pid: yes(slug or "", svc, pid))}
             if path == "/api/space/mcp":                 # свои интеграции пространства (GAS-38 (в)): без ключей
                 slug = self.space_of(q)                      # тестировщику — своё; владельцу и админу — по ``space``
                 return {"servers": space_mcp.listing(slug), "space": slug,
@@ -4655,6 +4682,8 @@ def handler(panel: Panel):
                 return self.dispatch(self.bridge_claim)
             if path == "/api/bridge/rpc":               # агент (gas-pult bridge-mcp) → мост; секрет — файл 0600
                 return self.dispatch(self.bridge_rpc)
+            if path == "/api/drafts/check":             # коннектор: есть ли «Да» человека (approvals.py); секрет — файл
+                return self.dispatch(self.drafts_check)
             if path == "/api/bridge/code":              # код пары из командной строки сервера (тот же секрет)
                 return self.dispatch(self.bridge_code)
             if path == "/api/login/start":
@@ -5531,9 +5560,14 @@ def handler(panel: Panel):
                     panel.focus.end_window(str(b.get("w", "")))
                 return r
             if path in ("/api/drafts/yes", "/api/drafts/no"):   # «Да» / «Нет» ровно этому черновику — только своему
-                r = drafts.decide(self.drafts_scope(), str(b.get("svc", "")), str(b.get("id", "")),
-                                  path.endswith("/yes"))
-                panel.events.event("draft_" + path.rsplit("/", 1)[1], "", svc=str(b.get("svc", ""))[:24])
+                self.same_origin()
+                slug, svc, pid = self.drafts_scope(), str(b.get("svc", "")), str(b.get("id", ""))
+                if path.endswith("/yes"):                   # «Да» — только в памяти панели (approvals.py), не на диске
+                    panel.approvals.grant(slug or "", svc, pid, drafts.digest(slug, svc, pid))
+                    r = {"ok": True}
+                else:
+                    r = drafts.reject(slug, svc, pid)
+                panel.events.event("draft_" + path.rsplit("/", 1)[1], "", svc=svc[:24])
                 return r
             if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
                 if not (slug := self.space()):
@@ -5581,8 +5615,11 @@ def handler(panel: Panel):
                 return {"ok": panel.devices.revoke(str(b.get("id") or ""))}
             if path == "/api/bridge/private":            # «Личные данные не уходят модели» для устройства
                 return {"ok": panel.devices.set_private(str(b.get("id") or ""), b.get("on") is not False)}
-            if path == "/api/bridge/confirm":            # «Да» человека в панели — как gas-pult bridge-confirm
-                bridge._core.confirm(bridge.CONFIRM_SVC, str(b.get("id") or ""))
+            if path == "/api/bridge/confirm":            # «Да» человека в панели — только в памяти (approvals.py)
+                self.same_origin()
+                pid = str(b.get("id") or "")
+                rec = bridge._core._load(bridge.CONFIRM_SVC, pid)
+                panel.approvals.grant("", bridge.CONFIRM_SVC, pid, bridge._core._digest(rec["action"], rec["params"]))
                 return {"ok": True}
             if path == "/api/bridge/reject":             # «Нет»: черновик убран, выполнить его нельзя
                 bridge.reject(str(b.get("id") or ""))

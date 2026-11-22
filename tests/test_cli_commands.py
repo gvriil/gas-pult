@@ -264,7 +264,7 @@ def test_oidc_secret_and_status(home, monkeypatch, capsys):
 
 
 def test_tgbiz_without_token_and_bridge_confirm(home, monkeypatch):
-    from gas_pult.connectors import _core, tgbiz_mcp
+    from gas_pult.connectors import tgbiz_mcp
 
     def no_key():
         raise RuntimeError("файла нет")
@@ -272,10 +272,7 @@ def test_tgbiz_without_token_and_bridge_confirm(home, monkeypatch):
     with pytest.raises(SystemExit, match="нет токена бота: файла нет"):
         cli.cmd_tgbiz(ns())
 
-    def no_draft(svc, pid):
-        raise _core.ToolError("черновика нет или он устарел")
-    monkeypatch.setattr(_core, "_load", no_draft)
-    with pytest.raises(SystemExit, match="черновика нет"):
+    with pytest.raises(SystemExit, match="только кнопкой «Да» в панели"):   # штаб 22.11: «Да» — только в панели
         cli.cmd_bridge_confirm(ns(id="abc"))
 
 

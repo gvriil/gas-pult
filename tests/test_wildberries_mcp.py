@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
 
+import panel_stub  # «Да» человека без настоящей панели
 import pytest
 
 from gas_pult.connectors import wildberries_mcp as wb
@@ -82,7 +83,7 @@ def env(tmp_path):
     keyfile.write_text(KEY + "\n")
     keyfile.chmod(0o600)
     yield {"GAS_WILDBERRIES_BASE": f"http://127.0.0.1:{srv.server_port}",
-           "GAS_WILDBERRIES_KEY_FILE": str(keyfile), "GAS_CONFIRM_DIR": str(tmp_path / "confirm"),
+           "GAS_WILDBERRIES_KEY_FILE": str(keyfile), **panel_stub.env(tmp_path),
            "GAS_WILDBERRIES_ENV": "prod"}
     srv.shutdown()
 
@@ -221,7 +222,8 @@ def test_propose_no_writes_apply_needs_confirm(env):
     assert "нет подтверждения" in err(r) and not writes()
     c = subprocess.run([sys.executable, str(SERVER), "confirm", p1["id"]], capture_output=True, text=True,
                        timeout=30, env=full_env(env))
-    assert c.returncode == 0, c.stderr
+    assert c.returncode == 2 and "только кнопкой «Да» в панели" in c.stderr      # команды подтверждения больше нет
+    panel_stub.grant("wildberries", p1["id"])                                   # «Да» человека — в панели
     (r,) = rpc([call("wildberries_apply", {"id": p1["id"]})], env)           # GAS_WILDBERRIES_WRITE не задан = 0
     assert "запись выключена" in err(r) and not writes()
 
@@ -233,8 +235,7 @@ def test_apply_after_confirm_exactly_one_write(env):
                  e)
     ids = [body(r1)["id"], body(r2)["id"]]
     for pid in ids:
-        subprocess.run([sys.executable, str(SERVER), "confirm", pid], check=True, capture_output=True, timeout=30,
-                       env=full_env(e))
+        panel_stub.grant("wildberries", pid)
     a1, a2, again = rpc([call("wildberries_apply", {"id": ids[0]}), call("wildberries_apply", {"id": ids[1]}),
                          call("wildberries_apply", {"id": ids[0]})], e)
     assert "отзыв" in body(a1)["done"] and "вопрос" in body(a2)["done"]
