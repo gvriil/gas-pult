@@ -7,10 +7,15 @@ export async function open() {
   helpSheet("settings.focus");
   const add = spacesInfo?.tenants?.length ? [{ label: "Ссылка на пространство", icon: "flask", sub: "полная панель пространства: срок, устройства, права", run: () => sl.form() }] : [];
   const spaceRow = (x) => ({ label: "Пространство «" + x.name + "»", icon: "flask", sub: sl.terms(x, x.devices), run: () => spaceCard(x, sl) });
+  // ссылка на протокол встречи (владелец 22.11): только этот протокол; нажатие — открыть протокол или отозвать
+  const mtRow = (x) => ({ label: "Протокол «" + x.name + "»", icon: "file", sub: (x.devices ? `${x.devices} ${plural(x.devices, ["устройство", "устройства", "устройств"])} · последнее ${when(x.opened)}` : "ещё не открыта") + ` · до ${when(x.exp)}`,
+    run: () => sheet("Протокол «" + x.name + "»", [{ label: "Открыть протокол", icon: "file", run: () => part("meeting").then((m) => m.open(x.mt)) },
+      { label: "Отозвать", icon: "x", danger: true, sub: "все устройства сразу потеряют доступ к протоколу",
+        run: async () => { try { await api("/api/focus/revoke", { id: x.id }); toast("Ссылка отозвана"); open(); } catch (e) { toast(e.message, 5000); } } }]) });
   for (const x of d.links) if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || x.name || "Чат";   // не имя окна (19.11)
   sheet("Фокус-ссылки", d.links.length ? [
     { info: true, icon: "qr", label: "Действующие ссылки", sub: "нажмите — новая ссылка на тот же чат или проект, или отозвать" },
-    ...d.links.map((x) => x.mode === "space" ? spaceRow(x) : ({ label: (x.mode === "demo" ? "Демо · " : "") + (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.mode === "demo" ? "eye" : x.proj ? "folder" : "chat",
+    ...d.links.map((x) => x.mode === "space" ? spaceRow(x) : x.mode === "meeting" ? mtRow(x) : ({ label: (x.mode === "demo" ? "Демо · " : "") + (x.proj ? "Проект «" + x.name + "»" : x.name) + (x.space ? " · " + x.space : ""), icon: x.mode === "demo" ? "eye" : x.proj ? "folder" : "chat",
       sub: (x.mode === "demo" ? (x.devices ? `${x.devices} ${plural(x.devices, ["устройство", "устройства", "устройств"])} · последнее ${when(x.opened)}` : "ещё не открыта")
         : x.opened ? `открыта ${when(x.opened)} · ${x.device || "устройство"}` : "ещё не открыта") + ` · до ${when(x.exp)}`,
       run: () => card(x) }))].concat(add)

@@ -325,6 +325,7 @@ function demoApi(path, body) {
   }
   R["/api/close"] = { result: "закрыто", draft: "" };
   if (path.startsWith("/api/bridge/")) return demoBridge(path, body);   // «Компьютеры» (мост, 21.11)
+  if (path.startsWith("/api/meeting") || path.startsWith("/api/mt")) return demoMeeting(path, body);   // протоколы встреч (22.11)
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
   if (path.startsWith("/api/brief")) return demoBrief(path, body);
   if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)
@@ -715,4 +716,56 @@ function demoBrief(path, body) {
       failed: [{ text: "PR shop/site#41 — Корзина", why: "CI красный — проверки не прошли", source: { kind: "github", label: "GitHub · shop/site#41", url: "https://github.com/" } }],
       decisions: g.decisions, more: {}, sources: [{ id: "linear", label: "Задачи Linear", state: "none", note: "нет ключа" }] },
   });
+}
+
+// Протоколы встреч (владелец 22.11): ?demo&meeting=1 — протокол с оглавлением; ?demo&focus=meeting — вид по ссылке.
+// Люди и компания — вымышленные; запись — тишина, собранная в браузере (WAV), чтобы работали плеер и главы.
+const DEMO_MT = (() => {
+  const t0 = Math.floor(new Date(2026, 10, 22, 10, 30) / 1000), dur = 14 * 60;
+  const m1 = { id: "20261122-1030", title: "Открытие второй точки кафе «Ромашка»", started: t0, dur, ready: true, audio: true,
+    gist: "Вторую точку открываем 15 декабря, если до 1 декабря подпишем аренду",
+    chapters: [{ start: 0, end: 95, topic: "Знакомство и цель встречи" }, { start: 95, end: 310, topic: "Помещение и аренда" },
+      { start: 310, end: 520, topic: "Смета ремонта и оборудования" }, { start: 520, end: 700, topic: "Персонал и график найма" },
+      { start: 700, end: dur, topic: "Сроки и итоги" }],
+    actions: [{ what: "Согласовать с арендодателем договор и каникулы на ремонт", who: "Анна", due: "2026-12-01" },
+      { what: "Собрать смету ремонта и оборудования", who: "Борис", due: "2026-11-27" },
+      { what: "Разместить вакансии бариста и повара", who: "Вера", due: "", when: "после аренды" }],
+    md: "# Открытие второй точки кафе «Ромашка»\n\n**Дата:** 22 ноября 2026 · **Участники:** Анна, Борис, Вера\n\n## Решения\n- [01:40] Помещение на Садовой — основной вариант, запасной — у вокзала.\n- [05:20] Бюджет ремонта — не больше 1,2 млн ₽.\n- [11:50] Открытие — 15 декабря, если аренда подписана до 1 декабря.\n\n## Открытые вопросы\n- Нужна ли летняя веранда в первый сезон?\n\n## Что сделать\n- Анна — договор аренды, до 1 декабря.\n- Борис — смета, до 27 ноября.\n- Вера — вакансии после аренды." };
+  const m2 = { id: "20261121-1600", title: "Созвон с поставщиком кофе", started: t0 - 86400, dur: 21 * 60, ready: true, audio: true,
+    gist: "Поставщик держит цену до марта при заказе от 40 кг в месяц", chapters: [], actions: [] };
+  const m3 = { id: "20261120-0915", title: "Планёрка", started: t0 - 2 * 86400, dur: null, ready: false, audio: false, gist: "", chapters: [], actions: [] };
+  return { list: [m1, m2, m3], by: { [m1.id]: m1, [m2.id]: m2, [m3.id]: { ...m3, transcript: "[00:00] (текст) Обсудили график смен на следующую неделю…" } } };
+})();
+function demoWav(sec) {                                  // тишина 8 кГц, 8 бит: плеер и переходы по главам
+  const n = 8000 * sec, b = new ArrayBuffer(44 + n), v = new DataView(b), w = (o, x) => [...x].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true);
+  new Uint8Array(b, 44).fill(128);
+  return new Blob([b], { type: "audio/wav" });
+}
+async function demoCard(v) {                             // та же раскладка, что meetings.card_svg на сервере
+  const e = (x) => esc(x), mark = await fetch("brand/gavrila-mark.svg").then((r) => r.text()).catch(() => "");
+  const m = /<svg[^>]*viewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(mark);
+  const words = (v.gist || v.title).split(/\s+/), lines = []; let cur = "";
+  for (const x of words) { if ((cur + " " + x).trim().length <= 30) cur = (cur + " " + x).trim(); else { lines.push(cur); cur = x; } }
+  if (cur) lines.push(cur);
+  const big = lines.slice(0, 4), y0 = 250 - (big.length - 1) * 30, f = 'font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"';
+  const d = new Date(v.started * 1000), meta = [`${d.getDate()} ${["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"][d.getMonth()]} ${d.getFullYear()}`, v.dur ? Math.round(v.dur / 60) + " мин" : "", v.chapters.length ? "глав: " + v.chapters.length : ""].filter(Boolean).join(" · ");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#FFFFFF"/><rect width="16" height="630" fill="#2563EB"/>`
+    + `<text x="80" y="100" ${f} font-size="28" font-weight="600" fill="#2563EB">Протокол встречи</text><text ${f} font-size="54" font-weight="700" fill="#111827">${big.map((s, i) => `<tspan x="80" y="${y0 + i * 66}">${e(s)}</tspan>`).join("")}</text>`
+    + `<text x="80" y="500" ${f} font-size="30" fill="#4B5563">${e(v.title)}</text><text x="80" y="560" ${f} font-size="28" fill="#5F6672">${e(meta)}</text>`
+    + (m ? `<svg x="1040" y="64" width="80" height="218" viewBox="${e(m[1])}" color="#2563EB">${m[2]}</svg>` : "")
+    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Гаврила</text></svg>`;
+  return new Blob([svg], { type: "image/svg+xml" });
+}
+function demoMeeting(path, body) {
+  const id = new URLSearchParams(path.split("?")[1] || "").get("id") || DEMO_MT.list[0].id, v = DEMO_MT.by[id] || DEMO_MT.list[0];
+  const p = path.split("?")[0];
+  if (p === "/api/meetings") return Promise.resolve({ meetings: DEMO_MT.list.map(({ md, ...x }) => x) });
+  if (p === "/api/meeting") return Promise.resolve({ ...v, links: [] });
+  if (p === "/api/mt") return Promise.resolve({ ...DEMO_MT.list[0], exp: Math.floor(Date.now() / 1000) + 30 * 86400 });
+  if (p.endsWith("/audio")) return Promise.resolve(demoWav(p === "/api/mt/audio" ? DEMO_MT.list[0].dur : v.dur));
+  if (p.endsWith("/card")) return demoCard(p === "/api/mt/card" ? DEMO_MT.list[0] : v);
+  if (p === "/api/meeting/share") return Promise.resolve({ url: location.origin + "/#focus=demo-meeting-demo-meeting-demo", id: "f8", exp: Math.floor(Date.now() / 1000) + 30 * 86400, name: v.title, mode: "meeting", max: 50 });
+  return Promise.reject(new Error("нет такого метода"));
 }

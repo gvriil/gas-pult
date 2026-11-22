@@ -71,6 +71,7 @@ from gas_pult import (
     humanize,
     invites,
     logins,
+    meetings,
     models,
     modules,
     notifylevel,
@@ -133,6 +134,8 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     FOCUS_PROJ_POST,
     HELP_OPEN,
     INVITE_OWN,
+    MEETING_GET,
+    MEETING_POST,
     MEMBER_ONLY,
     NOTIFY_DONE,
     OIDC_OWN,
@@ -1408,10 +1411,64 @@ class Panel:
                                                         [{"text": "Открыть в Telegram", "web_app": {"url": url}}]]})
         return {"ok": True}
 
+    # ---------- протоколы встреч в панели (meetings.py, владелец 22.11) ----------
+    def meeting_dir(self, mid: str) -> Path:
+        return meetings.find(str(mid or ""), drive_inbox.drive_root(self.cfg.drive_root), self.cfg.data)
+
+    def meeting_list(self) -> dict:
+        return {"meetings": meetings.listing(drive_inbox.drive_root(self.cfg.drive_root), self.cfg.data)}
+
+    def meeting_view(self, mid: str, public: bool = False) -> dict:
+        """Протокол: оглавление, «Что сделать», текст. По публичной ссылке — без транскрипта черновика и ссылок."""
+        v = meetings.view(self.meeting_dir(mid))
+        if public:
+            v.pop("transcript", None)
+            return v
+        v["links"] = [x for x in self.focus.listing() if x.get("mode") == focus.MEETING and x.get("mt") == mid]
+        return v
+
+    def meeting_card(self, mid: str) -> tuple:
+        """Карточка-превью (SVG 1200×630): главная мысль, дата, длительность, знак Гаврилы."""
+        try:
+            mark = resources.files("gas_pult").joinpath("web/brand/gavrila-mark.svg").read_text(encoding="utf-8")
+        except OSError:
+            mark = ""
+        v = meetings.view(self.meeting_dir(mid), full=False)
+        return ("image/svg+xml; charset=utf-8", meetings.card_svg(v, mark).encode(), {"Cache-Control": "no-store"})
+
+    def meeting_audio(self, mid: str) -> tuple:
+        ctype, data = meetings.audio(self.meeting_dir(mid))
+        return (ctype, data, {"Cache-Control": "private, max-age=3600"})
+
+    def meeting_share(self, mid: str, by, base: str) -> dict:
+        """«Ссылка на протокол» (владелец): ``…/#focus=<токен>`` — только этот протокол, 30 дней, отзыв — в
+        «Фокус-ссылках». Токен показывается один раз."""
+        v = meetings.view(self.meeting_dir(mid), full=False)
+        base = (self.public_url or base or "").rstrip("/")
+        if not self.FOCUS_BASE.match(base):
+            raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
+        f = self.focus.new({"id": "", "path": "", "name": v["title"]}, by, ttl=focus.MEETING_TTL, mode=focus.MEETING,
+                           mt=v["id"])
+        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": v["title"],
+                "mode": focus.MEETING, "max": focus.MEETING_MAX}
+
+    def meeting_public(self, rec: dict, path: str) -> dict | tuple:
+        """Запрос по ссылке на протокол: протокол — только из записи ссылки (``mt``), путь — из ``MEETING_GET``."""
+        mid = str(rec.get("mt") or "")
+        if path == "/api/mt":
+            return {**self.meeting_view(mid, public=True), "exp": rec.get("exp")}
+        if path == "/api/mt/audio":
+            return self.meeting_audio(mid)
+        if path == "/api/mt/card":
+            return self.meeting_card(mid)
+        raise focus.Denied("по ссылке на протокол — только этот протокол")
+
     def focus_rec(self, cookie: str) -> dict:
         """Запрос из фокуса: действующая ссылка этого устройства и живое окно её сессии; иначе ``focus.Gone``.
         Окна нет (сессию завершили из панели или бота) — ссылка гаснет сразу."""
         rec = self.focus.by_cookie(cookie)
+        if focus.Focus.is_meeting(rec):                     # ссылка на протокол: окна нет, живёт до срока и отзыва
+            return rec
         if rec.get("mode") == focus.SPACE:                   # ссылка на пространство — полная панель, не режим фокуса
             raise focus.Gone("Это ссылка на пространство — откройте её ещё раз.")
         if rec.get("proj"):                                  # ссылка на проект: живёт, пока есть проект и срок
@@ -4424,6 +4481,14 @@ def handler(panel: Panel):
                 return {"devices": panel.share_tokens.mine(self.terms_uid())}
             if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
                 return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
+            if path == "/api/meetings":                  # протоколы встреч (владелец 22.11)
+                return panel.meeting_list()
+            if path == "/api/meeting":
+                return panel.meeting_view(str(q.get("id") or ""))
+            if path == "/api/meeting/audio":
+                return panel.meeting_audio(str(q.get("id") or ""))
+            if path == "/api/meeting/card":
+                return panel.meeting_card(str(q.get("id") or ""))
             if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
                 etag = panel.tasks.etag()
                 body = json.dumps({"tasks": panel.task_list()}, ensure_ascii=False).encode()
@@ -4939,7 +5004,7 @@ def handler(panel: Panel):
             ouid = panel.auth.uid(self.session()) if self.session() else None
             if ouid is not None and (ouid == webauth.LEGACY or panel.is_owner(ouid)):
                 r0 = panel.focus.check_token(token)
-                if r0 and r0.get("mode") != focus.SPACE and not focus.Focus.is_demo(r0):
+                if r0 and r0.get("mode") not in (focus.SPACE, focus.MEETING) and not focus.Focus.is_demo(r0):
                     return {"ok": True, "owner_here": True, "w": r0.get("w") or "", "proj": r0.get("proj") or ""}
             value, rec = panel.focus.open(token, self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
@@ -4951,7 +5016,8 @@ def handler(panel: Panel):
                     panel.space_welcome(focus.vuid(rec["id"]), rec["space"], accept=rec.get("aud") == "self")
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
             return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""),
-                                       **({"mode": focus.SPACE} if rec.get("mode") == focus.SPACE else {})})
+                                       **({"mode": rec["mode"]} if rec.get("mode") in (focus.SPACE, focus.MEETING)
+                                          else {})})
 
         def focus_call(self, method: str, path: str, q: dict):
             """Запрос страницы в режиме фокуса: действующая ссылка этого устройства, путь из ``FOCUS_*``, окно — только
@@ -4962,6 +5028,13 @@ def handler(panel: Panel):
                 return self.json({"error": str(e), "code": "focus_gone"}, 410)
             except focus.Wait as e:                      # сессию перезапускают — ссылка жива, страница повторит
                 return self.json({"error": str(e), "code": "focus_wait"}, 503)
+            if focus.Focus.is_meeting(rec):              # ссылка на протокол: только он, ни сессий, ни прав владельца
+                if path not in (MEETING_GET if method == "GET" else MEETING_POST):
+                    return self.json({"error": "по ссылке доступен только этот протокол", "code": "focus_scope"}, 403)
+                if path == "/api/logout":
+                    gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
+                    return self.reply(200, b'{"ok": true}', cookie=gone)
+                return self.dispatch(lambda: panel.meeting_public(rec, path))
             proj_path = path in (FOCUS_PROJ_GET if method == "GET" else FOCUS_PROJ_POST)
             allowed = bool(rec.get("proj")) if proj_path else path in (FOCUS_GET if method == "GET" else FOCUS_POST)
             if focus.Focus.is_demo(rec):                 # демо-ссылка: только смотреть и выбирать вариант
@@ -5665,6 +5738,8 @@ def handler(panel: Panel):
                                          str(b.get("ttl") or "7d"), int(b.get("max", 3) or 0),
                                          str(b.get("rights") or "full"), str(b.get("name") or ""),
                                          str(b.get("audience") or "client"))
+            if path == "/api/meeting/share":               # «Ссылка на протокол»: только этот протокол, 30 дней
+                return panel.meeting_share(str(b.get("id") or ""), self.terms_uid(), str(b.get("base", "")))
             if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
                 return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
                                        str(b.get("proj") or ""), str(b.get("mode") or ""))

@@ -23,6 +23,10 @@ SHA-256 от токена и секрета устройства (``focus.json``
 отрицательный номер из id записи), ``People.virtual`` отдаёт ему роль (``member`` — полные права, ``viewer`` —
 только чтение) и пространство. Срок — от часа до «без срока», число устройств — ``max`` (0 — без ограничения).
 Истекла, отозвана, сверх устройств — ``Gone``, панель покажет «Ссылка не действует».
+
+Ссылка на протокол встречи (``mode: "meeting"``, владелец 22.11): только один протокол — плеер, оглавление, текст,
+«Что сделать» (``access.MEETING_GET``). Окна и сессии у неё нет; протокол — поле ``mt`` записи, не из запроса.
+Несколько устройств (участники встречи), не больше ``MEETING_MAX``; срок — 30 дней; «Отозвать» гасит все сразу.
 """
 
 from __future__ import annotations
@@ -52,6 +56,9 @@ SPACE = "space"                         # вид ссылки: панель пр
 SPACE_TTLS = {"1h": 3600, "1d": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "none": 0}   # 0 — без срока
 SPACE_MAX = (1, 3, 0)                   # устройств: 0 — без ограничения
 FOREVER = 100 * 365 * 86400             # «без срока» — запись живёт, пока не отзовут
+MEETING = "meeting"                     # вид ссылки: один протокол встречи (meetings.py)
+MEETING_MAX = 50                        # устройств на ссылку на протокол: участники встречи
+MEETING_TTL = 30 * 86400
 VUID_BASE = 2 ** 50                     # виртуальный человек ссылки: −(VUID_BASE + id записи); не Telegram ID
 
 
@@ -111,13 +118,18 @@ class Focus:
     def is_demo(rec: dict) -> bool:
         return rec.get("mode") == DEMO
 
+    @staticmethod
+    def is_meeting(rec: dict) -> bool:
+        return rec.get("mode") == MEETING
+
     def new(self, w: dict, by: int | None, ttl: int = TTL, proj: str | None = None, mode: str = "",
-            limit: int = FOCUS_MAX, rights: str = "full", audience: str = "client") -> dict:
+            limit: int = FOCUS_MAX, rights: str = "full", audience: str = "client", mt: str = "") -> dict:
         """Новая ссылка на окно ``w`` (из ``tmux.window``): {token, id, exp}. Токен показывается один раз.
         ``proj`` — ссылка на весь проект: ``w`` — {id: "", path, name} проекта, окна у ссылки нет.
         ``mode="demo"`` — демо-ссылка: несколько устройств (``devs``), только просмотр и выбор вариантов.
         ``mode="space"`` — панель пространства ``w["space"]``: ``ttl=0`` — без срока, ``limit`` устройств (0 — сколько
-        угодно), ``rights`` «full» или «read»."""
+        угодно), ``rights`` «full» или «read».
+        ``mode="meeting"`` — протокол встречи ``mt``: окна нет, несколько устройств (до ``MEETING_MAX``)."""
         token, rid, now = secrets.token_urlsafe(32), secrets.token_hex(6), time.time()
         forever = mode == SPACE and not ttl
         ttl = FOREVER if forever else ttl
@@ -126,6 +138,7 @@ class Focus:
             d[rid] = {"h": _h(token), "w": w["id"], "path": w.get("path", ""), "name": w.get("name", ""),
                       **({"proj": proj} if proj else {}),
                       **({"mode": DEMO, "devs": {}, "opens": 0} if mode == DEMO else {}),
+                      **({"mode": MEETING, "mt": str(mt), "devs": {}, "opens": 0} if mode == MEETING else {}),
                       **({"mode": SPACE, "devs": {}, "max": int(limit), "forever": forever,
                           "rights": "read" if rights == "read" else "full",
                           # для кого (штаб 21.11): «client» — человек сам соглашается с условиями строкой при первом
@@ -160,7 +173,7 @@ class Focus:
             rec = d[k]
             if not self.live(rec):
                 raise Gone(self.why(rec))
-            if self.is_demo(rec):
+            if self.is_demo(rec) or self.is_meeting(rec):
                 return self._open_demo(d, k, rec, cookie, device)
             if self._match(k, rec, cookie):
                 return cookie, {**rec, "id": k}
@@ -179,12 +192,14 @@ class Focus:
             return f"{k}.{secret}", {**rec, "id": k}
 
     def _open_demo(self, d: dict, k: str, rec: dict, cookie: str, device: str) -> tuple[str, dict]:
-        """Демо-ссылка: то же устройство — его cookie; новое — своё cookie, пока устройств меньше ``DEMO_MAX``."""
+        """Демо-ссылка (и ссылка на протокол): то же устройство — его cookie; новое — своё cookie, пока устройств меньше
+        ``DEMO_MAX`` (у протокола — ``MEETING_MAX``)."""
         if self._match(k, rec, cookie):
             return cookie, {**rec, "id": k}
         devs = rec.setdefault("devs", {})
-        if len(devs) >= DEMO_MAX:
-            raise Gone(f"Демо-ссылку уже открыли на {DEMO_MAX} устройствах — попросите новую.")
+        lim = MEETING_MAX if self.is_meeting(rec) else DEMO_MAX
+        if len(devs) >= lim:
+            raise Gone(f"Ссылку уже открыли на {lim} устройствах — попросите новую.")
         secret, now = secrets.token_urlsafe(32), int(time.time())
         devs[_h(secret)] = {"device": device[:60], "opened": now}
         rec["opens"] = int(rec.get("opens") or 0) + 1
@@ -200,7 +215,7 @@ class Focus:
         h = _h(secret)                                  # любое из открывших устройств (демо — до DEMO_MAX, обычная — 3)
         if any(hmac.compare_digest(x, h) for x in (rec.get("devs") or {})):
             return True
-        return rec.get("mode") != DEMO and bool(rec.get("dev")) and hmac.compare_digest(rec["dev"], h)
+        return rec.get("mode") not in (DEMO, MEETING) and bool(rec.get("dev")) and hmac.compare_digest(rec["dev"], h)
 
     def by_cookie(self, cookie: str) -> dict:
         """Запись по cookie устройства: действующая — {..., id}; погасла — ``Gone``; cookie чужой или нет — ``Gone``."""
@@ -235,7 +250,11 @@ class Focus:
         if rec.get("state") == "closed":
             return "Проект удалён." if rec.get("proj") else "Чат завершён."
         if rec.get("state") == "revoked":
+            if rec.get("mode") == MEETING:
+                return "Владелец отозвал ссылку на этот протокол."
             return f"Владелец отозвал эту {'демо' if rec.get('mode') == DEMO else 'фокус'}-ссылку."
+        if rec.get("mode") == MEETING:
+            return "Срок ссылки на протокол вышел — попросите новую."
         if rec.get("mode") == SPACE:
             return "Срок ссылки вышел — попросите новую."
         return "Срок фокус-ссылки вышел — попросите новую."
@@ -279,7 +298,7 @@ class Focus:
         with self.lock:
             d = self._load()
             rec = d.get(str(rid or ""))
-            if not rec or not self.live(rec) or self.is_demo(rec) or rec.get("mode") == SPACE:
+            if not rec or not self.live(rec) or self.is_demo(rec) or rec.get("mode") in (SPACE, MEETING):
                 return False
             rec["browser"] = bool(on)
             self._save(d)
@@ -301,6 +320,8 @@ class Focus:
                 "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", ""),
                 **({"mode": DEMO, "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
                    if v.get("mode") == DEMO else {}),
+                **({"mode": MEETING, "mt": v.get("mt"), "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
+                   if v.get("mode") == MEETING else {}),
                 **({"mode": SPACE, "devices": len(v.get("devs") or {}), "max": v.get("max", 0),
                     "rights": v.get("rights", "full"), "forever": bool(v.get("forever"))}
                    if v.get("mode") == SPACE else {})}
