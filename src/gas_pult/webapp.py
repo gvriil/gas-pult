@@ -88,6 +88,7 @@ from gas_pult import (
     projects,
     providers,
     qr,
+    recparts,
     repos,
     router,
     scenarios,
@@ -496,6 +497,7 @@ class Panel:
         self.mod_sched: tuple[float, dict] = (0.0, {})       # модуль → описание (schedule_of)
         self.sent: dict[str, tuple[threading.Event, float]] = {}     # id сообщения → (вставка, когда): без повторов
         self.stt_jobs: dict[str, dict] = {}              # фоновое распознавание (GAS-34): id → состояние
+        self.recparts = recparts.Parts(cfg.data / "rec-parts")   # запись по кускам: не теряется при блокировке
         self.repeat = router.Repeat()
         self.start_q: list[dict] = []                    # новые сессии, ждущие памяти (mem_gate)
         self.lock_q, self.q_thread = threading.Lock(), None
@@ -3528,8 +3530,11 @@ class Panel:
         d.mkdir(parents=True, exist_ok=True, mode=0o700)
         return d
 
-    def stt_job(self, data: bytes, ctype: str, uid, cloud: bool = True) -> dict:
-        if not data:
+    def stt_job(self, data: bytes | list[bytes], ctype: str, uid, cloud: bool = True) -> dict:
+        """``data`` — запись или её отрезки (запись по кускам после обрыва: у отрезка свой заголовок файла —
+        распознаём по отдельности, текст склеиваем)."""
+        segs = [x for x in (data if isinstance(data, list) else [data]) if x]
+        if not segs:
             raise ValueError(STT_EMPTY)
         ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
         d, jid = self._keep_dir(), uuid.uuid4().hex[:16]
@@ -3537,33 +3542,33 @@ class Panel:
         for f in d.iterdir():                             # старые нераспознанные — прочь
             if f.stat().st_mtime < old:
                 f.unlink(missing_ok=True)
-        f = d / f"{jid}.{ext}"
-        f.write_bytes(data)
-        f.chmod(0o600)
-        self.stt_jobs[jid] = {"state": "work", "uid": uid, "at": time.time(), "file": f.name, "cloud": cloud}
-        self.events.event("stt_start", "stt:" + jid, bytes=len(data))
+        names = []
+        for i, x in enumerate(segs):
+            f = d / (f"{jid}.{ext}" if not i else f"{jid}-{i}.{ext}")
+            f.write_bytes(x)
+            f.chmod(0o600)
+            names.append(f.name)
+        self.stt_jobs[jid] = {"state": "work", "uid": uid, "at": time.time(), "file": names[0], "cloud": cloud,
+                              **({"files": names} if len(names) > 1 else {})}
+        self.events.event("stt_start", "stt:" + jid, bytes=sum(map(len, segs)))
         threading.Thread(target=self._stt_run, args=(jid,), daemon=True, name=f"stt-{jid}").start()
         return {"job": jid}
 
     def _stt_run(self, jid: str):
         job = self.stt_jobs[jid]
-        f = self._keep_dir() / job["file"]
+        fs = [self._keep_dir() / n for n in job.get("files") or [job["file"]]]
+        f = fs[0]
         before = self.fallback_note()
         try:
-            data = f.read_bytes()
-            ext = f.suffix.lstrip(".")
-            text = ""
-            if job["cloud"] and self.voice_settings()["stt"] == "elevenlabs" and self.el_ok():
-                try:
-                    text = (providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}") or "").strip()
-                except (providers.ProviderError, KeyError) as e:
-                    self.voice_fallback("распознавание", e)
-            if not text:
-                text = (voice.transcribe_any(f, self.cfg.whisper_model, STT_JOB_TIMEOUT, self.cfg.data) or "").strip()
+            parts = []
+            for x in fs:                                  # отрезки записи (после обрыва) — по отдельности
+                parts.append(self._stt_file(x, job["cloud"]))
+            text = " ".join(t for t in parts if t).strip()
             if not text:
                 raise ValueError(STT_EMPTY)
             now = self.fallback_note()
-            f.unlink(missing_ok=True)                     # текст есть — голос не храним
+            for x in fs:
+                x.unlink(missing_ok=True)                 # текст есть — голос не храним
             fb = now if now and now != before else ""
             self.events.event("stt_done", "stt:" + jid, secs=round(time.time() - job["at"], 1), len=len(text),
                               fallback=bool(fb))
@@ -3572,6 +3577,25 @@ class Panel:
             job.update(state="fail", error=str(e) or type(e).__name__, kept=f.exists())
             self.events.event("stt_fail", "stt:" + jid, secs=round(time.time() - job["at"], 1), err=type(e).__name__)
             print(f"распознавание {jid}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+
+    def _stt_file(self, f: Path, cloud: bool) -> str:
+        text = ""
+        if cloud and self.voice_settings()["stt"] == "elevenlabs" and self.el_ok():
+            try:
+                ext = f.suffix.lstrip(".")
+                text = (providers.el_stt(providers.load_keys()["elevenlabs"], f.read_bytes(), f"voice.{ext}")
+                        or "").strip()
+            except (providers.ProviderError, KeyError) as e:
+                self.voice_fallback("распознавание", e)
+        return text or (voice.transcribe_any(f, self.cfg.whisper_model, STT_JOB_TIMEOUT, self.cfg.data) or "").strip()
+
+    def rec_finish(self, owner: str, rid: str, uid, cloud: bool = True) -> dict:
+        """«Стоп» записи по кускам: куски с сервера — в фоновое распознавание (как ``/api/stt?job=1``); сеанс — прочь.
+        Не хватает куска — ``ValueError`` (панель дошлёт и повторит или отправит запись целиком)."""
+        segs, ctype = self.recparts.assemble(owner, rid)
+        out = self.stt_job(segs, ctype, uid, cloud)
+        self.recparts.drop(owner, rid)
+        return {**out, "segs": len(segs)}
 
     def stt_job_get(self, jid: str, uid) -> dict:
         job = self.stt_jobs.get(str(jid))
@@ -4350,6 +4374,10 @@ def handler(panel: Panel):
         def client(self) -> tuple[str, str]:
             return self.client_ip(), self.headers.get("User-Agent", "")
 
+        def rec_owner(self) -> str:
+            """Чей сеанс записи: человек, пространство и фокус-ссылка — чужой сеанс не виден и не дописывается."""
+            return f"{self.terms_uid()}:{self.space() or ''}:{(self.focused or {}).get('id', '')}"
+
         def body(self) -> bytes:
             if self.raw is not None:
                 return self.raw
@@ -4580,6 +4608,8 @@ def handler(panel: Panel):
                 # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
                 return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
                                           self.space() or "", str(q.get("occ") or ""))
+            if path == "/api/rec/status":                 # запись по кускам: что уже на сервере (после обрыва)
+                return panel.recparts.status(self.rec_owner(), str(q.get("id", "")))
             if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
                 return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
@@ -5075,7 +5105,7 @@ def handler(panel: Panel):
             if not allowed:
                 return self.json({"error": "по фокус-ссылке доступна только её сессия", "code": "focus_scope"}, 403)
             b: dict = {}
-            if method == "POST" and path not in ("/api/upload", "/api/stt", "/api/space/upload"):
+            if method == "POST" and path not in ("/api/upload", "/api/stt", "/api/space/upload", "/api/rec/chunk"):
                 try:
                     self.raw = self.body()
                     b = json.loads(self.raw or b"{}")
@@ -5415,6 +5445,14 @@ def handler(panel: Panel):
                 out = {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
                 upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
                 return out
+            if path == "/api/rec/chunk":                    # кусок записи (~10 с): не теряется при блокировке
+                rq = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query))
+                try:
+                    seg, seq = int(rq.get("seg", 0)), int(rq.get("seq", -1))
+                except ValueError:
+                    raise ValueError("неверный номер куска") from None
+                return panel.recparts.add(self.rec_owner(), str(rq.get("id", "")), seg, seq, self.body(),
+                                          self.headers.get("Content-Type", ""))
             if path == "/api/stt" and "job=1" in urllib.parse.urlparse(self.path).query:   # фоново, GAS-34
                 return panel.stt_job(self.body(), self.headers.get("Content-Type", ""), self.terms_uid(),
                                      cloud=not self.space())
@@ -5424,6 +5462,11 @@ def handler(panel: Panel):
                 now = panel.fallback_note()
                 return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
+            if path == "/api/rec/finish":                  # «Стоп»: куски с сервера — в распознавание
+                return panel.rec_finish(self.rec_owner(), str(b.get("id", "")), self.terms_uid(),
+                                        cloud=not self.space())
+            if path == "/api/rec/drop":                    # «Отменить запись»: куски — прочь
+                return {"ok": panel.recparts.drop(self.rec_owner(), str(b.get("id", "")))}
             if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
                 return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
             if path == "/api/share/devices/new":           # токен «Быстрой команды»: показываем один раз

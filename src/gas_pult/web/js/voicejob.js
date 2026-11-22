@@ -27,8 +27,11 @@ const sleep = (ms, signal) => new Promise((ok, no) => { const t = setTimeout(ok,
 const ids = new WeakMap();                           // «Повторить» той же записи — та же запись здесь, без копий
 export async function sttJob(blob, signal) {
   const id = ids.get(blob) || crypto.randomUUID?.() || String(Date.now()); ids.set(blob, id);
-  await put(id, { blob, type: blob.type, at: Date.now() }); flag();
-  const { job } = await api("/api/stt?job=1", blob, blob.type, null, signal);
+  // запись по кускам (js/recsafe.js): куски уже на сервере — распознаём их; не вышло — запись целиком, как раньше
+  let job = null;
+  if (blob.rec) { try { job = (await blob.rec.finish()).job; } catch (e) { if (!blob.size) throw e; } }
+  if (!job) { await put(id, { blob, type: blob.type, at: Date.now() }); flag(); }
+  job ||= (await api("/api/stt?job=1", blob, blob.type, null, signal)).job;
   const t0 = Date.now();
   while (Date.now() - t0 < MAX_WAIT) {
     await sleep(POLL, signal);

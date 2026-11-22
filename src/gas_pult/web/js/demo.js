@@ -555,6 +555,10 @@ function demoApi(path, body) {
   if (key === "/api/persona") return Promise.resolve(demoUi(body));
   if (key === "/api/team") return Promise.resolve(demoTeam(body));
   if (key === "/api/terms/accept") { demoApi.terms = 1; return Promise.resolve({ ...R["/api/terms"], accepted: true, at: Date.now() / 1000 | 0 }); }
+  if (key === "/api/rec/chunk") { demoApi.recN = (demoApi.recN || 0) + 1; return Promise.resolve({ ok: true, have: demoApi.recN }); }   // запись по кускам (22.11)
+  if (key === "/api/rec/finish") { demoApi.sttAt = Date.now(); return Promise.resolve({ job: "demo", segs: 2 }); }
+  if (key === "/api/rec/drop") return Promise.resolve({ ok: true });
+  if (key === "/api/rec/status") return Promise.resolve({ have: 0, bytes: 0, segs: [], missing: [] });
   if (key === "/api/stt" && path.includes("job=1")) { demoApi.sttAt = Date.now(); return Promise.resolve({ job: "demo" }); }   // GAS-34
   if (key === "/api/stt/job") {
     const m = params.get("stt"), done = Date.now() - (demoApi.sttAt || 0) > 2500;
