@@ -36,6 +36,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -5885,6 +5886,17 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
             except Exception as e:
                 print("остатки озвучки:", e, flush=True)
     threading.Thread(target=sweep, daemon=True).start()
+
+    def alive():                                           # отметка heartbeat-web и без посетителей: запрос к себе
+        while True:                                        # же — сервер отвечает, значит панель жива (#438)
+            time.sleep(alerts.BEAT_EVERY)
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/alive", timeout=10).close()
+            except urllib.error.HTTPError:
+                pass                                       # ответ есть (401) — отметка уже записана
+            except OSError as e:
+                print("проверка жизни панели:", e, flush=True)
+    threading.Thread(target=alive, daemon=True).start()
     proc = None
     if use_tunnel:
         proc, url = tunnel(port)
