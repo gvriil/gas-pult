@@ -212,6 +212,7 @@ def scan(src: str | None = None) -> dict[str, dict]:
     w = _Walk(env)
     w.visit(tree)
     out: dict[str, dict] = {}
+    v1 = False
 
     def put(path: str, method: str, fn: str, branch: ast.AST | None):
         r = out.setdefault(path, {"methods": set(), "open": set(), "src": set(), "in": [], "out": [], "calls": []})
@@ -234,6 +235,8 @@ def scan(src: str | None = None) -> dict[str, dict]:
                 for m in ("GET", "POST"):
                     if p in (access.FOCUS_GET if m == "GET" else access.FOCUS_POST):
                         put(p, m, fn, br)
+            elif p == access.V1_PREFIX:                  # /api/v1/<путь> — разворачиваем по белому списку ниже
+                v1 = True
             elif p.endswith("/"):
                 if p not in PREFIX_ROUTES:
                     raise LookupError(f"маршрут-префикс {p} — добавьте в PREFIX_ROUTES")
@@ -247,6 +250,19 @@ def scan(src: str | None = None) -> dict[str, dict]:
             for m, ok in zip(("GET", "POST"), FOCUS_TABLES[fn], strict=True):
                 if p in ok:
                     put(p, m, fn, br)
+    if v1:                                               # 1С и CRM: псевдоним /api/X по токену (access.V1_*)
+        for m, table in (("GET", access.V1_GET), ("POST", access.V1_POST)):
+            for group, paths in table.items():
+                for base in paths:
+                    r = out.setdefault(access.V1_PREFIX + base.removeprefix("/api/"),
+                                       {"methods": set(), "open": set(), "src": set(), "in": [], "out": [],
+                                        "calls": [], "v1": base, "groups": []})
+                    r["methods"].add(m)
+                    r["src"].add("v1_call")
+                    r["groups"].append(group)
+                    b = out.get(base) or {}
+                    for k in ("in", "out", "calls"):
+                        r[k] = list(dict.fromkeys(r[k] + b.get(k, [])))
     for r in out.values():
         r["methods"] = sorted(r["methods"])
         r["open"] = sorted(r["open"])
@@ -256,12 +272,14 @@ def scan(src: str | None = None) -> dict[str, dict]:
 
 # -------------------------------------------------------------------------------------------------------- права
 ROLE_RU = {"owner": "владелец", "admin": "владелец и админ", "member": "участник и выше", "viewer": "любой вошедший",
-           "open": "без входа", "focus": "только по фокус-ссылке"}
+           "open": "без входа", "focus": "только по фокус-ссылке", "token": "по токену"}
 
 
 def who(path: str, method: str, r: dict, free: set[str]) -> dict:
     """Кто может: та же формула, что ``Handler.permit`` (роль) + особые таблицы (метки)."""
     a = access
+    if r.get("v1"):                                         # Bearer-токен 1С и CRM, права выпустившего
+        return {"role": "token", "tags": ["V1", *(f"v1:{g}" for g in r["groups"])]}
     if method in r["open"] and path not in a.HELP_OPEN:   # до permit: вход, коды, токены устройства
         role = "open"
     elif r["focus_only"]:                                   # только cookie фокус-ссылки (focus_call)
@@ -313,6 +331,9 @@ TAGS_RU = {
     "DEMO": "по демо-ссылке (просмотр и выбор вариантов)",
     "MEETING": "по ссылке на протокол встречи (только её протокол)",
     "cap:": "потолок возможностей человека (personas.PATH_CAP)",
+    "V1": "псевдоним `/api/<путь>` для 1С и CRM: `Authorization: Bearer`, права выпустившего; запись — у токена "
+          "с «запись» (docs/API-V1.md)",
+    "v1:": "группа прав токена (`access.V1_GET` / `access.V1_POST`)",
 }
 
 
@@ -572,6 +593,11 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/messengers/link": ("Signal / WhatsApp: привязка — QR картинкой", "svc", "linked, qr"),
     "/api/messengers/chats": ("Мессенджеры: чаты для «Чаты для модели»", "svc", "chats"),
     "/api/messengers/allow": ("Мессенджеры: какие чаты видит модель", "svc, chats", "allowed"),
+    # --- токены для 1С и CRM (apitokens.py; пути /api/v1/… — псевдонимы, описание берётся у исходного пути)
+    "/api/apitokens": "Свои токены для 1С и CRM (без значений), условия и группы прав",
+    "/api/apitokens/new": ("Новый токен: показывается один раз; группы прав, «запись», срок",
+                           "name, write, days, groups", ""),
+    "/api/apitokens/revoke": "Отозвать свой токен",
     # --- протоколы встреч (meetings.py)
     "/api/meetings": "Протоколы встреч: список",
     "/api/meeting": "Протокол встречи: оглавление, «Что сделать», текст, ссылки на него",
@@ -651,6 +677,7 @@ GROUPS = (   # раздел документа → первые части пу�
     ("Пространства", ("spaces", "space")),
     ("Протоколы встреч", ("meetings", "meeting", "mt")),
     ("Анкеты и предложения клиентам", ("q", "offer")),
+    ("API v1 для 1С и CRM", ("v1", "apitokens")),
 )
 
 
@@ -675,8 +702,10 @@ def entries() -> list[dict]:
     free = _free(tree, _env(tree))
     out = []
     for path, r in scan(src).items():
-        d = DESCR.get(path, "")
+        d = DESCR.get(r.get("v1") or path, "")
         text, more_in, more_out = (d, "", "") if isinstance(d, str) else d
+        if r.get("v1"):                                  # псевдоним: описание исходного пути + откуда права
+            text = f"По токену: `{r['v1']}` — {text} (белый список `access.V1_*`, docs/API-V1.md)"
         for m in r["methods"]:
             ins, outs = _split(more_in), _split(more_out)
             ins += [x for x in r["in"] if x not in ins]
@@ -718,6 +747,7 @@ def markdown() -> str:
         "| без входа | обрабатывается до проверки входа: свой код, токен или подпись "
         "(вход, приглашение, мост, анкета) |",
         "| только по фокус-ссылке | путь есть только в режиме фокуса (`focus_do`); обычной панели — 404 |",
+        "| по токену | `/api/v1/…`: Bearer-токен из «Токены для 1С и CRM», путь — из белого списка `access.V1_*` |",
         "",
         "Метки:",
         "",
@@ -746,7 +776,7 @@ def openapi() -> dict:
                     "operationId": (e["method"].lower() + "_" + re.sub(r"[^a-z0-9]+", "_", e["path"][5:])).strip("_"),
                     "x-access": {"role": e["role"], "tags": e["tags"]}}
         if e["role"] != "open":                    # фокус-ссылка — своя cookie, тоже сессия устройства
-            op["security"] = [{"session": []}]
+            op["security"] = [{"bearer": []}] if e["role"] == "token" else [{"session": []}]
         params = [{"name": x, "in": "path", "required": True, "schema": {"type": "string"}}
                   for x in re.findall(r"{(\w+)}", e["path"])]
         names = [x for x in e["in"] if re.fullmatch(r"[a-z_]+", x)]
@@ -771,7 +801,9 @@ def openapi() -> dict:
                                 "Права — x-access (роль и метки, см. docs/API.md)."},
         "components": {
             "securitySchemes": {"session": {"type": "apiKey", "in": "cookie", "name": "gp_session",
-                                            "description": "Сессия браузера; в Mini App — подпись Telegram"}},
+                                            "description": "Сессия браузера; в Mini App — подпись Telegram"},
+                                "bearer": {"type": "http", "scheme": "bearer",
+                                           "description": "Токен для 1С и CRM (/api/v1, docs/API-V1.md)"}},
             "responses": {"Error": {"description": "ошибка", "content": {"application/json": {"schema": {
                 "type": "object", "properties": {"error": {"type": "string"}, "code": {"type": "string"}}}}}}},
         },
