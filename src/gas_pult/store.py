@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import itertools
 import json
 import os
 import threading
@@ -51,6 +52,14 @@ MIGRATIONS: dict[str, list[tuple[int, Callable]]] = {
 _guard = threading.Lock()
 _locks: dict[str, threading.RLock] = {}
 _held = threading.local()
+_gen = itertools.count(1)
+
+
+def hold(path) -> int | None:
+    """Номер текущего захвата ``locked(path)`` этим потоком (новый на каждый внешний захват) или None — замок не
+    взят. Пока захват длится, файл (и его коллекцию в SQLite) никто другой не пишет — ``sqlstore`` по нему верит
+    кэшу коллекции."""
+    return (getattr(_held, "g", None) or {}).get(_key(Path(path)))
 
 
 def _key(path: Path) -> str:
@@ -80,9 +89,14 @@ def locked(path):
         with open(path.with_name(f".{path.name}.lock"), "a") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
             depth[key] = 1
+            gens = getattr(_held, "g", None)
+            if gens is None:
+                gens = _held.g = {}
+            gens[key] = next(_gen)
             try:
                 yield
             finally:
+                gens.pop(key, None)
                 depth[key] = 0
                 fcntl.flock(fh, fcntl.LOCK_UN)
 
@@ -125,6 +139,18 @@ def load(path, default: Callable = dict, name: str | None = None):
     if path.name in sqlstore.COLLECTIONS and sqlstore.marker(path).exists():   # возврат с sqlite: выгрузить в JSON
         sqlstore.heal(path)
     return load_json(path, default, name)
+
+
+def get(path, key, name: str | None = None):
+    """Одна запись файла-словаря по ключу верхнего уровня (нет — None). В режиме sqlite — одна строка базы по ключу
+    (``sqlstore.get``), без чтения коллекции; в json и dual — как ``load(path).get(key)``. Записано в старой версии
+    схемы — через ``load`` (миграции — на весь файл)."""
+    path = Path(path)
+    if sqlstore.mode_for(path) == "sqlite" and sqlstore.shape(path.name) is dict:
+        s, v = sqlstore.get(path, str(key))
+        if v >= version(name or path.name):
+            return json.loads(s) if s is not None else None
+    return load(path, dict, name).get(str(key))
 
 
 def load_json(path, default: Callable = dict, name: str | None = None):

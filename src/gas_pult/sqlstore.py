@@ -24,6 +24,17 @@ JSON. Обратно так же: в режиме sqlite JSON, изменённ�
 Запись — только изменённых строк (сравнение с тем, что в базе). Колонки и индексы для поиска — потом, миграцией
 по номеру, когда понадобится запрос, а не чтение всего файла.
 
+Чтение одной записи (``get`` — роль и пространство человека на каждый запрос панели) — одна строка ``kv`` по ключу
+(collection, key), без чтения коллекции. Коллекция целиком (``read``, сравнение при записи) — из кэша строк соединения;
+кэш верен, пока не изменились ``PRAGMA data_version`` (коммит другого соединения — другой процесс или поток) и
+``total_changes`` своего соединения, или пока длится тот же захват ``store.locked`` файла, под которым кэш проверен;
+откат транзакции кэш соединения сбрасывает. Запись сравнивает записи со снимком (``marshal``) и сериализует заново
+только изменённые.
+
+Запись — под замком базы (``flock`` на ``.pult.sqlite3.lock``, тот же, что у копии JSON): бот, панель и их потоки
+пишут разные коллекции в одну базу, а ожидание занятой базы у SQLite — сон с шагом до 100 мс (busy handler), не
+пробуждение по освобождению. ``flock`` будит ждущего сразу. Порядок замков — всегда «файл коллекции → база».
+
 База — ``<папка данных>/pult.sqlite3`` (0600), рядом с JSON-файлами коллекции. WAL — читатели не ждут писателя (бот и
 панель — разные процессы). ``synchronous=FULL``: каждая запись JSON сейчас делает fsync (``config.write_private``) —
 FULL сохраняет ту же гарантию «записано — переживёт отключение питания»; в WAL это один fsync на транзакцию, при
@@ -35,6 +46,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import marshal
 import os
 import shutil
 import sqlite3
@@ -133,6 +145,18 @@ def set_config_mode(m: str) -> Path:
 _local = threading.local()
 
 
+def _cache(con) -> dict:
+    """Кэш строк коллекций соединения ``con``: {коллекция: ((data_version, total_changes), {ключ: json}, текст)}."""
+    c = getattr(_local, "rows", None)
+    if c is None:
+        c = _local.rows = {}
+    return c.setdefault(id(con), {})
+
+
+def _forget(con):
+    getattr(_local, "rows", {}).pop(id(con), None)
+
+
 def db_path(data) -> Path:
     return Path(data) / DB_NAME
 
@@ -165,6 +189,7 @@ def connect(data) -> sqlite3.Connection:
     if (con := cache.get(key)) is not None:
         if path.exists():
             return con
+        _forget(con)
         con.close()                         # файл убрали (тесты, ручная очистка) — открыть заново
         del cache[key]
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -178,6 +203,7 @@ def connect(data) -> sqlite3.Connection:
     for x in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
         with contextlib.suppress(OSError):
             x.chmod(0o600)
+    _forget(con)                            # id нового соединения мог достаться от закрытого
     cache[key] = con
     return con
 
@@ -188,9 +214,24 @@ def tx(con: sqlite3.Connection):
     try:
         yield con
     except BaseException:
+        _forget(con)                        # кэш мог запомнить строки, которых после отката нет
         con.execute("ROLLBACK")
         raise
-    con.execute("COMMIT")
+    try:
+        con.execute("COMMIT")
+    except BaseException:
+        _forget(con)
+        raise
+
+
+@contextlib.contextmanager
+def wtx(data):
+    """Транзакция записи в базу папки ``data`` под замком базы (``flock`` — см. начало файла)."""
+    from gas_pult import store
+    with store.locked(db_path(data)):
+        con = connect(data)
+        with tx(con):
+            yield con
 
 
 def json_sig(path) -> str:
@@ -236,32 +277,101 @@ def from_rows(name: str, rows: dict):
     return rows
 
 
+_ENC = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"))
+
+
 def _dump(v) -> str:
-    return json.dumps(v, ensure_ascii=False, separators=(",", ":"))
+    return _ENC.encode(v)
 
 
 def _rows(con, name: str) -> dict[str, str]:
     return dict(con.execute("SELECT key, json FROM kv WHERE collection = ?", (name,)))
 
 
-def _write(con, name: str, d) -> int:
-    """Привести строки коллекции к ``d`` (вид файла): только изменённые, лишние — удалить. Вызывать в транзакции."""
-    old, now, n = _rows(con, name), int(time.time()), 0
+def _sig(con) -> tuple[int, int]:
+    return con.execute("PRAGMA data_version").fetchone()[0], con.total_changes
+
+
+class _Rows:
+    """Кэш коллекции в соединении: строки {ключ: json}, их текст целиком и снимок записей (``marshal``) для сравнения
+    при записи. ``hold`` — номер захвата замка файла (``store.hold``), при котором строки были верны: пока этот захват
+    длится, коллекцию никто другой не пишет, и кэш верен, даже если база менялась (другие коллекции)."""
+    __slots__ = ("hold", "rows", "sig", "snap", "text")
+
+    def __init__(self, sig, hold, rows, snap=None):
+        self.sig, self.hold, self.rows, self.text, self.snap = sig, hold, rows, None, snap
+
+
+def _cached(con, path) -> _Rows:
+    """Строки коллекции — из кэша соединения, если база с тех пор не менялась. Строки не менять на месте."""
+    from gas_pult import store
+    name, c, sig, hold = path.name, _cache(con), _sig(con), store.hold(path)
+    e = c.get(path.name)
+    if e is not None and e.sig == sig:
+        e.hold = e.hold if hold is None else hold
+        return e
+    if e is not None and e.hold is not None and e.hold == hold:
+        return e
+    e = c[name] = _Rows(sig, hold, _rows(con, name))
+    return e
+
+
+def _remember(con, path, rows: dict[str, str], snap: dict[str, bytes]):
+    """После своей записи: строки коллекции такие (подпись — после всех изменений транзакции)."""
+    from gas_pult import store
+    _cache(con)[path.name] = _Rows(_sig(con), store.hold(path), rows, snap)
+
+
+def _snap(v) -> bytes | None:
+    """Снимок записи для сравнения «не менялась ли»: ``marshal`` различает типы (1, 1.0 и True — разные) и порядок
+    ключей, как и текст JSON, но в несколько раз дешевле ``json.dumps``. Разные байты при равных данных (например,
+    строка с пометкой interned) — лишь лишнее сравнение текста, не пропуск изменения."""
+    try:
+        return marshal.dumps(v, 2)
+    except ValueError:
+        return None
+
+
+def _key(k: str) -> str:
+    return f'"{k}"' if k.isalnum() and k.isascii() else json.dumps(k)
+
+
+def _data(con, path):
+    """Коллекция в виде файла: один ``json.loads`` собранного текста (текст кэшируется вместе со строками)."""
+    e = _cached(con, path)
+    if e.text is None:
+        e.text = "{" + ",".join(f"{_key(k)}:{v}" for k, v in e.rows.items()) + "}"
+    d = json.loads(e.text)
+    if e.snap is None:                      # до того, как вызывающий изменит записи на месте
+        e.snap = {k: _snap(v) for k, v in d.items()}
+    return from_rows(path.name, d)
+
+
+def _write(con, path, d) -> tuple[dict[str, str], dict[str, bytes]]:
+    """Привести строки коллекции к ``d`` (вид файла): только изменённые, лишние — удалить. Вызывать в транзакции.
+    Записи с тем же снимком (``_snap``) не сериализуются заново. Возвращает новые строки и снимки — для
+    ``_remember`` после остальных изменений транзакции."""
+    name = path.name
+    e = _cached(con, path)
+    old, snap, now, new, nsnap = e.rows, e.snap or {}, int(time.time()), {}, {}
     for k, v in to_rows(name, d).items():
-        s = _dump(v)
-        if old.pop(str(k), None) != s:
+        k = str(k)
+        m = nsnap[k] = _snap(v)
+        if m is not None and k in old and snap.get(k) == m:
+            new[k] = old[k]
+            continue
+        s = new[k] = _dump(v)
+        if old.get(k) != s:
             con.execute("INSERT INTO kv (collection, key, json, updated) VALUES (?, ?, ?, ?) ON CONFLICT"
                         "(collection, key) DO UPDATE SET json = excluded.json, updated = excluded.updated",
-                        (name, str(k), s, now))
-            n += 1
-    for k in old:
+                        (name, k, s, now))
+    for k in old.keys() - new.keys():
         con.execute("DELETE FROM kv WHERE collection = ? AND key = ?", (name, k))
-        n += 1
-    return n
+    return new, nsnap
 
 
-def read(path) -> tuple[dict | list, int]:
-    """Коллекция файла ``path`` из SQLite: (данные, версия схемы). Не переносилась — сначала перенос из JSON."""
+def _open(path) -> tuple[sqlite3.Connection, dict]:
+    """Соединение и сведения о коллекции ``path``; не переносилась или JSON менялся мимо SQLite — сначала перенос."""
     path = Path(path)
     prepare(path.parent)
     con = connect(path.parent)
@@ -271,7 +381,21 @@ def read(path) -> tuple[dict | list, int]:
             warn(f"{path.name}: JSON менялся мимо SQLite (режим json) — переношу его в SQLite заново")
         import_json(path)
         info = _info(con, path.name)
-    return from_rows(path.name, {k: json.loads(v) for k, v in _rows(con, path.name).items()}), info["version"]
+    return con, info
+
+
+def read(path) -> tuple[dict | list, int]:
+    """Коллекция файла ``path`` из SQLite: (данные, версия схемы). Не переносилась — сначала перенос из JSON."""
+    con, info = _open(path)
+    return _data(con, Path(path)), info["version"]
+
+
+def get(path, key: str) -> tuple[str | None, int]:
+    """Одна запись коллекции-словаря из SQLite — одна строка ``kv`` по (коллекция, ключ): (json или None, версия
+    схемы). Перенос из JSON — как у ``read``."""
+    con, info = _open(path)
+    r = con.execute("SELECT json FROM kv WHERE collection = ? AND key = ?", (Path(path).name, str(key))).fetchone()
+    return (r[0] if r else None), info["version"]
 
 
 def write(path, d, version: int, *, sync_sig: bool):
@@ -279,13 +403,13 @@ def write(path, d, version: int, *, sync_sig: bool):
     запомнить его подпись как «совпадает с SQLite»."""
     path = Path(path)
     prepare(path.parent)
-    con = connect(path.parent)
-    with tx(con):
-        _write(con, path.name, d)
+    with wtx(path.parent) as con:
+        rows = _write(con, path, d)
         kw = {"version": version, "imported": True}
         if sync_sig:
             kw["json_sig"] = json_sig(path)
         _set_info(con, path.name, **kw)
+        _remember(con, path, *rows)
 
 
 def dual_write(path, d, version: int, sig_before: str):
@@ -322,10 +446,10 @@ def import_json(path) -> int:
     path = Path(path)
     with store.locked(path):
         d = store.load_json(path, shape(path.name))
-        con = connect(path.parent)
-        with tx(con):
-            _write(con, path.name, d)
+        with wtx(path.parent) as con:
+            rows = _write(con, path, d)
             _set_info(con, path.name, version=store.version(path.name), json_sig=json_sig(path), imported=True)
+            _remember(con, path, *rows)
         return len(d)
 
 
@@ -337,7 +461,7 @@ def export_json(path) -> int:
         con = connect(path.parent)
         d = from_rows(path.name, {k: json.loads(v) for k, v in _rows(con, path.name).items()})
         store.save_json(path, d, ensure_ascii=False)
-        with tx(con):
+        with wtx(path.parent) as con:
             _set_info(con, path.name, json_sig=json_sig(path), imported=True)
         marker(path).unlink(missing_ok=True)
         return len(d)
