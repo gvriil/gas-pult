@@ -196,8 +196,8 @@ class Auth:
                 self._save(d)
 
 
-def device(ua: str) -> str:
-    """Устройство коротко — для «вошёл: имя, устройство, время»: «iPhone · Safari», «Windows · Chrome»."""
+def device_parts(ua: str) -> tuple[str, str]:
+    """Устройство и браузер по User-Agent понятными именами: («iPhone», «Safari»); не узнали — пустая строка."""
     ua = ua or ""
     os_ = next((n for k, n in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"),
                                ("Mac OS X", "Mac"), ("Macintosh", "Mac"), ("CrOS", "Chromebook"), ("Linux", "Linux"))
@@ -205,7 +205,12 @@ def device(ua: str) -> str:
     br = next((n for k, n in (("YaBrowser", "Яндекс Браузер"), ("Edg/", "Edge"), ("OPR/", "Opera"),
                               ("Firefox/", "Firefox"), ("CriOS", "Chrome"), ("Chrome/", "Chrome"),
                               ("Safari/", "Safari")) if k in ua), "")
-    return " · ".join(x for x in (os_, br) if x) or "браузер"
+    return os_, br
+
+
+def device(ua: str) -> str:
+    """Устройство коротко — для «вошёл: имя, устройство, время»: «iPhone · Safari», «Windows · Chrome»."""
+    return " · ".join(x for x in device_parts(ua) if x) or "браузер"
 
 
 def cookie_value(header: str) -> str:

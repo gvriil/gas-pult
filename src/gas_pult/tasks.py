@@ -48,7 +48,10 @@ QUADRANTS = {1: "Срочно и важно — сделать сейчас", 2:
 Q_ORDER = {1: 0, 0: 1, 2: 2, 3: 3, 4: 4}          # «не разобрано» — сразу после срочного и важного
 MAX = 500                       # больше — самые старые выполненные уходят
 LIMITS = {"title": 200, "next": 300, "cmd": 2000, "phone": 40, "to": 120, "draft": 4000, "with": 200, "when": 80,
-          "question": 500, "link": 500, "chat": 20, "sid": 36, "by": 60, "due": 10, "chat_title": 80}
+          "question": 500, "link": 500, "chat": 20, "sid": 36, "by": 60, "due": 10, "chat_title": 80,
+          # отчёт об ошибке из чата (teammsg.py): проект, устройство, браузер, текст человека, куда ответить
+          "proj": 60, "device": 80, "browser": 80, "text": 2000, "team_to": 300}
+RAW = ("cmd", "draft", "text")  # строки без схлопывания пробелов и переводов строк
 
 
 def clean(d: dict) -> dict:
@@ -56,7 +59,7 @@ def clean(d: dict) -> dict:
     out = {}
     for k, n in LIMITS.items():
         if k in d and d[k] is not None:
-            out[k] = " ".join(str(d[k]).split())[:n] if k not in ("cmd", "draft") else str(d[k])[:n].strip()
+            out[k] = " ".join(str(d[k]).split())[:n] if k not in RAW else str(d[k])[:n].strip()
     for k in ("urgent", "important"):                    # да / нет / не оценено (None)
         if k in d:
             out[k] = yes(d[k])
@@ -227,6 +230,12 @@ class Tasks:
                 new["result"] = {k: d["result"][k] for k in ("code", "at") if k in d["result"]}
             items[items.index(t)] = new
             self._save(items)
+        if new["status"] == "done" and t.get("status") != "done" and new.get("team_to"):
+            try:                                            # отчёт об ошибке закрыт — «Исправлено» человеку в чат
+                from gas_pult import teammsg
+                teammsg.on_done(self.path.parent, new)
+            except (OSError, ValueError) as e:
+                print("team_msg:", e, flush=True)
         return new
 
     def remove(self, tid: str) -> bool:

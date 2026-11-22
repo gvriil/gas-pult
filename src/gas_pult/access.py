@@ -234,3 +234,12 @@ assert not ({p for g in V1_POST.values() for p in g} | {p for g in V1_GET.values
 # Выпуск и отзыв токенов — свои: владелец пульта и человек пространства (не наблюдатель); не по ссылкам.
 SPACE_OK |= set(APITOKENS)
 SLINK_NO |= set(APITOKENS)
+# Сообщения команды в чат и «Сообщить об ошибке» (teammsg.py, владелец 22.11): написать в чат окна или проекта —
+# только владелец (штаб — ещё и ``gas-pult chat say``); отчёт об ошибке — каждый, кто видит чат: свой чат, своё
+# пространство, фокус-ссылка — только её окно (``H.focus_call``), наблюдатель тоже; демо-ссылке — нет.
+TEAM_SAY = "/api/team/say"
+BUG = "/api/bug"
+OWNER_ONLY |= {TEAM_SAY}
+SPACE_OK |= {BUG}
+FOCUS_POST |= {BUG}
+

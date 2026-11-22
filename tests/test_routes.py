@@ -554,7 +554,7 @@ def test_fork_tables_keep_chain_paths():
                                     "/api/space/mcp/add", "/api/space/mcp/remove", *webapp.CONFIRM_API,
                                     "/api/tty/type", "/api/tty/key", "/api/tty/size"}
     assert set(routes.POST_W) == {"/api/mcp/finish", "/api/chat/mcp", "/api/space/connect", "/api/help/call",
-                                  "/api/run", "/api/run/term"}
+                                  "/api/run", "/api/run/term", "/api/bug"}
     assert all(routes.POST_P[p] is routes.messengers.messengers_post for p in routes.messengers.POST_PATHS)
 
 

@@ -44,11 +44,12 @@ from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут
     share,
     spaces,
     tasks,
+    team,
     voice,
 )
 
 AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens, model_keys, integrations,
-         projects, spaces, bridge, focus, people, commands)
+         projects, spaces, bridge, focus, people, commands, team)
 KINDS = ("GET", "GET_W", "GET_P", "POST_RAW", "POST", "POST_P", "POST_W")
 
 

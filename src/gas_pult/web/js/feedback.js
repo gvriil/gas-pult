@@ -4,7 +4,7 @@
 
 const MAX = 1600;                                    // снимок — до 1600 px по длинной стороне, JPEG: меньше 4 МБ
 
-function shrink(file) {
+export function shrink(file) {
   return new Promise((ok, no) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
