@@ -24,33 +24,46 @@ import shlex
 import shutil
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 SCRIPT = "gas-pult-injection.py"
 TAG = "gas-pult-injection"
-EVENTS = {"PreToolUse": "mcp__.*|Bash", "PostToolUse": "mcp__.*|WebFetch|WebSearch|Read"}   # только нужные инструменты
+EVENTS = {"PreToolUse": "mcp__.*|Bash", "PostToolUse": "mcp__.*|WebFetch|WebSearch|Read|Bash"}  # только нужные
 TAINT_MIN = 60                                   # сколько минут сессия считается «видевшей ловушку»
 STATE = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "gas-pult-guard"
 
-# Откуда приходят чужие тексты: MCP почты, веба, браузера, Telegram, Диска; WebFetch/WebSearch; файлы входящих
+# Откуда приходят чужие тексты: MCP почты, веба, браузера, мессенджеров, Диска, отзывов маркетплейсов, задач
+# публичного репозитория; WebFetch/WebSearch; файлы входящих; Bash, который скачивает из сети (curl, wget, gh issue)
 _UNTRUSTED_MCP = re.compile(r"mail|gmail|imap|browser|playwright|searxng|search|fetch|telegram|tgbiz|drive|docs|"
-                            r"notion|linear|slack|calendar|cdek|avito|bitrix|amocrm|1c|web", re.I)
+                            r"notion|linear|slack|calendar|cdek|avito|bitrix|amocrm|1c|web|signal|whatsapp|msg-|"
+                            r"wildberries|ozon|moysklad|yclients|(?:^|_)max_|feedback|review|github|gitlab", re.I)
 _UNTRUSTED_TOOLS = {"WebFetch", "WebSearch"}
 _INBOX = re.compile(r"/drive/|/Входящие/|/inbox/|/Downloads/|\.eml$|/mail/", re.I)
+_UNTRUSTED_BASH = re.compile(r"\b(?:curl|wget|lynx|w3m|yt-dlp)\b|read_chat\.py|\b(?:gh|glab)\s+(?:issue|pr|mr|api)\b",
+                             re.I)
 
 # Исходящие действия: письмо, сообщение людям, деньги
+# ``_apply``, ``_propose_*``, ``_draft`` — черновики и их выполнение у коннекторов и мессенджеров (ответ клиенту в WB,
+# Ozon, MAX, Signal, WhatsApp); ``share_file`` — открыть доступ к файлу Диска (тоже канал утечки)
 _OUTGOING = re.compile(r"mail_apply|mail_propose_send|send_message|send_email|gmail.*(send|reply|forward)|"
-                       r"tgbiz.*send|telegram.*(send|reply)|create_payment|transfer|refund|payout", re.I)
+                       r"tgbiz.*send|telegram.*(send|reply)|create_payment|transfer|refund|payout|"
+                       r"_apply$|_propose_|_draft$|share_file|(?:^|_)(?:forward|reply)$", re.I)
 _OUTGOING_BASH = re.compile(r"send_message\.py|sendmail|\bmail\s+-s|curl\b.*api\.telegram\.org/bot[^ ]*/send", re.I)
 
 # Команды-ловушки (RU/EN). Только флаг — текст модель видит, но с предупреждением. «curl … | bash» и «rm -rf» сюда
 # не входят: они есть в честных инструкциях по установке (замер на docs/ и Диске 17.11), а команды на сервере и так
 # проверяет Claude Code и «Выполнить» пульта.
 TRAPS = [
-    ("подмена инструкций", r"(забудь|игнорируй|отмени|не\s+слушай)\s+(все\s+|всё\s+)?(предыдущие\s+|прежние\s+|"
-                           r"свои\s+|системные\s+)?(инструкци|указани|правил|промпт)"),
-    ("подмена инструкций", r"(ignore|disregard|forget|override)\s+(all\s+|any\s+)?(the\s+)?(previous|prior|above|"
-                           r"earlier|system)\s+(instructions|prompts?|rules)"),
+    ("подмена инструкций", r"(забудь|игнорируй|проигнорируй|отмени|не\s+слушай|не\s+обращай\s+внимания\s+на)\s+"
+                           r"(все\s+|всё\s+)?(предыдущие\s+|прежние\s+|свои\s+|твои\s+|системные\s+|исходные\s+|"
+                           r"изначальные\s+)?(инструкци|указани|правил|промпт)"),
+    ("подмена инструкций", r"(забудь|игнорируй|проигнорируй)\s+(всё|все)\s*,?\s+что\s+(тебе\s+)?(было\s+)?"
+                           r"(сказано|сказали|говорили|написано\s+выше)"),
+    ("подмена инструкций", r"(ignore|disregard|forget|override)\s+(all\s+|any\s+)?(of\s+)?(the\s+|your\s+|my\s+|"
+                           r"these\s+|those\s+)?(previous|prior|above|earlier|preceding|original|initial|system)\s+"
+                           r"(instructions|prompts?|rules|directions|guidelines)"),
+    ("подмена инструкций", r"(ignore|disregard|forget)\s+(everything|anything|all)\s+(above|before|you\s+were\s+told)"),
     ("смена роли", r"(ты\s+теперь|с\s+этого\s+момента\s+ты|you\s+are\s+now|act\s+as\s+(an?\s+)?(admin|system|root|"
                    r"developer))"),
     ("подмена инструкций", r"(новые|new)\s+(инструкции|instructions)\s*:|<\s*/?\s*(system|assistant)\s*>|"
@@ -78,13 +91,23 @@ def _luhn(digits: str) -> bool:
     return len(d) >= 13 and total % 10 == 0
 
 
+# Невидимые знаки, которыми разбивают слова ловушки: «забу\u200bдь инструкции» глазами не отличить от обычного
+_INVISIBLE = re.compile("[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
+
+
+def norm(text: str) -> str:
+    """Текст для поиска ловушек и ПДн: NFKC (полноширинные буквы и цифры → обычные), без невидимых знаков."""
+    return _INVISIBLE.sub("", unicodedata.normalize("NFKC", text or ""))
+
+
 def traps(text: str) -> list[str]:
     """Типы найденных ловушек (без повторов, по порядку)."""
-    return list(dict.fromkeys(k for k, rx in _TRAPS if rx.search(text or "")))
+    t = norm(text)
+    return list(dict.fromkeys(k for k, rx in _TRAPS if rx.search(t)))
 
 
 def pii(text: str) -> list[str]:
-    return list(dict.fromkeys(k for k, rx, g in PII for m in rx.finditer(text or "")
+    return list(dict.fromkeys(k for k, rx, g in PII for m in rx.finditer(norm(text))
                               if k != "номер карты" or _luhn(re.sub(r"\D", "", m.group(g)))))
 
 
@@ -123,6 +146,8 @@ def untrusted(tool: str, inp: dict) -> bool:
         return bool(_UNTRUSTED_MCP.search(tool))
     if tool == "Read":
         return bool(_INBOX.search(str((inp or {}).get("file_path") or "")))
+    if tool == "Bash":
+        return bool(_UNTRUSTED_BASH.search(str((inp or {}).get("command") or "")))
     return False
 
 
@@ -261,8 +286,10 @@ def installed(config_dir) -> bool:
     except (OSError, ValueError):
         return False
     hooks = s.get("hooks") if isinstance(s, dict) else None
-    return isinstance(hooks, dict) and all(any(isinstance(g, dict) and _ours(g) for g in hooks.get(ev) or [])
-                                           for ev in EVENTS) and (d / "hooks" / SCRIPT).is_file()
+    # Старая установка с другим набором инструментов (matcher) — «не стоит»: gas-pult secrets install обновит её
+    return isinstance(hooks, dict) and all(any(isinstance(g, dict) and _ours(g) and g.get("matcher") == m
+                                               for g in hooks.get(ev) or []) for ev, m in EVENTS.items()) \
+        and (d / "hooks" / SCRIPT).is_file()
 
 
 def main(argv=None) -> int:
