@@ -1508,6 +1508,8 @@ if (DEMO) part("demo");                               // демо — сразу
 const FOCUS_TOKEN = (/(?:^#|&)focus=([A-Za-z0-9_-]{24,64})/.exec(location.hash) || [])[1] || "";
 const FOCUS = !!FOCUS_TOKEN || params.has("focus");
 if (FOCUS_TOKEN) history.replaceState(null, "", location.pathname + (params.has("focus") ? location.search : (location.search ? location.search + "&" : "?") + "focus"));
+// экран «Домой» из фокуса: значок открывает фокус (/?focus), а не вход в пульт — манифест для фокуса (brand.manifest)
+if (FOCUS) document.querySelector('link[rel="manifest"]')?.setAttribute("href", "/manifest.webmanifest?focus");
 const SLINK = params.has("slink") && !FOCUS_TOKEN;  // ссылка на пространство (GAS-38): полная панель пространства, js/spacelink.js
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },

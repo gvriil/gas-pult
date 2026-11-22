@@ -49,8 +49,19 @@ def head_tags() -> str:
     return og + splash
 
 
-def manifest(name: str = NAME_RU) -> dict:
-    """Манифест веб-приложения: экран «Домой» и уведомления на iPhone (iOS 16.4+ — только у такого приложения)."""
+FOCUS_START = "/?focus"                 # фокус-ссылка на экране «Домой»: открывается снова фокус, а не вход в пульт
+
+
+def manifest(name: str = NAME_RU, focus: bool = False) -> dict:
+    """Манифест веб-приложения: экран «Домой» и уведомления на iPhone (iOS 16.4+ — только у такого приложения).
+
+    ``focus`` (владелец 22.11: «фокус-ссылку на экран Домой — ошибка»): значок открывает ``/?focus`` — устройство
+    узнаётся по cookie фокуса (iOS 17.2+ копирует cookie в приложение с экрана «Домой»), без входа в пульт.
+    Токена в манифесте нет. «Поделиться» (share_target) фокусу не положено — его нет."""
+    if focus:
+        m = manifest(name)
+        m.pop("share_target", None)
+        return {**m, "id": FOCUS_START, "start_url": FOCUS_START}
     return {"name": name, "short_name": name, "start_url": "/", "scope": "/", "display": "standalone",
             "background_color": "#FFFFFF", "theme_color": "#FFFFFF", "lang": "ru",
             "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},

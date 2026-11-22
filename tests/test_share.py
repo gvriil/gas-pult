@@ -54,6 +54,9 @@ def test_manifest_served_with_share_target(server):
     import urllib.request
     with urllib.request.urlopen(base + "/manifest.webmanifest") as r:
         assert json.loads(r.read())["share_target"]["action"] == "/share"
+    with urllib.request.urlopen(base + "/manifest.webmanifest?focus") as r:   # фокус на экране «Домой» (22.11)
+        m = json.loads(r.read())
+    assert m["start_url"] == "/?focus" and "share_target" not in m
     with urllib.request.urlopen(base + "/sw.js") as r:               # service worker пересылает форму с кукой
         sw = r.read().decode()
     assert '"/share"' in sw and "X-GP-SW" in sw

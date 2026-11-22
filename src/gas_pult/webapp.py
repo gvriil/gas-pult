@@ -1258,6 +1258,7 @@ def handler(panel: Panel):
     tags = brand.head_tags().replace(brand.DEFAULT, brand.NAME_RU).encode()
     page = page.replace(b'<link rel="manifest"', tags + b'\n<link rel="manifest"', 1)
     manifest = json.dumps(brand.manifest(), ensure_ascii=False).encode()
+    manifest_focus = json.dumps(brand.manifest(focus=True), ensure_ascii=False).encode()
     # части интерфейса по требованию (#191): web/js/<имя>.js — нативные ES-модули без сборки; читаются и сжимаются
     # один раз при старте, отдаются с ETag (после выкладки браузер получит новую версию, иначе — 304 без тела)
     parts = {}
@@ -1772,7 +1773,8 @@ def handler(panel: Panel):
                 body, ctype = icons[url.path]
                 return self.reply(200, body, ctype, headers={"Cache-Control": "public, max-age=86400"})
             if url.path == "/manifest.webmanifest":     # экран «Домой» и пуш на iPhone (brand.py) — без входа
-                return self.reply(200, manifest, "application/manifest+json; charset=utf-8")
+                body = manifest_focus if url.query == "focus" else manifest     # фокус: значок открывает фокус
+                return self.reply(200, body, "application/manifest+json; charset=utf-8")
             if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
                 sw = SW_JS.replace(brand.DEFAULT, brand.NAME_RU).encode()
                 return self.reply(200, sw, "text/javascript; charset=utf-8")
