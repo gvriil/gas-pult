@@ -3,8 +3,9 @@
 Работает хуками Claude Code (команда из ``settings.json`` папки Claude — ``CLAUDE_CONFIG_DIR``):
 
 - ``UserPromptSubmit`` — в сообщении человека секрет: сообщение **не отправляется** (Claude Code 2.1 не даёт хуку
-  заменить текст сообщения — только остановить его), человек видит «Убрал ключ …: положите его в «Подключения» и
-  отправьте сообщение без ключа». ``suppressOriginalPrompt`` — текст с ключом не попадает в запись разговора.
+  заменить текст сообщения — только остановить его), человек видит «Убрал из сообщения …: ключи и пароли не
+  показываются; чтобы подключить сервис — «Настройки → Подключения» в Гавриле; отправьте сообщение без ключа».
+  ``suppressOriginalPrompt`` — текст с ключом не попадает в запись разговора.
 - ``PreToolUse`` — чтение ``.env*`` (Read, Grep, команды Bash) закрыто; ``.env.example`` (и ``.sample``, ``.template``)
   — открыт.
 - ``PostToolUse`` — в выводе любого инструмента секреты и значения из ``.env*`` текущей папки заменяются заглушкой
@@ -33,7 +34,7 @@ from pathlib import Path
 SCRIPT = "gas-pult-secrets.py"           # имя копии в <папка Claude>/hooks/
 TAG = "gas-pult-secrets"                 # по нему install узнаёт свои записи в settings.json
 EVENTS = {"UserPromptSubmit": None, "PreToolUse": "Read|Grep|Bash|NotebookRead", "PostToolUse": "*"}
-KEYS_PLACE = "«Подключения» панели пульта"
+KEYS_PLACE = "«Настройки → Подключения» в Гавриле"
 ALLOWED_ENV = (".env.example", ".env.sample", ".env.template", ".env.dist")
 
 # Имя переменной с секретом: …_KEY, …TOKEN, …SECRET, …PASSWORD (и PASSWD, PWD, PASS, CREDENTIALS), apikey.
@@ -234,9 +235,9 @@ def _uniq(xs):
 
 
 def prompt_reason(types) -> str:
-    return (f"Убрал ключ: в сообщении {', '.join(types)}. Сообщение не отправлено — модель ключа не видела. "
-            f"Положите ключ в {KEYS_PLACE}: там он хранится на сервере и модели не показывается. Отправьте "
-            "сообщение ещё раз без ключа.")
+    return (f"Убрал из сообщения: {', '.join(types)}. Сообщение не отправлено — модель его не видела. Ключи и "
+            f"пароли не показываются. Чтобы подключить сервис, откройте {KEYS_PLACE}. Отправьте сообщение ещё раз "
+            "без ключа.")
 
 
 def handle(data: dict) -> dict | None:
@@ -255,7 +256,7 @@ def handle(data: dict) -> dict | None:
             return None
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse", "permissionDecision": "deny",
-            "permissionDecisionReason": (f"Файл {name} закрыт: в нём секреты (защита пульта). Список переменных — в "
+            "permissionDecisionReason": (f"Файл {name} закрыт: в нём секреты (защита Гаврилы). Список переменных — в "
                                          ".env.example; значение спросите у человека, а сам ключ он положит в "
                                          f"{KEYS_PLACE}. Если команда нужна (например, скопировать шаблон в .env), "
                                          "попросите человека выполнить её самому.")}}
@@ -267,9 +268,9 @@ def handle(data: dict) -> dict | None:
         types = _uniq(types)
         return {"hookSpecificOutput": {
             "hookEventName": "PostToolUse", "updatedToolOutput": new,
-            "additionalContext": (f"В выводе инструмента скрыто: {', '.join(types)} (защита пульта). Значения не "
-                                  "нужны: ссылайтесь на имя переменной, сам ключ человек кладёт в "
-                                  f"{KEYS_PLACE}.")}}
+            "additionalContext": (f"В выводе инструмента скрыто: {', '.join(types)} (защита Гаврилы). Значения не "
+                                  "нужны: ссылайтесь на имя переменной. Человеку: ключи и пароли не показываются; "
+                                  f"чтобы подключить сервис, откройте {KEYS_PLACE}.")}}
     return None
 
 

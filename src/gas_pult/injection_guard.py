@@ -173,7 +173,7 @@ def handle(data: dict) -> dict | None:
         if why:
             return {"hookSpecificOutput": {
                 "hookEventName": "PreToolUse", "permissionDecision": "ask",
-                "permissionDecisionReason": "Защита пульта: " + "; ".join(why) + ". Отправить — только после явного "
+                "permissionDecisionReason": "Защита Гаврилы: " + "; ".join(why) + ". Отправить — только после явного "
                                             "«Да» человека."}}
     return None
 
