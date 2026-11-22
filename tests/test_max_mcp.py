@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
 
+import panel_stub  # «Да» человека без настоящей панели
 import pytest
 
 from gas_pult.connectors import max_mcp
@@ -86,7 +87,7 @@ def env(tmp_path):
     keyfile.write_text(TOKEN + "\n")
     keyfile.chmod(0o600)
     yield {"GAS_MAX_BASE": f"http://127.0.0.1:{srv.server_port}", "GAS_MAX_KEY_FILE": str(keyfile),
-           "GAS_CONFIRM_DIR": str(tmp_path / "confirm")}
+           **panel_stub.env(tmp_path)}
     srv.shutdown()
 
 
@@ -127,7 +128,8 @@ def confirm(env: dict, pid: str):
     full = {k: v for k, v in os.environ.items() if not k.startswith("GAS_")} | env
     p = subprocess.run([sys.executable, str(SERVER), "confirm", pid], capture_output=True, text=True,
                        timeout=30, env=full)
-    assert p.returncode == 0, p.stderr
+    assert p.returncode == 2 and "только кнопкой «Да» в панели" in p.stderr   # команды подтверждения больше нет
+    panel_stub.grant(max_mcp.SVC, pid)                                          # «Да» человека — в панели
 
 
 def test_tools_list(env):
