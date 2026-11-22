@@ -89,7 +89,9 @@
    22.11: `say`, `el_voice_id`, `choose_voice`, `voice_preview`, `current_voice`, `voice_rows`, `voice_text`,
    `show_voice`, `on_voice` → примесь `VoicePart` (138 строк, только перенос); распознавание входящего голоса осталось
    в `on_message` (диспетчер).
-4. `panel/projects.py`, `panel/work.py`.
+4. ✓ `panel/projects.py` — 22.11: «Проекты», закрепление, корзина чатов, название чата и «Проекты» пространства →
+   примесь `ProjectsPart` (51 имя, только перенос; `NeedForce`, `EFFORTS`, `effort_flag` реэкспортирует `webapp`);
+   `temp_tick` (остатки озвучки) остался в `webapp`. `panel/work.py` — далее.
 5. `panel/sessions.py` (самый связанный — после того как подход проверен).
 6. `panel/spaces.py`, `panel/people.py`.
 7. `routes/*` — по области за PR, тем же порядком.
