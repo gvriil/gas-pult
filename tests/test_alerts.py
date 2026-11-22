@@ -212,3 +212,12 @@ def test_green_main_no_line_no_message(monkeypatch, tmp_path):
     m = alerts.main_ci()
     assert m == {"red": False, "url": RUNS[-1]["url"]}
     assert alerts.Watch(tmp_path).ci(m) == ""
+
+
+def test_alive_probe_without_login_writes_web_beat(server):
+    """Самопроверка панели (serve → alive) ходит без входа: ответ < 500 — отметка пишется и без посетителей."""
+    p, url = server
+    alerts._beats.clear()
+    code, _ = get(f"{url}/api/alive")
+    assert code < 500
+    assert (p.cfg.data / "heartbeat-web").read_text().split()[0].isdigit()
