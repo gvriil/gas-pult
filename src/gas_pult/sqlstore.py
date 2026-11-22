@@ -13,7 +13,9 @@ JSON. Обратно так же: в режиме sqlite JSON, изменённ�
 запомненной), переносится в SQLite заново.
 
 Переводятся только файлы из ``COLLECTIONS`` — по модулю за PR (люди → сессии → фокус-ссылки → приглашения → задачи
-→ события); остальные файлы живут в JSON при любом режиме.
+→ события); остальные файлы живут в JSON при любом режиме. Режим общий для всех переведённых модулей: копия, перенос,
+отметка «только в SQLite» и выгрузка при откате — по каждому файлу отдельно, поэтому отдельный флаг на модуль не нужен.
+Файлы-списки (``tasks.json``) — через ``LISTS``: запись → строка по полю ``id``.
 
 Хранение — одна таблица «ключ-значение по коллекциям»: ``kv(collection, key, json, updated)``. Коллекция — имя
 файла (``people.json``), ключ — ключ верхнего уровня (Telegram ID), значение — запись как в JSON. Почему не таблицы
@@ -49,7 +51,14 @@ MODES = ("json", "dual", "sqlite")
 ENV = "GAS_PULT_STORAGE"
 # модуль «люди»: people.json и файлы рядом под его замком (people.py)
 PEOPLE = ("people.json", "terms.json", "countries.json", "prefs.json", "emails.json", "tours.json", "ui.json")
-COLLECTIONS: tuple[str, ...] = PEOPLE
+SESSIONS = ("web_sessions.json",)           # сессии браузера (webauth.Auth)
+FOCUS = ("focus.json",)                     # фокус-ссылки (focus.py)
+INVITES = ("invites.json",)                 # приглашения (invites.py)
+TASKS = ("tasks.json",)                     # задачи владельца (tasks.py)
+COLLECTIONS: tuple[str, ...] = PEOPLE + SESSIONS + FOCUS + INVITES + TASKS
+# Файлы-списки (а не словари): запись → строка по полю-ключу; порядок списка при чтении — по ``created``, затем ключу
+# (задачи добавляются в конец с ``created`` = время добавления — это и есть порядок файла).
+LISTS = {"tasks.json": "id"}
 BUSY_MS = 10_000
 
 # Схема по номеру: user_version = число выполненных шагов.
@@ -207,6 +216,26 @@ def _set_info(con, name: str, **kw):
                 "imported = excluded.imported", (name, cur["version"], cur["json_sig"], int(cur["imported"])))
 
 
+def shape(name: str) -> type:
+    """Вид файла коллекции: list для ``LISTS``, иначе dict."""
+    return list if name in LISTS else dict
+
+
+def to_rows(name: str, d) -> dict:
+    """Данные файла → словарь строк ``kv`` (ключ — строка)."""
+    if name in LISTS:
+        k = LISTS[name]
+        return {str(x[k]): x for x in d if isinstance(x, dict) and x.get(k)}
+    return {str(k): v for k, v in d.items()}
+
+
+def from_rows(name: str, rows: dict):
+    """Строки ``kv`` → данные в виде файла."""
+    if name in LISTS:
+        return sorted(rows.values(), key=lambda x: (x.get("created") or 0, str(x.get(LISTS[name]))))
+    return rows
+
+
 def _dump(v) -> str:
     return json.dumps(v, ensure_ascii=False, separators=(",", ":"))
 
@@ -215,10 +244,10 @@ def _rows(con, name: str) -> dict[str, str]:
     return dict(con.execute("SELECT key, json FROM kv WHERE collection = ?", (name,)))
 
 
-def _write(con, name: str, d: dict) -> int:
-    """Привести строки коллекции к ``d``: только изменённые, лишние — удалить. Вызывать в транзакции."""
+def _write(con, name: str, d) -> int:
+    """Привести строки коллекции к ``d`` (вид файла): только изменённые, лишние — удалить. Вызывать в транзакции."""
     old, now, n = _rows(con, name), int(time.time()), 0
-    for k, v in d.items():
+    for k, v in to_rows(name, d).items():
         s = _dump(v)
         if old.pop(str(k), None) != s:
             con.execute("INSERT INTO kv (collection, key, json, updated) VALUES (?, ?, ?, ?) ON CONFLICT"
@@ -231,7 +260,7 @@ def _write(con, name: str, d: dict) -> int:
     return n
 
 
-def read(path) -> tuple[dict, int]:
+def read(path) -> tuple[dict | list, int]:
     """Коллекция файла ``path`` из SQLite: (данные, версия схемы). Не переносилась — сначала перенос из JSON."""
     path = Path(path)
     prepare(path.parent)
@@ -242,10 +271,10 @@ def read(path) -> tuple[dict, int]:
             warn(f"{path.name}: JSON менялся мимо SQLite (режим json) — переношу его в SQLite заново")
         import_json(path)
         info = _info(con, path.name)
-    return {k: json.loads(v) for k, v in _rows(con, path.name).items()}, info["version"]
+    return from_rows(path.name, {k: json.loads(v) for k, v in _rows(con, path.name).items()}), info["version"]
 
 
-def write(path, d: dict, version: int, *, sync_sig: bool):
+def write(path, d, version: int, *, sync_sig: bool):
     """Записать коллекцию в SQLite одной транзакцией. ``sync_sig`` — JSON только что записан тем же (режим dual):
     запомнить его подпись как «совпадает с SQLite»."""
     path = Path(path)
@@ -259,7 +288,7 @@ def write(path, d: dict, version: int, *, sync_sig: bool):
         _set_info(con, path.name, **kw)
 
 
-def dual_write(path, d: dict, version: int, sig_before: str):
+def dual_write(path, d, version: int, sig_before: str):
     """Режим dual: JSON уже записан — догнать SQLite. Ошибка — предупреждение, JSON остаётся источником истины."""
     path = Path(path)
     try:
@@ -292,7 +321,7 @@ def import_json(path) -> int:
     from gas_pult import store
     path = Path(path)
     with store.locked(path):
-        d = store.load_json(path)
+        d = store.load_json(path, shape(path.name))
         con = connect(path.parent)
         with tx(con):
             _write(con, path.name, d)
@@ -306,7 +335,7 @@ def export_json(path) -> int:
     path = Path(path)
     with store.locked(path):
         con = connect(path.parent)
-        d = {k: json.loads(v) for k, v in _rows(con, path.name).items()}
+        d = from_rows(path.name, {k: json.loads(v) for k, v in _rows(con, path.name).items()})
         store.save_json(path, d, ensure_ascii=False)
         with tx(con):
             _set_info(con, path.name, json_sig=json_sig(path), imported=True)
@@ -327,15 +356,25 @@ def files(data) -> list[Path]:
     return [Path(data) / n for n in COLLECTIONS]
 
 
+def _covered(con) -> set[str]:
+    """Какие коллекции уже есть в копии JSON. Копия до списка ``backup_set`` (первый PR, «люди») — только PEOPLE."""
+    r = con.execute("SELECT v FROM meta WHERE k = 'backup_set'").fetchone()
+    if r:
+        return set(json.loads(r[0]))
+    return set(PEOPLE) if con.execute("SELECT 1 FROM meta WHERE k = 'backup'").fetchone() else set()
+
+
 def backup(data, force: bool = False) -> Path | None:
-    """Копия JSON-файлов коллекций (и их ``.v``) в ``<data>/backup/json-<дата>/`` (0700/0600). Один раз: если копия
-    уже снималась — None (``force`` — снять ещё одну)."""
+    """Копия JSON-файлов коллекций (и их ``.v``) в ``<data>/backup/json-<дата>/`` (0700/0600). Один раз на
+    коллекцию: копия уже есть — None; новые коллекции (модуль перевели после первой копии) — ещё одна копия только с
+    ними. ``force`` — снять полную копию ещё раз."""
     from gas_pult import store
     data = Path(data)
     with store.locked(db_path(data)):         # бот и панель включаются одновременно — копия всё равно одна
         con = connect(data)
-        done = con.execute("SELECT v FROM meta WHERE k = 'backup'").fetchone()
-        if done and not force:
+        covered = _covered(con)
+        names = list(COLLECTIONS) if force else [n for n in COLLECTIONS if n not in covered]
+        if not names:
             return None
         dest = data / "backup" / f"json-{time.strftime('%Y%m%d-%H%M%S')}"
         n = 1
@@ -345,14 +384,15 @@ def backup(data, force: bool = False) -> Path | None:
         dest.mkdir(parents=True, mode=0o700)
         for x in (dest, dest.parent):
             x.chmod(0o700)
-        for f in files(data):
+        for f in (data / n for n in names):
             for src in (f, store.vfile(f)):
                 if src.exists():
                     shutil.copyfile(src, dest / src.name)
                     (dest / src.name).chmod(0o600)
         with tx(con):
-            con.execute("INSERT INTO meta (k, v) VALUES ('backup', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-                        (str(dest),))
+            for k, v in (("backup", str(dest)), ("backup_set", json.dumps(sorted(covered | set(names))))):
+                con.execute("INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+                            (k, v))
         return dest
 
 
@@ -375,9 +415,8 @@ def verify(data) -> dict[str, dict]:
     con = connect(data)
     out = {}
     for f in files(data):
-        j = store.load_json(f)
+        js = to_rows(f.name, store.load_json(f, shape(f.name)))
         s = {k: json.loads(v) for k, v in _rows(con, f.name).items()}
-        js = {str(k): v for k, v in j.items()}
         out[f.name] = {"json": len(js), "sqlite": len(s),
                        "missing": sorted(set(js) - set(s)), "extra": sorted(set(s) - set(js)),
                        "differ": sorted(k for k in set(js) & set(s) if js[k] != s[k])}

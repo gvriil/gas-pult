@@ -17,6 +17,13 @@ from gas_pult.people import People
 N = 200
 
 
+@pytest.fixture(autouse=True)
+def json_mode(monkeypatch):
+    """Здесь — слой JSON (файлы, версии, замок): режим json при любом GAS_PULT_TEST_STORAGE. Гонка и откат в dual и
+    sqlite — tests/test_sqlstore.py."""
+    monkeypatch.delenv("GAS_PULT_STORAGE", raising=False)
+
+
 def _people_writer(path: str, base: int):
     p = People(Path(path), [1])
     for i in range(N):

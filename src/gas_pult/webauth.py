@@ -11,7 +11,8 @@
 запрос (``people.py``). На сервере хранятся только SHA-256 от кодов, номеров ожидания и сессий. Срок скользящий:
 человек заходит — раз в ``RENEW_EVERY`` срок снова 30 дней (``touch``), выходит из панели только через 30 дней
 тишины. Сессии — в файле (``web_sessions.json``): перезапуск службы их не теряет. Файл пишут и панель, и бот —
-изменения под файловым замком (``_locked``), чтобы одна запись не затирала другую.
+изменения под файловым замком (``_locked`` = ``store.locked``), чтобы одна запись не затирала другую. Чтение и запись
+— ``store.load`` / ``store.save``: в режиме хранения dual или sqlite сессии живут и в SQLite (docs/STORAGE.md).
 
 **Подтверждение кодом** (аудит 09.11): сессии моложе ``CONFIRM_FRESH`` выполнять команды на сервере и писать в
 терминал (``webapp.CONFIRM``) не могут, пока человек не введёт код (``confirm_start`` / ``confirm_verify``); после
@@ -20,8 +21,6 @@
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import hashlib
 import hmac
 import json
@@ -30,6 +29,7 @@ import threading
 import time
 from pathlib import Path
 
+from gas_pult import store as jstore
 from gas_pult.config import write_private
 
 CODE_TTL = 300
@@ -56,25 +56,15 @@ class Auth:
         self.cstarts: list[float] = []          # коды подтверждения — свой счётчик: не мешают входу кодом
 
     def _load(self) -> dict:
-        try:
-            return json.loads(self.store.read_text())
-        except (OSError, ValueError):
-            return {}
+        return jstore.load(self.store)
 
     def _save(self, d: dict):
-        write_private(self.store, json.dumps(d))
+        jstore.save(self.store, d)
 
-    @contextlib.contextmanager
     def _locked(self):
-        """Замок потоков и файловый замок (панель и бот — разные процессы): прочитать → изменить → записать."""
-        with self.lock:
-            self.store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            with open(self.store.with_name(f".{self.store.name}.lock"), "a") as fh:
-                fcntl.flock(fh, fcntl.LOCK_EX)
-                try:
-                    yield
-                finally:
-                    fcntl.flock(fh, fcntl.LOCK_UN)
+        """Замок потоков и файловый замок (панель и бот — разные процессы): прочитать → изменить → записать. Тот же
+        файл ``.web_sessions.json.lock``, что и до ``store.py``."""
+        return jstore.locked(self.store)
 
     def touch(self, token: str, now: float | None = None) -> bool:
         """Скользящий срок: живая сессия, которую не продлевали ``RENEW_EVERY``, снова получает ``SESSION_TTL``.

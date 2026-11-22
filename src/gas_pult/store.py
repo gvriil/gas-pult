@@ -119,7 +119,7 @@ def load(path, default: Callable = dict, name: str | None = None):
     """Прочитать файл: нет, битый или не того вида (не ``type(default())``) — ``default()``."""
     path = Path(path)
     m = sqlstore.mode_for(path)
-    if m == "sqlite" and default is dict:
+    if m == "sqlite" and default is sqlstore.shape(path.name):
         d, v = sqlstore.read(path)
         return migrate(name or path.name, d, v)
     if path.name in sqlstore.COLLECTIONS and sqlstore.marker(path).exists():   # возврат с sqlite: выгрузить в JSON
@@ -144,16 +144,23 @@ def save(path, d, name: str | None = None, **dumps):
     """Записать атомарно (0600): данные, затем версию схемы в ``.<имя>.v``. Вызывать под ``locked(path)``.
     Режим dual — ещё и в SQLite; sqlite — только в SQLite (``sqlstore.py``)."""
     path = Path(path)
-    m = sqlstore.mode_for(path) if isinstance(d, dict) else "json"
+    m = sqlstore.mode_for(path) if isinstance(d, sqlstore.shape(path.name)) else "json"
+    if isinstance(d, dict) and VERSION_KEY in d:
+        d = {k: x for k, x in d.items() if k != VERSION_KEY}
     if m == "sqlite":
-        sqlstore.write(path, {k: x for k, x in d.items() if k != VERSION_KEY}, version(name or path.name),
-                       sync_sig=False)
+        sqlstore.write(path, d, version(name or path.name), sync_sig=False)
         sqlstore.mark_sqlite_only(path)
         return
-    sig = sqlstore.json_sig(path) if m == "dual" else ""
+    sig = ""
+    if m == "dual":
+        sig = sqlstore.json_sig(path)
+        try:                                # копия JSON — до первой записи в режиме dual, а не после
+            sqlstore.prepare(path.parent)
+        except (OSError, sqlstore.sqlite3.Error) as e:
+            sqlstore.warn(f"{path.name}: копия JSON не снята ({type(e).__name__}: {e})")
     save_json(path, d, name, **dumps)
     if m == "dual":
-        sqlstore.dual_write(path, {k: x for k, x in d.items() if k != VERSION_KEY}, version(name or path.name), sig)
+        sqlstore.dual_write(path, d, version(name or path.name), sig)
 
 
 def save_json(path, d, name: str | None = None, **dumps):

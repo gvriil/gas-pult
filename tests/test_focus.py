@@ -18,13 +18,13 @@ W1 = {"id": "@1", "name": "shop", "path": "/srv/shop", "cmd": "claude"}
 W2 = {"id": "@2", "name": "other", "path": "/srv/other", "cmd": "claude"}
 
 
-def test_store_binds_first_device_and_keeps_only_hashes(tmp_path):
+def test_store_binds_first_device_and_keeps_only_hashes(tmp_path, stored):
     f = focus.Focus(tmp_path / "focus.json")
     link = f.new(W1, by=1)
-    raw = (tmp_path / "focus.json").read_text()
-    assert link["token"] not in raw and (tmp_path / "focus.json").stat().st_mode & 0o777 == 0o600
+    raw = stored.text(tmp_path / "focus.json")
+    assert link["token"] not in raw and stored.mode(tmp_path / "focus.json") == 0o600
     cookie, rec = f.open(link["token"], "", "iPhone · Safari")
-    assert rec["w"] == "@1" and cookie.split(".")[1] not in (tmp_path / "focus.json").read_text()
+    assert rec["w"] == "@1" and cookie.split(".")[1] not in stored.text(tmp_path / "focus.json")
     assert f.open(link["token"], cookie)[0] == cookie                       # то же устройство — снова можно
     c2, _ = f.open(link["token"], "", "Telegram")                            # 20.11: ещё два устройства того же
     c3, _ = f.open(link["token"], "", "Chrome")                              # человека — можно
@@ -490,7 +490,7 @@ def demo_open(s, token, device=""):
     return setc.split(";")[0]
 
 
-def test_store_demo_link_many_devices_limit_and_revoke(tmp_path):
+def test_store_demo_link_many_devices_limit_and_revoke(tmp_path, stored):
     f = focus.Focus(tmp_path / "focus.json")
     link = f.new(W1, 1, mode="demo")
     cookies = [f.open(link["token"], "", f"устройство {i}")[0] for i in range(focus.DEMO_MAX)]
@@ -500,7 +500,7 @@ def test_store_demo_link_many_devices_limit_and_revoke(tmp_path):
         f.open(link["token"], "")                                        # больше DEMO_MAX — нет
     item = f.listing()[0]
     assert item["mode"] == "demo" and item["devices"] == focus.DEMO_MAX and item["opens"] == focus.DEMO_MAX
-    raw = (tmp_path / "focus.json").read_text()
+    raw = stored.text(tmp_path / "focus.json")
     assert link["token"] not in raw and all(c.split(".")[1] not in raw for c in cookies)
     assert f.revoke(link["id"])
     for c in cookies:
