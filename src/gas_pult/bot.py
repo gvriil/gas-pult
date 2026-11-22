@@ -1247,6 +1247,8 @@ class Pult(VoicePart):
         self.errs_at = now
         for text in alerts.Watch(self.cfg.data).errors(self.events, now):
             self.broadcast(text, kind="error")
+        for text in alerts.Watch(self.cfg.data).connectors(self.events, now):   # коннектор потерял вход (connwatch)
+            self.broadcast(text, kind="error")
 
     def ci_tick(self, now: float | None = None):
         """CI ``main`` красный дольше часа — одно сообщение владельцу, не чаще раза в 6 часов (alerts.py)."""

@@ -843,6 +843,38 @@ def cmd_secrets(a):
         print("Новые сессии Claude Code в этой папке — со скрытием; открытые — после перезапуска.")
 
 
+def cmd_connectors(a):
+    """Сторож входа коннекторов (``connwatch``, фаза 1): watch [--dry-run | --install | --uninstall] · vault init."""
+    from gas_pult import connwatch
+
+    if a.action == "vault":
+        if a.sub != "init":
+            raise SystemExit("gas-pult connectors vault init")
+        try:
+            print(connwatch.vault_init())
+        except RuntimeError as e:
+            raise SystemExit(f"Ошибка: {e}") from None
+        return
+    if a.install or a.uninstall:
+        files = connwatch.install(remove=a.uninstall)
+        print("таймер убран" if a.uninstall else
+              f"таймер раз в 30 минут: {', '.join(files)} · systemctl --user list-timers {connwatch.UNIT}.timer")
+        return
+    pats = connwatch.excludes()
+    items = connwatch.collect()
+    for c in items:
+        if c["name"] == "*":
+            print(f"{connwatch.TITLES.get(c['harness'], c['harness'])}: {c['detail']}")
+            continue
+        mark = " (исключён)" if connwatch.excluded(c, pats) else ""
+        print(f"  {c['harness']:8} {c['state']:10} {c['name']}{mark}" + (f" — {c['detail']}" if c["detail"] else ""))
+    acts = connwatch.Watch(config.data_dir()).run(items, pats, dry=a.dry_run)
+    head = "было бы (--dry-run, ничего не записано):" if a.dry_run else "сделано:"
+    print(head if acts else "переходов нет")
+    for x in acts:
+        print("  " + x)
+
+
 def main(argv: list[str] | None = None):
     p = argparse.ArgumentParser(prog="gas-pult", description="Telegram-пульт для сессий Claude Code в tmux.")
     p.add_argument("-V", "--version", action="version", version=f"gas-pult {__version__}")
@@ -908,6 +940,13 @@ def main(argv: list[str] | None = None):
     s.add_argument("--config-dir", help="папка Claude Code (по умолчанию $CLAUDE_CONFIG_DIR или ~/.claude)")
     s.add_argument("--python", help="чем запускать хук (по умолчанию — этот Python)")
     s.set_defaults(fn=cmd_secrets)
+    s = sub.add_parser("connectors", help="вход коннекторов: watch [--dry-run|--install|--uninstall] · vault init")
+    s.add_argument("action", choices=["watch", "vault"])
+    s.add_argument("sub", nargs="?", default="", help="vault — init")
+    s.add_argument("--dry-run", action="store_true", help="watch — только показать: ни состояния, ни задач, ни событий")
+    s.add_argument("--install", action="store_true", help="watch — поставить systemd-таймер раз в 30 минут")
+    s.add_argument("--uninstall", action="store_true", help="watch — убрать таймер")
+    s.set_defaults(fn=cmd_connectors)
     s = sub.add_parser("usage", help="функции панели: report — что не открывали 30 дней и что в ходу (файл и текст)")
     s.add_argument("action", choices=["report"], nargs="?", default="report")
     s.set_defaults(fn=cmd_usage)

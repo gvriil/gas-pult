@@ -7,7 +7,7 @@
   показываются; чтобы подключить сервис — «Настройки → Подключения» в Гавриле; отправьте сообщение без ключа».
   ``suppressOriginalPrompt`` — текст с ключом не попадает в запись разговора.
 - ``PreToolUse`` — чтение ``.env*`` (Read, Grep, команды Bash) закрыто; ``.env.example`` (и ``.sample``, ``.template``)
-  — открыт.
+  — открыт. База паролей коннекторов (``connectors.kdbx`` и ``connectors.key``, ``connwatch``) закрыта целиком.
 - ``PostToolUse`` — в выводе любого инструмента секреты и значения из ``.env*`` текущей папки заменяются заглушкой
   (``updatedToolOutput``: та же форма ответа, строки — без секретов).
 
@@ -207,6 +207,29 @@ def env_target(tool: str, inp: dict) -> str | None:
     return None
 
 
+# ---------- база паролей коннекторов (connwatch) ----------
+VAULT_FILES = ("connectors.kdbx", "connectors.key")       # <данные>/connectors.kdbx и <config>/connectors.key
+_VAULT = re.compile(r"(?<![A-Za-z0-9_.\-])connectors\.(?:kdbx|key)(?![A-Za-z0-9_.\-])", re.I)
+
+
+def vault_target(tool: str, inp: dict) -> str | None:
+    """Имя файла базы паролей коннекторов, если инструмент его касается (``ls`` без конвейера — можно)."""
+    inp = inp if isinstance(inp, dict) else {}
+    if tool == "Bash":
+        cmd = str(inp.get("command") or "")
+        if re.match(r"\s*ls(?:\s|$)", cmd) and not re.search(r"[;&|`$]", cmd):
+            return None
+        m = _VAULT.search(cmd)
+        return m.group(0) if m else None
+    if tool in ("Read", "NotebookRead", "Grep"):
+        for k in ("file_path", "notebook_path", "path", "glob"):
+            v = str(inp.get(k) or "")
+            m = _VAULT.search(os.path.basename(v.rstrip("/")))
+            if m:
+                return m.group(0)
+    return None
+
+
 # ---------- хук ----------
 def scrub(obj, env):
     """Та же форма, строки — без секретов. Возвращает (новое, типы)."""
@@ -251,7 +274,14 @@ def handle(data: dict) -> dict | None:
         return {"decision": "block", "reason": prompt_reason(types),
                 "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "suppressOriginalPrompt": True}}
     if ev == "PreToolUse":
-        name = env_target(str(data.get("tool_name") or ""), data.get("tool_input") or {})
+        tool, inp = str(data.get("tool_name") or ""), data.get("tool_input") or {}
+        if vault := vault_target(tool, inp):
+            return {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse", "permissionDecision": "deny",
+                "permissionDecisionReason": (f"Файл {vault} закрыт: база паролей коннекторов (защита Гаврилы). Её "
+                                             "читает только пульт (gas-pult connectors), агентам — нельзя. Нужен "
+                                             "вход в сервис — поставьте задачу человеку.")}}
+        name = env_target(tool, inp)
         if not name:
             return None
         return {"hookSpecificOutput": {
