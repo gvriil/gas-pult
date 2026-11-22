@@ -36,5 +36,5 @@ def test_focus_manifest_opens_focus():
 
 
 def test_old_home_icon_redirects_to_focus():
-    """Значок, поставленный до исправления, открывает «/»: ответ focus_scope ведёт в фокус (скриншот владельца 22.11)."""
+    """Старый значок открывает «/»: ответ focus_scope ведёт в фокус (скриншот владельца 22.11)."""
     assert 'err.code === "focus_scope" && !FOCUS && !SLINK) { location.replace("/?focus")' in INDEX
