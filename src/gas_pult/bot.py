@@ -998,7 +998,8 @@ class Pult:
                         f"{folder}\nДелаю протокол в чате «Встречи» — ответ придёт сюда.")
         root = self.cfg.roots()[0] / "meetings"
         root.mkdir(parents=True, exist_ok=True)
-        self.open_session(chat, "meetings", str(root), first=meetings.prompt(folder, on_drive, meetings.commands(mt)))
+        self.open_session(chat, "meetings", str(root), first=meetings.prompt(folder, on_drive, meetings.commands(mt),
+                                                                             meetings.saved_dur(folder)))
 
     QUIT_WAIT, QUIT_STEP = 20.0, 0.5                # длинная переписка: Claude выходит дольше 4 с — ждём до 20 с
 

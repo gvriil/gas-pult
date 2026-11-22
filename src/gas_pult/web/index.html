@@ -1142,7 +1142,7 @@
     <button class="icon sidebtn" id="sideBtn" aria-label="Свернуть список" title="Свернуть список"></button>
     <button class="icon" id="navCloseBtn" type="button" aria-label="Закрыть"></button></div>
   <button class="nav-new" id="navNew" type="button"></button>
-  <button class="nav-new nav-row" id="navToday" type="button" hidden></button><button class="nav-new nav-row" id="navTasks" type="button" hidden></button>
+  <button class="nav-new nav-row" id="navToday" type="button" hidden></button><button class="nav-new nav-row" id="navTasks" type="button" hidden></button><button class="nav-new nav-row" id="navMeet" type="button" hidden></button>
   <div class="nav-q" id="navQBox" hidden><input id="navQ" type="search" placeholder="Чаты, проекты, команды…" autocomplete="off" aria-label="Поиск по чатам, проектам и командам (Ctrl+K)"></div>
   <div class="nav-list" id="navList" role="list"></div>
   <button class="nav-foot" id="navSet" type="button"></button>
@@ -2009,6 +2009,7 @@ $("navBg").onclick = () => navOpen(false);
 $("navNew").onclick = () => newChat();
 $("navToday").onclick = () => { navOpen(false); briefGo(); };              // «Сегодня» — брифинг (Gemini №8)
 $("navTasks").onclick = () => { navOpen(false); part("tasks").then(() => tasksOpen()); };
+$("navMeet").onclick = () => { navOpen(false); part("meeting").then((m) => m.open()); };   // протоколы встреч (22.11)
 function navSave() { store("navShut", JSON.stringify([...NAV.shut])); store("navExp", JSON.stringify([...NAV.exp])); renderNav(); }
 $("navFoldBtn").onclick = () => {                     // «Свернуть всё / Развернуть всё»: секции и раскрытые проекты
   const k = ["pins", "proj", "chats"];
@@ -6610,7 +6611,8 @@ async function focusStart() {
   document.body.classList.add("focus");             // экран сессии — openSession, когда известна сессия
   try {
     const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN }) : null;   // первое открытие — привязка устройства
-    if (o?.mode === "space") return location.replace(location.pathname + "?slink");   // ссылка на пространство — полная панель
+    if (o?.mode === "space") return location.replace(location.pathname + "?slink");
+    if (o?.mode === "meeting" || (DEMO && params.get("focus") === "meeting")) return part("meeting").then((m) => m.publicView());   // ссылка на протокол   // ссылка на пространство — полная панель
     if (o?.owner_here) return location.replace(location.pathname + (o.w ? "?session=" + encodeURIComponent(o.w) : ""));   // владелец — обычная панель
     meta = await api("/api/meta"); BUILD = meta.build;
   } catch (e) { return focusEnd(e.message); }
@@ -7101,6 +7103,7 @@ async function start() {
   start.poll ||= () => tourOn || refreshShared();          // общий секундный тик (tick, pollDue); во время тура экран не перерисовываем
   start.done = true; afterPaint(mdLoad);
   if (meta.role === "owner") afterPaint(() => part("tasks").catch(() => {}));   // список задач — заранее, в простое
+  if (meta.role === "owner" && params.has("meeting")) part("meeting").then((m) => m.open(params.get("meeting")));   // ссылка из задачи
   setTimeout(tourOffer, 1200);
   keepAwake();
   let resume = null;
@@ -7227,6 +7230,7 @@ function paintSpaces() {
   tm.hidden = !(meta?.role === "owner" && (meta?.desktop || meta?.tty)); tm.innerHTML = ic("term") + '<span class="lbl">Терминал</span>';
   $("spaces").querySelector(".sp-brief").hidden = $("spaces").querySelector(".sp-tasks").hidden = true;   // — в панели (Gemini №8)
   $("navToday").hidden = meta?.role !== "owner"; $("navToday").innerHTML = ic("spark") + "<span>Сегодня</span>";
+  $("navMeet").hidden = meta?.role !== "owner" || FOCUS; $("navMeet").innerHTML = ic("mic") + "<span>Протоколы встреч</span>";
   $("navTasks").hidden = false;
   tasksCount();
 }

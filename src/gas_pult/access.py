@@ -172,3 +172,10 @@ FOCUS_PROJ_POST = {"/api/project/session", "/api/project/resume"}
 SLINK = "slink"                                     # who()[0] для входа по ссылке на пространство
 SLINK_HEADER = "X-Gp-Slink"                         # страница ссылки: проверяется только её cookie (не вход владельца)
 SLINK_NO = set(INVITE_OWN) | set(PASSKEY_OWN) | set(PUSH_OWN) | {NOTIFY_DONE}
+# Протоколы встреч (meetings.py, владелец 22.11): список, протокол, запись, карточка, ссылка — только владельцу.
+MEETINGS = ("/api/meetings", "/api/meeting", "/api/meeting/audio", "/api/meeting/card", "/api/meeting/share")
+OWNER_ONLY |= set(MEETINGS)
+# Ссылка на протокол (focus.MEETING): только её протокол — вид, запись, карточка; «Выйти» на устройстве. Id протокола
+# берётся из записи ссылки, не из запроса; остального API (сессии, задачи, другие протоколы) у неё нет — 403.
+MEETING_GET = {"/api/mt", "/api/mt/audio", "/api/mt/card"}
+MEETING_POST = {"/api/logout"}
