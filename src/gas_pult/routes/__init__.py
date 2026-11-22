@@ -9,6 +9,8 @@
   окна нет — 404 «окна уже нет», как раньше);
 - ``POST_RAW`` — ``fn(self)``: тело читает сама (запись голоса, файл) — до разбора JSON;
 - ``POST``     — ``fn(self, b)``: тело — JSON (``json.loads(self.body() or b"{}")``, как в цепочке);
+- ``POST_W``   — ``fn(self, b, w)``: и окно сессии ``w = self.win(b.get("w"))`` (ветки после общего ``self.win`` в
+  ``post``; окна нет — 404 «окна уже нет»); ищется после ``POST_P`` — там, где ``post`` разобрал JSON;
 - ``GET_P``, ``POST_P`` — развилка: одна функция на несколько путей, ``fn(self, path, q)`` / ``fn(self, path, b)``;
   ключ — кортеж путей (ветка ``if path in ТАБЛИЦА`` цепочки: ответ собирает модуль области по ``path``, например
   ``billing.api``). Ищутся после ``GET``/``GET_W`` и ``POST`` — как ветки, что шли ниже.
@@ -29,16 +31,18 @@ from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут
     api_tokens,
     billing,
     forms,
+    integrations,
     meetings,
     messengers,
+    model_keys,
     notify,
     share,
     tasks,
     voice,
 )
 
-AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens)
-KINDS = ("GET", "GET_W", "GET_P", "POST_RAW", "POST", "POST_P")
+AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens, model_keys, integrations)
+KINDS = ("GET", "GET_W", "GET_P", "POST_RAW", "POST", "POST_P", "POST_W")
 
 
 def _merge(kind: str) -> dict:
@@ -53,4 +57,4 @@ def _merge(kind: str) -> dict:
 
 
 TABLES = {k: _merge(k) for k in KINDS}
-GET, GET_W, GET_P, POST_RAW, POST, POST_P = (TABLES[k] for k in KINDS)
+GET, GET_W, GET_P, POST_RAW, POST, POST_P, POST_W = (TABLES[k] for k in KINDS)
