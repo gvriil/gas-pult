@@ -47,6 +47,7 @@ from typing import BinaryIO, ClassVar
 
 from gas_pult import (
     ago,
+    apitokens,
     approvals,
     asr,
     balance,
@@ -164,6 +165,10 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     TOUR,
     TTY,
     USES,
+    V1_GET,
+    V1_NEVER,
+    V1_POST,
+    V1_PREFIX,
 )
 from gas_pult.billing import api as billing_api  # платежи (billing/): панель знает только billing.api
 from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
@@ -539,6 +544,9 @@ class Panel:
         self.hub.private = self.devices.private          # «Личные данные не уходят модели» — флаг устройства
         self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Гаврилу (share.py)
         self.share_tokens = share.Tokens(cfg.data / "share_tokens.json")  # iPhone: токены «Быстрой команды»
+        self.api_tokens = apitokens.Tokens(cfg.data / "api_tokens.json")   # 1С и CRM: /api/v1 (apitokens.py)
+        self.api_log = apitokens.Log(cfg.data / "api-tokens-log.jsonl")     # журнал вызовов /api/v1
+        self.api_guard = apitokens.Guard()                                  # подбор токена — 429
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
@@ -4048,6 +4056,8 @@ def handler(panel: Panel):
 
         renew = ""                              # Set-Cookie продлённой или новой сессии — уйдёт с ответом
         sl: tuple | None = None                 # (запись ссылки на пространство | None, почему погасла) — на запрос
+        apitok: dict | None = None              # запрос /api/v1 по токену (apitokens.py): {"uid", "role"}, проверен
+        sent_code = 0                           # код последнего ответа — для журнала /api/v1
 
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
@@ -4055,7 +4065,12 @@ def handler(panel: Panel):
         def parse_request(self) -> bool:
             self.renew = ""                     # соединение keep-alive: у каждого запроса своё
             self.sl = None                      # ссылка на пространство — проверяется заново на каждый запрос
+            self.apitok = None                  # токен /api/v1 — тоже на каждый запрос
             return super().parse_request()
+
+        def send_response(self, code, message=None):
+            self.sent_code = code               # журнал /api/v1 пишет код ответа
+            super().send_response(code, message)
 
         def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = "",
                   headers: dict | None = None, packed: bytes | None = None, etag: str = ""):
@@ -4102,6 +4117,8 @@ def handler(panel: Panel):
         def who(self) -> tuple[str, str | None, int | None]:
             """(откуда: «telegram» / «browser» / "", роль, Telegram ID). Роль — на каждый запрос, из people.json.
             Запрос из фокуса — права того, кто выпустил ссылку, но только в пределах ``FOCUS_*`` и одного окна."""
+            if self.apitok is not None:                   # /api/v1: права выпустившего токен, проверены v1_call
+                return "apitoken", self.apitok["role"], self.apitok["uid"]
             if self.focused is not None:
                 return "focus", "owner", self.focused.get("by")
             if self.headers.get(SLINK_HEADER):            # страница ссылки на пространство — только её cookie
@@ -4459,6 +4476,8 @@ def handler(panel: Panel):
 
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
+            if url.path.startswith(V1_PREFIX):           # 1С и CRM: токен, белый список access.V1_* (apitokens.py)
+                return self.v1_call("GET")
             if url.path == "/api/gate/desktop":         # Caddy forward_auth рабочего стола (#206): только владелец
                 return self.desktop_gate()
             if url.path == "/desktop-enter":             # одноразовая ссылка вкладки: пропуск и переход на noVNC
@@ -4580,6 +4599,9 @@ def handler(panel: Panel):
                 return panel.share_list(self.terms_uid())
             if path == "/api/share/file":                # миниатюра картинки своей записи
                 return panel.share_file(self.terms_uid(), q.get("id", ""), q.get("i", ""))
+            if path == "/api/apitokens":                 # токены для 1С и CRM (apitokens.py) — свои
+                return {"tokens": panel.api_tokens.mine(*self.api_owner()), "terms": apitokens.TERMS,
+                        "groups": apitokens.GROUPS}
             if path == "/api/share/devices":             # устройства «Поделиться» (iPhone) — свои
                 return {"devices": panel.share_tokens.mine(self.terms_uid())}
             if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
@@ -4835,6 +4857,8 @@ def handler(panel: Panel):
 
         def do_POST(self):
             path = urllib.parse.urlparse(self.path).path
+            if path.startswith(V1_PREFIX):               # 1С и CRM: токен, белый список access.V1_* (apitokens.py)
+                return self.v1_call("POST")
             if path == "/api/bridge/claim":             # мост: одноразовый код из панели → токен устройства
                 return self.dispatch(self.bridge_claim)
             if path == "/api/bridge/rpc":               # агент (gas-pult bridge-mcp) → мост; секрет — файл 0600
@@ -4905,6 +4929,66 @@ def handler(panel: Panel):
                 self.close_connection = True               # тело не дочитано — соединение не переиспользуем
             go = f"/?share={rec['id'] if rec else why}"
             return self.json({"go": go}) if sw else self.go(go)
+
+        def v1_call(self, method: str):
+            """``/api/v1/<путь>`` — псевдоним ``/api/<путь>`` для 1С и CRM. ``Authorization: Bearer <токен>``:
+            неизвестный, отозванный, просроченный или выпустивший без прежних прав — 401; путь не из белого списка
+            ``access.V1_*`` (или запись токеном «только чтение») — 403. Дальше — обычные ``permit`` и обработчик с
+            правами и пространством выпустившего. Каждый вызов — строка в журнале (без тел и параметров)."""
+            url = urllib.parse.urlparse(self.path)
+            ext, ip, rec = url.path, self.client_ip(), None
+            self.close_connection = True                 # токен — на каждый запрос заново, без keep-alive
+            try:
+                if panel.api_guard.blocked(ip):
+                    return self.json({"error": "слишком много неверных токенов — подождите минуту"}, 429)
+                rec = panel.api_tokens.check(apitokens.bearer(self.headers.get("Authorization", "")))
+                role = panel.people.role(rec["by"]) if rec else None
+                if rec and role and (panel.people.tenant(rec["by"]) or "") != rec["space"]:
+                    role = None                          # человека перевели в другое пространство — токен не его
+                if not role or (not rec["space"] and role != "owner"):
+                    if not rec:
+                        panel.api_guard.fail(ip)
+                    return self.json({"error": "нужен действующий токен: Настройки → Токены для 1С и CRM",
+                                      "code": "token"}, 401)
+                path = "/api/" + ext[len(V1_PREFIX):]
+                table = V1_GET if method == "GET" else V1_POST
+                ok = path not in V1_NEVER and any(path in table[g] for g in rec["groups"] if g in table)
+                if not ok or (method == "POST" and not rec["write"]):
+                    why = "токен только для чтения" if ok else "этот путь через токен закрыт"
+                    return self.json({"error": why, "code": "v1_scope"}, 403)
+                if method == "POST" and path in ("/api/tasks/add", "/api/tasks/update"):
+                    try:
+                        b = json.loads(self.body() or b"{}")
+                    except ValueError:
+                        return self.json({"error": "тело — JSON"}, 400)
+                    self.raw = json.dumps(b).encode()        # обработчик прочитает то же тело (H.body)
+                    if not isinstance(b, dict) or b.get("kind") == "command" or "cmd" in b:
+                        return self.json({"error": "задачи с командой сервера через токен не создаются",
+                                          "code": "v1_scope"}, 403)
+                self.apitok, self.focused = {"uid": rec["by"], "role": role}, None
+                self.path = path + (f"?{url.query}" if url.query else "")
+                if not self.permit(path, method):
+                    return None
+                q = dict(urllib.parse.parse_qsl(url.query))
+                with panel.tmux.scope(self.space()):
+                    self.dispatch(lambda: self.get(path, q) if method == "GET" else self.post(path))
+                return None
+            finally:
+                panel.api_log.write((rec or {}).get("id", ""), method, ext, self.sent_code or 500)
+
+        def api_owner(self) -> tuple[int, str]:
+            """Чьи токены /api/v1: владелец пульта — свои (пространство ""); человек пространства (не наблюдатель) —
+            свои в своём пространстве. Админу, участнику без пространства, наблюдателю — нет."""
+            role, uid = self.who()[1], self.terms_uid()
+            if self.focused is not None or self.apitok is not None or uid is None:
+                raise ValueError("токены выпускает владелец пульта или пространства")
+            if slug := self.space():
+                if not allowed(role, "member"):
+                    raise ValueError("наблюдателю токены не выдаются")
+                return uid, slug
+            if role != "owner":
+                raise ValueError("токены выпускает владелец пульта или пространства")
+            return uid, ""
 
         def share_api(self):
             """POST /api/share (iPhone «Быстрая команда»): ``Authorization: Bearer <токен устройства>``; multipart,
@@ -5538,6 +5622,13 @@ def handler(panel: Panel):
                 return billing_api.post(panel.cfg.data, path, b, actor=f"owner:{self.terms_uid()}")
             if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
                 return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
+            if path == "/api/apitokens/new":               # токен для 1С и CRM: показываем один раз
+                by, sp = self.api_owner()
+                return panel.api_tokens.create(by, sp, str(b.get("name", "")), b.get("write") is True,
+                                               b.get("days", apitokens.DEFAULT_DAYS),
+                                               b.get("groups") if isinstance(b.get("groups"), list) else None)
+            if path == "/api/apitokens/revoke":
+                return panel.api_tokens.revoke(*self.api_owner(), str(b.get("id", "")))
             if path == "/api/share/devices/new":           # токен «Быстрой команды»: показываем один раз
                 return panel.share_tokens.create(self.terms_uid(), str(b.get("name", "")))
             if path == "/api/share/devices/revoke":

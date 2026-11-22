@@ -33,6 +33,8 @@ function groups() {
     { title: "ИИ, подключения и бюджет", icon: "chip", items: [
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),
     ...(meta?.space && meta?.role !== "owner" ? [{ label: "Подключения", icon: "puzzle", sub: "свои подключения пространства: GitHub, Linear, поиск, свой сервер — ключи только у вас", run: () => part("spacemcp").then((m) => m.open()) }] : []),
+    // 1С и CRM (apitokens.py, владелец 22.11): владелец пульта — свои токены; человек пространства (не наблюдатель) — свои
+    ...(!FOCUS && ((meta?.role === "owner" && !meta?.space) || (meta?.space && ["member", "admin"].includes(meta?.role))) ? [{ label: "Токены для 1С и CRM", icon: "key", sub: "доступ к задачам и чатам по API; по умолчанию только чтение", run: () => part("apitokens").then((m) => m.open()) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Модель по умолчанию", icon: "chip", sub: "для всех новых сессий Claude; модель одного чата — в самом чате", run: defaultModelSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Брифинг: источники и время", icon: "spark", run: () => briefGo("prefs") }] : []),

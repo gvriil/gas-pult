@@ -204,3 +204,32 @@ SPACE_OK |= set(REC)
 FOCUS_POST |= {"/api/rec/chunk", "/api/rec/finish", "/api/rec/drop"}
 FOCUS_GET |= {"/api/rec/status"}
 FOCUS_NO_W |= set(REC)
+# Токены для 1С и CRM (apitokens.py, решение владельца 22.11 «API с первого дня»): ``/api/v1/<путь>`` — псевдоним
+# ``/api/<путь>`` с ``Authorization: Bearer``. Только явный белый список: группа → пути чтения (GET) и записи (POST).
+# Запись — только у токена с галочкой «запись». Дальше — обычные права выпустившего (``permit``, пространство).
+V1_PREFIX = "/api/v1/"
+V1_GET = {
+    "sessions": ("/api/sessions", "/api/projects", "/api/project", "/api/project/sessions", "/api/project/history",
+                 "/api/history", "/api/last", "/api/activity"),
+    "tasks": ("/api/tasks",),
+    "drafts": ("/api/drafts",),                  # «Ждут вашего Да» — только смотреть
+    "send": (),
+}
+V1_POST = {
+    "sessions": (),
+    "tasks": ("/api/tasks/add", "/api/tasks/update"),   # без команд: ``kind=command`` и ``cmd`` — 403 (webapp.v1_call)
+    "drafts": (),                                       # «Да» и «Нет» — только человек в панели
+    "send": ("/api/send",),                             # сообщение агенту в окно сессии
+}
+# Никогда через токен — даже с «запись»: «Да» человека, команды и терминал, люди, ключи, токены, платежи, настройки.
+APITOKENS = ("/api/apitokens", "/api/apitokens/new", "/api/apitokens/revoke")
+V1_NEVER = (CONFIRM | set(TERM) | set(TTY) | set(DRAFTS) | set(BILLING_POST) | set(APITOKENS) | set(MESSENGERS) |
+            {"/api/drafts/check", "/api/bridge/confirm", "/api/bridge/reject", "/api/tasks/run", "/api/tasks/remove",
+             "/api/people", "/api/people/role", "/api/people/remove", "/api/people/access", "/api/keys",
+             "/api/keys/remove", "/api/providers", "/api/prefs", PERSONA, "/api/notify/prefs", "/api/notify/level",
+             "/api/model/default", "/api/cost/limits", "/api/invite/new", "/api/focus/new", "/api/close",
+             "/api/restart", "/api/login/code"}) - {"/api/drafts"}
+assert not ({p for g in V1_POST.values() for p in g} | {p for g in V1_GET.values() for p in g}) & V1_NEVER
+# Выпуск и отзыв токенов — свои: владелец пульта и человек пространства (не наблюдатель); не по ссылкам.
+SPACE_OK |= set(APITOKENS)
+SLINK_NO |= set(APITOKENS)
