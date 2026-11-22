@@ -1438,6 +1438,62 @@
     }
    }
   },
+  "/api/bug": {
+   "post": {
+    "summary": "«Сообщить об ошибке» из чата: задача владельцу и штабу, уведомление, в чат — «Приняли»",
+    "tags": [
+     "Прочее"
+    ],
+    "operationId": "post_bug",
+    "x-access": {
+     "role": "viewer",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "w": {},
+         "text": {},
+         "ctx": {},
+         "shot": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "ok": {},
+          "task": {},
+          "ack": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/calendars/key": {
    "post": {
     "summary": "Секрет календаря: в файл 0600 и проверка",
@@ -4190,7 +4246,7 @@
   },
   "/api/history": {
    "get": {
-    "summary": "Переписка сессии страницами (новые сверху, `before` — раньше)",
+    "summary": "Переписка сессии страницами (новые сверху, `before` — раньше); `team` — сообщения команды",
     "tags": [
      "Сессии и чат"
     ],
@@ -4239,6 +4295,7 @@
         "schema": {
          "type": "object",
          "properties": {
+          "team": {},
           "same": {},
           "rev": {},
           "items": {},
@@ -12019,6 +12076,58 @@
     }
    }
   },
+  "/api/team/say": {
+   "post": {
+    "summary": "Сообщение команды в чат окна или проекта (карточка «Команда»; в Claude не уходит)",
+    "tags": [
+     "Люди, вход, приглашения"
+    ],
+    "operationId": "post_team_say",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "w": {},
+         "proj": {},
+         "text": {},
+         "kind": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "ok": {},
+          "msg": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/term": {
    "get": {
     "summary": "Окно терминала панели: экран и живо ли",
@@ -13027,7 +13136,7 @@
   },
   "/api/v1/history": {
    "get": {
-    "summary": "По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше) (белый список `access.V1_*`, docs/API-V1.md)",
+    "summary": "По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше); `team` — сообщения команды (белый список `access.V1_*`, docs/API-V1.md)",
     "tags": [
      "API v1 для 1С и CRM"
     ],
@@ -13075,6 +13184,7 @@
         "schema": {
          "type": "object",
          "properties": {
+          "team": {},
           "same": {},
           "rev": {},
           "items": {},

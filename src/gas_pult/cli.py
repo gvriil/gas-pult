@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 
 from gas_pult import __version__, config, rogroup, setup, transcripts
@@ -842,6 +843,8 @@ def cmd_chat(a, panel=None, sleep=time.sleep):
     когда окно освободится), с ``--wait`` — команда ждёт конца хода сама."""
     from gas_pult import chat_move
 
+    if a.action == "say":
+        return cmd_chat_say(a)
     if panel is None:
         from gas_pult import webapp
 
@@ -873,6 +876,39 @@ def cmd_chat(a, panel=None, sleep=time.sleep):
     else:
         print(f"{wid} → {r['id']}: чат продолжается в «{r['project_name']}»; старый журнал — в корзине чатов")
     return r
+
+
+def cmd_chat_say(a, tmux=None):
+    """``gas-pult chat say <окно|проект> "<текст>"`` — сообщение команды в чат (teammsg.py): карточка «Команда» в
+    переписке окна (``@N``, ``main:<имя>``) или всех окон проекта (``pXXXXXXXXXX``). В tmux и Claude не уходит."""
+    from gas_pult import projects, teammsg
+
+    text = " ".join([a.folder, *(getattr(a, "rest", None) or [])]).strip()
+    ref = str(a.window or "").strip()
+    data = config.data_dir()
+    try:
+        if teammsg.PID.match(ref):
+            known = projects.Store(data / projects.FILE, os.path.expanduser("~")).read().get("projects") or {}
+            if ref not in known and not ref.startswith("s:"):
+                raise SystemExit(f"проекта {ref} нет — id проекта: «⋯» проекта в панели или projects.json")
+            to = teammsg.target(proj=ref)
+        else:
+            if tmux is None:
+                from gas_pult.tmux import Tmux
+                try:
+                    tmux = Tmux(config.load().session)
+                except config.ConfigError as e:
+                    raise SystemExit(str(e)) from None
+            wid = chat_window(types.SimpleNamespace(tmux=tmux), ref)   # chat_window ждёт panel.tmux
+            w = next((x for x in tmux.windows() if x["id"] == wid), None)
+            if not w:
+                raise SystemExit(f"окна {wid} нет")
+            to = teammsg.target(w=wid, sid=w.get("sid") or "")
+        m = teammsg.TeamMsgs(data / teammsg.FILE).say(to, text, getattr(a, "kind", "info") or "info")
+    except ValueError as e:
+        raise SystemExit(f"не записал: {e}") from None
+    print(f"сообщение команды {m['id']} → {'проект ' + to['proj'] if to.get('proj') else 'окно ' + to['w']}")
+    return m
 
 
 def cmd_last(a):
@@ -1076,10 +1112,13 @@ def main(argv: list[str] | None = None):
     s.add_argument("--dry-run", action="store_true", help="показать, что куда пойдёт, ничего не трогая")
     s.add_argument("--claude-dir", default="", help="папка Claude Code (журналы — откуда проект файла)")
     s.set_defaults(fn=cmd_inbox)
-    s = sub.add_parser("chat", help="чаты: move <окно> <папка проекта> [--wait] — перенести чат в другой проект")
-    s.add_argument("action", choices=["move"])
-    s.add_argument("window", help="окно tmux: main:<имя> или @N")
-    s.add_argument("folder", help="папка проекта, куда перенести")
+    s = sub.add_parser("chat", help="чаты: move <окно> <папка проекта> [--wait] — перенести чат в другой проект; "
+                                    "say <окно|проект> \"<текст>\" — сообщение команды в чат (в Claude не уходит)")
+    s.add_argument("action", choices=["move", "say"])
+    s.add_argument("window", help="окно tmux: main:<имя> или @N; у say — ещё и проект pXXXXXXXXXX")
+    s.add_argument("folder", help="move: папка проекта, куда перенести; say: текст сообщения")
+    s.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
+    s.add_argument("--kind", default="info", help="say: info (по умолчанию) | fixed | ack")
     s.add_argument("--wait", action="store_true", help="идёт ход — ждать его конца (иначе — в очередь панели)")
     s.add_argument("--timeout", type=int, default=6 * 3600, help="сколько секунд ждать с --wait")
     s.set_defaults(fn=cmd_chat)

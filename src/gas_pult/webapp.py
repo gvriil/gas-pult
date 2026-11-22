@@ -112,6 +112,7 @@ from gas_pult import (
     starters,
     steps,
     tasks,
+    teammsg,
     tenants,
     terms,
     termwin,  # noqa: F401 — webapp.* жив (routes/)
@@ -129,6 +130,7 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     ADMIN_OK,
     BRIEF,
     BUDGET_PATHS,
+    BUG,
     CONFIRM,
     CONFIRM_API,
     COUNTRY_FREE,
@@ -483,6 +485,8 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
         self.people.virtual = self.focus.person      # ссылка на пространство — «тестировщик» на срок ссылки (GAS-38)
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
+        self.team_msgs = teammsg.TeamMsgs(cfg.data / teammsg.FILE)    # сообщения команды в чат (teammsg.py)
+        self.bug_rate = teammsg.Rate(3, 60)                          # «Сообщить об ошибке»: 3 в минуту с устройства
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
         self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
         self.approvals = approvals.Approvals()                 # «Да» человека — только здесь, в памяти (штаб 22.11)
@@ -697,6 +701,71 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
                 self.pult.broadcast(f"💬 Отзыв ({name}, экран {rec['screen'] or '—'}): {rec['text'][:600]}"
                                     + (" · есть снимок" if rec["shot"] else ""))
         return {"ok": True, "task": t.get("id")}
+
+    def team_for(self, w: dict) -> list[dict]:
+        """Сообщения команды для чата окна ``w`` — его и его проекта (``teammsg.for_window``); сбой — пусто."""
+        try:
+            proj = self.project_of(self.project_data(), w)
+        except Exception:
+            proj = ""
+        try:
+            return self.team_msgs.for_window(w, proj)
+        except (OSError, ValueError):
+            return []
+
+    def team_say(self, b: dict) -> dict:
+        """«Команда» пишет в чат окна или проекта (владелец; штаб — ``gas-pult chat say``). В tmux ничего не уходит."""
+        wid, proj = str(b.get("w") or ""), str(b.get("proj") or "")
+        kind = str(b.get("kind") or "info")
+        if wid:
+            w = self.tmux.window(wid)
+            if not w:
+                raise LookupError("окна уже нет")
+            to = teammsg.target(w=wid, sid=w.get("sid") or "")
+        else:
+            if proj not in self.project_data()["projects"]:
+                raise LookupError("проекта нет")
+            to = teammsg.target(proj=proj)
+        return {"ok": True, "msg": teammsg.public(self.team_msgs.say(to, str(b.get("text") or ""), kind))}
+
+    def bug_report(self, who: tuple, w: dict, b: dict, ua: str, focus_rec: dict | None = None) -> dict:
+        """«Сообщить об ошибке» из чата: отчёт в ``bugs/``, задача владельцу и штабу, уведомление владельцу, человеку
+        в его чат — «Приняли». Не чаще ``bug_rate`` с устройства; окно уже проверено (своё, пространства, ссылки)."""
+        via, _, uid = who
+        dev, br = webauth.device_parts(ua)
+        key = f"f:{focus_rec['id']}" if focus_rec else f"u:{uid}"
+        if not self.bug_rate.hit(f"{key}:{hashlib.sha256((ua or '').encode()).hexdigest()[:12]}"):
+            raise ValueError("слишком часто — подождите минуту и отправьте ещё раз")
+        if focus_rec:
+            name = f"фокус-ссылка «{focus_rec.get('name') or ''}»"
+        else:
+            p = next((x for x in self.people.list() if x["id"] == uid), {}) if uid is not None else {}
+            own = self.is_owner(uid) or uid == webauth.LEGACY
+            name = "владелец" if own else p.get("name") or f"@{p.get('username', '')}"
+        space = w.get("space") or ""
+        to = teammsg.target(w=w["id"], sid=w.get("sid") or "", space=space)
+        try:
+            proj = self.project_of(self.project_data(), w)
+        except Exception:
+            proj = ""
+        title = ""
+        with contextlib.suppress(Exception):
+            title = self.chat_title(self.project_data(), w["path"], self.pult.home_of(w), w.get("sid") or "",
+                                    harness.of(w)) or w.get("name", "")
+        rec = teammsg.bug_save(self.cfg.data, str(b.get("text") or ""), device=dev, browser=br, who=name, to=to,
+                               proj=proj, chat_title=title or w.get("name", ""), ctx=b.get("ctx"),
+                               shot=str(b.get("shot") or ""))
+        t = teammsg.bug_task(rec, to)
+        if space:                                          # окно пространства — не окно владельца: без перехода в чат
+            t.update(chat="", sid="")
+        t = self.tasks.add(t, by="bug")
+        with contextlib.suppress(Exception):
+            self.pult.broadcast(f"Сообщили об ошибке ({name}; {dev or '—'}, {br or '—'}; чат «{rec['chat_title']}»"
+                                f"{', пространство ' + space if space else ''}): {rec['text'][:600]}")
+        ack = self.team_msgs.say(to, teammsg.ACK, "ack", t["id"])
+        self.events.event("bug", t["id"], w=w["id"], space=space, dev=f"{dev} · {br}".strip(" ·"), via=via,
+                          n=len(rec["text"]))
+        return {"ok": True, "task": t["id"], "ack": teammsg.public(ack)}
 
     def personal(self, uid) -> bool:
         """Некоммерческие голоса (Silero) — только владельцу и только при ``personal_voices = true``."""
@@ -1444,7 +1513,7 @@ def handler(panel: Panel):
                     self.json({"error": str(e), "code": "budget"}, 403)
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
-                    FEEDBACK, "/api/clientlog",
+                    FEEDBACK, "/api/clientlog", BUG,
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN, *PUSH_OWN)   # и наблюдателю
             need = (("admin" if path in ADMIN_OK else "owner") if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
@@ -1689,14 +1758,15 @@ def handler(panel: Panel):
                 before = int(q["before"]) if q.get("before", "").isdigit() else None
                 sid = w.get("sid") or ""                   # окно со своим журналом — его переписка
                 rev = harness.of(w).revision(w["path"], home := panel.pult.home_of(w), sid)
+                team = panel.team_for(w) if before is None else []   # сообщения команды (teammsg.py) — добавлено
                 if before is None and q.get("rev") and q["rev"] == rev:
-                    return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
+                    return {"same": True, "rev": rev, "team": team}   # журнал не менялся — переписку не пересчитываем
                 items, more = harness.of(w).history(w["path"], 30, before, home=home, sid=sid)
                 for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
                     if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
                         it["human"] = h
                 self.product_seen(items)
-                return {"items": items, "more": more, "rev": rev}
+                return {"items": items, "more": more, "rev": rev, **({"team": team} if before is None else {})}
             raise KeyError
 
         def openrouter_back(self, q: dict):

@@ -520,12 +520,16 @@ function demoApi(path, body) {
                 "@3": { phase: "done", text: "Готово", since: t0 - 1500 }, "@4": { phase: "done", text: "Готово", since: t0 - 7200 } };
     return Promise.resolve({ ...base, phase: "idle", text: "", since: 0, ...(A[w] || {}) });
   }
+  // сообщения команды (teammsg.py) в чате @1: «Команда» пишет тестировщику — карточкой, не в Claude
+  const demoTeamMsgs = (p, t = Date.now() / 1000 - 240) => new URLSearchParams(p.split("?")[1]).get("w") !== "@1" ? [] : demoApi.teamMsgs ||= [
+    { id: "dt1", at: t, ts: new Date(t * 1000).toISOString().slice(0, 16).replace("T", " "), from: "Команда", kind: "fixed",
+      text: "Исправлено: фото с телефона не уходило в чат. Проверьте, пожалуйста." }];
   if (key === "/api/history" && new URLSearchParams(path.split("?")[1]).get("before")) {   // раньше — по номеру сообщения
     const xs = demoApi.h.filter((m) => m.i < +new URLSearchParams(path.split("?")[1]).get("before"));
     return Promise.resolve({ more: xs.length > 30, rev: demoRev(), items: xs.slice(-30) });
   }
   if (key.startsWith("/api/tty")) return demoTty(key, path, body);
-  if (key === "/api/history") return Promise.resolve({ more: true, rev: demoRev(), items: demoApi.h.slice(-30),
+  if (key === "/api/history") return Promise.resolve({ more: true, rev: demoRev(), items: demoApi.h.slice(-30), team: demoTeamMsgs(path),
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === demoRev() ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
     if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;

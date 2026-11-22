@@ -143,9 +143,17 @@
   /* Демо-ссылка: только просмотр и выбор вариантов — поля ввода, клавиш и опасных пунктов меню нет */
   body:not(.focus-demo) .demo-note { display: none; }
   body.focus-demo #input, body.focus-demo #plus, body.focus-demo #mic, body.focus-demo #send, body.focus-demo #hintBtn,
+  body.focus-demo #bugBtn, body.drafting #bugBtn,
   body.focus-demo #menuBtn, body.focus-demo #draftBar, body.focus-demo #attach, body.focus-demo #keys, body.focus-demo #menu button[data-owner],
   body.focus-demo #menu button:not([data-act^=say]):not([data-act=refresh]):not([data-act=switch]) { display: none !important; }
   body.focus-demo:not(.focus-proj) #menu [data-act=switch] { display: none !important; }
+  /* Сообщения команды в чате (teammsg.py): своя карточка — не ответ Claude и не ввод человека */
+  .tmsg { margin: 6px 0 14px; padding: 10px 12px; border-radius: var(--radius-md, 12px); border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-primary); background: var(--bg-subtle); }
+  .tmsg.k-fixed { border-left-color: var(--status-success); }
+  .tmsg .tm-h { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .tmsg .tm-h b { color: var(--text-primary); font-weight: 600; } .tmsg .tm-h .when { margin-left: auto; }
+  .tmsg .tm-h svg { color: var(--accent-primary); } .tmsg.k-fixed .tm-h svg { color: var(--status-success); }
+  .tmsg .tm-b { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .demo-note { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
   .demo-note svg { flex: none; color: var(--accent-primary); }
   .focus-exp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0 16px 8px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
@@ -1295,6 +1303,7 @@
       <div class="dchips" id="draftBar" hidden></div>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
+      <button class="tool" id="bugBtn" type="button" aria-label="Сообщить об ошибке" title="Сообщить об ошибке"></button>
       <button class="tool" id="mic" aria-label="Голосом: держите и говорите — текст появится в поле" title="Держите и говорите — текст появится в поле; коснитесь — запись до «Стоп»"></button>
       <button class="tool send" id="send" aria-label="Отправить" hidden></button>
     </div>
@@ -1597,11 +1606,13 @@ const P = {
   flask: '<path d="M9.5 3.5h5M10.5 3.5v6L5 18.5a1.5 1.5 0 0 0 1.3 2.2h11.4a1.5 1.5 0 0 0 1.3-2.2L13.5 9.5v-6"/><path d="M7.5 15h9"/>',
   rew15: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 3.8v3.5H8"/><text x="12.3" y="15.2" font-size="7.6" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">15</text>',
   fwd15: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 3.8v3.5H16"/><text x="11.7" y="15.2" font-size="7.6" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">15</text>',
+  bug: '<path d="M9 7.5V6.5a3 3 0 0 1 6 0v1"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M3.5 13.5H7M17 13.5h3.5M5 8.5l2.4 1.4M19 8.5l-2.4 1.4M5 19l2.5-1.7M19 19l-2.5-1.7"/>',
+  team: '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M15.5 5.8a3 3 0 0 1 0 5.4M17 14.5c1.9.6 3.1 2.1 3.5 4.5"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
   $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
-  $("menuBtn").innerHTML = ic("menu"); $("mcpChip").innerHTML = ic("puzzle"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
+  $("menuBtn").innerHTML = ic("menu"); $("mcpChip").innerHTML = ic("puzzle"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send"); $("bugBtn").innerHTML = ic("bug");
   $("netIcon").innerHTML = ic("warn"); $("updateBar").insertAdjacentHTML("afterbegin", ic("refresh", "s16")); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("compose") + "Новый чат";
@@ -2315,7 +2326,9 @@ document.addEventListener("keydown", (e) => {
   setFont(d === 0 ? FONT.def : fontPx + d);
 });
 
+const UIMSG = [];                                     // последние сообщения интерфейса — в «Сообщить об ошибке»
 function toast(text, ms = 2600) {
+  UIMSG.push(new Date().toISOString().slice(11, 19) + " " + String(text).slice(0, 200)); UIMSG.splice(0, UIMSG.length - 10);
   document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
   notice(t); setTimeout(() => t.remove(), ms);
@@ -2329,7 +2342,9 @@ const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/tasks/run", "/
 const PWA = matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
 // Ошибки JS — в журнал событий сервера (GAS-31): тип, текст ошибки, файл:строка, экран; не чаще 10 в минуту
 let jsErrs = [];
+const ERRS = [];                                      // последние ошибки JS — в «Сообщить об ошибке» (без отправки)
 function logErr(kind, msg, at) {
+  ERRS.push(`${kind}: ${String(msg || "").slice(0, 200)} ${at || ""}`.trim()); ERRS.splice(0, ERRS.length - 10);
   const now = Date.now(); jsErrs = jsErrs.filter((t) => now - t < 60000); if (jsErrs.length >= 10 || DEMO) return; jsErrs.push(now);
   fetch("/api/clientlog", { method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": tg?.initData || "" },
     body: JSON.stringify({ kind, msg: String(msg || "").slice(0, 160), at, screen: (() => { try { return view; } catch (e) { return ""; } })() }) }).catch(() => {});
@@ -4268,7 +4283,7 @@ async function loadContent() {
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
       const opened = !hist.length || $("content").className !== "chat" || journalOf(histRev) !== journalOf(h.rev);
-      histRev = h.rev || ""; markFresh();
+      histRev = h.rev || ""; markFresh(); setTeam(h.team);
       if (opened) { hist = h.items; histMore = h.more; renderChat(true); }   // открыли (или вернулись с «Экрана») — с конца
       else if (grew) mergeChat(h);   // переписка уже на экране: дорисовать, ранние сообщения и место чтения — не трогать
     } else renderTerm(scr.lines);
@@ -4292,6 +4307,7 @@ async function liveChat() {                         // каждые 3 с: мен
   try {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
     markFresh();
+    if (setTeam(h.team) && h.same) { const at = atEnd(220); renderChat(false); if (at) stickBottom(); }
     if (h.same) return;
     if (journalOf(histRev) !== journalOf(h.rev)) { histRev = h.rev || ""; hist = h.items; histMore = h.more; return renderChat(true); }
     histRev = h.rev || "";
@@ -4302,6 +4318,18 @@ async function liveChat() {                         // каждые 3 с: мен
 // сменило журнал: /clear, /resume, или раньше панель брала «последний журнал папки»). Склеивать два разговора по
 // номерам сообщений нельзя — переписка заново, с конца.
 const journalOf = (rev) => String(rev || "").split("-")[0];
+// Сообщения команды (teammsg.py): поле team ответа /api/history — карточкой «Команда …» в ленте по времени
+let team = [], teamW = "";
+function setTeam(xs, w = current) {                 // → поменялось ли
+  const a = (xs || []).map((t) => t.id).join(), b = teamW === w ? team.map((t) => t.id).join() : "";
+  team = [...(xs || [])]; teamW = w; return a !== b;
+}
+function teamAdd(t) {                                // свой отчёт об ошибке: «Приняли» — сразу, не ждём опроса
+  if (!t || team.some((x) => x.id === t.id)) return;
+  setTeam([...(teamW === current ? team : []), t]); if (tab === "chat" && view === "session") { renderChat(false); stickBottom(); }
+}
+const teamName = () => (LANG === "en" ? brandName() + " team" : BRAND === "Гаврила" ? "Команда Гаврилы" : "Команда " + BRAND);
+const teamCard = (t) => `<div class="tmsg k-${esc(t.kind)}" data-key="t:${esc(t.id)}" role="note"><div class="tm-h">${ic("team", "s16")}<b>${esc(teamName())}</b><span class="when">${esc(localTs(t.ts))}</span></div><div class="tm-b">${esc(t.text)}</div></div>`;
 function mergeChat(h) {   // свежий хвост переписки — к тому, что уже на экране; читатель остаётся на своём месте
   const atBottom = atEnd(220), first = h.items[0]?.i ?? Infinity;
   // якорь — сообщение, которое сейчас читают (первое видимое), и его отступ от верха экрана; после перерисовки — туда же
@@ -4576,7 +4604,9 @@ function renderChat(toBottom) {
   const box = $("content"); if (box.className !== "chat") box.className = "chat";
   if (VK.w !== current) Object.assign(VK, { w: current, keep: VMAX });
   const cut = Math.max(0, hist.length - VK.keep), vis = cut ? hist.slice(cut) : hist;
-  if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div><div id="starters"></div></div>`); starters(); return; }
+  const tq = teamW === current ? team.filter((t) => !(histMore || cut) || !vis[0] || t.ts >= vis[0].ts) : [];
+  let ti = 0; const tOut = (lim) => { let o = ""; while (ti < tq.length && (lim == null || tq[ti].ts < lim)) o += teamCard(tq[ti++]); return o; };
+  if (!hist.length && !pending.length && !tq.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div><div id="starters"></div></div>`); starters(); return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
   const head = (t) => norm(t).slice(0, 60);               // журнал мог дописать вложения/вставку — сверяем начало
   pending = pending.filter((p) => !hist.some((m) => m.role === "user" && (norm(m.text) === norm(p.text) || head(m.text) === head(p.text)))
@@ -4601,9 +4631,9 @@ function renderChat(toBottom) {
   }
   const had =!!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
-  const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => m.role === "user"
+  const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => tOut(m.ts) + (m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
-    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + aiMsg(m)).join("")
+    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + aiMsg(m))).join("") + tOut(null)
     + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", waking: "чат просыпается — сообщение уйдёт через несколько секунд…",
         wfail: "чат не проснулся — " + esc(p.err || "") + ` <button class="link" data-resend="${esc(p.id)}">Попробовать ещё</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>`, unsure: "связь прервалась — проверяю, дошло ли…",
@@ -4625,6 +4655,7 @@ function renderChat(toBottom) {
   }));
   msgs.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // и в свёрнутом коде, и в «Терминал»
   msgs.forEach(codeCopy);                                  // короткие блоки кода — с кнопкой «Копировать» справа сверху
+  fresh.filter((el) => el.classList.contains("tmsg")).forEach((el) => linkify(el.querySelector(".tm-b")));
   if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
   if (chatGrow) {                                       // где начинается новое (для follow) — и плавный рост
     const ys = (el, h) => SC.scrollTop + el.getBoundingClientRect().top - SC.getBoundingClientRect().top + h, add = msgs.filter((el) => el.classList.contains("enter"));
@@ -5197,6 +5228,7 @@ function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHei
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("modeChip").onclick = () => ACTIONS.models();
 $("mcpChip").onclick = () => ACTIONS.chatmcp();
+$("bugBtn").onclick = () => part("bugreport").then((m) => m.open(current));   // «Сообщить об ошибке» (js/bugreport.js)
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
 const ACTIONS = {

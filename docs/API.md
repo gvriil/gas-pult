@@ -2,7 +2,7 @@
 
 <!-- Файл собран генератором: python -m gas_pult.api_spec. Руками не править — правьте src/gas_pult/api_spec.py (описания) или webapp.py (маршруты) и перезапустите генератор. -->
 
-Путей: **291**, пар «путь + метод»: **304**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
+Путей: **293**, пар «путь + метод»: **306**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
 
 Все пути — под адресом панели, ответы — JSON (кроме отмеченных). Ошибка — `{"error": "…", "code": …}` с кодом HTTP: 401 — нужен вход, 403 — не хватает прав (`code`: `terms`, `space`, `focus_scope`, `confirm`, `cap`, `dev`, `budget`), 404 — нет метода, 409/410 — конфликт или ссылка погасла, 429 — лимит.
 
@@ -52,7 +52,7 @@
 | `/api/effort` | POST | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Уровень усилий модели (/effort) в сессии | `w`, `level` | `lines` |
 | `/api/folder` | POST | участник и выше | `cap:cap.dev_sessions` | «Новая папка» и сессия в ней (как папка в боте) | `name`, `profile` | — |
 | `/api/hint` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO`, `cap:cap.dev_terminal` | Подсказка ввода из строки окна (что предлагает Claude Code) | `w` | `hint` |
-| `/api/history` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Переписка сессии страницами (новые сверху, `before` — раньше) | `w`, `before`, `rev` | `same`, `rev`, `items`, `more` |
+| `/api/history` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Переписка сессии страницами (новые сверху, `before` — раньше); `team` — сообщения команды | `w`, `before`, `rev` | `team`, `same`, `rev`, `items`, `more` |
 | `/api/key` | POST | участник и выше | `SPACE_OK`, `FOCUS`, `DEMO` | Клавиша в окно (Enter, Esc, стрелки, Ctrl+C); по демо-ссылке — только выбор варианта | `key`, `w` | `lines` |
 | `/api/last` | GET | любой вошедший | `SPACE_OK`, `FOCUS`, `DEMO` | Последний ответ агента текстом (для «Скопировать» и озвучки) | `w` | `text` |
 | `/api/media` | GET | владелец | `FOCUS` | Картинка из ленты: inbox и Диск (по фокус-ссылке — только её папки) | `p` | — |
@@ -335,6 +335,7 @@
 | `/api/prefs` | POST | любой вошедший | `TERMS_FREE`, `SPACE_OK` | Свои настройки: простой режим, язык, скорость речи | `lang`, `simple`, `rate` | `simple` |
 | `/api/team` | GET | владелец | — | Возможности людей (потолок разделов); POST — сохранить | `id`, `caps`, `sections`, `reset` | — |
 | `/api/team` | POST | владелец | — | Возможности людей (потолок разделов); POST — сохранить | `id`, `caps`, `sections`, `reset` | — |
+| `/api/team/say` | POST | владелец | — | Сообщение команды в чат окна или проекта (карточка «Команда»; в Claude не уходит) | `w`, `proj`, `text`, `kind` | `ok`, `msg` |
 | `/api/terms` | GET | любой вошедший | `TERMS_FREE`, `SPACE_OK` | Условия использования: версия и пункты | — | — |
 | `/api/terms/accept` | POST | любой вошедший | `TERMS_FREE`, `SPACE_OK` | Принять условия использования | `version` | — |
 | `/api/tour` | GET | любой вошедший | `SPACE_OK` | Отметки короткого тура: пройден, «Не сейчас» | `tour`, `state` | — |
@@ -421,7 +422,7 @@
 | `/api/apitokens/revoke` | POST | участник и выше | `SPACE_OK`, `SLINK_NO` | Отозвать свой токен | `id` | — |
 | `/api/v1/activity` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/activity` — Строка статуса чата: что агент делает сейчас (белый список `access.V1_*`, docs/API-V1.md) | `w` | — |
 | `/api/v1/drafts` | GET | по токену | `V1`, `v1:drafts` | По токену: `/api/drafts` — Черновики действий коннекторов: «Ждут вашего Да» (белый список `access.V1_*`, docs/API-V1.md) | — | `drafts` |
-| `/api/v1/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше) (белый список `access.V1_*`, docs/API-V1.md) | `w`, `before`, `rev` | `same`, `rev`, `items`, `more` |
+| `/api/v1/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше); `team` — сообщения команды (белый список `access.V1_*`, docs/API-V1.md) | `w`, `before`, `rev` | `team`, `same`, `rev`, `items`, `more` |
 | `/api/v1/last` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/last` — Последний ответ агента текстом (для «Скопировать» и озвучки) (белый список `access.V1_*`, docs/API-V1.md) | `w` | `text` |
 | `/api/v1/project` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project` — Карточка проекта: папка, сессии, инструкции (белый список `access.V1_*`, docs/API-V1.md) | `id` | — |
 | `/api/v1/project/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project/history` — Переписка завершённого чата — без окна (белый список `access.V1_*`, docs/API-V1.md) | `before`, `id`, `sid` | — |
@@ -432,3 +433,9 @@
 | `/api/v1/tasks` | GET | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks` — Задачи владельца (#203); не менялись — 304 без тела (белый список `access.V1_*`, docs/API-V1.md) | — | — |
 | `/api/v1/tasks/add` | POST | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks/add` — Добавить задачу руками (белый список `access.V1_*`, docs/API-V1.md) | — | — |
 | `/api/v1/tasks/update` | POST | по токену | `V1`, `v1:tasks` | По токену: `/api/tasks/update` — Статус, «что дальше» и поля задачи (белый список `access.V1_*`, docs/API-V1.md) | `id` | — |
+
+## Прочее
+
+| Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
+|---|---|---|---|---|---|---|
+| `/api/bug` | POST | любой вошедший | `SPACE_OK`, `FOCUS` | «Сообщить об ошибке» из чата: задача владельцу и штабу, уведомление, в чат — «Приняли» | `w`, `text`, `ctx`, `shot` | `ok`, `task`, `ack` |
