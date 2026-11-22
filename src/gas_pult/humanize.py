@@ -38,6 +38,10 @@ BOX = re.compile(r"^[\s│┃|╭╮╰╯─━┌┐└┘]+|[\s│┃|╭╮�
 HINT = r"(?:[^·\n]{1,40}·\s*)*"
 FOOT = re.compile(r"^\s*" + HINT + r"(Enter to (confirm|select)|Esc to (cancel|close|exit|go back)|"
                   r"↑/↓ to navigate)", re.I)
+# Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
+# сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
+DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model)|^\s*" + HINT +
+                    r"(Enter to (confirm|select)|Esc to (cancel|close|go back))", re.M)
 OPT = re.compile(r"^(❯\s*)?(\d{1,2})\.\s+(?:\[[ ✔✓x×]\]\s*)?(.+?)$")
 PLAIN_SEL = re.compile(r"^❯\s*(?!\d+\.)(\S.*)$")
 QUESTION = re.compile(r"\?\s*$")

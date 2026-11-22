@@ -15,6 +15,7 @@ import pytest
 
 from gas_pult import webapp, webauth
 from gas_pult.config import Config
+from gas_pult.panel import work
 
 RUN = {"w": "@1", "i": 0, "sha": "aaa"}
 
@@ -31,7 +32,7 @@ def server(monkeypatch, tmp_path):
     monkeypatch.setattr(p, "commands", lambda w: [{"i": 0, "cmd": "ls", "kind": "local", "danger": False,
                                                    "sha": "aaa"}])
     monkeypatch.setattr(p, "window", lambda wid: {"id": wid, "path": str(tmp_path), "cmd": "claude", "name": "a"})
-    monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: (0, 0.1, f"ran {cmd}"))
+    monkeypatch.setattr(work, "execute", lambda cmd, cwd: (0, 0.1, f"ran {cmd}"))
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(p))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield p, f"http://127.0.0.1:{srv.server_address[1]}", sent
