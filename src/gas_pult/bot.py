@@ -102,7 +102,8 @@ from gas_pult.webauth import Auth, TgConfirm, TgLogins
 HINT = r"(?:[^·\n]{1,40}·\s*)*"          # подсказки внизу меню могут идти после других: «↑/↓ to navigate · Enter to …»
 # Готовность окна к тексту. Вопрос Claude (разрешение, выбор пункта): Esc там значит «нет» — за человека не отвечаем.
 # Меню и панели (/status, /model, /config, /usage…): Esc безопасен — закрываем, иначе текст уйдёт в меню и пропадёт.
-QUESTION = re.compile(r"^\s*Do you (want|trust)|^\s*" + HINT + r"Enter to (confirm|select)", re.M)
+QUESTION = re.compile(r"^\s*Do you (want|trust)|^\s*Review your answers\s*$|^\s*" + HINT + r"Enter to (confirm|select)",
+                      re.M)                       # «Review your answers» — сводка ответов без подсказки внизу (22.11)
 PANEL = re.compile(r"^\s*" + HINT + r"Esc to (cancel|close|exit|go back)|Settings\s+Status\s+Config", re.I | re.M)
 PROMPT = re.compile(r"^\s*❯(?!\s*\d\.)", re.M)
 
@@ -157,6 +158,12 @@ def _clip(text: str, limit: int = 4000) -> str:
 
 class NotReady(RuntimeError):
     """Окно не готово принять текст — сообщение не вставляем вслепую, а говорим человеку почему."""
+
+
+class AwaitsChoice(NotReady):
+    """Claude ждёт выбора пункта (вопрос с вариантами, разрешение): текст не вставляем. Панель по ``code`` не
+    показывает ошибку, а подсвечивает кнопки вариантов и оставляет текст в поле (22.11)."""
+    code = "question"
 
 
 class Denied(RuntimeError):
@@ -455,7 +462,7 @@ class Pult(VoicePart):
         for _ in range(limit):
             scr = "\n".join(self.tmux.screen(wid, 15))
             if QUESTION.search(scr):
-                raise NotReady("Claude ждёт ответа на вопрос в этом окне — ответьте на экране (1 2 3 или Esc), "
+                raise AwaitsChoice("Claude ждёт ответа на вопрос в этом окне — ответьте на экране (1 2 3 или Esc), "
                                "потом пишите")
             if PANEL.search(scr) and not BUSY.search(scr):
                 if escapes >= 3:

@@ -40,14 +40,16 @@ FOOT = re.compile(r"^\s*" + HINT + r"(Enter to (confirm|select)|Esc to (cancel|c
                   r"↑/↓ to navigate)", re.I)
 # Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
 # сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
-DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model)|^\s*" + HINT +
+DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model|Review your answers\s*$)|^\s*" + HINT +
                     r"(Enter to (confirm|select)|Esc to (cancel|close|go back))", re.M)
 BUSY = re.compile(r"esc to interrupt", re.I)              # Claude работает (из bot.py, 22.11: нужен panel/*)
 OPT = re.compile(r"^(❯\s*)?(\d{1,2})\.\s+(?:\[[ ✔✓x×]\]\s*)?(.+?)$")
 PLAIN_SEL = re.compile(r"^❯\s*(?!\d+\.)(\S.*)$")
 QUESTION = re.compile(r"\?\s*$")
 CONTINUE = re.compile(r"Press Enter to continue", re.I)
-ASKS = re.compile(r"^(Do you (want|trust)|Would you like to proceed|Ready to submit)", re.I)   # без подсказки
+# без подсказки внизу; «Review your answers» — сводка ответов Claude Code 2.1 без строки «Enter to …» (образец
+# tests/fixtures/cc_screens/submit.txt, 22.11)
+ASKS = re.compile(r"^(Do you (want|trust)|Would you like to proceed|Ready to submit|Review your answers$)", re.I)
 TABS = re.compile(r"[☐☒✔✓]\s+\S")                       # шапка вопросов агента: «☐ Формат  ☐ Срок  ✔ Submit»
 
 

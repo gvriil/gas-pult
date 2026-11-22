@@ -503,5 +503,7 @@
  "login.inv.start": "Start",
  "login.inv.hello": "Hello, {n}!",
  "login.inv.welcome": "You are invited to «{t}». This is your assistant: describe a task in words — it will do it.",
- "login.sub.inv": "sign-in by invitation"
+ "login.sub.inv": "sign-in by invitation",
+ "s.answer.wait": "Pick an option above — your text stays in the field and won't be lost",
+ "set.bug": "Report a problem"
 }

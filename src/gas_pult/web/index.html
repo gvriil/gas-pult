@@ -143,7 +143,7 @@
   /* Демо-ссылка: только просмотр и выбор вариантов — поля ввода, клавиш и опасных пунктов меню нет */
   body:not(.focus-demo) .demo-note { display: none; }
   body.focus-demo #input, body.focus-demo #plus, body.focus-demo #mic, body.focus-demo #send, body.focus-demo #hintBtn,
-  body.focus-demo #bugBtn, body.drafting #bugBtn,
+  body.focus-demo #bugBtn, body.drafting #bugBtn, body.focus:not(.split) #bugBtn,   /* телефон по ссылке — жук в «⋯», имя не сжимаем */
   body.focus-demo #menuBtn, body.focus-demo #draftBar, body.focus-demo #attach, body.focus-demo #keys, body.focus-demo #menu button[data-owner],
   body.focus-demo #menu button:not([data-act^=say]):not([data-act=refresh]):not([data-act=switch]) { display: none !important; }
   body.focus-demo:not(.focus-proj) #menu [data-act=switch] { display: none !important; }
@@ -523,6 +523,12 @@
   .ask .tip { margin: 8px 0 0; font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); }
   .ask button.opt b { color: var(--status-approval); min-width: 14px; font-variant-numeric: tabular-nums; }
   .ask button.opt:last-child { margin-bottom: 0; }
+  .s-ask .s-nudge { margin: 8px 0 0; font-weight: 600; }
+  .ask.nudge, .s-ask.nudge { animation: nudge .9s ease 2; box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-approval) 55%, transparent); }
+  .ask.nudge button.opt:not([data-esc]):not(.cc-esc) { border-color: var(--status-approval); }
+  .ask .tip#askTip { color: var(--text-primary); font-weight: 600; }
+  @keyframes nudge { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--status-approval) 30%, transparent); } }
+  @media (prefers-reduced-motion: reduce) { .ask.nudge, .s-ask.nudge { animation: none; } }
   .keys { display: grid; grid-template-columns: repeat(7, 1fr) 1.5fr; gap: 5px; margin: 0 0 8px; }
   .keys button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 10px; min-height: 40px; padding: 0; font-weight: 600; font-size: calc(14px * var(--fz, 1)); transition: transform .08s; }
   .keys button:not(:disabled):active { transform: scale(.96); background: var(--bg-subtle); }
@@ -1632,7 +1638,8 @@ function paintIcons() {
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
     + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Подключено у поставщика</button>`   // фокус: только просмотр
     + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`
-    + `<button data-act="ease" class="focus-only">${ic("settings")}Удобства</button>`;          // фокус: имя, тема, шрифт (js/ease.js)        // фокус: репозитории сессии (задача 43)
+    + `<button data-act="ease" class="focus-only">${ic("settings")}Удобства</button>`          // фокус: имя, тема, шрифт (js/ease.js)
+    + `<button data-act="bug">${ic("bug")}Сообщить об ошибке</button>`;          // и на телефоне, где жука в строке нет
 }
 
 // ---------- тема ----------
@@ -4917,11 +4924,25 @@ function loginSheet(l, w) {
 function setAsk(html, key = html) {
   const box = $("ask");
   if (box.dataset.key !== key) { box.innerHTML = html; box.dataset.key = key; }
+  if (askNudged && !askWaits()) {                    // вариант выбран — набранный во время вопроса текст ждёт в поле
+    askNudged = false; if ($("input").value.trim()) { toast("Вариант выбран — ваш текст в поле, отправьте его", 3500); $("input").focus(); }
+  }
   padDock();
+}
+// Claude ждёт выбора, а человек отправляет текст (22.11): не ошибка — подсветить варианты, текст остаётся в поле.
+let askNudged = false;
+// Меню без номеров (/mcp, /status) — не вопрос: их пульт перед отправкой закрывает сам (bot.ready_for_text).
+const askWaits = () => !!$("ask").querySelector("[data-n], [data-tc]");
+function askNudge() {
+  const box = $("ask").firstElementChild, tip = $("askTip");
+  askNudged = true; haptic("notificationOccurred", "warning");
+  if (tip) { tip.textContent = "Выберите вариант выше — ваш текст останется в поле и не пропадёт"; tip.hidden = false; }
+  if (box) { box.classList.remove("nudge"); void box.offsetWidth; box.classList.add("nudge"); box.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
 }
 function renderAsk(lines, auth, ask) {
   if (auth?.paste) { if (!$("authUrl")) setAsk(authCard(auth)); return; }
-  if (ask?.target !== undefined && !SIM.on) {         // разрешение инструмента — карточка «Да / Нет» (#258, js/toolcard.js)
+  // разрешение инструмента — карточка «Да / Нет» (#258), вопрос с вариантами — кнопки (22.11); js/toolcard.js
+  if (ask?.known && !SIM.on) {
     const h = window.toolCard?.(ask); if (h) return setAsk(h, "tc" + ask.sig);
     if (!window.toolCard) part("toolcard").then(() => renderAsk(lines, auth, ask)).catch(() => {});
   }
@@ -4940,22 +4961,15 @@ function renderAsk(lines, auth, ask) {
   // Карточку не перерисовываем, пока вопрос и пункты те же: кнопка под пальцем не подменяется до «click» (iPhone).
   const key = q + "\n" + opts.map((o) => o.n + o.text).join("\n");
   setAsk(`<div class="ask"><p class="q">${ic("warn")}<span>${esc(q)}</span></p>${opts.map((o) =>
-    `<button class="opt" data-n="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}
-    <p class="tip">Коснитесь пункта — выделится, ещё раз — выбрать</p></div>`, key);
-  if (Date.now() - askTap.t > 1500) markAsk(opts.find((o) => o.sel)?.n);   // свежий тап — его выделение не сбиваем
+    `<button class="opt${o.sel ? " sel" : ""}" data-n="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}
+    <button class="opt" data-esc="1"><b></b><span>Отмена</span></button><p class="tip" id="askTip" hidden></p></div>`, key);
 }
-function markAsk(n) { document.querySelectorAll("#ask button[data-n]").forEach((b) => b.classList.toggle("sel", b.dataset.n === n)); }
-// Касание — выделить пункт (стрелками до ❯), второе касание того же пункта или выделенного — выбрать (стрелки и Enter).
-// Цифрой не выбираем: не всякое меню Claude Code её принимает.
-const askTap = { n: "", t: 0 };
+// Касание — выбрать пункт (стрелками до него и Enter; 22.11 — одним нажатием, как кнопки вопроса). Цифрой не выбираем:
+// не всякое меню Claude Code её принимает. «Отмена» — Esc.
 $("ask").onclick = (e) => {
   const b = e.target.closest("button[data-n]");
-  if (b) {
-    const n = b.dataset.n, go = b.classList.contains("sel") || (askTap.n === n && Date.now() - askTap.t < 600);
-    Object.assign(askTap, { n, t: Date.now() }); markAsk(n);
-    haptic("impactOccurred", go ? "medium" : "light");
-    return choose(n, go, b);
-  }
+  if (b) { haptic("impactOccurred", "medium"); return choose(b.dataset.n, true, b); }
+  if (e.target.closest("button[data-esc]")) return press("Escape");
   const t = e.target.closest("button[data-pick]"); if (t) pick(t.dataset.pick, t);
 };
 async function choose(n, go, btn) {
@@ -5225,6 +5239,7 @@ $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o
 
 const ACTIONS = {
   sos: () => callHelp(current),
+  bug: () => part("bugreport").then((m) => m.open(current)),
   ease: () => part("ease").then((m) => m.ease()),
   say: (b) => say(true, b),
   commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
@@ -5353,6 +5368,7 @@ async function sendText() {
   if (DRAFT) return draftSend();                    // новый чат: окно — при первой отправке
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
+  if (askWaits()) return askNudge();                // Claude ждёт выбора — текст и файлы остаются, варианты подсвечены
   if (typed && secretPass !== typed) { const s = redactSecrets(typed); if (s.found.length) return secretSheet(typed, s); }
   secretPass = null;
   // файл ещё грузится — сообщение не ждёт в поле: оно уже в переписке «отправляется», путь подставим по готовности
@@ -5394,6 +5410,10 @@ async function deliver(p, restore) {
       return renderChat(true);
     } catch (e) {
       actLocal = null;
+      if (e.code === "question") {                  // вопрос появился, пока писали: в окно ничего не ушло — текст в поле
+        pending = pending.filter((x) => x !== p); if (!$("input").value.trim()) $("input").value = p.text; grow(); renderChat(true);
+        if (p.w === current) { await loadContent(); askNudge(); } return;
+      }
       if (!e.net) { p.state = "fail"; p.err = e.message; restore?.(); haptic("notificationOccurred", "error"); return renderChat(true); }
     }
   }
@@ -7675,12 +7695,18 @@ async function sSend() {
   if (micSendNow(MIC_SIMPLE)) return;               // Enter во время записи — «Стоп и отправить» (#208)
   const t = $("sInput"), text = t.value.trim();
   if (!text || !SIM.w) return;
-  if (SIM.ask) { toast(T("s.answer.first"), 3500); return $("sAsk").scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  if (SIM.ask) return sNudge();                     // текст остаётся в поле, варианты подсвечены (22.11)
   const p = { text, id: msgId() }; SIM.pending.push(p); t.value = ""; sGrow(); sRender(true);
   try {
     await api("/api/send", { w: SIM.w, text, id: p.id });
     SIM.act = { phase: "sent", since: Date.now() / 1000 + SIM.skew }; sAct(); setTimeout(sTick, 800);
-  } catch (e) { SIM.pending = SIM.pending.filter((x) => x !== p); t.value = text; sGrow(); sRender(); toast(T("s.fail.send"), 4000); }
+  } catch (e) { SIM.pending = SIM.pending.filter((x) => x !== p); t.value = text; sGrow(); sRender(); if (e.code === "question") { sTick(); return toast(T("s.answer.wait"), 4000); } toast(T("s.fail.send"), 4000); }
+}
+function sNudge() {
+  const c = $("sAsk").querySelector(".s-ask"); if (!c) return toast(T("s.answer.wait"), 3500);
+  if (!c.querySelector(".s-nudge")) c.insertAdjacentHTML("beforeend", `<p class="s-nudge" role="status">${esc(T("s.answer.wait"))}</p>`);
+  c.classList.remove("nudge"); void c.offsetWidth; c.classList.add("nudge"); haptic("notificationOccurred", "warning");
+  c.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 function sGrow() { fitLines($("sInput")); }
 $("sInput").addEventListener("input", sGrow);
@@ -7839,6 +7865,7 @@ function sSettings() {
     <div class="scn-opts">${sChip(false, 'data-caps="1"', T("caps.open"), ic("settings"))}</div>` : `<p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
     <div class="scn-opts">${sChip(false, 'data-full="1"', T("set.simple.off"))}</div><p class="note">${esc(T("set.simple.off.sub"))}</p>`}
     ${meta?.space && meta?.role !== "owner" ? `<p class="s-lbl">${esc(T("dev.title"))}</p><p class="note">${esc(T("dev.sub"))}</p><div class="scn-opts">${sChip(false, 'data-device="1"', T("dev.open"), ic("phone"))}</div>` : ""}
+    ${SIM.w ? `<div class="scn-opts">${sChip(false, 'data-bug="1"', T("set.bug"), ic("bug"))}</div>` : ""}
     <div class="scn-opts">${sChip(false, 'data-reload="1"', T("set.reload"), ic("refresh"))}${meta?.via === "browser" ? sChip(false, 'data-logout="1"', T("set.logout"), ic("power")) : ""}</div>`;
   sSheet(hv("simple.settings"), T("set.title"), html, async (b, bg) => {
     if (b.dataset.lang) { haptic("selectionChanged"); await setLang(b.dataset.lang); bg.remove(); return sSettings(); }
@@ -7847,6 +7874,7 @@ function sSettings() {
     if (b.dataset.full) { bg.remove(); return switchMode(false); }
     if (b.dataset.caps) { bg.remove(); return capsSheet(); }
     if (b.dataset.device) { bg.remove(); return deviceSheet(); }
+    if (b.dataset.bug) { bg.remove(); return part("bugreport").then((m) => m.open(SIM.w)); }
     if (b.dataset.reload) return reloadPanel();
     if (b.dataset.logout) { try { await api("/api/logout", {}); } catch (e) {} location.reload(); }
   });
