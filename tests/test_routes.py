@@ -10,6 +10,7 @@
 
 import json
 import os
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -30,6 +31,7 @@ from gas_pult import (
     routes,
     selftest,
     spend,
+    terms,
     webapp,
     webauth,
 )
@@ -153,9 +155,12 @@ def srv(monkeypatch, tmp_path):
 
 
 # особые запросы владельца: свой заголовок (ETag, Host — адрес подписки не зависит от порта); "v1" — токен /api/v1
-HDR = {"etag": {"If-None-Match": "E1"}, "host": {"Host": "pult.test"}, "origin": {"Origin": "https://evil.test"}}
+HDR = {"etag": {"If-None-Match": "E1"}, "host": {"Host": "pult.test"}, "origin": {"Origin": "https://evil.test"},
+       "tgh": {"X-Telegram-Init-Data": "x"}}   # tgh: панель в Mini App (неверная подпись — вход по cookie владельца)
 V1 = {"v1": "v1tok", "v1d": "v1dtok", "v1s": "v1stok"}   # токены с группой «tasks», «drafts» (чтение), «sessions»
 FOC = {"focus": "fc1", "focusp": "fc2", "focusb": "fc3"}   # фокус-ссылка на сессию @5, на проект, с «Браузером»
+ANON = {"anon": {}, "slink": {"Cookie": "gp_focus=sl1", "X-Gp-Slink": "1"},   # без входа; ссылка на пространство
+        "slinkg": {"Cookie": "gp_focus=sl2", "X-Gp-Slink": "1"}}                  # погасшая ссылка на пространство
 
 
 def call(srv, path, body: bytes | None = None, ctype="", tok=None):
@@ -167,6 +172,8 @@ def call(srv, path, body: bytes | None = None, ctype="", tok=None):
                                                                 **({"Content-Type": ctype} if ctype else {})}
     if tok in FOC:                               # фокус-ссылка: только cookie фокуса
         hdr = {"Cookie": f"{focus.COOKIE}={FOC[tok]}", focus.HEADER: "1", **({"Content-Type": ctype} if ctype else {})}
+    if tok in ANON:                              # без входа; ссылка на пространство — её cookie и заголовок страницы
+        hdr = {**ANON[tok], **({"Content-Type": ctype} if ctype else {})}
     try:
         r = urllib.request.urlopen(urllib.request.Request(srv["base"] + path, body, hdr))
     except urllib.error.HTTPError as e:
@@ -176,7 +183,16 @@ def call(srv, path, body: bytes | None = None, ctype="", tok=None):
     out = json.loads(raw) if ct == "application/json" else raw.decode()
     calls = list(srv["log"])
     srv["log"].clear()
-    return [r.status if hasattr(r, "status") else r.code, ct, out, calls]
+    got = [r.status if hasattr(r, "status") else r.code, ct, out, calls]
+    if srv.get("cookies"):                       # люди и вход: и Set-Cookie — имя и атрибуты, значение скрыто
+        got.append([_masked(c) for c in r.headers.get_all("Set-Cookie") or []])
+    return got
+
+
+def _masked(cookie: str) -> str:
+    name, _, rest = cookie.partition("=")
+    val, sep, attrs = rest.partition(";")
+    return f"{name}={'*' if val else ''}{sep}{attrs}"
 
 
 J = json.dumps
@@ -480,8 +496,11 @@ def test_routes_answer_as_before(srv, area):
 
 
 # своя ветка фокус-ссылки в ``H.focus_do`` (не цепочка): «Завершить» сессию пространства по ссылке — окно и
-# пространство из записи ссылки; обычный запрос того же пути — таблица routes/spaces.py
-FOCUS_OWN = {("POST", "/api/space/close")}
+# пространство из записи ссылки, «Выйти» по ссылке — cookie фокуса; обычный запрос того же пути — таблица routes/
+FOCUS_OWN = {("POST", "/api/space/close"), ("POST", "/api/logout")}
+# своя ветка до входа в ``do_POST`` (не цепочка): помощник на экране входа без входа (``HELP_OPEN``, ``help_anon``);
+# вошедшему — таблица routes/people.py
+OPEN_OWN = {("POST", "/api/help/ask"), ("POST", "/api/help/feedback")}
 
 
 def test_route_paths_not_in_old_chain():
@@ -489,7 +508,10 @@ def test_route_paths_not_in_old_chain():
     chain = api_spec.scan(api_spec.SRC.read_text(encoding="utf-8"))   # только webapp.py, без routes/
     both = [(m, p) for m, t in routes.TABLES.items() for p in t
             if ("GET" if m.startswith("GET") else "POST") in chain.get(p, {}).get("methods", ())]
-    assert [x for x in both if (("GET" if x[0].startswith("GET") else "POST"), x[1]) not in FOCUS_OWN] == []
+    assert [x for x in both
+            if (("GET" if x[0].startswith("GET") else "POST"), x[1]) not in FOCUS_OWN | OPEN_OWN] == []
+    for m, p in OPEN_OWN:                                  # и до входа, и после — ветка до входа осталась на месте
+        assert chain[p]["open"] == [m], p
 
 
 def test_tables_disjoint_and_named():
@@ -529,8 +551,10 @@ def test_fork_tables_keep_chain_paths():
                                                           if p.startswith("/api/messengers/")} | set(
         routes.notify.PUSH_POST) | {"/api/drafts/yes", "/api/drafts/no", "/api/module/schedule",
                                     "/api/module/delete", "/api/repos/add", "/api/repos/remove",
-                                    "/api/space/mcp/add", "/api/space/mcp/remove"}
-    assert set(routes.POST_W) == {"/api/mcp/finish", "/api/chat/mcp", "/api/space/connect"}
+                                    "/api/space/mcp/add", "/api/space/mcp/remove", *webapp.CONFIRM_API,
+                                    "/api/tty/type", "/api/tty/key", "/api/tty/size"}
+    assert set(routes.POST_W) == {"/api/mcp/finish", "/api/chat/mcp", "/api/space/connect", "/api/help/call",
+                                  "/api/run", "/api/run/term"}
     assert all(routes.POST_P[p] is routes.messengers.messengers_post for p in routes.messengers.POST_PATHS)
 
 
@@ -859,3 +883,312 @@ def _still(x):
 def test_border_routes_answer_as_before(wide, area):
     got = _still(json.loads(json.dumps(snap_of(wide, WIDE[area]))))
     assert got == json.loads((FIX / f"routes_{area}_snap.json").read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------- люди и вход, команды и терминал: права и куки.
+# Кто спрашивает: без входа («anon»), наблюдатель, участник, админ, гость без Telegram, человек пространства A,
+# гость фокус-ссылки, ссылка на пространство (действующая и погасшая), свежий вход без кода подтверждения («fresh»),
+# Mini App («tgh»). В снимке — и Set-Cookie (имя и атрибуты; значение — «*»). Команды и терминал — только на
+# подделках (Panel.command_*, run, term_run, tty_window и termwin.*): ничего не выполняется, tmux не трогается.
+MEMBER, ADMIN, GUEST = 4, 6, -(10 ** 15) - 5
+SLREC = {"id": "00000000000a", "mode": "space", "space": "alpha", "aud": "self", "name": "Клиент", "exp": 0,
+         "forever": True, "rights": "full"}
+
+
+@pytest.fixture
+def ppl(wide, monkeypatch):
+    from gas_pult import invites, termwin
+    p, rec, ok = wide["p"], wide["rec"], wide["ok"]
+    for uid, role, name in ((MEMBER, "member", "Участник"), (ADMIN, "admin", "Админ"), (GUEST, "member", "Гость")):
+        p.people.add(uid, role, name)
+        p.people.accept(uid)
+        p.people.set_country(uid, chosen="NL")
+        wide[{MEMBER: "member", ADMIN: "admin", GUEST: "guest"}[uid]] = p.auth.issue(uid)
+    wide["fresh"] = fresh = p.auth.issue(OWNER)          # свежий вход владельца: код подтверждения ещё не введён
+    monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, *a, **k: tok == fresh)
+    vu = focus.vuid(SLREC["id"])
+    monkeypatch.setattr(p.focus, "space_by_cookie", lambda c: SLREC if c == "sl1" else
+                        (_ for _ in ()).throw(focus.Gone("ссылка отозвана")) if c == "sl2" else None)
+    monkeypatch.setattr(p.people, "virtual", lambda uid: {"role": "member", "tenant": "alpha"} if uid == vu else None)
+    p.people.accept(vu)
+    fakes = {"country_info": {"chosen": "NL"}, "set_country": ok({"chosen": "NL"}), "set_ui": ok({"persona": "x"}),
+             "team_info": {"people": [{"id": VIEWER}, {"id": MEMBER}]}, "people_list": [{"id": VIEWER}],
+             "set_role": ok(None), "admin_may": ok({"id": VIEWER}), "forget_person": ok(None), "set_access": ok(None),
+             "feedback_add": ok({"ok": True}), "help_ask": ok({"answer": "так"}), "key_label": "Владелец",
+             "confirm_start": ok({"id": "c1"}), "confirm_done": ok(None), "invite_qr": ok(b"PNG"),
+             "device_link": ok({"path": "/invite/d1"}), "call_help": ok({"ok": True}), "bot_username": "pult_bot",
+             "ui": rec("ui", p.ui), "prefs": rec("prefs", p.prefs), "is_owner": rec("is_owner", p.is_owner),
+             # команды и терминал — подделки: ничего не выполняется
+             "command_log": {"items": [{"id": "c1"}]}, "command_run": ok({"ok": True}),
+             "command_mark": ok({"ok": True}), "command_term": ok({"ok": True, "id": "gp"}),
+             "run": ok({"ok": True, "out": "готово"}), "term_run": ok({"ok": True, "id": "gp"}),
+             "tty_window": lambda wid, *a, **k: ok(None)(wid) or {"id": wid, "path": "/tmp/m",
+                                                                  "name": termwin.WINDOW if wid == "@6" else "bash"},
+             "tty_kind": "shell"}
+    for name, out in fakes.items():
+        monkeypatch.setattr(p, name, out if name in ("ui", "prefs", "is_owner") else rec(name, out))
+    subs = {"people": {"set_prefs": ok({"lang": "en"}), "tour": {"main": "done"}, "set_tour": ok({"main": "done"})},
+            "team": {"set": ok(None)}, "uses": {"record": 1},
+            "keys": {"info": {"keys": []}, "register_options": ok({"challenge": "c"}),
+                     "register_verify": ok([{"id": "k1"}]), "remove": ok([])},
+            "oidc": {"info": {"google": False}, "ticket": ok("T1"), "unlink": ok({"ok": True})},
+            "email": {"info": {"email": ""}, "bind_start": ok({"sent": True}), "bind_confirm": ok({"ok": True}),
+                      "unbind": {"ok": True}, "options": ok({"ok": True})},
+            "helper": {"feedback": ok({"ok": True}), "ask": {"answer": "вход"}, "who_key": "ip:x"},
+            "auth": {"confirm_verify": ok(None), "logout": None},
+            "geo": {"info": {"geo": True}}, "logins": {"start": ("r1", "n1")},
+            "journal": {"output": lambda i: None if i == "nope" else "вывод"},
+            "pult": {"set_state": None, "cost_decide": None, "module_root": "/tmp/mod"}}
+    for obj, names in subs.items():
+        for name, out in names.items():
+            monkeypatch.setattr(getattr(p, obj), name, rec(f"{obj}.{name}", out))
+    monkeypatch.setattr(p.pult.deliv, "record", rec("deliv.record", None))
+    monkeypatch.setattr(invites, "new", rec("invites.new", ok({"code": "C1", "short": "123456", "hint": "h"})))
+    for name, out in {"screen": ok({"lines": ["$"]}), "history": ok({"lines": ["$ ls"], "start": 0}),
+                      "type_line": ok(None), "key": ok(None), "close": ok(None), "tty_size": ok({"cols": 80}),
+                      "tty_key": ok(None), "tty_type": ok(None)}.items():
+        monkeypatch.setattr(termwin, name, rec(f"termwin.{name}", out))
+    wide["cookies"] = True
+    return wide
+
+
+PEOPLE = [
+    ("/api/terms", None, ""),
+    ("/api/terms", None, "", "anon"),                     # без входа — 401
+    ("/api/terms", None, "", "viewer"),
+    ("/api/terms", None, "", "slink"),
+    ("/api/terms", None, "", "slinkg"),                   # погасшая ссылка — 410
+    ("/api/terms", None, "", "focus"),
+    ("/api/prefs", None, ""),
+    ("/api/prefs", None, "", "viewer"),
+    ("/api/prefs", None, "", "spacer"),
+    ("/api/prefs", None, "", "slink"),
+    ("/api/prefs", None, "", "anon"),
+    ("/api/persona", None, ""),
+    ("/api/persona", None, "", "member"),
+    ("/api/team", None, ""),
+    ("/api/team", None, "", "viewer"),
+    ("/api/team", None, "", "admin"),
+    ("/api/tour", None, ""),
+    ("/api/tour", None, "", "guest"),
+    ("/api/country", None, ""),
+    ("/api/country", None, "", "viewer"),
+    ("/api/email", None, ""),
+    ("/api/email", None, "", "member"),
+    ("/api/email", None, "", "slink"),
+    ("/api/passkeys", None, ""),
+    ("/api/passkeys", None, "", "viewer"),
+    ("/api/passkeys", None, "", "slink"),
+    ("/api/oidc", None, ""),
+    ("/api/oidc", None, "", "guest"),
+    ("/api/people", None, ""),
+    ("/api/people", None, "", "viewer"),
+    ("/api/people", None, "", "member"),
+    ("/api/people", None, "", "admin"),
+    ("/api/invite/qr?u=https%3A%2F%2Fx%2Finvite%2Fabc", None, ""),
+    ("/api/invite/qr?u=nope", None, ""),
+    ("/api/invite/qr?u=https%3A%2F%2Fx%2Finvite%2Fabc", None, "", "member"),
+    ("/api/invite/qr?u=https%3A%2F%2Fx%2Finvite%2Fabc", None, "", "spacer"),
+    ("/api/invite/qr?u=https%3A%2F%2Fx%2Finvite%2Fabc", None, "", "admin"),
+    ("/api/clientlog", J({"kind": "error", "msg": "m", "at": "a.js:1", "screen": "home", "mid": "x1"}).encode(), JS),
+    ("/api/clientlog", J({"kind": "error"}).encode(), JS, "anon"),
+    ("/api/clientlog", J({"kind": "error"}).encode(), JS, "viewer"),
+    ("/api/clientlog", b"{bad", JS),
+    ("/api/uses", J({"ids": ["home"]}).encode(), JS),
+    ("/api/uses", J({"ids": "home"}).encode(), JS),
+    ("/api/uses", J({"ids": ["home"]}).encode(), JS, "viewer"),
+    ("/api/prefs", J({"simple": True}).encode(), JS),     # владелец — простой режим нельзя (400)
+    ("/api/prefs", J({"lang": "en", "rate": 1.5}).encode(), JS),
+    ("/api/prefs", J({"rate": "x"}).encode(), JS),
+    ("/api/prefs", J({"rate": True}).encode(), JS),
+    ("/api/prefs", J({"simple": True}).encode(), JS, "member"),
+    ("/api/prefs", J({"simple": False, "lang": "ru"}).encode(), JS, "viewer"),
+    ("/api/prefs", J({"lang": "ru"}).encode(), JS, "slink"),
+    ("/api/prefs", b"{bad", JS),
+    ("/api/persona", J({"persona": "developer"}).encode(), JS),
+    ("/api/persona", J({"persona": "bad"}).encode(), JS, "viewer"),
+    ("/api/persona", J({"persona": "developer"}).encode(), JS, "member"),
+    ("/api/team", J({"caps": ["cap.a"], "sections": ["s"]}).encode(), JS),
+    ("/api/team", J({"id": 999}).encode(), JS),            # не сотрудник — 400
+    ("/api/team", J({"id": VIEWER, "reset": True}).encode(), JS),
+    ("/api/team", J({"id": "x"}).encode(), JS),
+    ("/api/team", J({"caps": ["cap.a"]}).encode(), JS, "viewer"),
+    ("/api/team", J({"caps": ["cap.a"]}).encode(), JS, "admin"),
+    ("/api/terms/accept", J({"version": "0"}).encode(), JS),   # старая версия — 400
+    ("/api/terms/accept", J({"version": terms.VERSION}).encode(), JS, "viewer"),
+    ("/api/terms/accept", J({"version": "0"}).encode(), JS, "anon"),
+    ("/api/terms/accept", J({"version": "0"}).encode(), JS, "slink"),
+    ("/api/country", J({"code": "NL"}).encode(), JS),
+    ("/api/country", J({"code": "bad"}).encode(), JS, "viewer"),
+    ("/api/feedback", J({"text": "Отзыв"}).encode(), JS),
+    ("/api/feedback", J({"text": "bad"}).encode(), JS, "viewer"),
+    ("/api/feedback", J({"text": "Отзыв"}).encode(), JS, "anon"),
+    ("/api/tour", J({"tour": "main", "state": "done"}).encode(), JS),
+    ("/api/tour", J({"tour": "bad"}).encode(), JS, "guest"),
+    ("/api/passkeys/options", J({}).encode(), JS),
+    ("/api/passkeys/options", J({}).encode(), JS, "viewer"),
+    ("/api/passkeys/options", J({}).encode(), JS, "slink"),   # по ссылке на пространство — нет (SLINK_NO)
+    ("/api/passkeys/add", J({"id": "k1", "credential": {"a": 1}, "name": "Мак"}).encode(), JS),
+    ("/api/passkeys/add", J({"id": "bad"}).encode(), JS),
+    ("/api/passkeys/add", b"{bad", JS),
+    ("/api/passkeys/remove", J({"id": "k1"}).encode(), JS),
+    ("/api/passkeys/remove", J({"id": "nope"}).encode(), JS, "member"),
+    ("/api/oidc/link", J({"provider": "google"}).encode(), JS),
+    ("/api/oidc/link", J({"provider": "bad"}).encode(), JS),
+    ("/api/oidc/link", J({"provider": "google"}).encode(), JS, "guest"),
+    ("/api/oidc/unlink", J({"provider": "google"}).encode(), JS),
+    ("/api/oidc/unlink", J({"provider": "nope"}).encode(), JS),
+    ("/api/email/bind", J({"email": "a@b.test"}).encode(), JS),
+    ("/api/email/bind", J({"email": "bad"}).encode(), JS, "viewer"),
+    ("/api/email/confirm", J({"email": "a@b.test", "code": "123456"}).encode(), JS),
+    ("/api/email/confirm", J({"email": "a@b.test", "code": "bad"}).encode(), JS),
+    ("/api/email/remove", J({}).encode(), JS),
+    ("/api/email/options", J({"second_factor": True, "notify": False}).encode(), JS),
+    ("/api/email/options", J({"second_factor": "bad"}).encode(), JS),
+    ("/api/help/ask", J({"q": "как войти", "ctx": "home"}).encode(), JS),
+    ("/api/help/ask", J({"q": "bad"}).encode(), JS, "viewer"),
+    ("/api/help/ask", J({"q": "как войти"}).encode(), JS, "anon"),     # экран входа — help_anon, до permit
+    ("/api/help/feedback", J({"id": "h1", "useful": True, "action": "a"}).encode(), JS),
+    ("/api/help/feedback", J({"id": "h1", "useful": False}).encode(), JS, "admin"),   # админ — как участник
+    ("/api/help/feedback", J({"id": "nope"}).encode(), JS, "viewer"),
+    ("/api/confirm/start", J({}).encode(), JS, "fresh"),
+    ("/api/confirm/check", J({}).encode(), JS, "fresh"),
+    ("/api/confirm/check", J({}).encode(), JS),
+    ("/api/confirm/verify", J({"id": "c1", "code": "123456"}).encode(), JS, "fresh"),
+    ("/api/confirm/verify", J({"id": "nope", "code": "1"}).encode(), JS, "fresh"),
+    ("/api/confirm/verify", b"{bad", JS, "fresh"),
+    ("/api/confirm/start", J({}).encode(), JS, "slink"),   # не браузерный вход — 400
+    ("/api/confirm/start", J({}).encode(), JS, "focus"),
+    ("/api/confirm/check", J({}).encode(), JS, "anon"),
+    ("/api/people/role", J({"id": VIEWER, "role": "member"}).encode(), JS),
+    ("/api/people/role", J({"id": "x"}).encode(), JS),
+    ("/api/people/role", J({"id": VIEWER, "role": "bad"}).encode(), JS, "admin"),
+    ("/api/people/role", J({"id": VIEWER, "role": "member"}).encode(), JS, "member"),
+    ("/api/people/remove", J({"id": VIEWER}).encode(), JS),
+    ("/api/people/remove", J({"id": "nope"}).encode(), JS, "admin"),
+    ("/api/people/remove", J({"id": VIEWER}).encode(), JS, "viewer"),
+    ("/api/people/access", J({"id": VIEWER, "days": 30}).encode(), JS),
+    ("/api/people/access", J({"id": VIEWER, "days": "x"}).encode(), JS, "admin"),
+    ("/api/invite/new", J({"space": "alpha", "role": "member", "ttl": "1d", "uses": 2, "access": 30, "plan": "p",
+                           "name": "Иван"}).encode(), JS),
+    ("/api/invite/new", J({"ttl": "9y"}).encode(), JS),
+    ("/api/invite/new", J({"space": "bad"}).encode(), JS),
+    ("/api/invite/new", J({"uses": "x"}).encode(), JS),
+    ("/api/invite/new", b"{bad", JS),
+    ("/api/invite/new", J({}).encode(), JS, "member"),
+    ("/api/invite/new", J({}).encode(), JS, "viewer"),
+    ("/api/invite/device", J({}).encode(), JS),
+    ("/api/invite/device", J({"id": VIEWER}).encode(), JS),
+    ("/api/invite/device", J({"id": VIEWER}).encode(), JS, "admin"),
+    ("/api/invite/device", J({"id": VIEWER}).encode(), JS, "member"),   # не владелец — ссылка себе
+    ("/api/invite/device", J({}).encode(), JS, "viewer"),
+    ("/api/invite/device", J({}).encode(), JS, "slink"),
+    ("/api/link/tg", J({}).encode(), JS),                   # Telegram уже привязан — 400
+    ("/api/link/tg", J({}).encode(), JS, "guest"),
+    ("/api/link/tg", J({}).encode(), JS, "anon"),
+    ("/api/help/call", J({"w": "@1"}).encode(), JS),
+    ("/api/help/call", J({"w": "@9"}).encode(), JS),        # окна нет — 404 (POST_W)
+    ("/api/help/call", J({}).encode(), JS),
+    ("/api/help/call", b"{bad", JS),
+    ("/api/help/call", J({"w": "@5"}).encode(), JS, "spacer"),
+    ("/api/help/call", J({"w": "@1"}).encode(), JS, "viewer"),
+    ("/api/logout", J({}).encode(), JS, "slink"),           # ссылка на пространство: cookie фокуса стирается
+    ("/api/logout", J({}).encode(), JS, "slinkg"),
+    ("/api/logout", J({}).encode(), JS, "focus"),           # фокус-ссылка: своя ветка focus_do
+    ("/api/logout", J({}).encode(), JS, "anon"),
+    ("/api/logout", b"{bad", JS, "viewer"),
+    ("/api/logout", J({}).encode(), JS, "viewer"),          # вход стирается: cookie gp_… с Max-Age=0
+    ("/api/logout", J({}).encode(), JS),
+]
+CMDS = [
+    ("/api/commands", None, ""),
+    ("/api/commands", None, "", "viewer"),
+    ("/api/commands", None, "", "member"),
+    ("/api/commands", None, "", "spacer"),
+    ("/api/commands", None, "", "anon"),
+    ("/api/commands/output?id=c1", None, ""),
+    ("/api/commands/output?id=nope", None, ""),             # вывода уже нет — 404
+    ("/api/commands/output?id=c1", None, "", "viewer"),
+    ("/api/term?id=gp", None, ""),
+    ("/api/term?id=nope", None, ""),
+    ("/api/term?id=gp", None, "", "viewer"),
+    ("/api/term?id=gp", None, "", "focus"),
+    ("/api/tty?w=%405&start=0&end=10&all=1&color=1", None, ""),
+    ("/api/tty?w=nope", None, ""),
+    ("/api/tty?w=%405", None, "", "viewer"),
+    ("/api/tty?w=%405", None, "", "member"),
+    ("/api/tty?w=%407", None, "", "spacer"),
+    ("/api/tty?w=%405", None, "", "slink"),
+    ("/api/commands/run", J({"id": "c1", "confirmed": True}).encode(), JS),
+    ("/api/commands/run", J({"id": "nope"}).encode(), JS),
+    ("/api/commands/run", b"{bad", JS),
+    ("/api/commands/run", J({"id": "c1"}).encode(), JS, "fresh"),   # свежий вход — сначала код (403 confirm)
+    ("/api/commands/run", J({"id": "c1"}).encode(), JS, "viewer"),
+    ("/api/commands/run", J({"id": "c1"}).encode(), JS, "member"),
+    ("/api/commands/mark", J({"id": "c1", "done": False}).encode(), JS),
+    ("/api/commands/mark", J({"id": "c1"}).encode(), JS),
+    ("/api/commands/mark", J({"id": "nope"}).encode(), JS, "viewer"),
+    ("/api/commands/term", J({"id": "c1", "confirmed": True}).encode(), JS),
+    ("/api/commands/term", J({"id": "nope"}).encode(), JS),
+    ("/api/commands/term", J({"id": "c1"}).encode(), JS, "fresh"),
+    ("/api/term/type", J({"id": "gp", "text": "пароль"}).encode(), JS),
+    ("/api/term/type", J({"id": "gp", "text": "пароль"}).encode(), JS, "tgh"),   # из Mini App — 400
+    ("/api/term/type", J({"id": "nope"}).encode(), JS),
+    ("/api/term/type", J({"id": "gp"}).encode(), JS, "viewer"),
+    ("/api/term/type", J({"id": "gp"}).encode(), JS, "fresh"),
+    ("/api/term/key", J({"id": "gp", "key": "C-c"}).encode(), JS),
+    ("/api/term/key", J({"id": "gp", "key": "bad"}).encode(), JS),
+    ("/api/term/close", J({"id": "gp"}).encode(), JS),
+    ("/api/term/close", J({"id": "nope"}).encode(), JS),
+    ("/api/term/close", b"{bad", JS),
+    ("/api/tty/type", J({"w": "@5", "text": "ls"}).encode(), JS),
+    ("/api/tty/type", J({"w": "@6", "text": "пароль"}).encode(), JS, "tgh"),     # окно с паролем из Mini App — 400
+    ("/api/tty/type", J({"w": "@5", "text": "ls"}).encode(), JS, "tgh"),
+    ("/api/tty/type", J({"w": "nope"}).encode(), JS),
+    ("/api/tty/type", J({"w": "@5", "text": "ls"}).encode(), JS, "member"),
+    ("/api/tty/type", J({"w": "@7", "text": "ls"}).encode(), JS, "spacer"),
+    ("/api/tty/key", J({"w": "@5", "key": "Enter"}).encode(), JS),
+    ("/api/tty/key", J({"w": "@5", "key": "bad"}).encode(), JS),
+    ("/api/tty/key", J({"w": "@5", "key": "Enter"}).encode(), JS, "viewer"),
+    ("/api/tty/size", J({"w": "@5", "cols": 80, "rows": 24, "reset": True}).encode(), JS),
+    ("/api/tty/size", J({"w": "nope"}).encode(), JS),
+    ("/api/tty/size", b"{bad", JS),
+    ("/api/run", J({"w": "@1", "i": 0, "sha": "abc", "confirmed": True}).encode(), JS),
+    ("/api/run", J({"w": "@9", "i": 0}).encode(), JS),      # окна нет — 404 (POST_W)
+    ("/api/run", J({"i": 0}).encode(), JS),
+    ("/api/run", J({"w": "@1", "i": "x"}).encode(), JS),
+    ("/api/run", J({"w": "@1", "sha": "bad"}).encode(), JS),
+    ("/api/run", b"{bad", JS),
+    ("/api/run", J({"w": "@1", "i": 0}).encode(), JS, "fresh"),
+    ("/api/run", J({"w": "@1", "i": 0}).encode(), JS, "viewer"),
+    ("/api/run", J({"w": "@5", "i": 0, "sha": "abc"}).encode(), JS, "focus"),
+    ("/api/run", J({"w": "@1", "i": 0}).encode(), JS, "focus"),   # не окно ссылки — 403
+    ("/api/run/term", J({"w": "@1", "i": 1, "sha": "s", "confirmed": True}).encode(), JS),
+    ("/api/run/term", J({"w": "@9", "i": 1}).encode(), JS),
+    ("/api/run/term", J({"w": "@1", "sha": "bad"}).encode(), JS),
+    ("/api/run/term", J({"w": "@1", "i": 1}).encode(), JS, "fresh"),
+    ("/api/run/term", J({"w": "@5", "i": 1, "sha": "s"}).encode(), JS, "focus"),
+]
+# Снимки — код до переноса (origin/refactor/routes-proj-space-bridge, e5a8f06): «at» (время согласия) — нулём.
+PPL = {"people": PEOPLE, "cmds": CMDS}
+
+
+def _still_at(x):
+    if isinstance(x, dict):
+        return {k: 0 if k == "at" else _still_at(v) for k, v in x.items()}
+    return [_still_at(v) for v in x] if isinstance(x, list) else x
+
+
+def ppl_snap(srv, cases) -> dict:
+    """Снимок: токены сессий в вызовах (``auth.logout``, ``confirm_*``) — именем входа, не значением; User-Agent
+    клиента (версия Python) — «<ua>»; домашняя папка, часы и версия — как в ``_still``."""
+    txt = json.dumps(snap_of(srv, cases), ensure_ascii=False)
+    for name in ("tok", "viewer", "member", "admin", "guest", "fresh", "spacer"):
+        txt = txt.replace(srv[name], f"<{name}>")
+    txt = re.sub(r"Python-urllib/[0-9.]+", "<ua>", txt)
+    return _still_at(_still(json.loads(txt)))
+
+
+@pytest.mark.parametrize("area", PPL)
+def test_people_and_commands_answer_as_before(ppl, area):
+    assert ppl_snap(ppl, PPL[area]) == json.loads((FIX / f"routes_{area}_snap.json").read_text(encoding="utf-8"))

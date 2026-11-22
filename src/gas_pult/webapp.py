@@ -114,7 +114,7 @@ from gas_pult import (
     tasks,
     tenants,
     terms,
-    termwin,
+    termwin,  # noqa: F401 — webapp.* жив (routes/)
     testers,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     tmux,  # noqa: F401 — webapp.* жив (panel/sessions.py)
     transcripts,
@@ -1651,26 +1651,6 @@ def handler(panel: Panel):
                                       "terms_line": (self.slink()[0] or {}).get("aud") != "self"
                                       and not panel.people.accepted(tu)}}
                            if kind == SLINK else {})}       # вход по ссылке на пространство: срок и права (GAS-38)
-            if path == "/api/terms":
-                return self.terms_info()
-            if path == "/api/prefs":
-                return panel.prefs(self.terms_uid(), self.who()[1])
-            if path == PERSONA:
-                return panel.ui(self.terms_uid(), self.who()[1])
-            if path == "/api/team":
-                return panel.team_info()
-            if path == TOUR:                             # тур: пройден / «Не сейчас» — у каждого свой
-                return panel.people.tour(self.terms_uid())
-            if path == "/api/country":
-                return panel.country_info(self.terms_uid())
-            if path == "/api/email":
-                return panel.email.info(self.terms_uid())
-            if path == "/api/passkeys":
-                return panel.keys.info(self.terms_uid())
-            if path == "/api/oidc":
-                return panel.oidc.info(self.terms_uid())
-            if path == "/api/people":
-                return {"people": panel.people_list(), **panel.geo.info()}
             if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
                 # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
                 return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
@@ -1679,30 +1659,12 @@ def handler(panel: Panel):
                 errors: list[str] = []
                 d = scenarios.api_data(errors)
                 return {**d, "errors": errors if self.who()[1] == "owner" else []}
-            if path == "/api/commands":
-                return panel.command_log(self.who()[1] == "owner")
-            if path == "/api/commands/output":
-                out = panel.journal.output(q.get("id", ""))
-                if out is None:
-                    raise LookupError("вывода этой команды уже нет")
-                return {"out": out}
             if path == "/api/links/prefs":               # где открывать ссылки сайтов (только владелец)
                 return {"sites": link_prefs(panel.cfg.data)}
             if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
                 return panel.media(str(q.get("p") or ""))
-            if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
-                return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] in ("owner", "admin"),
-                                                     self.terms_uid()))
             if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
                 return panel.default_model()
-            if path == "/api/term":                       # окно терминала панели: что на экране, живо ли
-                return termwin.screen(panel.tmux, q.get("id", ""))
-            if path == "/api/tty":                        # живой терминал: история окна страницами (задача 50)
-                w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False, space=self.space())
-                d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1",
-                                    q.get("color") == "1")             # color — экран для xterm.js (добавлено)
-                return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
-                        "path": w.get("path", ""), "login": self.login_of(w, d.get("lines") or [])}   # низ — экран
             if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
                 return panel.activity(str(q.get("w") or ""))
             w = self.win(q.get("w"))
@@ -2501,136 +2463,10 @@ def handler(panel: Panel):
                 except OSError:
                     win = None
                 return {"prompt": starters.prompt(sid, tasks=self.who()[1] == "owner" and not (win and in_space(win)))}
-            if path == "/api/clientlog":                   # ошибка JS в браузере (GAS-31): тип, экран, место
-                panel.events.event("js_error", str(b.get("mid") or ""), kind=str(b.get("kind") or "")[:40],
-                                   msg=str(b.get("msg") or "")[:160], at=str(b.get("at") or "")[:120],
-                                   screen=str(b.get("screen") or "")[:40], dev=webauth.device(self.client()[1]))
-                return {"ok": True}
-            if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
-                return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
-            if path == "/api/prefs":                       # простой режим и язык — у каждого свои
-                lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
-                if b.get("simple") is True and panel.is_owner(uid):
-                    raise ValueError("ваше пространство — всегда полный пульт; простой режим — в «Демо и тестах»")
-                if b.get("simple") is not None and not panel.is_owner(uid):   # прежний переключатель — смена роли
-                    cur = panel.ui(uid, role)["persona"]
-                    want = b.get("simple") is True
-                    if want != (cur in personas.SIMPLE):
-                        panel.set_ui(uid, role, {"persona": "business_owner" if want else "developer"})
-                rate = b.get("rate")
-                if rate is not None and (isinstance(rate, bool) or not isinstance(rate, int | float)):
-                    raise ValueError("скорость — 1, 1.25, 1.5 или 2")
-                p = panel.people.set_prefs(uid, None if b.get("simple") is None else b.get("simple") is True,
-                                           None if lang is None else str(lang), None if rate is None else float(rate))
-                return {**p, "simple": panel.prefs(uid, role)["simple"]}
-            if path == PERSONA:
-                return panel.set_ui(self.terms_uid(), self.who()[1], b if isinstance(b, dict) else {})
-            if path == "/api/team":
-                uid = b.get("id")
-                caps, secs = b.get("caps"), b.get("sections")
-                if uid is not None and int(uid) not in [p["id"] for p in panel.team_info()["people"]]:
-                    raise ValueError("это не сотрудник пульта")
-                panel.team.set(caps if isinstance(caps, list) else None, secs if isinstance(secs, list) else None,
-                               None if uid is None else int(uid), b.get("reset") is True)
-                return panel.team_info()
-            if path == "/api/terms/accept":
-                if str(b.get("version", "")) != terms.VERSION:
-                    raise ValueError("условия обновились — прочитайте новую версию")
-                panel.people.accept(self.terms_uid(), terms.VERSION)
-                return self.terms_info()
-            if path == "/api/country":
-                return panel.set_country(self.terms_uid(), str(b.get("code", "")))
-            if path == FEEDBACK:                          # «Отзыв» (feedback.py): текст и снимок → задачи штаба
-                return panel.feedback_add(self.who(), b)
-            if path == TOUR:
-                return panel.people.set_tour(self.terms_uid(), str(b.get("tour", "")), str(b.get("state", "")))
-            if path == "/api/passkeys/options":
-                uid = self.terms_uid()
-                return panel.keys.register_options(uid, panel.key_label(uid), self.client_ip())
-            if path == "/api/passkeys/add":
-                return {"keys": panel.keys.register_verify(self.terms_uid(), str(b.get("id", "")), b.get("credential"),
-                                                           str(b.get("name", "")), self.client_ip())}
-            if path == "/api/passkeys/remove":
-                return {"keys": panel.keys.remove(self.terms_uid(), str(b.get("id", "")))}
-            if path == "/api/oidc/link":                   # ссылка на привязку — открыть в браузере (и из Telegram)
-                p = str(b.get("provider", ""))
-                ticket = panel.oidc.ticket(self.terms_uid(), p, self.client_ip())
-                return {"url": f"/api/login/oidc/{p}/start?link={ticket}"}
-            if path == "/api/oidc/unlink":
-                return panel.oidc.unlink(self.terms_uid(), str(b.get("provider", "")))
-            if path == "/api/email/bind":
-                return panel.email.bind_start(self.terms_uid(), b.get("email"), self.client_ip())
-            if path == "/api/email/confirm":
-                return panel.email.bind_confirm(self.terms_uid(), b.get("email"), b.get("code"))
-            if path == "/api/email/remove":
-                return panel.email.unbind(self.terms_uid())
-            if path == "/api/email/options":
-                return panel.email.options(self.terms_uid(), b.get("second_factor"), b.get("notify"))
-            if path == "/api/help/ask":                    # роль — с сервера, не от клиента
-                return panel.help_ask(self.who()[1], self.terms_uid(), b if isinstance(b, dict) else {})
-            if path == "/api/help/feedback":
-                return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")),
-                                             "member" if self.who()[1] == "admin" else self.who()[1])
-            if path in CONFIRM_API:                       # подтверждение кодом — только сессии браузера
-                if self.via() != "browser":
-                    raise ValueError("подтверждение кодом — для входа из браузера")
-                if path == "/api/confirm/start":
-                    return panel.confirm_start(self.session(), self.who()[2], *self.client())
-                if path == "/api/confirm/check":          # нажали «✅ Подтвердить вход» в боте — экран закрывается сам
-                    return {"ok": not panel.auth.needs_confirm(self.session())}
-                panel.auth.confirm_verify(self.session(), str(b.get("id", "")), str(b.get("code", "")))
-                panel.confirm_done(str(b.get("id", "")))
-                return {"ok": True}
-            if path == "/api/commands/run":
-                return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
-            if path == "/api/commands/mark":
-                return panel.command_mark(str(b.get("id", "")), b.get("done", True) is not False)
-            if path == "/api/people/role":
-                panel.set_role(int(b.get("id", 0)), str(b.get("role", "")), by=self.who()[1])
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/people/remove":
-                panel.admin_may(int(b.get("id", 0)), self.who()[1])
-                panel.forget_person(int(b.get("id", 0)))
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/people/access":           # продлить доступ: дней (0 — бессрочно)
-                panel.set_access(int(b.get("id", 0)), int(b.get("days", 0)), by=self.who()[1])
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/logout" and self.via() == SLINK:   # ссылка на пространство: cookie стираем, ссылка живёт
-                gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
-                return ("cookie", gone, {"ok": True})
-            if path == "/api/logout":
-                panel.auth.logout(self.session())
-                return ("cookie", webauth.set_cookie("", 0), {"ok": True})
             if path == "/api/new" and (slug := self.space()):
                 return panel.new_in_space(slug, str(b.get("name", "")), str(b.get("effort") or ""))
             if path == "/api/model/default":             # только явной настройкой — не из чата
                 return panel.default_model(str(b.get("model") or ""))
-            if path == "/api/commands/term":             # вкладка «Команды»: нужен ввод — в окне терминала
-                return panel.command_term(str(b.get("id", "")), bool(b.get("confirmed")))
-            if path == "/api/term/type":                 # строка (пароль) — в окно gp-term; из Mini App — нет
-                if self.headers.get("X-Telegram-Init-Data"):
-                    raise ValueError("пароль в Telegram не вводим — откройте панель в браузере или Termius")
-                termwin.type_line(panel.tmux, str(b.get("id", "")), str(b.get("text", "")))
-                return {"ok": True}
-            if path == "/api/term/key":                  # Ctrl+C, Ctrl+D, Enter
-                termwin.key(panel.tmux, str(b.get("id", "")), str(b.get("key", "")))
-                return {"ok": True}
-            if path == "/api/term/close":
-                termwin.close(panel.tmux, str(b.get("id", "")))
-                return {"ok": True}
-            if path in ("/api/tty/type", "/api/tty/key", "/api/tty/size"):   # живой терминал: текст, клавиши, размер
-                owner = self.who()[1] == "owner"
-                w = panel.tty_window(str(b.get("w") or ""), owner, write=True, space=self.space())
-                if path == "/api/tty/size":                    # окно tmux — под размер области терминала (17.11)
-                    return termwin.tty_size(panel.tmux, w["id"], b.get("cols"), b.get("rows"), bool(b.get("reset")))
-                if path == "/api/tty/key":
-                    termwin.tty_key(panel.tmux, w["id"], str(b.get("key", "")), owner)
-                    return {"ok": True}
-                if w.get("name") == termwin.WINDOW and self.headers.get("X-Telegram-Init-Data"):
-                    raise ValueError("в окно с паролем из Telegram не вводим — откройте панель в браузере")
-                termwin.tty_type(panel.tmux, w["id"], str(b.get("text", "")))
-                panel.pult.deliv.record(w["id"], "tty", str(b.get("text", "")), res="typed")   # без Enter, без текста
-                return {"ok": True}
             if path == "/api/new":
                 return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
             if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
@@ -2678,29 +2514,6 @@ def handler(panel: Panel):
                                         self.terms_uid())
             if path == "/api/revive":
                 return panel.revive(str(b.get("w", "")), self.terms_uid())
-            if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
-                ttl = invites.TTLS.get(str(b.get("ttl") or "1d"))
-                if not ttl:
-                    raise ValueError("срок ссылки: " + ", ".join(invites.TTLS))
-                inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), ttl=ttl, by=self.terms_uid(),
-                                  uses=int(b.get("uses", 1)), access=int(b.get("access", 0)),
-                                  plan=str(b.get("plan") or ""), name=str(b.get("name") or ""))
-                return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": ttl,
-                        "uses": int(b.get("uses", 1)), "access": int(b.get("access", 0))}
-            if path == "/api/invite/device":               # ссылка для входа на другое устройство: себе или владелец
-                role = self.who()[1]
-                if role in ("owner", "admin") and b.get("id") is not None:   # админ — только участникам и наблюдателям
-                    target = panel.admin_may(int(b["id"]), role)["id"]
-                else:
-                    target = self.terms_uid()
-                return panel.device_link(target, self.terms_uid())
-            if path == "/api/link/tg":                     # гость: «Привязать Telegram» — ссылка на бота
-                uid = self.terms_uid()
-                if not is_guest(uid):
-                    raise ValueError("Telegram у вас уже привязан")
-                rid, nonce = panel.logins.start(*self.client(), link=uid)
-                return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
-                        "ttl": webauth.LOGIN_TTL}
             if path == "/api/close":                       # и остановленную: окно с оболочкой просто закрыть
                 w = panel.session_window(b.get("w"))
                 if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
@@ -2710,8 +2523,6 @@ def handler(panel: Panel):
                     panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
                 return r
             w = self.win(b.get("w"))
-            if path == "/api/help/call":                    # тестировщик: «Позвать на помощь» — владельцу в бот
-                return panel.call_help(self.terms_uid(), w)
             helper = self.who()[1] in ("owner", "admin")
             if w.get("space") and helper and path in ("/api/send", "/api/select", "/api/key"):
                 panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
@@ -2778,10 +2589,6 @@ def handler(panel: Panel):
                 if self.who()[1] == "admin" and str(b.get("profile", "")) not in ("", w.get("profile") or ""):
                     raise ValueError("админ перезапускает сессию без смены модели: модель и расход — у владельца")
                 return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
-            if path == "/api/run":
-                return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
-            if path == "/api/run/term":                  # из ответа: нужен ввод — в окне терминала, не вслепую
-                return panel.term_run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
             raise KeyError
 
         def dispatch(self, fn):
