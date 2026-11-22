@@ -1,7 +1,9 @@
 """Опись API панели: каждый путь ``/api/…`` — метод, кто может, что делает, основные поля входа и выхода.
 
 Пути и поля собираются из кода ``webapp.py`` разбором ``ast`` (без запуска): ветки ``if path == …``,
-``if path in (…)``, ``path.startswith(…)`` и регулярки маршрутов. Права — из таблиц ``access.py`` по той же формуле,
+``if path in (…)``, ``path.startswith(…)`` и регулярки маршрутов; и из таблиц маршрутов ``routes/<область>.py``
+(словари ``GET``, ``GET_W``, ``POST_RAW``, ``POST``: путь → функция, поля — из её тела).
+Права — из таблиц ``access.py`` по той же формуле,
 что ``Handler.permit``. Описания — вручную, коротко, в ``DESCR`` (поля, которых разбор не видит, — там же).
 
 Обновить документы после правки маршрутов или описаний::
@@ -26,6 +28,8 @@ from pathlib import Path
 from gas_pult import access, personas
 
 SRC = Path(__file__).with_name("webapp.py")
+ROUTES = Path(__file__).with_name("routes")  # таблицы маршрутов по областям (MONOLITH-PLAN §3.2, routes/__init__.py)
+ROUTE_KINDS = {"GET": "GET", "GET_W": "GET", "POST_RAW": "POST", "POST": "POST"}   # таблица → метод
 DOCS = Path(__file__).resolve().parents[2] / "docs"
 
 GET_FN = {"do_GET", "get"}                   # ветки GET; do_GET — до проверки входа (свои правила)
@@ -203,8 +207,36 @@ def _free(tree: ast.Module, env: dict[str, list[str]]) -> set[str]:
     raise LookupError("permit: нет free — разбор устарел, поправьте api_spec._free")
 
 
-def scan(src: str | None = None) -> dict[str, dict]:
-    """Маршруты из кода: путь → {methods, open, focus_only, in, out, calls}."""
+def _route_tables(files, env: dict[str, list[str]], with_w: set[int]) -> list[tuple[str, str, ast.AST]]:
+    """Таблицы ``routes/*.py``: ``GET = {"/api/…": fn, …}`` → (путь, метод, тело ``fn``) — как ветка цепочки.
+    ``GET_W`` — окно сессии ``w`` на входе (как ветки после ``w = self.win(…)``)."""
+    out = []
+    for f in files:
+        tree = ast.parse(Path(f).read_text(encoding="utf-8"))
+        fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+        for node in tree.body:
+            if not (isinstance(node, ast.Assign) and len(node.targets) == 1 and
+                    isinstance(node.targets[0], ast.Name) and node.targets[0].id in ROUTE_KINDS):
+                continue
+            kind = node.targets[0].id
+            if not isinstance(node.value, ast.Dict):
+                raise LookupError(f"{f}: {kind} — не словарь «путь → функция», поправьте api_spec._route_tables")
+            for k, v in zip(node.value.keys, node.value.values, strict=True):
+                paths, fn = _lit(k, env) if k is not None else None, fns.get(ast.unparse(v))
+                if not paths or fn is None:
+                    raise LookupError(f"{f}: {kind} — ключ {ast.unparse(k) if k else '**'} или функция "
+                                      f"{ast.unparse(v)} не разобраны")
+                if kind == "GET_W":
+                    with_w.add(id(fn))
+                out += [(p, ROUTE_KINDS[kind], fn) for p in paths]
+    return out
+
+
+def scan(src: str | None = None, routes=None) -> dict[str, dict]:
+    """Маршруты из кода: путь → {methods, open, focus_only, in, out, calls}. ``routes`` — файлы таблиц маршрутов;
+    по умолчанию ``routes/*.py``, если ``src`` не задан (с ``src`` — только он)."""
+    if routes is None:
+        routes = sorted(p for p in ROUTES.glob("*.py") if p.name != "__init__.py") if src is None else ()
     src = SRC.read_text(encoding="utf-8") if src is None else src
     tree = ast.parse(src)
     env = _env(tree)
@@ -250,6 +282,8 @@ def scan(src: str | None = None) -> dict[str, dict]:
             for m, ok in zip(("GET", "POST"), FOCUS_TABLES[fn], strict=True):
                 if p in ok:
                     put(p, m, fn, br)
+    for p, m, fn in _route_tables(routes, env, w.with_w):   # таблицы routes/: как ветка get/post (после permit)
+        put(p, m, "get" if m == "GET" else "post", fn)
     if v1:                                               # 1С и CRM: псевдоним /api/X по токену (access.V1_*)
         for m, table in (("GET", access.V1_GET), ("POST", access.V1_POST)):
             for group, paths in table.items():
@@ -702,7 +736,7 @@ def entries() -> list[dict]:
     tree = ast.parse(src)
     free = _free(tree, _env(tree))
     out = []
-    for path, r in scan(src).items():
+    for path, r in scan().items():
         d = DESCR.get(r.get("v1") or path, "")
         text, more_in, more_out = (d, "", "") if isinstance(d, str) else d
         if r.get("v1"):                                  # псевдоним: описание исходного пути + откуда права

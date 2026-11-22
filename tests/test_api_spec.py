@@ -80,6 +80,24 @@ class H:
     assert r["/api/y"]["calls"] == ["Panel.y"]
 
 
+def test_scan_sees_route_tables(tmp_path):
+    """Таблицы ``routes/*.py`` — как ветки цепочки: метод по таблице, поля из тела функции, ``GET_W`` — окно ``w``."""
+    f = tmp_path / "area.py"
+    f.write_text('''
+def a(self, q, w):
+    return {"x": q.get("y")}
+def b(self, b):
+    return panel.z(b.get("id"))
+GET_W = {"/api/a": a}
+POST = {"/api/b": b, "/api/c": b}
+''', encoding="utf-8")
+    r = api_spec.scan("class H:\n    pass\n", routes=[f])
+    assert set(r) == {"/api/a", "/api/b", "/api/c"}
+    assert r["/api/a"]["methods"] == ["GET"] and r["/api/a"]["in"] == ["w", "y"] and r["/api/a"]["out"] == ["x"]
+    assert r["/api/b"]["methods"] == ["POST"] and r["/api/b"]["in"] == ["id"] and r["/api/b"]["calls"] == ["Panel.z"]
+    assert not r["/api/b"]["focus_only"] and r["/api/b"]["open"] == []
+
+
 def test_openapi_shape():
     doc = json.loads(api_spec.openapi_json())
     assert doc["openapi"] == "3.1.0"

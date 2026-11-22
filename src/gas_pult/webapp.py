@@ -96,6 +96,7 @@ from gas_pult import (
     recparts,
     repos,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     router,
+    routes,
     scenarios,
     selftest,
     setup,
@@ -1631,6 +1632,10 @@ def handler(panel: Panel):
                 self.dispatch(lambda: self.get(url.path, q))
 
         def get(self, path: str, q: dict):
+            if fn := routes.GET.get(path):              # таблицы областей (routes/): права уже проверены (permit,
+                return fn(self, q)                       # focus_call, v1_call) — как у веток ниже
+            if fn := routes.GET_W.get(path):            # ветки после «w = self.win(…)»: окно сессии — до вызова
+                return fn(self, q, self.win(q.get("w")))
             if path in billing_api.GET:                 # платежи (billing/, 22.11): права — access.BILLING_GET
                 return billing_api.get(panel.cfg.data, path, q)
             if path == "/api/sessions":
@@ -1760,18 +1765,10 @@ def handler(panel: Panel):
                 return panel.oidc.info(self.terms_uid())
             if path == "/api/people":
                 return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/tts/about":                  # «Что здесь умеет» — голосом (текст из карты помощника)
-                return ("audio/mpeg", panel.tts_text(panel.about_text(q.get("screen", "")),
-                                                     panel.cfg.personal_voices and self.who()[1] == "owner",
-                                                     cloud=not self.space()))
             if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
                 # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
                 return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
                                           self.space() or "", str(q.get("occ") or ""))
-            if path == "/api/rec/status":                 # запись по кускам: что уже на сервере (после обрыва)
-                return panel.recparts.status(self.rec_owner(), str(q.get("id", "")))
-            if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
-                return panel.stt_job_get(q.get("id", ""), self.terms_uid())
             if path == "/api/calendars/keys":             # что подключено — без значений секретов
                 return {"calendars": calkeys.status()}
             if path == "/api/messengers":                 # «Мессенджеры»: состояние без секретов (messengers/panel.py)
@@ -1818,10 +1815,6 @@ def handler(panel: Panel):
                 if out is None:
                     raise LookupError("вывода этой команды уже нет")
                 return {"out": out}
-            if path == "/api/voice/cards":
-                return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
-            if path == "/api/voice/preview":
-                return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
             if path == "/api/links/prefs":               # где открывать ссылки сайтов (только владелец)
                 return {"sites": link_prefs(panel.cfg.data)}
             if path == "/api/bridge/devices":            # компьютеры с мостом к браузеру (только владелец)
@@ -1908,13 +1901,6 @@ def handler(panel: Panel):
                 return {"hint": panel.tmux.hint(w["id"])}
             if path == "/api/cmds":
                 return {"cmds": panel.commands(w), "host": panel.cfg.host}
-            if path == "/api/tts":
-                msg = int(q["msg"]) if q.get("msg", "").isdigit() else None
-                return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg,
-                                                 panel.cfg.personal_voices and self.who()[1] == "owner",
-                                                 cloud=not self.space(), head=q.get("head") == "1"))
-            if path == "/api/tts/warm":                   # открыли сессию — голос загрузится заранее (#190)
-                return panel.tts_warm(panel.cfg.personal_voices and self.who()[1] == "owner")
             if path == "/api/steps":                    # «Шаги» (GAS-16, слой 7): сообщение → инструменты → ответ
                 if harness.of(w).name != "claude":
                     return {"turns": [], "note": "шаги видны только у Claude Code"}
@@ -2667,6 +2653,10 @@ def handler(panel: Panel):
                     "accepted": rec.get("version") == terms.VERSION, "at": rec.get("at")}
 
         def post(self, path: str):
+            if fn := routes.POST_RAW.get(path):         # таблицы областей (routes/): тело читает сама
+                return fn(self)
+            if fn := routes.POST.get(path):             # тело — JSON, как «b = json.loads(…)» ниже
+                return fn(self, json.loads(self.body() or b"{}"))
             if path == "/api/space/upload":              # файл — в папку сессии пространства (от его пользователя)
                 slug, w = self.space_win(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)))
                 name = urllib.parse.unquote(self.headers.get("X-File-Name", "file"))
@@ -2684,28 +2674,7 @@ def handler(panel: Panel):
                 out = {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
                 upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
                 return out
-            if path == "/api/rec/chunk":                    # кусок записи (~10 с): не теряется при блокировке
-                rq = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query))
-                try:
-                    seg, seq = int(rq.get("seg", 0)), int(rq.get("seq", -1))
-                except ValueError:
-                    raise ValueError("неверный номер куска") from None
-                return panel.recparts.add(self.rec_owner(), str(rq.get("id", "")), seg, seq, self.body(),
-                                          self.headers.get("Content-Type", ""))
-            if path == "/api/stt" and "job=1" in urllib.parse.urlparse(self.path).query:   # фоново, GAS-34
-                return panel.stt_job(self.body(), self.headers.get("Content-Type", ""), self.terms_uid(),
-                                     cloud=not self.space())
-            if path == "/api/stt":
-                before = panel.fallback_note()
-                text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())
-                now = panel.fallback_note()
-                return {"text": text, "fallback": now if now and now != before else ""}
             b = json.loads(self.body() or b"{}")
-            if path == "/api/rec/finish":                  # «Стоп»: куски с сервера — в распознавание
-                return panel.rec_finish(self.rec_owner(), str(b.get("id", "")), self.terms_uid(),
-                                        cloud=not self.space())
-            if path == "/api/rec/drop":                    # «Отменить запись»: куски — прочь
-                return {"ok": panel.recparts.drop(self.rec_owner(), str(b.get("id", "")))}
             if path in billing_api.POST:                # платежи (billing/, 22.11): владелец + код подтверждения
                 return billing_api.post(panel.cfg.data, path, b, actor=f"owner:{self.terms_uid()}")
             if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
@@ -2735,8 +2704,6 @@ def handler(panel: Panel):
                                    msg=str(b.get("msg") or "")[:160], at=str(b.get("at") or "")[:120],
                                    screen=str(b.get("screen") or "")[:40], dev=webauth.device(self.client()[1]))
                 return {"ok": True}
-            if path == "/api/stt/retry":                   # повтор нераспознанной записи — с сервера (GAS-34)
-                return panel.stt_retry(str(b.get("id", "")), self.terms_uid())
             if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
                 return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
             if path == "/api/notify/prefs":
@@ -2865,9 +2832,6 @@ def handler(panel: Panel):
             if path == "/api/providers":
                 panel.set_providers(b)
                 return {"ok": True}
-            if path == "/api/voice/choose":
-                panel.choose_voice(str(b.get("id", "")))
-                return panel.voice_cards(True)
             if path == "/api/mcp/login":
                 return panel.mcp_login(str(b.get("name", "")), self.home())
             if path == "/api/setup/login":                  # окно входа и ссылка с экрана (до 20 с)
@@ -3261,6 +3225,7 @@ def handler(panel: Panel):
                 return self.reply(200, out[1], out[0], headers=out[2] if len(out) > 2 else None)
             return self.json(out)
 
+    H.panel = panel                             # для таблиц маршрутов (routes/): их функции получают обработчик
     return H
 
 
