@@ -6,7 +6,7 @@
 // итог одной строкой, затем группы «Ждут вашего Да» → «Сегодня» → «Сделано» (свёрнуто) и «Не выполнено»;
 // пустая группа не показывается, кроме «Ждут вашего Да»; длинное — «…», раскрывается нажатием.
 
-const KIND_IC = { mail: "mail", calendar: "cal", github: "code", linear: "tasks", pult: "home", handoff: "book" };
+const KIND_IC = { mail: "mail", calendar: "cal", github: "code", linear: "tasks", pult: "home", handoff: "book", msg: "chat" };
 const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const EVERY_T = { workdays: "Рабочие дни", daily: "Каждый день", custom: "Выбрать дни" };
 const BLOCKS = [["done", "Сделано", "check"], ["failed", "Не выполнено", "warn"]];   // идут после «Ждут вашего Да» и «Сегодня»
@@ -219,6 +219,7 @@ function pickView(bg, first) {
     ${opt("pult", "Пульт", "окна, где Claude ждёт ответа, задачи, «Ждут «да»» из HANDOFF", true)}
     ${opt("linear", "Задачи Linear", av.linear ? "закрытые вчера и просроченные" : "нет ключа Linear", av.linear)}
     ${opt("github", "GitHub", av.github ? "слитые PR, красный CI, PR ждут решения" : "не задан digest_github в настройках", av.github)}
+    ${opt("messengers", "Мессенджеры", (av.messengers || []).length ? "входящие за сутки: " + av.messengers.map((m) => esc(m.title)).join(", ") : "не подключены — «Подключения» → «Мессенджеры»", (av.messengers || []).length)}
     ${opt("apple", "Apple: почта и календарь iCloud", "скоро", false)}
     <h3>${ic("wait")}Когда присылать</h3>
     <div class="row"><input type="time" data-time value="${esc(sch.time || "07:30")}" aria-label="Время брифинга"><span class="more">ваш пояс: ${esc(tzName())}</span></div>
