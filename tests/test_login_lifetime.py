@@ -34,18 +34,18 @@ def signed(uid: int, auth_date: float) -> str:
 
 # ---------- срок сессии ----------
 def test_session_survives_new_auth_object(tmp_path):
-    tok = webauth.Auth(tmp_path / "s.json").issue(7, "UA")
-    assert webauth.Auth(tmp_path / "s.json").uid(tok) == 7        # «перезапуск» — новый объект, тот же файл
+    tok = webauth.Auth(tmp_path / "web_sessions.json").issue(7, "UA")
+    assert webauth.Auth(tmp_path / "web_sessions.json").uid(tok) == 7        # «перезапуск» — новый объект, тот же файл
 
 
-def test_sliding_expiry(tmp_path):
-    a = webauth.Auth(tmp_path / "s.json")
+def test_sliding_expiry(tmp_path, stored):
+    a = webauth.Auth(tmp_path / "web_sessions.json")
     tok = a.issue(7)
     now = time.time()
     assert a.touch(tok, now) is False                             # только что выдана — продлевать рано
     day40 = now + 25 * 86400                                      # заходит через 25 дней — срок снова 30
     assert a.touch(tok, day40) is True
-    exp = json.loads((tmp_path / "s.json").read_text())[webauth._h(tok)]["exp"]
+    exp = stored.load(tmp_path / "web_sessions.json")[webauth._h(tok)]["exp"]
     assert exp == pytest.approx(day40 + webauth.SESSION_TTL, abs=1)
     assert a.touch(tok, day40 + 3600) is False                    # раз в сутки, не на каждый запрос
     assert a.touch(tok, exp + 1) is False                         # истёкшую не оживляем
@@ -60,7 +60,7 @@ def _issue_many(path, n, q):
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")   # fork при живых потоках pytest — здесь безопасно
 def test_two_processes_do_not_lose_sessions(tmp_path):
     """Сессии пишут и панель, и бот (разные процессы): без файлового замка одна запись затирала другую."""
-    path = tmp_path / "s.json"
+    path = tmp_path / "web_sessions.json"
     ctx = multiprocessing.get_context("fork")
     q = ctx.Queue()
     ps = [ctx.Process(target=_issue_many, args=(path, 25, q)) for _ in range(3)]
@@ -118,7 +118,7 @@ def test_restart_of_service_keeps_login(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(not shutil.which("tmux"), reason="/api/sessions читает окна tmux")
-def test_mini_app_gets_cookie_and_keeps_working_after_init_data_expires(tmp_path, monkeypatch):
+def test_mini_app_gets_cookie_and_keeps_working_after_init_data_expires(tmp_path, monkeypatch, stored):
     p, srv, base = start(tmp_path, monkeypatch)
     try:
         code, sc = get(base, "/api/meta", init=signed(1, time.time()))
@@ -130,24 +130,24 @@ def test_mini_app_gets_cookie_and_keeps_working_after_init_data_expires(tmp_path
         assert get(base, "/api/sessions", tok, init=stale)[0] == 200   # с cookie — работает, вход не просим
         code, sc2 = get(base, "/api/meta", tok, init=signed(1, time.time()))
         assert code == 200 and sc2 == ""                               # cookie уже есть — новую не выдаём
-        n = len(json.loads((p.cfg.data / "web_sessions.json").read_text()))
+        n = len(stored.load(p.cfg.data / "web_sessions.json"))
         for _ in range(5):                                             # cookie не возвращается (iframe) — не плодим
             get(base, "/api/meta", init=signed(1, time.time()))
-        assert len(json.loads((p.cfg.data / "web_sessions.json").read_text())) == n
+        assert len(stored.load(p.cfg.data / "web_sessions.json")) == n
     finally:
         srv.shutdown()
 
 
-def test_cookie_is_renewed_on_activity(tmp_path, monkeypatch):
+def test_cookie_is_renewed_on_activity(tmp_path, monkeypatch, stored):
     p, srv, base = start(tmp_path, monkeypatch)
     try:
         tok = p.auth.issue(1)
-        d = json.loads((p.cfg.data / "web_sessions.json").read_text())
+        d = stored.load(p.cfg.data / "web_sessions.json")
         d[webauth._h(tok)]["exp"] = time.time() + 2 * 86400            # осталось 2 дня
-        (p.cfg.data / "web_sessions.json").write_text(json.dumps(d))
+        stored.save(p.cfg.data / "web_sessions.json", d)
         code, sc = get(base, "/api/meta", tok)
         assert code == 200 and tok_of(sc) == tok and f"Max-Age={webauth.SESSION_TTL}" in sc
-        exp = json.loads((p.cfg.data / "web_sessions.json").read_text())[webauth._h(tok)]["exp"]
+        exp = stored.load(p.cfg.data / "web_sessions.json")[webauth._h(tok)]["exp"]
         assert exp > time.time() + 29 * 86400
         assert get(base, "/api/meta", tok)[1] == ""                    # второй запрос — без лишней Set-Cookie
     finally:

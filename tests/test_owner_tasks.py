@@ -20,7 +20,7 @@ def t(tmp_path):
     return tasks.Tasks(tmp_path / "tasks.json")
 
 
-def test_add_check_order_and_done(t):
+def test_add_check_order_and_done(t, stored):
     a = t.add({"title": "Перезапустить панель", "kind": "command", "cmd": "systemctl --user restart x",
                "next": "нажать «Выполнить»"})
     b = t.add({"title": "Ответить Ивану", "kind": "write", "to": "@ivan", "draft": "Привет", "next": "отправить",
@@ -40,7 +40,7 @@ def test_add_check_order_and_done(t):
     assert t.remove(c["id"]) and not t.remove(c["id"])
     with pytest.raises(LookupError):
         t.update("нет", {"status": "done"})
-    assert oct((t.path).stat().st_mode & 0o777) == "0o600"
+    assert oct(stored.mode(t.path)) == "0o600"
 
 
 def test_etag_changes_with_content(t):

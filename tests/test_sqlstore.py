@@ -9,10 +9,15 @@ from pathlib import Path
 import pytest
 
 from gas_pult import cli, config, sqlstore, store
-from gas_pult.focus import Focus
 from gas_pult.people import People
 
 N = 200
+
+
+@pytest.fixture(autouse=True)
+def own_mode(monkeypatch):
+    """Эти тесты ставят режим сами — прогон всех тестов в другом режиме (GAS_PULT_TEST_STORAGE) их не касается."""
+    monkeypatch.delenv(sqlstore.ENV, raising=False)
 
 
 @pytest.fixture
@@ -95,9 +100,10 @@ def test_sqlite_mode_reads_and_writes_only_sqlite(tmp_path, mode):
     assert f.read_text() == before               # JSON больше не пишется — остаётся копией
     assert p.role(3) == "viewer" and p.prefs(3)["simple"] is True
     assert sqlstore.marker(f).exists()
-    other = tmp_path / "focus.json"              # модуль ещё не переведён — JSON при любом режиме
-    Focus(other).new({"id": "@1", "path": "/x", "name": "чат"}, by=1)
-    assert len(json.loads(other.read_text())) == 1
+    other = tmp_path / "offer_tg.json"           # файл не из COLLECTIONS — JSON при любом режиме
+    with store.locked(other):
+        store.save(other, {"a": 1})
+    assert json.loads(other.read_text()) == {"a": 1} and store.load(other) == {"a": 1}
 
 
 def test_rollback_to_json_keeps_everything(tmp_path, mode):
