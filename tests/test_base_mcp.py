@@ -186,8 +186,8 @@ def drive(tmp_path):
     log = tmp_path / "log.jsonl"
     log.write_text("")
     env = {"GAS_DRIVE_RCLONE": str(exe), "FAKE_DRIVE": str(remote), "FAKE_LOG": str(log),
-           "RCLONE_CONFIG": str(tmp_path / "rclone.conf")}
-    return {"env": env, "work": work, "remote": remote, "log": log}
+           "RCLONE_CONFIG": str(tmp_path / "rclone.conf"), "GAS_GUARD_LOG": str(tmp_path / "guard.jsonl")}
+    return {"env": env, "work": work, "remote": remote, "log": log, "guard": tmp_path / "guard.jsonl"}
 
 
 def rclone_calls(d) -> list[list[str]]:
@@ -406,8 +406,23 @@ def test_drive_guard_sees_pult_profiles():
             for k in list(os.environ):
                 if k.startswith(("ANTHROPIC_", "GAS_", "OPENROUTER", "CLAUDE_CODE")):
                     del os.environ[k]
-            os.environ.update({k: str(v) for k, v in env.items()})
+            os.environ.update({k: str(v) for k, v in env.items()}, GAS_GUARD_LOG=os.devnull)
             assert bool(bm.google_block_reason()) is blocked, (pid, env.get("ANTHROPIC_BASE_URL"))
         finally:
             os.environ.clear()
             os.environ.update(old)
+
+
+def test_guard_logs_what_it_decided(drive):
+    """Журнал охранника (штаб 22.11): какая модель, из какой переменной, шлюз, итог; «allow-default» — модель не
+    определилась (ночная проверка ловит такие строки). Ключей и путей Диска в журнале нет."""
+    ds = {"ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic", "ANTHROPIC_MODEL": "deepseek-chat",
+          "ANTHROPIC_AUTH_TOKEN": "sk-FAKE-guard-0000"}
+    rpc("drive", [call("drive_list", {})], drive["env"] | ds, drive["work"])
+    rpc("drive", [call("drive_list", {})], drive["env"], drive["work"])
+    rows = [json.loads(x) for x in drive["guard"].read_text().splitlines()]
+    assert rows[0]["decision"] == "deny" and rows[0]["gateway"] == "api.deepseek.com"
+    assert {"from": "ANTHROPIC_MODEL", "model": "deepseek-chat"} in rows[0]["models"] and "DeepSeek" in rows[0]["why"]
+    assert rows[1]["decision"] == "allow-default" and rows[1]["models"] == [] and rows[1]["gateway"] == ""
+    assert "sk-FAKE" not in drive["guard"].read_text()
+    assert oct(drive["guard"].stat().st_mode & 0o777) == "0o600"

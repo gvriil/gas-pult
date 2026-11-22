@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -213,13 +214,37 @@ def remote_path(path: str) -> str:
 # provider.data_collection="deny" и zdr=true; нельзя: DeepSeek напрямую, любые «:free», NVIDIA trial. Окно пульта
 # знает свою модель и шлюз из окружения; отметку «у OpenRouter включены deny и zdr» ставит пульт или человек —
 # GAS_GOOGLE_OK=1 (GAS_CAL_GOOGLE_OK=1 — то же, как у календаря). Ночная проверка 22.11: у Диска охранника не было.
+GUARD_LOG = "~/.local/state/gas-pult/google-guard.jsonl"
+
+
+def _guard_log(found, base: str, openrouter: bool, ok: bool, why) -> None:
+    """Что охранник решил и по чему (штаб 22.11): модель и переменная, откуда она, шлюз (только хост), итог.
+    «allow-default» — модель не определилась и пропущена как Claude: ночная проверка паритета ловит такие строки.
+    Файл — GAS_GUARD_LOG или ``~/.local/state/gas-pult/google-guard.jsonl`` (0600); сбой записи охрану не меняет."""
+    host = urllib.parse.urlsplit(base).hostname or "" if base else ""
+    rec = {"t": int(time.time()), "tool": "drive", "models": [{"from": k, "model": m} for k, m in found],
+           "gateway": host, "openrouter": openrouter, "ok_mark": ok,
+           "decision": "deny" if why else ("allow-default" if not found and not host else "allow"), "why": why or ""}
+    line = json.dumps(rec, ensure_ascii=False)
+    print(f"google-guard: {line}", file=sys.stderr)
+    try:
+        f = Path(os.environ.get("GAS_GUARD_LOG") or GUARD_LOG).expanduser()
+        f.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as h:
+            h.write(line + "\n")
+    except OSError:
+        pass
+
+
 def google_block_reason() -> str | None:
     """Почему данные Диска нельзя отдать модели этого окна; None — можно."""
     keys = ("GAS_PULT_MODEL", "OPENROUTER_MODEL", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
             "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
             "CLAUDE_CODE_SUBAGENT_MODEL")                 # окно пульта: models.env_of — основная, быстрая, помощники
-    models = [os.environ.get(k, "").strip().lower() for k in keys]
-    models = [m for m in models if m]
+    found = [(k, os.environ.get(k, "").strip().lower()) for k in keys]
+    found = [(k, m) for k, m in found if m]
+    models = [m for _, m in found]
     base = (os.environ.get("ANTHROPIC_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").lower()
     ok = "1" in (os.environ.get("GAS_GOOGLE_OK"), os.environ.get("GAS_CAL_GOOGLE_OK"))
     openrouter = "openrouter" in base or bool(os.environ.get("OPENROUTER_MODEL"))
@@ -232,6 +257,7 @@ def google_block_reason() -> str | None:
         why = "DeepSeek напрямую может учиться на данных"
     elif openrouter and not ok:
         why = "OpenRouter — только с data_collection=deny и zdr (пульт не подтвердил: GAS_GOOGLE_OK)"
+    _guard_log(found, base, openrouter, ok, why)
     if not why:
         return None
     return (f"данные Google Диска нельзя этой модели (Google API Limited Use): {why}. Откройте Диск в окне с Claude "
