@@ -3230,6 +3230,8 @@ def handler(panel: Panel):
             if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
                 return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""),
                                          b.get("force") is True)
+            if path == "/api/chat/move":                  # «Перенести в проект…» (chat_move.py)
+                return panel.move_api(b, self.terms_uid())
             if path == "/api/stopped/clear":              # «Убрать все остановленные» — окна, журналы остаются
                 return panel.clear_stopped()
             if path == "/api/chat/restore":               # «Вернуть» из корзины
@@ -3501,6 +3503,10 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
                 panel.trash_tick()                         # корзина чатов: старше 30 дней — раз в час окончательно
             except Exception as e:                         # цикл не падает из-за корзины
                 print("корзина чатов:", e, flush=True)
+            try:
+                panel.move_tick()                          # отложенные переносы чатов: окно освободилось — переносим
+            except Exception as e:
+                print("перенос чатов:", e, flush=True)
             try:
                 panel.temp_tick()                          # остатки озвучки (*.tmp.wav, пустые .mp3) — раз в час
             except Exception as e:

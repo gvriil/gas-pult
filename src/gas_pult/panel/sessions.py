@@ -690,11 +690,13 @@ class SessionsPart:
             self.CHAT_MCP, w["sid"])}
 
     def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None,
-                effort: str | None = None) -> dict:
+                effort: str | None = None, path: str = "", wname: str = "", closed=None) -> dict:
         """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
 
         ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
         не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
+        ``path`` и ``wname`` — открыть в другой папке под другим именем окна («Перенести в проект…», chat_move.py);
+        ``closed()`` — вызывается после закрытия окна и до запуска нового (перенос журнала: Claude уже вышел).
         """
         name = w.get("mark") if w.get("mark") in harness.JOURNAL_ONLY else harness.of(w).name
         if name in harness.JOURNAL_ONLY:               # Pi/OpenCode/Hermes: перезапуск — снова оно, тот же разговор
@@ -715,6 +717,7 @@ class SessionsPart:
             return {"id": wid}
         if uid is not None:
             self.check(profile, uid)                                          # не для страны — до закрытия
+        path = path or w["path"]
         home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал
         st = self.pult.state()
         cmd = models.command(self.cfg.claude, profile, st, home=home)   # нет ключа — ошибка до закрытия
@@ -725,7 +728,7 @@ class SessionsPart:
             effort = efforts.get(w["id"], "") if same else ""
         if model is None:                               # смена поставщика: модель этого чата — его по умолчанию;
             model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
-        cmd += repos.flags(st, w["path"])                # подключённые репозитории — снова в сессии (задача 43)
+        cmd += repos.flags(st, path)                     # подключённые репозитории — снова в сессии (задача 43)
         cmd += f" --model {shlex.quote(model)}" if model else ""
         if not effort_ok(profile, model):               # Haiku и чужие поставщики — без усилия, и не запоминаем
             effort = ""
@@ -743,7 +746,15 @@ class SessionsPart:
         result = self.close(w)
         if result != "закрыто":
             raise ValueError(result)
-        wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude",
+        failed = ""
+        if closed:
+            try:
+                closed()
+            except (OSError, ValueError, LookupError) as e:   # перенос не удался — чат снова там, где был
+                if fl := repos.flags(st, path):
+                    cmd = cmd.replace(fl, repos.flags(st, w["path"]))
+                failed, path, wname = str(e) or "не вышло", w["path"], ""
+        wid = self.tmux.new_window(wname or w["name"], path, cmd, mark=profile or "claude",
                                    by=w.get("by", "") if home else "", sid=sid)
         if not home:                                    # окно владельца: метка прежняя, иначе — кто нажал
             self.mark_by(wid, w.get("by") or uid)
@@ -760,7 +771,7 @@ class SessionsPart:
         if st.get("active") == w["id"]:                 # активная в боте — та же сессия, но чужую не делаем активной
             upd["active"] = wid
         self.pult.set_state(**upd)
-        return {"id": wid, **({"model": model} if model else {})}
+        return {"id": wid, **({"model": model} if model else {}), **({"failed": failed} if failed else {})}
 
     def close(self, w: dict) -> str:
         return self.close_ex(w)["result"]

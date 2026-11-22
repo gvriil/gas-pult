@@ -821,6 +821,60 @@ def cmd_notify(a):
     print(f"отправлено владельцам: {sent}" + (f" · ответ придёт в окно {wid}" if wid else ""))
 
 
+def chat_window(panel, target: str) -> str:
+    """Окно сессии пульта по ``@N``, ``<сессия>:<имя>`` или имени tmux — id окна; не нашлось или имён два — отказ."""
+    target = str(target or "").strip()
+    if target.startswith("@"):
+        return target
+    sess, _, name = target.rpartition(":")
+    own = getattr(panel.tmux, "session", "main")
+    if sess and sess != own:
+        raise SystemExit(f"окна пульта — в сессии tmux «{own}», а не «{sess}»")
+    hits = [w for w in panel.tmux.windows() if w.get("name") == name and not w.get("space")]
+    if len(hits) != 1:
+        raise SystemExit(f"окно «{target}» не найдено" if not hits else f"окон «{name}» несколько — укажите @N")
+    return hits[0]["id"]
+
+
+def cmd_chat(a, panel=None, sleep=time.sleep):
+    """``gas-pult chat move <окно> <папка проекта> [--wait]`` — «Перенести в проект…» из штаба: та же логика, что
+    в панели (``Panel.chat_move``). Идёт ход: без ``--wait`` перенос встаёт в очередь панели (сделает фоновый цикл,
+    когда окно освободится), с ``--wait`` — команда ждёт конца хода сама."""
+    from gas_pult import chat_move
+
+    if panel is None:
+        from gas_pult import webapp
+
+        try:
+            cfg = config.load()
+        except config.ConfigError as e:
+            raise SystemExit(str(e)) from None
+        panel = webapp.Panel(cfg)
+    wid = chat_window(panel, a.window)
+    folder = os.path.realpath(os.path.expanduser(a.folder))
+    pid = panel.projects.of_path(panel.project_data(fresh=True), folder)
+    if not pid or not os.path.isdir(folder):
+        raise SystemExit(f"папка {a.folder} — не проект пульта (откройте в ней чат или «Новый проект»)")
+    deadline = time.time() + a.timeout
+    while True:
+        try:
+            r = panel.chat_move(wid, pid, defer=not a.wait)
+            break
+        except chat_move.Busy:
+            if time.time() > deadline:
+                raise SystemExit("чат всё ещё отвечает — не дождался; повторите или уберите --wait") from None
+            sleep(5)
+        except chat_move.Failed as e:
+            raise SystemExit(f"{e} (окно {e.wid})") from None
+        except (ValueError, LookupError) as e:
+            raise SystemExit(f"не перенёс: {e}") from None
+    if r.get("pending"):
+        print(f"{wid}: чат отвечает — перенесу в «{r['project_name']}», как только закончит (очередь панели)")
+    else:
+        print(f"{wid} → {r['id']}: чат продолжается в «{r['project_name']}»; старый журнал — в корзине чатов")
+    return r
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -1011,6 +1065,13 @@ def main(argv: list[str] | None = None):
     s.add_argument("--dry-run", action="store_true", help="показать, что куда пойдёт, ничего не трогая")
     s.add_argument("--claude-dir", default="", help="папка Claude Code (журналы — откуда проект файла)")
     s.set_defaults(fn=cmd_inbox)
+    s = sub.add_parser("chat", help="чаты: move <окно> <папка проекта> [--wait] — перенести чат в другой проект")
+    s.add_argument("action", choices=["move"])
+    s.add_argument("window", help="окно tmux: main:<имя> или @N")
+    s.add_argument("folder", help="папка проекта, куда перенести")
+    s.add_argument("--wait", action="store_true", help="идёт ход — ждать его конца (иначе — в очередь панели)")
+    s.add_argument("--timeout", type=int, default=6 * 3600, help="сколько секунд ждать с --wait")
+    s.set_defaults(fn=cmd_chat)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

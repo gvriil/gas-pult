@@ -150,6 +150,14 @@ function demoProjects(key, path, body, ses) {
 async function demoChat(key, body, ses) {
   const pj = demoApi.pj ||= { hidden: {}, titles: {} }, tr = demoApi.trash ||= [], now = Math.floor(Date.now() / 1000);
   const name = (pid) => ({ "p-tgi": "Ассистент ТГИ", "p-icon": "Иконки магазина", "p-gas-pult": "Пульт", "p-shop-bot": "Магазин-бот", "p-gastech-digest": "Дайджест", "p-books": "Бухгалтерия" })[pid] || "";
+  if (key === "/api/chat/move") {                     // «Перенести в проект…»: занятый — «перенесу после хода»
+    const s = ses.sessions.find((x) => x.id === body.w); if (!s) throw new Error("окна уже нет");
+    if (body.cancel) return { cancelled: true };
+    if (body.project === s.project) throw new Error("чат уже в этом проекте");
+    if (s.status === "busy") return { pending: true, id: s.id, project: body.project, project_name: name(body.project), text: "Перенесу, как только закончит" };
+    s.project = body.project;
+    return { id: s.id, sid: "", project: body.project, project_name: name(body.project), moved: true, trash: null };
+  }
   if (key === "/api/chat/delete") {
     let rec;
     if (body.w) {
