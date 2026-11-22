@@ -66,6 +66,9 @@
 путей (ветка `if path in ТАБЛИЦА`: ответ по `path` собирает модуль области — `billing.api`, `messengers.panel`);
 ищутся после `GET`/`GET_W` и после разбора JSON в `post` — там же, где стояли ветки. Опись понимает ключ-имя
 таблицы импорта (`billing_api.GET`) и константу-кортеж модуля области (`POST_PATHS`).
+Та же развилка — для одной ветки цепочки на несколько путей с `if path == …` внутри (22.11, уведомления:
+`/api/push/*` → `notify.PUSH_GET`/`PUSH_POST`, тело как есть). Ответ, отправленный самой веткой (`self.reply`, ETag
+`/api/tasks`), — `return SENT`; `SENT` живёт в `routes/__init__.py` (`webapp.SENT` — то же имя).
 
 Права (`OWNER_ONLY`, `FOCUS_GET`, `SPACE_OK`, …) переезжают в `access.py` — **одна таблица прав рядом с
 маршрутами**. `webapp.py` реэкспортирует имена.
@@ -139,12 +142,19 @@
    развилка `/api/messengers/*` → `messengers.panel`), `routes/billing.py` (8 путей: развилка `GET_P`/`POST_P` →
    `billing.api`), `routes/meetings.py` (5 путей: `/api/meetings`, `/api/meeting*`; `/api/mt*` — в `focus_call`,
    `Panel.meeting_public`); 9 веток, 18 строк цепочки; снимки ответов до переноса — `tests/fixtures/routes_*_snap.json`.
+   ✓ Задачи и брифинг, «Поделиться», уведомления, анкеты клиентов, токены 1С и CRM — 22.11: `routes/tasks.py` (8 путей:
+   `/api/tasks*`, `/api/brief*`; `/api/tasks`, `/api/tasks/add|update` — и через `/api/v1`), `routes/share.py` (6:
+   `/api/share/list|file|done`, `/api/share/devices*`; приём `/share`, `/api/share` — в `do_POST`), `routes/notify.py`
+   (7 путей / 8 пар: `/api/notify/prefs`, развилка `/api/push/*`), `routes/forms.py` (3: `/api/q/list|answers|new`;
+   анкета по ссылке и `/api/offer/*` — до входа, в `do_GET`/`do_POST`), `routes/api_tokens.py` (3: `/api/apitokens*`);
+   24 ветки, 77 строк цепочки. Проекты и чаты 14/14 — следующим PR: две ветки на путь (проект пространства через
+   `self.sp`/`self.space()`), `/api/project/session|resume` разнесены по цепочке, `/api/chat/mcp` — после
+   `w = self.win(b["w"])`, нужен `POST_W`.
    Осталось в `get`/`post` (замер 22.11, `api_spec.group`; путей / пар «путь, метод»), порядок — от замкнутых
-   к связанным: задачи и брифинг 8/8 → «Поделиться» 6/6 → уведомления 7/8 → проекты и чаты 14/14 → пространства 15/15 → люди и
+   к связанным: проекты и чаты 14/14 → пространства 15/15 → люди и
    вход 38/43 → модели, ключи, расход 19/22 (+ `/api/providers`) → интеграции, репозитории, модули 19/19 → команды и
    терминал 23/24 → мост 8/8 и фокус-ссылки 6/6 (вместе с `focus_bridge`) → сессии и чат 36/37 (последней: общий
-   `w = self.win(…)`, нужен `POST_W`) → анкеты и предложения 3/3, `/api/v1` 3/3. Всего в цепочке 206 путей / 218 пар
-   (до этого шага — 228 / 240).
+   `w = self.win(…)`, нужен `POST_W`). Всего в цепочке 179 путей / 190 пар (до этого шага — 206 / 218).
 8. `bot/*` — по модулю за PR.
 
 Всего ~16 PR. Темп — 2–3 в день между продуктовыми задачами.

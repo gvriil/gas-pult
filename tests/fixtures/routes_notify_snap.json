@@ -1,0 +1,19 @@
+{
+  "00 GET /api/notify/prefs": [200, "application/json", {"channels": []}, [["notify_info", [1], []]]],
+  "01 GET /api/push/key": [200, "application/json", {"key": "PK"}, [["push.public_key", [], []]]],
+  "02 GET /api/push/devices": [200, "application/json", {"devices": [{"id": "d1"}]}, [["push.devices", [1], []]]],
+  "03 GET /api/push/devices (viewer)": [200, "application/json", {"devices": [{"id": "d1"}]}, [["push.devices", [2], []]]],
+  "04 GET /api/push/last?dev=abc": [200, "application/json", {"items": []}, [["push.pending", [1, "a"], []]]],
+  "05 GET /api/push/last": [200, "application/json", {"items": []}, [["push.pending", [1, ""], []]]],
+  "06 POST /api/notify/prefs": [200, "application/json", {"ok": true}, [["notify_set", [1, "dict"], []]]],
+  "07 POST /api/notify/prefs": [400, "application/json", {"error": "неверный ввод"}, [["notify_set", [1, "dict"], []]]],
+  "08 POST /api/notify/prefs": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "09 POST /api/push/subscribe (host)": [200, "application/json", {"id": "d2"}, [["push.add", [1, "dict", "телефон", "https://pult.test"], []]]],
+  "10 POST /api/push/subscribe (host)": [400, "application/json", {"error": "неверный ввод"}, [["push.add", [1, "dict", "", "https://pult.test"], []]]],
+  "11 POST /api/push/subscribe": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "12 POST /api/push/unsubscribe": [200, "application/json", {"ok": true}, [["push.remove", [1, "d1"], []]]],
+  "13 POST /api/push/unsubscribe": [404, "application/json", {"error": "нет такого"}, [["push.remove", [1, "nope"], []]]],
+  "14 POST /api/push/test": [200, "application/json", {"devices": 1, "list": [{"id": "d1"}]}, [["push.notify", [1, "Проверка уведомлений", "Видите это — уведомления на это устройство работают."], [["wait", true]]], ["push.devices", [1], []]]],
+  "15 POST /api/push/test (viewer)": [200, "application/json", {"devices": 1, "list": [{"id": "d1"}]}, [["push.notify", [2, "Проверка уведомлений", "Видите это — уведомления на это устройство работают."], [["wait", true]]], ["push.devices", [2], []]]],
+  "16 POST /api/notify/prefs (v1)": [403, "application/json", {"error": "этот путь через токен закрыт", "code": "v1_scope"}, []]
+}

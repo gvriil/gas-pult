@@ -1,0 +1,12 @@
+{
+  "00 GET /api/q/list": [200, "application/json", {"links": [{"id": "l1"}], "forms": [{"id": "f1", "title": "Анкета"}]}, [["onboarding.forms", ["PosixPath"], []], ["forms_links.listing", [], []]]],
+  "01 GET /api/q/list (viewer)": [403, "application/json", {"error": "это может только владелец"}, []],
+  "02 GET /api/q/answers?id=a1": [200, "application/json", {"answers": []}, [["anketa_answers", ["a1"], []]]],
+  "03 GET /api/q/answers?id=nope": [404, "application/json", {"error": "нет такого"}, [["anketa_answers", ["nope"], []]]],
+  "04 GET /api/q/answers": [200, "application/json", {"answers": []}, [["anketa_answers", [""], []]]],
+  "05 POST /api/q/new": [200, "application/json", {"code": "c1"}, [["onboarding.forms", ["PosixPath"], []], ["forms_links.new", ["f1", "Иван", 7], []]]],
+  "06 POST /api/q/new": [200, "application/json", {"code": "c1"}, [["onboarding.forms", ["PosixPath"], []], ["forms_links.new", ["f1", "", 14], []]]],
+  "07 POST /api/q/new": [400, "application/json", {"error": "нет такой анкеты"}, [["onboarding.forms", ["PosixPath"], []]]],
+  "08 POST /api/q/new": [400, "application/json", {"error": "неверный ввод"}, [["onboarding.forms", ["PosixPath"], []], ["forms_links.new", ["f1", "bad", 14], []]]],
+  "09 POST /api/q/new": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []]
+}

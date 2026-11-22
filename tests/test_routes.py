@@ -2,7 +2,8 @@
 
 ``AREAS`` — по области: запросы и снимок ответов (код, тип, тело) и вызовов ``Panel`` и модулей (``billing.api``,
 ``messengers.panel``) по каждому её пути, снятый на коде до переноса (ветки в ``webapp.H.get``/``post``): успех,
-ошибка (404/400), битый JSON для POST. Перенос — только перенос: снимок не меняется.
+ошибка (404/400), битый JSON для POST, наблюдатель (403 до таблиц или свой ответ), через ``/api/v1`` — где путь в
+белом списке ``V1_*`` (и 403 для ``V1_NEVER``). Перенос — только перенос: снимок не меняется.
 Ещё: путь не объявлен в двух местах (таблица и цепочка), таблицы видны описи API, права — до таблиц.
 """
 
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from gas_pult import api_spec, routes, webapp, webauth
+from gas_pult import api_spec, onboarding, routes, webapp, webauth
 from gas_pult.billing import api as billing_api
 from gas_pult.config import Config
 from gas_pult.messengers import panel as messengers_panel
@@ -41,9 +42,10 @@ def srv(monkeypatch, tmp_path):
         return f
 
     def miss(*a, **kw):                          # «нет такого» — LookupError (404), неверное — ValueError (400)
-        if "nope" in (a + tuple(kw.values())):
+        flat = [x for v in a + tuple(kw.values()) for x in (v.values() if isinstance(v, dict) else [v])]
+        if "nope" in flat:
             raise LookupError("нет такого")
-        if "bad" in (a + tuple(kw.values())):
+        if "bad" in flat:
             raise ValueError("неверный ввод")
 
     def ok(val):
@@ -61,9 +63,28 @@ def srv(monkeypatch, tmp_path):
              "meeting_list": {"meetings": []}, "meeting_view": ok({"id": "m1", "title": "Встреча"}),
              "meeting_audio": ok(("audio/webm", b"AUD", {"Cache-Control": "private, max-age=3600"})),
              "meeting_card": ok(("image/svg+xml; charset=utf-8", b"<svg/>", {"Cache-Control": "no-store"})),
-             "meeting_share": ok({"url": "https://x/#focus=t", "id": "f1"})}
+             "meeting_share": ok({"url": "https://x/#focus=t", "id": "f1"}),
+             "brief_get": {"cards": []}, "task_list": [{"id": "t1"}], "brief_set": ok({"ok": True}),
+             "brief_act": ok({"ok": True}), "task_run": ok({"ok": True, "out": "готово"}),
+             "share_list": {"items": []}, "share_file": ok(("image/jpeg", b"JPG")),
+             "notify_info": {"channels": []}, "notify_set": ok({"ok": True}),
+             "anketa_answers": ok({"answers": []})}
     for name, out in fakes.items():
         monkeypatch.setattr(p, name, rec(name, out))
+    subs = {"tasks": {"etag": "E1", "add": ok({"id": "t2"}), "update": ok({"id": "t1"}), "remove": ok(True)},
+            "share_tokens": {"mine": [{"id": "d1"}], "create": ok({"id": "d2", "token": "s"}), "revoke": ok(True)},
+            "shares": {"done": ok({"ok": True})},
+            "push": {"public_key": "PK", "devices": [{"id": "d1"}], "pending": [], "add": ok({"id": "d2"}),
+                     "remove": ok(True), "notify": 1},
+            "forms_links": {"listing": [{"id": "l1"}], "new": ok({"code": "c1"})},
+            "api_tokens": {"mine": [{"id": "a1"}], "create": ok({"id": "a2", "token": "t"}), "revoke": ok(True)},
+            "funnel": {"event": None}}
+    for obj, names in subs.items():
+        for name, out in names.items():
+            monkeypatch.setattr(getattr(p, obj), name, rec(f"{obj}.{name}", out))
+    monkeypatch.setattr(p.api_tokens, "check", lambda t: {"id": "a1", "by": OWNER, "space": "", "groups": ["tasks"],
+                                                          "write": True} if t == "v1tok" else None)
+    monkeypatch.setattr(onboarding, "forms", rec("onboarding.forms", {"f1": {"id": "f1", "title": "Анкета"}}))
     monkeypatch.setattr(p.recparts, "status", rec("recparts.status", {"segs": 0}))
     monkeypatch.setattr(p.recparts, "add", rec("recparts.add", {"ok": True}))
     monkeypatch.setattr(p.recparts, "drop", rec("recparts.drop", True))
@@ -81,9 +102,17 @@ def srv(monkeypatch, tmp_path):
     s.shutdown()
 
 
+# особые запросы владельца: свой заголовок (ETag, Host — адрес подписки не зависит от порта); "v1" — токен /api/v1
+HDR = {"etag": {"If-None-Match": "E1"}, "host": {"Host": "pult.test"}}
+
+
 def call(srv, path, body: bytes | None = None, ctype="", tok=None):
-    tok = srv.get(tok, tok)                      # "viewer" — вход наблюдателя
-    hdr = {"Cookie": f"{webauth.COOKIE}={tok or srv['tok']}", **({"Content-Type": ctype} if ctype else {})}
+    extra = HDR.get(tok, {})
+    tok = None if tok in HDR else srv.get(tok, tok)   # "viewer" — вход наблюдателя
+    hdr = {"Cookie": f"{webauth.COOKIE}={tok or srv['tok']}", **({"Content-Type": ctype} if ctype else {}), **extra}
+    if tok == "v1":                              # /api/v1/<путь>: токен 1С и CRM вместо куки
+        path, hdr = "/api/v1/" + path.removeprefix("/api/"), {"Authorization": "Bearer v1tok",
+                                                                **({"Content-Type": ctype} if ctype else {})}
     try:
         r = urllib.request.urlopen(urllib.request.Request(srv["base"] + path, body, hdr))
     except urllib.error.HTTPError as e:
@@ -159,10 +188,105 @@ MEETINGS = [
     ("/api/meetings", None, "", "viewer"),
 ]
 
+TASKS = [
+    ("/api/brief", None, ""),
+    ("/api/brief?fresh=1", None, ""),
+    ("/api/tasks", None, ""),
+    ("/api/tasks", None, "", "etag"),                   # не менялись — 304 без тела
+    ("/api/tasks", None, "", "viewer"),                 # только владельцу — 403 до таблиц
+    ("/api/tasks", None, "", "v1"),                     # /api/v1/tasks — токен с группой «tasks»
+    ("/api/brief/prefs", J({"time": "08:00"}).encode(), JS),
+    ("/api/brief/prefs", J({"time": "bad"}).encode(), JS),
+    ("/api/brief/prefs", b"{bad", JS),
+    ("/api/brief/act", J({"id": "b1", "act": "yes"}).encode(), JS),   # «Да» — событие воронки
+    ("/api/brief/act", J({"id": "b1", "act": "later"}).encode(), JS),
+    ("/api/brief/act", J({"id": "nope", "act": "no"}).encode(), JS),
+    ("/api/brief/act", b"{bad", JS),
+    ("/api/tasks/add", J({"title": "Позвонить"}).encode(), JS),
+    ("/api/tasks/add", J({"title": "bad"}).encode(), JS),
+    ("/api/tasks/add", b"{bad", JS),
+    ("/api/tasks/add", J({"title": "Позвонить"}).encode(), JS, "viewer"),
+    ("/api/tasks/add", J({"title": "Из CRM"}).encode(), JS, "v1"),
+    ("/api/tasks/add", b"{bad", JS, "v1"),
+    ("/api/tasks/update", J({"id": "t1", "status": "done"}).encode(), JS),
+    ("/api/tasks/update", J({"id": "nope"}).encode(), JS),
+    ("/api/tasks/update", b"{bad", JS),
+    ("/api/tasks/update", J({"id": "t1", "status": "done"}).encode(), JS, "v1"),
+    ("/api/tasks/remove", J({"id": "t1"}).encode(), JS),
+    ("/api/tasks/remove", J({"id": "nope"}).encode(), JS),
+    ("/api/tasks/remove", J({"id": "t1"}).encode(), JS, "v1"),   # V1_NEVER — 403
+    ("/api/tasks/run", J({"id": "t1", "confirmed": True}).encode(), JS),
+    ("/api/tasks/run", J({"id": "nope"}).encode(), JS),
+    ("/api/tasks/run", b"{bad", JS),
+]
+SHARE = [
+    ("/api/share/list", None, ""),
+    ("/api/share/list", None, "", "viewer"),
+    ("/api/share/file?id=s1&i=0", None, ""),
+    ("/api/share/file?id=nope", None, ""),
+    ("/api/share/devices", None, ""),
+    ("/api/share/done", J({"id": "s1"}).encode(), JS),
+    ("/api/share/done", J({"id": "nope"}).encode(), JS),
+    ("/api/share/done", b"{bad", JS),
+    ("/api/share/done", J({"id": "s1"}).encode(), JS, "viewer"),
+    ("/api/share/devices/new", J({"name": "iPhone"}).encode(), JS),
+    ("/api/share/devices/new", J({"name": "bad"}).encode(), JS),
+    ("/api/share/devices/new", b"{bad", JS),
+    ("/api/share/devices/revoke", J({"id": "d1"}).encode(), JS),
+    ("/api/share/devices/revoke", J({"id": "nope"}).encode(), JS),
+    ("/api/share/devices/revoke", b"{bad", JS),
+]
+NOTIFY = [
+    ("/api/notify/prefs", None, ""),
+    ("/api/push/key", None, ""),
+    ("/api/push/devices", None, ""),
+    ("/api/push/devices", None, "", "viewer"),          # свои подписки — и наблюдателю
+    ("/api/push/last?dev=abc", None, ""),
+    ("/api/push/last", None, ""),
+    ("/api/notify/prefs", J({"events": ["done"]}).encode(), JS),
+    ("/api/notify/prefs", J({"events": "bad"}).encode(), JS),
+    ("/api/notify/prefs", b"{bad", JS),
+    ("/api/push/subscribe", J({"sub": {"endpoint": "https://push/e"}, "label": "телефон"}).encode(), JS, "host"),
+    ("/api/push/subscribe", J({"sub": {"endpoint": "bad"}}).encode(), JS, "host"),
+    ("/api/push/subscribe", b"{bad", JS),
+    ("/api/push/unsubscribe", J({"id": "d1"}).encode(), JS),
+    ("/api/push/unsubscribe", J({"id": "nope"}).encode(), JS),
+    ("/api/push/test", J({}).encode(), JS),
+    ("/api/push/test", J({}).encode(), JS, "viewer"),
+    ("/api/notify/prefs", J({"events": ["done"]}).encode(), JS, "v1"),   # V1_NEVER — 403
+]
+FORMS = [
+    ("/api/q/list", None, ""),
+    ("/api/q/list", None, "", "viewer"),
+    ("/api/q/answers?id=a1", None, ""),
+    ("/api/q/answers?id=nope", None, ""),
+    ("/api/q/answers", None, ""),
+    ("/api/q/new", J({"form": "f1", "client": "Иван", "days": 7}).encode(), JS),
+    ("/api/q/new", J({"form": "f1"}).encode(), JS),
+    ("/api/q/new", J({"form": "zz"}).encode(), JS),      # нет такой анкеты — 400
+    ("/api/q/new", J({"form": "f1", "client": "bad"}).encode(), JS),
+    ("/api/q/new", b"{bad", JS),
+]
+APITOKENS = [
+    ("/api/apitokens", None, ""),
+    ("/api/apitokens", None, "", "viewer"),             # наблюдателю токены не выдаются — 400
+    ("/api/apitokens", None, "", "v1"),                 # V1_NEVER — 403
+    ("/api/apitokens/new", J({"name": "1С", "write": True, "days": 30, "groups": ["tasks"]}).encode(), JS),
+    ("/api/apitokens/new", J({"name": "CRM", "groups": "tasks"}).encode(), JS),
+    ("/api/apitokens/new", J({"name": "bad"}).encode(), JS),
+    ("/api/apitokens/new", b"{bad", JS),
+    ("/api/apitokens/revoke", J({"id": "a1"}).encode(), JS),
+    ("/api/apitokens/revoke", J({"id": "nope"}).encode(), JS),
+    ("/api/apitokens/revoke", b"{bad", JS),
+    ("/api/apitokens/revoke", J({"id": "a1"}).encode(), JS, "viewer"),
+]
+
 # Снимки — код до переноса: голос — origin/refactor/panel-focus (eca3a81), мессенджеры, платежи, протоколы встреч —
-# main 5412efd. [код, тип, тело, вызовы Panel и модулей].
+# main 5412efd; задачи и брифинг, «Поделиться», уведомления, анкеты, токены 1С и CRM — f6fdf33 (#456).
+# [код, тип, тело, вызовы Panel и модулей].
 FIX = Path(__file__).with_name("fixtures")
-AREAS = {"voice": VOICE, "messengers": MESSENGERS, "billing": BILLING, "meetings": MEETINGS}
+AREAS = {"voice": VOICE, "messengers": MESSENGERS, "billing": BILLING, "meetings": MEETINGS, "tasks": TASKS,
+         "share": SHARE, "notify": NOTIFY, "forms": FORMS, "apitokens": APITOKENS}
 
 
 def snap_of(srv, cases) -> dict:
@@ -206,11 +330,14 @@ def test_spec_sees_route_tables():
 
 
 def test_fork_tables_keep_chain_paths():
-    """``GET_P``/``POST_P`` — те же пути, что развилки цепочки: ``path in billing_api.GET``/``POST`` и
-    ``path.startswith("/api/messengers/") and path in OWNER_ONLY``."""
-    assert set(routes.GET_P) == set(billing_api.GET)
+    """``GET_P``/``POST_P`` — те же пути, что развилки цепочки: ``path in billing_api.GET``/``POST``,
+    ``path.startswith("/api/messengers/") and path in OWNER_ONLY`` и ``path in ("/api/push/…", …)``."""
+    push = set(webapp.PUSH_OWN) - {"/api/notify/prefs"}
+    assert set(routes.notify.PUSH_GET) | set(routes.notify.PUSH_POST) == push
+    assert set(routes.GET_P) == set(billing_api.GET) | set(routes.notify.PUSH_GET)
     assert set(routes.POST_P) == set(billing_api.POST) | {p for p in webapp.OWNER_ONLY
-                                                          if p.startswith("/api/messengers/")}
+                                                          if p.startswith("/api/messengers/")} | set(
+        routes.notify.PUSH_POST)
     assert all(routes.POST_P[p] is routes.messengers.messengers_post for p in routes.messengers.POST_PATHS)
 
 

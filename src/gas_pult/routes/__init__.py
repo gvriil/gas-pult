@@ -23,9 +23,21 @@
 ``bot``, ни ``webapp`` (``tests/test_module_boundaries.py``).
 """
 
-from gas_pult.routes import billing, meetings, messengers, voice
+SENT = object()  # обработчик сам отправил ответ (``self.reply``): ``H.dispatch`` ничего не дописывает; ``webapp.SENT``
 
-AREAS = (voice, messengers, billing, meetings)
+from gas_pult.routes import (  # noqa: E402 — SENT выше: его берут модули областей (routes/tasks.py)
+    api_tokens,
+    billing,
+    forms,
+    meetings,
+    messengers,
+    notify,
+    share,
+    tasks,
+    voice,
+)
+
+AREAS = (voice, messengers, billing, meetings, tasks, share, notify, forms, api_tokens)
 KINDS = ("GET", "GET_W", "GET_P", "POST_RAW", "POST", "POST_P")
 
 
