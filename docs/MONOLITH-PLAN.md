@@ -104,7 +104,16 @@
    («Позвать на помощь», бюджет пространства, задача от владельца, `owner_join`), пространство в панели (`space_info`,
    `space_fields`), первый вход (`space_welcome`) и сессии пространства (`space_close`…`space_restore`) → примесь
    `SpacesPart` (29 имён, ≈350 строк, только перенос; `BUSY` — из `humanize.py`). Фокус-ссылки (`focus_*`, в том числе
-   «Ссылка на пространство») и мост пространства (`bridge_space*`) остались в `webapp`. `panel/people.py` — далее.
+   «Ссылка на пространство») и мост пространства (`bridge_space*`) остались в `webapp`. ✓ `panel/people.py` — 22.11:
+   страна человека (`countries`, `check`, `seen_ip`, `set_country`…), владелец и вид панели (`is_owner`, `ui`,
+   `set_ui`, `prefs`, `owner_space_fix`), «Команда» и люди (`team_info`, `people_list`, `admin_may`, `set_role`,
+   `set_access`, `forget_person`), вход через Telegram и ключи входа (`login_methods`, `key_label`, `login_start`,
+   `confirm_start`, `bot_where`, `confirm_done`) → примесь `PeoplePart` (24 имени, ≈230 строк, только перенос;
+   `STAFF_ROLES`, `TITLES` реэкспортирует `webapp`). В `webapp` остались уведомления (`notify_*`), отзыв, расход
+   (`cost_*`), ключи поставщиков моделей (`set_key`, `remove_key`), предложения (`offer_*`), «Поделиться», встречи.
+6а. `panel/focus.py` — фокус-ссылки (`focus_*`, в том числе «Ссылка на пространство») и мост (`bridge_*`,
+   `bridge_space*`): своя область (ссылки без входа, права гостя ссылки), связана с людьми только через `self` —
+   отдельным PR.
 7. `routes/*` — по области за PR, тем же порядком.
 8. `bot/*` — по модулю за PR.
 
