@@ -91,8 +91,8 @@ class FakeTmux:
 def sw(monkeypatch, tmp_path):
     monkeypatch.setenv("GAS_PULT_CONFIG_DIR", str(tmp_path))
     from gas_pult import providers
-    providers.save_key("openrouter", "k1")
-    providers.save_key("deepseek", "k2")
+    providers.save_key("openrouter", "test-key-openrouter-qx7")
+    providers.save_key("deepseek", "test-key-deepseek-qx7")
     state = {"fallback_chain": ["deepseek", "claude"]}
     said, logged, now = [], [], [datetime.now(UTC).timestamp()]
     s = fallback.Switcher(FakeTmux(), lambda: state, "claude", "NL", say=said.append, log=logged.append,
@@ -111,7 +111,8 @@ def test_switch_respawns_with_continue_and_says_one_line(sw):
     assert line == "Поставщик OpenRouter не отвечает (429) — сессия «shop» переключена на DeepSeek"
     wid, path, cmd, mark = sw.tmux.calls[0]
     assert (wid, path, mark) == ("@1", "/p/shop", "deepseek")
-    assert cmd.startswith("claude --settings ") and "deepseek.json " in cmd and "k2" not in cmd
+    # ключ — не в команде; уникальная строка: «k2» случайно совпадала с именем временной папки (CI 23.11)
+    assert cmd.startswith("claude --settings ") and "deepseek.json " in cmd and "test-key-deepseek-qx7" not in cmd
     assert cmd.endswith(" --continue") and "--strict-mcp-config" in cmd     # DeepSeek напрямую — без серверов Google
     assert sw.said == [line] and sw.logged[0]["from"] == "openrouter" and sw.logged[0]["to"] == "deepseek"
 
