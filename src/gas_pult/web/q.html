@@ -71,7 +71,8 @@
 <div class="gltip" id="gltip" role="tooltip" hidden></div><div class="sr" id="glsay" aria-live="polite"></div>
 <script>
 "use strict";
-const code = location.pathname.split("/").filter(Boolean)[1] || "";
+const seg = location.pathname.split("/").filter(Boolean);   // /q/<код> или /<имя> за прокси (botsmith.ru/med)
+const code = (seg[0] === "q" ? seg[1] : seg[0]) || "";
 const api = (act, body) => fetch(`/api/q/${encodeURIComponent(code)}${act ? "/" + act : ""}`, body ? {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}).then(async (r) => {
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || "Ошибка " + r.status); return d; });

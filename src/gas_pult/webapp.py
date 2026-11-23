@@ -2234,7 +2234,7 @@ def handler(panel: Panel):
         def anketa_http(self, method: str, path: str):
             """``/q/<код>`` — страница анкеты; ``/api/q/<код>`` — анкета и черновик; ``…/save`` — черновик;
             ``…/submit`` — отправить. Неизвестный и просроченный код — один и тот же 404; перебор с IP — 429."""
-            m = re.match(r"^/(api/)?q/([A-Za-z0-9_-]{16,64})(?:/(save|submit))?/?$", path)
+            m = re.match(r"^/(api/)?q/([A-Za-z0-9_-]{16,64}|[a-z0-9][a-z0-9-]{1,14})(?:/(save|submit))?/?$", path)
             ip, api = self.client_ip(), path.startswith("/api/")
             if panel.q_misses.blocked(ip):
                 return self.offer_reply(429, {"error": "слишком много запросов — подождите 10 минут"}, page=False)
@@ -2247,7 +2247,7 @@ def handler(panel: Panel):
                 body = OFFER_404.encode() if not api else {"error": "ссылка не найдена или устарела"}
                 return self.offer_reply(404, body, page=not api)
             if not api:
-                return self.offer_reply(200, q_page, page=True, csp=q_csp)
+                return self.offer_reply(200, onboarding.page(q_page, form, rec), page=True, csp=q_csp)
             act = m.group(3) or ""
             if method == "GET" and not act:
                 return self.offer_reply(200, {"form": onboarding.public(form), "draft": rec.get("draft") or {},
