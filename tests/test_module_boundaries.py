@@ -141,7 +141,7 @@ def test_bot_parts_are_checked():
     assert "gas_pult.botparts.voice" in g
     assert "gas_pult.botparts.voice" in g["gas_pult.bot"]
     assert {"gas_pult.botparts.telegram", "gas_pult.botparts.meetings", "gas_pult.botparts.monitor",
-            "gas_pult.botparts.base"} <= g["gas_pult.bot"]
+            "gas_pult.botparts.base", "gas_pult.botparts.windows"} <= g["gas_pult.bot"]
 
 
 def test_graph_sees_known_imports():
