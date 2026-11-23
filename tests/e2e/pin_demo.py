@@ -9,6 +9,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 
 def run(base: str, shots: str = ""):
     from playwright.sync_api import sync_playwright

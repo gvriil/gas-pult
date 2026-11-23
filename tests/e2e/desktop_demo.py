@@ -14,6 +14,8 @@ iPhone 13 (портрет и альбом), iPad, компьютер 1366; св�
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 PINCH = """([x, y, d0, d1]) => {
   const p = document.querySelector('.desk-pan'), ev = (t, id, px) => p.dispatchEvent(new PointerEvent(t,
     {pointerId: id, clientX: px, clientY: y, pointerType: 'touch', bubbles: true}));

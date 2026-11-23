@@ -10,6 +10,8 @@ iOS (Telegram, Safari): клавиатура закрылась, а ``visualView
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 FAKE_VV = """(() => {
   const vv = new EventTarget();
   let h = null;                                 // пока тест не задал — как у браузера (innerHeight)

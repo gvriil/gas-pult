@@ -18,6 +18,7 @@ import json
 import sys
 from itertools import pairwise
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 from playwright.async_api import async_playwright
 
 BASE = "http://127.0.0.1:8797/?demo"

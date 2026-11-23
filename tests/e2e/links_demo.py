@@ -12,6 +12,8 @@ on*, <script> и javascript:; длинный адрес не раздвигае�
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 LONG = "https://example.com/" + "a" * 30 + "/" + "b" * 400 + "?q=" + "c" * 200
 
 TERM = "\n".join(["$ curl -sI https://term.example/health", "HTTP/2 200", "$ ls -la", "total 8",

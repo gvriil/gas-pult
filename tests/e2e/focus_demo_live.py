@@ -26,6 +26,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from focus_live import FETCH, free_port, start
 

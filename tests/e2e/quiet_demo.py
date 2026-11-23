@@ -13,6 +13,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 WATCH = """() => { window.__m = 0;
   const mo = new MutationObserver((ms) => { for (const m of ms) {
     const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;

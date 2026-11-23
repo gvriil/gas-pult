@@ -12,6 +12,8 @@
 import re
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 USD = re.compile(r"\$\d[\d,]*(?:\.\d\d)?")
 READY = ("typeof meta !== 'undefined' && meta && typeof view !== 'undefined' && typeof sessions !== 'undefined'"
          " && sessions.length")

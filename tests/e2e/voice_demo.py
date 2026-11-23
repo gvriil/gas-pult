@@ -13,6 +13,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 # Запоминаем, какие действия Media Session панель назначила, — чтобы нажать «наушниками».
 SPY = """(() => {
   window.__ms = {};

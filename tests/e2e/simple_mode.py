@@ -14,6 +14,8 @@ import re
 import sys
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from gas_pult.humanize import CYRILLIC_OK, LATIN_OK

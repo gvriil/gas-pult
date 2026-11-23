@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 NEW_MSG = """() => {
   const i = Math.max(...hist.map((m) => m.i)) + 1;
   hist = [...hist, { role: "assistant", i, text: "Готово: **три** файла", ts: Date.now() / 1000 }];

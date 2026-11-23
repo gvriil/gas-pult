@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 PHRASE = "Покажи, что изменилось за сегодня"
 SPY = """() => { window.__sent = []; const a = window.api;
   window.api = (p, b, ...r) => { if (p === '/api/send') window.__sent.push(b?.text); return a(p, b, ...r); }; }"""

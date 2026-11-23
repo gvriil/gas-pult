@@ -11,6 +11,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 CONTRAST = """(el) => {
   const rgb = (c) => c.match(/[\\d.]+/g).slice(0, 3).map(Number);
   const ch = (v) => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };

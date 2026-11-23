@@ -11,6 +11,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("simple_mode", HERE / "simple_mode.py")
 sm = importlib.util.module_from_spec(spec)

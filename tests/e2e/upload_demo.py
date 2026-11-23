@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 MAKE = """async () => { const c = Object.assign(document.createElement('canvas'), {width: 3000, height: 2000});
   const g = c.getContext('2d'); const d = g.createImageData(3000, 2000);     // «фото»: плавные переходы + шум
   for (let y = 0, i = 0; y < 2000; y++) for (let x = 0; x < 3000; x++, i += 4) {

@@ -12,6 +12,8 @@
 import sys
 import time
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 PHRASE = "Покажи, что изменилось за сегодня"
 NO_BAR = "!document.querySelector('.recbar')"
 

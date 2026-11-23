@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 GAP = "() => { const s = document.getElementById('scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop; }"
 
 

@@ -13,6 +13,8 @@ pointercancel от окна разрешения) засчитывалось к�
 import sys
 import time
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 PHRASE = "Покажи, что изменилось за сегодня"
 SLOW_MIC = """() => { const g = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
   navigator.mediaDevices.getUserMedia = (c) => new Promise((ok, no) => setTimeout(() => g(c).then(ok, no), 800)); }"""

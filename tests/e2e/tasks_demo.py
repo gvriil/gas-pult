@@ -12,6 +12,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 SPY = """() => { window.__sent = []; const a = window.api;
   window.api = (p, b, ...r) => { if (p === '/api/send') window.__sent.push(b); return a(p, b, ...r); }; }"""
 

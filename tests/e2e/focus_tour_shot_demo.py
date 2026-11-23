@@ -18,6 +18,8 @@ import base64
 import os
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 SHOT_URL = "https://cdn.jsdelivr.net/npm/modern-screenshot@4.7.0/dist/index.js"
 DRIVER = "https://cdnjs.cloudflare.com/ajax/libs/driver.js/1.8.0/"
 LOCAL = {SHOT_URL: ("GP_SHOT_LIB", "application/javascript"),

@@ -9,6 +9,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 WATCH = """(sel) => {                                     // считаем изменения DOM внутри sel
   window.__mut = 0;
   window.__mo?.disconnect();
