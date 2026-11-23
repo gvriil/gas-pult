@@ -565,7 +565,7 @@ class SessionsPart:
         self.need_claude()
         home = self.pult.claude_dir(person) if person is not None else None
         st = self.pult.state()
-        cmd = models.command(self.cfg.claude, profile, st, home=home)
+        cmd = models.command(self.cfg.claude, profile, st, home=home, path=path)
         if model:
             cmd += f" --model {shlex.quote(model)}"
         if not effort_ok(profile, model):
@@ -663,7 +663,7 @@ class SessionsPart:
             self.check(profile, uid)
         self.need_claude()
         st = self.pult.state()
-        cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w))  # нет ключа — тут
+        cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w), path=w["path"])  # нет ключа
         cmd += repos.flags(st, w["path"])                                    # подключённые репозитории (задача 43)
         cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, w.get("sid") or ""))   # выключенные интеграции чата
         if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
@@ -733,7 +733,7 @@ class SessionsPart:
         path = path or w["path"]
         home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал
         st = self.pult.state()
-        cmd = models.command(self.cfg.claude, profile, st, home=home)   # нет ключа — ошибка до закрытия
+        cmd = models.command(self.cfg.claude, profile, st, home=home, path=path)   # нет ключа — ошибка до закрытия
         own = dict(st.get("window_models") or {})
         efforts = dict(st.get("window_efforts") or {})
         same = profile == (w.get("profile") or w.get("mark") or "claude")
