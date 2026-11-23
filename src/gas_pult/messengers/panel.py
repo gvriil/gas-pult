@@ -67,6 +67,9 @@ def post(path: str, b: dict, by) -> dict:
     """``/api/messengers/<что>``: consent, tg/api, tg/login, tg/code, tg/password, link, chats, allow, off."""
     what = path.rsplit("/api/messengers/", 1)[-1]
     svc = "telegram" if what.startswith("tg/") else _svc(b)
+    if svc in M.OFF and what != "off" and not (what == "consent" and b.get("accepted") is not True):
+        raise ValueError(f"{M.TITLES[svc]} не поддерживается: запрещено правилами WhatsApp. Для компаний — "
+                         "официальная WhatsApp Business Platform (Cloud API)")   # только «Отключить» и «Отмена»
     if what == "consent":                                  # «Понимаю, подключить» / «Подключить» / «Отмена»
         return M.consent(svc, by, b.get("accepted") is True)
     if what == "off":

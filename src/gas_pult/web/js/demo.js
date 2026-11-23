@@ -401,6 +401,19 @@ function demoApi(path, body) {
         fields: [{ key: "token", label: "Ответ rclone authorize", secret: true, multiline: true, placeholder: "{\"access_token\":\"…\"}", hint: "На компьютере с браузером: rclone authorize \"drive\"." }] });
     const ALTC = { notion: "notion", gdrive: "drive" };
     for (const c of m.connectors) Object.assign(c, { providers: "claude", alt: ALTC[c.id] || "" });
+    // каталог по разделам (владелец 23.11): разделы, раздел у каждого пункта, Elicit, карточки «официальный путь»
+    const CAT = { notion: "docs", gmail: "mail", gdrive: "docs", drive: "docs", websearch: "research", elicit: "research", gcal: "other" };
+    m.presets.push({ id: "elicit", title: "Elicit", about: "Научные статьи: поиск, отчёты, систематические обзоры, исследовательский агент — официальный сервер Elicit. Только на тарифах Elicit Pro, Scale и Enterprise",
+      key_url: "https://support.elicit.com/en/articles/14757404-use-elicit-via-mcp-server", fields: [], providers: "all", after: "Вход через Elicit (OAuth 2.0): «Войти» ниже или в сессии /mcp → elicit → Authenticate." });
+    for (const x of [...m.presets, ...m.connectors]) x.cat = CAT[x.id] || "other";
+    m.cats = [["ai", "ИИ-модели и агенты"], ["messengers", "Мессенджеры"], ["mail", "Почта"], ["docs", "Документы и диски"], ["research", "Исследования"], ["other", "Прочее"]].map(([id, title]) => ({ id, title }));
+    m.cards = [{ id: "claude", cat: "ai", title: "Claude Code", state: "info", about: "Ваш аккаунт Claude: вход на «Экране» сессии (/login) или ключ API Anthropic. Подписку не передавайте другим людям" },
+      { id: "openai", cat: "ai", title: "ChatGPT и OpenAI", state: "info", about: "Только официально: ключ API OpenAI (platform.openai.com) или официальный вход в Codex. Логин и пароль ChatGPT пульт не принимает" },
+      { id: "telegram", cat: "messengers", title: "Telegram (как пользователь)", state: "info", owner: true, about: "Только официальный API Telegram: свои api_id и api_hash с my.telegram.org, вход по номеру и коду" },
+      { id: "whatsapp", cat: "messengers", title: "WhatsApp (личный)", state: "off", about: "Не поддерживается: запрещено правилами WhatsApp — личный аккаунт через неофициальные клиенты" },
+      { id: "whatsapp-business", cat: "messengers", title: "WhatsApp Business Platform", state: "info", about: "Официальный путь для компаний — Cloud API от Meta: номер компании и бизнес-аккаунт. В пульте пока не подключается кнопкой — через «Свой сервер (адрес)», если у вас есть MCP-сервер к Cloud API" },
+      { id: "max", cat: "messengers", title: "MAX", state: "off", about: "Нет официального пути для личного аккаунта: вход пользователем запрещён соглашением MAX. Для организации — бот (Bot API MAX)" },
+      { id: "mail", cat: "mail", title: "Почта по паролю приложения", state: "info", owner: true, about: "Яндекс, Mail.ru, Gmail, Yahoo — по IMAP с паролем приложения; черновик и отправка — после вашего «Да». Ящик подключает владелец сервера" }];
     const ok = { memory: true, tools: true, tool: true, webfetch: true };
     demoApi.st ||= { running: false };
     if (path === "/api/selftest" && body) demoApi.st = { running: true, at: Date.now() };
@@ -490,6 +503,18 @@ function demoApi(path, body) {
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" },
     { i: 3, cmd: "keepassxc-cli show -s ~/vault/demo.kdbx Сервисы/почта", kind: "tty", danger: false, sha: "d" }] };
   const key = path.split("?")[0];
+  // согласие на подключение (consents.py): в демо — в памяти страницы
+  if (key === "/api/consent") {
+    demoApi.cons ||= [];
+    if (body) { if (body.accepted !== true) return Promise.reject(new Error("отметьте «Понимаю: аккаунт мой, ответственность моя»")); if (!demoApi.cons.includes(body.what)) demoApi.cons.push(body.what); return Promise.resolve({ ok: true, v: "2026-11-24" }); }
+    return Promise.resolve({ v: "2026-11-24", title: "Подключение вашего аккаунта", check: "Понимаю: аккаунт мой, ответственность моя", given: [...demoApi.cons], log: [], points: [
+      "Вы подключаете свой аккаунт или свой ключ. Пульт не создаёт аккаунты и не делится ими.",
+      "Агент в ваших сессиях сможет читать и делать в сервисе то, что разрешает подключение. Отправка людям и платежи — только после вашего «Да» в панели, если сервис это поддерживает.",
+      "Аккаунт, ключ и соблюдение правил сервиса — на вас: условия поставщика, законы вашей страны, согласие людей, чью переписку видит агент.",
+      "Отключить можно в любой момент в «Подключениях». Дата и версия этого текста сохраняются на сервере пульта."] });
+  }
+  if (key === "/api/mcp" && /[?&]catalog=1/.test(path)) return Promise.resolve({ ...R["/api/mcp"], servers: null });
+  if (key === "/api/mcp" && params.get("mcpslow")) return new Promise((r) => setTimeout(() => r(R["/api/mcp"]), +params.get("mcpslow") || 0));   // демо: статусы — как на сервере, позже
   R["/api/meta"].projects_ui = true;                  // «Проекты» (задача 49): и у тестировщика пространства (GAS-38)
   R["/api/sessions"].sessions.forEach((x) => { if (!x.space) { x.project = "p-" + folder(x.path); x.title = demoTitle(x.id); } });
   if (key === "/api/projects" || key.startsWith("/api/project/") || key === "/api/project") return demoProjects(key, path, body, R["/api/sessions"]);
@@ -908,7 +933,7 @@ function demoMsg(key, b) {
   if (key === "/api/messengers") return { idle: 600, catalog: [
     { id: "telegram", title: "Telegram", about: "Ваш аккаунт: читать чаты, отвечать — после вашего «Да»", kind: "consent" },
     { id: "signal", title: "Signal", about: "Связанное устройство: читать, отвечать — после вашего «Да»", kind: "risk" },
-    { id: "whatsapp", title: "WhatsApp", about: "Связанное устройство: читать, отвечать — после вашего «Да»", kind: "risk" },
+    { id: "whatsapp", title: "WhatsApp (личный)", about: "Не поддерживается: запрещено правилами WhatsApp", kind: "off" },
     { id: "max", title: "MAX", about: "Только бот организации", kind: "off" }],
     services: Object.keys(T).map((id) => ({ id, title: T[id], consented: m[id].c, connected: m[id].on, who: m[id].on ? "*** 4567" : "", running: false, install: null, text: txt[id], api: m[id].on, allowed: 0 })) };
   const what = key.slice("/api/messengers/".length), svc = what.startsWith("tg/") ? "telegram" : b.svc;

@@ -9,9 +9,10 @@
 ``w = self.win(b.get("w"))``). Таблицы и подписи — ``routes/__init__.py``.
 """
 
-from gas_pult import calkeys, drafts, tenants
+from gas_pult import calkeys, drafts, space_mcp, tenants
 from gas_pult.access import OWNER_PRESETS
-from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS
+from gas_pult.mcp import CARDS, CATS, CONNECTORS, CONNECTORS_URL, PRESETS
+from gas_pult.routes import consent
 
 
 def calendar_keys(self, q: dict):
@@ -20,13 +21,34 @@ def calendar_keys(self, q: dict):
 
 
 def mcp_list(self, q: dict):
-    """GET /api/mcp"""
+    """GET /api/mcp — ``catalog=1``: только каталог, без опроса ``claude mcp list`` (``servers: null``) — окно
+    «Подключения» открывается сразу, статусы догружаются вторым запросом. ``cats`` — разделы, ``cards`` — карточки
+    без подключения кнопкой (официальный путь или «не поддерживается»). Фокус-ссылка — ``focus_list``."""
+    if self.focused is not None:
+        return focus_list(self, q)
     panel = self.panel
     home = self.home()
-    return {"servers": panel.mcp.list(q.get("fresh") == "1", home=home),
+    servers = None if q.get("catalog") == "1" else panel.mcp.list(q.get("fresh") == "1", home=home)
+    return {"servers": servers,
             "presets": [p for p in PRESETS if not home or p["id"] not in OWNER_PRESETS],
             "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL,
-            "personal": home is not None}          # список — свой у человека, не общий с владельцем
+            "personal": home is not None,          # список — свой у человека, не общий с владельцем
+            "cats": CATS, "cards": [c for c in CARDS if not home or not c.get("owner")]}
+
+
+def focus_list(self, q: dict):
+    """Фокус-ссылка (правило «Чужой человек в чате — не владелец»): ресурсы владельца — его серверы, коннекторы
+    claude.ai его аккаунта, почта, Telegram, Диск, ключи — не видны и не предлагаются. Ссылка в пространство — список
+    своего пространства (``space_mcp``); без пространства — пусто."""
+    slug = (self.focused or {}).get("space")
+    servers: list = []
+    if slug and q.get("catalog") != "1":
+        try:
+            servers = space_mcp.listing(slug)
+        except (ValueError, RuntimeError, OSError):
+            servers = []
+    return {"servers": servers, "presets": [], "connectors": [], "connectors_url": "", "personal": True,
+            "focus": True, "space": slug or "", "cats": CATS, "cards": [c for c in CARDS if not c.get("owner")]}
 
 
 def modules_list(self, q: dict):
@@ -41,6 +63,8 @@ def mcp_connected(self, q: dict):
     c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
     if not c:
         raise LookupError("нет такого сервиса")
+    if self.focused is not None:                   # коннекторы claude.ai — аккаунт владельца: по ссылке не видны
+        return {"found": False, "ok": False, "state": ""}
     s = panel.mcp.connected(c["match"], self.home())
     return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
 
@@ -67,6 +91,8 @@ def mcp_add(self, b: dict):
     home, preset = self.home(), str(b.get("preset", ""))
     if home and preset in OWNER_PRESETS:
         raise ValueError("свою программу на сервере подключает только владелец")
+    if any(p["id"] == preset for p in PRESETS):    # неизвестный шаблон — прежняя ошибка 400 ниже
+        consent.require(self, "mcp:" + preset)
     return {"result": panel.mcp.add(preset, str(b.get("name", "")), b.get("values") or {}, home=home)}
 
 
@@ -78,7 +104,10 @@ def mcp_remove(self, b: dict):
 
 def calendar_key(self, b: dict):
     """POST /api/calendars/key — секрет календаря → файл 0600 и проверка (calkeys.py)"""
-    return calkeys.save(str(b.get("kind", "")), b)
+    kind = str(b.get("kind", ""))
+    if kind in calkeys.KINDS:
+        consent.require(self, "calendar:" + kind)
+    return calkeys.save(kind, b)
 
 
 def calendar_key_remove(self, b: dict):

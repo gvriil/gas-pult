@@ -47,7 +47,9 @@ export function profileForm(p, connected) {
   $("profGuide")?.addEventListener("click", () => { openUrl(p.guide); });
   $("profUrlSave")?.addEventListener("click", () => api("/api/models", { profile: p.id, main: p.main, fast: p.fast, base_url: $("profUrl").value.trim() })
     .then((d) => { meta.profiles = d.profiles; toast($("profUrl").value.trim() ? "Адрес шлюза сохранён" : "Адрес шлюза убран"); profileForm(profileOf(p.id)); }).catch((err) => toast(err.message, 4500)));
-  $("profSave").onclick = (e) => busy(e.currentTarget, "Проверяю ключ…", async () => {
+  $("profSave").onclick = async (e) => { const btn = e.currentTarget;   // согласие — перед подключением ключа (consents.py)
+    if (!(await consentOk({ what: "key:" + p.id, id: p.id, title: p.title, about: p.about, kind: "ключ API поставщика модели", can: "работать в ваших сессиях на модели " + p.title + " по вашему ключу: тексты сессий уходят этому поставщику" }))) return;
+    busy(btn, "Проверяю ключ…", async () => {
     try {
       const d = await api("/api/keys", { provider: p.id, key: $("profKey").value });
       await reloadProfiles(); haptic("notificationOccurred", "success");
@@ -55,7 +57,7 @@ export function profileForm(p, connected) {
         <button class="btn" id="profStart">${ic("newsess")}Новый чат с ${esc(p.title)}</button>`;
       $("profStart").onclick = () => newSession(p.id); $("profKey").value = "";
     } catch (err) { $("profResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
-  });
+  }); };
   $("profDel")?.addEventListener("click", () => confirmDanger(`Удалить ключ ${p.title}? Уже открытые сессии доработают, новые с ним не запустятся.`, async () => {
     await api("/api/keys/remove", { provider: p.id }); await reloadProfiles(); toast("Ключ удалён"); profileForm(profileOf(p.id));
   }));
@@ -69,7 +71,8 @@ export function profileForm(p, connected) {
 // Вход в OpenRouter: ссылку готовим заранее, чтобы открыть её прямо в нажатии (браузеры не любят окна после ожидания).
 function oauthWire(p) {
   const fetchLink = () => api("/api/openrouter/start", {}).then((d) => (orLink = { url: d.url, t: Date.now() }));
-  if (!orLink || Date.now() - orLink.t > 8 * 60000) fetchLink().catch(() => {});
+  const what = "key:openrouter", ask = () => consentOk({ what, id: p.id, title: p.title, about: p.about, kind: "вход в ваш аккаунт OpenRouter", can: "получить ключ вашего аккаунта OpenRouter и работать на его моделях: тексты сессий уходят в OpenRouter и к выбранным моделям" });
+  if (!orLink || Date.now() - orLink.t > 8 * 60000) part("connections").then((m) => m.given(what)).then((ok) => ok && fetchLink()).catch(() => {});   // без согласия ссылку не готовим
   if (p.key) api("/api/openrouter/info").then((a) => {
     const usd = (v) => v == null ? "—" : "$" + (+v).toFixed(2);
     document.getElementById("orAcct").innerHTML = `<div class="row"><span class="name" style="flex:1">${esc(a.label || "ключ " + p.key.tail)}</span>
@@ -77,6 +80,7 @@ function oauthWire(p) {
       <p class="note" style="margin:8px 0 0">Потрачено всего ${usd(a.usage)}, за месяц ${usd(a.usage_monthly)} · ${a.limit == null ? "без лимита на ключ" : "лимит " + usd(a.limit) + ", осталось " + usd(a.limit_remaining)}</p>`;
   }).catch((e) => { document.getElementById("orAcct").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; });
   $("orLogin").onclick = async () => {
+    if (!(await ask())) return;
     let url = orLink && Date.now() - orLink.t < 9 * 60000 ? orLink.url : null;
     orLink = null;
     if (!url) { toast("Готовлю вход…"); try { url = (await fetchLink()).url; orLink = null; } catch (e) { return toast(e.message, 4500); } }

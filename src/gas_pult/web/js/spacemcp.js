@@ -57,6 +57,7 @@ async function click(b) {
   }
   if (b.dataset.smcpAdd) {
     const p = data.presets.find((x) => x.id === b.dataset.smcpAdd);
+    if (!(await consentOk({ what: "mcp:" + p.id, id: p.id, title: p.title, about: p.about, kind: "сервер MCP вашего пространства" }))) return;
     const values = Object.fromEntries(p.fields.map((f) => [f.key, $("sm_" + f.key).value]));
     const name = p.id === "http" ? $("sm__name").value.trim() : p.id;
     b.disabled = true; out().innerHTML = `<div class="result wait">${ic("wait")}<span>Подключаю…</span></div>`;

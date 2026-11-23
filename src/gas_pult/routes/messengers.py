@@ -7,7 +7,9 @@ Telegram, привязка Signal / WhatsApp, чаты для модели, «О
 """
 
 from gas_pult import access
+from gas_pult import messengers as M
 from gas_pult.messengers import panel as messengers_panel
+from gas_pult.routes import consent
 
 # развилка «path.startswith("/api/messengers/") and path in OWNER_ONLY» из цепочки — те же пути
 POST_PATHS = tuple(p for p in access.MESSENGERS if p.startswith("/api/messengers/") and p in access.OWNER_ONLY)
@@ -19,7 +21,11 @@ def messengers(self, q: dict):
 
 
 def messengers_post(self, path: str, b: dict):
-    """POST_P /api/messengers/* — выбор, вход, QR, чаты, «Отключить»"""
+    """POST_P /api/messengers/* — выбор, вход, QR, чаты, «Отключить». «Подключить» (``consent`` с ``accepted``) —
+    только после общего согласия на ``messenger:<svc>`` (``consents.py``), иначе 409"""
+    svc = str(b.get("svc") or "")
+    if path == "/api/messengers/consent" and b.get("accepted") is True and svc in M.SERVICES and svc not in M.OFF:
+        consent.require(self, "messenger:" + svc)
     return messengers_panel.post(path, b, self.terms_uid())
 
 

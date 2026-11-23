@@ -508,7 +508,11 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/login/code": "Шторка «Нужен вход»: код или адрес — в окно сессии",
     "/api/login/check": "Шторка «Нужен вход»: проверить, вошла ли сессия",
     # --- интеграции (MCP), репозитории, модули
-    "/api/mcp": "Интеграции: подключённые, готовые наборы, коннекторы",
+    "/api/mcp": ("Интеграции: подключённые, готовые наборы, коннекторы, разделы `cats` и карточки `cards`; "
+                 "`catalog=1` — только каталог, без опроса серверов (`servers: null`)", "catalog, fresh", ""),
+    "/api/consent": ("Согласие на подключение: GET — текст экрана, версия `v` и подтверждённое `given`; POST — "
+                     "записать «аккаунт мой, ответственность моя» на подключение `what` (только добавлением). Без "
+                     "согласия подключение отвечает 409 `code=consent`", "what, title, accepted", "v, given, consent"),
     "/api/mcp/add": "Подключить интеграцию из набора",
     "/api/mcp/remove": "Отключить интеграцию",
     "/api/mcp/login": "Вход в интеграцию (OAuth): ссылка",
@@ -726,7 +730,7 @@ GROUPS = (   # раздел документа → первые части пу�
     ("Модели, ключи, расход", ("keys", "models", "model/default", "openrouter", "fallback", "balance", "cost",
                                "selftest", "setup", "login/code", "login/check", "spend", "funnel")),
     ("Платежи", ("billing",)),
-    ("Интеграции, репозитории, модули", ("mcp", "repos", "modules", "module", "drafts", "calendars")),
+    ("Интеграции, репозитории, модули", ("mcp", "repos", "modules", "module", "drafts", "calendars", "consent")),
     ("Мост к браузеру", ("bridge",)),
     ("Мессенджеры", ("messengers",)),
     ("Фокус-ссылки", ("focus",)),

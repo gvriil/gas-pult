@@ -2395,6 +2395,125 @@
     }
    }
   },
+  "/api/consent": {
+   "get": {
+    "summary": "Согласие на подключение: GET — текст экрана, версия `v` и подтверждённое `given`; POST — записать «аккаунт мой, ответственность моя» на подключение `what` (только добавлением). Без согласия подключение отвечает 409 `code=consent`",
+    "tags": [
+     "Интеграции, репозитории, модули"
+    ],
+    "operationId": "get_consent",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "what",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "title",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "accepted",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "v": {},
+          "given": {},
+          "consent": {},
+          "ok": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   },
+   "post": {
+    "summary": "Согласие на подключение: GET — текст экрана, версия `v` и подтверждённое `given`; POST — записать «аккаунт мой, ответственность моя» на подключение `what` (только добавлением). Без согласия подключение отвечает 409 `code=consent`",
+    "tags": [
+     "Интеграции, репозитории, модули"
+    ],
+    "operationId": "post_consent",
+    "x-access": {
+     "role": "member",
+     "tags": [
+      "SPACE_OK",
+      "FOCUS"
+     ]
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "what": {},
+         "title": {},
+         "accepted": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "v": {},
+          "given": {},
+          "consent": {},
+          "ok": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/cost/decide": {
    "post": {
     "summary": "Пауза по расходу: продолжить или остановить",
@@ -5588,7 +5707,7 @@
   },
   "/api/mcp": {
    "get": {
-    "summary": "Интеграции: подключённые, готовые наборы, коннекторы",
+    "summary": "Интеграции: подключённые, готовые наборы, коннекторы, разделы `cats` и карточки `cards`; `catalog=1` — только каталог, без опроса серверов (`servers: null`)",
     "tags": [
      "Интеграции, репозитории, модули"
     ],
@@ -5606,6 +5725,13 @@
      }
     ],
     "parameters": [
+     {
+      "name": "catalog",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
      {
       "name": "fresh",
       "in": "query",
@@ -5626,7 +5752,9 @@
           "presets": {},
           "connectors": {},
           "connectors_url": {},
-          "personal": {}
+          "personal": {},
+          "cats": {},
+          "cards": {}
          }
         }
        }
@@ -6195,7 +6323,8 @@
         "type": "object",
         "properties": {
          "svc": {},
-         "chats": {}
+         "chats": {},
+         "accepted": {}
         }
        }
       }
@@ -6243,7 +6372,8 @@
        "schema": {
         "type": "object",
         "properties": {
-         "svc": {}
+         "svc": {},
+         "accepted": {}
         }
        }
       }
@@ -6337,7 +6467,8 @@
        "schema": {
         "type": "object",
         "properties": {
-         "svc": {}
+         "svc": {},
+         "accepted": {}
         }
        }
       }
@@ -6386,7 +6517,8 @@
        "schema": {
         "type": "object",
         "properties": {
-         "svc": {}
+         "svc": {},
+         "accepted": {}
         }
        }
       }
@@ -6432,7 +6564,8 @@
         "type": "object",
         "properties": {
          "svc": {},
-         "code": {}
+         "code": {},
+         "accepted": {}
         }
        }
       }
@@ -6480,7 +6613,8 @@
          "svc": {},
          "api_id": {},
          "api_hash": {},
-         "phone": {}
+         "phone": {},
+         "accepted": {}
         }
        }
       }
@@ -6526,7 +6660,8 @@
         "type": "object",
         "properties": {
          "svc": {},
-         "password": {}
+         "password": {},
+         "accepted": {}
         }
        }
       }

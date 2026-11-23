@@ -11,6 +11,7 @@ import json
 import os
 import stat
 
+import pytest
 from test_tenant_testers import MEMBER, OWNER, TESTER, call, world  # noqa: F401
 
 from gas_pult import mcp, space_mcp, space_sessions
@@ -45,6 +46,26 @@ def no_owner_cli(monkeypatch):
     calls = []
     monkeypatch.setattr(mcp, "_claude", lambda *a, **k: calls.append(a) or None)
     return calls
+
+
+@pytest.fixture(autouse=True)
+def agree(request):
+    """Согласие тестировщика на подключения (consents.py) — заранее; без него — test_space_add_needs_consent."""
+    if "world" not in request.fixturenames or "needs_consent" in request.node.name:
+        return
+    w = request.getfixturevalue("world")
+    for what in ("mcp:github", "mcp:websearch", "mcp:http"):
+        assert call(w, "/api/consent", {"what": what, "accepted": True})[0] == 200
+
+
+def test_space_add_needs_consent(world, monkeypatch):  # noqa: F811
+    w, _ = world, no_owner_cli(monkeypatch)
+    code, d = call(w, "/api/space/mcp/add", {"preset": "github", "name": "github", "values": {"token": KEY}})
+    assert code == 409 and d["code"] == "consent" and d["what"] == "mcp:github" and KEY not in json.dumps(d)
+    assert not cj(w, "demo").get("mcpServers")                       # без согласия ничего не записано
+    assert call(w, "/api/consent", {"what": "mcp:github"})[0] == 400   # без галочки — нет
+    assert call(w, "/api/consent", {"what": "mcp:github", "accepted": True})[0] == 200
+    assert call(w, "/api/space/mcp/add", {"preset": "github", "name": "github", "values": {"token": KEY}})[0] == 200
 
 
 def test_tester_adds_lists_removes_own_key_not_in_answers(world, monkeypatch):  # noqa: F811

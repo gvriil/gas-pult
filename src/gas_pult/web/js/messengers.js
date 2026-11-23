@@ -1,6 +1,7 @@
 // «Подключения» → «Мессенджеры» (владелец 22.11, вариант А: «человек решает сам»). Часть по требованию (#191).
 // Telegram — свой аккаунт (вход по номеру и коду) после экрана согласия по п. 1.5 условий Telegram API.
-// Signal и WhatsApp — связанное устройство по QR после экрана «Неофициальный способ… Решаете вы».
+// Signal — связанное устройство по QR после экрана «Неофициальный способ… Решаете вы». Личный WhatsApp — не
+// поддерживается (запрещено правилами WhatsApp, владелец 23.11): уже подключённый — только «Отключить».
 // MAX — только строка: вход пользователем запрещён соглашением MAX. Секреты в браузер не возвращаются:
 // после ввода поля очищаются, QR приходит картинкой. Сервер — messengers/panel.py.
 
@@ -24,16 +25,15 @@ const res = (kind, icon, text) => `<div class="result ${kind}">${ic(icon)}<span>
 export async function section(box) {
   BOX = box;
   try { D = await api("/api/messengers"); } catch (e) { box.innerHTML = ""; return; }
-  box.innerHTML = `<div class="section">Мессенджеры</div>
-    <p class="note">Ваш аккаунт. Модель читает чаты; отправить может только черновиком — после вашего «Да». Входящие видны в «Сегодня».</p>
+  box.innerHTML = `<p class="note">Ваш аккаунт. Модель читает чаты; отправить может только черновиком — после вашего «Да». Входящие видны в «Сегодня».</p>
     <div class="tiles">${D.catalog.map((c) => {
-      if (c.kind === "off") return `<div class="tile" aria-disabled="true">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${esc(c.about)}</small></div>`;
+      if (c.kind === "off" && !st(c.id).connected) return `<div class="tile" aria-disabled="true">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${esc(c.about)}</small></div>`;
       const s = st(c.id);
       return `<button class="tile${s.connected ? " on" : ""}" data-msg="${esc(c.id)}">${mono(c.title, c.id)}<span>${esc(c.title)}</span>
         <small>${s.connected ? "подключено · " + esc(s.who) : esc(c.about)}</small>${c.kind === "risk" ? '<small class="chip bad msg-un">неофициально</small>' : ""}</button>`;
     }).join("")}</div>`;
   box.onclick = (e) => { const t = e.target.closest("[data-msg]"); if (t) open(t.dataset.msg); };
-  const want = DEMO && params.get("msg");             // демо: ?view=integrations&msg=whatsapp|whatsapp-qr|telegram|telegram-code|telegram-chats
+  const want = DEMO && params.get("msg");             // демо: ?view=integrations&msg=signal|signal-qr|telegram|telegram-code|telegram-chats
   if (want && !section.once) { section.once = 1; open(want.split("-")[0], want.split("-")[1]); }
 }
 const refresh = () => BOX && section(BOX);
@@ -69,6 +69,7 @@ function consentSheet(svc) {
     <button class="btn wide" type="button" data-ok>${ic("check")}${tg ? "Понимаю, подключить" : "Подключить"}</button>`,
     async (b, bg) => {
       if (!b.hasAttribute("data-ok")) return;
+      if (!(await consentOk({ what: "messenger:" + svc, id: svc, title: s.title, about: s.about, kind: "ваш аккаунт " + s.title }))) return;   // общее согласие (consents.py)
       try { await api("/api/messengers/consent", { svc, accepted: true }); D = await api("/api/messengers"); bg.remove(); next(svc); }
       catch (e) { toast(e.message, 4500); }
     }, "Отмена");

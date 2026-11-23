@@ -12,9 +12,10 @@ def test_details_and_ago_only_for_developer():
 
 
 def test_integrations_quiet_for_user():
-    assert '${dev() ? `<small class="chip ok">${esc(T("int.any.chip"))}</small>` : ""}' in PAGE
-    assert '<button class="btn danger sm rm-inline" data-rm="${srv.indexOf(s)}">Отключить</button>' in PAGE
-    assert ">Убрать</button>" not in PAGE.split("function renderMcp")[1].split("\nfunction ")[0]
+    cn = (WEB / "js/connections.js").read_text(encoding="utf-8")    # каталог «Подключений» — часть (23.11)
+    assert '${x.claude && dev() ? `<small class="chip space">${esc(T("int.claude.chip"))}</small>` : ""}' in cn
+    assert '<button class="btn danger sm rm-inline" data-rm="${srv.indexOf(s)}">Отключить</button>' in cn
+    assert ">Убрать</button>" not in cn
     st = (WEB / "js/settings.js").read_text(encoding="utf-8")
     assert 'meta?.role === "owner" && dev("dev_models_mcp") ? [{ label: T("st.title")' in st
 

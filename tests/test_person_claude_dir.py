@@ -164,6 +164,8 @@ def test_api_mcp_is_per_person(server, tmp_path):
     assert calls[-1] == ("list", None)
     assert call(base, "/api/mcp", None, viewer)[0] == 403                # наблюдателю интеграций нет
     assert call(base, "/api/mcp/add", {"preset": "stdio", "name": "x1"}, member)[0] == 400
+    assert call(base, "/api/mcp/add", {"preset": "context7", "name": "ctx"}, member)[0] == 409   # нет согласия
+    assert call(base, "/api/consent", {"what": "mcp:context7", "accepted": True}, member)[0] == 200
     assert call(base, "/api/mcp/add", {"preset": "context7", "name": "ctx"}, member)[0] == 200
     assert calls[-1] == ("add", home)
     assert call(base, "/api/models", {"profile": "zai"}, member)[0] == 403   # модели и ключи — по-прежнему владельцу

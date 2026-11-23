@@ -10,6 +10,7 @@
 from gas_pult import balance, funnel, logins, models, selftest, spend, tenants, webauth
 from gas_pult.access import SELFTEST
 from gas_pult.commands import in_space
+from gas_pult.routes import consent
 
 
 def setup_status(self, q: dict):
@@ -77,9 +78,12 @@ def funnel_get(self, q: dict):
 
 
 def keys_set(self, b: dict):
-    """POST /api/keys"""
+    """POST /api/keys — без согласия на ``key:<поставщик>`` — 409 (``consents.py``)"""
     panel = self.panel
-    return panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))
+    provider = str(b.get("provider", ""))
+    if provider == "elevenlabs" or provider in {p.get("key") for p in models.PROFILES} - {None}:
+        consent.require(self, "key:" + provider)  # неизвестный поставщик — прежняя ошибка 400 в set_key
+    return panel.set_key(provider, str(b.get("key", "")))
 
 
 def keys_remove(self, b: dict):
@@ -142,8 +146,9 @@ def balance_clear(self, b: dict):
 
 
 def openrouter_start(self, b: dict):
-    """POST /api/openrouter/start"""
+    """POST /api/openrouter/start — вход в OpenRouter (OAuth) — тоже подключение: согласие на ``key:openrouter``"""
     panel = self.panel
+    consent.require(self, "key:openrouter")
     base = panel.public_url or f"https://{self.headers.get('Host', '')}"
     return {"url": panel.openrouter.start(base)}
 

@@ -26,6 +26,7 @@ export function calendarSheet(kind, on, done) {
         return;
       }
       if (!b.dataset.cksave) return;
+      if (!(await consentOk({ what: "calendar:" + kind, title: "Google Календарь", about: "читать события календаря по секретному адресу iCal (только чтение)", kind: "календарь вашего аккаунта Google" }))) return;
       const body = { kind, url: $("ckUrl").value };
       b.disabled = true; out.innerHTML = `<div class="result wait">${ic("wait")}<span>Проверяю подключение…</span></div>`;
       try {
