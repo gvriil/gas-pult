@@ -246,3 +246,12 @@ OWNER_ONLY |= {TEAM_SAY}
 SPACE_OK |= {BUG}
 FOCUS_POST |= {BUG}
 
+# Согласие на подключение (consents.py, владелец 23.11): текст экрана и запись «Понимаю: аккаунт мой…» — участнику и
+# выше, тестировщику пространства и фокус-ссылке (её согласие — за её пространством); наблюдателю и токенам — нет.
+CONSENT = "/api/consent"
+MEMBER_ONLY |= {CONSENT}
+SPACE_OK |= {CONSENT}
+FOCUS_GET |= {CONSENT}
+FOCUS_POST |= {CONSENT}
+FOCUS_NO_W |= {CONSENT}
+V1_NEVER |= {CONSENT}

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Telegram | свой аккаунт, MTProto (Telethon), свои api_id/api_hash с my.telegram.org | согласие по п. 1.5 Telegram API Terms | Telethon 1.45.0 (Python) |
 | Signal | signal-cli как связанное устройство, QR | «Неофициальный способ… Решаете вы» | signal-cli 0.14.10 (native) |
-| WhatsApp | Baileys (Node) как связанное устройство, QR | «Неофициальный способ… Решаете вы» | Node 20+ и Baileys 7.0.0-rc14 |
+| WhatsApp | не подключается с 23.11: личный аккаунт через неофициальный клиент запрещён правилами WhatsApp | — | уже подключённый — только «Отключить»; для компаний — WhatsApp Business Platform (Cloud API) |
 | MAX | — | — | не делаем: вход пользователем запрещён соглашением MAX (п. 4.3.7, 4.4); только бот организации |
 
 Условия сервисов (проверены 22.11): https://core.telegram.org/api/terms , https://telegram.org/tos/content-licensing ,

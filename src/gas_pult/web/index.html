@@ -5899,34 +5899,44 @@ const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", lin
                 github: "code", homeassistant: "home", context7: "book", websearch: "search", http: "server", stdio: "term" };
 let LOGOS = null;                                     // логотипы сервисов (js/logos.js, Simple Icons) — грузятся с «Подключениями»
 const mono = (t, id) => `<span class="mono">${LOGOS?.byId(id) || (GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase()))}</span>`;
+// «Подключения» открываются сразу (владелец 23.11: было 8–10 с без отклика): каталог — из кэша браузера или
+// /api/mcp?catalog=1 (без опроса `claude mcp list`), статусы — вторым запросом; до них — скелетон и «проверяю…».
+// Места блоков (сервисы, модели, запасные, голос) заняты сразу — ничего не появляется и не пропадает (20.11).
+let CONN = null;                                      // js/connections.js: каталог по разделам, поиск, согласие
+const consentOk = (it) => part("connections").then((m) => m.ask(it)).catch((e) => { toast(e.message || "Не загрузилось — обновите страницу", 4500); return false; });
+const skelCard = '<div class="card skel"><i class="sk-name"></i><i class="sk-meta"></i></div>';
 async function loadMcp(fresh) {
-  await dictReady;                                     // разделы «Для любой модели» / «Через сайт Claude» — из словаря
-  LOGOS ??= await part("logos").catch(() => null);
-  const owner = meta?.role === "owner";                // участнику — только его сервисы; модели, ключи и голос — владельцу
+  const t0 = performance.now();
+  await dictReady;                                     // разделы и подписи — из словаря
+  [LOGOS, CONN] = await Promise.all([LOGOS || part("logos").catch(() => null), CONN || part("connections").catch(() => null)]);
+  if (!CONN) { $("integrationsView").innerHTML = `<div class="result bad">${ic("warn")}<span>«Подключения» не загрузились — проверьте связь и обновите страницу</span></div>`; return; }
+  const owner = meta?.role === "owner" && !FOCUS;      // участнику — только его сервисы; модели, ключи и голос — владельцу
   if (view === "home") setSub(owner ? "<span>голос, ключи API и сервисы</span>" : "<span>ваши сервисы</span>");
-  // Одно состояние «загружаю» и сразу весь экран (владелец 20.11: «сначала вываливаются модели, потом пропадают,
-  // появляются другие вещи»): раньше «Модели» рисовались сразу, а сервисы, голос и запасные приходили по одному
-  // и сдвигали их. Теперь ждём всё вместе и рисуем один раз; ошибка одного блока не мешает остальным.
   const box = $("integrationsView");
-  box.innerHTML = '<div class="empty">Загружаю подключения… (до 30 секунд)</div>';
+  box.innerHTML = '<div id="mcpBox" data-tour="integrations"></div>' + (owner ? '<div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");   // «Модели» — раздел «ИИ-модели и агенты» каталога
+  const first = mcpData?.presets && mcpData.cats ? { ...mcpData, servers: fresh ? null : mcpData.servers } : CONN.cached();
+  if (first) { mcpData = first; renderMcp(); } else $("mcpBox").innerHTML = CONN.skeleton();
+  if (owner) { $("fbBox").innerHTML = '<div class="section">Запасные</div>' + skelCard; $("voiceBox").innerHTML = skelCard; }
+  box.dataset.paint = Math.round(performance.now() - t0);   // замер: до первого вида каталога, мс
   const q = (u) => api(u).then((v) => ({ v }), (e) => ({ e }));
-  const cal = owner && !FOCUS ? part("calkeys").then((x) => x.calendarsSection()).catch(() => "") : "";   // «Календари» — тоже сразу
-  const [m, pr, vc, f, ch] = await Promise.all([q("/api/mcp" + (fresh ? "?fresh=1" : "")), ...(owner ? [q("/api/providers"), q("/api/voice/cards"), q("/api/fallback")] : [{}, {}, {}]), cal]);
+  const bad = (el, e) => { if ($(el)) $(el).innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; };
+  const full = q("/api/mcp" + (fresh ? "?fresh=1" : ""));
+  const rest = owner ? Promise.all([q("/api/providers"), q("/api/voice/cards"), q("/api/fallback")]) : null;
+  if (!first) {
+    const c = await q("/api/mcp?catalog=1");
+    if (!box.isConnected) return;
+    if (c.v && !mcpData?.servers) { mcpData = c.v; CONN.remember(c.v); renderMcp(); box.dataset.paint = Math.round(performance.now() - t0); }
+  }
+  full.then((m) => {
+    if (!box.isConnected) return;
+    if (m.e) { if (mcpData?.presets) toast("Статусы подключений не загрузились: " + m.e.message, 5000); else bad("mcpBox", m.e); return; }
+    const had = !!$("connQ"); mcpData = m.v; CONN.remember(m.v); renderMcp(had); box.dataset.full = Math.round(performance.now() - t0);
+  });
+  if (!rest) return;
+  const [pr, vc, f] = await rest;
   if (!box.isConnected) return;
-  box.innerHTML = '<div id="mcpBox" data-tour="integrations"></div>' + (owner ? '<div id="modelsBox" data-tour="models"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
-  const bad = (el, e) => { $(el).innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; };
-  if (m.e) bad("mcpBox", m.e); else { mcpData = m.v; renderMcp(); if (ch && $("calKeys")) $("calKeys").innerHTML = ch; }
-  if (!owner) return;
-  renderModels();
   if (f.e) $("fbBox").innerHTML = `<div class="section">Запасные</div><div class="result bad">${ic("warn")}<span>${esc(f.e.message)}</span></div>`; else { fb = f.v; renderFallback(); }
   if (pr.e || vc.e) bad("voiceBox", pr.e || vc.e); else { prov = pr.v; vcards = vc.v; renderVoice(); }
-}
-function renderModels() {
-  const list = (meta?.profiles || []).filter((p) => p.needs_key);
-  $("modelsBox").innerHTML = `<div class="section">Модели</div>
-    <p class="note">Кроме Claude сессия может работать на моделях других поставщиков — по их ключу. Поставщик выбирается при «Новой сессии».</p>
-    ${list.map((p) => `<button class="card" data-prof="${p.id}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div>
-      <div class="meta">${esc(p.allowed === false ? p.denied || DENY : p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key && !p.not_ready ? "ok" : ""}">${p.key ? (p.not_ready ? "нет адреса шлюза" : "ключ " + esc(p.key.tail)) : "нет ключа"}</span></div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
 
@@ -6075,6 +6085,7 @@ $("integrationsView").addEventListener("click", async (e) => {
     catch (err) { toast(err.message, 4500); }
   }
   const eye = e.target.closest("[data-eye]"); if (eye) { const i = $(eye.dataset.eye); i.type = i.type === "password" ? "text" : "password"; }
+  if (e.target.id === "elSave" && !(await consentOk({ what: "key:elevenlabs", title: "ElevenLabs", about: "озвучивать ответы вашим ключом ElevenLabs: текст ответов уходит в ElevenLabs", kind: "ключ API" }))) return;
   if (e.target.id === "elSave") busy(e.target, "Проверяю ключ…", async () => {
     try { const d = await api("/api/keys", { provider: "elevenlabs", key: $("elKey").value });
           [prov, vcards] = await Promise.all([api("/api/providers"), api("/api/voice/cards")]); renderVoice();
@@ -6083,35 +6094,18 @@ $("integrationsView").addEventListener("click", async (e) => {
   });
   if (e.target.id === "elDel") confirmDanger("Удалить ключ ElevenLabs?", async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); [prov, vcards] = await Promise.all([api("/api/providers"), api("/api/voice/cards")]); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); });
 });
-const isOn = (c) => mcpData.servers.some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
+const isOn = (c) => (mcpData.servers || []).some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
 const pname = (s) => s.name.replace(/^claude\.ai /, "").replace(/^plugin:[^:]+:/, "");
-function renderMcp() {
-  const srv = mcpData.servers, ok = srv.filter((s) => s.ok), bad = srv.filter((s) => !s.ok && s.removable);
-  const anyTiles = mcpData.presets.filter((p) => p.providers === "all" && !["http", "stdio"].includes(p.id));   // задача 38
-  $("mcpBox").innerHTML = `
-    <p class="note">${mcpData.personal ? "Подключения у каждого свои: здесь — ваши, они работают в сессиях, которые открыли вы. В первой своей сессии войдите в Claude на «Экране» — без входа коннекторы claude.ai не появятся."
-      : "Подключения у каждого человека пульта свои — здесь ваши."}</p>
-    <div class="section">Подключено</div>
-    ${ok.length ? `<div class="conn">${ok.map((s) => `<span class="chip ok">${LOGOS?.byName(s.name) || ic("check", "s16")}${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
-    ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row">${LOGOS?.byName(s.name) || ""}<span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span>
-      <button class="btn danger sm rm-inline" data-rm="${srv.indexOf(s)}">Отключить</button></div></div>`).join("")}
-    <div class="section">${esc(T("int.any.title"))}</div>
-    <p class="note">${esc(T("int.any.note"))} Нажмите на сервис — дальше всё по шагам.</p>
-    <div class="tiles">
-      ${anyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}">${mono(p.title, p.id)}<span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0].split(" — ")[0])}</small>${dev() ? `<small class="chip ok">${esc(T("int.any.chip"))}</small>` : ""}</button>`).join("")}
-    </div>
-    <div class="section">${esc(T("int.claude.title"))}</div>
-    <p class="note">${esc(T("int.claude.note"))}</p>
-    <div class="tiles">
-      ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${isOn(c) ? "подключено" : esc(c.about)}</small><small class="chip space">${esc(T("int.claude.chip"))}</small></button>`).join("")}
-      <button class="tile" data-more="1"><span class="mono">${ic("plus")}</span><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
-    </div>
-    <div id="calKeys"></div><div id="msgKeys"></div>
-    <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">${ic("refresh")}Обновить список</button>`;
+function renderMcp(keep) {                            // каталог по разделам и поиск — js/connections.js
+  const box = $("mcpBox"); if (!box || !CONN) return;
+  const old = keep ? [$("msgKeys"), $("calKeys")] : [];
+  CONN.render(box, mcpData, keep);
+  if (old[0] && old[1]) { $("msgKeys").replaceWith(old[0]); $("calKeys").replaceWith(old[1]); return CONN.filter(box); }
   if (meta?.role === "owner" && !FOCUS) { paintCalKeys(); part("messengers").then((m) => m.section($("msgKeys"))).catch(() => {}); }   // + «Мессенджеры» (js/messengers.js)
 }
 function paintCalKeys() { part("calkeys").then(async (m) => { const h = await m.calendarsSection(); if ($("calKeys")) $("calKeys").innerHTML = h; }).catch(() => {}); }
 $("integrationsView").addEventListener("click", (e) => {
+  const cd = e.target.closest("[data-card]"); if (cd) return CONN?.card(mcpData, cd.dataset.card);
   const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), c = e.target.closest("[data-c]"), more = e.target.closest("[data-more]");
   const rf = e.target.closest("#mcpRefresh"); if (rf) return busy(rf, "Проверяю…", () => loadMcp(true));
   const ck = e.target.closest("[data-calkey]"); if (ck) return part("calkeys").then((m) => m.calendarSheet(ck.dataset.calkey, ck.classList.contains("on"), paintCalKeys));
@@ -6139,7 +6133,9 @@ function connectorView(c) {
     <div id="connNext">${on ? tryButton(c) : '<button class="btn ghost" id="connCheck">Проверить сейчас</button>'}</div>
     <details style="margin-top:10px"><summary class="note" style="display:inline">Не получается?</summary>
       <p class="note">Отметка не появляется 2–3 минуты — нажмите «Проверить сейчас». В claude.ai нет ${esc(c.title)} — «Другой сервис» → «Для продвинутых». Открытые сессии увидят сервис после перезапуска, новые — сразу.</p></details></div>`;
-  $("openClaude")?.addEventListener("click", () => { openUrl(mcpData.connectors_url); });
+  $("openClaude")?.addEventListener("click", async () => {   // согласие — до перехода в claude.ai (consents.py)
+    if (await consentOk({ what: "connector:" + c.id, id: c.id, title: c.title, about: c.about, kind: "коннектор claude.ai вашего аккаунта Claude" })) openUrl(mcpData.connectors_url);
+  });
   $("connCheck")?.addEventListener("click", (e) => busy(e.target, "Проверяю…", () => checkConn(c)));
   clearInterval(connTimer);
   if (!on) connTimer = setInterval(() => { if (view !== "mcpForm") return clearInterval(connTimer); checkConn(c); }, 10000);
@@ -6180,7 +6176,7 @@ function moreView() {
     <p class="note">После подключения сервис появится в «Подключено» («Обновить список»).</p>
     <div class="section">Для продвинутых</div>
     ${mcpData.presets.map((p, i) => `<button class="card" data-p2="${i}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div><div class="meta" style="white-space:normal">${esc(p.about)}</div></div></div></button>`).join("")}
-    ${mcpData.servers.filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) => `<button class="btn ghost" data-login="${esc(s.name)}">${ic("key")}Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
+    ${(mcpData.servers || []).filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) => `<button class="btn ghost" data-login="${esc(s.name)}">${ic("key")}Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
   $("openCatalog").onclick = () => { openUrl(mcpData.connectors_url); };
 }
 async function startLogin(name, btn) {
@@ -6219,7 +6215,9 @@ function mcpForm(p) {
     const url = p.key_url.replace("{base}", base);
     openUrl(url);
   });
-  $("mcpAdd").onclick = (e) => busy(e.target, "Подключаю и проверяю…", async () => {
+  $("mcpAdd").onclick = async (e) => { const btn = e.currentTarget;   // согласие — перед каждым подключением
+    if (!(await consentOk({ what: "mcp:" + p.id, id: p.id, title: p.title, about: p.about, kind: "сервер MCP в вашей папке Claude Code" }))) return;
+    busy(btn, "Подключаю и проверяю…", async () => {
     const values = Object.fromEntries(p.fields.map((f) => [f.key, $("f_" + f.key).value]));
     try {
       const d = await api("/api/mcp/add", { preset: p.id, name: $("f__name").value.trim(), values });
@@ -6228,8 +6226,8 @@ function mcpForm(p) {
         (needLogin ? `<button class="btn" data-login="${esc($("f__name").value.trim())}">${ic("key")}Войти в ${esc(p.title)}</button>` : "") +
         `<button class="btn ghost" id="mcpDone">Готово — к списку</button>`;
       $("mcpDone").onclick = back; haptic("notificationOccurred", "success");
-    } catch (err) { $("mcpResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
-  });
+    } catch (err) { if (err.code === "consent") CONN?.reset(); $("mcpResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
+  }); };
 }
 
 // ---------- модули-агенты: «Новый чат» → «Из модуля» ----------
@@ -6269,7 +6267,7 @@ async function openFolder(i, wid, btn) {
     catch (err) { toast("Не вышло: " + err.message, 5000); }
   }));
 }
-const integrOn = (x) => !mcpData ? null : x.kind === "connector" ? isOn(x) : x.kind === "preset" ? mcpData.servers.some((s) => s.ok && s.name === x.id) : null;
+const integrOn = (x) => !mcpData ? null : x.kind === "connector" ? isOn(x) : x.kind === "preset" ? (mcpData.servers || []).some((s) => s.ok && s.name === x.id) : null;
 function moduleIntegr(m) {
   if (!m.integrations.length) return '<p class="note">Не нужны — всё работает в папке пространства.</p>';
   return m.integrations.map((x) => {
@@ -6658,7 +6656,7 @@ async function focusMcp() {                         // интеграции се
   let d; try { d = await api("/api/mcp"); } catch (e) { return toast(e.message, 5000); }
   helpSheet("focus.mcp");
   sheet("Подключено у поставщика", [
-    { info: true, icon: "puzzle", label: "Подключено у Claude Code", sub: "работают в этой сессии; добавить или убрать — в полном пульте («Подключения»)" },
+    { info: true, icon: "puzzle", label: d.focus ? "Ваши подключения" : "Подключено у Claude Code", sub: d.focus ? (d.space ? "подключения вашего пространства; подключения владельца пульта по ссылке не видны" : "подключения владельца пульта по этой ссылке не видны") : "работают в этой сессии; добавить или убрать — в полном пульте («Подключения»)" },
     ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
     ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Подключений нет" }])]);
 }

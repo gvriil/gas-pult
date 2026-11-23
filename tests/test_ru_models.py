@@ -181,6 +181,7 @@ def test_panel_ru_owner_sees_only_ru_and_sets_gateway(panel_srv, monkeypatch):
     d = call("/api/models", {"profile": "gigachat", "main": "", "fast": "", "base_url": GW})
     assert {p["id"]: p for p in d["profiles"]}["gigachat"]["base_url"] == GW
     assert panel.pult.state()["model_profiles"]["gigachat"]["base_url"] == GW
+    call("/api/consent", {"what": "key:gigachat", "accepted": True})   # согласие на подключение (consents.py)
     call("/api/keys", {"provider": "gigachat", "key": "gw-secret-key-0123456789"})
     assert "gw-secret" not in json.dumps(call("/api/meta"))
     monkeypatch.setattr(panel.pult, "projects", lambda: ["/tmp"])

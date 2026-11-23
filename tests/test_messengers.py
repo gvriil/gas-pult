@@ -41,7 +41,18 @@ def test_bridge_does_not_start_without_choice():
     with pytest.raises(M.ConsentRequired):
         panel.post("/api/messengers/tg/login", {"phone": "+79990000000"}, 1)
     with pytest.raises(M.ConsentRequired):
-        panel.post("/api/messengers/link", {"svc": "whatsapp"}, 1)
+        panel.post("/api/messengers/link", {"svc": "signal"}, 1)
+
+
+def test_personal_whatsapp_not_supported_only_off():
+    """Личный WhatsApp через неофициальный клиент — запрещено правилами WhatsApp (владелец 23.11): не подключается,
+    уже подключённый — только «Отключить» и «Отмена»."""
+    assert next(c for c in M.CATALOG if c["id"] == "whatsapp")["kind"] == "off"
+    for path, b in (("/api/messengers/consent", {"svc": "whatsapp", "accepted": True}),
+                    ("/api/messengers/link", {"svc": "whatsapp"})):
+        with pytest.raises(ValueError, match="запрещено правилами WhatsApp"):
+            panel.post(path, b, 1)
+    assert panel.post("/api/messengers/consent", {"svc": "whatsapp", "accepted": False}, 1)["consented"] is False
 
 
 def test_choice_is_recorded_with_time_and_who_and_cancel_removes_it():

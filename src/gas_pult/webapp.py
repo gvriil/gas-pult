@@ -61,6 +61,7 @@ from gas_pult import (
     chat_trash,  # noqa: F401 — корзина чатов в panel/projects.py; имя webapp.chat_trash живо
     chatlog,
     chatmcp,  # noqa: F401 — webapp.* жив (panel/sessions.py)
+    consents,
     country,
     ctxsnap,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     deskmobile,  # noqa: F401 — webapp.* жив (routes/desktop.py)
@@ -2380,6 +2381,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e)}, 404)
             except NeedForce as e:
                 return self.json({"error": str(e), "code": "force"}, 409)
+            except consents.Needed as e:                 # подключение без согласия на текущий текст (consents.py)
+                return self.json({"error": str(e), "code": "consent", "what": e.what, "v": consents.CONSENT_V}, 409)
             except emailcode.LimitError as e:
                 return self.json({"error": str(e), "retry": e.retry}, 429)
             except AwaitsChoice as e:                    # Claude ждёт выбора: панель подсветит варианты, текст — в поле

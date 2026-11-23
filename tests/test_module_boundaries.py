@@ -26,7 +26,7 @@ PKG = Path(__file__).resolve().parents[1] / "src" / "gas_pult"
 # Модули предметной области (22.11): хранение, «Да», воронка, платежи, мессенджеры, токены API — нижний слой, как люди
 # и права: не тянут ни бот, ни панель, чтобы любой из них можно было вынести отдельно. Пакеты — со всеми подмодулями.
 DOMAIN = ("gas_pult.store", "gas_pult.approvals", "gas_pult.drafts", "gas_pult.funnel", "gas_pult.spend",
-          "gas_pult.recparts", "gas_pult.billing", "gas_pult.messengers", "gas_pult.apitokens")
+          "gas_pult.recparts", "gas_pult.billing", "gas_pult.messengers", "gas_pult.apitokens", "gas_pult.consents")
 
 # (модуль, кого импортирует) → почему так и какая задача уберёт. Пусто — нарушений нет (22.11).
 KNOWN: dict[tuple[str, str], str] = {}

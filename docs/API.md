@@ -2,7 +2,7 @@
 
 <!-- Файл собран генератором: python -m gas_pult.api_spec. Руками не править — правьте src/gas_pult/api_spec.py (описания) или webapp.py (маршруты) и перезапустите генератор. -->
 
-Путей: **296**, пар «путь + метод»: **309**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
+Путей: **297**, пар «путь + метод»: **311**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
 
 Все пути — под адресом панели, ответы — JSON (кроме отмеченных). Ошибка — `{"error": "…", "code": …}` с кодом HTTP: 401 — нужен вход, 403 — не хватает прав (`code`: `terms`, `space`, `focus_scope`, `confirm`, `cap`, `dev`, `budget`), 404 — нет метода, 409/410 — конфликт или ссылка погасла, 429 — лимит.
 
@@ -211,11 +211,13 @@
 | `/api/calendars/key` | POST | владелец | — | Секрет календаря: в файл 0600 и проверка | `kind` | — |
 | `/api/calendars/key/remove` | POST | владелец | — | Удалить секрет календаря | `kind` | — |
 | `/api/calendars/keys` | GET | владелец | — | Подключённые календари — без значений секретов | — | `calendars` |
+| `/api/consent` | GET | участник и выше | `SPACE_OK`, `FOCUS` | Согласие на подключение: GET — текст экрана, версия `v` и подтверждённое `given`; POST — записать «аккаунт мой, ответственность моя» на подключение `what` (только добавлением). Без согласия подключение отвечает 409 `code=consent` | `what`, `title`, `accepted` | `v`, `given`, `consent`, `ok` |
+| `/api/consent` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Согласие на подключение: GET — текст экрана, версия `v` и подтверждённое `given`; POST — записать «аккаунт мой, ответственность моя» на подключение `what` (только добавлением). Без согласия подключение отвечает 409 `code=consent` | `what`, `title`, `accepted` | `v`, `given`, `consent`, `ok` |
 | `/api/drafts` | GET | любой вошедший | `SPACE_OK` | Черновики действий коннекторов: «Ждут вашего Да» | — | `drafts` |
 | `/api/drafts/check` | POST | без входа | — | Коннектор перед выполнением: нажал ли человек «Да» ровно на этот черновик (одноразово); секрет — заголовок X-GP-Local или X-GP-Space-Token | `svc`, `id`, `digest` | — |
 | `/api/drafts/no` | POST | участник и выше | `SPACE_OK` | «Нет» черновику | `svc`, `id` | — |
 | `/api/drafts/yes` | POST | участник и выше | `CONFIRM`, `SPACE_OK` | «Да» черновику — выполнить ровно его | `svc`, `id` | — |
-| `/api/mcp` | GET | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Интеграции: подключённые, готовые наборы, коннекторы | `fresh` | `servers`, `presets`, `connectors`, `connectors_url`, `personal` |
+| `/api/mcp` | GET | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Интеграции: подключённые, готовые наборы, коннекторы, разделы `cats` и карточки `cards`; `catalog=1` — только каталог, без опроса серверов (`servers: null`) | `catalog`, `fresh` | `servers`, `presets`, `connectors`, `connectors_url`, `personal`, `cats`, `cards` |
 | `/api/mcp/add` | POST | участник и выше | `cap:cap.dev_models_mcp` | Подключить интеграцию из набора | `preset`, `name`, `values` | `result` |
 | `/api/mcp/connected` | GET | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Подключилась ли интеграция после входа | `id` | `found`, `ok`, `state` |
 | `/api/mcp/finish` | POST | участник и выше | `FOCUS`, `cap:cap.dev_models_mcp` | Завершить вход в интеграцию по адресу возврата | `w`, `url`, `name` | `result` |
@@ -254,14 +256,14 @@
 | Путь | Метод | Кто | Метки | Что делает | Вход | Выход |
 |---|---|---|---|---|---|---|
 | `/api/messengers` | GET | владелец | — | Мессенджеры: состояние подключений без секретов | — | — |
-| `/api/messengers/allow` | POST | владелец | — | Мессенджеры: какие чаты видит модель | `svc`, `chats` | `allowed` |
-| `/api/messengers/chats` | POST | владелец | — | Мессенджеры: чаты для «Чаты для модели» | `svc` | `chats` |
+| `/api/messengers/allow` | POST | владелец | — | Мессенджеры: какие чаты видит модель | `svc`, `chats`, `accepted` | `allowed` |
+| `/api/messengers/chats` | POST | владелец | — | Мессенджеры: чаты для «Чаты для модели» | `svc`, `accepted` | `chats` |
 | `/api/messengers/consent` | POST | владелец | — | Мессенджеры: согласие «Понимаю, подключить» или отмена | `svc`, `accepted` | — |
-| `/api/messengers/link` | POST | владелец | — | Signal / WhatsApp: привязка — QR картинкой | `svc` | `linked`, `qr` |
-| `/api/messengers/off` | POST | владелец | — | Мессенджеры: отключить | `svc` | — |
-| `/api/messengers/tg/code` | POST | владелец | — | Telegram: код входа | `svc`, `code` | — |
-| `/api/messengers/tg/login` | POST | владелец | — | Telegram: api_id/api_hash в файл 0600, номер → код в Telegram | `svc`, `api_id`, `api_hash`, `phone` | — |
-| `/api/messengers/tg/password` | POST | владелец | — | Telegram: пароль двухэтапной проверки | `svc`, `password` | — |
+| `/api/messengers/link` | POST | владелец | — | Signal / WhatsApp: привязка — QR картинкой | `svc`, `accepted` | `linked`, `qr` |
+| `/api/messengers/off` | POST | владелец | — | Мессенджеры: отключить | `svc`, `accepted` | — |
+| `/api/messengers/tg/code` | POST | владелец | — | Telegram: код входа | `svc`, `code`, `accepted` | — |
+| `/api/messengers/tg/login` | POST | владелец | — | Telegram: api_id/api_hash в файл 0600, номер → код в Telegram | `svc`, `api_id`, `api_hash`, `phone`, `accepted` | — |
+| `/api/messengers/tg/password` | POST | владелец | — | Telegram: пароль двухэтапной проверки | `svc`, `password`, `accepted` | — |
 
 ## Фокус-ссылки
 

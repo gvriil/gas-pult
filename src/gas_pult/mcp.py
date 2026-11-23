@@ -64,8 +64,14 @@ CONNECTORS = [
 ]
 # Коннекторы claude.ai работают только в сессиях Claude (подписка); замена для других поставщиков — шаблон ``alt``.
 ALT = {"notion": "notion", "gdrive": "drive", "linear": "linear", "atlassian": "atlassian"}
+# Раздел каталога «Подключений» (владелец 23.11): ``CATS`` — порядок разделов, ``cat`` — у каждого пункта.
+CATS = [{"id": "ai", "title": "ИИ-модели и агенты"}, {"id": "messengers", "title": "Мессенджеры"},
+        {"id": "mail", "title": "Почта"}, {"id": "docs", "title": "Документы и диски"},
+        {"id": "research", "title": "Исследования"}, {"id": "other", "title": "Прочее"}]
+CAT_OF = {"notion": "docs", "gmail": "mail", "gcal": "other", "gdrive": "docs", "slack": "messengers",
+          "linear": "other", "atlassian": "other", "figma": "other"}
 for _c in CONNECTORS:
-    _c.update(providers="claude", alt=ALT.get(_c["id"], ""))
+    _c.update(providers="claude", alt=ALT.get(_c["id"], ""), cat=CAT_OF.get(_c["id"], "other"))
 
 # Свой поиск пульта (``base_mcp.py search``): сервис и страница, где взять ключ.
 SEARCH_ENGINES = [
@@ -188,6 +194,16 @@ PRESETS = [
                  "hint": "Изменять и удалять события коннектор не умеет."}],
      "after": "Перезапустите открытые сессии — появятся calendar_list_events и calendar_list_calendars. Напоминания "
               "и Заметки iCloud так не видны — для них мост на Маке (docs/BRIDGE.md)."},
+    # Elicit (владелец 23.11): официальный удалённый MCP-сервер, вход OAuth 2.0 — docs.elicit.com,
+    # support.elicit.com/en/articles/14757404-use-elicit-via-mcp-server. Доступ — только на тарифах Pro, Scale,
+    # Enterprise.
+    {"id": "elicit", "title": "Elicit", "about": "Научные статьи: поиск, отчёты, систематические обзоры, "
+     "исследовательский агент — официальный сервер Elicit. Только на тарифах Elicit Pro, Scale и Enterprise",
+     "type": "http", "url": "https://elicit.com/api/mcp",
+     "key_url": "https://support.elicit.com/en/articles/14757404-use-elicit-via-mcp-server",
+     "fields": [], "plans": "Elicit Pro, Scale, Enterprise",
+     "after": "Вход через Elicit (OAuth 2.0): «Войти» ниже или в сессии /mcp → elicit → Authenticate — откроется "
+              "страница входа Elicit. На бесплатном тарифе Elicit сервер не пустит."},
     {"id": "http", "title": "Свой сервер (адрес)", "about": "Любой MCP-сервер по адресу HTTPS", "type": "http",
      "url": "{url}",
      "fields": [{"key": "url", "label": "Адрес сервера", "placeholder": "https://mcp.example.com/mcp",
@@ -204,8 +220,36 @@ PRESETS = [
                  "placeholder": "API_KEY=…", "hint": "По одной на строку: ИМЯ=значение. Ключи — здесь."}],
      "after": ""},
 ]
+PRESET_CAT = {"context7": "research", "websearch": "research", "elicit": "research", "notion": "docs", "gdrive": "docs",
+              "drive": "docs", "docs": "docs"}
 for _p in PRESETS:
     _p.setdefault("providers", "all")           # MCP-сервер в папке Claude Code — на любом поставщике (ADR-0002)
+    _p.setdefault("cat", PRESET_CAT.get(_p["id"], "other"))
+
+# Карточки без подключения из панели (владелец 23.11): официальный путь или «не поддерживается» — правила сервисов
+# соблюдаем буквально. ``state``: info — как подключить официально, off — не поддерживается и почему.
+# ``owner`` — про сервер пульта владельца: человеку по фокус-ссылке и участнику не показываем.
+CARDS = [
+    {"id": "claude", "cat": "ai", "title": "Claude Code", "state": "info",
+     "about": "Ваш аккаунт Claude: вход на «Экране» сессии (/login) или ключ API Anthropic. Подписку не передавайте "
+              "другим людям"},
+    {"id": "openai", "cat": "ai", "title": "ChatGPT и OpenAI", "state": "info",
+     "about": "Только официально: ключ API OpenAI (platform.openai.com) или официальный вход в Codex. Логин и пароль "
+              "ChatGPT пульт не принимает"},
+    {"id": "telegram", "cat": "messengers", "title": "Telegram (как пользователь)", "state": "info", "owner": True,
+     "about": "Только официальный API Telegram: свои api_id и api_hash с my.telegram.org, вход по номеру и коду"},
+    {"id": "whatsapp", "cat": "messengers", "title": "WhatsApp (личный)", "state": "off",
+     "about": "Не поддерживается: запрещено правилами WhatsApp — личный аккаунт через неофициальные клиенты"},
+    {"id": "whatsapp-business", "cat": "messengers", "title": "WhatsApp Business Platform", "state": "info",
+     "about": "Официальный путь для компаний — Cloud API от Meta: номер компании и бизнес-аккаунт. В пульте пока не "
+              "подключается кнопкой — через «Свой сервер (адрес)», если у вас есть MCP-сервер к Cloud API"},
+    {"id": "max", "cat": "messengers", "title": "MAX", "state": "off",
+     "about": "Нет официального пути для личного аккаунта: вход пользователем запрещён соглашением MAX. Для "
+              "организации — бот (Bot API MAX)"},
+    {"id": "mail", "cat": "mail", "title": "Почта по паролю приложения", "state": "info", "owner": True,
+     "about": "Яндекс, Mail.ru, Gmail, Yahoo — по IMAP с паролем приложения; черновик и отправка — после вашего «Да». "
+              "Ящик подключает владелец сервера (docs/connectors/mail.md)"},
+]
 
 
 def _claude(*args: str, home: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:

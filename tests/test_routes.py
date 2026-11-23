@@ -23,6 +23,7 @@ from gas_pult import (
     api_spec,
     balance,
     calkeys,
+    consents,
     drafts,
     focus,
     funnel,
@@ -136,6 +137,9 @@ def srv(monkeypatch, tmp_path):
             monkeypatch.setattr(mod, "PRESETS", [{"id": "github"}, {"id": "stdio"}])
             monkeypatch.setattr(mod, "CONNECTORS", [{"id": "gmail", "match": "Gmail"}])
             monkeypatch.setattr(mod, "CONNECTORS_URL", "https://connectors.test")
+        if hasattr(mod, "CARDS"):                    # разделы и карточки каталога — коротко; owner — не по ссылке
+            monkeypatch.setattr(mod, "CATS", [{"id": "ai"}])
+            monkeypatch.setattr(mod, "CARDS", [{"id": "wa"}, {"id": "mail", "owner": True}])
     rfoc = {"id": "f1", "w": "@5", "name": "Фокус", "space": None}       # фокус-ссылка на сессию @5
     monkeypatch.setattr(p, "focus_rec", lambda c: rfoc if c == "fc1" else (_ for _ in ()).throw(focus.Gone("нет")))
     monkeypatch.setattr(p.recparts, "status", rec("recparts.status", {"segs": 0}))
@@ -146,6 +150,7 @@ def srv(monkeypatch, tmp_path):
     monkeypatch.setattr(messengers_panel, "get", rec("messengers_panel.get", {"services": []}))
     monkeypatch.setattr(messengers_panel, "post", rec("messengers_panel.post", area))
     monkeypatch.setattr(p.auth, "needs_confirm", lambda *a, **k: False)   # платежи: код подтверждения — не здесь
+    monkeypatch.setattr(consents, "require", lambda *a, **k: None)      # согласие на подключение — test_consents.py
     monkeypatch.setattr(p, "window", lambda wid: {"id": wid, "path": "/tmp"} if wid in ("@1", "@5") else None)
     monkeypatch.setattr(p.tmux, "window", lambda wid: {"id": "@5", "path": "/tmp/m"} if wid == "@5" else None)
     s = ThreadingHTTPServer(("127.0.0.1", 0), webapp.handler(p))
@@ -473,11 +478,14 @@ INTEGR = [
     ("/api/mcp/finish", b"{bad", JS),
     ("/api/mcp/finish", J({"w": "@5", "url": "https://x/cb", "name": "gh"}).encode(), JS, "focus"),
     ("/api/mcp/finish", J({"w": "@1", "url": "https://x/cb"}).encode(), JS, "focus"),   # не окно ссылки — 403
+    ("/api/mcp?catalog=1", None, ""),                    # только каталог: servers null, без опроса claude mcp list
 ]
 
 # Снимки — код до переноса: голос — origin/refactor/panel-focus (eca3a81), мессенджеры, платежи, протоколы встреч —
 # main 5412efd; задачи и брифинг, «Поделиться», уведомления, анкеты, токены 1С и CRM — f6fdf33 (#456); модели, ключи,
 # расход и интеграции, репозитории, модули — a187689 (#457; фокус-ссылка, /api/v1/drafts, POST_W /api/mcp/finish).
+# Изменено намеренно 24.11 (consents.py): /api/mcp — разделы и карточки, ``catalog=1``; по фокус-ссылке ресурсы
+# владельца не видны (/api/mcp, /api/mcp/connected).
 # [код, тип, тело, вызовы Panel и модулей].
 FIX = Path(__file__).with_name("fixtures")
 AREAS = {"voice": VOICE, "messengers": MESSENGERS, "billing": BILLING, "meetings": MEETINGS, "tasks": TASKS,

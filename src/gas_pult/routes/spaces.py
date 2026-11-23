@@ -14,7 +14,8 @@
 
 import urllib.parse
 
-from gas_pult import space_files, space_mcp, tenants
+from gas_pult import mcp, space_files, space_mcp, tenants
+from gas_pult.routes import consent
 
 
 def spaces_list(self, q: dict):
@@ -78,6 +79,8 @@ def space_mcp_change(self, path: str, b: dict):
     if not (slug := self.space()):
         raise ValueError("интеграции пространства меняет его человек; владелец — pult-tenant mcp")
     if path.endswith("/add"):
+        if any(p["id"] == str(b.get("preset", "")) for p in mcp.PRESETS):   # неизвестный шаблон — прежние 400
+            consent.require(self, "mcp:" + str(b.get("preset", "")))
         return space_mcp.add(slug, str(b.get("preset", "")), str(b.get("name", "")), b.get("values") or {})
     return space_mcp.remove(slug, str(b.get("name", "")))
 

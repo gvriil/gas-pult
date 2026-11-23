@@ -300,7 +300,9 @@ def run(shots: str = ""):
             assert inbox and inbox[0].read_bytes() == b"e2e", inbox
             pa.click("#menuBtn")
             pa.click("#menu [data-act=mcp]")
-            pa.wait_for_selector(".sheet >> text=docs-e2e", timeout=15000)
+            # 23.11: по ссылке серверы владельца не видны («Чужой человек в чате — не владелец»)
+            pa.wait_for_selector(".sheet >> text=подключения владельца пульта по этой ссылке не видны", timeout=15000)
+            assert pa.locator(".sheet >> text=docs-e2e").count() == 0
             pa.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
             code, d = pa.evaluate(FETCH, ["/api/effort", {"w": shop, "level": "high"}])
             assert code == 200 and any("effort level to high" in x for x in d["lines"]), d
