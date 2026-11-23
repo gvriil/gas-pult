@@ -166,7 +166,7 @@ def test_send_route_marks_bare_file(server):  # noqa: F811
     (_, a), (_, b) = s["sent"]
     a = focus.guest_unmark(a)                         # пометка «кто пишет» (23.11) — первой строкой, до пометки файла
     assert a.startswith("Человек прислал снимок без подписи.") and a.endswith("Файл из панели: /in/x.png")
-    assert b == "Это ошибка?\n\nФайл из панели: /in/y.png"
+    assert focus.guest_unmark(b) == "Это ошибка?\n\nФайл из панели: /in/y.png"   # пометка — на каждом сообщении
 
 
 def test_bot_photo_without_caption_gets_note():

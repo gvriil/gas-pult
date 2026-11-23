@@ -19,18 +19,16 @@ def test_focus_input_has_note_owner_input_has_not(server):  # noqa: F811
     note = focus.guest_note("shop")
     assert w1 == "@1" and first == note + "\n\nдавай займёмся почтой"
     assert "не владелец пульта" in note and "почту" in note and "спроси его" in note
-    assert second == "и ещё"                         # подряд — не повторяем (одна на ход)
+    assert second.startswith("[Пульт: пишет человек по ссылке") and second.endswith("и ещё")   # на каждое сообщение
     assert mine == "моё"                             # владелец — без пометки
 
 
-def test_note_once_per_window_and_link_then_again(tmp_path):
+def test_note_on_every_message(tmp_path):
+    """Пометка — на каждое сообщение по ссылке (штаб 23.11: после сжатия контекста Claude её забудет)."""
     f = focus.Focus(tmp_path / "focus.json")
     rec = {"id": "r1", "name": "GemoGuide"}
-    assert f.mark_guest("@1", rec, "a", now=1000).startswith(focus.guest_note("GemoGuide"))
-    assert f.mark_guest("@1", rec, "b", now=1000 + focus.GUEST_EVERY - 1) == "b"
-    assert f.mark_guest("@2", rec, "c", now=1001).startswith("[Пульт:")              # другое окно — своя
-    assert f.mark_guest("@1", {"id": "r2", "name": "x"}, "d", now=1001).startswith("[Пульт:")   # другая ссылка
-    assert f.mark_guest("@1", rec, "e", now=1000 + focus.GUEST_EVERY).startswith("[Пульт:")    # прошло 5 минут
+    for t in ("a", "b", "c"):
+        assert f.mark_guest("@1", rec, t, now=1000) == focus.guest_note("GemoGuide") + "\n\n" + t
 
 
 def test_name_cannot_break_note():
