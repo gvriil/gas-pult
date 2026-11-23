@@ -276,7 +276,8 @@ def send(self, b: dict, w: dict):
                          "Нужно ещё раз — отправьте снова в течение 2 минут.")
     try:
         with panel.pult.via("focus" if self.focused is not None else "panel"):
-            dup = panel.send(w, text, str(b.get("id", ""))[:64])
+            dup = panel.send(w, text if self.focused is None else      # человек по ссылке — пометка агенту
+                             panel.focus.mark_guest(w["id"], self.focused, text), str(b.get("id", ""))[:64])
     except Exception as e:
         panel.events.event("send_error", mid, w=w["id"], err=f"{type(e).__name__}: {e}")
         raise

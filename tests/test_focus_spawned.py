@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from test_focus import FX, call, open_link, proj_link, proj_server, server  # noqa: F401 — server: фикстура
 
-from gas_pult import spawned, transcripts, uploads
+from gas_pult import focus, spawned, transcripts, uploads
 from gas_pult.tmux import Tmux
 
 SRC = str(Path(spawned.__file__).resolve().parent.parent)
@@ -107,7 +107,7 @@ def test_single_link_sees_spawned_window_not_foreign(server):  # noqa: F811
     for wid in ("@2", "@5", "@6"):
         code, r, _ = call(s["base"], "/api/send", {"w": wid, "text": "x"}, cookie, FX)
         assert code == 403 and r["code"] == "focus_scope", wid
-    assert s["sent"] == [("@3", "привет")]
+    assert [(w, focus.guest_unmark(t)) for w, t in s["sent"]] == [("@3", "привет")]   # пометка «кто пишет» — 23.11
 
 
 def test_project_link_sees_window_spawned_into_other_folder(server, monkeypatch):  # noqa: F811
@@ -164,6 +164,7 @@ def test_send_route_marks_bare_file(server):  # noqa: F811
     assert call(s["base"], "/api/send", {"w": "@1", "text": "Это ошибка?\n\nФайл из панели: /in/y.png"},
                 cookie, FX)[0] == 200
     (_, a), (_, b) = s["sent"]
+    a = focus.guest_unmark(a)                         # пометка «кто пишет» (23.11) — первой строкой, до пометки файла
     assert a.startswith("Человек прислал снимок без подписи.") and a.endswith("Файл из панели: /in/x.png")
     assert b == "Это ошибка?\n\nФайл из панели: /in/y.png"
 

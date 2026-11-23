@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 import time
 from pathlib import Path
@@ -88,6 +89,28 @@ def _h(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 
+# ---------- пишет человек по ссылке (тестировщик 23.11) ----------
+# «При каждом запросе сначала предлагает твои данные (твой комп, твою почту)»: Claude в окне владельца видит его
+# глобальные правила, его почту (MCP) и его предупреждения сервера — и не знал, что пишет другой человек. Пометка
+# пульта в начале ввода: кто пишет и что ресурсы владельца не предлагать. Одна на окно и ссылку раз в ``GUEST_EVERY``
+# — сообщения подряд (очередь одного хода) не повторяют её. В ленте её нет (``guest_unmark``).
+GUEST_EVERY = 300                       # с: не чаще раза в 5 минут на окно и ссылку
+GUEST = re.compile(r"\A\[Пульт: пишет человек по ссылке «[^»\n]*»[^\n]*\]\s*")
+
+
+def guest_note(name: str) -> str:
+    """Пометка для агента (одна строка): кто пишет и правило о ресурсах владельца."""
+    name = re.sub(r"[«»\[\]\r\n]+", " ", str(name or "")).strip()[:60] or "без названия"
+    return (f"[Пульт: пишет человек по ссылке «{name}», не владелец пульта. Не предлагай ресурсы владельца пульта "
+            f"(его почту, компьютер, сервер, аккаунты, Диск) — работай с тем, что даёт этот человек; если нужен "
+            f"доступ — спроси его.]")
+
+
+def guest_unmark(text: str) -> str:
+    """Текст для ленты: без пометки пульта — человек её не писал."""
+    return GUEST.sub("", text) if text.startswith("[Пульт:") else text
+
+
 class Gone(Exception):
     """Ссылка больше не действует: текст — для экрана «Чат завершён». ``why`` — причина для своего экрана страницы
     (nodevice, limit, expired, revoked, closed, bad); ``rid`` — запись, если она известна (для «Попросить доступ»)."""
@@ -112,6 +135,17 @@ class Wait(Exception):
 class Focus:
     def __init__(self, store: Path):
         self.store = store
+        self.noted: dict[tuple, float] = {}     # (окно, ссылка) → когда агент получил пометку ``guest_note``
+
+    def mark_guest(self, wid: str, rec: dict, text: str, now: float | None = None) -> str:
+        """Ввод агенту от человека по фокус-ссылке ``rec``: с пометкой ``guest_note``, если её в этом окне от этой
+        ссылки не было ``GUEST_EVERY`` секунд; иначе — как есть."""
+        now = time.time() if now is None else now
+        key = (wid, rec.get("id", ""))
+        if now - self.noted.get(key, 0) < GUEST_EVERY:
+            return text
+        self.noted[key] = now
+        return guest_note(rec.get("name", "")) + "\n\n" + text
 
     def _locked(self):
         """Чтение-изменение-запись focus.json: замок потоков и процессов — бот гасит ссылки, панель их выпускает."""

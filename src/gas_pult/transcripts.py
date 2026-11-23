@@ -13,7 +13,13 @@ from collections import OrderedDict
 from pathlib import Path
 
 from gas_pult import secrets_guard, speech
-from gas_pult.uploads import shown
+from gas_pult.focus import guest_unmark
+from gas_pult.uploads import shown as file_shown
+
+
+def shown(text: str) -> str:
+    """Текст для ленты: без пометок пульта агенту — «кто пишет» (focus.py) и «файл без подписи» (uploads.py)."""
+    return file_shown(guest_unmark(text))
 
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF"
