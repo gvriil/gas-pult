@@ -73,7 +73,7 @@ function items(d) {
     const no = p.allowed === false;                    // недоступен в стране по условиям поставщика
     out.push({ cat: "ai", attr: `data-prof="${esc(p.id)}"`, id: p.id, title: p.title, about: no ? p.denied || DENY : p.about || "", st: no ? "no" : p.key ? (p.not_ready ? "err" : "on") : "off" });
   }
-  d.presets.forEach((p, i) => { if (p.id !== "stdio" && p.id !== "http") out.push({ cat: p.cat || "other", attr: `data-p="${i}"`, id: p.id, title: p.title, about: p.about, st: presetSt(p) }); });
+  d.presets.forEach((p, i) => { if (p.id !== "stdio" && p.id !== "http") out.push({ cat: p.cat || "other", attr: `data-p="${i}"`, id: p.id, title: p.title, about: p.about, st: presetSt(p), any: p.providers === "all" }); });
   d.connectors.forEach((c, i) => out.push({ cat: c.cat || "other", attr: `data-c="${i}"`, id: c.id, title: c.title, about: c.about, st: connSt(c), claude: true }));
   const msgSection = meta?.role === "owner" && !FOCUS;   // у владельца Telegram, WhatsApp и MAX — в «Мессенджерах» (js/messengers.js)
   for (const c of d.cards || []) if (!(msgSection && ["telegram", "whatsapp", "max"].includes(c.id))) out.push({ cat: c.cat || "other", attr: `data-card="${esc(c.id)}"`, id: c.id, title: c.title, about: c.about, st: c.state === "off" ? "no" : "info" });
@@ -83,7 +83,7 @@ const short = (s) => String(s || "").split(":")[0].split(" — ")[0];
 function tile(x) {
   const cls = x.st === "on" ? "on" : x.st === "err" ? "cn-err" : x.st === "no" ? "cn-off" : "";
   return `<button class="tile ${cls}" ${x.attr} data-s="${esc(hay(x))}">${mono(x.title, x.id)}<span>${esc(x.title)}</span>
-    <small>${esc(short(x.about))}</small>${x.claude && dev() ? `<small class="chip space">${esc(T("int.claude.chip"))}</small>` : ""}${chip(x.st)}</button>`;
+    <small>${esc(short(x.about))}</small>${x.claude && dev() ? `<small class="chip space">${esc(T("int.claude.chip"))}</small>` : ""}${x.any && dev() ? `<small class="chip" title="${esc(T("int.any.note"))}">${esc(T("int.any.chip"))}</small>` : ""}${chip(x.st)}</button>`;
 }
 export function skeleton() {
   const sk = '<div class="tile skel"><i></i><i></i><i></i></div>';

@@ -151,6 +151,9 @@ def test_calendar_keys_owner_only(server, monkeypatch, tmp_path):
     st, d = call(base, "/api/calendars/keys", None, owner)[:2]
     assert st == 200 and {x["kind"] for x in d["calendars"]} == {"google"}
     st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
+    assert st == 409 and d.get("code") == "consent"          # 24.11: сначала согласие «аккаунт мой» (consents.py)
+    assert call(base, "/api/consent", {"what": "calendar:google", "title": "Google", "accepted": True}, owner)[0] == 200
+    st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
     assert st == 400 and "Секретный адрес" in d["error"]
 
 def test_set_menu_survives_network_timeout(capsys):

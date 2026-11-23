@@ -264,8 +264,10 @@ def test_api_selftest_owner_only(dirs, monkeypatch):
 
 def test_ui_wiring():
     page = (Path(selftest.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
-    for s in ("paintGaps(s);", "providersView", "/api/selftest", "gapPick(p)", "connAlt(c)", 'T("int.any.title")'):
+    for s in ("paintGaps(s);", "providersView", "/api/selftest", "gapPick(p)", "connAlt(c)"):
         assert s in page, s
+    conn = (Path(selftest.__file__).parent / "web" / "js" / "connections.js").read_text(encoding="utf-8")
+    assert 'T("int.any.chip")' in conn and 'p.providers === "all"' in conn   # каталог 24.11: «все поставщики» у плитки
     ru = json.loads((Path(selftest.__file__).parent / "web" / "i18n" / "ru.json").read_text(encoding="utf-8"))
     for g in {g for c in models.CAPS.values() for k in ("limits", "unsure") for g in c[k]}:
         assert f"gap.{g}" in ru and f"gap.s.{g}" in ru, g
