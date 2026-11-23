@@ -4,6 +4,9 @@
 ``webapp`` и атрибуты класса ``Panel``. Новые имена добавлять сюда не нужно — тест ловит только пропажу старых.
 ``BOT_MODULE`` и ``PULT`` — то же для модуля ``bot`` и класса ``Pult``: сняты с ``main`` (``d9251fc``) до первого
 переноса ``Pult`` по примесям (``botparts/voice.py``, 22.11).
+Перед шагом 8 (``botparts/meetings|telegram|monitor``, 23.11) снимок ``bot``/``Pult`` дополнен именами с ``main``
+(``988c10e``), появившимися после ``d9251fc``:
+``AwaitsChoice``, ``alerts``, ``ERR_EVERY``, ``CI_EVERY``, ``fail_tick``, ``ci_tick``.
 """
 
 from gas_pult import bot, webapp
@@ -82,48 +85,49 @@ PANEL = (
 
 
 BOT_MODULE = (
-    "Api", "Auth", "BUSY", "COMMANDS", "ClassVar", "Commands", "Config", "DANGER", "DEFAULTS", "DEMO_GONE", "DEMO_RATE",
-    "DIALOG", "Denied", "HINT", "Journal", "KEYS", "MENU", "MENU_PREFIXES", "NAME_OK", "NOISE", "NOTIFY", "NotReady",
-    "PANEL", "PHONE_KB", "PROMPT", "PROMPTS", "Path", "People", "Pult", "QUESTION", "SPACE_RUN", "TAIL", "TESTER_HELLO",
-    "TITLES", "TRIAGE_NOTE", "TelegramError", "TgConfirm", "TgLogins", "Tmux", "_clip", "activity", "ago", "allowed",
-    "annotations", "brand", "brief", "cached_property", "catalog", "chainfuse", "chatlog", "contextmanager", "country",
-    "ctxsnap", "date", "datetime", "deliveries", "dialog_hash", "digest", "drive_inbox", "emailcode", "escalate_rows",
-    "fail_key", "fallback", "fcntl", "features", "focus", "free", "funnel", "harness", "has_telegram", "hashlib",
-    "html", "humanize", "in_space", "injection_guard", "invites", "is_guest", "json", "kb", "limitretry", "meetings",
-    "models", "modules", "notifylevel", "notifyroute", "offers", "os", "people", "projects", "prompt_draft",
-    "providers", "public", "qr", "re", "review_inbox", "secrets_guard", "selftest", "setup", "space_budget", "spaces",
-    "speech", "store", "subprocess", "suppress", "tasks", "tenants", "terms", "termwin", "tester_start", "testers",
-    "tglinks", "tgroutes", "threading", "time", "tmux_is_ours", "tmux_mod", "transcripts", "triage_text", "urllib",
-    "usage", "uuid", "voice", "webpush"
+    "Api", "Auth", "AwaitsChoice", "BUSY", "COMMANDS", "ClassVar", "Commands", "Config", "DANGER", "DEFAULTS",
+    "DEMO_GONE", "DEMO_RATE", "DIALOG", "Denied", "HINT", "Journal", "KEYS", "MENU", "MENU_PREFIXES", "NAME_OK",
+    "NOISE", "NOTIFY", "NotReady", "PANEL", "PHONE_KB", "PROMPT", "PROMPTS", "Path", "People", "Pult", "QUESTION",
+    "SPACE_RUN", "TAIL", "TESTER_HELLO", "TITLES", "TRIAGE_NOTE", "TelegramError", "TgConfirm", "TgLogins", "Tmux",
+    "_clip", "activity", "ago", "alerts", "allowed", "annotations", "brand", "brief", "cached_property", "catalog",
+    "chainfuse", "chatlog", "contextmanager", "country", "ctxsnap", "date", "datetime", "deliveries", "dialog_hash",
+    "digest", "drive_inbox", "emailcode", "escalate_rows", "fail_key", "fallback", "fcntl", "features", "focus", "free",
+    "funnel", "harness", "has_telegram", "hashlib", "html", "humanize", "in_space", "injection_guard", "invites",
+    "is_guest", "json", "kb", "limitretry", "meetings", "models", "modules", "notifylevel", "notifyroute", "offers",
+    "os", "people", "projects", "prompt_draft", "providers", "public", "qr", "re", "review_inbox", "secrets_guard",
+    "selftest", "setup", "space_budget", "spaces", "speech", "store", "subprocess", "suppress", "tasks", "tenants",
+    "terms", "termwin", "tester_start", "testers", "tglinks", "tgroutes", "threading", "time", "tmux_is_ours",
+    "tmux_mod", "transcripts", "triage_text", "urllib", "usage", "uuid", "voice", "webpush"
 )
 
 PULT = (
-    "AUTO_CLOSE_EVERY", "BURST", "DRAFT_WAIT", "DRAFT_WITHIN", "ESCALATE", "FOLLOW_EVERY", "FOLLOW_MAX", "FUSE_EVERY",
-    "FUSE_QUIET", "LABEL_TTL", "MT_KB", "NOTIFY_TTL", "PUSH_PLAIN", "QUIT_STEP", "QUIT_WAIT", "Q_ICON", "RECHECK",
-    "TASK_ICON", "TRUST_EVERY", "_hub", "_meeting_audio", "active", "activity", "actor", "admitted", "after_pause",
-    "after_run", "ask_notify_done", "ask_owner", "ask_phone", "auto_close_tick", "before_run", "bind", "brief_now",
-    "broadcast", "budget_add", "budget_offer", "channels", "check_urgent", "choose_voice", "claude_dir", "close",
-    "command_list", "cost_decide", "cost_pause", "cost_paused", "cost_sessions", "cost_watch", "countries",
-    "country_line", "country_update", "current_voice", "deliver", "demo_connect", "demo_of", "demo_rate", "demo_step",
-    "digest_items", "digest_loop", "draft_watch", "el_voice_id", "ev", "fallback_logged", "focus", "folder_window",
-    "follow", "fuse_tick", "grant", "grant_space", "handle", "has_country", "hold", "home_of", "invited", "label",
-    "last_line", "limit_wait", "link_done", "link_request", "login_request", "mail_one", "make_folder",
-    "meeting_button", "meeting_done", "meeting_piece", "meeting_start", "menu_for", "menu_of", "module_create",
-    "module_root", "module_text", "module_tick", "modules_loop", "monitor", "morning_tick", "need_active",
-    "need_country", "need_terms", "new_folder", "notify", "notify_done_check", "offer_demo", "offer_granted",
-    "offer_hints", "offer_space", "on_callback", "on_contact", "on_country", "on_demo", "on_digest", "on_message",
-    "on_module", "on_review", "on_selftest", "on_setup", "on_terms", "on_voice", "open_rows", "open_session",
-    "opened_by", "panel_url", "pause_until", "pi_answers", "pick_space", "pool_of", "product", "product_pick",
-    "project_window", "projects", "push_enter", "push_one", "push_owners", "quit", "quit_ex", "react", "ready_for_text",
-    "rebind_keys", "recheck", "recheck_safe", "remember", "rename", "reply_target", "retry_tick", "review_attachment",
-    "run", "run_slash", "say", "screen_msg", "screen_state", "selftest_loop", "send", "send_answer", "send_brief",
-    "send_digest", "send_features", "send_invite", "send_later", "send_screen", "send_testers", "set_state",
-    "setup_code", "setup_kb", "setup_login", "setup_result", "setup_status", "short", "show_commands", "show_country",
-    "show_dialog", "show_industry", "show_modules", "show_people", "show_settings", "show_setup", "show_summary",
-    "show_switch", "show_tasks", "show_terms", "show_voice", "show_windows", "skipped", "slash", "source", "spaces",
-    "stamps", "state", "still_unsent", "switch_off", "tell_country", "term_open", "tester_help", "tester_start", "to",
-    "to_claude", "to_claude_live", "to_head", "triage", "trust_auto", "unsent", "via", "voice_preview", "voice_rows",
-    "voice_text", "wait_ready", "web_sessions", "window_countries"
+    "AUTO_CLOSE_EVERY", "BURST", "CI_EVERY", "DRAFT_WAIT", "DRAFT_WITHIN", "ERR_EVERY", "ESCALATE", "FOLLOW_EVERY",
+    "FOLLOW_MAX", "FUSE_EVERY", "FUSE_QUIET", "LABEL_TTL", "MT_KB", "NOTIFY_TTL", "PUSH_PLAIN", "QUIT_STEP",
+    "QUIT_WAIT", "Q_ICON", "RECHECK", "TASK_ICON", "TRUST_EVERY", "_hub", "_meeting_audio", "active", "activity",
+    "actor", "admitted", "after_pause", "after_run", "ask_notify_done", "ask_owner", "ask_phone", "auto_close_tick",
+    "before_run", "bind", "brief_now", "broadcast", "budget_add", "budget_offer", "channels", "check_urgent",
+    "choose_voice", "ci_tick", "claude_dir", "close", "command_list", "cost_decide", "cost_pause", "cost_paused",
+    "cost_sessions", "cost_watch", "countries", "country_line", "country_update", "current_voice", "deliver",
+    "demo_connect", "demo_of", "demo_rate", "demo_step", "digest_items", "digest_loop", "draft_watch", "el_voice_id",
+    "ev", "fail_tick", "fallback_logged", "focus", "folder_window", "follow", "fuse_tick", "grant", "grant_space",
+    "handle", "has_country", "hold", "home_of", "invited", "label", "last_line", "limit_wait", "link_done",
+    "link_request", "login_request", "mail_one", "make_folder", "meeting_button", "meeting_done", "meeting_piece",
+    "meeting_start", "menu_for", "menu_of", "module_create", "module_root", "module_text", "module_tick",
+    "modules_loop", "monitor", "morning_tick", "need_active", "need_country", "need_terms", "new_folder", "notify",
+    "notify_done_check", "offer_demo", "offer_granted", "offer_hints", "offer_space", "on_callback", "on_contact",
+    "on_country", "on_demo", "on_digest", "on_message", "on_module", "on_review", "on_selftest", "on_setup", "on_terms",
+    "on_voice", "open_rows", "open_session", "opened_by", "panel_url", "pause_until", "pi_answers", "pick_space",
+    "pool_of", "product", "product_pick", "project_window", "projects", "push_enter", "push_one", "push_owners", "quit",
+    "quit_ex", "react", "ready_for_text", "rebind_keys", "recheck", "recheck_safe", "remember", "rename",
+    "reply_target", "retry_tick", "review_attachment", "run", "run_slash", "say", "screen_msg", "screen_state",
+    "selftest_loop", "send", "send_answer", "send_brief", "send_digest", "send_features", "send_invite", "send_later",
+    "send_screen", "send_testers", "set_state", "setup_code", "setup_kb", "setup_login", "setup_result", "setup_status",
+    "short", "show_commands", "show_country", "show_dialog", "show_industry", "show_modules", "show_people",
+    "show_settings", "show_setup", "show_summary", "show_switch", "show_tasks", "show_terms", "show_voice",
+    "show_windows", "skipped", "slash", "source", "spaces", "stamps", "state", "still_unsent", "switch_off",
+    "tell_country", "term_open", "tester_help", "tester_start", "to", "to_claude", "to_claude_live", "to_head",
+    "triage", "trust_auto", "unsent", "via", "voice_preview", "voice_rows", "voice_text", "wait_ready", "web_sessions",
+    "window_countries"
 )
 
 def test_webapp_names_kept():
@@ -146,7 +150,7 @@ def test_panel_parts_are_mixins():
 def test_pult_parts_are_mixins():
     """Части ``Pult`` — примеси из пакета ``gas_pult.botparts``; свой ``__init__`` у них не появляется."""
     parts = [c for c in bot.Pult.__mro__ if c.__module__.startswith("gas_pult.botparts.")]
-    assert {c.__name__ for c in parts} >= {"VoicePart"}
+    assert {c.__name__ for c in parts} >= {"VoicePart", "TelegramPart", "MeetingsPart", "MonitorPart"}
     assert all("__init__" not in vars(c) for c in parts)
 
 

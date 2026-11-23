@@ -206,7 +206,15 @@
    как раньше, сначала ищет окно (нет — 404 «окна уже нет», есть — 404 «нет такого метода»). До входа (`do_GET`/
    `do_POST`: вход, приглашения, анкеты, предложения, мост, «Поделиться») и свои ветки ссылок (`focus_do`) — не
    цепочка, остаются в `webapp.py` (2485 строк; до шага 7 — 3355, до этого PR — 2811).
-8. `bot/*` — по модулю за PR.
+8. `bot/*` — по модулю за PR. ✓ 23.11, только перенос: `botparts/meetings.py` (протоколы встреч: `MT_KB`,
+   `meeting_*`, `_meeting_audio` — 6 имён), `botparts/telegram.py` (отправка и пауза 429 `send`, `send_answer`,
+   `bind`, `after_pause`, `pause_until`, `skipped`; доставка владельцам `broadcast`, `channels`, `push_*`, `mail_one`,
+   `_hub`, `PUSH_PLAIN`, `to`; `react`, `reply_target`; клавиатура `MENU` — 16 имён), `botparts/monitor.py` (монитор,
+   `show_dialog` и `dialog_hash`/`NOISE`, «доверять папке?», ответы Pi, лимит подписки, автоархив, расход, сводка и
+   брифинг, отчёт по функциям, предохранитель цепочек, автотест, `fail_tick`/`ci_tick` — 33 имени); общее —
+   `botparts/base.py` (`NotReady`, `AwaitsChoice`, `Denied`, `HINT`, `QUESTION`). `bot` реэкспортирует все имена;
+   `bot.py` — 2315 строк (было 3092). Тесты подменяют `datetime` и в `botparts.monitor`. Остались: `windows`,
+   `screens`; `offer_hints` и `show_tasks` — в `bot.py`.
 
 Всего ~16 PR. Темп — 2–3 в день между продуктовыми задачами.
 
