@@ -57,6 +57,24 @@
   ошибки HTTP — через `hide`.
 - Регистрации в сервисах, OAuth-приложения, запрос партнёрских токенов — только владелец (внешнее действие).
 
+## Данные Google: окна моделей, которые учатся на данных
+
+Правило владельца 17.11 (Google API Limited Use): содержимое Диска, Документов, Таблиц, Календаря через наш OAuth —
+только моделям, которые на нём не учатся. Правило «учится на данных» одно — `base_mcp.learns_on_data` (`:free`,
+NVIDIA trial, DeepSeek напрямую, OpenRouter без подтверждённых deny и zdr — `GAS_GOOGLE_OK=1`). Его спрашивают
+охранник Диска в `base_mcp.py` и запуск окна (`models.command` → `google_guard.py`). Окно такого профиля (FCC,
+DeepSeek, OpenRouter без отметки) запускается с `--strict-mcp-config --mcp-config <данные пульта>/mcp-no-google/…`:
+серверы — из `.claude.json` (пользователь, одобренные `.mcp.json` папки, локальные серверы папки), без серверов Google.
+Сервер — Google, если: имя похоже на сервис Google (`gdrive`, `google-drive`, `gmail`, `gcal`, `google*`, `gsheets`…);
+адрес — домен Google (`*.googleapis.com`, `google.com`, `googleusercontent.com` — например, официальный сервер Диска
+`drivemcp.googleapis.com`); команда — `rclone` или `base_mcp.py drive`, есть переменные rclone (`RCLONE_CONFIG`,
+`GAS_DRIVE_*`); в настройках сервера — путь к папке Диска (например, «Документы» по `~/drive/…`). Коннекторы claude.ai и
+серверы плагинов в таком окне не грузятся. Вторая линия — хук `PreToolUse` в настройках профиля (`--settings`, общий
+`~/.claude/settings.json` не меняется): `secrets_guard.py drive-hook` отказывает любому инструменту с путём в
+`~/drive`, в его реальном пути и в точках монтирования rclone с Google Диском. Хук — по путям в аргументах и словам
+команды: обойти его можно (например, собрать путь в скрипте), поэтому первая линия — отсутствие серверов Google.
+Профиль «Claude» на подписке — без изменений. Тесты — `tests/test_google_guard.py`.
+
 ## Адрес, лимиты, песочница
 
 - `BASE = _core.base_url(SVC, "<боевой адрес>")` — `GAS_<SVC>_BASE` подменяет на песочницу или локальный сервер в

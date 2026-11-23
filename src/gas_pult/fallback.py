@@ -271,7 +271,7 @@ class Switcher:
                 self.on_rate(w, text)
             return out
         try:
-            cmd = (models.command(self.base, nxt, st) + repos.flags(st, w["path"])
+            cmd = (models.command(self.base, nxt, st, path=w["path"]) + repos.flags(st, w["path"])
                    + transcripts.resume_args(w.get("sid")))   # тот же разговор и те же репозитории
             self.tmux.respawn(wid, w["path"], cmd, mark=nxt)
         except (ValueError, RuntimeError) as e:

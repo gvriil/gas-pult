@@ -27,6 +27,7 @@ def no_default_tmux(monkeypatch):
     monkeypatch.setenv("GAS_PULT_PANEL_URL", "http://127.0.0.1:9")   # «Да» (approvals.py) — не у боевой панели
     monkeypatch.setenv("GAS_PULT_CDP", "http://127.0.0.1:9")   # автовход коннекторов — не боевой Chrome агента
     monkeypatch.setenv("GAS_GUARD_LOG", os.path.join(d, "guard.jsonl"))   # журнал охранника Диска — не боевой
+    monkeypatch.setenv("GAS_PULT_CLAUDE_JSON", os.path.join(d, "claude.json"))   # MCP — не боевой ~/.claude.json
     os.makedirs(os.path.join(d, "data"))
     from gas_pult import alerts  # CI main (брифинг, бот) — без настоящего gh: тест подставит свой
     monkeypatch.setattr(alerts, "RUN", None)

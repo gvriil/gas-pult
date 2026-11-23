@@ -111,7 +111,8 @@ def test_switch_respawns_with_continue_and_says_one_line(sw):
     assert line == "Поставщик OpenRouter не отвечает (429) — сессия «shop» переключена на DeepSeek"
     wid, path, cmd, mark = sw.tmux.calls[0]
     assert (wid, path, mark) == ("@1", "/p/shop", "deepseek")
-    assert cmd.startswith("claude --settings ") and cmd.endswith("deepseek.json --continue") and "k2" not in cmd
+    assert cmd.startswith("claude --settings ") and "deepseek.json " in cmd and "k2" not in cmd
+    assert cmd.endswith(" --continue") and "--strict-mcp-config" in cmd     # DeepSeek напрямую — без серверов Google
     assert sw.said == [line] and sw.logged[0]["from"] == "openrouter" and sw.logged[0]["to"] == "deepseek"
 
 
