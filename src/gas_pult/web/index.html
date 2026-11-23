@@ -4158,6 +4158,7 @@ function sessionSheet(id) {
   sheet(dn(s), shortMenu([
     ...(!FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // в шапке чата «?» нет (Gemini №3, обзор UI 21.11)
     { label: "Тур по экрану", icon: "spark", sub: "что есть на этом экране — по шагам", run: () => FOCUS ? part("focustour").then((m) => m.start()) : startTour(tourKind(), true) },
+    ...(!FOCUS_DEMO() ? [{ label: "Сообщить об ошибке", icon: "bug", sub: "команда получит задачу и снимок экрана", run: () => part("bugreport").then((m) => m.open(id)) }] : []),   // и в «⋯» — рядом с туром (владелец 23.11: все функции видны)
     ...(cleanTop() && dev() && tab === "chat" ? [{ label: "Экран терминала", icon: "term", run: () => setTab("screen") }] : []),
     ...(cleanTop() && (FOCUS_PROJ() || FOCUS_MULTI()) ? [{ label: FOCUS_PROJ() ? `Чаты проекта «${meta.focus.name}»` : "Чаты по ссылке", icon: "folder", run: () => focusProjSheet() }] : []),
     ...(cleanTop() && FOCUS && meta?.focus?.exp ? [{ label: (FOCUS_DEMO() ? "Демо до " : "Вход по ссылке — до ") + new Date(meta.focus.exp * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), icon: "lock", run: () => {} }] : []),
