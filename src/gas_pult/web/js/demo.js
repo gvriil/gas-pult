@@ -510,6 +510,15 @@ function demoApi(path, body) {
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 user       7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
+  // &nq=1 — последний ответ с фразами «Можно спросить» и образцом текста (отзыв 22.11, js/nextq.js); &nq=file — ещё
+  // ваш снимок без подписи и документ с подписью (строки «Снимок получен» / «Файл получен»)
+  if (params.get("nq") && !demoApi.nqAdded) {
+    demoApi.nqAdded = true;
+    const H = demoApi.h, n = (H.at(-1)?.i || 0) + 1;
+    if (params.get("nq") === "file") H.push({ i: n, role: "user", text: "Посмотри файл.\n\nФайл из панели: /home/u/drive/demo/Входящие/таблица-клиентов.png", ts: "2026-10-29 09:23" },
+      { i: n + 1, role: "user", text: "Сверь с прошлым месяцем\n\nФайл из панели: /home/u/drive/demo/Входящие/клиенты-октябрь.xlsx", ts: "2026-10-29 09:23" });
+    H.push({ i: n + 2, role: "assistant", ts: "2026-10-29 09:24", text: "Нашёл **12 дублей** в таблице клиентов: одинаковые телефоны у разных карточек.\n\nОбразец письма клиенту:\n\n> Здравствуйте! Мы объединили ваши записи — теперь все бонусы на одной карте.\n\nМожно спросить дальше:\n\n- «Сколько дублей нашлось по телефону?»\n- «Покажи дубли списком»\n- «Объедини дубли, но сначала покажи, что изменится»" });
+  }
   if (key === "/api/send") {                         // демо: вставка ~0,7 с, потом фазы строки статуса и ответ (&act=stuck — реакции нет)
     const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20, stuck = params.get("act") === "stuck" || params.get("act") === "unsent";
     demoApi.run = { w: body.w, t: Date.now() + 700, stuck, unsent: params.get("act") === "unsent" };

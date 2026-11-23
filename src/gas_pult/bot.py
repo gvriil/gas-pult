@@ -490,9 +490,12 @@ class Pult(TelegramPart, WindowsPart, ScreensPart, MonitorPart, MeetingsPart, Vo
                 return send("Не разобрал голосовое — попробуй ещё раз.")
             send(f"🎙 → [{self.label(w)}]: {text}", wid=w["id"])
             return self.to_claude_live(chat, w, text)
-        f = (m.get("photo") or [None])[-1] or m.get("document") or m.get("video")
+        f = (m.get("photo") or [None])[-1] or m.get("document") or m.get("video") or m.get("video_note") \
+            or m.get("animation")
         if f:
-            path = self.api.download(f["file_id"], self.cfg.data / "inbox", f.get("file_name") or "photo.jpg")
+            # имя по умолчанию — по виду: видео без имени не «снимок» в пометке агенту (uploads.note)
+            dflt = "photo.jpg" if m.get("photo") else "file" if m.get("document") else "video.mp4"
+            path = self.api.download(f["file_id"], self.cfg.data / "inbox", f.get("file_name") or dflt)
             # проект с папкой на Google Диске — файл туда (<проект>/Входящие, #217); нет — остаётся в inbox
             path = drive_inbox.place(path, folder=None if w.get("space") else self.cfg.drive_folder(w.get("path", "")))
             t = uploads.mark_bare(f"{t or uploads.DEFAULT}\n\nФайл из Telegram: {path}")   # без подписи — пометка

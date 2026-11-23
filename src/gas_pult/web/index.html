@@ -411,10 +411,11 @@
   @media (hover: hover) { .chat .me .mcopy, .chat .me .medit { opacity: 0; transition: opacity .15s ease; }
     .chat .me:hover .mcopy, .chat .me:focus-within .mcopy, .chat .me:hover .medit, .chat .me:focus-within .medit, .chat .me .mcopy.done { opacity: 1; }
     .mcopy:hover, .ccopy:hover { color: var(--text-primary); background: var(--bg-subtle); } }
-  .codebox { position: relative; margin: 8px 0; } .codebox > pre { margin: 0; padding-right: 44px; }
+  .codebox { position: relative; margin: 8px 0; } .codebox > pre, .md .codebox > pre { margin: 0; padding-top: 36px; } .md .codebox > blockquote { margin: 0; padding-top: 32px; } .codebox > blockquote > :first-child { margin-top: 0; }
+  .fgot { display: flex; align-items: center; gap: 6px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); } .fgot .i { flex: none; }
   .codebox .ccopy { position: absolute; top: 4px; right: 4px; height: 28px; border-radius: var(--radius-sm); background: var(--bg-surface);
                     box-shadow: 0 0 0 1px var(--border-subtle); color: var(--text-secondary); }
-  .log summary .ccopy { margin-left: auto; height: 26px; }
+  .log summary .ccopy { margin-left: auto; height: 26px; } @media (max-width: 600px) { .log summary .ccopy:not(.done) span { display: none; } }
   /* Голос: карточки. Нажатие на карточку — сразу выбрать (галочка), ▶ — послушать короткую фразу (кеш на сервере) */
   .vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 2px 0 8px; }
   .vcard { display: flex; align-items: center; gap: 2px; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); padding: 0 6px 0 0; }
@@ -1680,9 +1681,9 @@ async function copyText(text, what = "Скопировано", quiet = false) {
 // morph сравнивал её как есть; блоки кода получают кнопку дообработкой новых узлов (codeCopy) — как ссылки (linkify).
 const copyLbl = () => LT("link.copy", "Копировать");
 const mCopyBtn = () => `<button type="button" class="mcopy" data-mcopy="1" aria-label="${esc(LT("copy.msg", "Копировать сообщение"))}" title="${esc(copyLbl())}">${ic("copy", "s16")}</button>`;
-const cCopyBtn = () => `<button type="button" class="ccopy" data-cpcode="1" aria-label="${esc(LT("copy.code", "Копировать код"))}" title="${esc(LT("copy.code", "Копировать код"))}">${ic("copy", "s16")}</button>`;
-function codeCopy(root) {                            // pre в разметке ответа → обёртка с кнопкой справа сверху
-  root.querySelectorAll(".md pre").forEach((pre) => {
+const cCopyBtn = () => `<button type="button" class="ccopy" data-cpcode="1" aria-label="${esc(LT("copy.code", "Копировать код"))}" title="${esc(LT("copy.code", "Копировать код"))}">${ic("copy", "s16")}<span>${esc(copyLbl())}</span></button>`;
+function codeCopy(root) {                            // pre и образец текста (цитата) в ответе → обёртка с «Копировать» справа сверху
+  root.querySelectorAll(".md pre, .md > blockquote").forEach((pre) => {
     if (pre.closest(".log, .codebox")) return;
     const w = document.createElement("div"); w.className = "codebox";
     pre.replaceWith(w); w.append(pre); w.insertAdjacentHTML("beforeend", cCopyBtn());
@@ -1707,7 +1708,7 @@ document.addEventListener("click", async (e) => {
   e.preventDefault();                                // кнопка в заголовке свёрнутого блока — не раскрывать его
   let text = "";
   if (b.dataset.mcopy) { const m = b.closest(".msg"); text = (m && msgText(m)) || ""; }
-  else text = (b.closest(".codebox, .log")?.querySelector("pre")?.textContent || "").replace(/\n$/, "");
+  else { const el = b.closest(".codebox, .log")?.querySelector("pre, blockquote"); text = el?.tagName === "PRE" ? el.textContent.replace(/\n$/, "") : (el?.innerText || "").trim(); }
   if (!text) return;
   if (await copyText(text, LT("copy.done", "Скопировано"), true)) { copiedFlash(b); haptic("notificationOccurred", "success"); }
 });
@@ -2295,6 +2296,8 @@ function newChat(pid) {
 const chatWith = (text, pid) => { newChat(pid); setTimeout(() => { $("input").value = text; grow(); $("input").focus(); }, 80); };
 const readyProfiles = () => (meta?.profiles || []).filter((x) => (!x.needs_key || x.key) && !x.not_ready && !x.no_balance && x.allowed !== false);
 // Первый разговор: бейджики-сценарии (GAS-37, js/starters.js) — в пустой сессии и новом чате
+// Фразы из последнего ответа — кнопками «Можно спросить:» (js/nextq.js): нажатие ставит фразу в поле, не отправляет
+const nextQ = (box, m) => { const s = box.querySelector(".nextq"); if (s && s.__t !== m?.text) part("nextq").then((x) => x.paint(s, m?.text || "")).catch(() => {}); };
 const starters = () => { if (!FOCUS_DEMO?.() && meta?.role !== "viewer") part("starters").then((m) => m.paint()).catch(() => {}); };
 // Новый чат (владелец 19.11: «новая сессия — это новый чат… просто поле для ввода текста и выбора настроек, как у
 // Claude»): строка настроек, подсказка модели, первая отправка — js/newchat.js
@@ -3944,7 +3947,7 @@ async function chatView(sid) {                         // переписка з�
     const list = bg.querySelector(".chatv-list");
     list.__items = d.items;                            // для «Копировать» — исходный текст по номеру (data-n)
     list.innerHTML = (d.more ? '<div class="note">Показаны последние сообщения.</div>' : "") + (d.items.length ? d.items.map((m, n) => m.role === "user"
-      ? `<div class="msg me" data-n="${n}"><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`
+      ? `<div class="msg me" data-n="${n}"><div class="bubble">${fileTxt(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`
       : m.human ? `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`
       : `<div class="msg ai" data-n="${n}"><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
     list.querySelectorAll(".bubble").forEach(linkify);   // ссылки — и в завершённом чате
@@ -4471,10 +4474,20 @@ function logBlock(key, label, text, hint) {
   if (!dev()) { label = { Терминал: "Технический текст", Код: "Подробный вывод" }[label] || label; hint = ""; }   // без сырого начала
   return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em>${cCopyBtn()}</summary><pre>${esc(text)}</pre></details>`;
 }
+// Файл в сообщении (отзыв 22.11: снимок без подписи «никак не фиксирует»): строки «Файл из панели/Telegram: путь» —
+// «Снимок получен: имя» / «Файл получен: имя» (путь — в data-path для миниатюр js/media.js); «Посмотри файл.» не пишем.
+const FILE_RE = /^Файл из (?:панели|Telegram): (.+)$/gm, PIC_RE = /\.(jpe?g|png|webp|gif|heic|heif|bmp|tiff?|avif)$/i;
+function fileTxt(t) {
+  const ps = [...t.matchAll(FILE_RE)].map((x) => x[1].trim()), up = t.includes("(файл загружается…)");
+  if (!ps.length && !up) return esc(t);
+  let body = t.replace(FILE_RE, "").replace("(файл загружается…)", "").trim(); if (body === "Посмотри файл.") body = "";
+  return esc(body) + (ps.length ? ps.map((p) => `<span class="fgot" data-path="${esc(p)}">${ic(PIC_RE.test(p) ? "image" : "file", "s16")}${PIC_RE.test(p) ? "Снимок получен" : "Файл получен"}: ${esc(p.split("/").pop())}</span>`).join("")
+    : `<span class="fgot">${ic("wait", "s16")}Файл загружается…</span>`);
+}
 function userMsg(m) {                               // вставленный вывод терминала — свёрнут, ваш текст — открыт
   const lines = m.text.split("\n"), k = lines.findIndex((l) => TECH.test(l));
   const body = k < 0 ? [] : lines.slice(k);
-  if (body.length < 4 || body.filter((l) => TECH.test(l)).length < 2) return `<div class="bubble">${esc(m.text)}</div>`;
+  if (body.length < 4 || body.filter((l) => TECH.test(l)).length < 2) return `<div class="bubble">${fileTxt(m.text)}</div>`;
   const head = lines.slice(0, k).join("\n").trim();
   const first = body.find((l) => l.trim())?.trim().slice(0, 60);
   return (head ? `<div class="bubble">${esc(head)}</div>` : "") + logBlock(m.i + ":u", "Терминал", body.join("\n"), first);
@@ -4642,12 +4655,13 @@ function renderChat(toBottom) {
   const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => tOut(m.ts) + (m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
     : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + aiMsg(m))).join("") + tOut(null)
-    + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
+    + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${fileTxt(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", waking: "чат просыпается — сообщение уйдёт через несколько секунд…",
         wfail: "чат не проснулся — " + esc(p.err || "") + ` <button class="link" data-resend="${esc(p.id)}">Попробовать ещё</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>`, unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
         fail: "не отправлено — " + esc(p.err || "") + ` <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>`,
         lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>` }[p.state]}</div><div class="macts">${mCopyBtn()}</div></div>`).join("")
+    + (lastAi == null || !canEdit() ? "" : `<div class="nextq" data-key="nq:${lastAi}"></div>`)
     + (lastAi == null ? "" : `<div class="cmds" data-key="cmds:${lastAi}"></div>`)       // команды из последнего ответа (renderCmds)
     + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
   voiceUi();
@@ -4665,6 +4679,7 @@ function renderChat(toBottom) {
   msgs.forEach(codeCopy);                                  // короткие блоки кода — с кнопкой «Копировать» справа сверху
   fresh.filter((el) => el.classList.contains("tmsg")).forEach((el) => linkify(el.querySelector(".tm-b")));
   if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
+  nextQ(box, hist.at(-1));
   if (chatGrow) {                                       // где начинается новое (для follow) — и плавный рост
     const ys = (el, h) => SC.scrollTop + el.getBoundingClientRect().top - SC.getBoundingClientRect().top + h, add = msgs.filter((el) => el.classList.contains("enter"));
     newY = Math.min(...grown.map((el) => ys(el.querySelector(".bubble"), el.__h1)), ...add.map((el) => ys(el, 0)));
@@ -7617,7 +7632,7 @@ async function sOlder(btn) {
 }
 function sMsg(m) {
   const k = m.i != null ? ` data-i="${m.i}"` : "";
-  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
+  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${fileTxt(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
   if (m.human) return `<div class="msg ai"${k}><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
   return `<div class="msg ai"${k}><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
 }
@@ -7633,13 +7648,13 @@ function sRender(toBottom) {
   }
   const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='sp:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));
-  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("");
+  const items = SIM.hist.map(sMsg).join("") + (SIM.hist.at(-1)?.role === "assistant" && canEdit() ? `<div class="nextq" data-key="nq:${SIM.hist.at(-1).i}"></div>` : "") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${fileTxt(p.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("");
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
   if (had) fresh.forEach((el) => el.classList.contains("msg") && !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
   fresh.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
-  fresh.forEach(codeCopy);
+  fresh.forEach(codeCopy); nextQ(box, SIM.hist.at(-1));
   sAct();
   if (toBottom && !params.has("noscroll")) sBottom();
 }
