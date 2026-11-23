@@ -148,7 +148,7 @@ def test_focus_sees_only_its_session(server):
     code, d, _ = call(s["base"], "/api/meta", None, cookie, FX)
     assert code == 200 and d["focus"]["w"] == "@1" and d["via"] == "focus" and d["projects"] == []
     code, _, _ = call(s["base"], "/api/send", {"w": "@1", "text": "привет"}, cookie, FX)
-    assert code == 200 and s["sent"] == [("@1", "привет")]
+    assert code == 200 and s["sent"] == [("@1", focus.guest_note("shop") + "\n\nпривет")]   # 23.11: пометка агенту
     for path, body in (("/api/send", {"w": "@2", "text": "x"}), ("/api/key", {"w": "@2", "key": "Enter"}),
                        ("/api/new", {"i": 0}), ("/api/people", None), ("/api/focus/list", None),
                        ("/api/rename", {"w": "@2", "name": "x"}), ("/api/active", {"w": "@1"}),
@@ -160,7 +160,7 @@ def test_focus_sees_only_its_session(server):
     # без заголовка фокуса cookie фокуса ничего не открывает — тоже 403, не вход
     code, r, _ = call(s["base"], "/api/sessions", None, cookie)
     assert code == 403 and r["code"] == "focus_scope"
-    assert s["sent"] == [("@1", "привет")]
+    assert [(w, focus.guest_unmark(t)) for w, t in s["sent"]] == [("@1", "привет")]
 
 
 RUN_PATHS = (("/api/run", {"w": "@1", "i": 0, "sha": "x"}), ("/api/run/term", {"w": "@1", "i": 0, "sha": "x"}),
