@@ -339,8 +339,11 @@ class _Feed:
                 self.items.append({"role": "assistant", "text": t, "ts": ts})
             self.cut = False
 
+    BLOCK = 4 << 20       # читаем кусками: журнал в 170 МБ целиком занимал ~360 МБ памяти на разбор (штаб 23.11, OOM)
+
     def update(self, f: Path):
-        """Дочитать файл с ``offset``: только полные строки; последняя без перевода строки — если это уже целый JSON."""
+        """Дочитать файл с ``offset``: только полные строки; последняя без перевода строки — если это уже целый JSON.
+        Файл читается кусками по ``BLOCK``: память на разбор не растёт с размером журнала."""
         with open(f, "rb") as fh:
             st = os.fstat(fh.fileno())
             if self.offset:
@@ -349,23 +352,31 @@ class _Feed:
                 if not same:                               # подменили / укоротили / переписали — заново
                     self.reset()
             fh.seek(self.offset)
-            chunk = fh.read()
-        self.ino = st.st_ino
-        if not chunk:
-            return
-        cut = chunk.rfind(b"\n") + 1
-        rest = chunk[cut:]
-        if rest.strip():
+            self.ino = st.st_ino
+            carry = b""
+            while True:
+                block = fh.read(self.BLOCK)
+                if not block:
+                    break
+                buf = carry + block
+                cut = buf.rfind(b"\n") + 1
+                self._take(buf[:cut])
+                carry = buf[cut:]
+        if carry.strip():
             try:
-                json.loads(rest.decode("utf-8", "replace"))
-                cut = len(chunk)                           # целая запись без перевода строки — разбираем сразу
+                json.loads(carry.decode("utf-8", "replace"))
+                self._take(carry)                          # целая запись без перевода строки — разбираем сразу
             except ValueError:
                 pass                                       # запись ещё пишется — дочитаем в следующий раз
-        for raw in chunk[:cut].split(b"\n"):
+
+    def _take(self, data: bytes):
+        """Разобрать полные строки ``data`` и сдвинуть ``offset`` и ``tail``."""
+        if not data:
+            return
+        for raw in data.split(b"\n"):
             self.line(raw)
-        if cut:
-            self.offset += cut
-            self.tail = (self.tail + chunk[:cut])[-self.TAIL:]
+        self.offset += len(data)
+        self.tail = (self.tail + data[-self.TAIL:])[-self.TAIL:]
 
 
 _FEEDS: OrderedDict[str, _Feed] = OrderedDict()           # разобранные журналы: путь → состояние (последние FEEDS)
