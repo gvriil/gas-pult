@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import secrets
 import threading
@@ -37,6 +38,33 @@ TYPES = ("choice", "number", "text", "photo")
 CODE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,60}$")
 DAYS = 14
+TEST_MARK = re.compile(r"тест|test", re.I)
+LIVE_REFUSED = ("боевая анкета клиента: проверяйте только на своей ссылке с «ТЕСТ» в имени клиента "
+                "(onboarding.Links(...).new(форма, \"ТЕСТ …\"))")
+
+
+def is_test(rec: dict) -> bool:
+    """Тестовая ссылка — «ТЕСТ»/«test» в имени клиента (штаб 23.11: боевую анкету клиента заполнили проверкой)."""
+    return bool(TEST_MARK.search(str((rec or {}).get("client") or "")))
+
+
+def live_data(data: Path) -> bool:
+    """Данные — боевые (``~/.local/share/gas-pult``), а не временная папка теста или демо."""
+    try:
+        return Path(data).resolve() == (Path.home() / ".local" / "share" / "gas-pult").resolve()
+    except OSError:
+        return False
+
+
+def guard(data: Path, rec: dict, robot: bool):
+    """Агент или e2e (``robot``) пишет в боевые данные — только в тестовую ссылку; иначе ``PermissionError``."""
+    if robot and live_data(data) and not is_test(rec):
+        raise PermissionError(LIVE_REFUSED)
+
+
+def agent_env() -> bool:
+    """Процесс запущен из сессии агента (Claude Code ставит ``CLAUDECODE=1``) или e2e (``GAS_PULT_E2E=1``)."""
+    return os.environ.get("CLAUDECODE") == "1" or os.environ.get("GAS_PULT_E2E") == "1"
 TEXT_MAX = 2000
 OTHER_MAX = 300
 ALIAS = re.compile(r"^[a-z0-9][a-z0-9-]{1,14}$")   # короткое имя ссылки: /q/med (адрес для людей, 23.11)
@@ -307,6 +335,7 @@ class Links:
             rec = d.get(self._key(d, code) or "")
             if not rec or rec.get("sent"):
                 raise ValueError("анкета уже отправлена или ссылка устарела")
+            guard(self.data, rec, agent_env())
             rec["draft"], rec["saved"] = answers, int(time.time())
             self._save(d)
         return rec
@@ -317,6 +346,7 @@ class Links:
             rec = d.get(self._key(d, code) or "")
             if not rec or rec.get("sent"):
                 raise ValueError("анкета уже отправлена или ссылка устарела")
+            guard(self.data, rec, agent_env())
             rec["draft"], rec["sent"] = answers, int(time.time())
             self._save(d)
         return rec

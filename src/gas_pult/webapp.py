@@ -2254,6 +2254,13 @@ def handler(panel: Panel):
                                               "sent": bool(rec.get("sent"))})
             if method != "POST" or not act:
                 return self.offer_reply(404, {"error": "нет такого метода"})
+            # запрос мимо прокси (прямо на 127.0.0.1 панели) — агент или e2e на этой машине, не клиент: боевую ссылку
+            # не пишем (штаб 23.11)
+            direct = self.client_address[0] in LOOPBACK and ip in LOOPBACK
+            try:
+                onboarding.guard(panel.cfg.data, rec, direct)
+            except PermissionError as e:
+                return self.offer_reply(403, {"error": str(e)})
             try:
                 b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 262144)) or b"{}")
                 answers = b.get("answers") if isinstance(b, dict) else None
