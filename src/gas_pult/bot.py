@@ -83,6 +83,7 @@ from gas_pult import (
     tglinks,  # noqa: F401 — bot.tglinks: Telegram в botparts/telegram.py, имя живо
     tgroutes,
     transcripts,  # noqa: F401 — bot.transcripts: в botparts/windows.py и botparts/screens.py, имя живо
+    uploads,
     usage,
     voice,
     webpush,  # noqa: F401 — bot.webpush: Telegram в botparts/telegram.py, имя живо
@@ -494,7 +495,7 @@ class Pult(TelegramPart, WindowsPart, ScreensPart, MonitorPart, MeetingsPart, Vo
             path = self.api.download(f["file_id"], self.cfg.data / "inbox", f.get("file_name") or "photo.jpg")
             # проект с папкой на Google Диске — файл туда (<проект>/Входящие, #217); нет — остаётся в inbox
             path = drive_inbox.place(path, folder=None if w.get("space") else self.cfg.drive_folder(w.get("path", "")))
-            t = f"{t or 'Посмотри файл.'}\n\nФайл из Telegram: {path}"
+            t = uploads.mark_bare(f"{t or uploads.DEFAULT}\n\nФайл из Telegram: {path}")   # без подписи — пометка
         if not t:
             return send("Пришли текст, голосовое или файл.")
         self.to_claude_live(chat, w, t)
@@ -570,6 +571,7 @@ class Pult(TelegramPart, WindowsPart, ScreensPart, MonitorPart, MeetingsPart, Vo
         if not st["ready"]:                                # не падаем: бот работает, /start покажет мастер
             why = "не установлен" if not st["claude"]["installed"] else "— вход не выполнен"
             print(f"gas-pult: Claude Code {why} · /start в боте — мастер входа", flush=True)
+        getattr(self.tmux, "spawn_hook", lambda: None)()   # окно из окна — видно по фокус-ссылке (spawned.py)
         threading.Thread(target=self.monitor, daemon=True).start()
         threading.Thread(target=self.digest_loop, daemon=True).start()
         threading.Thread(target=self.selftest_loop, daemon=True).start()

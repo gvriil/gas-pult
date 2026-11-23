@@ -118,10 +118,45 @@ class FocusPart:
         return {"ok": True}
 
     def focus_sessions(self, rec: dict) -> list[dict]:
-        """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""
+        """Сессии, видимые по ссылке: одна её сессия или все окна её проекта — и окна, которые агент открыл из них
+        (``focus_spawned``)."""
+        kids = self.focus_spawned(rec)
         if rec.get("proj"):
-            return [s for s in self.sessions(None) if s.get("project") == rec["proj"] and not s.get("space")]
-        return [s for s in self.sessions(None) if s["id"] == rec["w"]]
+            return [s for s in self.sessions(None) if not s.get("space")
+                    and (s.get("project") == rec["proj"] or s["id"] in kids)]
+        return [s for s in self.sessions(None) if s["id"] == rec["w"] or s["id"] in kids]
+
+    SPAWN_DEPTH = 4                         # окно из окна из окна…: дальше — не ищем (и цикл опций не крутим вечно)
+
+    def focus_spawned(self, rec: dict) -> set[str]:
+        """Окна, открытые из окон ссылки (владелец 23.11): агент её чата вынес задачу в новое окно — в любой папке, —
+        и оно видно по той же ссылке. Родитель окна — опция ``@gas_pult_from`` (``spawned.py``, ставит хук tmux).
+        Только окна владельца: окна пространств — свой сервер tmux, по ссылке владельца не видны никогда. Ссылки на
+        пространство и на протокол — без них. Права не шире: только окна-потомки окон самой ссылки."""
+        if rec.get("space") or rec.get("mode") in (focus.SPACE, focus.MEETING):
+            return set()
+        try:
+            wins = [w for w in self.tmux.windows() if not w.get("space")]
+        except (OSError, LookupError):
+            return set()
+        kids: dict[str, list[str]] = {}
+        for w in wins:
+            if (p := w.get("from")) and p != w["id"]:
+                kids.setdefault(p, []).append(w["id"])
+        if not kids:
+            return set()
+        if rec.get("proj"):
+            pd = self.project_data()
+            base = {w["id"] for w in wins if self.project_of(pd, w) == rec["proj"]}
+        else:
+            base = {rec["w"]} if rec.get("w") else set()
+        seen, edge = set(base), set(base)
+        for _ in range(self.SPAWN_DEPTH):
+            edge = {k for p in edge for k in kids.get(p, ()) if k not in seen}
+            if not edge:
+                break
+            seen |= edge
+        return seen - base
 
     def bridge_dev_ok(self, dev: dict | None) -> bool:
         """Устройство моста работает: владельца — всегда; фокус-пользователя — пока жива его ссылка с «Браузер»."""
@@ -182,14 +217,17 @@ class FocusPart:
         return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
 
     def focus_owns(self, rec: dict, wid: str) -> bool:
-        """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта."""
-        if not rec.get("proj"):
-            return bool(wid) and wid == rec["w"]
+        """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта; и окна, открытые
+        из них агентом (``focus_spawned``)."""
         if not wid:
             return False
+        if not rec.get("proj"):
+            return wid == rec["w"] or wid in self.focus_spawned(rec)
         with self.tmux.all_spaces():
             w = self.tmux.window(wid)
-        return bool(w) and not w.get("space") and self.project_of(self.project_data(), w) == rec["proj"]
+        if not w or w.get("space"):
+            return False
+        return self.project_of(self.project_data(), w) == rec["proj"] or wid in self.focus_spawned(rec)
 
     def focus_token(self, url: str) -> dict:
         """Действующая ссылка по адресу ``…/#focus=<токен>`` (для QR и «Отправить себе»)."""
