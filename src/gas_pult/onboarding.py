@@ -22,6 +22,7 @@ HTML-анкета на нашей ссылке, с отметками… с по
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import secrets
@@ -38,6 +39,21 @@ ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,60}$")
 DAYS = 14
 TEXT_MAX = 2000
 OTHER_MAX = 300
+ALIAS = re.compile(r"^[a-z0-9][a-z0-9-]{1,14}$")   # короткое имя ссылки: /q/med (адрес для людей, 23.11)
+# Бренд страницы анкеты (владелец 23.11: анкета клиента Botsmith — без «Гаврилы» и pult). gavrila — страница как была.
+BOTSMITH_MARK = ('<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">'
+                 '<rect width="32" height="32" rx="7" fill="#3a6b0b"/>'
+                 '<path d="M10 9v14h7a4 4 0 0 0 0-8h-7m7 0a3.5 3.5 0 0 0 0-6h-7" fill="none" '
+                 'stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+BRANDS = {
+    "gavrila": None,
+    "botsmith": {"name": "Botsmith", "site": "botsmith.ru", "accent": "#3a6b0b", "accent_dark": "#9ccc65",
+                 "soft": "#eef5e6", "soft_dark": "#22301a", "mark": BOTSMITH_MARK,
+                 "icon": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect "
+                         "width='32' height='32' rx='7' fill='%233a6b0b'/%3E%3Cpath d='M10 9v14h7a4 4 0 0 0 0-8h-7m7 "
+                         "0a3.5 3.5 0 0 0 0-6h-7' fill='none' stroke='%23fff' stroke-width='2.6' "
+                         "stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"},
+}
 GLOSS_MAX, TERM_MAX, NOTE_MAX = 100, 60, 300      # glossary: терминов, знаков в термине, знаков в пояснении
 
 
@@ -69,7 +85,37 @@ def check(form: dict) -> list[str]:
                 errs.append(f"вопрос {qid}: у choice нужны options")
             if not q.get("text"):
                 errs.append(f"вопрос {qid}: нет text")
+    if form.get("brand", "gavrila") not in BRANDS:
+        errs.append(f"brand — один из {', '.join(BRANDS)}")
     return errs + _check_glossary(form.get("glossary"))
+
+
+def brand_of(form: dict, rec: dict | None = None) -> str:
+    """Бренд страницы: у ссылки (``rec["brand"]``) важнее, чем у анкеты (``form["brand"]``); по умолчанию gavrila."""
+    b = (rec or {}).get("brand") or (form or {}).get("brand") or "gavrila"
+    return b if b in BRANDS else "gavrila"
+
+
+def page(raw: bytes, form: dict, rec: dict | None = None) -> bytes:
+    """Страница анкеты в бренде ссылки: заголовок, og:title, значок, шапка и подвал. Скрипты те же (CSP по хешам)."""
+    b = BRANDS[brand_of(form, rec)]
+    if not b:
+        return raw
+    t = html.escape(f"{form.get('title') or 'Анкета'} — {b['name']}")
+    head = (f'<title>{t}</title>\n<meta property="og:title" content="{t}">\n'
+            f'<meta property="og:site_name" content="{b["name"]}">\n<link rel="icon" href="{b["icon"]}">')
+    css = (f"<style>:root{{--accent:{b['accent']};--accent-soft:{b['soft']}}}"
+           "@media (prefers-color-scheme: dark){:root{"
+           f"--accent:{b['accent_dark']};--accent-soft:{b['soft_dark']}}}}}"
+           ".brandbar{display:flex;align-items:center;gap:10px;max-width:680px;margin:0 auto;padding:14px 16px 0;"
+           "font-weight:700;font-size:18px;letter-spacing:-.01em}.brandbar svg{flex:none;border-radius:7px}"
+           ".brandfoot{max-width:680px;margin:0 auto;padding:0 16px calc(24px + env(safe-area-inset-bottom));"
+           "color:var(--muted);font-size:14px}.brandfoot a{color:inherit}</style>")
+    bar = f'<header class="brandbar">{b["mark"]}<span>{b["name"]}</span></header>'
+    foot = f'<footer class="brandfoot">{b["name"]} · <a href="https://{b["site"]}/">{b["site"]}</a></footer>'
+    out = raw.decode("utf-8").replace("<title>Анкета</title>", head, 1).replace("</head>", css + "\n</head>", 1)
+    out = out.replace("<body>", "<body>\n" + bar, 1)
+    return out.replace("</body>", foot + "\n</body>", 1).encode("utf-8")
 
 
 def _check_glossary(g) -> list[str]:
@@ -238,10 +284,19 @@ class Links:
             self._save(d)
         return {"code": code, "id": rid, "path": f"/q/{code}"}
 
+    @staticmethod
+    def _key(d: dict, code: str) -> str | None:
+        """Ключ записи: личный код (хеш) или короткое имя ссылки (``alias``)."""
+        code = str(code or "")
+        if CODE.match(code):
+            return _h(code)
+        if ALIAS.match(code):
+            return next((k for k, v in d.items() if v.get("alias") == code), None)
+        return None
+
     def get(self, code: str) -> dict | None:
-        if not CODE.match(str(code or "")):
-            return None
-        rec = self._load().get(_h(code))
+        d = self._load()
+        rec = d.get(self._key(d, code) or "")
         if not rec or (not rec.get("sent") and time.time() > rec["exp"]):
             return None
         return rec
@@ -249,7 +304,7 @@ class Links:
     def draft(self, code: str, answers: dict) -> dict:
         with self.lock:
             d = self._load()
-            rec = d.get(_h(code))
+            rec = d.get(self._key(d, code) or "")
             if not rec or rec.get("sent"):
                 raise ValueError("анкета уже отправлена или ссылка устарела")
             rec["draft"], rec["saved"] = answers, int(time.time())
@@ -259,10 +314,32 @@ class Links:
     def submit(self, code: str, answers: dict) -> dict:
         with self.lock:
             d = self._load()
-            rec = d.get(_h(code))
+            rec = d.get(self._key(d, code) or "")
             if not rec or rec.get("sent"):
                 raise ValueError("анкета уже отправлена или ссылка устарела")
             rec["draft"], rec["sent"] = answers, int(time.time())
+            self._save(d)
+        return rec
+
+    def style(self, rid: str, alias: str | None = None, brand: str | None = None) -> dict:
+        """Владельцу: короткое имя ссылки (``/q/<alias>``; пусто — убрать) и бренд страницы. Имя — уникальное."""
+        with self.lock:
+            d = self._load()
+            rec = next((r for r in d.values() if r["id"] == rid), None)
+            if not rec:
+                raise LookupError("нет такой ссылки")
+            if alias is not None:
+                if alias and not ALIAS.match(alias):
+                    raise ValueError("короткое имя — 2–15 знаков: латиница, цифры, «-»")
+                if alias in ("new", "list", "answers"):
+                    raise ValueError(f"имя «{alias}» занято панелью")
+                if alias and any(r.get("alias") == alias and r is not rec for r in d.values()):
+                    raise ValueError(f"имя «{alias}» уже занято")
+                rec["alias"] = alias or None
+            if brand is not None:
+                if brand not in BRANDS:
+                    raise ValueError(f"бренд — один из {', '.join(BRANDS)}")
+                rec["brand"] = brand
             self._save(d)
         return rec
 
