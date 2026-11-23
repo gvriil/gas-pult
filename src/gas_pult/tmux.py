@@ -315,9 +315,10 @@ class Tmux:
     def _windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
                        "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}\t"
-                       "#{@gas_pult_sid}")
+                       "#{@gas_pult_sid}\t#{@gas_pult_from}")
+        # from — окно, из которого это открыли командой tmux (spawned.py): видно по фокус-ссылке родителя
         # sid — id сессии Claude Code (``--session-id``): у окна свой журнал, а не «последний в папке»
-        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid"), line.split("\t"),
+        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid", "from"), line.split("\t"),
                        strict=False)) for line in out.splitlines()]
         procs = tty_procs([w.get("tty", "") for w in ws])
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
@@ -479,6 +480,18 @@ class Tmux:
             cmd = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
         subprocess.run(cmd, check=True)
+        self.spawn_hook()
+
+    def spawn_hook(self) -> bool:
+        """Хук «окно открыли из окна» (spawned.py) — только на tmux владельца: у пространств свой сервер, и окно
+        пространства по ссылке владельца не видно. True — поставлен."""
+        if not self.owner_tmux():
+            return False
+        from gas_pult import spawned
+        try:
+            return spawned.install(self.run)
+        except OSError:
+            return False
 
     def env_args(self) -> list[str]:
         return [x for k, v in WINDOW_ENV for x in ("-e", f"{k}={v}")]

@@ -39,7 +39,7 @@ from gas_pult import (
 from gas_pult.access import NOTIFY_DONE
 from gas_pult.commands import in_space
 from gas_pult.panel.sessions import find_auth
-from gas_pult.uploads import MAX_BODY, upload_log
+from gas_pult.uploads import MAX_BODY, mark_bare, upload_log
 
 
 def sessions_list(self, q: dict):
@@ -263,7 +263,7 @@ def send(self, b: dict, w: dict):
     if w.get("space") and helper:
         panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
     panel.check(w.get("profile") or "claude", self.terms_uid())   # сессия этого поставщика — для страны?
-    text = str(b.get("text", "")).strip()
+    text = mark_bare(str(b.get("text", "")).strip())   # файл без подписи — пометка агенту (uploads.py)
     if not text:
         raise ValueError("пустое сообщение")
     mid = str(b.get("id", ""))[:64]           # повтор после обрыва связи — не «тот же вопрос»

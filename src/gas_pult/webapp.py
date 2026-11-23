@@ -2427,6 +2427,7 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
     Tmux.ttl = WINDOWS_TTL                          # список окон — общий на цикл опроса браузера (tmux.py)
     panel = Panel(cfg)
     panel.owner_space_fix()                         # вид владельца — его выбор, не чужой (см. owner_space_fix)
+    getattr(panel.tmux, "spawn_hook", lambda: None)()   # окно из окна — видно по фокус-ссылке (spawned.py)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list()               # кнопка «📱 Панель»; гостям без
                              if p["role"] != "owner" and has_telegram(p["id"])]   # Telegram — некуда
     srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))

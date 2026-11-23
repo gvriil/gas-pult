@@ -840,7 +840,10 @@ class SessionsPart:
         """Откуда фокус-ссылке можно брать картинки ленты: папка её чата или проекта и папка этого проекта на Google
         Диске (``<проект>/Входящие``, #217). inbox пульта и Диск целиком — нет: там файлы других чатов владельца."""
         roots = []
-        if p := rec.get("path"):
+        paths = [rec.get("path") or ""]
+        if kids := self.focus_spawned(rec):              # окна, открытые агентом из чата ссылки, — и их папки
+            paths += [w.get("path") or "" for w in self.tmux.windows() if w["id"] in kids]
+        for p in dict.fromkeys(x for x in paths if x):
             roots.append(os.path.realpath(os.path.expanduser(p)))
             if (d := self.cfg.drive_folder(p)) is not None:
                 roots.append(os.path.realpath(d))

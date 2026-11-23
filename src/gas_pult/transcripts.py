@@ -13,6 +13,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from gas_pult import secrets_guard, speech
+from gas_pult.uploads import shown
 
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF"
@@ -279,7 +280,7 @@ class _Feed:
             if op == "enqueue":
                 it = None
                 if raw.strip() and not is_service(raw):
-                    text = secrets_guard.redact(PASTED.sub("", raw).strip())[0]   # ключ в очереди — не показываем
+                    text = shown(secrets_guard.redact(PASTED.sub("", raw).strip())[0])  # ключ — не показываем
                     it = {"role": "user", "text": text, "ts": ts, "queued": "wait"}
                     self.items.append(it)
                 self.queue.append((raw, it))
@@ -308,7 +309,7 @@ class _Feed:
             if a.get("commandMode", "prompt") != "prompt" or is_service(raw):
                 self.cut = True                      # уведомление агента или задачи — не сообщение человека
                 return
-            text = PASTED.sub("", raw).strip()
+            text = shown(PASTED.sub("", raw).strip())
             q = next((x for x in reversed(self.items) if x.get("queued") in ("wait", "read") and id(x) not in self.seen
                       and x["text"] == text), None)
             if q:
@@ -318,7 +319,7 @@ class _Feed:
                 self.items.append({"role": "user", "text": text, "ts": ts, "queued": "read"})
                 self.seen.add(id(self.items[-1]))
         elif kind == "user" and is_real_prompt(e):
-            text = PASTED.sub("", text_of(e["message"]["content"])).strip()
+            text = shown(PASTED.sub("", text_of(e["message"]["content"])).strip())   # пометка пульта — не слова
             # очередь, которую Claude взял обычным ходом, — не дублируем
             self.items = [x for x in self.items if not (x.get("queued") == "wait" and x["text"] == text)]
             self.items.append({"role": "user", "text": text, "ts": ts})

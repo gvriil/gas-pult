@@ -139,6 +139,9 @@
   /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
   body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
   body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
+  /* Ссылка на сессию, а агент открыл из неё ещё окно (23.11): та же шторка чатов */
+  body.focus.focus-multi #title .caret, body.focus.focus-multi #target .caret { display: inline-grid !important; }
+  body.focus.focus-multi #menu [data-act=switch] { display: flex !important; }
   body.focus-empty #dock, body.focus-empty #tabsBar, body.focus-empty #mini { display: none !important; }
   /* Демо-ссылка: только просмотр и выбор вариантов — поля ввода, клавиш и опасных пунктов меню нет */
   body:not(.focus-demo) .demo-note { display: none; }
@@ -3704,6 +3707,7 @@ async function refresh() {
     sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)).map(named); costInfo = d.cost || null; limitsInfo = d.limits || null;
     if (d.tasks && JSON.stringify(d.tasks) !== JSON.stringify(tasksInfo)) { tasksInfo = d.tasks; tasksTop(); if (!$("spaces").hidden) tasksCount(); } agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
+    if (FOCUS) focusNew();                             // ссылка: агент открыл ещё чат — шторка чатов и подсказка
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     attnBadge();
@@ -4154,7 +4158,7 @@ function sessionSheet(id) {
   sheet(dn(s), shortMenu([
     ...(!FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // в шапке чата «?» нет (Gemini №3, обзор UI 21.11)
     ...(cleanTop() && dev() && tab === "chat" ? [{ label: "Экран терминала", icon: "term", run: () => setTab("screen") }] : []),
-    ...(cleanTop() && FOCUS_PROJ() ? [{ label: `Чаты проекта «${meta.focus.name}»`, icon: "folder", run: () => focusProjSheet() }] : []),
+    ...(cleanTop() && (FOCUS_PROJ() || FOCUS_MULTI()) ? [{ label: FOCUS_PROJ() ? `Чаты проекта «${meta.focus.name}»` : "Чаты по ссылке", icon: "folder", run: () => focusProjSheet() }] : []),
     ...(cleanTop() && FOCUS && meta?.focus?.exp ? [{ label: (FOCUS_DEMO() ? "Демо до " : "Вход по ссылке — до ") + new Date(meta.focus.exp * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), icon: "lock", run: () => {} }] : []),
     ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
     ...(dev() && meta?.role !== "viewer" && !FOCUS_DEMO() ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
@@ -5297,7 +5301,7 @@ function draftSheet(text) {
 }
 // Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
 function openSwitcher() {
-  if (FOCUS) return FOCUS_PROJ() ? focusProjSheet() : undefined;   // фокус на сессию — только она; на проект — его сессии
+  if (FOCUS) return FOCUS_PROJ() || FOCUS_MULTI() ? focusProjSheet() : undefined;   // фокус на сессию — только она; на проект — его сессии
   helpSheet("sheet.switcher");
   sheet("Чаты", [...pinFirst([...sessions].sort(byChange)).map((s) => ({
     label: s.name, sub: `${s.pinned ? "закреплена · " : ""}${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
@@ -6644,6 +6648,14 @@ async function focusMcp() {                         // интеграции се
 // Фокус на проект (меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новый чат в проекте», завершённые
 // чаты — и ничего вне проекта (сервер отвечает 403). Под шапкой — имя проекта (шторка сессий) и срок входа.
 const FOCUS_PROJ = () => FOCUS && !!meta?.focus?.proj;
+const FOCUS_MULTI = () => FOCUS && !FOCUS_PROJ() && sessions.length > 1;   // ссылка на сессию + окна, открытые агентом
+let focusSeen = null;                               // id чатов по ссылке: новый (агент открыл окно) — сказать человеку
+function focusNew() {
+  document.body.classList.toggle("focus-multi", FOCUS_MULTI());
+  const ids = new Set(sessions.map((x) => x.id));
+  if (focusSeen) for (const x of sessions) if (!focusSeen.has(x.id) && !(FOCUS_PROJ() && x.project === meta.focus.proj)) toast(`Агент открыл новый чат «${x.title || x.name}» — он в списке чатов`, 5000);
+  focusSeen = ids;
+}
 const FOCUS_DEMO = () => FOCUS && meta?.focus?.mode === "demo";   // демо-ссылка: только просмотр и выбор вариантов
 function focusExp() {                               // «вход действует до ДД.ММ (через N дн.)»; за 2 дня — заметно
   const el = $("focusExp"), f = meta?.focus;
@@ -6667,11 +6679,11 @@ const byLast = (a, b) => lastMsg(b) - lastMsg(a);
 function focusProjSheet() {
   const f = meta.focus, list = [...sessions].sort(byLast);
   helpSheet("sheet.focus-proj");
-  sheet(`Проект «${f.name}»`, [
+  sheet(FOCUS_PROJ() ? `Проект «${f.name}»` : "Чаты по ссылке", [
     ...list.map((x) => ({ label: x.title || x.name, dot: (ST[x.status] || ST.idle).cls, on: x.id === current,
       sub: (ST[x.status] || ST.idle).label + (isNew(x) ? " · новый ответ" : "") + (lastMsg(x) ? " · " + agoText(lastMsg(x)) : ""), run: () => openSession(x.id) })),
     ...(list.length ? [] : [{ info: true, icon: "chat", label: "Открытых сессий нет", sub: FOCUS_DEMO() ? "демо — только просмотр" : "начните новую или продолжите завершённую" }]),
-    ...(FOCUS_DEMO() ? [] : [{ label: "Новый чат в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
+    ...(FOCUS_DEMO() || !FOCUS_PROJ() ? [] : [{ label: "Новый чат в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
       { label: "Завершённые чаты", icon: "file", sub: "продолжить разговор, который закрыли", run: () => focusProjDone() }])]);
 }
 async function focusProjNew(btn) {
