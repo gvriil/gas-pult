@@ -9,6 +9,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 COUNT = """() => new Promise((ok) => { const r = indexedDB.open("gas-pult", 1);
   r.onupgradeneeded = () => r.result.createObjectStore("voice");
   r.onsuccess = () => { const q = r.result.transaction("voice").objectStore("voice").count();

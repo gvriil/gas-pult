@@ -16,6 +16,7 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 from playwright.async_api import async_playwright
 
 BASE, SHOTS = "http://127.0.0.1:8797/?demo", ""

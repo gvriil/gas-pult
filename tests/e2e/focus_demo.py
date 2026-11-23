@@ -11,6 +11,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 VIS = """(sel) => [...document.querySelectorAll(sel)].some((e) => e.offsetParent !== null
   || getComputedStyle(e).position === "fixed" && getComputedStyle(e).display !== "none")"""
 

@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 
 def walk(pg, w: int, shots: str, name: str) -> list[str]:
     """Нажимать «Далее» до конца тура; вернуть заголовки показанных шагов."""

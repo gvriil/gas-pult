@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 SEED = "() => { try { localStorage.setItem('seen:@3:/home/u/projects/gas-pult', 'old'); } catch (e) {} }"
 
 

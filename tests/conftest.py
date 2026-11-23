@@ -2,10 +2,21 @@
 
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
+import heavy_lock
+
+# тесты грузят сценарии tests/e2e/*.py как модули — им нужен tests/e2e/_onebrowser.py
+sys.path.insert(0, str(Path(__file__).resolve().parent / "e2e"))
 import pytest
+
+
+def pytest_collection_finish(session):
+    """Полный прогон — один на сервер (tests/heavy_lock.py): второй ждёт первого, точечные идут без очереди."""
+    if len(session.items) >= heavy_lock.BIG and not session.config.option.collectonly:
+        heavy_lock.hold("pytest", f"{len(session.items)} тестов, {os.getcwd()}")
 
 
 @pytest.fixture(autouse=True)

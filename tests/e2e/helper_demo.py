@@ -9,6 +9,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 # действие карты → экран, который должен открыться (статический тест сверяет ключи с картой)
 DEEP = {
     "go:sessions": "home.sessions", "go:new-session": "sheet.new-session", "go:new-folder": "sheet.new-folder",

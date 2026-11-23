@@ -33,6 +33,8 @@ import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 ROOT = Path(__file__).resolve().parents[2]
 
 FAKE_CLAUDE = r'''#!/usr/bin/env python3

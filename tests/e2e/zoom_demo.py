@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 FZ = "() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fz')) || 1"
 PINCH = """([x, y, d0, d1]) => {
   const el = document.getElementById('content');

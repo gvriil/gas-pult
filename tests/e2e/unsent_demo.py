@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 FAIL = """() => { window.__api = window.__api || api; window.__mode = 'fail';
   window.api = async (path, body) => {
     if (path === '/api/send' && window.__mode === 'fail') { const e = new Error('окно занято'); throw e; }

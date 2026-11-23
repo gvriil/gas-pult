@@ -3,6 +3,7 @@
 Демо, iPhone 13, 390×844 ↔ 844×390: длинный чат — середина (то же сообщение на том же месте) и низ (остаться
 внизу); шторка, панель чатов, меню у строки и поле ввода при повороте не закрываются и не сбрасываются.
 """
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 from playwright.sync_api import sync_playwright
 
 ANCH = """() => { const sc = document.getElementById('scroller'), top = sc.getBoundingClientRect().top;

@@ -9,6 +9,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 ADD = """() => { const m = document.createElement('div'); m.className = 'msg me'; m.dataset.n = '999';
   const d = '/home/u/drive/demo/Входящие/2026-11-16-';
   m.innerHTML = '<div class="bubble">Посмотри фото.\\n\\nФайл из панели: ' + d + 'стенд.jpg'

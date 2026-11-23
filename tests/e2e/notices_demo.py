@@ -16,6 +16,8 @@ import re
 import sys
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 INDEX = Path(__file__).resolve().parents[2] / "src" / "gas_pult" / "web" / "index.html"
 KB = 336                                                     # высота клавиатуры iPhone, px
 

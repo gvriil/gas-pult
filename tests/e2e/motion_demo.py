@@ -14,6 +14,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 
 def touch(cdp, kind, x, y):
     pts = [] if kind == "touchEnd" else [{"x": x, "y": y, "id": 1}]

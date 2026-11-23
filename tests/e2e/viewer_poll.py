@@ -10,6 +10,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 COUNT = """() => {                                  // считаем запросы, не меняя ответов демо
   window.__calls = [];
   const orig = demoApi;

@@ -9,6 +9,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 SEED = """() => { try { localStorage.setItem('seenI:@3:demo0000', '9'); localStorage.setItem('gp:tourDone', '1'); }
   catch (e) {} }"""
 NEXT = """() => { const d = document.querySelector('#content .newdiv'), n = d && d.nextElementSibling;

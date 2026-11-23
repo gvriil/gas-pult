@@ -14,6 +14,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 CLIP = """() => { window.__clip = null;
   const w = (t) => { window.__clip = t; return Promise.resolve(); };
   try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: w } }); }

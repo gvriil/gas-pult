@@ -10,6 +10,8 @@ enterkeyhint="enter". Во время IME-набора (isComposing) Enter не 
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 COMPOSING = """(sel) => {
   const t = document.querySelector(sel);
   t.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
