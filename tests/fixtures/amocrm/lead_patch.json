@@ -1,0 +1,10 @@
+{
+ "_source": "amocrm.ru/developers/content/crm_platform/leads-api (PATCH /api/v4/leads/{id}) (пример ответа из документации, через Context7; данные выдуманные; не проверено на песочнице)",
+ "id": 19619,
+ "updated_at": 1795759200,
+ "_links": {
+  "self": {
+   "href": "https://demo-club.amocrm.ru/api/v4/leads/19619"
+  }
+ }
+}

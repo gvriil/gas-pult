@@ -1,0 +1,7 @@
+{
+ "_source": "форма ответа application/problem+json — crm_platform/error-codes; текст detail — не из документации; не проверено на песочнице",
+ "title": "Unauthorized",
+ "type": "https://httpstatus.es/401",
+ "status": 401,
+ "detail": "Unauthorized"
+}
