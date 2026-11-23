@@ -206,15 +206,25 @@
    как раньше, сначала ищет окно (нет — 404 «окна уже нет», есть — 404 «нет такого метода»). До входа (`do_GET`/
    `do_POST`: вход, приглашения, анкеты, предложения, мост, «Поделиться») и свои ветки ссылок (`focus_do`) — не
    цепочка, остаются в `webapp.py` (2485 строк; до шага 7 — 3355, до этого PR — 2811).
-8. `bot/*` — по модулю за PR. ✓ 23.11, только перенос: `botparts/meetings.py` (протоколы встреч: `MT_KB`,
+8. ✓ `bot/*` — по модулю за PR. ✓ 23.11, только перенос: `botparts/meetings.py` (протоколы встреч: `MT_KB`,
    `meeting_*`, `_meeting_audio` — 6 имён), `botparts/telegram.py` (отправка и пауза 429 `send`, `send_answer`,
    `bind`, `after_pause`, `pause_until`, `skipped`; доставка владельцам `broadcast`, `channels`, `push_*`, `mail_one`,
    `_hub`, `PUSH_PLAIN`, `to`; `react`, `reply_target`; клавиатура `MENU` — 16 имён), `botparts/monitor.py` (монитор,
    `show_dialog` и `dialog_hash`/`NOISE`, «доверять папке?», ответы Pi, лимит подписки, автоархив, расход, сводка и
    брифинг, отчёт по функциям, предохранитель цепочек, автотест, `fail_tick`/`ci_tick` — 33 имени); общее —
    `botparts/base.py` (`NotReady`, `AwaitsChoice`, `Denied`, `HINT`, `QUESTION`). `bot` реэкспортирует все имена;
-   `bot.py` — 2315 строк (было 3092). Тесты подменяют `datetime` и в `botparts.monitor`. Остались: `windows`,
-   `screens`; `offer_hints` и `show_tasks` — в `bot.py`.
+   `bot.py` — 2315 строк (было 3092). Тесты подменяют `datetime` и в `botparts.monitor`.
+   ✓ 23.11, вторая часть, только перенос: `botparts/windows.py` (состояние, активное окно, готовность к тексту,
+   доставка с замком, перепроверкой и сторожем черновиков, строка статуса и «Сообщить по готовности», названия чатов,
+   открыть/закрыть окно, `deliver`, `offer_hints` — 57 имён; `PANEL`, `PROMPT`, `free`, `KEYS`, `DEFAULTS`,
+   `escalate_rows`), `botparts/screens.py` (`show_tasks`, модули-агенты, окна и сводка, команды и разбор ошибок,
+   настройки, папки, условия, страна, люди, мастер входа в Claude Code, вход через Telegram, пространства и бюджет,
+   тестировщики, приглашения, предложения и демо — 79 имён; `TESTER_HELLO`, `public`, `DEMO_GONE`, `DEMO_RATE`,
+   `_clip`, `PHONE_KB`, `COMMANDS`, `NAME_OK`, `NOTIFY`, `TRIAGE_NOTE`). `bot` реэкспортирует все имена. `bot.py` —
+   587 строк: `Pult.__init__`, `on_callback` (193), `on_message`, «#ревью», `handle`, `admitted`, `run`. До цели ~500
+   не хватает ≈ 90 строк — это импорты, которые держат старые имена `bot.*` живыми (снимок `test_monolith_names`);
+   дальше — только сменой логики (таблица кнопок вместо `on_callback`), отдельным PR. Тесты, читающие исходник
+   (`test_tglinks`, `test_bot_labels`, `test_country`), смотрят и в `botparts/*`.
 
 Всего ~16 PR. Темп — 2–3 в день между продуктовыми задачами.
 

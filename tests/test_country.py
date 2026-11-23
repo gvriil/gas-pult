@@ -137,7 +137,7 @@ def test_owner_country_in_side_file(tmp_path):
 
 def test_no_vpn_hints_in_interface():
     src = Path(__file__).parent.parent / "src" / "gas_pult"
-    for f in ("web/index.html", "bot.py", "country.py", "terms.py"):
+    for f in ("web/index.html", "bot.py", "botparts/screens.py", "botparts/windows.py", "country.py", "terms.py"):
         text = (src / f).read_text(encoding="utf-8")
         assert "VPN" not in text and "смените регион" not in text.lower(), f
     assert country.DENY == models.DENY == "Этот сервис недоступен в вашей стране по условиям поставщика"

@@ -150,7 +150,8 @@ def test_panel_parts_are_mixins():
 def test_pult_parts_are_mixins():
     """Части ``Pult`` — примеси из пакета ``gas_pult.botparts``; свой ``__init__`` у них не появляется."""
     parts = [c for c in bot.Pult.__mro__ if c.__module__.startswith("gas_pult.botparts.")]
-    assert {c.__name__ for c in parts} >= {"VoicePart", "TelegramPart", "MeetingsPart", "MonitorPart"}
+    assert {c.__name__ for c in parts} >= {"VoicePart", "TelegramPart", "MeetingsPart", "MonitorPart",
+                                              "WindowsPart", "ScreensPart"}
     assert all("__init__" not in vars(c) for c in parts)
 
 
