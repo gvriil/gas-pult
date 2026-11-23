@@ -9,7 +9,10 @@ HTML-анкета на нашей ссылке, с отметками… с по
   не попадают). Формат: ``id``, ``title``, ``intro``, ``rules``, ``sections`` [``id``, ``title``, ``questions``
   [``id``, ``text``, ``type`` choice|number|text|photo, ``multi``, ``other``, ``options``, ``hint`` — «зачем
   спрашиваем», ``setting`` — «→ настройка» (человеку не показываем), ``key`` — путь в описании клиента,
-  ``required``, ``placeholder``, ``unit``]], ``finish``;
+  ``required``, ``placeholder``, ``unit``]], ``finish``, ``glossary`` — необязательный словарь
+  ``{"термин": "пояснение"}`` (TGI 23.11: на странице термин подчёркнут, нажатие — пояснение в 1–2 предложения;
+  термин — до 60 знаков, пояснение — до 300, терминов — до 100; ищется в ``intro``, ``rules``, ``text``, ``hint`` и
+  ``options`` целым словом, без учёта регистра и разницы «е»/«ё», длинные — раньше коротких);
 - **ссылки** ``/q/<код>`` — личные, со сроком, без входа (как приглашения): хранится только хеш кода; черновик
   ответов — на сервере, вернулся — продолжил; после «Отправить» ссылка только показывает «Спасибо»;
 - **ответы** — файл 0600 и **описание клиента** (JSON по ``key``) в ``<данные>/clients/``; владельцу — сообщение в бот
@@ -35,6 +38,7 @@ ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,60}$")
 DAYS = 14
 TEXT_MAX = 2000
 OTHER_MAX = 300
+GLOSS_MAX, TERM_MAX, NOTE_MAX = 100, 60, 300      # glossary: терминов, знаков в термине, знаков в пояснении
 
 
 def _h(code: str) -> str:
@@ -65,6 +69,32 @@ def check(form: dict) -> list[str]:
                 errs.append(f"вопрос {qid}: у choice нужны options")
             if not q.get("text"):
                 errs.append(f"вопрос {qid}: нет text")
+    return errs + _check_glossary(form.get("glossary"))
+
+
+def _check_glossary(g) -> list[str]:
+    """glossary — необязательный ``{"термин": "пояснение"}``: только строки, без повторов (регистр не важен)."""
+    if g is None:
+        return []
+    if not isinstance(g, dict):
+        return ['glossary — словарь вида {"термин": "пояснение"}']
+    errs, seen = [], set()
+    if len(g) > GLOSS_MAX:
+        errs.append(f"glossary: терминов {len(g)}, можно не больше {GLOSS_MAX}")
+    for t, d in g.items():
+        name = str(t).strip()
+        if not isinstance(t, str) or not 1 <= len(name) <= TERM_MAX:
+            errs.append(f"glossary: термин «{name[:TERM_MAX]}…» — от 1 до {TERM_MAX} знаков" if name else
+                        "glossary: пустой термин")
+            continue
+        low = name.lower().replace("ё", "е")
+        if low in seen:
+            errs.append(f"glossary: термин «{name}» повторяется (регистр и «ё» не различаются)")
+        seen.add(low)
+        if not isinstance(d, str) or not d.strip():
+            errs.append(f"glossary: у термина «{name}» нет пояснения — нужен текст")
+        elif len(d.strip()) > NOTE_MAX:
+            errs.append(f"glossary: пояснение к «{name}» — {len(d.strip())} знаков, можно до {NOTE_MAX}")
     return errs
 
 
@@ -95,7 +125,7 @@ def public(form: dict) -> dict:
     """Анкета для страницы: без «→ настройка» и служебных полей."""
     keep_q = ("id", "text", "type", "multi", "other", "options", "hint", "required", "placeholder", "unit")
     return {"id": form["id"], "title": form["title"], "intro": form.get("intro", ""), "rules": form.get("rules", []),
-            "finish": form.get("finish", ""),
+            "finish": form.get("finish", ""), **({"glossary": form["glossary"]} if form.get("glossary") else {}),
             "sections": [{"id": s.get("id", ""), "title": s.get("title", ""),
                           "questions": [{k: q[k] for k in keep_q if k in q} for q in s.get("questions") or []]}
                          for s in form["sections"]]}
