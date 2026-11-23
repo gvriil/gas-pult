@@ -72,14 +72,14 @@ def test_http_device_from_focus_and_owner(server):  # noqa: F811
     s = server
     st, d, _ = call(s["base"], "/api/focus/new", {"w": "@1", "base": "https://pult.example"}, cookie=owner(s))
     tok = d["url"].split("#focus=")[1]
-    st, d, ck = call(s["base"], "/api/focus/open", {"token": tok})
+    st, d, ck = call(s["base"], "/api/focus/open", {"token": tok, "privacy": True})
     assert st == 200 and d["id"]
     rid, fc = d["id"], ck.split(";")[0]
     st, x, _ = call(s["base"], "/api/focus/device", {"base": "https://pult.example", "id": "чужое"}, cookie=fc,
                     headers=FX)
     assert st == 200 and x["url"].startswith("https://pult.example/#focus=") and x["qr"].startswith("data:image/png")
     assert x["used"] == 1 and x["max"] == 3
-    st, d2, ck2 = call(s["base"], "/api/focus/open", {"token": x["url"].split("#focus=")[1]})
+    st, d2, ck2 = call(s["base"], "/api/focus/open", {"token": x["url"].split("#focus=")[1], "privacy": True})
     assert st == 200 and d2["id"] == rid
     st, m, _ = call(s["base"], "/api/meta", cookie=ck2.split(";")[0], headers=FX)
     assert st == 200 and m["focus"]["id"] == rid
@@ -93,7 +93,7 @@ def test_http_gone_has_reason(server):  # noqa: F811
     s = server
     st, d, _ = call(s["base"], "/api/meta", cookie="", headers=FX)
     assert st == 410 and d["why"] == "nodevice"
-    st, d, _ = call(s["base"], "/api/focus/open", {"token": "x" * 40})
+    st, d, _ = call(s["base"], "/api/focus/open", {"token": "x" * 40, "privacy": True})
     assert st == 410 and d["why"] == "bad"
 
 

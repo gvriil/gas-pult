@@ -91,6 +91,7 @@ from gas_pult import (
     passkeys,
     personas,
     pi_journal,  # noqa: F401 — webapp.* жив (panel/sessions.py)
+    privacy,
     projects,
     providers,
     qr,
@@ -1050,7 +1051,28 @@ def handler(panel: Panel):
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
     q_page = resources.files("gas_pult").joinpath("web/q.html").read_bytes()     # анкета клиента (0010)
-    terms_page = resources.files("gas_pult").joinpath("web/terms.html").read_bytes()   # /terms — без входа (17.11)
+    # /terms — без входа (17.11); версия и дата — из terms.VERSION (одно место, аудит 24.11)
+    terms_page = terms.page(resources.files("gas_pult").joinpath("web/terms.html").read_bytes())
+    # /privacy — политика ПДн (24.11): оператор — из operator.toml вне git, поэтому страница собирается на запрос
+    privacy_raw = resources.files("gas_pult").joinpath("web/privacy.html").read_bytes()
+
+    def doc_body(doc: str) -> tuple[str, bytes]:
+        """Документ, с которым соглашается человек: (версия, отдаваемые байты) — хеш в журнал считается от них."""
+        return (privacy.VERSION, privacy.page(privacy_raw)) if doc == "privacy" else (terms.VERSION, terms_page)
+
+    def docs_need(who: str) -> dict:
+        """Какие документы ``who`` ещё не принял на текущие версии: {документ: версия}."""
+        path = consents.path_of(panel.cfg.data)
+        return {d: v for d in consents.DOCS if not consents.has_doc(path, who, d, (v := doc_body(d)[0]))}
+
+    def docs_accept(who: str) -> list[dict]:
+        """Записать согласие ``who`` с политикой и условиями: документ, версия, SHA-256 отданного текста, время."""
+        path = consents.path_of(panel.cfg.data)
+        out = []
+        for d in consents.DOCS:
+            v, body = doc_body(d)
+            out.append(consents.record_doc(path, who, d, v, terms.sha256(body)))
+        return out
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
     icons = {u: (resources.files("gas_pult").joinpath(brand.FILES_DIR + f).read_bytes(), t)   # знак K3 (20.11)
              for u, (f, t) in brand.ICONS.items()}
@@ -1531,6 +1553,11 @@ def handler(panel: Panel):
                 return self.reply(200, body, "text/html; charset=utf-8", packed=packed, etag=f'"{build}"')
             if url.path == "/terms":                    # соглашение простым языком, RU и EN — без входа (17.11)
                 return self.reply(200, terms_page, "text/html; charset=utf-8")
+            if url.path == "/privacy":                  # политика ПДн, RU и EN — без входа (24.11, черновик)
+                if urllib.parse.parse_qs(url.query).get("lang") == ["en"]:
+                    return self.go("/privacy#en")
+                return self.reply(200, privacy.page(privacy_raw), "text/html; charset=utf-8",
+                                  headers={"Cache-Control": "no-cache"})
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
                 body, gz, etag = parts[m.group(1)]
                 return self.reply(200, body, "text/javascript; charset=utf-8", packed=gz, etag=etag)
@@ -1960,6 +1987,17 @@ def handler(panel: Panel):
                 r0 = panel.focus.check_token(token)
                 if r0 and r0.get("mode") not in (focus.SPACE, focus.MEETING) and not focus.Focus.is_demo(r0):
                     return {"ok": True, "owner_here": True, "w": r0.get("w") or "", "proj": r0.get("proj") or ""}
+            # согласие с политикой ПДн и условиями — до первого открытия (24.11): открытие — единственная дверь, через
+            # которую проходит каждое новое устройство, и до него сервер не получил от человека ничего (ни сообщений,
+            # ни голоса, ни файлов). Отказ не тратит место устройства. Не спрашиваем: демо и протокол встречи (только
+            # просмотр), ссылка на пространство «для себя» (владелец 19.11: свои устройства)
+            r0 = panel.focus.check_token(token)
+            ask = r0 and not focus.Focus.is_demo(r0) and not focus.Focus.is_meeting(r0) \
+                and not (r0.get("mode") == focus.SPACE and r0.get("aud") == "self")
+            if ask and (need := docs_need(f"focus:{r0['id']}")):
+                if (b if isinstance(b, dict) else {}).get("privacy") is not True:
+                    raise consents.DocNeeded(need)
+                docs_accept(f"focus:{r0['id']}")
             value, rec = panel.focus.open(token, self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
             if rec.get("mode") == focus.SPACE and rec.get("space") and not panel.people.accepted(focus.vuid(rec["id"])):
@@ -2265,9 +2303,15 @@ def handler(panel: Panel):
             try:
                 b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 262144)) or b"{}")
                 answers = b.get("answers") if isinstance(b, dict) else None
-                if act == "save":
+                if act == "save":                       # черновик — не отправка: согласие не спрашиваем
                     panel.forms_links.draft(m.group(2), onboarding.clean(form, answers))
                     return self.offer_reply(200, {"ok": True})
+                # отправка — только с отдельной галочкой «Согласен(на) на обработку ПДн по Политике» (24.11): без неё
+                # — 409 code=privacy; с ней — запись в журнал согласий: form:<id ссылки>, документ, версия, SHA-256
+                if not isinstance(b, dict) or b.get("privacy") is not True:
+                    return self.offer_reply(409, {"error": str(consents.DocNeeded({})), "code": "privacy",
+                                                  "docs": docs_need(f"form:{rec['id']}")})
+                docs_accept(f"form:{rec['id']}")
                 return self.offer_reply(200, panel.anketa_submit(m.group(2), answers))
             except (ValueError, LookupError) as e:
                 return self.offer_reply(400, {"error": str(e) or "ошибка"})
@@ -2381,6 +2425,8 @@ def handler(panel: Panel):
                 return self.json({"error": str(e)}, 404)
             except NeedForce as e:
                 return self.json({"error": str(e), "code": "force"}, 409)
+            except consents.DocNeeded as e:              # нет согласия с политикой ПДн и условиями (24.11)
+                return self.json({"error": str(e), "code": "privacy", "docs": e.docs}, 409)
             except consents.Needed as e:                 # подключение без согласия на текущий текст (consents.py)
                 return self.json({"error": str(e), "code": "consent", "what": e.what, "v": consents.CONSENT_V}, 409)
             except emailcode.LimitError as e:

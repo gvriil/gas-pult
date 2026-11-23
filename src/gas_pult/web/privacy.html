@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Политика обработки персональных данных</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="data:,">
+<style>
+  /* Публичная страница /privacy (без входа, 24.11). Токены — как в начале index.html. Формат оператора — docs/PRIVACY.md. */
+  :root {
+    --bg-canvas: #FFFFFF; --bg-subtle: #F0F4F9; --border-subtle: #E1E5EA;
+    --text-primary: #1F1F1F; --text-secondary: #444746; --accent-primary: #0B57D0;
+    --status-approval: #B26A00; --status-approval-bg: #FFF4D6; --radius-md: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg-canvas: #131314; --bg-subtle: #282A2C; --border-subtle: #3C4043;
+      --text-primary: #E3E3E3; --text-secondary: #C4C7C5; --accent-primary: #A8C7FA;
+      --status-approval: #FDD663; --status-approval-bg: #3A2E00; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 19px; margin: 28px 0 8px; }
+  p, li { color: var(--text-primary); } li { margin: 4px 0; }
+  .meta { color: var(--text-secondary); font-size: 14px; margin: 0 0 16px; }
+  .lang { display: flex; gap: 8px; margin: 0 0 12px; }
+  .lang a { padding: 4px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--accent-primary);
+    text-decoration: none; font-weight: 600; font-size: 14px; }
+  a { color: var(--accent-primary); }
+  .draft-flag { background: var(--status-approval-bg); border: 2px solid var(--status-approval); border-radius: var(--radius-md);
+    padding: 10px 14px; font-weight: 700; margin: 0 0 16px; }
+  mark.fill { background: var(--status-approval-bg); color: var(--text-primary); border-radius: 4px; padding: 0 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 8px 0; }
+  th, td { text-align: left; vertical-align: top; border-top: 1px solid var(--border-subtle); padding: 8px 8px 8px 0; }
+  .wrap { overflow-x: auto; }
+  hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 40px 0; }
+</style>
+</head>
+<body>
+<main>
+<!-- ЧЕРНОВИК (24.11). Каждый факт — по коду пульта (адрес файл:строка — в комментариях и docs/PRIVACY.md).
+     Места «сверить у юриста» помечены комментариями. Публикация — privacy.PUBLISHED = True после «да» владельца. -->
+<nav class="lang" aria-label="Язык / Language"><a href="#ru" lang="ru">Русский</a><a href="#en" lang="en">English</a></nav>
+<p class="draft-flag"{{DRAFT_HIDDEN}} role="note">Черновик — не опубликовано. Draft — not published.</p>
+
+<section id="ru" lang="ru">
+<h1>Политика обработки персональных данных</h1>
+<p class="meta">Редакция от {{DATE_RU}} (версия {{VERSION}}).</p>
+
+<h2>1. Оператор</h2>
+<!-- сверить у юриста: статус оператора (ИП в РФ / компания в ЕС), нужен ли представитель в ЕС (GDPR ст. 27),
+     уведомление Роскомнадзора об обработке ПДн (152-ФЗ ст. 22) -->
+<p>Оператор персональных данных — тот, кто установил пульт и пригласил вас:</p>
+<ul>
+<li>Оператор: {{OP_NAME}}</li>
+<li>ИНН: {{OP_INN}}; ОГРНИП: {{OP_OGRNIP}}</li>
+<li>Адрес: {{OP_ADDRESS}}</li>
+<li>Почта для вопросов о данных: {{OP_EMAIL}}; телефон: {{OP_PHONE}}</li>
+</ul>
+
+<h2>2. Какие данные мы обрабатываем и зачем</h2>
+<div class="wrap"><table>
+<tr><th>Данные</th><th>Зачем</th><th>Сколько храним</th></tr>
+<!-- people.py:45-60, webauth.py:164-169, passkeys.py:188-190 -->
+<tr><td>Telegram ID, имя и имя пользователя Telegram, роль, дата добавления, вид устройства последнего входа (без IP)</td>
+<td>Вход в пульт и права доступа</td><td>Пока у вас есть доступ; при удалении человека запись удаляется. Иного срока нет — [ЗАПОЛНИТЬ]</td></tr>
+<tr><td>Сессия браузера: время, вид браузера (до 120 знаков). Ключи входа (passkey): открытый ключ, название, даты</td>
+<td>Держать вход, защищать от чужого входа</td><td>Сессия — 30 дней с продлением; ключи — пока вы их не удалите</td></tr>
+<!-- emailcode.py:10-12,43-44; oidc.py:6,381 -->
+<tr><td>Адрес почты (если вы его указали или вошли через Google или Яндекс ID)</td>
+<td>Вход по почте, второй фактор, уведомления</td><td>Пока у вас есть доступ. Коды входа — только в виде хеша, 10 минут. Токены Google и Яндекса не храним</td></tr>
+<!-- country.py:4-18 -->
+<tr><td>Страна: ваш выбор, код страны номера телефона и хеш номера, код страны IP-адреса. Сам номер и IP-адрес не храним</td>
+<td>Работать только в странах, где модель доступна по правилам поставщика</td><td>Вместе с записью человека</td></tr>
+<!-- onboarding.py:40,287-311,385-394 -->
+<tr><td>Анкета клиента: имя клиента, ответы, черновик, даты</td>
+<td>Настроить работу под вас; краткий итог получает владелец пульта в Telegram</td><td>Ссылка действует 14 дней (до 90). Срок хранения ответов не установлен — [ЗАПОЛНИТЬ]</td></tr>
+<!-- transcripts.py:1-3, panel/projects.py:284-290, chat_trash.py:22 -->
+<tr><td>Сообщения и переписка с агентами, файлы, которые вы прислали (до 50 МБ)</td>
+<td>Выполнить ваше задание</td><td>Журналы переписки — 30 дней по умолчанию (настройка Claude Code); корзина чатов — 30 дней. Срок для файлов не установлен — [ЗАПОЛНИТЬ]</td></tr>
+<!-- panel/voice.py:23,178-209; recparts.py:27-29; asr/__init__.py:1-11 -->
+<tr><td>Голосовые сообщения</td>
+<td>Перевести голос в текст</td><td>Распознаём на сервере; после распознавания файл удаляем. Нераспознанное — до 7 дней, незаконченная запись — до 2 суток. Голосовые из Telegram-бота — срок не установлен — [ЗАПОЛНИТЬ]</td></tr>
+<!-- focus.py:50-53,179-189,262-274 -->
+<tr><td>Фокус-ссылки: вид устройства, время открытия; запрос доступа (имя, причина, заметка)</td>
+<td>Пускать по ссылке только на ваши устройства</td><td>Ссылка — 7 дней по умолчанию; погасшая запись удаляется через 30 дней; запрос доступа — сутки</td></tr>
+<!-- chatlog.py:25; funnel.py:1-7,32; helper.py:53 -->
+<tr><td>Журналы событий без текста сообщений: время, длина и отпечаток сообщения, вид устройства; обезличенный идентификатор (хеш)</td>
+<td>Надёжность и улучшение пульта</td><td>События чатов — 30 дней, обезличенная статистика — 400 дней, вопросы помощнику (с маскировкой) — 90 дней</td></tr>
+<!-- consents.py -->
+<tr><td>Согласия: с каким документом, версия, хеш текста, время</td>
+<td>Доказать, что вы дали согласие, и спросить заново при новой версии</td><td>Срок не установлен — [ЗАПОЛНИТЬ]</td></tr>
+</table></div>
+
+<h2>3. Правовые основания</h2>
+<!-- сверить у юриста: основание для каждой цели (согласие / договор / законный интерес), ст. 9 152-ФЗ — форма согласия -->
+<ul>
+<li>Россия — 152-ФЗ «О персональных данных», ст. 6: ваше согласие (ч. 1 п. 1) и исполнение договора, стороной
+которого вы являетесь (ч. 1 п. 5).</li>
+<li>ЕС — GDPR ст. 6: согласие (п. 1(a)), договор (п. 1(b)), законный интерес в надёжности и безопасности
+(п. 1(f)).</li>
+</ul>
+
+<h2>4. Кому мы передаём данные</h2>
+<!-- сверить у юриста: трансграничная передача (152-ФЗ ст. 12, уведомление РКН), GDPR гл. V (SCC);
+     страны поставщиков — по отчёту portfolio-hq harness/reports/2026-11-17-providers-training.md: там проверены
+     только Z.ai (Сингапур) и DeepSeek (КНР); страны Anthropic, OpenRouter, ElevenLabs — сверить у юриста и дописать -->
+<p>Пульт передаёт данные только тем, кто нужен для вашего задания:</p>
+<ul>
+<li><b>Поставщики моделей</b> — текст задания и то, что агент читает для него. Какой поставщик — зависит от
+выбранной модели: Anthropic; OpenRouter и поставщик, которого он выбрал; Z.ai (Сингапур);
+DeepSeek (Китай — по его условиям поставщик может обучать модели на запросах); GigaChat и YandexGPT (Россия,
+через шлюз клиента). Подробности хранения — в политике каждого поставщика.</li>
+<li><b>Telegram</b> — сообщения бота и файлы, которые вы шлёте через бот; краткий итог анкеты — владельцу.</li>
+<li><b>Google и Яндекс</b> — если вы входите через них или подключили Google Диск, календарь, поиск.</li>
+<li><b>ElevenLabs</b> — голос, только если владелец включил этот сервис; по умолчанию голос распознаётся на
+сервере пульта.</li>
+<li><b>Сервисы, которые вы подключили сами</b> (почта, Notion, Linear, Битрикс24, маркетплейсы и др.) — только
+после вашего согласия на экране «Подключение вашего аккаунта».</li>
+</ul>
+<p>Мы не продаём данные и не передаём их для рекламы.</p>
+
+<h2>5. Как мы защищаем данные</h2>
+<p>Файлы с данными доступны только пользователю пульта на сервере (права 0600). Коды входа, токены ссылок и
+номер телефона храним только в виде хеша. Журнал запросов панели выключен.</p>
+
+<h2>6. Ваши права</h2>
+<!-- сверить у юриста: сроки ответа на запросы людей (152-ФЗ ст. 14, 20; GDPR ст. 12) — на странице «[ЗАПОЛНИТЬ]» -->
+<ul>
+<li>Узнать, какие данные о вас есть, и получить копию.</li>
+<li>Исправить неточные данные.</li>
+<li>Удалить данные и прекратить доступ.</li>
+<li>Отозвать согласие — это не отменяет обработку до отзыва.</li>
+<li>Пожаловаться: в России — в Роскомнадзор (rkn.gov.ru); в ЕС — в надзорный орган вашей страны.</li>
+</ul>
+<p>Как воспользоваться: напишите оператору на {{OP_EMAIL}} или владельцу пульта в Telegram. Срок ответа —
+[ЗАПОЛНИТЬ].</p>
+
+<h2>7. Изменения</h2>
+<p>Когда смысл политики меняется, у неё новая версия и дата. Пульт спросит согласие заново.</p>
+</section>
+
+<hr>
+
+<section id="en" lang="en">
+<h1>Privacy Policy</h1>
+<p class="meta">Version of {{DATE_EN}} (version {{VERSION}}).</p>
+
+<h2>1. Controller</h2>
+<p>The controller is the person who installed the Pult and invited you:</p>
+<ul>
+<li>Controller: {{OP_NAME}}</li>
+<li>Tax ID (INN): {{OP_INN}}; OGRNIP: {{OP_OGRNIP}}</li>
+<li>Address: {{OP_ADDRESS}}</li>
+<li>Email for data questions: {{OP_EMAIL}}; phone: {{OP_PHONE}}</li>
+</ul>
+
+<h2>2. What we process and why</h2>
+<div class="wrap"><table>
+<tr><th>Data</th><th>Purpose</th><th>Retention</th></tr>
+<tr><td>Telegram ID, Telegram name and username, role, date added, device type of last sign-in (no IP)</td>
+<td>Sign-in and access rights</td><td>While you have access; deleted when you are removed. No other period — [ЗАПОЛНИТЬ]</td></tr>
+<tr><td>Browser session: time, browser type (up to 120 characters). Passkeys: public key, name, dates</td>
+<td>Keep you signed in, block others</td><td>Session — 30 days, renewed; passkeys — until you delete them</td></tr>
+<tr><td>Email address (if you gave it or signed in with Google or Yandex ID)</td>
+<td>Email sign-in, second factor, notifications</td><td>While you have access. Sign-in codes — hash only, 10 minutes. We do not store Google or Yandex tokens</td></tr>
+<tr><td>Country: your choice, country code and hash of your phone number, country code of your IP address. We do not store the number or the IP address</td>
+<td>Work only in countries the model provider supports</td><td>With your person record</td></tr>
+<tr><td>Client questionnaire: client name, answers, draft, dates</td>
+<td>Set up the work for you; the Pult owner gets a short summary in Telegram</td><td>Link valid 14 days (up to 90). Answers — no period set — [ЗАПОЛНИТЬ]</td></tr>
+<tr><td>Messages and chats with agents, files you send (up to 50 MB)</td>
+<td>Do your task</td><td>Chat logs — 30 days by default (Claude Code setting); chat trash — 30 days. Files — no period set — [ЗАПОЛНИТЬ]</td></tr>
+<tr><td>Voice messages</td>
+<td>Turn voice into text</td><td>Recognized on the server; the file is deleted after recognition. Not recognized — up to 7 days, unfinished recording — up to 2 days. Voice from the Telegram bot — no period set — [ЗАПОЛНИТЬ]</td></tr>
+<tr><td>Focus links: device type, open time; access requests (name, reason, note)</td>
+<td>Let only your devices in by the link</td><td>Link — 7 days by default; an expired record is deleted after 30 days; access request — 1 day</td></tr>
+<tr><td>Event logs without message text: time, message length and fingerprint, device type; pseudonymous ID (hash)</td>
+<td>Reliability and improving the Pult</td><td>Chat events — 30 days, pseudonymous statistics — 400 days, helper questions (masked) — 90 days</td></tr>
+<tr><td>Consents: which document, version, text hash, time</td>
+<td>Prove your consent and ask again for a new version</td><td>No period set — [ЗАПОЛНИТЬ]</td></tr>
+</table></div>
+
+<h2>3. Legal basis</h2>
+<ul>
+<li>Russia — Federal Law 152-FZ, art. 6: your consent (part 1 item 1) and performance of a contract with you (part 1 item 5).</li>
+<li>EU — GDPR art. 6: consent (1(a)), contract (1(b)), legitimate interest in reliability and security (1(f)).</li>
+</ul>
+
+<h2>4. Who receives data</h2>
+<ul>
+<li><b>Model providers</b> — the task text and what the agent reads for it, depending on the model you choose:
+Anthropic; OpenRouter and the provider it routes to; Z.ai (Singapore); DeepSeek (China — under its
+terms it may train models on requests); GigaChat and YandexGPT (Russia, via the client's gateway).</li>
+<li><b>Telegram</b> — bot messages and files you send through the bot; a questionnaire summary to the owner.</li>
+<li><b>Google and Yandex</b> — if you sign in with them or connected Google Drive, calendar, search.</li>
+<li><b>ElevenLabs</b> — voice, only if the owner turned it on; by default voice is recognized on the Pult server.</li>
+<li><b>Services you connected yourself</b> (email, Notion, Linear, Bitrix24, marketplaces and others) — only after
+your consent on the “Connect your account” screen.</li>
+</ul>
+<p>We do not sell data or share it for advertising.</p>
+
+<h2>5. Security</h2>
+<p>Data files are readable only by the Pult user on the server (mode 0600). Sign-in codes, link tokens and phone
+numbers are stored only as hashes. The panel request log is off.</p>
+
+<h2>6. Your rights</h2>
+<ul>
+<li>Know what data we have about you and get a copy.</li>
+<li>Correct inaccurate data.</li>
+<li>Delete data and end access.</li>
+<li>Withdraw consent — this does not affect processing before withdrawal.</li>
+<li>Complain: in Russia — to Roskomnadzor (rkn.gov.ru); in the EU — to the supervisory authority of your country.</li>
+</ul>
+<p>How: write to the controller at {{OP_EMAIL}} or to the Pult owner in Telegram. Response time — [ЗАПОЛНИТЬ].</p>
+
+<h2>7. Changes</h2>
+<p>When the meaning of this policy changes, it gets a new version and date. The Pult will ask for consent again.</p>
+</section>
+</main>
+</body>
+</html>

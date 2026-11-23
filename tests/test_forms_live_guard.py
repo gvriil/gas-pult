@@ -11,7 +11,7 @@ from test_people_login import call, server  # noqa: F401
 
 from gas_pult import onboarding
 
-ANS = {"answers": {"q1": {"pick": ["мало"]}}}
+ANS = {"answers": {"q1": {"pick": ["мало"]}}, "privacy": True}   # отправка — с галочкой согласия (24.11)
 
 
 def test_is_test_and_guard(tmp_path, monkeypatch):

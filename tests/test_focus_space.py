@@ -49,7 +49,7 @@ def issue(w, **kw) -> dict:
 def open_link(w, d: dict, cookie: str = "") -> tuple[int, dict, str]:
     """Открыть ссылку на устройстве: (код, ответ, cookie устройства «gp_focus=…»)."""
     token = d["url"].split("#focus=", 1)[1]
-    code, out, sc = raw(w, "/api/focus/open", {"token": token}, cookie)
+    code, out, sc = raw(w, "/api/focus/open", {"token": token, "privacy": True}, cookie)
     return code, out, sc.split(";", 1)[0] if sc else ""
 
 

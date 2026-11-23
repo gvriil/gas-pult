@@ -15,11 +15,12 @@ def test_owner_opens_own_link_as_full_panel_without_binding(server):  # noqa: F8
     code, d, _ = call(s["base"], "/api/focus/new", {"w": "@1", "base": s["base"]}, owner(s))
     assert code == 200, d
     token = d["url"].split("#focus=")[1]
-    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, owner(s), FX)
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token, "privacy": True}, owner(s), FX)
     assert code == 200 and r["owner_here"] is True and r["w"] == "@1" and not setc, r   # без cookie фокуса
     rec = next(x for x in s["p"].focus.listing() if x["id"] == d["id"])
     assert not rec.get("devs") and not rec.get("opened"), rec          # слот устройства не занят
-    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, "", FX)   # другой человек — фокус
+    # другой человек — фокус
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)
     assert code == 200 and "owner_here" not in r and setc.startswith(focus.COOKIE + "=")
 
 

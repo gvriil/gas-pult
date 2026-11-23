@@ -279,7 +279,7 @@
 | `/api/focus/device` | POST | владелец | `FOCUS` | «Открыть на другом устройстве»: одноразовая ссылка той же записи на 15 минут и QR; с фокус-ссылки — своя запись, у владельца — id | `id`, `base` | `url`, `exp`, `used`, `max`, `qr` |
 | `/api/focus/list` | GET | владелец | — | Действующие фокус-ссылки — без токенов | — | `links` |
 | `/api/focus/new` | POST | владелец | — | Новая фокус-ссылка: сессия, проект или пространство; права и срок | `space`, `base`, `ttl`, `max`, `rights`, `name`, `audience`, `w`, `proj`, `mode` | — |
-| `/api/focus/open` | POST | без входа | — | Первое открытие фокус-ссылки: привязать устройство (cookie) | `token` | `ok, name, id, mode; cookie` |
+| `/api/focus/open` | POST | без входа | — | Первое открытие фокус-ссылки: привязать устройство (cookie). Без согласия с политикой ПДн и условиями — 409 code=privacy, docs; повтор с privacy: true — согласие в журнал | `token`, `privacy` | `ok, name, id, mode; cookie` |
 | `/api/focus/qr` | POST | владелец | — | QR ссылки (POST — адрес с токеном не попадает в журнал прокси) | `url` | — |
 | `/api/focus/revoke` | POST | владелец | — | Погасить фокус-ссылку | `id` | `ok`, `links` |
 | `/api/focus/send` | POST | владелец | — | Отправить ссылку себе в Telegram | `url` | — |
@@ -416,7 +416,7 @@
 | `/api/q/new` | POST | владелец | — | Новая личная ссылка на анкету клиента | `form`, `client`, `days` | — |
 | `/api/q/{code}` | GET | без входа | — | Анкета по личному коду: форма (с glossary — пояснениями терминов, если есть) и черновик | — | `form`, `draft`, `sent` |
 | `/api/q/{code}/save` | POST | без входа | — | Анкета: сохранить черновик | `answers` | `ok` |
-| `/api/q/{code}/submit` | POST | без входа | — | Анкета: отправить | `answers` | — |
+| `/api/q/{code}/submit` | POST | без входа | — | Анкета: отправить; без privacy: true (галочка согласия с политикой ПДн) — 409 code=privacy, docs | `answers`, `privacy` | — |
 
 ## API v1 для 1С и CRM
 

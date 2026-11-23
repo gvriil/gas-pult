@@ -4015,7 +4015,7 @@
   },
   "/api/focus/open": {
    "post": {
-    "summary": "Первое открытие фокус-ссылки: привязать устройство (cookie)",
+    "summary": "Первое открытие фокус-ссылки: привязать устройство (cookie). Без согласия с политикой ПДн и условиями — 409 code=privacy, docs; повтор с privacy: true — согласие в журнал",
     "tags": [
      "Фокус-ссылки"
     ],
@@ -4030,7 +4030,8 @@
        "schema": {
         "type": "object",
         "properties": {
-         "token": {}
+         "token": {},
+         "privacy": {}
         }
        }
       }
@@ -9489,7 +9490,7 @@
   },
   "/api/q/{code}/submit": {
    "post": {
-    "summary": "Анкета: отправить",
+    "summary": "Анкета: отправить; без privacy: true (галочка согласия с политикой ПДн) — 409 code=privacy, docs",
     "tags": [
      "Анкеты и предложения клиентам"
     ],
@@ -9504,7 +9505,8 @@
        "schema": {
         "type": "object",
         "properties": {
-         "answers": {}
+         "answers": {},
+         "privacy": {}
         }
        }
       }

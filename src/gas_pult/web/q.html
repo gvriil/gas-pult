@@ -63,6 +63,13 @@
   .gltip strong { display: block; margin-bottom: 2px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .review dt { font-weight: 600; margin-top: 10px; } .review dd { margin: 2px 0 0; color: var(--muted); }
+  /* Согласие на обработку ПДн (24.11): отдельная галочка, не в общем тексте; без неё «Отправить» неактивна, сервер
+     тоже отказывает. Документы — в новой вкладке: анкета и черновик остаются на месте */
+  .agree { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0 0; padding: 14px; border: 1.5px solid var(--line);
+           border-radius: var(--radius); background: var(--card); cursor: pointer; }
+  .agree input { flex: none; width: 24px; height: 24px; margin: 1px 0 0; accent-color: var(--accent); cursor: pointer; }
+  .agree a { color: var(--accent); text-underline-offset: 3px; }
+  .docs { font-size: 15px; margin: 8px 0 0; }
 </style>
 </head>
 <body>
@@ -81,6 +88,7 @@ const $ = (id) => document.getElementById(id);
 const LS = "pult:q:" + code;
 let F = null, A = {}, step = 0, saveT = 0;   // step: 0 — вступление, 1..N — разделы, N+1 — проверка
 let G = [], glOpen = null;                    // термины анкеты (glossary) и открытая кнопка термина
+let agree = false;                            // галочка согласия с Политикой — только для отправки (черновик — без неё)
 
 // gloss:start — термины: чистые функции (тест — tests/test_forms_glossary.py через node)
 const WORD = /[\p{L}\p{N}_]/u;
@@ -164,6 +172,7 @@ function draw() {
   const n = total();
   $("back").hidden = step === 0;
   $("next").textContent = step === 0 ? "Начать" : step === n ? "Отправить" : "Дальше";
+  $("next").disabled = step === n && !agree;
   if (step === 0) {
     $("app").innerHTML = `<h1>${esc(F.title)}</h1><p>${gl(F.intro)}</p>${F.rules?.length ? `<ul class="rules">${F.rules.map((r) => `<li>${gl(r)}</li>`).join("")}</ul>` : ""}
       <p class="muted">Вопросов: ${F.sections.reduce((s, x) => s + x.questions.length, 0)}. Ответы сохраняются сами — можно закрыть и вернуться по той же ссылке.</p>
@@ -212,7 +221,10 @@ function review(bar) {
     const v = a == null ? "—" : typeof a === "object" ? [...(a.pick || []), ...(a.other ? ["свой: " + a.other] : [])].join(", ") || "—" : a;
     return `<dt>${esc(q.text)}</dt><dd>${esc(v)}</dd>`;
   }).join("");
-  $("app").innerHTML = bar + `<h2>Проверьте и отправьте</h2><p class="muted">Нажмите «Назад», чтобы поправить. После отправки ответы уйдут нам — мы сразу возьмём их в работу.</p><dl class="review">${rows}</dl><div class="err" id="sendErr" hidden></div>`;
+  $("app").innerHTML = bar + `<h2>Проверьте и отправьте</h2><p class="muted">Нажмите «Назад», чтобы поправить. После отправки ответы уйдут нам — мы сразу возьмём их в работу.</p><dl class="review">${rows}</dl>
+    <label class="agree"><input type="checkbox" id="agree"${agree ? " checked" : ""}><span>Согласен(на) на обработку персональных данных по <a href="/privacy" target="_blank" rel="noopener">Политике</a></span></label>
+    <p class="muted docs">Документы откроются в новой вкладке — анкета останется здесь: <a href="/privacy" target="_blank" rel="noopener">Политика обработки персональных данных</a> · <a href="/terms" target="_blank" rel="noopener">Условия использования</a></p>
+    <div class="err" id="sendErr" hidden></div>`;
   scrollTo(0, 0);
 }
 
@@ -256,6 +268,11 @@ document.addEventListener("input", (e) => {
   else if (t.dataset.num) { if (t.value === "") delete A[t.dataset.num]; else A[t.dataset.num] = t.value; keep(); }
   else if (t.dataset.text) { if (!t.value.trim()) delete A[t.dataset.text]; else A[t.dataset.text] = t.value; keep(); }
 });
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "agree") return;
+  agree = e.target.checked; $("next").disabled = !agree;
+  if (agree && $("sendErr")) $("sendErr").hidden = true;
+});
 $("back").onclick = () => { if (step > 0) { step--; draw(); } };
 $("next").onclick = async () => {
   const n = total();
@@ -267,8 +284,9 @@ $("next").onclick = async () => {
     }
   }
   if (step < n) { step++; return draw(); }
+  if (!agree) { const el = $("sendErr"); el.textContent = "Отметьте согласие на обработку персональных данных — без него отправить нельзя."; el.hidden = false; return; }
   $("next").disabled = true;
-  try { await api("submit", { answers: A }); thanks(); }
+  try { await api("submit", { answers: A, privacy: true }); thanks(); }
   catch (err) { const el = $("sendErr"); el.textContent = err.message; el.hidden = false; $("next").disabled = false; }
 };
 start();

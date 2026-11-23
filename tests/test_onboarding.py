@@ -64,9 +64,10 @@ def test_link_flow_http(server, monkeypatch):  # noqa: F811
     assert st == 200 and d["form"]["title"] == "Тест" and not d["sent"] and "setting" not in json.dumps(d)
     assert call(base, f"/api/q/{code}/save", {"answers": {"q2": {"pick": ["офис"]}}})[0] == 200
     assert call(base, f"/api/q/{code}")[1]["draft"] == {"q2": {"pick": ["офис"]}}     # вернулся — черновик на месте
-    st, d, _ = call(base, f"/api/q/{code}/submit", {"answers": {"q2": {"pick": ["офис"]}}})
+    st, d, _ = call(base, f"/api/q/{code}/submit", {"answers": {"q2": {"pick": ["офис"]}}, "privacy": True})
     assert st == 400 and "Сколько?" in d["error"]                                         # обязательный без ответа
-    st, d, _ = call(base, f"/api/q/{code}/submit", {"answers": {"q1": {"pick": ["мало"]}, "q4": "срочно"}})
+    st, d, _ = call(base, f"/api/q/{code}/submit", {"answers": {"q1": {"pick": ["мало"]}, "q4": "срочно"},
+                                                   "privacy": True})
     assert st == 200 and told and "Андрей" in told[-1]
     rid = panel.forms_links.listing()[0]["id"]
     for f in (panel.cfg.data / "forms-answers" / f"{rid}.json", panel.cfg.data / "clients" / f"{rid}.json"):

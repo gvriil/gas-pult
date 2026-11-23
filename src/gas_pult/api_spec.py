@@ -558,8 +558,9 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/focus/send": "Отправить ссылку себе в Telegram",
     "/api/focus/qr": "QR ссылки (POST — адрес с токеном не попадает в журнал прокси)",
     "/api/focus/browser": "Разрешить фокус-ссылке подключить свой браузер",
-    "/api/focus/open": ("Первое открытие фокус-ссылки: привязать устройство (cookie)", "token",
-                        "ok, name, id, mode; cookie"),
+    "/api/focus/open": ("Первое открытие фокус-ссылки: привязать устройство (cookie). Без согласия с политикой ПДн "
+                        "и условиями — 409 code=privacy, docs; повтор с privacy: true — согласие в журнал",
+                        "token, privacy", "ok, name, id, mode; cookie"),
     "/api/focus/ask": ("«Попросить доступ»: ссылка не открылась — запрос владельцам (до входа, 3 за 10 минут с адреса)",
                        "token, id, why, note", "ok"),
     "/api/focus/asks": ("Запрос доступа по фокус-ссылке и его ссылка — для владельца", "id",
@@ -710,7 +711,8 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/q/{code}": ("Анкета по личному коду: форма (с glossary — пояснениями терминов, если есть) и черновик", "",
                       "form, draft, sent"),
     "/api/q/{code}/save": ("Анкета: сохранить черновик", "answers", "ok"),
-    "/api/q/{code}/submit": ("Анкета: отправить", "answers", ""),
+    "/api/q/{code}/submit": ("Анкета: отправить; без privacy: true (галочка согласия с политикой ПДн) — 409 "
+                             "code=privacy, docs", "answers, privacy", ""),
     "/api/offer/{code}": ("Предложение клиенту по коду: страница данных и демо-сессия", "", "session, bot"),
     "/api/offer/{code}/{act}": ("Действие на странице предложения: upload, forget, wizard, login, help, helpfb, "
                                 "telegram", "act", ""),
