@@ -212,10 +212,11 @@ function taskSheet(t) {
     for (const o of t.options || []) a.push({ label: o, icon: "check", sub: t.chat_now ? "ответ уйдёт в чат «" + chatName(t) + "» дословно" : "чата задачи нет — только отметить", run: () => taskDecide(t, o) });
   }
   if (t.link) a.push({ label: "Открыть источник", icon: "ext", sub: t.link, run: () => openUrl(t.link) });
+  if (t.shot) a.push({ label: "Снимок экрана", icon: "image", sub: t.shot, run: () => copyText(t.shot, "Путь к снимку скопирован") });
   if (t.chat_now) a.push({ label: "Открыть чат «" + chatName(t) + "»", icon: "chat", sub: "откуда пришла задача", run: () => t.chat_now !== current && openSession(t.chat_now) });
   if (!t.chat_now) a.push({ label: "Продолжить в чате", icon: "chat", sub: "новый чат — задача уже в поле ввода", run: () => {   // чата нет — новый
     document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
-    chatWith(["Задача: " + t.title, t.next && "Дальше: " + t.next, t.due && "Срок: " + t.due, t.link && "Источник: " + t.link].filter(Boolean).join("\n") + "\n");
+    chatWith(["Задача: " + t.title, t.next && "Дальше: " + t.next, t.due && "Срок: " + t.due, t.link && "Источник: " + t.link, t.shot && "Снимок экрана: " + t.shot].filter(Boolean).join("\n") + "\n");
   } });
   a.push(t.status === "done" ? { label: "Вернуть в работу", icon: "refresh", run: () => taskSet(t, { status: "todo" }, "Задача снова в работе") }
     : { label: "Отметить выполненным", icon: "check", run: () => taskSet(t, { status: "done" }, "Выполнено") });

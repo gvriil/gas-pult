@@ -155,6 +155,7 @@ def _ctx(ctx) -> dict:
     s = lambda v, n=200: " ".join(str(v or "").split())[:n]   # noqa: E731
     out = {"screen": s(ctx.get("screen"), 80), "url": s(ctx.get("url"), 300), "size": s(ctx.get("size"), 40),
            "theme": s(ctx.get("theme"), 20), "lang": s(ctx.get("lang"), 20), "build": s(ctx.get("build"), 40),
+           "shot_note": s(ctx.get("shot_note"), 200),     # «снимок не получился: …» — честная строка от панели
            "errors": [s(x, 300) for x in (ctx.get("errors") or [])[:10] if isinstance(x, str)],
            "ui": [s(x, 300) for x in (ctx.get("ui") or [])[:10] if isinstance(x, str)]}
     return {k: v for k, v in out.items() if v}
@@ -186,6 +187,7 @@ def bug_save(data_dir: Path, text: str, *, device: str, browser: str, who: str, 
         ext, data = feedback.shot_bytes(shot)
         rec["shot"] = f"{base}.{ext}"
         _write(d / rec["shot"], data)
+    rec["shot_file"] = str(d / rec["shot"]) if rec["shot"] else ""
     rec["file"] = str(d / f"{base}.json")
     _write(d / f"{base}.json", json.dumps(rec, ensure_ascii=False, indent=1).encode())
     return rec
@@ -195,9 +197,11 @@ def bug_task(rec: dict, to: dict) -> dict:
     """Задача владельцу и штабу по отчёту: тип check, ссылка — файл отчёта, ``team_to`` — куда ответить."""
     head = " ".join(rec["text"].split())[:120]
     where = f"чат «{rec['chat_title']}»" if rec.get("chat_title") else f"чат {rec.get('chat') or '—'}"
+    shot = "снимок экрана приложен" if rec.get("shot") else "без снимка экрана"
     return {"title": f"Ошибка: {head}", "kind": "check", "status": "todo", "link": rec["file"],
+            "shot": rec.get("shot_file") or "",
             "next": f"Проверить отчёт ({rec['who'] or 'без имени'}; {where}; {rec['device'] or '—'}, "
-                    f"{rec['browser'] or '—'}) и исправить; закроете — человеку придёт «Исправлено»",
+                    f"{rec['browser'] or '—'}; {shot}) и исправить; закроете — человеку придёт «Исправлено»",
             "chat": rec.get("chat") or "", "sid": to.get("sid", ""), "chat_title": rec.get("chat_title") or "",
             "proj": rec.get("proj") or "", "device": rec["device"], "browser": rec["browser"], "text": rec["text"],
             "team_to": to_key(to)}

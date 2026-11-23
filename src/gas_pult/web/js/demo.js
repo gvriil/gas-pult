@@ -595,6 +595,12 @@ function demoApi(path, body) {
     if (body) Object.assign(demoApi.tour, { [body.tour]: body.state, at: Date.now() / 1000 | 0 });
     return Promise.resolve({ ...demoApi.tour });
   }
+  if (key === "/api/bug") {                         // «Сообщить об ошибке»: никуда не уходит; что пришло — demoApi.bugs (e2e)
+    (demoApi.bugs ||= []).push(body);
+    const ack = { id: "demo-ack-" + Date.now(), ts: new Date().toISOString().slice(0, 16).replace("T", " "), at: Date.now() / 1000, from: "Команда", kind: "ack", text: "Приняли, сообщим, когда исправим." };
+    if (body.w === "@1") demoApi.teamMsgs?.push(ack);   // опрос демо отдаёт его же
+    return Promise.resolve({ ok: true, task: "demo-bug", ack });
+  }
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/persona") return Promise.resolve(demoUi(body));
