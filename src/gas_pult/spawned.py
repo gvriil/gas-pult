@@ -142,7 +142,9 @@ def hook_command(python: str = sys.executable, pkg: str | None = None) -> str:
     pkg = pkg or str(Path(__file__).resolve().parent.parent)
     if not SAFE.match(python) or not SAFE.match(pkg):
         return ""
-    return (f'run-shell "PYTHONPATH={pkg} {python} -m gas_pult.spawned '
+    # run-shell без -b держит сервер tmux, пока хук работает (так виден живой клиент new-window) — поэтому жёсткий
+    # потолок 2 с: зависший Python не заморозит окна владельца (без родителя окно просто не попадёт в ссылку)
+    return (f'run-shell "PYTHONPATH={pkg} timeout -k 1 2 {python} -m gas_pult.spawned '
             "'#{window_id}' '#{socket_path}' >/dev/null 2>&1; true\"")
 
 

@@ -51,7 +51,8 @@ def test_name_of_and_parent_pane(tmp_path):
 
 def test_hook_command_quotes_and_silence():
     cmd = spawned.hook_command("/usr/bin/python3", "/opt/gp/src")
-    assert cmd.startswith('run-shell "PYTHONPATH=/opt/gp/src /usr/bin/python3 -m gas_pult.spawned ')
+    assert cmd.startswith('run-shell "PYTHONPATH=/opt/gp/src timeout -k 1 2 /usr/bin/python3 -m gas_pult.spawned ')
+    # хук держит сервер tmux — потолок времени, чтобы зависший Python не заморозил окна
     assert "'#{window_id}' '#{socket_path}'" in cmd and ">/dev/null 2>&1; true" in cmd   # вывод не поверх окна
     assert spawned.hook_command("/usr/bin/py thon", "/opt") == ""                         # странный путь — не ставим
 
