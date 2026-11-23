@@ -28,7 +28,9 @@ async function mediaUrl(path) {
 
 function decorate(msg) {                            // миниатюры под текстом сообщения — один раз
   if (msg.dataset.media) return;
-  const paths = [...new Set([...(msg.querySelector(".bubble, .md") || msg).textContent.matchAll(IMG_RE)].map((m) => m[1]))];
+  const el = msg.querySelector(".bubble, .md") || msg;    // путь — в тексте или у строки «Снимок получен» (data-path)
+  const txt = el.textContent + " " + [...el.querySelectorAll("[data-path]")].map((x) => x.dataset.path).join(" ");
+  const paths = [...new Set([...txt.matchAll(IMG_RE)].map((m) => m[1]))];
   msg.dataset.media = paths.length ? "1" : "0";
   if (!paths.length) return;
   const box = document.createElement("div"); box.className = "att-imgs";
