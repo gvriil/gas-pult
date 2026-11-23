@@ -663,7 +663,8 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         t = self.tasks.add(t, by="bug")
         with contextlib.suppress(Exception):
             self.pult.broadcast(f"Сообщили об ошибке ({name}; {dev or '—'}, {br or '—'}; чат «{rec['chat_title']}»"
-                                f"{', пространство ' + space if space else ''}): {rec['text'][:600]}")
+                                f"{', пространство ' + space if space else ''}"
+                                f"{', снимок экрана' if rec['shot'] else ''}): {rec['text'][:600]}")
         ack = self.team_msgs.say(to, teammsg.ACK, "ack", t["id"])
         self.events.event("bug", t["id"], w=w["id"], space=space, dev=f"{dev} · {br}".strip(" ·"), via=via,
                           n=len(rec["text"]))

@@ -211,3 +211,30 @@ def test_ui_bug_button_and_team_card():
     assert len(html.encode()) < 770000
     js = (web / "js/bugreport.js").read_text(encoding="utf-8")
     assert '"/api/bug"' in js and "import " not in js                       # без зависимостей
+
+
+def test_bug_report_with_screenshot_file_and_task_link(srv):
+    """Снимок экрана (23.11): тот же путь, что ручное вложение — файл 0600 рядом с отчётом, в задаче — путь к нему."""
+    import base64
+
+    jpg = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
+    code, out = call(srv, "/api/bug", {"w": "@5", "text": "Кнопка не нажимается", "shot": jpg,
+                                       "ctx": {"screen": "session", "shot_note": "x" * 900}}, who="fc5")
+    assert code == 200, out
+    t = srv["p"].tasks.get(out["task"])
+    shot = Path(t["shot"])
+    assert shot.parent == Path(t["link"]).parent == srv["data"] / teammsg.BUGS and shot.suffix == ".jpg"
+    assert shot.read_bytes().startswith(b"\xff\xd8\xff") and oct(shot.stat().st_mode)[-3:] == "600"
+    assert "снимок экрана приложен" in t["next"]
+    rec = json.loads(Path(t["link"]).read_text(encoding="utf-8"))
+    assert rec["shot"] == shot.name and len(rec["ctx"]["shot_note"]) == 200
+    assert "снимок экрана" in srv["told"][-1]
+    # без снимка — честная строка от панели в отчёте, в задаче «без снимка экрана»
+    code, out = call(srv, "/api/bug", {"w": "@5", "text": "Без снимка", "shot": "",
+                                       "ctx": {"shot_note": "снимок не получился: нет связи с CDN"}}, who="fc5")
+    t = srv["p"].tasks.get(out["task"])
+    assert code == 200 and t.get("shot", "") == "" and "без снимка экрана" in t["next"]
+    rec = json.loads(Path(t["link"]).read_text(encoding="utf-8"))
+    assert rec["ctx"]["shot_note"] == "снимок не получился: нет связи с CDN"
+    assert call(srv, "/api/bug", {"w": "@5", "text": "не картинка", "shot": "data:image/png;base64,QUJD"},
+                who="fc5")[0] == 400

@@ -1,11 +1,23 @@
 // «Сообщить об ошибке» (владелец 22.11, тестировщики и фокус-ссылки): кнопка-жук у поля ввода → лист «Что не так?».
-// Картинку экрана браузер без сторонних библиотек сделать не может (html2canvas нельзя — без новых зависимостей),
-// поэтому прикладываем состояние экрана текстом: какой экран открыт, адрес страницы (без #ссылки), размер окна,
-// тема, язык, версия панели, последние 10 ошибок JS и последние 10 всплывающих сообщений интерфейса. Устройство и
-// браузер сервер узнаёт сам (по User-Agent, как во «Вошёл: устройство»). Картинку человек может приложить сам.
-// Сервер (/api/bug, teammsg.py): задача владельцу и штабу, уведомление владельцу, в этот чат — «Приняли».
+// Снимок экрана (задача владельца 23.11 — «настоящий снимок», библиотека с CDN только с SRI, как driver.js и xterm.js)
+// делается сам при открытии листа: modern-screenshot 4.7.0 (MIT) с jsDelivr, точная версия и SRI, грузится только
+// здесь и не попадает в репозиторий. Он рисует страницу средствами браузера (SVG foreignObject), поэтому видит всё
+// оформление панели (color-mix, переменные). На снимке нет листа отчёта, тостов и тура; поля паролей и кодов и всё
+// с атрибутом data-no-shot закрыты плашкой. Снимок — JPEG шириной до 1280 px и до 400 КБ; миниатюра в листе и
+// «Убрать снимок». Не вышло (нет сети, CDN закрыт, ошибка) — отчёт уходит с описанием и строкой «снимок не получился».
+// Описание экрана текстом — как раньше: экран, адрес (без #ссылки), размер окна, тема, язык, версия, последние 10
+// ошибок JS и 10 сообщений панели. Устройство и браузер сервер узнаёт сам (по User-Agent).
+// Сервер (/api/bug, teammsg.py): отчёт и снимок — файлы 0600 в bugs/, задача владельцу и штабу со ссылкой на снимок,
+// уведомление владельцу, в этот чат — «Приняли». В демо отвечает js/demo.js — никуда не уходит.
 
 const MAX = 2000;
+export const SHOT_LIB = {
+  src: "https://cdn.jsdelivr.net/npm/modern-screenshot@4.7.0/dist/index.js",
+  sri: "sha512-iRizB3H0kZuwJ8rbggCO5iNu26GP5nm85QlpsxLzorb00pja9ujNs3UKzu4Jq4imdLA410POKduZLEy7exLX/g==",
+};
+const SHOT_W = 1280, SHOT_BYTES = 400 * 1024;
+const NOT_IN_SHOT = ".sheet-bg, .toast, #notices, .driver-popover, .driver-overlay";
+const MASK = 'input[type=password], input[autocomplete=one-time-code], input[autocomplete^="cc-"], [data-no-shot]';
 
 function state() {
   const dark = document.documentElement.dataset.theme === "dark"
@@ -19,6 +31,47 @@ function state() {
   };
 }
 
+function loadLib() {                                   // один раз; не вышло — новая попытка при следующем открытии
+  if (window.modernScreenshot?.domToCanvas) return Promise.resolve(window.modernScreenshot);
+  return (loadLib.p ||= new Promise((ok, no) => {
+    const js = Object.assign(document.createElement("script"), { src: SHOT_LIB.src, integrity: SHOT_LIB.sri, crossOrigin: "anonymous" });
+    js.dataset.lib = "shot";
+    const fail = () => { clearTimeout(t); js.remove(); loadLib.p = null; no(new Error("нет связи с CDN")); };
+    const t = setTimeout(fail, 10000);
+    js.onload = () => { clearTimeout(t); window.modernScreenshot?.domToCanvas ? ok(window.modernScreenshot) : fail(); };
+    js.onerror = fail;
+    document.head.append(js);
+  }));
+}
+
+function smaller(c, k) {
+  const d = Object.assign(document.createElement("canvas"), { width: Math.max(1, Math.round(c.width * k)), height: Math.max(1, Math.round(c.height * k)) });
+  d.getContext("2d").drawImage(c, 0, 0, d.width, d.height);
+  return d;
+}
+export function compress(c) {                          // JPEG до SHOT_BYTES: сначала качество, потом размер
+  if (c.width > SHOT_W) c = smaller(c, SHOT_W / c.width);
+  for (let i = 0; i < 5; i++, c = smaller(c, 0.75))
+    for (const q of [0.82, 0.68, 0.55]) { const u = c.toDataURL("image/jpeg", q); if ((u.length - 23) * 0.75 <= SHOT_BYTES) return u; }
+  throw new Error("снимок слишком большой");
+}
+
+async function snap() {
+  const lib = await loadLib(), b = document.body, css = getComputedStyle(document.documentElement);
+  const fill = css.getPropertyValue("--text-muted").trim() || "gray", bg = css.getPropertyValue("--bg-canvas").trim() || "white";
+  const canvas = await lib.domToCanvas(b, {
+    width: b.clientWidth, height: b.clientHeight, scale: Math.min(SHOT_W / Math.max(1, b.clientWidth), Math.min(2, devicePixelRatio || 1)),
+    backgroundColor: bg, font: false, timeout: 8000, style: { margin: "0", left: "0", top: "0" },
+    filter: (n) => !(n instanceof Element && n.matches(NOT_IN_SHOT)) && !n.parentElement?.closest("[data-no-shot]"),   // внутри data-no-shot — ничего
+    onCloneEachNode: (c) => {                          // пароли и коды — плашкой, без текста
+      if (!(c instanceof Element) || !c.matches(MASK)) return;
+      if ("value" in c) { c.value = ""; c.setAttribute("value", ""); c.removeAttribute("placeholder"); }
+      for (const [k, v] of [["background", fill], ["color", "transparent"], ["-webkit-text-fill-color", "transparent"]]) c.style.setProperty(k, v, "important");
+    },
+  });
+  return compress(canvas);
+}
+
 export function open(w) {
   if (!w) return toast("Откройте чат — сообщение уйдёт из него");
   const ctx = state();
@@ -26,44 +79,54 @@ export function open(w) {
   bg.innerHTML = `<div class="sheet" role="dialog" aria-labelledby="bugTitle"><h3 id="bugTitle">Сообщить об ошибке</h3>
     <p class="note" style="margin:4px 16px 10px">Сообщение уйдёт команде, не в чат с ИИ. Ответим здесь, в этом чате.</p>
     <div class="field" style="margin:0 16px"><label for="bugText">Что не так?</label><textarea id="bugText" rows="4" maxlength="${MAX}" placeholder="Например: нажал «Отправить», а фото не ушло"></textarea></div>
+    <div style="margin:10px 16px 0;display:flex;align-items:center;gap:10px">
+      <img id="bugPrev" alt="Снимок экрана" hidden style="width:64px;height:64px;flex:none;object-fit:cover;object-position:top;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);background:var(--bg-subtle)">
+      <div style="flex:1;min-width:0"><p class="note" id="bugShotNote" role="status" style="margin:0"></p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"><button class="btn ghost sm" id="bugDrop" type="button" hidden>${ic("x")} Убрать снимок</button>
+        <button class="btn ghost sm" id="bugPick" type="button">${ic("image")} Своя картинка</button></div></div>
+      <input type="file" id="bugFile" accept="image/*" hidden></div>
     <details style="margin:10px 16px 0"><summary class="note">Что приложим автоматически</summary>
       <ul class="note" style="margin:6px 0 0;padding-left:18px">
+        <li>Снимок экрана без этого листа. Поля паролей и кодов на снимке закрыты</li>
         <li>Экран: ${esc(ctx.screen || "—")}; размер окна ${esc(ctx.size)}; тема ${esc(ctx.theme)}</li>
         <li>Устройство и браузер — по данным браузера</li>
-        <li>Последние ошибки страницы: ${ctx.errors.length}; последние сообщения панели: ${ctx.ui.length}</li>
-        <li>Это описание, а не картинка экрана. Картинку можно приложить ниже</li></ul></details>
-    <div style="margin:10px 16px 0;display:flex;align-items:center;gap:10px"><button class="btn ghost sm" id="bugPick" type="button">${ic("image")} Приложить снимок экрана</button>
-      <img id="bugPrev" alt="" hidden style="width:44px;height:44px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border-subtle)">
-      <input type="file" id="bugFile" accept="image/*" hidden></div>
+        <li>Последние ошибки страницы: ${ctx.errors.length}; последние сообщения панели: ${ctx.ui.length}</li></ul></details>
     <p class="note" id="bugMsg" role="status" style="margin:8px 16px 0"></p>
     <div class="row2"><button class="btn ghost" data-close type="button">Отмена</button><button class="btn" id="bugGo" type="button">Отправить</button></div></div>`;
-  document.body.append(bg);
   const $f = (s) => bg.querySelector(s), text = $f("#bugText"), file = $f("#bugFile"), msg = $f("#bugMsg");
-  let shot = "";
+  const prev = $f("#bugPrev"), note = $f("#bugShotNote"), drop = $f("#bugDrop");
+  let shot = "", how = "wait";                         // wait → auto | failed; человек: own | removed
+  const show = (u, h) => {
+    shot = u; how = h; prev.hidden = !u; drop.hidden = !u; if (u) prev.src = u; else prev.removeAttribute("src");
+    note.textContent = { wait: "Делаю снимок экрана…", removed: "Снимок убран — отправим только описание экрана.",
+      failed: "Снимок не получился — отправим описание экрана. Можно приложить свою картинку.",
+      own: "Приложим вашу картинку — её можно убрать." }[h] || "Снимок экрана приложится сам — его можно убрать.";
+  };
+  show("", "wait");
+  const auto = snap().then((u) => { if (how === "wait") show(u, "auto"); },
+    (e) => { ctx.shot_note = "снимок не получился: " + e.message; if (how === "wait") show("", "failed"); });
+  document.body.append(bg);
   const close = () => { bg.remove(); document.removeEventListener("keydown", esc_); };
   const esc_ = (e) => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", esc_);
   bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) close(); });
+  drop.onclick = () => show("", "removed");
   $f("#bugPick").onclick = () => file.click();
   file.onchange = async () => {
     const f = file.files?.[0]; if (!f) return;
-    try { shot = await (await part("feedback")).shrink(f); const p = $f("#bugPrev"); p.src = shot; p.hidden = false; msg.textContent = ""; }
-    catch (e) { shot = ""; msg.textContent = e.message; }
+    try { show(await (await part("feedback")).shrink(f), "own"); msg.textContent = ""; }
+    catch (e) { msg.textContent = e.message; }
   };
   $f("#bugGo").onclick = () => busy($f("#bugGo"), "Отправляю…", async () => {
     const t = text.value.trim();
     if (!t) { msg.textContent = "Напишите в двух словах, что не так"; return text.focus(); }
-    if (DEMO) {                                       // демо: никуда не уходит — показываем, как ответит команда
-      close(); toast("В демо сообщение никуда не уходит", 3500);
-      const now = new Date().toISOString().slice(0, 16).replace("T", " ");
-      const ack = { id: "demo-ack-" + Date.now(), ts: now, at: Date.now() / 1000, from: "Команда", kind: "ack", text: "Приняли, сообщим, когда исправим." };
-      if (w === "@1") window.demoApi?.teamMsgs?.push(ack);   // опрос демо отдаёт его же (js/demo.js)
-      return teamAdd(ack);
-    }
+    if (how === "wait") await Promise.race([auto, new Promise((r) => setTimeout(r, 4000))]);   // снимок почти готов — подождём
+    if (how === "removed") ctx.shot_note = "снимок убрал человек";
+    else if (how === "wait") ctx.shot_note = "снимок не успел";
     try {
       const r = await api("/api/bug", { w, text: t, ctx, shot });
-      close(); toast("Отправлено — команда ответит в этом чате", 3500);
-      if (w === current) teamAdd(r.ack);
+      close(); toast(DEMO ? "В демо сообщение никуда не уходит" : "Отправлено — команда ответит в этом чате", 3500);
+      if (w === current && r?.ack) teamAdd(r.ack);
     } catch (e) { msg.textContent = e.message; }
   });
   setTimeout(() => text.focus(), 50);
