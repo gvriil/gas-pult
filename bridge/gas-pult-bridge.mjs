@@ -427,7 +427,19 @@ else if (cmd === "allow") {
   const p = pickBrowser({ ...c, browser: b });
   console.log(`Браузер моста: ${p.name}${p.exe ? " (" + p.exe + ")" : ""}. Перезапустите мост, чтобы применить.`);
 } else if (cmd === "status") {
-  const c = load(), p = pickBrowser(c);
-  console.log({ url: c.url, id: c.id, allowed: c.allowed || [], token: c.token ? "есть" : "нет", browser: c.browser || "auto", using: p.name });
+  // Как запущен мост (штаб 24.11: у владельца мост шёл из Терминала, а не из автозапуска — команда для LaunchAgent
+  // создала пустой plist): файл моста, node, автозапуск и работающие процессы моста.
+  const c = load(), p = pickBrowser(c), os = platform();
+  const auto = os === "darwin" ? join(homedir(), "Library/LaunchAgents/com.gas-pult.bridge.plist")
+    : os === "win32" ? "" : join(homedir(), ".config/systemd/user/gas-pult-bridge.service");
+  execFile("pgrep", [os === "darwin" ? "-lf" : "-af", "gas-pult-bridge.mjs"], (err, out) => {   // pid и вся строка запуска
+    const procs = String(out || "").split("\n").filter((l) => /gas-pult-bridge\.mjs/.test(l) && !/ (status|browser|pair|allow)\b/.test(l)
+      && !/^\d+ (bash|zsh|sh) /.test(l) && !l.startsWith(String(process.pid) + " "));
+    console.log({ url: c.url, id: c.id, token: c.token ? "есть" : "нет", allowed: c.allowed || [],
+      browser: c.browser || "auto", using: p.name + (p.exe ? " (" + p.exe + ")" : ""),
+      script: realpathSync(process.argv[1]), node: process.execPath,
+      autostart: auto && existsSync(auto) ? auto : "нет (мост запущен вручную или не запущен)",
+      running: procs.length ? procs : "процесс моста не найден" });
+  });
 } else if (!cmd) run();
 else { console.error("Команды: pair <адрес> <КОД> | allow <домен> | browser chrome|edge|yandex|auto | status | без аргументов — работать"); process.exit(2); }

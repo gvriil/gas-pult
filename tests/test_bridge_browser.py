@@ -56,3 +56,13 @@ def test_browser_command_saves_choice(tmp_path):
     bad = subprocess.run(["node", str(BRIDGE), "browser", "opera"], capture_output=True, text=True, timeout=30,
                          env=_env(tmp_path))
     assert bad.returncode == 2
+
+
+def test_status_shows_how_bridge_runs(tmp_path):
+    """Штаб 24.11: команда для LaunchAgent у владельца создала пустой plist — мост шёл из Терминала. status говорит,
+    есть ли автозапуск, какие процессы моста работают, где файл моста и node, какой браузер выбран."""
+    r = subprocess.run(["node", str(BRIDGE), "status"], capture_output=True, text=True, timeout=30, env=_env(tmp_path))
+    assert r.returncode == 0, r.stderr
+    for k in ("autostart:", "running:", "script:", "node:", "using:", "browser:"):
+        assert k in r.stdout, (k, r.stdout)
+    assert "нет (мост запущен вручную или не запущен)" in r.stdout and "процесс моста не найден" in r.stdout
