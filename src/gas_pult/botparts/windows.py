@@ -35,6 +35,7 @@ from gas_pult import (
     projects,
     secrets_guard,
     setup,
+    teammsg,
     transcripts,
 )
 from gas_pult.botparts.base import HINT, QUESTION, AwaitsChoice, Denied, NotReady
@@ -167,6 +168,37 @@ class WindowsPart:
         finally:
             self.source.v = old
 
+    def economy_model(self, w: dict) -> bool:
+        """Экономия до сброса недельного лимита (владелец 24.11: «преимущественно дешёвые, чтобы дотянуть до
+        обновления»): неделя подписки ≥ 70 % — чат на Opus перед ходом человека переходит на Sonnet (``/model sonnet``
+        в самом чате, без перезапуска), один раз; в ленте чата — пометка. Не трогаем: модель, закреплённую в пульте
+        (``window_models``), чаты пространств и других агентов, занятый или спящий чат. True — перевели."""
+        try:
+            if w.get("sleep") or w.get("space") or (w.get("profile") or "claude") != "claude" \
+                    or harness.of(w).name != "claude":
+                return False
+            wk = (ctxsnap.limits() or {}).get("week")
+            if not wk or wk["used"] < ctxsnap.WARN:
+                return False
+            st = self.state()
+            econ = st.get("window_econ") or {}
+            if (st.get("window_models") or {}).get(w["id"]) or w["id"] in econ:
+                return False                                # человек выбрал модель сам или уже переводили
+            if "opus" not in str((ctxsnap.read(w.get("sid") or "") or {}).get("model") or "").lower():
+                return False
+            if BUSY.search("\n".join(self.tmux.screen(w["id"]))):
+                return False                                # занят — переведём при следующем ходе
+            self.run_slash(w["id"], "/model sonnet")
+            self.set_state(window_econ={**econ, w["id"]: wk["resets_at"]})
+            teammsg.TeamMsgs(self.cfg.data / teammsg.FILE).say(
+                {"w": w["id"], "sid": w.get("sid") or ""},
+                f"Экономия до {ctxsnap.day(wk['resets_at'])}: чат переведён на Sonnet — неделя подписки "
+                f"{wk['used']} %. Вернуть Opus — выберите модель в чате.")
+            return True
+        except Exception as e:                               # экономия не должна мешать доставке сообщения
+            print("экономия:", e, flush=True)
+            return False
+
     def to_claude(self, w: dict, text: str, src: str = "") -> bool:
         """Текст в окно (вставка и Enter) — одно для бота, панели, фокус-ссылок и расписания. ``src`` — откуда
         (panel, focus, bot, scheduler…; пусто — бот, если действует человек из Telegram, иначе «pult»): пишется в журнал
@@ -177,6 +209,7 @@ class WindowsPart:
             raise Denied(country.DENY)
         if self.cost_paused(w["id"]):                       # пауза по расходу — пока владелец не решит
             raise NotReady("сессия на паузе по расходу — продолжить может владелец (кнопка в боте или в панели)")
+        self.economy_model(w)                               # неделя ≥ 70 %: Opus → Sonnet перед ходом (24.11)
         sends = getattr(self, "sends", None)               # строка статуса: «Отправлено» → «Доставлено» (activity.py)
         deliv = getattr(self, "deliv", None)
         if sends:

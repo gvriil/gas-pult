@@ -103,13 +103,20 @@ def week(x: dict | None, now: float | None = None) -> dict | None:
     return {"used": round(used), "resets_at": int(reset), "level": level, "proj": proj, "out_at": out_at}
 
 
+DAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+
+
+def day(t: float) -> str:
+    """«пт 20:00» — день недели и время сервера."""
+    from datetime import datetime
+    d = datetime.fromtimestamp(t)
+    return f"{DAYS[d.weekday()]} {d:%H:%M}"
+
+
 def week_text(w: dict | None) -> str:
     """Одна строка для бота: «Неделя 71 % · сброс пт 20:00 · к сбросу ≈ 98 %» (время сервера)."""
     if not w:
         return ""
-    from datetime import datetime
-    day = lambda t: datetime.fromtimestamp(t).strftime("%a %H:%M").replace("Mon", "пн").replace("Tue", "вт") \
-        .replace("Wed", "ср").replace("Thu", "чт").replace("Fri", "пт").replace("Sat", "сб").replace("Sun", "вс")   # noqa: E731
     tail = f" · кончится ≈ {day(w['out_at'])}" if w.get("out_at") else \
         f" · к сбросу ≈ {w['proj']} %" if w.get("proj") is not None else ""
     return f"Неделя {w['used']} % · сброс {day(w['resets_at'])}{tail}"
