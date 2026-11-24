@@ -629,7 +629,7 @@
     }
    },
    "terms": {
-    "version": "2026-11-02",
+    "version": "2026-11-17",
     "accepted": true
    },
    "tty": true,
@@ -1026,7 +1026,7 @@
     }
    },
    "terms": {
-    "version": "2026-11-02",
+    "version": "2026-11-17",
     "accepted": true
    },
    "tty": false,
@@ -1345,7 +1345,7 @@
     }
    },
    "terms": {
-    "version": "2026-11-02",
+    "version": "2026-11-17",
     "accepted": true
    },
    "tty": true,
@@ -1737,7 +1737,7 @@
     }
    },
    "terms": {
-    "version": "2026-11-02",
+    "version": "2026-11-17",
     "accepted": true
    },
    "tty": true,
@@ -2129,7 +2129,7 @@
     }
    },
    "terms": {
-    "version": "2026-11-02",
+    "version": "2026-11-17",
     "accepted": true
    },
    "tty": true,
@@ -2582,7 +2582,7 @@
     }
    },
    "terms": {
-    "version": "2026-11-02",
+    "version": "2026-11-17",
     "accepted": true
    },
    "tty": true,

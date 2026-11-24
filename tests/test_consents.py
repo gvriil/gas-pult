@@ -121,7 +121,7 @@ def test_model_key_and_messenger_need_consent(srv):
     code, d = call(b, "/api/messengers/consent", {"svc": "telegram", "accepted": True}, srv["owner"])
     assert code == 409 and d["what"] == "messenger:telegram"
     code, d = call(b, "/api/messengers/consent", {"svc": "whatsapp", "accepted": True}, srv["owner"])
-    assert code == 400 and "запрещено правилами WhatsApp" in d["error"]
+    assert code == 400 and "запрещены правилами WhatsApp" in d["error"]
 
 
 def test_focus_link_sees_no_owner_resources(srv):

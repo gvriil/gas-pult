@@ -40,7 +40,7 @@ def test_bridge_does_not_start_without_choice():
         assert H.main([svc]) == 3                    # второй замок — в самом процессе моста
     with pytest.raises(M.ConsentRequired):
         panel.post("/api/messengers/tg/login", {"phone": "+79990000000"}, 1)
-    with pytest.raises(M.ConsentRequired):
+    with pytest.raises(ValueError, match="не поддерживается"):    # Signal выключен (владелец 24.11)
         panel.post("/api/messengers/link", {"svc": "signal"}, 1)
 
 
@@ -50,7 +50,7 @@ def test_personal_whatsapp_not_supported_only_off():
     assert next(c for c in M.CATALOG if c["id"] == "whatsapp")["kind"] == "off"
     for path, b in (("/api/messengers/consent", {"svc": "whatsapp", "accepted": True}),
                     ("/api/messengers/link", {"svc": "whatsapp"})):
-        with pytest.raises(ValueError, match="запрещено правилами WhatsApp"):
+        with pytest.raises(ValueError, match="запрещены правилами WhatsApp"):
             panel.post(path, b, 1)
     assert panel.post("/api/messengers/consent", {"svc": "whatsapp", "accepted": False}, 1)["consented"] is False
 
@@ -120,12 +120,13 @@ def test_bad_telegram_keys_rejected():
         M.save_tg_api("123456", "not-a-hash")
 
 
-def test_link_returns_only_qr_picture(monkeypatch):
-    M.consent("signal", 1, True)
-    uri = "sgnl://linkdevice?uuid=AbCdEfGhIjKlMnOpQrStUv&pub_key=" + "A" * 44
-    monkeypatch.setattr(M, "call", lambda svc, op, **k: {"uri": uri})
-    r = panel.post("/api/messengers/link", {"svc": "signal"}, 1)
-    assert r["qr"].startswith("data:image/png;base64,") and uri not in json.dumps(r)
+def test_signal_not_supported_only_off(monkeypatch):
+    """Signal через signal-cli — нет официального пути (владелец 24.11, как личный WhatsApp): связать нельзя,
+    в каталоге — «не поддерживается»; уже подключённый — только «Отключить»."""
+    assert "signal" in M.OFF and next(c for c in M.CATALOG if c["id"] == "signal")["kind"] == "off"
+    monkeypatch.setattr(M, "call", lambda svc, op, **k: {"uri": "sgnl://linkdevice?uuid=x"})
+    with pytest.raises(ValueError, match=r"Signal не поддерживается\. У Signal нет официального API"):
+        panel.post("/api/messengers/link", {"svc": "signal"}, 1)
 
 
 def test_whatsapp_qr_fits():
