@@ -42,5 +42,7 @@ def test_video_with_ranges(server):  # noqa: F811
 
 def test_page_has_button_code():
     from pathlib import Path
-    page = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
-    assert 'fetch("/api/demo/info")' in page and "Смотреть, 1 мин" in page and "playsinline" in page
+    web = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
+    assert 'part("demovideo")' in (web / "index.html").read_text(encoding="utf-8")       # ядро — только вызов части
+    js = (web / "js/demovideo.js").read_text(encoding="utf-8")
+    assert 'fetch("/api/demo/info")' in js and "Смотреть, 1 мин" in js and "playsinline" in js
