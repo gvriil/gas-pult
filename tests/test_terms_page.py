@@ -7,6 +7,8 @@ from pathlib import Path
 
 from test_project_chats import server as server
 
+from gas_pult import terms
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -15,7 +17,8 @@ def test_terms_page_public_and_complete(server):
     with urllib.request.urlopen(base + "/terms", timeout=10) as r:          # без cookie и initData
         assert r.status == 200 and r.headers.get_content_type() == "text/html"
         html = r.read().decode("utf-8")
-    for need in ("Редакция от 17 ноября 2026", "До проверки юристом", "Revision of 17 November 2026",
+    for need in (f"Редакция от {terms.date_ru(terms.VERSION)}", "До проверки юристом",   # версия — terms.VERSION
+                 f"Revision of {terms.date_en(terms.VERSION)}",
                  "Not yet reviewed by a lawyer", "свой ключ или своя подписка", "Не передавайте свой вход",
                  "Данные и секреты", "Кто видит", "Ограничение ответственности", "Limitation of liability",
                  'id="ru"', 'id="en"'):

@@ -122,7 +122,7 @@ def open_link(s, wid="@1"):
     code, d, _ = call(s["base"], "/api/focus/new", {"w": wid, "base": s["base"]}, owner(s))
     assert code == 200, d
     token = d["url"].split("#focus=")[1]
-    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, "", FX)
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)
     assert code == 200 and r["ok"], r
     return d, token, setc.split(";")[0]
 
@@ -131,12 +131,12 @@ def test_link_is_fragment_and_cookie_is_strict(server):
     d, token, cookie = open_link(server)
     assert d["url"] == f"{server['base']}/#focus={token}"        # токен после «#»: не уходит на сервер и в журналы
     assert cookie.startswith(focus.COOKIE + "=")
-    _, _, setc = call(server["base"], "/api/focus/open", {"token": token}, cookie, FX)
+    _, _, setc = call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, cookie, FX)
     for attr in ("HttpOnly", "Secure", "SameSite=Strict", "Path=/"):
         assert attr in setc
     for _ in range(focus.FOCUS_MAX - 1):                                     # ещё два устройства — можно
-        assert call(server["base"], "/api/focus/open", {"token": token}, "", FX)[0] == 200
-    code, r, _ = call(server["base"], "/api/focus/open", {"token": token}, "", FX)   # четвёртое — нет
+        assert call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)[0] == 200
+    code, r, _ = call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)   # четвёртое — нет
     assert code == 410 and r["code"] == "focus_gone" and "устройствах" in r["error"]
 
 
@@ -362,7 +362,7 @@ def proj_server(s, monkeypatch):
 def proj_link(s, pid="p-shop"):
     code, d, _ = call(s["base"], "/api/focus/new", {"base": s["base"], "proj": pid}, owner(s))
     assert code == 200 and d["proj"] == pid and d["name"] == "Магазин", d
-    code, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1]}, "", FX)
+    code, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1], "privacy": True}, "", FX)
     assert code == 200
     return d, setc.split(";")[0]
 
@@ -485,7 +485,7 @@ def demo_link(s, wid="@1"):
 
 
 def demo_open(s, token, device=""):
-    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, device, FX)
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token, "privacy": True}, device, FX)
     assert code == 200, r
     return setc.split(";")[0]
 

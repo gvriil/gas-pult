@@ -185,7 +185,7 @@ def test_focus_link_can_answer_question(server):
     owner = f"{webauth.COOKIE}={server['tok']}"
     code, d, _ = call(server["base"], "/api/focus/new", {"w": "@1", "base": server["base"]}, owner)
     token = d["url"].split("#focus=")[1]
-    _, _, setc = call(server["base"], "/api/focus/open", {"token": token}, "", {focus.HEADER: "1"})
+    _, _, setc = call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, "", {focus.HEADER: "1"})
     fc, fx = setc.split(";")[0], {focus.HEADER: "1"}
     assert call(server["base"], "/api/select", {"w": "@1", "text": "", "n": "2", "go": True}, fc, fx)[0] == 200
     assert call(server["base"], "/api/key", {"w": "@1", "key": "Escape"}, fc, fx)[0] == 200

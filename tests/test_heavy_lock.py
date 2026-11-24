@@ -12,7 +12,7 @@ CODE = ("import sys, time, heavy_lock; heavy_lock.hold('pytest', 'проба'); 
 
 
 def _env(tmp_path, **kw):
-    env = {k: v for k, v in os.environ.items() if k not in ("CI", "GAS_PULT_TEST_LOCK")}
+    env = {k: v for k, v in os.environ.items() if k not in ("CI", "GAS_PULT_TEST_LOCK", "GAS_PULT_HEAVY_LOCK_HELD")}
     env.update(XDG_RUNTIME_DIR=str(tmp_path), PYTHONPATH=str(HERE), **kw)
     return env
 

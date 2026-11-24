@@ -32,7 +32,7 @@ from pathlib import Path
 import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from focus_live import free_port, start
+from focus_live import agree, free_port, start
 
 ENGINES = ("chromium", "firefox", "webkit")
 
@@ -92,6 +92,7 @@ def run(engine: str = "chromium", shots: str = "") -> list[str]:
                       and errs.append(f"{engine}: {m.text}"))
                 pg.on("pageerror", lambda e: errs.append(f"{engine}: {e}"))
                 pg.goto(url)
+                agree(pg, url)
                 return pg
 
             def shot(pg, name):

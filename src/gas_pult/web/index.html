@@ -6738,7 +6738,9 @@ function focusEnd(text, why) {
 async function focusStart() {
   document.body.classList.add("focus");             // экран сессии — openSession, когда известна сессия
   try {
-    const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN }) : null;   // первое открытие — привязка устройства
+    // первое открытие — привязка устройства; сначала — согласие на обработку ПДн (js/privacy.js, 409 code=privacy)
+    const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN })
+      .catch((e) => e.code === "privacy" ? part("privacy").then((m) => m.ask(FOCUS_TOKEN)) : Promise.reject(e)) : null;
     if (o?.mode === "space") return location.replace(location.pathname + "?slink");
     if (o?.mode === "meeting" || (DEMO && params.get("focus") === "meeting")) return part("meeting").then((m) => m.publicView());   // ссылка на протокол   // ссылка на пространство — полная панель
     if (o?.owner_here) return location.replace(location.pathname + (o.w ? "?session=" + encodeURIComponent(o.w) : ""));   // владелец — обычная панель

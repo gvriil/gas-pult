@@ -140,6 +140,21 @@ def serve(root: Path, port: int):
     srv.serve_forever()
 
 
+def agree(pg, url: str, timeout: int = 8000):
+    """24.11: по фокус-ссылке сначала окно согласия на обработку ПДн (js/privacy.js) — отметить и продолжить.
+    Окна нет (ссылка устарела, демо) — дальше как раньше."""
+    if "#focus=" not in url:
+        return
+    try:
+        pg.wait_for_selector("#pvAgree", timeout=timeout)
+    except Exception as e:                                # playwright TimeoutError — окна не было
+        if type(e).__name__ != "TimeoutError":
+            raise
+        return
+    pg.check("#pvAgree")
+    pg.click("#pvGo")
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -222,6 +237,7 @@ def run(shots: str = ""):
                 pg.on("pageerror", lambda e: errs.append(str(e)))
                 pg.on("dialog", lambda d: d.accept())
                 pg.goto(url)
+                agree(pg, url)
                 return pg
 
             def sheet_click(pg, text):
