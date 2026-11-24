@@ -303,14 +303,63 @@ async function pair(url, code) {
   console.log(`Готово: компьютер «${hostname()}» привязан к пульту. Запустите: node ${basename(process.argv[1])}`);
 }
 
+// Браузер для Playwright Extension (владелец 24.11: работает в Яндекс Браузере, Chrome не основной). @playwright/mcp
+// 0.0.85 ищет расширение только в профиле Chrome; если задан PLAYWRIGHT_MCP_EXECUTABLE_PATH, профиль не проверяется,
+// а указанный браузер открывает страницу подключения расширения в своём окне (playwright-core: createExtensionBrowser,
+// CDPRelayServer). Настройка ``browser`` в ~/.gas-pult-bridge.json: chrome | edge | yandex | auto (по умолчанию):
+// auto — Chrome, если в нём стоит расширение, иначе первый браузер, где оно есть.
+export const PW_EXT_ID = "mmlmfjhmonkocbjadbfplnigmagldckm";
+const LA = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+export const BROWSERS = {
+  darwin: {
+    chrome: ["", join(homedir(), "Library/Application Support/Google/Chrome")],
+    yandex: ["/Applications/Yandex.app/Contents/MacOS/Yandex", join(homedir(), "Library/Application Support/Yandex/YandexBrowser")],
+    edge: ["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", join(homedir(), "Library/Application Support/Microsoft Edge")],
+  },
+  win32: {
+    chrome: ["", join(LA, "Google", "Chrome", "User Data")],
+    yandex: [join(LA, "Yandex", "YandexBrowser", "Application", "browser.exe"), join(LA, "Yandex", "YandexBrowser", "User Data")],
+    edge: ["", join(LA, "Microsoft", "Edge", "User Data")],
+  },
+  linux: {
+    chrome: ["", join(homedir(), ".config/google-chrome")],
+    yandex: ["/usr/bin/yandex-browser", join(homedir(), ".config/yandex-browser")],
+    edge: ["", join(homedir(), ".config/microsoft-edge")],
+  },
+};
+
+// Расширение стоит в одном из профилей (Default, Profile N) папки браузера — как проверяет сам Playwright MCP.
+export function hasExtension(userDataDir) {
+  let names = [];
+  try { names = readdirSync(userDataDir).filter((n) => n === "Default" || /^Profile \d+$/.test(n)); } catch { return false; }
+  return names.some((n) => existsSync(join(userDataDir, n, "Extensions", PW_EXT_ID)) ||
+    ["Preferences", "Secure Preferences"].some((f) => { try { return readFileSync(join(userDataDir, n, f), "utf8").includes(PW_EXT_ID); } catch { return false; } }));
+}
+
+// Какой браузер дать Playwright MCP: {name, exe} — exe пустой, если Playwright найдёт сам (Chrome, Edge через канал).
+export function pickBrowser(conf = {}, os = platform(), env = process.env) {
+  if (env.PLAYWRIGHT_MCP_EXECUTABLE_PATH) return { name: "свой путь", exe: env.PLAYWRIGHT_MCP_EXECUTABLE_PATH };
+  const list = BROWSERS[os] || BROWSERS.linux, want = String(conf.browser || "auto").toLowerCase();
+  if (want !== "auto" && list[want]) return { name: want, exe: list[want][0] };
+  if (hasExtension(list.chrome[1])) return { name: "chrome", exe: "" };
+  for (const name of ["yandex", "edge"]) {
+    const [exe, dir] = list[name];
+    if ((!exe || existsSync(exe)) && hasExtension(dir)) return { name, exe };
+  }
+  return { name: "chrome", exe: "" };
+}
+
 function run() {
   const conf = load();
   if (!conf.token) { console.error("Сначала привяжите компьютер: node gas-pult-bridge.mjs pair <адрес панели> <КОД>"); process.exit(2); }
   const allowed = conf.allowed || [];
   let mcp = null, ws = null, pause = 1000;
   const startMcp = () => {                              // Playwright MCP — дочерний процесс, stdio JSON-RPC построчно
-    const cmd = process.env.GAS_PULT_BRIDGE_MCP || `npx -y ${PW_MCP} --extension`;
-    mcp = spawn(cmd, { shell: true, stdio: ["pipe", "pipe", "inherit"] });
+    const br = pickBrowser(conf);
+    const cmd = process.env.GAS_PULT_BRIDGE_MCP || `npx -y ${PW_MCP} --extension` + (br.name === "edge" && !br.exe ? " --browser msedge" : "");
+    log(`браузер: ${br.name}${br.exe ? " (" + br.exe + ")" : ""}`);
+    mcp = spawn(cmd, { shell: true, stdio: ["pipe", "pipe", "inherit"],
+      env: br.exe ? { ...process.env, PLAYWRIGHT_MCP_EXECUTABLE_PATH: br.exe } : process.env });
     createInterface({ input: mcp.stdout }).on("line", (line) => {
       let m; try { m = JSON.parse(line); } catch { return; }
       if (m?.result?.tools && Array.isArray(m.result.tools)) m.result.tools.push(SAVE_TOOL, ...MAC_TOOLS, ...APPLE_TOOLS, RUN_TOOL);   // ответ на tools/list
@@ -371,7 +420,14 @@ else if (cmd === "allow") {
   if (!BLOCKED.includes(d)) { console.error("Этого сайта нет в запретном списке — разрешать не нужно."); process.exit(0); }
   console.log(`Внимание: правила ${d} могут запрещать автоматизацию. Прочитайте условия сервиса. Разрешаю ${d}.`);
   save({ ...c, allowed: [...new Set([...(c.allowed || []), d])] });
+} else if (cmd === "browser") {
+  const c = load(), b = String(a1 || "").toLowerCase();
+  if (!["chrome", "edge", "yandex", "auto"].includes(b)) { console.error("browser chrome | edge | yandex | auto"); process.exit(2); }
+  save({ ...c, browser: b });
+  const p = pickBrowser({ ...c, browser: b });
+  console.log(`Браузер моста: ${p.name}${p.exe ? " (" + p.exe + ")" : ""}. Перезапустите мост, чтобы применить.`);
 } else if (cmd === "status") {
-  const c = load(); console.log({ url: c.url, id: c.id, allowed: c.allowed || [], token: c.token ? "есть" : "нет" });
+  const c = load(), p = pickBrowser(c);
+  console.log({ url: c.url, id: c.id, allowed: c.allowed || [], token: c.token ? "есть" : "нет", browser: c.browser || "auto", using: p.name });
 } else if (!cmd) run();
-else { console.error("Команды: pair <адрес> <КОД> | allow <домен> | status | без аргументов — работать"); process.exit(2); }
+else { console.error("Команды: pair <адрес> <КОД> | allow <домен> | browser chrome|edge|yandex|auto | status | без аргументов — работать"); process.exit(2); }
