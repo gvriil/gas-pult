@@ -31,7 +31,7 @@ from pathlib import Path
 import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from focus_live import FETCH, free_port, no_run, start
+from focus_live import FETCH, agree, free_port, no_run, start
 
 
 def run(shots: str = ""):
@@ -66,6 +66,7 @@ def run(shots: str = ""):
                 pg.on("pageerror", lambda e: errs.append(str(e)))
                 pg.on("dialog", lambda d: d.accept())
                 pg.goto(url)
+                agree(pg, url)
                 return pg
 
             # ---------- (а) владелец: «⋯» проекта → «Фокус-ссылка на проект» ----------
