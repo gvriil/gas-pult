@@ -20,5 +20,5 @@ def test_config_default_and_example():
     from pathlib import Path
 
     from gas_pult.config import Config
-    assert Config(token="1:T", owners=[1]).sleep_after_min == 30
-    assert "sleep_after_min = 30" in (Path(__file__).resolve().parents[1] / "config.example.toml").read_text()
+    assert Config(token="1:T", owners=[1]).sleep_after_min == 0     # владелец 24.11: чаты не спят
+    assert "sleep_after_min = 0" in (Path(__file__).resolve().parents[1] / "config.example.toml").read_text()
