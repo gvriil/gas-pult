@@ -25,6 +25,7 @@ from gas_pult import (
     ago,
     chatlog,
     country,
+    ctxsnap,
     deliveries,
     funnel,
     harness,
@@ -515,7 +516,8 @@ class WindowsPart:
         """Меню (/model, /mcp) монитор пришлёт сам, остальное — экраном; к /status — когда сессия менялась."""
         if not DIALOG.search("\n".join(self.run_slash(w["id"], cmd)[-25:])):
             when = ago.line(self.stamps(w)) if cmd == "/status" else ""
-            self.send_screen(chat, w, cmd + (f"\n🕓 {when}" if when else ""))
+            wk = ctxsnap.week_text((ctxsnap.limits() or {}).get("week")) if cmd == "/status" else ""   # 24.11
+            self.send_screen(chat, w, cmd + (f"\n🕓 {when}" if when else "") + (f"\n📊 {wk}" if wk else ""))
 
     def stamps(self, w: dict) -> dict:
         """Когда сессия менялась (ago.py): последний ход в журнале или смена экрана, ответ агента, ваше сообщение."""
