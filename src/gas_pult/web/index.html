@@ -5552,6 +5552,10 @@ async function micGet() {
   micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   return micStream;
 }
+// нет доступа — шаги под браузер и «Попробовать снова» (js/micperm.js, владелец 24.11); часть не загрузилась — как раньше
+function micHelp(e, retry) {
+  part("micperm").then((m) => m.help(e, retry)).catch(() => toast(LT("mic.denied", "Нет доступа к микрофону: {e}").replace("{e}", e?.message || ""), 5000));
+}
 function micPark() {                                // запись закончилась — дорожки выключены, поток ждёт следующей
   if (!micStream) return;
   if (document.hidden) return micRelease();
@@ -5582,7 +5586,7 @@ async function toggleMic() {
     return toast("Этот Telegram не даёт панели микрофон — диктуйте кнопкой микрофона на клавиатуре", 5000);
   let stream;
   try { stream = await micGet(); }
-  catch (e) { return toast("Нет доступа к микрофону: " + e.message, 5000); }
+  catch (e) { return micHelp(e, toggleMic); }
   const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
   // Запись не теряется (владелец 22.11, js/recsafe.js): куски по 10 с — сразу на сервер; обрыв — новый отрезок той же записи
   const RS = await part("recsafe").catch(() => null), S = RS?.session(type);
@@ -5768,7 +5772,7 @@ async function voiceStart(where) {
   const ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume?.().catch(() => {});
   let stream;
   try { stream = await micGet(); }
-  catch (e) { ac.close().catch(() => {}); vs = null; return toast(LT("mic.denied", "Нет доступа к микрофону: {e}").replace("{e}", e.message), 5000); }
+  catch (e) { ac.close().catch(() => {}); vs = null; return micHelp(e, () => voiceStart(where)); }
   if (vs !== s) return ac.close().catch(() => {});
   try {
     s.cap = await pcmCapture(ac, stream, (a) => {
