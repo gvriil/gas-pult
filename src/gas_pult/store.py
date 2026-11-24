@@ -153,11 +153,32 @@ def get(path, key, name: str | None = None):
     return load(path, dict, name).get(str(key))
 
 
+_JCACHE: dict[str, tuple[tuple, str]] = {}      # путь → (подпись файла и версии, текст): без повторного чтения
+
+
+def _sig(path: Path) -> tuple:
+    st = path.stat()
+    try:
+        sv = vfile(path).stat()
+        v = (sv.st_ino, sv.st_mtime_ns, sv.st_size)
+    except OSError:
+        v = None
+    return (st.st_ino, st.st_mtime_ns, st.st_size, v)
+
+
 def load_json(path, default: Callable = dict, name: str | None = None):
-    """Только JSON-файл (без режима хранения)."""
+    """Только JSON-файл (без режима хранения). Текст файла кэшируется по подписи (inode, mtime, размер): файл не
+    менялся — без open/read; разбор — каждый раз (вызывающий меняет полученный объект)."""
     path = Path(path)
     try:
-        d = json.loads(path.read_text(encoding="utf-8"))
+        sig, key = _sig(path), _key(path)
+        hit = _JCACHE.get(key)
+        if hit and hit[0] == sig:
+            text = hit[1]
+        else:
+            text = path.read_text(encoding="utf-8")
+            _JCACHE[key] = (sig, text)
+        d = json.loads(text)
     except (OSError, ValueError):
         return default()
     empty = default()
