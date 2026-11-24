@@ -396,14 +396,28 @@ use. **This agreement** allows the Customer's commercial use, for its term only.
 
 ## 4. Plans and payment
 
-4.1. Prices are in the price list or the invoice. This offer contains no prices.
+4.1. Prices are in roubles per month. The plan grid was approved by the owner on 24.11.2026.
 
 | Plan | What it is | Term | Price |
 |---|---|---|---|
 | **Demo** | Panel on made-up data, no login (`/?demo`); offer page `/offer/<code>` | no limit | free |
 | **Trial** | The Pult on the Customer server or in a Space; model on the Customer's key or with a spend rate | `[N days — owner decides]` | `[price — owner decides]` |
 | **Pilot** | Installation, 1–3 modules, setup for the Customer's tasks, one week of support, before/after measurement | 4 weeks | `[price — owner decides]` |
-| **Subscription** | The Pult, updates, support per section 8 | month or year | `[price — owner decides]` per `[server / space / person — owner decides]` |
+| **Subscription** | The Pult, updates, support per section 8; plan per table 4.1.1 | month or year | per plan, per space |
+
+4.1.1. **Subscription plans.** The unit is a **task**: one assignment to an agent (answer a request, prepare a quote,
+a report). A task on the base model counts as 1; a strong model or a long task counts more (multipliers — price list).
+
+| Plan | Price, ₽/month | Tasks per month | Parallel agents | Memory | Disk (with backup) | Support |
+|---|---|---|---|---|---|---|
+| **Start** | 4 990 | 1 500 (≈50 a day) | 2 | 1 GB | 5 GB | Telegram, business days |
+| **Business** | 9 990 | 5 000 | 4 | 2 GB | 20 GB | + reply within 4 business hours |
+| **Pro** | 19 990 | 15 000 | 8 | 4 GB | 50 GB | + personal manager, monthly review |
+| **Dedicated** | from 39 900 | 20 000 (more by agreement) | up to 40 | own VM 8 vCPU / 32 GB | 900 GB | + SLA, maintenance window, own address |
+
+4.1.2. **A limit means a pause, not a charge.** When the period's tasks run out, new assignments are not accepted
+until an add-on (section 6) or the next period. **Nothing is charged** without the Customer's consent. Notices at
+**80 %** and **100 %** of the limit — in Telegram and in the Pult.
 
 4.2. **Trial.** A paid subscription does **not** start automatically after the trial. The Customer confirms it by
 paying. No confirmation — access in a Space ends; data is kept `[N days]`, then deleted (section 10).
@@ -457,13 +471,17 @@ to 128 processes. Paid-plan values — `[owner decides]`.
 
 | What | Today | Price |
 |---|---|---|
-| Space disk | Set at creation (`pult-tenant create`) — **to confirm** whether it can grow without re-creation | `[per N GB per month — owner decides]` |
+| Disk | +10 GB of disk with backup. Set at creation (`pult-tenant create`) — **to confirm** whether it can grow without re-creation | 290 ₽/month |
+| Tasks over the plan | +1 000 tasks | 1 290 ₽ |
+| Parallel agent | +1 agent (0.5 GB memory and a CPU share) | 390 ₽/month |
+| Memory | +1 GB | 590 ₽/month |
 | Model spend reserve | Top-up (5.4) | `[owner decides]` |
 | Extra agent modules | Catalogue — [`MODULES.md`](MODULES.md) | `[per module per month — owner decides]` |
 | Extra people | Member and viewer roles | `[owner decides]` |
 | ElevenLabs voices | Customer key only; text and audio go to ElevenLabs | paid by the Customer to the vendor |
 
-Add-ons last until the end of the paid period and renew with the subscription unless cancelled.
+Add-ons are bought with a button in the Pult; the price is shown before buying. They last until the end of the paid
+period and carry over only on the Customer's confirmation — nothing is charged without the Customer's consent.
 
 ## 7. Additional services on request
 
@@ -471,7 +489,8 @@ Not in the subscription. Each one needs a request and an estimate.
 
 | Service | Examples | How to order | Price |
 |---|---|---|---|
-| Integration | Connect a service via MCP or API: 1C, MoySklad, Bitrix24, mail, tracker | Request (section 8) → estimate → Customer's "Yes" | `[owner decides]` |
+| Process audit | 2 meetings, a map of 5–10 processes, "how long it takes now", an estimate. Credited to the rollout if the Customer orders it | Request (section 8) | 15 000 ₽ fixed |
+| Integration | Mail (IMAP/SMTP) — 5 000 ₽; Telegram (bot or chat) — 5 000 ₽; Google/Yandex sheets — 7 000 ₽; Bitrix24 (one pipeline) — 15 000 ₽; 1C (standard configuration) — from 30 000 ₽, custom — after an audit | Request (section 8) → estimate → Customer's "Yes" | from 5 000 ₽ |
 | Custom agent module | An agent for the Customer's process: data, schedule, button decisions | Same | `[owner decides]` |
 | Consulting | How to delegate to agents, process review, team training | Hourly or package | `[owner decides]` |
 | Server administration | Updates, backups, domain, certificate | Monthly | `[owner decides]` |
