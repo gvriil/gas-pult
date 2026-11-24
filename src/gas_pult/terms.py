@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 
-VERSION = "2026-11-02"                 # 02.11 — пункт о стране человека
+VERSION = "2026-11-17"                 # 17.11 — редакция страницы /terms (владелец 24.11: все принимают заново)
 URL = "https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md"
 TITLE = "Условия использования пульта"
 POINTS = (
