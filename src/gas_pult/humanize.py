@@ -269,7 +269,8 @@ def _ask_text(above: list[str]) -> tuple[str, str]:
     i = next((k for k in range(len(above) - 1, -1, -1) if TABS.search(above[k])), -1)
     if i < 0:
         return "", ""
-    tabs = [t.strip() for t in re.split(r"[☐☒✔✓]", above[i]) if t.strip()]
+    tabs = [t.strip(" ←→") for t in re.split(r"[☐☒✔✓]", above[i])]          # «← ☐ Отчёт ✔ Submit →»
+    tabs = [t for t in tabs if t]
     head = ", ".join(t for t in tabs if t.lower() != "submit")
     body = " ".join(x.strip() for x in above[i + 1:] if x.strip() and not re.match(r"^[─━]{5,}$", x.strip()))
     return head, body[:1000]
