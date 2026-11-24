@@ -7707,7 +7707,7 @@ function sAsk() {
   const viewer = meta?.role === "viewer", all = a.options.map((o, i) => [o, i]);
   const one = all.filter(([o]) => o.level !== 2), two = all.filter(([o]) => o.level === 2);
   const chip = ([o, i]) => `<button class="scn-opt" type="button" data-sopt="${i}"${viewer && !o.send.show ? " disabled" : ""}>${esc(sLab(o))}</button>`;
-  box.innerHTML = `<div class="s-ask" role="group" aria-label="${esc(a["title_" + LANG] || a.title_ru)}"><p class="q">${ic("warn")}<span>${esc(a["title_" + LANG] || a.title_ru)}</span></p>
+  box.innerHTML = `<div class="s-ask" role="group" aria-label="${esc(a["title_" + LANG] || a.title_ru)}"><p class="q">${ic("warn")}<span>${a.header ? `<b>${esc(a.header)}.</b> ` : ""}${esc(a["title_" + LANG] || a.title_ru)}</span></p>
     <div class="scn-opts">${one.map(chip).join("")}${two.length && !viewer ? `<button class="scn-opt s-more" type="button" data-smore="1" aria-expanded="${SIM.open2}">${esc(T(SIM.open2 ? "s.less" : "s.more"))}</button>` : ""}</div>
     ${two.length && SIM.open2 ? `<div class="s-two"><p class="note">${esc(T("s.more.note"))}</p>${two.map(([o, i]) => `<div class="s-opt2">${chip([o, i])}<p>${esc(o["note_" + LANG] || "")}</p></div>`).join("")}</div>` : ""}
     ${viewer ? `<p class="note">${esc(T("s.viewonly"))}</p>` : ""}</div>`;

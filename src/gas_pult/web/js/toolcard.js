@@ -33,8 +33,8 @@ function choiceCard(a) {
   if (!a?.known || !a.options?.length) return "";
   const opts = a.options.map((o, i) => [o, i]).filter(([o]) => !o.send.show);
   if (!opts.length) return "";
-  const q = a.title_ru || "Claude ждёт выбора";
-  return `<div class="ask cc" data-help="${hv("sheet.toolcard")}"><p class="q">${ic("warn")}<span>${esc(q)}</span></p>
+  const q = a.title_ru || "Claude ждёт выбора";   // header — заголовок вкладки вопроса агента («Раунд», 24.11)
+  return `<div class="ask cc" data-help="${hv("sheet.toolcard")}"><p class="q">${ic("warn")}<span>${a.header ? `<b>${esc(a.header)}.</b> ` : ""}${esc(q)}</span></p>
     ${opts.map(([o, i]) => `<button class="opt${o.level === 2 ? " l2" : ""}" data-tc="${i}"><span>${esc(o.label_ru)}${o.level === 2 && o.note_ru ? `<small>${esc(o.note_ru)}</small>` : ""}</span></button>`).join("")}
     ${CC_ESC.has(a.kind) && !a.options.some((o) => o.key === "cancel") ? `<button class="opt cc-esc" data-tcesc="1"><span>Отмена</span></button>` : ""}
     <p class="tip" id="askTip" hidden></p></div>`;

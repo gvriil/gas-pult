@@ -23,6 +23,7 @@ from gas_pult import (
     fallback,
     features,
     harness,
+    humanize,
     limitretry,
     notifylevel,
     selftest,
@@ -42,6 +43,18 @@ def dialog_hash(scr: str) -> str:
     return hashlib.md5("\n".join(x for x in scr.splitlines() if not NOISE.search(x)).encode()).hexdigest()
 
 
+
+def ask_title(scr: str) -> str:
+    """Первая строка сообщения о вопросе: вопрос агента словами (владелец 24.11: «варианты видно, а вопроса не видно»),
+    иначе — «Claude ждёт выбора:»."""
+    try:
+        a = humanize.parse(scr)
+    except Exception:                                   # разбор экрана не должен ломать уведомление
+        a = None
+    if a and a.get("kind") == "question" and a.get("title_ru"):
+        return "❓ " + (f"{a['header']}: " if a.get("header") else "") + a["title_ru"]
+    return "Claude ждёт выбора:"
+
 class MonitorPart:
     """Монитор, лимиты, автоархив, расход, сводки, брифинг, предохранитель, автотест (примесь к ``Pult``)."""
 
@@ -50,7 +63,7 @@ class MonitorPart:
         h, ep, now = dialog_hash(scr), shown.get(w["id"]), time.time()
         if ep and (ep["hash"] == h or now - ep["t"] < 4):
             return
-        text, kw = self.screen_msg(w, "Claude ждёт выбора:")
+        text, kw = self.screen_msg(w, ask_title(scr))
         msgs = ep["msgs"] if ep else {}
         for chat in self.cfg.owners:
             ch = self.channels(chat, "dialog")
