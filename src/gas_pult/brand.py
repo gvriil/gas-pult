@@ -6,6 +6,8 @@
 нет: перья крупные, на 16 px читается. В русском интерфейсе рядом со знаком — «Гаврила» текстом; lockup с латиницей —
 только превью ссылки и международное."""
 
+import re
+
 NAME = "Gavrila"                   # латиницей: английский интерфейс, адрес, логотип
 NAME_RU = "Гаврила"                # русский интерфейс (в русских строках — без латиницы, humanize.LATIN_OK)
 DEFAULT = "Гаврила"                # так записано в web/index.html — сервер меняет его на NAME_RU, если они разные
@@ -29,6 +31,41 @@ IPHONES = ((440, 956, 3), (430, 932, 3), (428, 926, 3), (402, 874, 3), (393, 852
 ICONS.update({f"/splash-{w}x{h}-{t}.png": (f"splash-{w}x{h}-{t}.png", "image/png")
               for w, h, _ in IPHONES for t in ("light", "dark")})
 TAGLINE = "Агент делает рутину — вы подтверждаете «Да». Ответы в телефоне, голосом и кнопкой."
+
+# Демо и вход для гостей — бренд Botsmith (владелец 24.11: «и из демо тоже… поставь botsmith»; строка — как в питче).
+# Панель владельца после входа — прежняя («Гаврила»): вариант страницы отдаётся только на /?demo и /?brand=botsmith.
+BS_NAME = "Botsmith"
+BS_TAGLINE = "Операционная система бизнеса на ИИ-агентах"
+BS_GRAD = ("linear-gradient(90deg,#2f5a09,#4a7f12)", "linear-gradient(90deg,#8bc34a,#9ccc65)")   # светлая, тёмная
+ICONS["/brand/botsmith-icon.svg"] = ("botsmith-icon.svg", "image/svg+xml")
+BS_CSS = ('<style id="bsBrand">.gmark{-webkit-mask:none;mask:none;'
+          'background:url(/brand/botsmith-icon.svg) center/contain no-repeat}'
+          '.nav-h h2{flex:none;font-size:calc(17px * var(--fz, 1))}'     # «Botsmith» длиннее «Гаврилы»
+          '.nmark{width:22px;height:22px}.tmark{width:24px;height:24px}.lmark{width:44px;height:44px}'
+          '#brandSub{font-size:0}#brandSub::after{content:"' + BS_TAGLINE + '";font-size:12px}'
+          ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span{font-size:0}'
+          ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span::after{content:"'
+          + BS_TAGLINE + '";font-size:12px;white-space:normal}'
+          ':root{--brand:' + BS_GRAD[0] + '!important}'                  # название — цвет Botsmith, не градиент Gavrila
+          '@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--brand:' + BS_GRAD[1] + '!important}}'
+          ':root[data-theme=dark]{--brand:' + BS_GRAD[1] + '!important}</style>')
+
+
+def botsmith_text(s: str) -> str:
+    """«Гаврила» во всех формах и «Gavrila» → Botsmith (страница и части интерфейса)."""
+    for w in ("Гаврилы", "Гавриле", "Гаврилу", "Гаврилой", NAME_RU, DEFAULT, NAME):
+        s = s.replace(w, BS_NAME)
+    return s.replace(TAGLINE, BS_TAGLINE)
+
+
+def botsmith_page(page: bytes) -> bytes:
+    """Страница панели в бренде Botsmith: название во всех формах, знак, значок вкладки, превью ссылки, строка под
+    логотипом. Скрипты страницы те же — меняются только тексты и стили."""
+    s = botsmith_text(page.decode("utf-8"))
+    s = s.replace("import(`/js/${name}.js`)", "import(`/js/${name}.js?brand=botsmith`)")   # части — тоже Botsmith
+    s = s.replace(TAGLINE, BS_TAGLINE).replace('href="/favicon.svg"', 'href="/brand/botsmith-icon.svg"')
+    s = re.sub(r'<meta property="og:image[^>]*>', "", s)            # превью — знак Gavrila; своего у Botsmith пока нет
+    return s.replace("</head>", BS_CSS + "</head>", 1).encode("utf-8")
 
 
 def head_tags() -> str:
