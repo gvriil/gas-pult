@@ -1038,6 +1038,9 @@ def handler(panel: Panel):
     origin_pages: dict[str, tuple[bytes, bytes]] = {}   # адрес панели → страница с полным адресом превью (og:image)
     page_plain = page.replace(b"__ORIGIN__", b"")        # неизвестный адрес — ссылки от корня
     page_gz = gzip.compress(page_plain, 9)               # страница сжимается один раз при старте (887 → ~200 КБ)
+    bs_page = brand.botsmith_page(page_plain)             # демо и вход для гостей — Botsmith (24.11)
+    bs_gz = gzip.compress(bs_page, 9)
+    bs_parts: dict[str, tuple[bytes, bytes, str]] = {}   # части в бренде Botsmith — по первому запросу
 
     def page_for(host: str) -> tuple[bytes, bytes]:
         """Страница для адреса из запроса: ``og:image`` — полным адресом (так просят Telegram и iMessage). Адрес —
@@ -1587,6 +1590,9 @@ def handler(panel: Panel):
                     return self.oidc_page(403, "Ссылка устарела", "Откройте рабочий стол заново кнопкой в пульте.")
                 return self.go(DESKTOP_URL, (desk_cookie(desk_pass(got[0]), tab=True),))
             if url.path in ("/", "/index.html"):
+                qs = urllib.parse.parse_qs(url.query, keep_blank_values=True)
+                if "demo" in qs or qs.get("brand") == ["botsmith"]:     # демо из QR и вход гостя — Botsmith
+                    return self.reply(200, bs_page, "text/html; charset=utf-8", packed=bs_gz, etag=f'"{build}-bs"')
                 body, packed = page_for(self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "")
                 return self.reply(200, body, "text/html; charset=utf-8", packed=packed, etag=f'"{build}"')
             if url.path == "/api/demo/info":            # демо без входа: есть ли ролик «Смотреть, 1 мин» (24.11)
@@ -1604,6 +1610,11 @@ def handler(panel: Panel):
                                   headers={"Cache-Control": "no-cache"})
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
                 body, gz, etag = parts[m.group(1)]
+                if "brand=botsmith" in url.query:       # часть для страницы Botsmith (демо, вход гостя)
+                    if m.group(1) not in bs_parts:
+                        b = brand.botsmith_text(body.decode("utf-8")).encode("utf-8")
+                        bs_parts[m.group(1)] = (b, gzip.compress(b, 9), etag[:-1] + '-bs"')
+                    body, gz, etag = bs_parts[m.group(1)]
                 return self.reply(200, body, "text/javascript; charset=utf-8", packed=gz, etag=etag)
             if url.path in icons:                        # значок вкладки и экрана «Домой» — без входа, кэш на сутки
                 body, ctype = icons[url.path]
