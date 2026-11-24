@@ -59,7 +59,8 @@ def run(shots: str = ""):
             def device(mobile: bool, dark=False):
                 kw = {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True} if mobile \
                     else {"viewport": {"width": 1366, "height": 860}}
-                return br.new_context(color_scheme="dark" if dark else "light", **kw)
+                # пояс браузера = пояс расчёта ниже (UTC): иначе около полуночи «Демо до» расходится на день (CI 23.11)
+                return br.new_context(color_scheme="dark" if dark else "light", timezone_id="UTC", **kw)
 
             def page(ctx, url):
                 pg = ctx.new_page()
@@ -95,7 +96,7 @@ def run(shots: str = ""):
             # ---------- (б) два устройства по одной ссылке: только просмотр ----------
             pa = page(device(True), url)
             pb = page(device(False, dark=True), url.replace("/#focus=", "/?theme=dark#focus="))
-            till = time.strftime("%d.%m", time.localtime(time.time() + 7 * 86400 - 60))
+            till = time.strftime("%d.%m", time.gmtime(time.time() + 7 * 86400 - 60))
             for pg in (pa, pb):
                 pg.wait_for_selector("#session:not([hidden])", timeout=15000)
                 pg.wait_for_selector("#focusExp:not([hidden])", state="attached", timeout=10000)
