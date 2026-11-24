@@ -2480,6 +2480,14 @@ def set_menu(api: Api, owners: list[int], url: str):
 WINDOWS_TTL = 2.0                                   # с: см. Tmux.ttl
 
 
+
+class Server(ThreadingHTTPServer):
+    """Сервер панели. Очередь входящих соединений — 128, а не 5 (по умолчанию в socketserver): при сотне клиентов
+    сразу лишние соединения ядро отбрасывало, браузер повторял через 1, 3, 7 с — хвост p99 до 30 с и обрывы
+    (замер 24.11, tools/bench-http.py)."""
+    request_queue_size = 128
+    daemon_threads = True
+
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
     Tmux.ttl = WINDOWS_TTL                          # список окон — общий на цикл опроса браузера (tmux.py)
     panel = Panel(cfg)
@@ -2487,7 +2495,7 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
     getattr(panel.tmux, "spawn_hook", lambda: None)()   # окно из окна — видно по фокус-ссылке (spawned.py)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list()               # кнопка «📱 Панель»; гостям без
                              if p["role"] != "owner" and has_telegram(p["id"])]   # Telegram — некуда
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
+    srv = Server(("127.0.0.1", port), handler(panel))
 
     def learn_bot():                                       # имя бота — для ссылки «подтвердите номер в боте»
         panel.geo.lookup("192.0.2.1")                      # и база GeoIP — в память заранее, не на первом входе
