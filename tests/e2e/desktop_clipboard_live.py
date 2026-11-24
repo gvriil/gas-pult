@@ -23,6 +23,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 WEB = Path(__file__).resolve().parents[2] / "src" / "gas_pult" / "web"
 NOVNC = Path("/usr/share/novnc")
 CYR = "Привет, мир! Ёж 123 €"
