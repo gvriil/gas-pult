@@ -2716,6 +2716,34 @@
     }
    }
   },
+  "/api/demo/info": {
+   "get": {
+    "summary": "Демо без входа: есть ли ролик «Смотреть, 1 мин» (/media/demo.mp4)",
+    "tags": [
+     "Прочее"
+    ],
+    "operationId": "get_demo_info",
+    "x-access": {
+     "role": "open",
+     "tags": []
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/desktop/mobile": {
    "post": {
     "summary": "Мобильный вид сайтов, пока стол смотрят с телефона",

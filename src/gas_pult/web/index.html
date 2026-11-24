@@ -7965,6 +7965,7 @@ if (DEMO) {
   $("demoBar").hidden = false; document.body.classList.add("demo-on");
   const dh = () => document.documentElement.style.setProperty("--demo-h", $("demoBar").offsetHeight + "px");
   dh(); addEventListener("resize", dh);
+  part("demovideo").then((m) => m.init()).catch(() => {});   // «Смотреть, 1 мин» (js/demovideo.js)
 }
 dictReady.then(paintLoginLang);
 dictReady.then(agoTick);                              // «изменена N назад» — тексты из словаря

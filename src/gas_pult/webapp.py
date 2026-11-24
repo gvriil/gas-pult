@@ -1132,6 +1132,44 @@ def handler(panel: Panel):
             self.sent_code = code               # журнал /api/v1 пишет код ответа
             super().send_response(code, message)
 
+        def send_video(self, f: Path):
+            """MP4 с поддержкой Range (206): без него Safari на iPhone видео не играет. Нет файла — 404."""
+            try:
+                size = f.stat().st_size
+            except OSError:
+                return self.reply(404, json.dumps({"error": "ролика нет"}, ensure_ascii=False).encode())
+            start, end = 0, size - 1
+            m = re.match(r"bytes=(\d*)-(\d*)$", self.headers.get("Range", ""))
+            if m and (m.group(1) or m.group(2)):
+                if m.group(1):
+                    start, end = int(m.group(1)), min(int(m.group(2) or size - 1), size - 1)
+                else:
+                    start = max(0, size - int(m.group(2)))
+                if start > end or start >= size:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.end_headers()
+                    return
+            self.send_response(206 if m and (m.group(1) or m.group(2)) else 200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(end - start + 1))
+            if m and (m.group(1) or m.group(2)):
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            with open(f, "rb") as fh:
+                fh.seek(start)
+                left = end - start + 1
+                while left > 0:
+                    chunk = fh.read(min(65536, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+
         def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = "",
                   headers: dict | None = None, packed: bytes | None = None, etag: str = ""):
             """``packed`` — уже сжатое тело (страница сжимается один раз); ``etag`` — версия: совпала — 304 без тела."""
@@ -1551,6 +1589,12 @@ def handler(panel: Panel):
             if url.path in ("/", "/index.html"):
                 body, packed = page_for(self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "")
                 return self.reply(200, body, "text/html; charset=utf-8", packed=packed, etag=f'"{build}"')
+            if url.path == "/api/demo/info":            # демо без входа: есть ли ролик «Смотреть, 1 мин» (24.11)
+                has = demo_video(panel.cfg.data).is_file()
+                return self.reply(200, json.dumps({"video": "/media/demo.mp4" if has else None}).encode(),
+                                  headers={"Cache-Control": "no-cache"})
+            if url.path == "/media/demo.mp4":           # ролик для демо и QR в питче — файл вне git, с перемоткой
+                return self.send_video(demo_video(panel.cfg.data))
             if url.path == "/terms":                    # соглашение простым языком, RU и EN — без входа (17.11)
                 return self.reply(200, terms_page, "text/html; charset=utf-8")
             if url.path == "/privacy":                  # политика ПДн, RU и EN — без входа (24.11, черновик)
@@ -2480,6 +2524,11 @@ def set_menu(api: Api, owners: list[int], url: str):
 WINDOWS_TTL = 2.0                                   # с: см. Tmux.ttl
 
 
+
+
+def demo_video(data) -> Path:
+    """Ролик для демо (/?demo, QR в питче): ``<данные пульта>/media/demo.mp4`` — вне git, кладёт владелец."""
+    return Path(data) / "media" / "demo.mp4"
 
 class Server(ThreadingHTTPServer):
     """Сервер панели. Очередь входящих соединений — 128, а не 5 (по умолчанию в socketserver): при сотне клиентов
