@@ -134,3 +134,22 @@ def test_ticket_expires():
     t = webapp.desk_ticket(1, now=1000.0)
     webapp.desk_ticket(1, now=1000.0 + webapp.TICKET_TTL + 1)
     assert t not in webapp.DESK_TICKETS
+
+
+def test_desktop_clipboard_live():
+    """Буфер «Браузера» вживую (владелец 23.11): свой Xvnc, Chrome и noVNC (tests/e2e/desktop_clipboard_live.py) —
+    Ctrl/⌘+V кириллица и латиница, копия со стола, кнопка «Вставить» на телефоне; нет Xvnc/noVNC/Chrome — пропуск."""
+    import importlib.util
+    from pathlib import Path
+
+    import pytest
+
+    spec = importlib.util.spec_from_file_location("desktop_clipboard_live",
+                                                  Path(__file__).parent / "e2e" / "desktop_clipboard_live.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    why = mod.ready()
+    if why:
+        pytest.skip(why)
+    with mod.Stand() as st:
+        assert mod.run(st) == []
