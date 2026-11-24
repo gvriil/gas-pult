@@ -262,6 +262,20 @@ def unknown(opts: list[dict] | None = None) -> dict:
         _details_chip()], known=False)
 
 
+def _ask_text(above: list[str]) -> tuple[str, str]:
+    """Вопрос агента (AskUserQuestion) целиком: заголовки вкладок «☐ Раунд  ✔ Submit» и все строки между ними и
+    пунктами — длинный вопрос переносится на несколько строк, а в конце бывает пояснение в скобках без «?» (владелец
+    24.11: «варианты ответа видно, а вопроса не видно»). Нет строки вкладок — ("", "")."""
+    i = next((k for k in range(len(above) - 1, -1, -1) if TABS.search(above[k])), -1)
+    if i < 0:
+        return "", ""
+    tabs = [t.strip(" ←→") for t in re.split(r"[☐☒✔✓]", above[i])]          # «← ☐ Отчёт ✔ Submit →»
+    tabs = [t for t in tabs if t]
+    head = ", ".join(t for t in tabs if t.lower() != "submit")
+    body = " ".join(x.strip() for x in above[i + 1:] if x.strip() and not re.match(r"^[─━]{5,}$", x.strip()))
+    return head, body[:1000]
+
+
 def parse(lines: list[str] | str, target: bool = False) -> dict | None:
     """Экран окна Claude Code → вопрос простыми словами или None (вопроса на экране нет). ``target`` — добавить, что
     именно хочет сделать агент (команда, файл): только для режима кода (#258); в простом режиме имён файлов нет."""
@@ -297,8 +311,13 @@ def parse(lines: list[str] | str, target: bool = False) -> dict | None:
     chips = [c for c in (_option(o, kind) for o in opts) if c]
     if kind != "question" and not any(c["level"] == 1 and not c["send"].get("show") for c in chips):
         return unknown(opts)
-    if kind == "question" and q:
-        return _result("question", chips, title=q)       # вопрос написала модель — оставляем как есть
+    if kind == "question":
+        head, body = _ask_text(above)
+        if body or q:                                    # вопрос написала модель — оставляем как есть
+            out = _result("question", chips, title=body or q)
+            if head:
+                out["header"] = head                     # заголовок вкладки: «Раунд» (☐ Раунд)
+            return out
     out = _result(kind, chips)
     if target and kind in TARGET_KINDS:                  # что именно: команда, файл, адрес (режим кода, #258)
         out["target"] = _target(kind, above, q)
