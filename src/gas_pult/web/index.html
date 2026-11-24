@@ -3639,7 +3639,14 @@ function costBar(s) {
   return `<div class="costbar" data-costbar>${ic("pause", "s16")}<div class="t"><b>На паузе по расходу</b>${what ? ": " + what : ""}.${ask}
     ${own ? `<div class="acts"><button class="btn sm" data-cost-go="${esc(s.id)}">${ic("play", "s16")}Продолжить, +лимит</button>${p.state !== "stopped" ? `<button class="btn quiet sm" data-cost-stop="${esc(s.id)}">Остановить</button>` : ""}</div>` : ""}</div></div>`;
 }
-function costSummary() {
+// Неделя подписки рядом с расходом за сегодня (владелец 24.11: «а то мы невидимы»): ctxsnap.week — уровень и темп
+function weekChip() {
+  const w = limitsInfo?.week; if (!w || meta?.role !== "owner") return "";
+  const at = (t) => resetAt(t).replace(/^ (до|until) /, ""), tail = w.out_at ? ` · кончится ≈ ${at(w.out_at)}` : w.proj != null ? ` · к сбросу ≈ ${w.proj}%` : "";
+  return `<span class="chip${w.level === "bad" ? " bad" : w.level === "warn" ? " s-approval" : ""}" title="Лимит подписки Claude на неделю и прогноз при нынешнем темпе">Неделя <b>${w.used}%</b> · сброс ${esc(at(w.resets_at))}${esc(tail)}</span>`;
+}
+function costSummary() { return weekChip() + costSum(); }
+function costSum() {
   const c = costInfo;
   if (c?.budget) {                                    // пространство: запас на период (задача 35)
     const b = c.budget;
@@ -3753,7 +3760,7 @@ async function refresh() {
 function paintTools(s) {                              // строка поля: режим (модель) и интеграции чата (Gemini №2)
   // человеку — режим (Gemini №7: усилие → «Быстро / Обычно / Глубоко»), разработчику и другим агентам — модель
   const k = s?.effort === "low" ? 0 : /^(high|xhigh|max)$/.test(s?.effort || "") ? 2 : 1, mode = !dev() && (s?.harness || "claude") === "claude";
-  const m = mode ? ["Быстро", "Обычно", "Глубоко"][k] : String(s?.model || "").replace(/^claude-?/i, "").trim() || "Модель";
+  const m = mode ? ["Быстро", "Обычно", "Глубоко"][k] : String(s?.model || "").replace(/^claude-?/i, "").trim() || "Авто";   // 24.11: не пустое «Модель»
   setHTML($("modeChip"), ic(mode ? ["bolt", "chat", "spark"][k] : "chip", "s16") + `<span>${esc(m)}</span>` + ic("chev", "s16"));
   const mcpOk = ["owner", "admin"].includes(meta?.role) && !s?.space && (s?.harness || "claude") === "claude";
   setHidden($("mcpChip"), !mcpOk); setHidden($("modeChip"), !s || meta?.role === "viewer");
