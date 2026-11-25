@@ -3676,6 +3676,55 @@
     }
    }
   },
+  "/api/focus/auto": {
+   "post": {
+    "summary": "Ссылка на проект: новые окна владельца в папке видны человеку (вкл/выкл)",
+    "tags": [
+     "Фокус-ссылки"
+    ],
+    "operationId": "post_focus_auto",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "id": {},
+         "on": {}
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "ok": {}
+         }
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/focus/bridge": {
    "get": {
     "summary": "Фокус-ссылка: свой компьютер с мостом",

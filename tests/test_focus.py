@@ -799,3 +799,20 @@ def test_owner_window_in_client_project_goes_to_its_links(server, monkeypatch):
     assert code == 200 and "@7" in [x["id"] for x in r["sessions"]]
     assert p.focus_adopt_new("/srv/shop", "@8", "") == []                      # оболочка без разговора — нет
     assert p.focus_adopt_new("/srv/other", "@9", "x") == []                    # чужой проект — нет
+
+
+def test_owner_window_hidden_when_auto_adopt_off(server, monkeypatch):
+    """Флаг ссылки auto_adopt (владелец 25.11: по умолчанию вкл.): выключен — новое окно владельца человеку не видно."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    p = s["p"]
+    monkeypatch.setattr(p.projects, "of_path", lambda data, path: "p-shop" if path.startswith("/srv/shop") else None)
+    assert next(x for x in p.focus.listing() if x["id"] == d["id"])["auto_adopt"] is True     # по умолчанию — вкл.
+    code, r, _ = call(s["base"], "/api/focus/auto", {"id": d["id"], "on": False}, owner(s))
+    assert code == 200 and r["ok"] is True
+    assert call(s["base"], "/api/focus/auto", {"id": d["id"], "on": True}, cookie, FX)[0] == 403   # не по ссылке
+    s["wins"].w["@7"] = {"id": "@7", "name": "shop-7", "path": "/srv/shop", "cmd": "claude", "sid": "owner-new"}
+    assert p.focus_adopt_new("/srv/shop", "@7", "owner-new") == []
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and "@7" not in [x["id"] for x in r["sessions"]]

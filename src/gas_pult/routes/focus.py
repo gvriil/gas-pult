@@ -48,6 +48,12 @@ def focus_browser(self, b: dict):
     return {"ok": panel.focus.set_browser(str(b.get("id", "")), bool(b.get("on", True)))}
 
 
+def focus_auto(self, b: dict):
+    """POST /api/focus/auto — ссылка на проект: новые окна владельца в папке видны человеку (вкл/выкл)"""
+    panel = self.panel
+    return {"ok": panel.focus.set_auto_adopt(str(b.get("id", "")), bool(b.get("on", True)))}
+
+
 def focus_revoke(self, b: dict):
     """POST /api/focus/revoke"""
     panel = self.panel
@@ -69,4 +75,5 @@ def focus_device(self, b: dict):
 
 GET = {"/api/focus/list": focus_list, "/api/focus/asks": focus_asks}
 POST = {"/api/focus/new": focus_new, "/api/focus/send": focus_send, "/api/focus/qr": focus_qr,
-        "/api/focus/browser": focus_browser, "/api/focus/revoke": focus_revoke, "/api/focus/device": focus_device}
+        "/api/focus/browser": focus_browser, "/api/focus/auto": focus_auto, "/api/focus/revoke": focus_revoke,
+        "/api/focus/device": focus_device}

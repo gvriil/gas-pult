@@ -474,6 +474,23 @@ class Focus:
             self._save(d)
             return True
 
+    @staticmethod
+    def auto_adopt(rec: dict) -> bool:
+        """Новые окна владельца в папке проекта видны по этой ссылке (владелец 25.11: по умолчанию — да; выключается
+        у ссылки в «Настройки» → «Фокус-ссылки»)."""
+        return rec.get("auto_adopt") is not False
+
+    def set_auto_adopt(self, rid: str, on: bool) -> bool:
+        """Переключатель «Новые окна владельца видны человеку» у ссылки на проект (не демо, не пространство)."""
+        with self._locked():
+            d = self._load()
+            rec = d.get(str(rid or ""))
+            if not rec or not self.live(rec) or not rec.get("proj") or self.is_demo(rec) or rec.get("space"):
+                return False
+            rec["auto_adopt"] = bool(on)
+            self._save(d)
+            return True
+
     def browser_ok(self, rid: str) -> bool:
         """Устройство фокус-ссылки ``rid`` может работать: ссылка жива и браузер разрешён."""
         rec = self._load().get(str(rid or ""))
@@ -486,7 +503,7 @@ class Focus:
         """Действующие ссылки для «Настройки» → «Фокус-ссылки»: без токенов и секретов."""
         now = time.time()
         out = [{"id": k, "name": v.get("name", ""), "w": v.get("w"), "space": v.get("space"), "proj": v.get("proj"),
-                "created": v.get("created"), "browser": bool(v.get("browser")),
+                "created": v.get("created"), "browser": bool(v.get("browser")), "auto_adopt": Focus.auto_adopt(v),
                 "exp": v.get("exp"), "opened": v.get("opened"), "device": v.get("device", ""),
                 **({"mode": DEMO, "devices": len(v.get("devs") or {}), "opens": v.get("opens", 0)}
                    if v.get("mode") == DEMO else {}),

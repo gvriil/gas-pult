@@ -44,6 +44,13 @@ function card(x) {
       : chat ? [{ label: "Новая ссылка на этот чат", icon: "chat", sub: "только этот чат", run: () => focusLink(x.w, null, demo) }] : []),
     ...(!x.proj && proj ? [{ label: "Ссылка на проект «" + pname + "»", icon: "folder", sub: "все чаты проекта", run: () => focusLink(null, proj, demo) }] : []),
     ...(chats.length ? [{ head: "Ссылка на один чат проекта" }, ...chats.map((y) => ({ label: y.title || y.name, icon: "chat", run: () => focusLink(y.id, null, demo) }))] : []),
+    ...(x.proj && !demo ? [{ sep: true }, { label: x.auto_adopt ? "Новые окна владельца видны человеку" : "Новые окна владельца скрыты",
+      icon: x.auto_adopt ? "eye" : "lock", sub: x.auto_adopt ? "нажмите, чтобы скрывать: человек увидит только чаты, начатые по ссылке"
+        : "нажмите, чтобы показывать: окна, которые вы откроете в этой папке, станут видны человеку",
+      run: () => (x.auto_adopt ? Promise.resolve(true) : new Promise((ok) => confirmDanger("Новые окна, которые вы открываете в папке «" + x.name
+        + "», будут видны человеку по этой ссылке — с перепиской, файлами и тем, что прочитает агент. Показывать?", () => ok(true))))
+        .then(async () => { try { await api("/api/focus/auto", { id: x.id, on: !x.auto_adopt }); x.auto_adopt = !x.auto_adopt;
+          toast(x.auto_adopt ? "Новые окна будут видны человеку" : "Новые окна скрыты от человека"); card(x); } catch (e) { toast(e.message, 5000); } }) }] : []),
     { sep: true },
     { label: "Отозвать эту ссылку", icon: "x", danger: true, sub: "устройство сразу потеряет доступ, чат продолжит работать",
       run: () => confirmDanger(`Отозвать ссылку на «${x.name}»? Устройство сразу потеряет доступ, ${x.proj ? "чаты продолжат" : "чат продолжит"} работать.`,

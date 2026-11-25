@@ -154,7 +154,7 @@ class FocusPart:
             if not pid:
                 return []
             rids = [k for k, v in self.focus._load().items() if v.get("proj") == pid and focus.Focus.live(v)
-                    and not focus.Focus.whole_project(v) and not v.get("space")]
+                    and not focus.Focus.whole_project(v) and not v.get("space") and focus.Focus.auto_adopt(v)]
             for rid in rids:
                 self.focus.add_chat(rid, sid)
             if rids:
