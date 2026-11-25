@@ -104,12 +104,18 @@ function openWide(at, gs) {
   s.classList.add("setwide"); s.append(nav, pane);
 }
 
+// Отчёт «два нажатия» 25.11: подключить почту или мессенджер — первым пунктом, Настройки → пункт (2 нажатия)
+const quick = () => meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Подключить почту или мессенджер", icon: "mail",
+  sub: "Gmail, Яндекс Почта, Telegram, WhatsApp, MAX", run: () => go("go:integrations") }] : [];
+
 export function open(at) {                            // at — номер раздела: открыть его сразу (тема переключилась)
   const gs = groups();
+  if (wide() && gs[0]) gs[0] = { ...gs[0], items: [...quick(), ...gs[0].items] };
   if (wide()) return openWide(gs[at] ? at : 0, gs);
   if (at != null && gs[at]) { helpSheet("settings"); return sheet(gs[at].title, gs[at].items); }
   helpSheet("settings");
   sheet("Настройки", [
+    ...quick(),
     ...gs.map((g) => ({ label: g.title, icon: g.icon, sub: brief(g.items),
       run: () => { helpSheet("settings"); sheet(g.title, g.items); } })),
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),

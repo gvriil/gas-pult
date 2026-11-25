@@ -4482,7 +4482,7 @@ function logBlock(key, label, text, hint) {
   if (!dev()) { label = { Терминал: "Технический текст", Код: "Подробный вывод" }[label] || label; hint = ""; }   // без сырого начала
   return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em>${cCopyBtn()}</summary><pre>${esc(text)}</pre></details>`;
 }
-// Файл в сообщении (отзыв 22.11: снимок без подписи «никак не фиксирует»): строки «Файл из панели/Telegram: путь» —
+// Файл в сообщении (отзыв 22.11): строки «Файл из панели/Telegram: путь» —
 // «Снимок получен: имя» / «Файл получен: имя» (путь — в data-path для миниатюр js/media.js); «Посмотри файл.» не пишем.
 const FILE_RE = /^Файл из (?:панели|Telegram): (.+)$/gm, PIC_RE = /\.(jpe?g|png|webp|gif|heic|heif|bmp|tiff?|avif)$/i;
 function fileTxt(t) {
@@ -5462,7 +5462,7 @@ function retryLost() {                               // GAS-21: связь ве�
 }
 addEventListener("online", retryLost);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) retryLost(); });
-// «+» (Gemini №9): на ПК — сразу выбор файла (там нет камеры и галереи); на телефоне — три пункта без подписей
+// «+»: ПК — выбор файла, телефон — камера/галерея/файл
 $("plus").onclick = () => split() && !matchMedia("(pointer: coarse)").matches ? $("fFile").click() : helpSheet("sheet.attach") || sheet("Прикрепить", [
   { label: "Камера", icon: "camera", run: () => $("fCam").click() },
   { label: "Галерея", icon: "image", run: () => $("fPhoto").click() },
@@ -5495,8 +5495,7 @@ function renderFiles() {
 $("attach").onclick = (e) => { const b = e.target.closest("[data-rmf]"); if (b) { files.splice(+b.dataset.rmf, 1); renderFiles(); } };
 // Микрофон всегда на месте (предсказуемо); «Отправить» появляется рядом, когда есть что отправить.
 function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; $("hintBtn").hidden = !hint || has; }
-// Подсказка Claude Code (бледный текст в его строке ввода): в пустом поле — вместо «Сообщение для …»;
-// «вставить» (или Tab на компьютере) — текст в поле, отправляете сами.
+// Подсказка Claude Code: в пустом поле — вместо плейсхолдера; Tab — вставить
 function setHint(h) {
   if (h === hint) return;
   hint = h; sync();
@@ -7503,6 +7502,7 @@ async function simpleStart() {
   SIM.on = true; document.body.classList.add("simple-on");
   for (const id of ["login", "terms", "country", "persona"]) $(id).hidden = true;
   $("simple").hidden = false; sPaint();
+  if (meta?.role !== "viewer") part("sattach").then((m) => m.init()).catch(() => {});
   try { tg?.BackButton.hide(); } catch (e) {}
   await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
