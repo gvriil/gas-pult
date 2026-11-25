@@ -14,4 +14,8 @@ def test_part_loaded_and_buttons_in_both_headers():
 
 
 def test_light_theme_more_contrast():
-    assert "--text-secondary: #374151; --text-muted: #4B5563;" in INDEX and "--border-subtle: #D5D9DF;" in INDEX
+    """Светлая тема контрастнее (владелец 25.11) — теперь в палитре знака «Лад»: смысл, а не значения."""
+    from test_design_tokens_v2 import lum, ratio, tokens
+    t = tokens(':root, :root[data-theme="light"] {')
+    assert ratio(t["--text-secondary"], t["--bg-canvas"]) >= 7 and ratio(t["--text-muted"], t["--bg-canvas"]) >= 6
+    assert lum(t["--border-subtle"]) <= lum("#DADADA") and ratio(t["--field-border"], t["--bg-surface"]) >= 4.5

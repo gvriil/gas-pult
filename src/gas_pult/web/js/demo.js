@@ -76,11 +76,11 @@ const BIZ_SCREEN = ["● МойСклад: 12 покупателей без ак
 // кнопка во всю ширину, разделы — текстом, заголовок без обрезки, цифры tabular-nums. Только в бизнес-демо (body.biz-demo):
 // настоящий простой режим клиентов и панель владельца не меняются.
 const BIZ_CSS = `
-body.biz-demo #simple { --bz-line: rgba(21,25,34,.08); --bz-control: #7C8797; --bz-accent: #2454D6; --bz-accent-h: #1D43B1;
-  --bz-on: #FFFFFF; --bz-pending: #B45309; --bz-pending-t: #854D0E; --bz-surface: #FFFFFF; --bz-surface-2: #F0F3F7; --bz-text-3: #626D7D;
+body.biz-demo #simple { --bz-line: rgba(17,17,17,.09); --bz-control: #85827A; --bz-accent: #C2361A; --bz-accent-h: #A82E14;
+  --bz-on: #FFFFFF; --bz-pending: #B45309; --bz-pending-t: #854D0E; --bz-surface: #FFFFFF; --bz-surface-2: #EFEEEA; --bz-text-3: #5C5A54;
   font-family: "Inter RT", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-:root[data-theme="dark"] body.biz-demo #simple { --bz-line: rgba(255,255,255,.08); --bz-control: #77869C; --bz-accent: #8CA9FF;
-  --bz-accent-h: #A5BAFF; --bz-on: #101828; --bz-pending: #F5C46B; --bz-pending-t: #F5C46B; --bz-surface: #171C25; --bz-surface-2: #202632; --bz-text-3: #98A5B8; }
+:root[data-theme="dark"] body.biz-demo #simple { --bz-line: rgba(255,255,255,.08); --bz-control: #8E8C85; --bz-accent: #FF5A2D;
+  --bz-accent-h: #FF7048; --bz-on: #111111; --bz-pending: #F5C46B; --bz-pending-t: #F5C46B; --bz-surface: #181816; --bz-surface-2: #22221F; --bz-text-3: #9A988F; }
 body.biz-demo #simple .s-who b { white-space: normal; overflow: visible; text-overflow: clip; font-size: 16px; line-height: 20px; letter-spacing: -.02em; }
 @media (max-width: 480px) { body.biz-demo #simple #sHelp span { display: none; } body.biz-demo #simple #sHelp { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; } }
 body.biz-demo #simple .s-who small { white-space: nowrap; font-size: 12px; }
