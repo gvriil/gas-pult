@@ -213,7 +213,7 @@
  "login.brand": "Ladeya",
  "login.sub": "sign in with Telegram",
  "login.title": "Sign in",
- "login.note": "No password needed: confirm the sign-in in your Telegram. No access yet? The bot will ask the owner.",
+ "login.note": "No password needed: confirm the sign-in in your Telegram. No access yet? The bot will ask the space admin.",
  "login.tg": "Sign in with Telegram",
  "login.code": "Admin sign-in",
  "login.passkey": "Sign in with Face ID / a key",

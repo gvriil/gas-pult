@@ -1655,7 +1655,8 @@ def handler(panel: Panel):
             if url.path == "/api/login/tg":              # браузер ждёт подтверждения из Telegram (по своему rid)
                 return self.dispatch(lambda: self.tg_poll(q))
             if url.path == "/api/login/methods":         # экран входа: какие способы включены на этом пульте
-                return self.json(panel.login_methods())
+                host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").split(",")[0].strip()
+                return self.json(panel.login_methods(host))
             if m := OIDC_PATH.match(url.path):           # вход через Google / Яндекс ID: переходы браузера
                 return self.oidc_step(m.group(1), m.group(2), q)
             if self.headers.get(focus.HEADER):           # страница в режиме фокуса — только cookie фокуса
