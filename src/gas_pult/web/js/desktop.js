@@ -621,7 +621,14 @@ function deskShow(d) {
 let deskClipText = "";
 const deskShort = (t) => { t = t.replace(/\s+/g, " ").trim(); return t.length > 24 ? t.slice(0, 24) + "…" : t; };
 function deskClipBox(el, on) {                         // панель «Буфер»: открыть/закрыть, фокус — в поле
-  const box = el.querySelector(".desk-clip");
+  const box = el.querySelector(".desk-clip"), inp = el.querySelector(".desk-clip-in");
+  if (inp && !inp.dataset.autoPut) {                   // вставили в поле — сразу на стол, без второго шага (буфер, 25.11)
+    inp.dataset.autoPut = "1";
+    inp.addEventListener("paste", () => setTimeout(() => {
+      const t = inp.value; if (!t || !deskScr) return;
+      deskPut(t); inp.value = ""; haptic("impactOccurred", "light"); toast("Вставлено на стол: «" + deskShort(t) + "»", 2500);
+    }, 0));
+  }
   box.hidden = !on; el.querySelector(".desk-bar [data-desk=clip]")?.setAttribute("aria-expanded", String(on));
   if (on) el.querySelector(".desk-clip-in").focus({ preventScroll: true });
   setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
@@ -639,7 +646,7 @@ async function deskPaste(el) {
   let text = "";
   try { text = await navigator.clipboard.readText(); } catch (_) {}
   if (deskEl !== el) return;
-  if (!text) { deskClipBox(el, true); return toast("Вставьте текст в поле долгим нажатием и нажмите «Вставить на стол»", 5000); }
+  if (!text) { deskClipBox(el, true); return toast("Нажмите и удерживайте поле → «Вставить» — текст сразу уйдёт на стол", 5000); }
   deskPut(text); haptic("impactOccurred", "light");
   toast("Вставлено на стол: «" + deskShort(text) + "»", 2500);
 }

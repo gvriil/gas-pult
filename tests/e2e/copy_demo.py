@@ -24,7 +24,7 @@ NOCLIP = """() => { window.__clip = null;
   const no = () => Promise.reject(new Error('нет'));
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: no } });
   document.execCommand = (c) => {
-    window.__clip = c === 'copy' ? document.activeElement.value : null; return true; }; }"""
+    window.__clip = c === 'copy' ? String(getSelection()) : null; return true; }; }  // выделение Range (iPhone)"""
 
 
 def clip(pg):
