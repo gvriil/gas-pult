@@ -6710,7 +6710,7 @@ function focusProjSheet() {
       sub: (ST[x.status] || ST.idle).label + (isNew(x) ? " · новый ответ" : "") + (lastMsg(x) ? " · " + agoText(lastMsg(x)) : ""), run: () => openSession(x.id) })),
     ...(list.length ? [] : [{ info: true, icon: "chat", label: "Открытых сессий нет", sub: FOCUS_DEMO() ? "демо — только просмотр" : "начните новую или продолжите завершённую" }]),
     ...(FOCUS_DEMO() || !FOCUS_PROJ() ? [] : [{ label: "Новый чат в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
-      { label: "Завершённые чаты", icon: "file", sub: "продолжить разговор, который закрыли", run: () => focusProjDone() }])]);
+      { label: "Завершённые чаты — здесь", icon: "file", sub: "начатые по этой ссылке — продолжить", run: () => focusProjDone() }])]);
 }
 async function focusProjNew(btn) {
   const go = async () => { try { const d = await api("/api/project/session", { id: meta.focus.proj }); await refresh(); await openSession(d.id); } catch (e) { toast("Не вышло: " + e.message, 4500); } };
@@ -6721,7 +6721,7 @@ async function focusProjDone() {
   helpSheet("sheet.focus-proj");
   sheet("Завершённые чаты", d.chats.length ? d.chats.map((c) => ({ label: c.title || "Без названия", icon: "chat", sub: `${c.msgs} ${plural(c.msgs, ["сообщение", "сообщения", "сообщений"])}${c.last || c.mtime ? " · " + agoText(c.last || c.mtime) : ""} · продолжить`,
     run: async () => { try { const r = await api("/api/project/resume", { id: meta.focus.proj, sid: c.sid }); await refresh(); openSession(r.id); } catch (e) { toast("Не вышло: " + e.message, 4500); } } }))
-    : [{ info: true, icon: "chat", label: "Завершённых чатов нет" }]);
+    : [{ info: true, icon: "chat", label: "Завершённых чатов пока нет", sub: "здесь будут чаты, начатые по этой ссылке" }]);
 }
 function focusGone() {                              // сессию завершили: ссылка на сессию гаснет, на проект — живёт
   if (!FOCUS_PROJ()) return focusEnd("Чат завершён.");

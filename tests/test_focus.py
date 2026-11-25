@@ -352,10 +352,16 @@ def proj_server(s, monkeypatch):
         wid = f"@{len(wins.w) + 1}"
         wins.w[wid] = {"id": wid, "name": "shop-2", "path": data["projects"][pid]["path"], "cmd": "claude"}
         made.append((pid, wid))
-        return {"id": wid, "project": pid}
+        return {"id": wid, "project": pid, "sid": f"sid-{wid[1:]}"}
     monkeypatch.setattr(p, "project_session", project_session)
     monkeypatch.setattr(p, "project_info", lambda pid, who="owner": {"id": pid, "name": data["projects"][pid]["name"]})
-    monkeypatch.setattr(p, "project_chats", lambda pid, q="", before=None, person=None: {"chats": [], "more": False})
+    done = ["owner-old", "sid-3"]                        # завершённые журналы проекта: чат владельца и чат ссылки
+
+    def project_chats(pid, q="", before=None, person=None, only=None):
+        return {"chats": [{"sid": x} for x in done if only is None or x in only], "more": False}
+    monkeypatch.setattr(p, "project_chats", project_chats)
+    monkeypatch.setattr(p, "project_history", lambda pid, sid, before=None: {"items": [], "sid": sid})
+    monkeypatch.setattr(p, "project_resume", lambda pid, sid, person=None, uid=None: {"id": "@9", "sid": sid})
     return data, made
 
 
@@ -403,6 +409,37 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
     data["projects"].pop("p-shop")
     code, r3, _ = call(s["base"], "/api/sessions", None, cookie, FX)
     assert code == 410 and "Проект" in r3["error"]
+
+
+def test_project_link_finished_chats_only_its_own(server, monkeypatch):
+    """Штаб 25.11 (GemoGuide): по ссылке на проект — завершённые чаты, начатые по ней; чаты владельца в той же папке
+    (его серверы, почта, задачи) — не видны, не читаются и не продолжаются."""
+    s = server
+    proj_server(s, monkeypatch)
+    _, cookie = proj_link(s)
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)
+    assert code == 200 and r["chats"] == []                                         # до первого чата — пусто
+    for path, body in (("/api/project/history?id=p-shop&sid=owner-old", None),
+                       ("/api/project/resume", {"id": "p-shop", "sid": "owner-old"})):
+        code, r2, _ = call(s["base"], path, body, cookie, FX)
+        assert code == 403 and r2.get("code") == "focus_scope", (path, code, r2)
+    code, n, _ = call(s["base"], "/api/project/session", {"id": "p-shop"}, cookie, FX)   # новый чат по ссылке
+    assert code == 200 and n["sid"] == "sid-3"
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)
+    assert [c["sid"] for c in r["chats"]] == ["sid-3"]                               # свой — виден, чужой — нет
+    assert call(s["base"], "/api/project/history?id=p-shop&sid=sid-3", None, cookie, FX)[0] == 200
+    code, rr, _ = call(s["base"], "/api/project/resume", {"id": "p-shop", "sid": "sid-3"}, cookie, FX)
+    assert code == 200 and rr["sid"] == "sid-3"
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, owner(s))   # владелец видит всё
+    assert [c["sid"] for c in r["chats"]] == ["owner-old", "sid-3"]
+
+
+def test_store_add_chat(tmp_path):
+    f = focus.Focus(tmp_path / "focus.json")
+    rid = f.new({"id": "", "path": "/p", "name": "p"}, 1, proj="p")["id"]
+    assert f.add_chat(rid, "a") is True and f.add_chat(rid, "a") is False and f.add_chat(rid, "") is False
+    assert f.add_chat("нет", "b") is False
+    assert focus.Focus.chats(f._load()[rid]) == {"a"}
 
 
 def test_session_link_cannot_open_project(server, monkeypatch):

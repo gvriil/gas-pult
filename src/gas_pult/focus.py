@@ -52,6 +52,7 @@ COOKIE = "gp_focus"
 HEADER = "X-Gp-Focus"                   # запрос страницы в режиме фокуса: проверяется только cookie фокуса
 KEEP = 30 * 86400                       # погасшие записи — месяц для списка, потом чистим
 TOKEN_LEN = (24, 64)
+CHATS_MAX = 300                         # чатов, начатых по ссылке, в её записи (старые — вытесняются)
 GRACE = 30                              # с: окна сессии нет — столько считаем, что её перезапускают
 DEMO = "demo"                           # вид ссылки: несколько устройств, только просмотр и выбор вариантов
 DEMO_MAX = 20                           # устройств на одну демо-ссылку
@@ -427,6 +428,26 @@ class Focus:
             if n:
                 self._save(d)
             return n
+
+    def add_chat(self, rid: str, sid: str) -> bool:
+        """Чат начат (или продолжен) по ссылке ``rid``: его id — в записи ссылки. Только такие завершённые чаты ссылка
+        показывает и продолжает (штаб 25.11: чаты проекта, начатые владельцем, по ссылке не видны)."""
+        sid = str(sid or "")
+        if not sid:
+            return False
+        with self._locked():
+            d = self._load()
+            rec = d.get(str(rid or ""))
+            if not rec or sid in (rec.get("sids") or []):
+                return False
+            rec["sids"] = [*(rec.get("sids") or []), sid][-CHATS_MAX:]
+            self._save(d)
+            return True
+
+    @staticmethod
+    def chats(rec: dict) -> set[str]:
+        """Чаты, начатые по этой ссылке (``add_chat``)."""
+        return {str(x) for x in rec.get("sids") or []}
 
     def set_browser(self, rid: str, on: bool) -> bool:
         """Разрешить (или запретить) фокус-пользователю подключить свой браузер (владелец 17.11)."""
