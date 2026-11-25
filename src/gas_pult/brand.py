@@ -21,6 +21,24 @@ OLD_E = ("Ладеей", "Ладея", "Ладеи", "Ладее", "Ладею")
 E_COLOR = {"light": "#E8421C", "dark": "#FF5A2D", "light_small": "#C2361A"}
 
 
+# «э» в названии — красная ВЕЗДЕ в интерфейсе (владелец 25.11: «делай э в интерфейсе красного цвета везде»), в любом
+# падеже. Исключения, где окраска невозможна: <title>, манифест, og, текстовые уведомления Telegram и пуши, письма.
+WORD = re.compile(r"(?<![А-Яа-яЁё])(Лад)(э)(?=(?:я|и|е|ю|ей)(?![А-Яа-яЁё]))")
+_NO_PAINT = re.compile(r"<(script|style|title|textarea)\b[^>]*>.*?</\1\s*>|<!--.*?-->|<[^>]*>", re.S | re.I)
+
+
+def paint_html(html: str) -> str:
+    """Готовая разметка: в тексте (не в тегах, атрибутах, <title>, <script>, <style>, <textarea>) каждое «Ладэ…» →
+    «Лад<span class="e">э</span>…». Цвет — CSS панели (.e). Уже обёрнутое не трогаем: внутри «Лад<span» нет «Ладэ»."""
+    out, at = [], 0
+    for m in _NO_PAINT.finditer(html):
+        out.append(WORD.sub(r'\1<span class="e">\2</span>', html[at:m.start()]))
+        out.append(m.group(0))
+        at = m.end()
+    out.append(WORD.sub(r'\1<span class="e">\2</span>', html[at:]))
+    return "".join(out)
+
+
 def wordmark(name: str = APP_NAME_RU, cls: str = "e") -> str:
     """Знак-название в HTML: «Лад<span class="e">э</span>я» — красную «э» красит CSS (``E_COLOR``). Латиница и любое
     другое слово — без изменений."""

@@ -1023,6 +1023,7 @@ def handler(panel: Panel):
     # превью ссылки и экраны запуска (brand.head_tags) — вставляются в <head> при старте; полный адрес — из запроса
     tags = brand.head_tags().replace(brand.DEFAULT, brand.NAME_RU).encode()
     page = page.replace(b'<link rel="manifest"', tags + b'\n<link rel="manifest"', 1)
+    page = brand.paint_html(page.decode("utf-8")).encode("utf-8")   # «э» в названии — красная везде (владелец 25.11)
     manifest = json.dumps(brand.manifest(), ensure_ascii=False).encode()
     manifest_focus = json.dumps(brand.manifest(focus=True), ensure_ascii=False).encode()
     # части интерфейса по требованию (#191): web/js/<имя>.js — нативные ES-модули без сборки; читаются и сжимаются

@@ -64,3 +64,18 @@ def test_wordmark_red_e_only_as_mark():
     assert brand.APP_NAME_RU == "Ладэя" and brand.FORMS["вин"] == "Ладэю" and brand.APP_NAME_EN == "Ladeya"
     assert brand.wordmark() == 'Лад<span class="e">э</span>я' and brand.wordmark("Ladeya") == "Ladeya"
     assert brand.E_COLOR == {"light": "#E8421C", "dark": "#FF5A2D", "light_small": "#C2361A"}
+
+
+def test_red_e_everywhere_in_ready_markup():
+    """Владелец 25.11: «делай э в интерфейсе красного цвета везде». Готовая страница (как её отдаёт сервер) — ни одного
+    «Ладэ…» без обёртки в тексте; <title>, атрибуты (meta, og) и скрипты — исключения, там окраска невозможна."""
+    from gas_pult import webapp  # noqa: F401 — страницу собирает handler; здесь — та же функция на исходнике
+    page = brand.paint_html((ROOT / "src/gas_pult/web/index.html").read_text(encoding="utf-8"))
+    text = re.sub(r"<(script|style|title|textarea)\b[^>]*>.*?</\1\s*>|<!--.*?-->|<[^>]*>", " ", page, flags=re.S | re.I)
+    assert not brand.WORD.search(text), brand.WORD.search(text)
+    assert brand.paint_html("<p>Команда Ладэи и Ладэю</p><title>Ладэя</title>") == \
+        '<p>Команда Лад<span class="e">э</span>и и Лад<span class="e">э</span>ю</p><title>Ладэя</title>'
+    assert brand.paint_html('<meta content="Ладэя">') == '<meta content="Ладэя">'
+    assert brand.paint_html(brand.paint_html("<b>Ладэя</b>")) == '<b>Лад<span class="e">э</span>я</b>'   # не дважды
+    look = (ROOT / "src/gas_pult/web/js/look.js").read_text(encoding="utf-8")
+    assert "splitText" in look and "MutationObserver" in look        # новый текст в панели — окрашивается сам

@@ -23,9 +23,11 @@ body.bb-on:not(.bb-done) .bb-bg .r { animation: bb-rise 2.4s cubic-bezier(.2,.7,
 body.lk-intro #home .card { animation: lk-in .22s cubic-bezier(.2,.7,.2,1) both; }
 body.lk-intro #home .card:nth-of-type(2) { animation-delay: 40ms; } body.lk-intro #home .card:nth-of-type(3) { animation-delay: 80ms; }
 body.lk-intro #home .card:nth-of-type(4) { animation-delay: 120ms; } body.lk-intro #home .card:nth-of-type(n+5) { animation-delay: 160ms; }
-/* знак-название «Ладэя»: «э» красная (владелец 25.11) — в шапке, боковой панели и заголовке главной; в обычном тексте нет */
-.brand-text .e { -webkit-text-fill-color: #E8421C; color: #E8421C; }
-:root[data-theme="dark"] .brand-text .e { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
+/* «э» в «Ладэя» (любой падеж) — красная везде (владелец 25.11): мелкий текст на светлом — #C2361A (AA), знак-название
+   крупно — #E8421C, на тёмном — #FF5A2D. Обёртку ставит сервер (brand.paint_html) и paintText ниже — для нового текста */
+.e { color: #C2361A; }
+.brand-text .e, .lg-brand .e { -webkit-text-fill-color: #E8421C; color: #E8421C; }
+:root[data-theme="dark"] .e, :root[data-theme="dark"] .brand-text .e { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
 @keyframes lk-in { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }   /* «Ответить» в строке состояния — путь к вопросу, не главное действие */
 `;
 const SVG = `<svg viewBox="0 0 120 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
@@ -45,21 +47,41 @@ function sync() {
   }
 }
 
-// Знак-название: в элементах .brand-text слово «Ладэя» → «Лад<span class="e">э</span>я». Текст ставит ядро
-// (textContent), поэтому следим за изменениями и оборачиваем снова; другой текст (название проекта) не трогаем.
-function markWord() {
-  for (const el of document.querySelectorAll(".brand-text")) {
-    const host = el.querySelector("button") || el;
-    if (host.childElementCount === 0 && host.textContent.trim() === "Ладэя") host.innerHTML = 'Лад<span class="e">э</span>я';
+// «э» в «Ладэя» — красная везде (владелец 25.11): любой текст страницы — словари, чат, тур, подсказки, демо — в любом
+// падеже. Узел текста режем на месте (splitText): прежний узел остаётся первым ребёнком — ядро (setHTML) не считает
+// элемент изменённым и не перерисовывает. Поля ввода, скрипты, стили и уже обёрнутое не трогаем.
+const WORD = /(?<![А-Яа-яЁё])Лад(?=э(?:я|и|е|ю|ей)(?![А-Яа-яЁё]))/g;
+const SKIP = "script,style,textarea,input,title,.e,[contenteditable]";
+function paintText(root) {
+  if (!root || root.nodeType === 3 && !(root = root.parentElement)) return;
+  if (root.nodeType !== 1 || root.closest?.(SKIP)) return;
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => n.data.includes("Ладэ")
+    && !n.parentElement.closest(SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const hits = []; while (tw.nextNode()) hits.push(tw.currentNode);
+  for (let n of hits) {
+    WORD.lastIndex = 0;
+    let m;
+    while ((m = WORD.exec(n.data))) {
+      const e = n.splitText(m.index + 3), rest = e.splitText(1), span = document.createElement("span");
+      span.className = "e"; e.replaceWith(span); span.append(e);
+      n = rest; WORD.lastIndex = 0;
+    }
   }
 }
+const markWord = () => paintText(document.body);
 
 export function init() {
   if (document.getElementById("bbStyle")) return sync();
   markWord();
-  let queued = false;                                 // не чаще раза за кадр: лента чата меняется часто
-  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; markWord(); }); } }).observe(document.body, { subtree: true, childList: true, characterData: true,
-    attributes: true, attributeFilter: ["class"] });
+  let queued = new Set();                             // только изменённые места, не чаще раза за кадр: лента меняется часто
+  new MutationObserver((list) => {
+    const first = !queued.size;
+    for (const r of list) {
+      if (r.type === "characterData") queued.add(r.target);
+      else for (const x of r.addedNodes) queued.add(x);
+    }
+    if (first && queued.size) requestAnimationFrame(() => { const q = [...queued]; queued = new Set(); q.forEach(paintText); });
+  }).observe(document.body, { subtree: true, childList: true, characterData: true });
   if (!document.querySelector("#home .card")) {     // карточек ещё нет — появятся с движением; уже нарисованы — не дёргаем
     document.body.classList.add("lk-intro"); setTimeout(() => document.body.classList.remove("lk-intro"), 1500);
   }
