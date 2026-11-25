@@ -2151,11 +2151,11 @@ def handler(panel: Panel):
             # папке — его серверы, почта, задачи). Новый чат и «Продолжить» записывают id разговора в ссылку.
             if path == "/api/project/sessions":
                 before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
-                return panel.project_chats(rec["proj"], q.get("q", ""), before, self.person(),
-                                           only=sorted(focus.Focus.chats(rec)))
+                only = None if focus.Focus.whole_project(rec) else sorted(focus.Focus.chats(rec))
+                return panel.project_chats(rec["proj"], q.get("q", ""), before, self.person(), only=only)
             if path in ("/api/project/history", "/api/project/resume"):
                 sid = str((q if method == "GET" else b).get("sid") or "")
-                if sid not in focus.Focus.chats(rec):
+                if sid not in focus.Focus.chats(rec) and not focus.Focus.whole_project(rec):
                     raise focus.Denied("этот чат начат не по этой ссылке")
             if path in ("/api/project/session", "/api/project/resume"):
                 r = self.post(path)

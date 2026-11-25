@@ -446,8 +446,22 @@ class Focus:
 
     @staticmethod
     def chats(rec: dict) -> set[str]:
-        """Чаты, начатые по этой ссылке (``add_chat``)."""
+        """Чаты, начатые по этой ссылке (``add_chat``) или возвращённые ей владельцем (штаб 25.11)."""
         return {str(x) for x in rec.get("sids") or []}
+
+    @staticmethod
+    def whole_project(rec: dict) -> bool:
+        """Ссылка видит весь проект — все окна и все завершённые чаты, как до 25.11: демо-ссылка (показ клиенту) и
+        личная ссылка владельца (флаг ``owner_link``: владелец открывает свой проект на другом устройстве, людям её не
+        дают; штаб 25.11 — ссылки владельца на штаб). Флаг ставит только владелец, вручную; по умолчанию его нет."""
+        return Focus.is_demo(rec) or rec.get("owner_link") is True
+
+    @staticmethod
+    def owns_window(rec: dict, w: dict) -> bool:
+        """Окно — этой ссылки: в метке ``@gas_pult_focus`` её id (меток может быть несколько, через пробел — у проекта
+        бывает несколько ссылок) или разговор окна записан в ссылке (``chats``: вернули чат — видно и живое окно)."""
+        rid = str(rec.get("id") or "")
+        return bool(rid) and (rid in str(w.get("focus") or "").split() or str(w.get("sid") or "") in Focus.chats(rec))
 
     def set_browser(self, rid: str, on: bool) -> bool:
         """Разрешить (или запретить) фокус-пользователю подключить свой браузер (владелец 17.11)."""

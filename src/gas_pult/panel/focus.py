@@ -136,10 +136,10 @@ class FocusPart:
             wins = self.tmux.windows() if wins is None else wins
         except (OSError, LookupError):
             return set()
-        if focus.Focus.is_demo(rec):
+        if focus.Focus.whole_project(rec):               # демо и личная ссылка владельца — весь проект
             pd = self.project_data()
             return {w["id"] for w in wins if not w.get("space") and self.project_of(pd, w) == rec["proj"]}
-        return {w["id"] for w in wins if rid and not w.get("space") and w.get("focus") == rid}
+        return {w["id"] for w in wins if rid and not w.get("space") and focus.Focus.owns_window(rec, w)}
 
     SPAWN_DEPTH = 4                         # окно из окна из окна…: дальше — не ищем (и цикл опций не крутим вечно)
 
@@ -238,7 +238,7 @@ class FocusPart:
             w = self.tmux.window(wid)
         if not w or w.get("space"):
             return False
-        mine = focus.Focus.is_demo(rec) or w.get("focus") == rec.get("id")     # демо — все окна проекта
+        mine = focus.Focus.whole_project(rec) or focus.Focus.owns_window(rec, w)   # демо, владелец — весь проект
         return (mine and self.project_of(self.project_data(), w) == rec["proj"]) or wid in self.focus_spawned(rec)
 
     def focus_token(self, url: str) -> dict:

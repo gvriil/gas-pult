@@ -746,3 +746,39 @@ def test_names_hide_window_names_and_status_titles():
     assert 'title: ok ? x.title : ""' in page and 'name: ok ? x.title : "Новый чат"' in page
     links = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/focuslinks.js").read_text(encoding="utf-8")
     assert 'if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || x.name || "Чат"' in links   # 21.11: часть
+
+
+def test_window_owned_by_mark_list_or_adopted_chat(server, monkeypatch):
+    """Штаб 25.11 («восстанови сессии в фокус-ссылках»): окно видно ссылке, если в метке её id (меток несколько —
+    через пробел) или если его разговор владелец вернул ссылке (sids); чужое окно — по-прежнему нет."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    rid = d["id"]
+    s["wins"].w["@1"].update(focus="другая " + rid)                      # метка двух ссылок
+    s["wins"].w["@3"] = {"id": "@3", "name": "shop-3", "path": "/srv/shop", "cmd": "claude", "sid": "old-chat"}
+    s["wins"].w["@4"] = {"id": "@4", "name": "shop-4", "path": "/srv/shop", "cmd": "claude", "sid": "owner-chat"}
+    assert s["p"].focus.add_chat(rid, "old-chat") is True              # вернули чат ссылке
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and sorted(x["id"] for x in r["sessions"]) == ["@1", "@3"], r
+    assert call(s["base"], "/api/history?w=@3", None, cookie, FX)[0] == 200
+    assert call(s["base"], "/api/history?w=@4", None, cookie, FX)[0] == 403   # окно владельца — скрыто
+    assert focus.Focus.owns_window({"id": "x"}, {"focus": "xy"}) is False      # «x» не совпадает с частью «xy»
+
+
+def test_owner_link_sees_whole_project(server, monkeypatch):
+    """Личная ссылка владельца (owner_link, штаб 25.11: ссылки владельца на штаб) — весь проект, как до #517: окна
+    владельца, все завершённые чаты, история и «Продолжить». Без флага — только своё."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    assert [x["id"] for x in call(s["base"], "/api/sessions", None, cookie, FX)[1]["sessions"]] == []
+    data = s["p"].focus._load()
+    data[d["id"]]["owner_link"] = True
+    s["p"].focus._save(data)
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and [x["id"] for x in r["sessions"]] == ["@1"]
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)
+    assert code == 200 and [c["sid"] for c in r["chats"]] == ["owner-old", "sid-3"]
+    assert call(s["base"], "/api/project/history?id=p-shop&sid=owner-old", None, cookie, FX)[0] == 200
+    assert call(s["base"], "/api/project?id=p-other", None, cookie, FX)[0] == 403     # чужой проект — всё равно нет
