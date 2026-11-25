@@ -3101,8 +3101,7 @@ const loud = (s) => s?.status === "busy" || s?.status === "dialog";
 const ctxWarn = (s) => (ctxUsed(s) ?? 0) > 85 ? `<span class="ctx warn" title="Разговор почти заполнил память — Claude сожмёт его сам">Контекст: ${ctxUsed(s)}%</span>` : "";
 const chatDetails = (id) => part("details").then((m) => m.open(id));   // «Подробнее» — разработчику (js/details.js)
 const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
-// Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
-// лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
+// Под полем ввода: контекст и лимиты (ctxsnap.py); нет данных — строки нет.
 const EFFORT_RU = { auto: "авто", low: "низкие", medium: "средние", high: "высокие", xhigh: "очень высокие", max: "максимум" };
 function resetAt(ts) {                               // «до вс 00:30» / «до 14:30» — когда лимит обнулится
   if (!ts) return "";
@@ -7905,6 +7904,7 @@ function sSettings() {
   const mode = params.get("theme") || store("theme") || "auto";
   const html = `<p class="s-lbl">${esc(T("set.lang"))}</p><div class="scn-opts">${LANGS.map((l) => sChip(l === LANG, `data-lang="${l}"`, T("set.lang." + l))).join("")}</div>
     ${SIM.w && canNew() ? `<div class="scn-opts">${sChip(false, 'data-reply="1"', T("set.answers"), ic("chat"))}</div><p class="note">${esc(T("set.answers.sub"))}</p>` : ""}
+    ${meta?.role !== "viewer" ? `<div class="scn-opts">${sChip(false, 'data-conn="1"', T("s.conn"), ic("mail"))}</div>` : ""}
     <p class="s-lbl">${esc(T("set.theme"))}</p><div class="scn-opts">${["auto", "light", "dark"].map((m) => sChip(m === mode, `data-theme="${m}"`, T("set.theme." + m))).join("")}</div>
     ${UI ? `<p class="s-lbl">${esc(T("caps.title"))}</p><p class="note">${esc(T("caps.entry.sub", { role: personaTitle(UI.persona) }))}</p>
     <div class="scn-opts">${sChip(false, 'data-caps="1"', T("caps.open"), ic("settings"))}</div>` : `<p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
@@ -7917,6 +7917,7 @@ function sSettings() {
     if (b.dataset.theme) { store("theme", b.dataset.theme); applyTheme(); bg.remove(); return sSettings(); }
     if (b.dataset.reply) { bg.remove(); return sReply(); }
     if (b.dataset.full) { bg.remove(); return switchMode(false); }
+    if (b.dataset.conn) { bg.remove(); return part("sconnect").then((m) => m.open()); }
     if (b.dataset.caps) { bg.remove(); return capsSheet(); }
     if (b.dataset.device) { bg.remove(); return deviceSheet(); }
     if (b.dataset.bug) { bg.remove(); return part("bugreport").then((m) => m.open(SIM.w)); }

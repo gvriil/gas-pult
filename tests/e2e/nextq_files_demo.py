@@ -19,7 +19,12 @@ import _onebrowser  # noqa: F401  — e2e с браузером по одном�
 CLIP = """() => { window.__clip = null;
   const w = (t) => { window.__clip = t; return Promise.resolve(); };
   try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: w } }); }
-  catch (e) { navigator.clipboard.writeText = w; } }"""
+  catch (e) { try { navigator.clipboard.writeText = w; } catch (e2) {} }
+  // WebKit: подмена clipboard не всегда принимается — панель копирует запасным путём execCommand («copy»); ловим и его
+  const ex = document.execCommand.bind(document);
+  document.execCommand = (c, ...a) => { if (c === 'copy') { const el = document.activeElement;
+    window.__clip = el && 'value' in el && el.value ? el.value : String(getSelection()); return true; }
+    return ex(c, ...a); }; }"""
 NOISE = ("404", "interactive-widget")
 PHRASES = ["Сколько дублей нашлось по телефону?", "Покажи дубли списком",
            "Объедини дубли, но сначала покажи, что изменится"]
@@ -56,11 +61,13 @@ def check(pg, tag: str, phone: bool, shots: str, name: str):
     assert "Копировать" in qbtn.inner_text(), f"{tag}: у кнопки нет подписи"
     assert qbtn.evaluate("b => getComputedStyle(b).opacity") == "1" and qbtn.is_visible(), f"{tag}: кнопка не видна"
     pg.evaluate(CLIP)
-    qbtn.click()
-    try:                                               # WebKit: копирование успевает не сразу — ждём до 3 с
-        pg.wait_for_function("() => window.__clip != null", timeout=3000)
-    except Exception:
-        pass
+    for _ in range(2):                                 # WebKit: копирование успевает не сразу — ждём, раз — повторяем
+        qbtn.click()
+        try:
+            pg.wait_for_function("() => window.__clip != null", timeout=3000)
+            break
+        except Exception:
+            pg.evaluate(CLIP)
     assert pg.evaluate("() => window.__clip") == SAMPLE, f"{tag}: образец {pg.evaluate('() => window.__clip')!r}"
     assert "Скопировано" in qbtn.inner_text(), f"{tag}: нет «Скопировано» у образца"
     code = pg.locator("#content .msg.ai .codebox:has(pre) .ccopy").first
