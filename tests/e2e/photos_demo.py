@@ -1,6 +1,6 @@
 """Фото в ленте и полноэкранный просмотр (владелец 16.11; Playwright).
 
-    python tests/e2e/photos_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/photos_demo.py http://127.0.0.1:8797/?demo&dev
 
 В ленте сообщение с двумя путями к фото → две миниатюры. Нажатие — просмотр: щипок (два касания) до 5×,
 двойной тап 1× ↔ 2,5×, свайп вбок — второе фото («2 из 2»), свайп вниз — закрыть; компьютер — колесо, стрелки, Esc.
@@ -107,4 +107,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

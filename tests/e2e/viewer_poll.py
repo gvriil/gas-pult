@@ -1,6 +1,6 @@
 """Опрос только для зрителя (Playwright с подменой часов; pytest запускает, только если есть браузер).
 
-    python tests/e2e/viewer_poll.py http://127.0.0.1:8797/?demo
+    python tests/e2e/viewer_poll.py http://127.0.0.1:8797/?demo&dev
 
 Панель открыта и её касаются: идёт работа (сессия работает) — список сессий раз в 3 с; все стоят — раз в 10 с.
 Вкладка скрыта — ни одного опроса (каждый опрос на сервере —
@@ -97,4 +97,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

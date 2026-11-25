@@ -57,7 +57,7 @@ def test_e2e_tool_card():
                 pg = br.new_page(viewport={"width": w, "height": h})
                 errs = []
                 pg.on("pageerror", lambda e, errs=errs: errs.append(str(e)))
-                pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@2&tool=bash&noscroll")
+                pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@2&tool=bash&noscroll")
                 pg.wait_for_selector(".ask.tc", timeout=10000)
                 assert "npm run build" in pg.inner_text(".ask.tc .tc-target")
                 assert pg.inner_text(".ask.tc .tc-yes") == "Да" and pg.locator(".ask.tc .tc-no").count() == 1

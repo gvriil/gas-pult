@@ -27,7 +27,7 @@ def test_e2e_tty_copy_on_phone():
             pg = br.new_page(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
             pg.evaluate("meta.tty = true; window.__cp = [];"
                         " window.copyText = async (t) => { __cp.push(t); return true; }; ttyOpen('@1'); 0")

@@ -1,7 +1,7 @@
 """«Изменена N назад» в браузере: agoText/agoExact из index.html дают то же, что ago.py (Playwright; pytest
 запускает, если есть Playwright и Chrome — tests/test_ago.py).
 
-    python tests/e2e/ago_check.py http://127.0.0.1:8797/?demo
+    python tests/e2e/ago_check.py http://127.0.0.1:8797/?demo&dev
 
 Страница открывается в часовом поясе ``TZ`` (как у процесса Python), язык — ru и en. Отдельно — демо 390 и 1366 px:
 на карточках и в шапке есть отметка времени, текст обновляется на месте (тот же узел), консоль без ошибок.

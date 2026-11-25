@@ -7467,7 +7467,7 @@ const canNew = () => meta?.role !== "viewer";
 // Язык и режим — у каждого свои, на сервере. Язык, выбранный на первом экране до входа, сервер запоминает при входе.
 function simplePrefs(m) {
   let p = m?.prefs || { simple: false, lang: "ru", saved: false };
-  if (DEMO) p = { simple: params.get("simple") === "1", lang: LANG, saved: true };
+  if (DEMO) p = { simple: params.get("simple") === "1" || (!params.has("dev") && params.get("simple") !== "0"), lang: LANG, saved: true };   // бизнес-демо по QR — простой режим (25.11)
   else if (!p.saved && p.lang !== LANG && m?.role !== "owner") { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }   // владельцу — только его выбор
   if (p.lang !== LANG && LANGS.includes(p.lang)) { LANG = p.lang; dictReady = loadDict(LANG); }
   store("lang", LANG);
@@ -7482,7 +7482,7 @@ async function setLang(l) {
   if (SIM.on) { sPaint(); sRender(); $("sAsk").dataset.sig = ""; sAsk(); sAct(); }
 }
 async function switchMode(on) {                       // простой ⇄ полный: настройка на сервере, панель — заново
-  if (DEMO) { const u = new URL(location.href); on ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("lang", LANG); location.replace(u); return; }
+  if (DEMO) { const u = new URL(location.href); u.searchParams.set("simple", on ? "1" : "0"); u.searchParams.set("lang", LANG); location.replace(u); return; }
   try { await api("/api/prefs", { simple: on }); } catch (e) { return toast(on ? "Не получилось включить простой режим: " + e.message : T("s.fail"), 4000); }
   location.reload();
 }

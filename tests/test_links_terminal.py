@@ -116,7 +116,7 @@ def test_e2e_link_sheet_remembers_site():
             pg = br.new_page(viewport={"width": 390, "height": 844})
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
             # демо — без шторки (как сейчас); включаем «владельца с рабочим столом» вручную и подменяем сеть
             pg.evaluate("""() => { meta.role = 'owner'; meta.desktop = true; window.__calls = [];

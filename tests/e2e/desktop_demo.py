@@ -1,6 +1,6 @@
 """Рабочий стол Ubuntu внутри пульта (#206; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/desktop_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/desktop_demo.py http://127.0.0.1:8797/?demo&dev
 
 Владелец 14.11: «внутри пульта кнопочка … открыть Ubuntu сразу». Владелец 15.11: «окно с адаптивным дизайном под
 размер экрана, с горизонтальной и вертикальной ориентацией и возможностью зума»; «копия не проходит … пароль
@@ -180,4 +180,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

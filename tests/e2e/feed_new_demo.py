@@ -1,6 +1,6 @@
 """Разделитель «Новое» в ленте (#189, UI/UX п.5; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/feed_new_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/feed_new_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Демо: прошлый просмотр @3 закончился на сообщении 9 → при открытии «Новое» стоит прямо перед ответом агента 10.
 Первое открытие (просмотра не было) — разделителя нет. Ушли и открыли снова — всё прочитано, разделителя нет.
@@ -55,5 +55,6 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")
     print("ok")

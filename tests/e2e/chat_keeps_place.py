@@ -8,7 +8,7 @@
   новое сообщение — ранние на месте, место чтения не сдвинулось, внизу «новое ↓»;
 - журнал окна сменился (другой id в rev) — переписка заново, с конца.
 
-Запуск: /tmp/gp-venv/bin/python tests/e2e/chat_keeps_place.py "http://127.0.0.1:<порт>/?demo" [папка-снимков]
+Запуск: /tmp/gp-venv/bin/python tests/e2e/chat_keeps_place.py "http://127.0.0.1:<порт>/?demo&dev" [папка-снимков]
 """
 import asyncio
 import re
@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 from playwright.async_api import async_playwright
 
-BASE, SHOTS = "http://127.0.0.1:8797/?demo", ""
+BASE, SHOTS = "http://127.0.0.1:8797/?demo&dev", ""
 
 LAST = """() => { const ms = [...document.querySelectorAll('#content .msg')]; const last = ms.at(-1);
   return {n: ms.length, lastIn: atEnd(8),     // лента в самом низу: под последним ответом — только его команды и статус

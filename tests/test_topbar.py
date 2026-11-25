@@ -38,7 +38,7 @@ def test_e2e_topbar_one_row_and_colors():
                 pg = br.new_page(viewport={"width": w, "height": 760}, is_mobile=True, has_touch=True)
                 errs = []
                 pg.on("pageerror", lambda e, errs=errs: errs.append(str(e)))
-                pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&space=1&theme={theme}&noscroll")
+                pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&space=1&theme={theme}&noscroll")
                 pg.wait_for_timeout(1500)
                 pg.evaluate("meta.role = 'owner'; meta.desktop = true; meta.tty = true;"
                             " UI = {...(UI || {}), own_space: true}; paintSpaces()")
