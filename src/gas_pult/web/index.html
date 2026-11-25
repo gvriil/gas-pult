@@ -7976,7 +7976,8 @@ if (DEMO) {
 }
 dictReady.then(paintLoginLang);
 dictReady.then(agoTick);                              // «изменена N назад» — тексты из словаря
-if (DEMO && params.get("view") === "login") showLogin(); else if (FOCUS) focusStart(); else start();
+if (params.get("demo") === "retail") part("retail").then((m) => m.init()).catch(() => {});   // сценарий для ритейла (js/retail.js)
+else if (DEMO && params.get("view") === "login") showLogin(); else if (FOCUS) focusStart(); else start();
 
 </script>
 </body>
