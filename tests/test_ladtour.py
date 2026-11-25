@@ -17,7 +17,7 @@ def test_at_most_five_steps_and_home_last():
 
 
 def test_home_step_both_phones_and_skip_when_installed():
-    assert "Поделиться" in TOUR and "На экран «Домой»" in TOUR and "Установить приложение" in TOUR
+    assert "Поделиться" in TOUR and "На экран «Домой»" in TOUR and "Установить и создать ярлык" in TOUR
     assert '"(display-mode: standalone)"' in TOUR and "navigator.standalone" in TOUR
     assert "s.home ? !installed()" in TOUR
     assert '<img src="/icon-192.png"' in TOUR          # значок — из ladeya-app-icon.svg (tools/brand_images.py)

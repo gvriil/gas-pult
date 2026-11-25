@@ -60,12 +60,14 @@ function how(os) {
   const box = (icon, text, hl) => `<div class="s"><span class="${hl ? "hl" : ""}">${icon}</span><span>${text}</span></div>`;
   if (os === "ios") return {
     pic: box(SHARE, en ? "Share" : "Поделиться", true) + ARROW + box(PLUS, en ? "Add to Home Screen" : "На экран «Домой»") + ARROW + box(APP, en ? "Ladeya" : "Ладея"),
-    steps: en ? ["Open this page in Safari.", "Tap Share at the bottom of the screen.", "Choose “Add to Home Screen”, then “Add”."]
-      : ["Откройте эту страницу в Safari.", "Внизу нажмите «Поделиться».", "Выберите «На экран «Домой»», затем «Добавить»."] };
+    // Apple, «Добавление значка сайта на экран «Домой»»: support.apple.com/ru-ru/guide/iphone/iph42ab2f3a7/ios (25.11)
+    steps: en ? ["Open this page in Safari.", "Tap the page menu ⋯, then tap Share.", "Scroll down and tap Add to Home Screen. Then tap Add."]
+      : ["Откройте эту страницу в Safari.", "Нажмите кнопку меню страницы ⋯, затем «Поделиться».", "Прокрутите вниз, нажмите «На экран «Домой»», затем «Добавить»."] };
   return {
-    pic: box(DOTS, en ? "Menu" : "Меню", true) + ARROW + box(INST, en ? "Install app" : "Установить приложение") + ARROW + box(APP, en ? "Ladeya" : "Ладея"),
-    steps: en ? ["Open this page in Chrome.", "Tap the menu ⋮ in the top right corner.", "Choose “Install app” (or “Add to Home screen”)."]
-      : ["Откройте эту страницу в Chrome.", "Нажмите меню ⋮ в правом верхнем углу.", "Выберите «Установить приложение» (или «Добавить на гл. экран»)."] };
+    pic: box(DOTS, en ? "More ⋮" : "Меню ⋮", true) + ARROW + box(INST, en ? "Install and create shortcut" : "Установить и создать ярлык") + ARROW + box(APP, en ? "Ladeya" : "Ладея"),
+    // Google, «Как использовать веб-приложения» (Android): support.google.com/chrome/answer/9658361 (25.11)
+    steps: en ? ["Open this page in Chrome.", "On the right of the address bar, tap More ⋮.", "Tap Install and create shortcut, then Install."]
+      : ["Откройте эту страницу в Chrome.", "Справа от адресной строки нажмите ⋮.", "Нажмите «Установить и создать ярлык», затем «Установить»."] };
 }
 
 export const installed = () => {
