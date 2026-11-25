@@ -505,5 +505,9 @@
  "login.inv.welcome": "You are invited to «{t}». This is your assistant: describe a task in words — it will do it.",
  "login.sub.inv": "sign-in by invitation",
  "s.answer.wait": "Pick an option above — your text stays in the field and won't be lost",
- "set.bug": "Report a problem"
+ "set.bug": "Report a problem",
+ "s.attach": "Attach a photo or file",
+ "s.attach.up": "Uploading “{n}”…",
+ "s.attach.fail": "“{n}” was not sent: {e}",
+ "s.attach.demo": "In the demo the file goes nowhere"
 }
