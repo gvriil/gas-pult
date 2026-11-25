@@ -1,16 +1,18 @@
-"""Название продукта, которое видит человек (владелец 20.11: «gavrila app»: латиницей — «Gavrila», по-русски —
-«Гаврила»; главный адрес будет gavrila.app). Здесь — единственное место: сервер подставляет его в страницу
-(``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма, уведомления и сообщения бота.
-Код, пакет и пути остаются ``gas-pult``/«пульт». Знак — v2 (владелец 21.11: «возьми за основу это» — галстук с перьями
-и надпись Gavrila), файлы — ``web/brand/`` (источник — Диск владельца, «Бренд/Gavrila-знак-v2»). Малого варианта
-нет: перья крупные, на 16 px читается. В русском интерфейсе рядом со знаком — «Гаврила» текстом; lockup с латиницей —
-только превью ссылки и международное."""
+"""Название продукта, которое видит человек (владелец 25.11: «Ладея» по-русски, «Ladeya» по-английски, бренд —
+«Ладея by Botsmith»; прежнее «Гаврила» / «Gavrila» снято). Здесь — единственное место: сервер подставляет его в
+страницу (``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма, уведомления и сообщения
+бота. Падежи — ``FORMS``. Код, пакет, пути, службы и адреса остаются ``gas-pult``/«пульт» (docs/BRAND.md).
+Знак (``web/brand/``) — прежний, пока штаб не сделает новый; в демо и у гостя — только текст «Ладея» и «by Botsmith»."""
 
 import re
 
-NAME = "Gavrila"                   # латиницей: английский интерфейс, адрес, логотип
-NAME_RU = "Гаврила"                # русский интерфейс (в русских строках — без латиницы, humanize.LATIN_OK)
-DEFAULT = "Гаврила"                # так записано в web/index.html — сервер меняет его на NAME_RU, если они разные
+APP_NAME_EN = "Ladeya"             # латиницей: английский интерфейс, адрес, логотип
+APP_NAME_RU = "Ладея"              # русский интерфейс (в русских строках — без латиницы, humanize.LATIN_OK)
+NAME, NAME_RU = APP_NAME_EN, APP_NAME_RU   # прежние имена констант — их читает код
+DEFAULT = APP_NAME_RU              # так записано в web/index.html — сервер меняет его на NAME_RU, если они разные
+BY = "by Botsmith"                 # строка бренда: «Ладея by Botsmith», «Ladeya by Botsmith»
+FORMS = {"им": "Ладея", "род": "Ладеи", "дат": "Ладее", "вин": "Ладею", "твор": "Ладеей", "пр": "Ладее"}
+OLD = ("Гаврилой", "Гаврилы", "Гавриле", "Гаврилу", "Гаврила", "Gavrila")   # прежнее имя — для теста
 
 
 FILES_DIR = "web/brand/"   # знак и значки: gavrila-mark.svg (currentColor), -small (≤ 24 px), png — экран «Домой»
@@ -33,28 +35,27 @@ ICONS.update({f"/splash-{w}x{h}-{t}.png": (f"splash-{w}x{h}-{t}.png", "image/png
 TAGLINE = "Агент делает рутину — вы подтверждаете «Да». Ответы в телефоне, голосом и кнопкой."
 
 # Демо и вход для гостей — бренд Botsmith (владелец 24.11: «и из демо тоже… поставь botsmith»; строка — как в питче).
-# Панель владельца после входа — прежняя («Гаврила»): вариант страницы отдаётся только на /?demo и /?brand=botsmith.
+# Вариант страницы — только на /?demo и /?brand=botsmith: «Ладея» + «by Botsmith», без знака, своя строка под ним.
 BS_NAME = "Botsmith"
-BS_TAGLINE = "Операционная система бизнеса на ИИ-агентах"
+BS_TAGLINE = "Личный ИИ-помощник и цифровой сотрудник"          # framewatcher 25.11, для М.Видео
 BS_GRAD = ("linear-gradient(90deg,#2f5a09,#4a7f12)", "linear-gradient(90deg,#8bc34a,#9ccc65)")   # светлая, тёмная
 ICONS["/brand/botsmith-icon.svg"] = ("botsmith-icon.svg", "image/svg+xml")
-BS_CSS = ('<style id="bsBrand">.gmark{-webkit-mask:none;mask:none;'
-          'background:url(/brand/botsmith-icon.svg) center/contain no-repeat}'
-          '.nav-h h2{flex:none;font-size:calc(17px * var(--fz, 1))}'     # «Botsmith» длиннее «Гаврилы»
+BS_CSS = ('<style id="bsBrand">.gmark{display:none!important}'            # знак пока текстовый (25.11)
+          '.brand-text::after{content:" ' + BY + '";font-size:12px;font-weight:500;letter-spacing:0;'
+          '-webkit-text-fill-color:var(--text-secondary);color:var(--text-secondary);margin-left:6px}'
+          '.nav-h h2{flex:none;font-size:calc(17px * var(--fz, 1))}'
           '.nmark{width:22px;height:22px}.tmark{width:24px;height:24px}.lmark{width:44px;height:44px}'
           '#brandSub{font-size:0}#brandSub::after{content:"' + BS_TAGLINE + '";font-size:12px}'
           ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span{font-size:0}'
           ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span::after{content:"'
           + BS_TAGLINE + '";font-size:12px;white-space:normal}'
-          ':root{--brand:' + BS_GRAD[0] + '!important}'                  # название — цвет Botsmith, не градиент Gavrila
+          ':root{--brand:' + BS_GRAD[0] + '!important}'                  # название — цвет Botsmith, не градиент панели
           '@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--brand:' + BS_GRAD[1] + '!important}}'
           ':root[data-theme=dark]{--brand:' + BS_GRAD[1] + '!important}</style>')
 
 
 def botsmith_text(s: str) -> str:
-    """«Гаврила» во всех формах и «Gavrila» → Botsmith (страница и части интерфейса)."""
-    for w in ("Гаврилы", "Гавриле", "Гаврилу", "Гаврилой", NAME_RU, DEFAULT, NAME):
-        s = s.replace(w, BS_NAME)
+    """Демо и вход гостя (владелец 25.11): название — «Ладея» (не Botsmith), строка под ним — ``BS_TAGLINE``."""
     return s.replace(TAGLINE, BS_TAGLINE)
 
 
@@ -64,7 +65,7 @@ def botsmith_page(page: bytes) -> bytes:
     s = botsmith_text(page.decode("utf-8"))
     s = s.replace("import(`/js/${name}.js`)", "import(`/js/${name}.js?brand=botsmith`)")   # части — тоже Botsmith
     s = s.replace(TAGLINE, BS_TAGLINE).replace('href="/favicon.svg"', 'href="/brand/botsmith-icon.svg"')
-    s = re.sub(r'<meta property="og:image[^>]*>', "", s)            # превью — знак Gavrila; своего у Botsmith пока нет
+    s = re.sub(r'<meta property="og:image[^>]*>', "", s)            # превью — прежний знак; своего у демо пока нет
     return s.replace("</head>", BS_CSS + "</head>", 1).encode("utf-8")
 
 

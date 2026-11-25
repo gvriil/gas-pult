@@ -16,7 +16,7 @@ export function init() {
     const b = document.createElement("button");
     b.type = "button"; b.id = "dvBtn"; b.className = "dv-btn"; b.textContent = "Смотреть, 1 мин";
     b.onclick = () => {
-      const bg = document.createElement("div"); bg.className = "dv-bg"; bg.setAttribute("role", "dialog"); bg.setAttribute("aria-label", "Ролик о Гавриле");
+      const bg = document.createElement("div"); bg.className = "dv-bg"; bg.setAttribute("role", "dialog"); bg.setAttribute("aria-label", "Ролик о Ладее");
       bg.innerHTML = `<video src="${esc(d.video)}" controls autoplay playsinline preload="metadata"></video><button class="dv-x" type="button">Закрыть</button>`;
       const close = () => { bg.querySelector("video")?.pause(); bg.remove(); removeEventListener("keydown", esc_); b.focus(); };
       const esc_ = (e) => e.key === "Escape" && close();

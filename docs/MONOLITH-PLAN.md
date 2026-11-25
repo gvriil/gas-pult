@@ -135,7 +135,7 @@
    примесь `FocusPart` (16 имён, 189 строк, только перенос). В `webapp` остались `focus_meta` (нужны `KEYS` бота,
    `PANEL_KEYS` и `server_tz` из `webapp`), `focus_bridge` (ветки путей `/api/focus/bridge/*` — их читает
    `api_spec` из `webapp.py`; ✓ шаг 7 — в `FocusPart`), `bridge_local_token` и `BRIDGE_MAX` (верхний уровень: секрет и предел
-   сообщения для маршрутов `/api/bridge/*` и `cli`), «Поделиться» (`share_*` — приём файлов в Гаврилу, другая
+   сообщения для маршрутов `/api/bridge/*` и `cli`), «Поделиться» (`share_*` — приём файлов в Ладею, другая
    область, не ссылки) и протоколы встреч (`meeting_*`, в том числе ссылка на протокол).
 7. `routes/*` — по области за PR, тем же порядком. ✓ Инфраструктура и голос — 22.11: `routes/voice.py` (13 путей:
    `/api/tts*`, `/api/stt`, `/api/stt/job|retry`, `/api/rec/*`, `/api/voice/cards|preview|choose`; 14 веток, 45 строк

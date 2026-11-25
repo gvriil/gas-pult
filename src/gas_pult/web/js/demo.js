@@ -956,7 +956,7 @@ async function demoCard(v) {                             // та же раскл
     + `<text x="80" y="100" ${f} font-size="28" font-weight="600" fill="#2563EB">Протокол встречи</text><text ${f} font-size="54" font-weight="700" fill="#111827">${big.map((s, i) => `<tspan x="80" y="${y0 + i * 66}">${e(s)}</tspan>`).join("")}</text>`
     + `<text x="80" y="500" ${f} font-size="30" fill="#4B5563">${e(v.title)}</text><text x="80" y="560" ${f} font-size="28" fill="#5F6672">${e(meta)}</text>`
     + (m ? `<svg x="1040" y="64" width="80" height="218" viewBox="${e(m[1])}" color="#2563EB">${m[2]}</svg>` : "")
-    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Гаврила</text></svg>`;
+    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Ладея</text></svg>`;
   return new Blob([svg], { type: "image/svg+xml" });
 }
 function demoMeeting(path, body) {
