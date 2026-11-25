@@ -7029,7 +7029,7 @@ function openHelp() {
   if (document.querySelector(".help-bg")) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
   bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="${esc(L("help.title", "Помощник"))}"><h3>${ic("help", "s16")}${esc(L("help.title", "Помощник"))}</h3><div class="hwhere"></div>
-    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" || SIM.on ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}Показать тур по этому экрану</button>`}${meta?.role === "owner" && !SIM.on && view !== "login" ? `<button class="htour" data-demo-here>${ic("flask", "s16")}Демо и тесты</button>` : ""}
+    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}${SIM.on ? esc(L("help.tour", "Показать тур")) : "Показать тур по этому экрану"}</button>`}${meta?.role === "owner" && !SIM.on && view !== "login" ? `<button class="htour" data-demo-here>${ic("flask", "s16")}Демо и тесты</button>` : ""}
     <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="${esc(L("help.ask", "Спросите, что непонятно…"))}" aria-label="${esc(L("help.ask.aria", "Вопрос помощнику"))}">
       <button class="hsend" type="submit" aria-label="${esc(L("help.send", "Спросить"))}">${ic("send")}</button></form>
     <button class="cancel" data-close>${esc(L("help.close", "Закрыть"))}</button></div>`;
@@ -7037,7 +7037,7 @@ function openHelp() {
     const b = e.target.closest("button");
     if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();   // лист под ним остаётся
     if (!b) return;
-    if (b.hasAttribute("data-tour-here")) { bg.remove(); return startTour(tourKind(), true); }
+    if (b.hasAttribute("data-tour-here")) { bg.remove(); return SIM.on ? part("ladtour").then((m) => m.start()) : startTour(tourKind(), true); }
     if (b.hasAttribute("data-demo-here")) { bg.remove(); return demoSheet(); }   // «Демо и тесты» — здесь (#203)
     const id = b.closest(".ha")?.dataset.id;
     if (b.dataset.chip) return helpAsk(bg, { chip: b.dataset.chip }, b.textContent);
@@ -7505,6 +7505,7 @@ async function simpleStart() {
   await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
   start.done = true; afterPaint(mdLoad);
+  if (!DEMO) afterPaint(() => part("ladtour").then((m) => m.offer()).catch(() => {}));   // тур — предложить один раз
   keepAwake();
   goFromLink();
 }

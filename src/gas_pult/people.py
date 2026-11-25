@@ -69,7 +69,7 @@ TITLES = {"owner": "владелец", "admin": "админ", "member": "уча�
 LANGS = ("ru", "en")
 PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
 RATES = (1.0, 1.25, 1.5, 2.0)                      # скорость озвучки в панели
-TOURS = ("business", "dev", "brief")        # тур для бизнеса, для разработчика и по брифингу (GAS-18)
+TOURS = ("business", "dev", "brief", "simple")   # бизнес, разработчик, брифинг (GAS-18), простой режим (25.11)
 TOUR_STATES = ("done", "dismissed")
 GUEST_FLOOR = -(10 ** 15)                   # гости — от −2·10¹⁵ до −10¹⁵: ни с Telegram ID, ни с группами не совпадут
 
@@ -342,7 +342,7 @@ class People:
 
     def tour(self, uid) -> dict:
         """Отметки тура человека: ``{business, dev, brief, at}``; чего нет — None."""
-        empty = {"business": None, "dev": None, "brief": None, "at": None}
+        empty = {"business": None, "dev": None, "brief": None, "simple": None, "at": None}
         try:
             uid = int(uid)
         except (TypeError, ValueError):
@@ -356,7 +356,7 @@ class People:
     def set_tour(self, uid: int, kind: str, state: str) -> dict:
         """Запомнить отметку тура ``kind`` (business | dev | brief): done или dismissed."""
         if kind not in TOURS or state not in TOUR_STATES:
-            raise ValueError("тур: business, dev или brief; отметка: done или dismissed")
+            raise ValueError("тур: business, dev, brief или simple; отметка: done или dismissed")
         uid = int(uid)
         with self._locked():
             rec = {**self.tour(uid), kind: state, "at": int(time.time())}
