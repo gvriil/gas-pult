@@ -165,7 +165,7 @@ const P = {
   again: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
 };
-const ic = (n, cls = "rt-i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
+const rtIc = (n, cls = "rt-i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 const h = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const motion = !matchMedia("(prefers-reduced-motion: reduce)").matches;
 const wait = (ms) => new Promise((r) => setTimeout(r, motion ? ms : 0));
@@ -203,9 +203,9 @@ function shelf(state) {                               // витрина поку
 <div class="rt-shelf-top"><b>Моя техника</b><span>Личная полка</span></div>
 <div class="rt-prod"><div class="rt-art">${ART}</div><div><h2>Кофемашина</h2><p class="rt-meta rt-num">Заказ № 10482 · куплена 12 дней назад</p>${st("success", "Гарантия действует")}</div></div>
 <div class="rt-news"><p class="rt-meta">${state === "yes" ? "Только что · " : ""}${h(title)}</p><p class="rt-txt">${h(text)}</p></div>
-<div class="rt-acts"><button class="rt-b rt-sec-b" type="button" tabindex="-1">${ic("book")}Открыть инструкцию</button></div>
-<div class="rt-links"><div class="rt-link">${ic("cal")}Обслуживание<span class="rt-d">${state === "yes" ? "напомним через 2 месяца" : "не назначено"}</span></div>
-<div class="rt-link">${ic("drop")}Расходники<span class="rt-d">средство и фильтры</span></div></div>
+<div class="rt-acts"><button class="rt-b rt-sec-b" type="button" tabindex="-1">${rtIc("book")}Открыть инструкцию</button></div>
+<div class="rt-links"><div class="rt-link">${rtIc("cal")}Обслуживание<span class="rt-d">${state === "yes" ? "напомним через 2 месяца" : "не назначено"}</span></div>
+<div class="rt-link">${rtIc("drop")}Расходники<span class="rt-d">средство и фильтры</span></div></div>
 <p class="rt-foot">Функции пилота · учебные данные</p></div>`;
 }
 
@@ -218,25 +218,25 @@ async function play() {
 <section class="rt-card" aria-label="Вопрос покупателя"><div class="rt-chat-h"><div class="rt-ava">А</div><div><p class="rt-name">А••• К•••</p>
 <p class="rt-meta rt-num">Чат покупателя · +7 ••• •••-••-41</p></div></div>
 <p class="rt-in">Как удалить накипь? В инструкции не нашла.</p>
-<p class="rt-srcs"><span>${ic("pkg")}Заказ</span><span>${ic("qr")}Личная полка (QR)</span><span>${ic("chat")}Чат покупателя</span></p></section>`;
+<p class="rt-srcs"><span>${rtIc("pkg")}Заказ</span><span>${rtIc("qr")}Личная полка (QR)</span><span>${rtIc("chat")}Чат покупателя</span></p></section>`;
   await wait(600); if (!alive()) return;
   progress(1);
   flow.insertAdjacentHTML("beforeend", `<div class="rt-log" id="rtLog"><div class="rt-log-h"><span class="rt-spin" aria-hidden="true"></span>
 <b class="rt-num">Агент проверяет заказ № 10482 и инструкцию…</b><span style="margin-left:auto">${st("working", "В работе")}</span></div><ul id="rtSteps"></ul></div>`);
   for (const [i, t] of AGENTS) {
     await wait(500); if (!alive()) return;
-    $r("#rtSteps").insertAdjacentHTML("beforeend", `<li>${ic(i)}<span>${h(t)}</span></li>`);
+    $r("#rtSteps").insertAdjacentHTML("beforeend", `<li>${rtIc(i)}<span>${h(t)}</span></li>`);
   }
   await wait(400); if (!alive()) return;
-  $r("#rtLog").outerHTML = `<details class="rt-log" id="rtLog"><summary>${ic("check", "rt-i rt-s rt-ok")}<b>Агент проверил 3 источника</b>
-${st("success", "Выполнено")}<span class="rt-more">Подробнее</span></summary><ul>${AGENTS.map(([i, t]) => `<li>${ic(i)}<span>${h(t)}</span></li>`).join("")}</ul>
+  $r("#rtLog").outerHTML = `<details class="rt-log" id="rtLog"><summary>${rtIc("check", "rt-i rt-s rt-ok")}<b>Агент проверил 3 источника</b>
+${st("success", "Выполнено")}<span class="rt-more">Подробнее</span></summary><ul>${AGENTS.map(([i, t]) => `<li>${rtIc(i)}<span>${h(t)}</span></li>`).join("")}</ul>
 <p class="rt-sub">Инструкция компании</p><ol>${RULES.map((r) => `<li>${h(r)}</li>`).join("")}</ol></details>`;
   progress(2);
   flow.insertAdjacentHTML("beforeend", `<section class="rt-card rt-ask" id="rtAsk" aria-label="Нужно ваше решение">${st("pending", "Требует решения")}
-<h2>Отправить ответ покупателю?</h2><p class="rt-to">${ic("user", "rt-i rt-s")}Кому: А••• К••• · чат покупателя</p>
+<h2>Отправить ответ покупателю?</h2><p class="rt-to">${rtIc("user", "rt-i rt-s")}Кому: А••• К••• · чат покупателя</p>
 <p class="rt-out">${h(REPLY)}</p>
-<p class="rt-safe">${ic("lock")}Без вашего подтверждения ничего не уйдёт</p>
-<div class="rt-dock" id="rtDock"><button class="rt-b rt-p" type="button" data-yes>${ic("send")}Да, отправить покупателю</button>
+<p class="rt-safe">${rtIc("lock")}Без вашего подтверждения ничего не уйдёт</p>
+<div class="rt-dock" id="rtDock"><button class="rt-b rt-p" type="button" data-yes>${rtIc("send")}Да, отправить покупателю</button>
 <button class="rt-b rt-sec-b" type="button" data-no>Не отправлять</button></div></section>`);
   if (!matchMedia("(min-width: 1024px)").matches) $r("#rtAsk").scrollIntoView({ behavior: motion ? "smooth" : "auto", block: "start" });
   const once = (yes) => () => { root.querySelectorAll("#rtDock button").forEach((b) => { b.disabled = true; }); decide(yes, me); };
@@ -249,7 +249,7 @@ function decide(yes, me) {
   const ask = $r("#rtAsk");
   ask.classList.add(yes ? "rt-yes" : "rt-no");
   ask.querySelector(".rt-st").outerHTML = yes ? st("success", "Выполнено · отправлено") : st("neutral", "Не отправлено");
-  $r("#rtDock").outerHTML = `<p class="rt-done">${ic(yes ? "check" : "info", "rt-i rt-s" + (yes ? " rt-ok" : ""))}${yes
+  $r("#rtDock").outerHTML = `<p class="rt-done">${rtIc(yes ? "check" : "info", "rt-i rt-s" + (yes ? " rt-ok" : ""))}${yes
     ? "Ответ у покупателя в чате и на личной полке. Записано в журнал."
     : "Ответ не ушёл. Вопрос вернулся сотруднику поддержки. Записано в журнал."}</p>`;
   $r("#rtShelf").innerHTML = shelf(yes ? "yes" : "no");
@@ -268,14 +268,14 @@ export async function init() {
   root.innerHTML = `<header class="rt-top"><div class="rt-top-in"><div class="rt-logo"><span class="rt-mark">B</span>Botsmith</div>
 <span class="rt-tag">Демо · 1 мин</span><span class="rt-count rt-num" id="rtCount"></span></div>
 <div class="rt-bar" id="rtBar" role="img"><i></i></div></header>
-<p class="rt-note">${ic("info")}${h(NOTE)}</p>
+<p class="rt-note">${rtIc("info")}${h(NOTE)}</p>
 <div class="rt-grid"><main class="rt-main"><div class="rt-flow" id="rtFlow" aria-live="polite"></div></main>
 <aside class="rt-phone-wrap rt-wait" id="rtPhone"><p class="rt-cap">Так видит покупатель</p><div class="rt-phone"><div id="rtShelf"></div></div></aside>
 <section class="rt-card rt-final rt-hide" id="rtFinal"><h3>Что измерим в пилоте</h3>
 <ol class="rt-measure"><li>Активация личной полки <span>— сколько покупателей открыли её по QR</span></li>
 <li>Повторные покупки <span>— аксессуары и обслуживание после покупки</span></li>
 <li>Нагрузка на поддержку <span>— сколько вопросов закрыто без звонка</span></li></ol>
-<div class="rt-final-b"><button class="rt-b rt-p" type="button" data-again>${ic("again")}Пройти ещё раз</button>
+<div class="rt-final-b"><button class="rt-b rt-p" type="button" data-again>${rtIc("again")}Пройти ещё раз</button>
 <button class="rt-b rt-sec-b" type="button" data-try>Примерить на себя</button><button class="rt-b rt-sec-b" type="button" data-full>Полное демо</button></div></section></div>`;
   document.body.append(root);
   document.body.style.overflow = "hidden";
