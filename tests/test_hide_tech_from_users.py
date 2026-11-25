@@ -66,7 +66,7 @@ def test_user_sees_human_words():
 def test_developer_keeps_raw():
     need()
     o = look(user=False)
-    assert "Лимит на неделю" in (o["limits"] or "")
+    assert "неделя" in (o["limits"] or "") and "5 ч" in (o["limits"] or "")   # тихая строка (25.11)
     assert any("Терминал" in x and "Last login" in x for x in o["logs"])
     assert o["act"] not in ("Выполняет действие", "Думает", "Читает документ")   # сырой текст хода, не словарь
     assert "прочитано по ходу работы" in o["feed"]

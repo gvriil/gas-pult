@@ -402,7 +402,7 @@ def test_pi_overlay_compose_and_launch(tmp_path, monkeypatch):
 def test_ui_hides_claude_limits_for_other_agents():
     from pathlib import Path
     s = (Path(__file__).resolve().parents[1] / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8")
-    f = s[s.index("function sinfo(s) {"):]
+    f = s[s.index("function quietLimits(s) {"):]
     f = f[:f.index("\n}\n")]
-    assert 'const other = s?.harness && s.harness !== "claude"' in f and "!other && meta?.role === \"owner\"" in f
+    assert 's.harness && s.harness !== "claude" ? []' in f and 'meta?.role !== "owner"' in f   # лимиты Claude — не Pi
     assert "function usageLine(u)" in s

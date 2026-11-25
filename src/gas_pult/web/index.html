@@ -232,6 +232,7 @@
   .sinfo b { color: var(--text-secondary); font-weight: 500; }
   .sinfo .warn, .ctx.warn { color: var(--status-approval); }
   .sinfo .ctx { margin-left: 0; padding-right: 0; }
+  .qlims { display: inline-flex; flex-wrap: wrap; gap: 0 6px; font-variant-numeric: tabular-nums; } .qlims i { font-style: normal; opacity: .6; } .ql.warn { color: var(--status-approval); }
   .ctx .bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
   .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
   .preview.twin { color: var(--status-danger); white-space: normal; display: flex; gap: 6px; align-items: flex-start; }
@@ -3108,12 +3109,13 @@ function resetAt(ts) {                               // «до вс 00:30» / «
   const d = new Date(ts * 1000), today = new Date().toDateString() === d.toDateString();
   return (LANG === "en" ? " until " : " до ") + d.toLocaleString(LANG === "en" ? "en-GB" : "ru-RU", today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
-// Обзор UI 21.11 (А): вместо шифра «5 ч 21% ↻вс 00:30 · неделя 91% ↻пн 21:30» — «Лимит: 21% до вс 00:30»;
-// недельный — только когда больше 80 %.
-function limitsLine(L) {
-  const x = L?.limits; if (!x) return "";
-  const one = (k, name) => `<span class="${x[k].used >= 80 ? "warn" : ""}" title="Лимит подписки ${name}: сколько использовано и когда обнулится">${name === "на неделю" ? "Лимит на неделю" : "Лимит"}: ${x[k].used}%${resetAt(x[k].resets_at)}</span>`;
-  return (x.five_hour ? one("five_hour", "на 5 часов") : "") + (x.seven_day?.used > 80 ? one("seven_day", "на неделю") : "");
+// Владелец 25.11: 5 ч, неделя, контекст — одной серой строкой, сброс — в подсказке
+function quietLimits(s) {
+  if (meta?.role !== "owner" || !dev("dev_cost_tokens")) return ctxWarn(s);
+  const x = limitsInfo?.limits || {}, c = ctxUsed(s), q = (n, v, t) => v == null ? "" : `<span class="ql${v >= 85 ? " warn" : ""}" tabindex="0" title="${t}">${n} ${v} %</span>`;
+  const one = (k, n, t) => q(n, x[k]?.used, t + esc(resetAt(x[k]?.resets_at)).replace(/^ (до|until) /, ", сброс "));
+  const h = [...(s.harness && s.harness !== "claude" ? [] : [one("five_hour", "5 ч", "Лимит за 5 часов"), one("seven_day", "неделя", "Лимит за неделю")]), q("контекст", c, "Память разговора")].filter(Boolean);
+  return h.length ? `<span class="qlims">${h.join("<i>·</i>")}</span>` : "";
 }
 function usageLine(u) {                                // как у Pi: ↑ ввод, ↓ вывод, $; tok() — из раздела «расход»
   if (!u) return "";
@@ -3124,9 +3126,7 @@ function usageLine(u) {                                // как у Pi: ↑ вв
 function sinfo(s) {
   // окно другого агента (Pi): модель «поставщик/модель», контекст, ↑↓ токены и $ за сессию — из его журнала; лимиты
   // подписки Claude (5 ч, неделя) к нему не относятся — не показываем
-  const other = s?.harness && s.harness !== "claude";
-  const lim = !other && meta?.role === "owner" && dev("dev_cost_tokens") && Object.values(limitsInfo?.limits || {}).some((x) => x?.used >= 80);   // близко к пределу; у пользователя — в «Подробнее»
-  const html = s ? [ctxWarn(s), lim ? limitsLine(limitsInfo) : ""].filter(Boolean).join("") : "";   // остальное — «Подробнее»
+  const html = s ? quietLimits(s) : "";
   setHidden($("sinfo"), !html); setHTML($("sinfo"), html);
 }
 // ---------- «изменена N назад» (ago.py — те же правила и словари ago.*; тест сверяет обе реализации) ----------
@@ -3643,7 +3643,7 @@ function costBar(s) {
 function weekChip() {
   const w = limitsInfo?.week; if (!w || meta?.role !== "owner") return "";
   const at = (t) => resetAt(t).replace(/^ (до|until) /, ""), tail = w.out_at ? ` · кончится ≈ ${at(w.out_at)}` : w.proj != null ? ` · к сбросу ≈ ${w.proj}%` : "";
-  return `<span class="chip${w.level === "bad" ? " bad" : w.level === "warn" ? " s-approval" : ""}" title="Лимит подписки Claude на неделю и прогноз при нынешнем темпе">Неделя <b>${w.used}%</b> · сброс ${esc(at(w.resets_at))}${esc(tail)}</span>`;
+  return `<span class="chip${w.used >= 85 ? " bad" : ""}" title="Лимит подписки Claude на неделю и прогноз при нынешнем темпе">Неделя <b>${w.used}%</b> · сброс ${esc(at(w.resets_at))}${esc(tail)}</span>`;
 }
 function costSummary() { return weekChip() + costSum(); }
 function costSum() {
