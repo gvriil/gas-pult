@@ -1,4 +1,4 @@
-"""Тур «Ладеи» для простого режима (владелец 25.11 через штаб): одно нажатие «Показать тур», не больше пяти шагов,
+"""Тур «Ладэи» для простого режима (владелец 25.11 через штаб): одно нажатие «Показать тур», не больше пяти шагов,
 последний — «На экран «Домой»» с картинкой для iPhone и Android, пропуск, если уже установлено; демо — без списка
 чатов. Проверка по исходникам; вживую тур проходит браузер (снимки — в PR)."""
 import re
@@ -13,7 +13,7 @@ def test_at_most_five_steps_and_home_last():
     steps = TOUR[TOUR.index("const STEPS = ["):TOUR.index("];", TOUR.index("const STEPS = ["))]
     assert len(re.findall(r"\{ (?:sel|home):", steps)) <= 5
     assert steps.rstrip().endswith("},") and "home: true" in steps.split("{ sel:")[-1]
-    assert "Добавьте Ладею на экран «Домой»" in TOUR and "Add Ladeya to your Home Screen" in TOUR
+    assert "Добавьте Ладэю на экран «Домой»" in TOUR and "Add Ladeya to your Home Screen" in TOUR
 
 
 def test_home_step_both_phones_and_skip_when_installed():

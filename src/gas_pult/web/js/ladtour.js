@@ -1,6 +1,6 @@
-// Тур «Ладеи» для простого режима (владелец 25.11 через штаб): запуск одним нажатием «Показать тур», не больше пяти
-// шагов простыми словами; последний — «Добавьте Ладею на экран «Домой»» с картинкой для iPhone (Поделиться → На экран
-// «Домой») и Android (меню → Установить). Шаг «Домой» пропускается, если Ладея уже установлена (display-mode standalone,
+// Тур «Ладэи» для простого режима (владелец 25.11 через штаб): запуск одним нажатием «Показать тур», не больше пяти
+// шагов простыми словами; последний — «Добавьте Ладэю на экран «Домой»» с картинкой для iPhone (Поделиться → На экран
+// «Домой») и Android (меню → Установить). Шаг «Домой» пропускается, если Ладэя уже установлена (display-mode standalone,
 // navigator.standalone) или открыта внутри Telegram. Шага, чьего элемента нет на экране, нет.
 // Без внешних библиотек: подсветка — рамка вокруг элемента (затемнение — её тень), текст — карточка у края экрана.
 // Движение — transform/opacity 200 мс; prefers-reduced-motion гасит его правилом ядра. Часть по требованию (#191).
@@ -15,7 +15,7 @@ const STEPS = [
     en: ["Common tasks", "Sections with ready-made tasks. Tap one and the assistant starts."] },
   { sel: "#sSet", ru: ["Настройки", "Почта, мессенджеры, тема и язык — здесь."],
     en: ["Settings", "Email, messengers, theme and language live here."] },
-  { home: true, ru: ["Добавьте Ладею на экран «Домой»", "Так приложение не потеряется: откроется одним касанием, как любое другое."],
+  { home: true, ru: ["Добавьте Ладэю на экран «Домой»", "Так приложение не потеряется: откроется одним касанием, как любое другое."],
     en: ["Add Ladeya to your Home Screen", "So it doesn’t get lost: it opens in one tap, like any other app."] },
 ];
 const T2 = (s) => (EN() ? s.en : s.ru);
@@ -64,12 +64,12 @@ function how(os) {
   const en = EN();
   const box = (icon, text, hl) => `<div class="s"><span class="${hl ? "hl" : ""}">${icon}</span><span>${text}</span></div>`;
   if (os === "ios") return {
-    pic: box(SHARE, en ? "Share" : "Поделиться", true) + ARROW + box(PLUS, en ? "Add to Home Screen" : "На экран «Домой»") + ARROW + box(APP, en ? "Ladeya" : "Ладея"),
+    pic: box(SHARE, en ? "Share" : "Поделиться", true) + ARROW + box(PLUS, en ? "Add to Home Screen" : "На экран «Домой»") + ARROW + box(APP, en ? "Ladeya" : "Ладэя"),
     // Apple, «Добавление значка сайта на экран «Домой»»: support.apple.com/ru-ru/guide/iphone/iph42ab2f3a7/ios (25.11)
     steps: en ? ["Open this page in Safari.", "Tap the page menu ⋯, then tap Share.", "Scroll down and tap Add to Home Screen. Then tap Add."]
       : ["Откройте эту страницу в Safari.", "Нажмите кнопку меню страницы ⋯, затем «Поделиться».", "Прокрутите вниз, нажмите «На экран «Домой»», затем «Добавить»."] };
   return {
-    pic: box(DOTS, en ? "More ⋮" : "Меню ⋮", true) + ARROW + box(INST, en ? "Install and create shortcut" : "Установить и создать ярлык") + ARROW + box(APP, en ? "Ladeya" : "Ладея"),
+    pic: box(DOTS, en ? "More ⋮" : "Меню ⋮", true) + ARROW + box(INST, en ? "Install and create shortcut" : "Установить и создать ярлык") + ARROW + box(APP, en ? "Ladeya" : "Ладэя"),
     // Google, «Как использовать веб-приложения» (Android): support.google.com/chrome/answer/9658361 (25.11)
     steps: en ? ["Open this page in Chrome.", "On the right of the address bar, tap More ⋮.", "Tap Install and create shortcut, then Install."]
       : ["Откройте эту страницу в Chrome.", "Справа от адресной строки нажмите ⋮.", "Нажмите «Установить и создать ярлык», затем «Установить»."] };
@@ -156,7 +156,7 @@ export async function offer() {
   const box = document.createElement("div"); box.id = "ltOffer"; box.className = "lt-offer"; box.setAttribute("role", "region");
   box.setAttribute("aria-label", L("tour.offer.title", "Показать, как тут всё устроено?"));
   box.innerHTML = `<b>${esc(L("tour.offer.title", "Показать, как тут всё устроено?"))}</b>`
-    + `<p>${esc(L("tour.offer.text", "Минута, пять шагов. Последний — как добавить Ладею на экран «Домой»."))}</p>`
+    + `<p>${esc(L("tour.offer.text", "Минута, пять шагов. Последний — как добавить Ладэю на экран «Домой»."))}</p>`
     + `<div class="lt-row"><button class="btn quiet" type="button" data-lt-no>${esc(L("tour.offer.no", "Не сейчас"))}</button>`
     + `<button class="btn" type="button" data-lt-go>${esc(L("help.tour", "Показать тур"))}</button></div>`;
   box.addEventListener("click", (e) => {

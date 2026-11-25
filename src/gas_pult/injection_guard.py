@@ -198,7 +198,7 @@ def handle(data: dict) -> dict | None:
     if ev == "PreToolUse" and (vault := vault_touch(tool, inp)):
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse", "permissionDecision": "deny",
-            "permissionDecisionReason": f"Защита Ладеи: файл {vault} — база паролей коннекторов, агентам закрыт. "
+            "permissionDecisionReason": f"Защита Ладэи: файл {vault} — база паролей коннекторов, агентам закрыт. "
                                         "Нужен вход в сервис — поставьте задачу человеку."}}
     if ev == "PostToolUse" and untrusted(tool, inp):
         found = traps("\n".join(_strings(data.get("tool_response"), [])))
@@ -219,7 +219,7 @@ def handle(data: dict) -> dict | None:
         if why:
             return {"hookSpecificOutput": {
                 "hookEventName": "PreToolUse", "permissionDecision": "ask",
-                "permissionDecisionReason": "Защита Ладеи: " + "; ".join(why) + ". Отправить — только после явного "
+                "permissionDecisionReason": "Защита Ладэи: " + "; ".join(why) + ". Отправить — только после явного "
                                             "«Да» человека."}}
     return None
 

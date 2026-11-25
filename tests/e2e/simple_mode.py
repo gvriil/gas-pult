@@ -131,7 +131,7 @@ def run(base: str, shots: str = ""):
             pg.goto(f"{base}{sep}view=login&lang=en")
             pg.wait_for_selector("#loginLang .scn-opt.on")
             pg.wait_for_timeout(400)
-            # шапку на входе прячет вид «Ладея» (js/loginlook.js): innerText скрытого — весь текст, берём видимое
+            # шапку на входе прячет вид «Ладэя» (js/loginlook.js): innerText скрытого — весь текст, берём видимое
             txt = pg.evaluate("[...document.querySelectorAll('#top, #login, #demoBar')]"
                               ".filter((x) => x.checkVisibility()).map((x) => x.innerText).join('\\n')")
             bad = strangers(txt, "en")

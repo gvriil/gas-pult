@@ -138,7 +138,7 @@ def test_hook_prompt_blocked_without_value(tmp_path):
     out, r = run_hook({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path), "prompt": "вот " + key})
     assert out["decision"] == "block" and out["hookSpecificOutput"]["suppressOriginalPrompt"] is True
     assert "Убрал из сообщения" in out["reason"] and "ключ Anthropic" in out["reason"]
-    assert "Ключи и пароли не показываются" in out["reason"] and "«Настройки → Подключения» в Ладее" in out["reason"]
+    assert "Ключи и пароли не показываются" in out["reason"] and "«Настройки → Подключения» в Ладэе" in out["reason"]
     assert key not in r.stdout + r.stderr
     assert run_hook({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path), "prompt": "привет"})[0] is None
 

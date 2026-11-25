@@ -52,7 +52,7 @@ def test_card_escapes_text():
     assert "<script>" not in svg and "&lt;script&gt;" in svg and "&amp;" in svg and "<b>" not in svg
     assert svg.startswith("<svg") and "30 мин" in svg and "глав: 2" in svg and 'viewBox="0 0 10 20"' in svg
     long = meetings.card_svg({"gist": "слово " * 200}, "")
-    assert long.count("<tspan") == 4 and "…" in long
+    assert long.count("<tspan x=") == 4 and "…" in long          # строки; ещё один tspan — красная «э» знака
 
 
 def silent_wav(p: Path, sec: int = 3):
