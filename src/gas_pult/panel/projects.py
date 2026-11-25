@@ -301,11 +301,13 @@ class ProjectsPart:
     CHATS_PAGE = 20
     SEARCH_FILES, SEARCH_SECS = 300, 2.0                 # поиск по тексту журналов — не дольше и не больше этого
 
-    def project_chats(self, pid: str, q: str = "", before: float | None = None, person: int | None = None) -> dict:
+    def project_chats(self, pid: str, q: str = "", before: float | None = None, person: int | None = None,
+                      only: set[str] | list[str] | None = None) -> dict:
         """Завершённые чаты проекта (журналы без окна): название, когда, сколько сообщений; новые сверху, страницами.
         ``q`` — по названию, затем по тексту журналов (с лимитом файлов и времени). Закрепления — свои у ``person``
-        (None — владельца)."""
+        (None — владельца). ``only`` — только эти чаты (фокус-ссылка: начатые по ней)."""
         p = self.project(pid)
+        only = None if only is None else set(only)
         who = "owner" if person is None else str(person)
         meta = self.project_data().get("sessions") or {}
         by_sid, legacy = self.open_sids(p)
@@ -317,8 +319,8 @@ class ProjectsPart:
         files.sort(key=lambda x: (-x[0], -x[1]))         # по последнему сообщению: служебные записи — не «только что»
         q = " ".join(str(q or "").lower().split())
         pins = projects.pins_of(self.project_data(), who)[1]
-        files = [(at, mt, f) for at, mt, f in files
-                 if not (f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"))]
+        files = [(at, mt, f) for at, mt, f in files if (only is None or f.stem in only)
+                 and not (f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"))]
         top = []                                          # закреплённые — сверху первой страницы, не по времени
         for at, mt, f in files if before is None else []:
             if pin := int(pins.get("sid:" + f.stem) or 0):

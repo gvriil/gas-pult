@@ -8,10 +8,11 @@ HOME, GAS_PULT_DATA_DIR, GAS_PULT_CONFIG_DIR, свой сервер tmux по к
 
 Сценарий:
   (а) владелец: панель чатов → «⋯» проекта «shop» → «Создать фокус-ссылку на проект» — ссылка ``…/#focus=<токен>``;
-  (б) телефон (390, светлая) по ссылке: видны только сессии «shop», под шапкой — проект и «Вход действует до ДД.ММ
-      (через 7 дн.)»; API проекта «other», его окна, список проектов, люди — 403;
-  (в) шторка проекта → «Новый чат в проекте» — новое окно в папке «shop», сообщение уходит и приходит ответ;
-  (г) «Завершить» одну сессию — ссылка живёт, устройство переходит в другую сессию проекта;
+  (б) телефон (390, светлая) по ссылке: окно владельца «shop» НЕ видно (штаб 25.11: по ссылке — только начатое по
+      ней), под шапкой — проект и «Вход действует до ДД.ММ (через 7 дн.)»; окно владельца, API проекта «other», его
+      окна, список проектов, люди — 403;
+  (в) «Новый чат в проекте» — новое окно в папке «shop», сообщение уходит и приходит ответ; видно только оно;
+  (г) «Завершить» эту сессию — ссылка живёт, экран «Открытых сессий нет»;
   (д) до конца срока меньше двух дней — «Перезайти через 2 дня» (заметно); компьютер (1366, тёмная) по второй
       ссылке — то же, без ошибок консоли;
   (е) старая ссылка на одну сессию — как раньше: только её окно, проект закрыт (403).
@@ -108,12 +109,13 @@ def run(shots: str = ""):
             assert not pa.is_visible("#focusExp > span") and not pa.is_visible("#focusExp [data-fproj]")
             assert pa.is_visible("#focusExp [data-fdev]") and pa.is_visible("#chatMoreBtn")
             assert pa.evaluate("document.body.classList.contains('focus-proj')")
-            assert pa.evaluate("sessions.map((s) => s.id)") == [shop]
+            assert pa.evaluate("sessions.map((s) => s.id)") == []      # окно владельца в папке проекта — не видно
             exp = pa.text_content("#focusExp")
             till = time.strftime("%d.%m", time.localtime(time.time() + 7 * 86400 - 60))
             assert "shop" in exp and f"Вход действует до {till} (через 7 дн.)" in exp, exp
             for path, body in ((f"/api/project?id={oid}", None), (f"/api/project/sessions?id={oid}", None),
                                ("/api/project/session", {"id": oid}), (f"/api/history?w={other}", None),
+                               (f"/api/history?w={shop}", None), ("/api/send", {"w": shop, "text": "чужое"}),
                                ("/api/send", {"w": other, "text": "чужое"}), ("/api/projects", None),
                                ("/api/people", None), ("/api/new", {"i": 0}), ("/api/focus/list", None),
                                ("/api/focus/new", {"proj": pid, "base": base}),
@@ -124,23 +126,17 @@ def run(shots: str = ""):
             assert pa.evaluate(FETCH, [f"/api/project?id={pid}", None])[0] == 200
             if shots:
                 pa.screenshot(path=f"{shots}/focus-proj-390.png")
-            log(f"(б) телефон: только сессии проекта, срок «{exp.splitlines()[-1]}»; чужой проект — 403")
+            log(f"(б) телефон: окна владельца не видно, срок «{exp.splitlines()[-1]}»; чужое — 403")
 
             # ---------- (в) «Новый чат в проекте» ----------
-            pa.click("#chatMoreBtn")
-            pa.wait_for_selector(".sheet :text('Вход по ссылке — до')")
-            pa.click(".sheet :text('Чаты проекта')")
-            pa.wait_for_selector(".sheet h3:has-text('Проект')")
-            sheet = pa.inner_text(".sheet")
-            # 19.11: служебные имена окон («shop-1») не показываются — чаты по названию, без него «Новый чат»
-            assert "«SHOP»" in sheet.upper() and "other" not in sheet.lower() and "Новый чат" in sheet, sheet
+            pa.wait_for_selector(".focus-proj-empty [data-fnew]", timeout=15000)
             if shots:
-                pa.screenshot(path=f"{shots}/focus-proj-sheet-390.png")
-            pa.locator(".sheet button", has_text="Новый чат в проекте").click()
-            pa.wait_for_function(f"current && current !== {json.dumps(shop)}", timeout=30000)
+                pa.screenshot(path=f"{shots}/focus-proj-empty-390.png")
+            pa.click(".focus-proj-empty [data-fnew]")
+            pa.wait_for_function("current", timeout=30000)
             fresh = pa.evaluate("current")
-            pa.wait_for_function(f"sessions.length === 2 && sessions.some((s) => s.id === {json.dumps(fresh)})",
-                                 timeout=20000)
+            assert fresh != shop
+            pa.wait_for_function(f"sessions.length === 1 && sessions[0].id === {json.dumps(fresh)}", timeout=20000)
             for _ in range(60):                       # подставной Claude готов принять ввод
                 if pa.evaluate(FETCH, ["/api/screen?w=" + fresh, None])[1].get("lines", [""])[-1:] != [""]:
                     break
@@ -150,17 +146,16 @@ def run(shots: str = ""):
             pa.wait_for_selector("text=Ответ (default): привет в новой сессии", timeout=30000)
             no_run(pa)                                # в фокусе на проект — тоже без «Выполнить»
             code, d = pa.evaluate(FETCH, ["/api/sessions", None])
-            assert sorted(x["id"] for x in d["sessions"]) == sorted([shop, fresh]) and \
-                all(x["project"] == pid for x in d["sessions"]), d
+            assert [x["id"] for x in d["sessions"]] == [fresh] and d["sessions"][0]["project"] == pid, d
             log(f"(в) «Новый чат в проекте» → окно {fresh} в папке проекта, ответ пришёл")
 
             # ---------- (г) «Завершить» одну сессию — ссылка живёт ----------
             code, d = pa.evaluate(FETCH, ["/api/close", {"w": fresh}])
             assert code == 200 and d["result"] == "закрыто", d
-            pa.wait_for_function(f"current === {json.dumps(shop)}", timeout=20000)
+            pa.wait_for_selector(".focus-proj-empty", timeout=20000)
             assert not pa.locator("#focusEnd").count()
             assert pa.evaluate(FETCH, ["/api/sessions", None])[0] == 200
-            log("(г) «Завершить» одну сессию: ссылка на проект жива, устройство — в другой сессии проекта")
+            log("(г) «Завершить» сессию: ссылка на проект жива — «Открытых сессий нет»")
 
             # ---------- (д) меньше двух дней — заметно; компьютер, тёмная тема ----------
             url2 = proj_link()
@@ -178,9 +173,9 @@ def run(shots: str = ""):
             c = device(False, dark=True)
             pc = page(c, url2.replace("/#focus=", "/?theme=dark#focus="))
             pc.wait_for_selector("#focusExp.soon", timeout=15000)
-            pc.wait_for_selector("#content .msg, #content .empty:not(:has-text('загружаю'))", timeout=15000)
+            pc.wait_for_selector(".focus-proj-empty", timeout=15000)
             assert pc.evaluate("document.documentElement.dataset.theme") == "dark"
-            assert pc.evaluate("sessions.map((s) => s.id)") == [shop]
+            assert pc.evaluate("sessions.map((s) => s.id)") == []
             if shots:
                 pc.screenshot(path=f"{shots}/focus-proj-1366-dark.png")
             log("(д) за два дня до конца — «Перезайти через 2 дня»; компьютер 1366, тёмная — то же")

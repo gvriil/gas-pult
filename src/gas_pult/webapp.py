@@ -2146,6 +2146,24 @@ def handler(panel: Panel):
                 return panel.focus_bridge(rec, path, b)
             if path == "/api/focus/device":                # «Открыть на другом устройстве»: только своя запись
                 return panel.focus_device(rec["id"], str(b.get("base") or ""))
+            # Завершённые чаты по ссылке на проект — только начатые по ней (штаб 25.11: в чатах владельца в той же
+            # папке — его серверы, почта, задачи). Новый чат и «Продолжить» записывают id разговора в ссылку.
+            if path == "/api/project/sessions":
+                before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
+                return panel.project_chats(rec["proj"], q.get("q", ""), before, self.person(),
+                                           only=sorted(focus.Focus.chats(rec)))
+            if path in ("/api/project/history", "/api/project/resume"):
+                sid = str((q if method == "GET" else b).get("sid") or "")
+                if sid not in focus.Focus.chats(rec):
+                    raise focus.Denied("этот чат начат не по этой ссылке")
+            if path in ("/api/project/session", "/api/project/resume"):
+                r = self.post(path)
+                if isinstance(r, dict):
+                    panel.focus.add_chat(rec["id"], r.get("sid") or "")
+                    if r.get("id"):                        # окно — этой ссылки: по ней видно только такие
+                        with contextlib.suppress(OSError, LookupError):
+                            panel.tmux.set_focus(str(r["id"]), rec["id"])
+                return r
             if path == "/api/sessions":
                 ss = panel.focus_sessions(rec)
                 return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
