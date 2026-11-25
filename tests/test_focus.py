@@ -782,3 +782,20 @@ def test_owner_link_sees_whole_project(server, monkeypatch):
     assert code == 200 and [c["sid"] for c in r["chats"]] == ["owner-old", "sid-3"]
     assert call(s["base"], "/api/project/history?id=p-shop&sid=owner-old", None, cookie, FX)[0] == 200
     assert call(s["base"], "/api/project?id=p-other", None, cookie, FX)[0] == 403     # чужой проект — всё равно нет
+
+
+def test_owner_window_in_client_project_goes_to_its_links(server, monkeypatch):
+    """Владелец 25.11: окно, которое владелец открывает в проекте клиента, не теряется для ссылки клиента — его
+    разговор сразу в ссылке, окно помечено. Окно без разговора (оболочка) — не отдаём; ссылка владельца — не трогаем."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    p = s["p"]
+    monkeypatch.setattr(p.projects, "of_path", lambda data, path: "p-shop" if path.startswith("/srv/shop") else None)
+    s["wins"].w["@7"] = {"id": "@7", "name": "shop-7", "path": "/srv/shop", "cmd": "claude", "sid": "owner-new"}
+    assert p.focus_adopt_new("/srv/shop", "@7", "owner-new") == [d["id"]]
+    assert "owner-new" in focus.Focus.chats(p.focus._load()[d["id"]]) and s["wins"].w["@7"]["focus"] == d["id"]
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and "@7" in [x["id"] for x in r["sessions"]]
+    assert p.focus_adopt_new("/srv/shop", "@8", "") == []                      # оболочка без разговора — нет
+    assert p.focus_adopt_new("/srv/other", "@9", "x") == []                    # чужой проект — нет

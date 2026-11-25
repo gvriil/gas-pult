@@ -141,6 +141,28 @@ class FocusPart:
             return {w["id"] for w in wins if not w.get("space") and self.project_of(pd, w) == rec["proj"]}
         return {w["id"] for w in wins if rid and not w.get("space") and focus.Focus.owns_window(rec, w)}
 
+    def focus_adopt_new(self, path: str, wid: str, sid: str) -> list[str]:
+        """Окно, открытое в папке проекта, у которого есть живые ссылки людей, — сразу видно этим ссылкам (владелец
+        25.11: «новые окна, которые владелец открывает в проекте клиента, не терялись для его ссылки»). Разговор окна —
+        в ``sids`` каждой ссылки (виден и после закрытия, «Продолжить»), метка окна — их id. Только окна Claude с id
+        разговора (не оболочка); ссылки владельца (owner_link), демо и пространства — не трогаем. Сбой — молча."""
+        sid = str(sid or "")
+        if not sid or not path:
+            return []
+        try:
+            pid = self.projects.of_path(self.project_data(), path)
+            if not pid:
+                return []
+            rids = [k for k, v in self.focus._load().items() if v.get("proj") == pid and focus.Focus.live(v)
+                    and not focus.Focus.whole_project(v) and not v.get("space")]
+            for rid in rids:
+                self.focus.add_chat(rid, sid)
+            if rids:
+                self.tmux.set_focus(wid, " ".join(rids))
+            return rids
+        except (OSError, LookupError, ValueError):
+            return []
+
     SPAWN_DEPTH = 4                         # окно из окна из окна…: дальше — не ищем (и цикл опций не крутим вечно)
 
     def focus_spawned(self, rec: dict) -> set[str]:

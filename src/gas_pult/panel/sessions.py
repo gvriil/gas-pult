@@ -598,6 +598,7 @@ class SessionsPart:
             self.pult.set_state(window_models={**(st.get("window_models") or {}), wid: model})
         if effort_flag(effort):
             self.pult.set_state(window_efforts={**(self.pult.state().get("window_efforts") or {}), wid: effort})
+        self.focus_adopt_new(path, wid, sid)        # проект клиента: новое окно — сразу и его ссылкам (владелец 25.11)
         return {"id": wid, "sid": sid}
 
     CLAUDE_MISSING = ("В пространстве ещё не установлен Claude Code — сессия не запустится. Владелец пульта уже "
