@@ -506,13 +506,10 @@
  "login.sub.inv": "sign-in by invitation",
  "s.answer.wait": "Pick an option above — your text stays in the field and won't be lost",
  "set.bug": "Report a problem",
-<<<<<<< HEAD
  "s.attach": "Attach a photo or file",
  "s.attach.up": "Uploading “{n}”…",
  "s.attach.fail": "“{n}” was not sent: {e}",
- "s.attach.demo": "In the demo the file goes nowhere"
-=======
+ "s.attach.demo": "In the demo the file goes nowhere",
  "theme.to.dark": "Dark theme",
  "theme.to.light": "Light theme"
->>>>>>> d41d5bb ([общее] Тема: подписи кнопки — из словаря (ru/en))
 }
