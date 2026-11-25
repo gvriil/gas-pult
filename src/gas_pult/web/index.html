@@ -7951,6 +7951,7 @@ applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
 afterPaint(() => part("themebtn").then((m) => m.init()).catch(() => {}));
 afterPaint(() => part("golosfont").then((m) => m.init()).catch(() => {}));   // Golos Text (25.11), свой файл
+afterPaint(() => part("look").then((m) => m.init()).catch(() => {}));   // фирменный вид: фон, акцент «Да»
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", () => { fitViewport(); keepAnch(); }); }
 // iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
