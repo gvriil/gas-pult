@@ -2839,6 +2839,7 @@ function setSub(html) { setHTML($("subtitle"), html); }
 // ---------- вход ----------
 function showLogin() {
   simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck();
+  part("loginlook").then((m) => m.init()).catch(() => {});   // вид входа «Ладея» (25.11) — своя часть
   let fm = null; try { fm = localStorage.getItem("gp.focus"); } catch (e) { /* приватный режим */ }
   if (fm) part("focusdev").then((m) => m.loginNote($("loginFocus"))).catch(() => {});   // открывали фокус-ссылку: вход не нужен
   if (DEMO && params.get("tgwait")) part("tglogin").then((m) => m.demoState(params.get("tgwait")));   // снимки состояний ожидания

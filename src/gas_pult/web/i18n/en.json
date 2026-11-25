@@ -520,5 +520,6 @@
  "s.conn.admin": "Email and messengers are connected by the space administrator. Tap — they will get your request.",
  "s.conn.ask": "Ask the administrator",
  "s.conn.ask.text": "Please connect my email or messenger to Ladeya.",
- "s.conn.asked": "Request sent to the administrator"
+ "s.conn.asked": "Request sent to the administrator",
+ "theme.to.light": "Light theme"
 }
