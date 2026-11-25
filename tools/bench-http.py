@@ -5,7 +5,9 @@
 
 Сервер — ``webapp.Panel`` во временной папке, tmux поддельный (tools/bench-load.py: fake_tmux), режим хранения —
 ``--mode`` (json). Клиент — как в bench-load: половина — ``/api/sessions``, четверть — ``/api/history``, четверть —
-запись. ``--profile``: один клиент подряд, cProfile на сервере — цена одного запроса по функциям.
+запись. ``--pace 3``: запрос клиента раз в 3 с, как панель во время хода (WORK_POLL_MS); без него — подряд
+без пауз (перегрузка: задержка ≈ клиенты / пропускная способность). Сервер — боевой ``webapp.Server`` (очередь 128).
+``--profile``: один клиент подряд, cProfile на сервере — цена одного запроса по функциям.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import argparse
 import importlib.util
 import json
 import os
+import random
 import signal
 import subprocess
 import sys
@@ -31,7 +34,6 @@ _spec.loader.exec_module(bl)
 
 def serve(root: Path, mode: str, clients: int, spaces: int, info: Path, profile: str):
     """Процесс сервера: панель, люди, токены → ``info`` (JSON); работает до SIGTERM."""
-    from http.server import ThreadingHTTPServer
     bl._env(str(root / "data"), mode)
     os.environ["GAS_PULT_TENANTS_ROOT"] = str(root / "tenants")
     from gas_pult import tenants, webapp
@@ -65,8 +67,7 @@ def serve(root: Path, mode: str, clients: int, spaces: int, info: Path, profile:
             finally:
                 prof.disable()
         H.handle = handle
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
-    srv.daemon_threads = True
+    srv = webapp.Server(("127.0.0.1", 0), H)          # боевой класс: очередь 128, как на проде
     info.write_text(json.dumps({"port": srv.server_address[1], "who": who,
                                 "toks": {str(u): p.auth.issue(u) for u, _ in who}}))
 
@@ -102,7 +103,7 @@ def serve(root: Path, mode: str, clients: int, spaces: int, info: Path, profile:
     srv.serve_forever()
 
 
-def load(base: str, who: list, toks: dict, reqs: int) -> dict:
+def load(base: str, who: list, toks: dict, reqs: int, pace: float = 0) -> dict:
     from gas_pult import webauth
     times: dict[str, list[float]] = {"sessions": [], "history": [], "write": []}
     errs = [0]
@@ -133,7 +134,10 @@ def load(base: str, who: list, toks: dict, reqs: int) -> dict:
 
     def client(uid, s):
         tok = toks[str(uid)]
+        if pace:                                     # клиенты стартуют вразброс, как живые панели
+            time.sleep(random.uniform(0, pace))
         for i in range(reqs):
+            t_next = time.perf_counter() + pace
             step = i % 4
             if step in (0, 2):
                 req("sessions", "/api/sessions", tok)
@@ -144,6 +148,8 @@ def load(base: str, who: list, toks: dict, reqs: int) -> dict:
                 req("write", "/api/tasks/add", tok, {"title": f"нагрузка {i}", "next": "проверить"})
             else:
                 req("write", "/api/prefs", tok, {"lang": bl.LANGS[i % 2]})
+            if pace:                                 # темп панели: запрос раз в pace секунд (WORK_POLL_MS = 3 с)
+                time.sleep(max(0.0, t_next - time.perf_counter()))
     for uid, _ in who:                                   # прогрев: кэши панели
         req("sessions", "/api/sessions", toks[str(uid)])
     for v in times.values():
@@ -164,7 +170,7 @@ def load(base: str, who: list, toks: dict, reqs: int) -> dict:
             "slow": dict(sorted(slow.items(), key=lambda x: -x[1])[:8])}
 
 
-def run(clients: int, reqs: int, spaces: int, mode: str, profile: str = "") -> dict:
+def run(clients: int, reqs: int, spaces: int, mode: str, profile: str = "", pace: float = 0) -> dict:
     with tempfile.TemporaryDirectory(prefix="gp-http-") as d:
         info = Path(d) / "info.json"
         env = dict(os.environ, PYTHONPATH=os.environ.get("PYTHONPATH", "src"))
@@ -177,7 +183,7 @@ def run(clients: int, reqs: int, spaces: int, mode: str, profile: str = "") -> d
                     break
                 time.sleep(0.1)
             i = json.loads(info.read_text())
-            return load(f"http://127.0.0.1:{i['port']}", i["who"], i["toks"], reqs)
+            return load(f"http://127.0.0.1:{i['port']}", i["who"], i["toks"], reqs, pace)
         finally:
             pr.send_signal(signal.SIGTERM)
             pr.wait(30)
@@ -189,6 +195,7 @@ def main():
     a.add_argument("--reqs", type=int, default=30)
     a.add_argument("--spaces", type=int, default=40)
     a.add_argument("--mode", default="json")
+    a.add_argument("--pace", type=float, default=0, help="секунд между запросами клиента; 0 — без пауз (перегрузка)")
     a.add_argument("--profile", action="store_true", help="один клиент, cProfile на сервере")
     a.add_argument("--serve"), a.add_argument("--info"), a.add_argument("--profile-out", default="")
     x = a.parse_args()
@@ -202,7 +209,7 @@ def main():
         pstats.Stats(out).sort_stats("cumulative").print_stats(25)
         return
     for c in [int(v) for v in x.clients.split(",")]:
-        print(json.dumps(run(c, x.reqs, x.spaces, x.mode), ensure_ascii=False), flush=True)
+        print(json.dumps(run(c, x.reqs, x.spaces, x.mode, pace=x.pace), ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
