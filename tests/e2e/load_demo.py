@@ -1,6 +1,6 @@
 """Загрузка без лишнего (план UX, пункт 10; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/load_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/load_demo.py http://127.0.0.1:8797/?demo&dev
 
 marked и DOMPurify грузятся после первого показа (не в <head>): запрос к ним начинается позже первой отрисовки,
 ответы после загрузки — с разметкой (жирный, код), до неё — простой текст. Словарь кэшируется: второй заход берёт его
@@ -47,4 +47,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

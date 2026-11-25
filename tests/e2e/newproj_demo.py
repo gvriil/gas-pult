@@ -1,6 +1,6 @@
 """«Новый проект» в панели чатов (Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/newproj_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/newproj_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Компьютер (1366) и телефон (390), светлая и тёмная тема:
 - у заголовка «Проекты» в панели чатов — «+»; лист «Новый проект» (помощник знает экран sheet.new-project);
@@ -105,4 +105,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

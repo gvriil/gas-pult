@@ -51,7 +51,7 @@ def test_e2e_drop_and_paste():
             pg = br.new_page(viewport={"width": 1366, "height": 860})
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
             pg.wait_for_function("!!window.dropFilesOf", timeout=8000)
             # картинка на поле ввода — загрузка, текст пути в поле не вставлен

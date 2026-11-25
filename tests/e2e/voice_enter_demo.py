@@ -1,6 +1,6 @@
 """Enter во время записи голоса (#208; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/voice_enter_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/voice_enter_demo.py http://127.0.0.1:8797/?demo&dev
 
 Жалоба владельца 14.11: «Enter нажимаю — в чат приходит сообщение, а запись не заканчивается». Ожидается: Enter во
 время диктовки = «Стоп и отправить»: запись останавливается, приходит итог распознавания, уходит ОДНО сообщение с
@@ -60,4 +60,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

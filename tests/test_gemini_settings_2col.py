@@ -33,7 +33,7 @@ def test_e2e_wide_window():
             pg = b.new_page(viewport={"width": 1440, "height": 900})
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
             pg.wait_for_timeout(2500)
             pg.click("#settingsBtn")
             pg.wait_for_selector(".sheet.setwide .setnav button.on", timeout=5000)

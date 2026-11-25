@@ -122,7 +122,7 @@ def run(st: Stand, shots: Path | None = None) -> list[str]:
 
     fails: list[str] = []
     errs: list[str] = []
-    base = f"http://127.0.0.1:{st.ws}/index.html?demo"
+    base = f"http://127.0.0.1:{st.ws}/index.html?demo&dev"
 
     def check(name, got, want):
         if got != want:

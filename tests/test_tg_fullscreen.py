@@ -40,7 +40,7 @@ def test_fullscreen_only_for_floating_window(view, screen, off, want):
             pg = br.new_page(viewport={"width": view, "height": 800}, screen={"width": screen, "height": 900})
             pg.add_init_script(STUB + ("localStorage.setItem('tgFull', '0');" if off else ""))
             pg.route("**/telegram-web-app.js", lambda r: r.fulfill(body="", content_type="text/javascript"))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev")
             pg.wait_for_timeout(1500)
             assert pg.evaluate("window.__fs") == want
             br.close()

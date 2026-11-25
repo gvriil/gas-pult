@@ -1,6 +1,6 @@
 """Голос на iPhone: «закончил говорить, а кнопка ни стоп, ни отправить не нажимается» (жалоба владельца 15.11).
 
-    python tests/e2e/voice_stuck_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/voice_stuck_demo.py http://127.0.0.1:8797/?demo&dev
 
 Причина: на iPhone запуск записи (разрешение микрофона, AudioWorklet) идёт дольше HOLD_MS. Отпускание пальца (или
 pointercancel от окна разрешения) засчитывалось как «держали — отпустили» и звало остановку до того, как захват звука
@@ -67,4 +67,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

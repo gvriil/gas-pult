@@ -1,6 +1,6 @@
 """Отзывы тестировщика по фокус-чату 22.11 (Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/nextq_files_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/nextq_files_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Демо ``&nq=file``: ваш снимок без подписи, документ с подписью и ответ с фразами «Можно спросить» и образцом текста.
 Обычный чат (``open=@1``) и демо фокус-ссылки (``focus``); WebKit 390 (телефон) и Chromium 1366, светлая и тёмная.
@@ -122,4 +122,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

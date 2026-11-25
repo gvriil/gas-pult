@@ -255,6 +255,6 @@ def test_e2e_visible_text_in_browser():
     srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(WEB)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        e2e().run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+        e2e().run(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
     finally:
         srv.shutdown()

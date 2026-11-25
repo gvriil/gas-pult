@@ -1,7 +1,7 @@
 """Лента держит низ при ресайзе, если вы были внизу (#189, UI/UX п.4; Playwright — pytest запускает, только если
 есть браузер).
 
-    python tests/e2e/feed_bottom_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/feed_bottom_demo.py http://127.0.0.1:8797/?demo&dev
 
 Демо @3: прошло 4 с после открытия (окно «прилипания» закончилось) — окно стало ниже (клавиатура, поворот) и
 черновик в поле вырос на несколько строк — лента у последнего сообщения. Пролистали вверх — ресайз не тянет вниз.
@@ -53,5 +53,5 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")
     print("ok")

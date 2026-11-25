@@ -40,6 +40,48 @@ const DEMO_FAMILY = [["grave-search", "Найти место захоронен�
   ["family-photos", "Разобрать семейные фото", "разложить копии фото по годам и по людям и подписать, кто на снимке. Оригиналы не трогай"],
   ["family-story", "Записать рассказ близкого", "записать рассказ близкого человека и оформить его главой семейной книги"]];
 
+// Бизнес-демо (framewatcher и владелец 25.11, QR в колоде для ритейла): /?demo — простой режим, бизнес-сценарий «вход →
+// работа → выход», у чатов — источник данных (МойСклад, Битрикс24, Telegram, почта), расход и лимиты скрыты.
+// &dev — прежнее демо разработчика (на нём автотесты); &simple=0 — сразу полный режим.
+const BIZ = !params.has("dev");
+const BIZ_S = {   // окно: название ru/en, источник, строка-превью ru/en, папка
+  "@1": ["Заказы и остатки", "Orders and stock", "МойСклад", "Сверяю остатки по 214 товарам: 8 заказов ждут сборки", "Checking stock for 214 items: 8 orders wait for picking", "sklad"],
+  "@2": ["Утро руководителя магазина", "Store manager's morning", "Telegram", "Отправить персональное предложение 12 покупателям?", "Send a personal offer to 12 customers?", "magazin"],
+  "@3": ["Ответы покупателям", "Replies to customers", "Битрикс24", "Готово: 17 ответов на вопросы покупателей", "Done: 17 replies to customer questions", "pokupateli"],
+  "@4": ["Протокол планёрки", "Meeting minutes", "Почта", "Протокол разослан: 5 поручений со сроками", "Minutes sent: 5 tasks with deadlines", "planerki"],
+  "@5": ["Бот магазина", "Store bot", "Telegram", "", "", "bot"] };
+const BIZ_P = { "p-icon": ["Магазин", "Store"], "p-tgi": ["Склад и заказы", "Stock and orders"], "p-gas-pult": ["Покупатели", "Customers"],
+  "p-gastech-digest": ["Планёрки", "Meetings"], "p-shop-bot": ["Бот магазина", "Store bot"] };
+const BIZ_SRC_EN = { "МойСклад": "MoySklad", "Битрикс24": "Bitrix24", "Telegram": "Telegram", "Почта": "Email" };
+function bizHist() {
+  const en = LANG === "en";
+  return en ? [
+    { i: 1, role: "user", text: "Send me the morning numbers for the store", ts: "2026-11-25 07:58" },
+    { i: 2, role: "assistant", ts: "2026-11-25 08:00", text: "Good morning! Yesterday: revenue 1,240,000 — 97% of plan. 386 receipts, average 3,210.\n\n| Category | Revenue | Plan |\n|---|---|---|\n| Smartphones | 512,000 | 104% |\n| Laptops | 318,000 | 91% |\n| Home appliances | 314,000 | 99% |\n| Accessories | 96,000 | 78% |\n\nSource: MoySklad. Accessories are behind: 12 customers bought a smartphone this week without a case or a screen protector. I prepared a personal offer for them in Telegram: 10% off until Sunday." },
+    { i: 3, role: "user", text: "Good, show me the text and send it", ts: "2026-11-25 08:02" }] : [
+    { i: 1, role: "user", text: "Пришли утренние цифры по магазину", ts: "2026-11-25 07:58" },
+    { i: 2, role: "assistant", ts: "2026-11-25 08:00", text: "Доброе утро! Вчера выручка 1 240 000 ₽ — 97 % плана. Чеков 386, средний чек 3 210 ₽.\n\n| Категория | Выручка | План |\n|---|---|---|\n| Смартфоны | 512 000 ₽ | 104 % |\n| Ноутбуки | 318 000 ₽ | 91 % |\n| Бытовая техника | 314 000 ₽ | 99 % |\n| Аксессуары | 96 000 ₽ | 78 % |\n\nИсточник: МойСклад. Аксессуары отстают: 12 покупателей за неделю купили смартфон без чехла и стекла. Подготовил им персональное предложение в Telegram — скидка 10 % до воскресенья." },
+    { i: 3, role: "user", text: "Хорошо, покажи текст и отправь", ts: "2026-11-25 08:02" }];
+}
+const BIZ_ASK = { kind: "question", known: true, sig: "biz-offer",
+  title_ru: "Отправить персональное предложение 12 покупателям?", title_en: "Send a personal offer to 12 customers?",
+  detail_ru: "«Здравствуйте! Для вашего нового смартфона — чехол и защитное стекло со скидкой 10 % до воскресенья.» Список — из МойСклад, отправка — в Telegram.",
+  detail_en: "“Hello! A case and a screen protector for your new smartphone — 10% off until Sunday.” List from MoySklad, sent via Telegram.",
+  options: [{ key: "q1", label_ru: "Да", label_en: "Yes", send: { n: "1" }, level: 1, note_ru: "", note_en: "" },
+    { key: "q2", label_ru: "Нет", label_en: "No", send: { n: "2" }, level: 1, note_ru: "", note_en: "" },
+    { key: "q3", label_ru: "Изменить текст", label_en: "Edit the text", send: { n: "3" }, level: 1, note_ru: "", note_en: "" }] };
+const BIZ_SCREEN = ["● МойСклад: 12 покупателей без аксессуаров за неделю", "", "☐ Предложение", "", "Отправить персональное предложение 12 покупателям?", "",
+  "❯ 1. Да", "     Скидка 10 % на чехол и стекло до воскресенья — в Telegram", "  2. Нет", "  3. Изменить текст", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"];
+function demoBiz(R) {                                  // данные бизнес-демо поверх общих: окна, источник, без расхода
+  const s = R["/api/sessions"], en = LANG === "en";
+  s.cost = null; s.limits = null;
+  for (const x of s.sessions) {
+    const b = BIZ_S[x.id]; if (!b) continue;
+    const src = en ? BIZ_SRC_EN[b[2]] : b[2], text = en ? b[4] : b[3];
+    Object.assign(x, { active: x.id === "@2", name: en ? b[1] : b[0], path: "/home/u/projects/" + b[5], branch: "", source: src, cost: null,
+      preview: text ? `${src} · ${text}` : "", ...(x.title_own ? {} : { title: en ? b[1] : b[0] }) });
+  }
+}
 function demoTeam(body) {                            // «Команда» в демо: как personas.Team, в памяти страницы
   const t = demoApi.team ||= { staff_caps: null, sections: ["search", "analytics", "docs", "comms"], people: { 2: {} } }, c = DEMO_PERSONAS.ru;
   if (body) { const r = body.id != null ? (t.people[body.id] ||= {}) : t;
@@ -53,7 +95,7 @@ function demoTeam(body) {                            // «Команда» в д
 function demoUi(body) {
   const role = params.get("role") || "owner", c = DEMO_PERSONAS[LANG] || DEMO_PERSONAS.ru;
   const all = c.caps.map((x) => x.id), ceil = role === "viewer" ? all.filter((x) => x !== "cap.dev_models_mcp") : all;
-  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" ? "business_owner" : "developer"), added: [], hidden: [], onboarded: !params.has("persona") };
+  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" || (BIZ && params.get("simple") !== "0") ? "business_owner" : "developer"), added: [], hidden: [], onboarded: !params.has("persona") };
   if (body?.persona) Object.assign(st, { persona: body.persona, added: [], hidden: [], onboarded: true });
   for (const [k, on] of Object.entries(body?.add || {})) {
     if (on && !ceil.includes(k)) throw new Error("эту возможность вам не разрешил владелец пульта");
@@ -91,6 +133,7 @@ function demoTty(key, path, body) {
 // Демо «Проектов»: проекты — папки сессий демо и ещё два без окон; завершённые чаты — с поиском и «Продолжить».
 function demoTitle(id) {                              // простой режим на английском — без русских слов и в демо-данных
   if (demoApi.titles?.[id]) return demoApi.titles[id];  // своё название чата (/api/title)
+  if (BIZ && BIZ_S[id]) return BIZ_S[id][LANG === "en" ? 1 : 0];
   return (LANG === "en" ? { "@1": "Room tests and report check", "@2": "Icons for the storefront", "@3": "Panel: dark theme", "@4": "Weekly digest" }
     : { "@1": "Тесты комнат и сверка П8", "@2": "Иконки для витрины", "@3": "Панель: тёмная тема", "@4": "Дайджест за неделю" })[id] || "";
 }
@@ -100,8 +143,10 @@ function demoProjects(key, path, body, ses) {
   const en = LANG === "en", L2 = (ru, eng) => (en ? eng : ru);
   const P = [["p-tgi", "tgi", L2("Ассистент ТГИ", "Assistant"), "auto"], ["p-icon", "icon", L2("Иконки магазина", "Shop icons"), "module:wb-reviews"], ["p-gas-pult", "gas-pult", L2("Пульт", "Panel"), "auto"],
     ["p-shop-bot", "shop-bot", L2("Магазин-бот", "Shop bot"), "auto"], ["p-gastech-digest", "gastech-digest", L2("Дайджест", "Digest"), "auto"], ["p-books", "books", L2("Бухгалтерия", "Accounting"), "module:acc-start"], ["p-home", "~", L2("Домашняя", "Home"), "auto"]];
+  if (BIZ) P.forEach((x) => { if (BIZ_P[x[0]]) x[2] = L2(...BIZ_P[x[0]]); });
   const DONE = { "p-tgi": [[L2("Отчёт П8 за октябрь", "October report"), 2 * 3600, 14], [L2("Комнаты: миграция базы", "Rooms: database move"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]],
     "p-books": [[L2("Акт сверки за октябрь", "October reconciliation"), D, 18], [L2("Описание платёжки", "Payment description"), 4 * D, 4]], "p-icon": [[L2("Цены конкурентов", "Competitor prices"), 3 * D, 12]] };
+  if (BIZ) DONE["p-tgi"] = [[L2("Инвентаризация за октябрь", "October stocktake"), 2 * 3600, 14], [L2("Перенос остатков со склада", "Stock transfer"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]];
   const SP = params.has("tester") || params.has("slink");                   // тестировщик (GAS-38): проекты — папки его пространства
   if (SP) { P.length = 0; P.push(...[[L2("Сверка счетов", "Invoice check")], [L2("Меню на зиму", "Winter menu")], [L2("Отчёт для собственника", "Owner report")]].map(([f]) => ["s:demo:" + f, f, f, "space"]));
     DONE["s:demo:" + P[0][1]] = [[L2("Акт сверки с поставщиком", "Supplier reconciliation"), D, 9]]; DONE["s:demo:" + P[1][1]] = [[L2("Цены на супы", "Soup prices"), 3 * D, 5]]; }
@@ -149,7 +194,7 @@ function demoProjects(key, path, body, ses) {
 // «Удалить» и «Корзина чатов» в демо: окно пропадает из списка, чат — из «Завершённых»; «Вернуть» — в «Завершённые».
 async function demoChat(key, body, ses) {
   const pj = demoApi.pj ||= { hidden: {}, titles: {} }, tr = demoApi.trash ||= [], now = Math.floor(Date.now() / 1000);
-  const name = (pid) => ({ "p-tgi": "Ассистент ТГИ", "p-icon": "Иконки магазина", "p-gas-pult": "Пульт", "p-shop-bot": "Магазин-бот", "p-gastech-digest": "Дайджест", "p-books": "Бухгалтерия" })[pid] || "";
+  const name = (pid) => ({ "p-tgi": "Ассистент ТГИ", "p-icon": "Иконки магазина", "p-gas-pult": "Пульт", "p-shop-bot": "Магазин-бот", "p-gastech-digest": "Дайджест", "p-books": "Бухгалтерия", ...(BIZ ? Object.fromEntries(Object.entries(BIZ_P).map(([k, v]) => [k, v[0]])) : {}) })[pid] || "";
   if (key === "/api/chat/move") {                     // «Перенести в проект…»: занятый — «перенесу после хода»
     const s = ses.sessions.find((x) => x.id === body.w); if (!s) throw new Error("окна уже нет");
     if (body.cancel) return { cancelled: true };
@@ -262,7 +307,7 @@ function demoApi(path, body) {
                        "@4": cst(0.31, 2100, 48000, 0, 2250000, { cost_source: "estimate" }) } : role === "member" ? { "@2": cst(0.87, 300, 21000, 90000, 1100000, { limit: null }) } : {};
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
   // ?ask=question — вопрос агента с вариантами (вид экрана Claude Code 2.1, как в tests/fixtures/cc_question.txt)
-  const screen = demoApi.scr ||= params.get("ask") === "question" ? ["☐ Отчёт", "", "Какой отчёт прислать утром?", "", "❯ 1. Короткий — три цифры",
+  const screen = demoApi.scr ||= BIZ && !params.get("ask") ? [...BIZ_SCREEN] : params.get("ask") === "question" ? ["☐ Отчёт", "", "Какой отчёт прислать утром?", "", "❯ 1. Короткий — три цифры",
     "     Выручка, машины, средний чек", "  2. Подробный — по каждой мойке", "  3. Type something.", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"] : ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
@@ -517,11 +562,12 @@ function demoApi(path, body) {
   if (key === "/api/mcp" && params.get("mcpslow")) return new Promise((r) => setTimeout(() => r(R["/api/mcp"]), +params.get("mcpslow") || 0));   // демо: статусы — как на сервере, позже
   R["/api/meta"].projects_ui = true;                  // «Проекты» (задача 49): и у тестировщика пространства (GAS-38)
   R["/api/sessions"].sessions.forEach((x) => { if (!x.space) { x.project = "p-" + folder(x.path); x.title = demoTitle(x.id); } });
+  if (BIZ) demoBiz(R);
   if (key === "/api/projects" || key.startsWith("/api/project/") || key === "/api/project") return demoProjects(key, path, body, R["/api/sessions"]);
   if (key.startsWith("/api/chat/")) return demoChat(key, body, R["/api/sessions"]);
   if (key === "/api/help/ask") return demoHelp(body);
   if (key.startsWith("/api/repos")) return demoRepos(key, path, body);
-  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
+  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? (BIZ && !params.get("ask") ? BIZ_ASK : SIMPLE_DEMO[params.get("ask") || "bash"]) || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
   if (key === "/api/key" && body?.key === "Escape" && params.get("ask") === "question" && !SIM.on) {   // «Отмена» — вопрос закрыт
     demoApi.toolDone = true; demoApi.scr?.splice(0, demoApi.scr.length, "● Вопрос закрыт", "", "❯ ");
@@ -529,7 +575,7 @@ function demoApi(path, body) {
   }
   // rev — как у сервера: меняется и когда растёт последний ответ (ход Claude дописывается в журнал по блоку)
   const demoRev = () => "demo0000-" + demoApi.h.length + "-" + (demoApi.h.at(-1)?.text.length || 0);
-  if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [
+  if (!demoApi.h) demoApi.h = BIZ ? bizHist() : params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 user       7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
@@ -661,7 +707,7 @@ function demoApi(path, body) {
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null,
     login: decodeURIComponent(path).includes("@1") ? DEMO_LOGIN[params.get("login")] || null : null,
     // ?tool=bash — карточка инструмента (#258): разбор как с сервера и команда в target
-    ask: !decodeURIComponent(path).includes(askW) || demoApi.toolDone ? null : SIMPLE_DEMO[params.get("tool")]
+    ask: !decodeURIComponent(path).includes(askW) || demoApi.toolDone ? null : BIZ && !params.get("ask") && !params.get("tool") ? BIZ_ASK : SIMPLE_DEMO[params.get("tool")]
       ? { ...SIMPLE_DEMO[params.get("tool")], target: "rm -rf build && npm run build\nClean and rebuild the project" } : params.get("ask") === "question" ? SIMPLE_DEMO.question : null });
   if (key === "/api/login/code") { demoApi.loginCode = body?.code || ""; return Promise.resolve({ ok: true }); }
   if (key === "/api/login/check") return Promise.resolve(demoApi.loginCode ? { ok: true, text: "вход выполнен", login: null } : { ok: false, text: "окно всё ещё просит войти" });

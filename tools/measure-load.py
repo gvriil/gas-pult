@@ -78,7 +78,7 @@ def measure(runs: int) -> dict:
         proc, ready = start(root, port)
         base = f"http://127.0.0.1:{port}"
         scenes = {"вход": ("/", ".card[data-id], #navList .nrow, #input", True),
-                  "демо": ("/?demo&home", "#sessionsView .card[data-id]", False)}
+                  "демо": ("/?demo&dev&home", "#sessionsView .card[data-id]", False)}
         res: dict = {}
         with sync_playwright() as p:
             br = p.chromium.launch(args=["--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"])

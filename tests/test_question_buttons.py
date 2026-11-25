@@ -225,7 +225,7 @@ def web():
             pass
     srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(WEB)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&noscroll"
+    yield f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&noscroll"
     srv.shutdown()
 
 

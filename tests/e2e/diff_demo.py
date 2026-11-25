@@ -1,6 +1,6 @@
 """Точечное обновление списка и ленты (план UX, пункт 1; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/diff_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/diff_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Перерисовка без изменений не трогает DOM; новый ответ — один новый узел с анимацией появления, остальные сообщения —
 те же узлы (прокрутка, раскрытые логи, выделение не сбиваются); изменившееся сообщение заменяется без анимации (.mupd).
@@ -115,4 +115,5 @@ def run(base: str, shots: str | None = None):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else None)
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else None)
