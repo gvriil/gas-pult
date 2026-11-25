@@ -18,8 +18,8 @@
   :root, :root[data-theme="light"] {
     --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F3F4F6; --bg-terminal: #1E1F20;
     --tq-red: #C5221F; --tq-orange: #C45A00; --tq-yellow: #9A7400; --tq-green: #137333;   /* задачи (17.11), к фону ≥3,9:1 */
-    --border-subtle: #E6E8EC; --border-focus: #2563EB; --field-border: #80868B; --field-ph: #5F6368;
-    --text-primary: #111827; --text-secondary: #4B5563; --text-muted: #5F6672;
+    --border-subtle: #D5D9DF; --border-focus: #2563EB; --field-border: #6B7280; --field-ph: #5F6368;
+    --text-primary: #111827; --text-secondary: #374151; --text-muted: #4B5563;
     --accent-primary: #2563EB; --accent-soft: #DBEAFE; --on-accent: #FFFFFF;
     --status-idle: #5F6672; --status-running: #15803D; --status-approval: #A85300; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
     --status-success: #15803D; --status-danger: #C81E1E; --status-stopped: #C81E1E;
@@ -7946,6 +7946,7 @@ function simpleDemoHist() {
 paintIcons();
 applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
+afterPaint(() => part("themebtn").then((m) => m.init()).catch(() => {}));
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", () => { fitViewport(); keepAnch(); }); }
 // iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
