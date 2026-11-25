@@ -62,7 +62,7 @@ def test_ladeya_with_e_nowhere_user_facing():
 
 def test_wordmark_red_e_only_as_mark():
     assert brand.APP_NAME_RU == "Ладэя" and brand.FORMS["вин"] == "Ладэю" and brand.APP_NAME_EN == "Ladeya"
-    assert brand.wordmark() == 'Лад<span class="e">э</span>я' and brand.wordmark("Ladeya") == "Ladeya"
+    assert brand.wordmark() == 'Лад<span class="e">э</span>я' and brand.wordmark("Ladeya") == brand.WORDMARK_EN
     assert brand.E_COLOR == {"light": "#E8421C", "dark": "#FF5A2D", "light_small": "#C2361A"}
 
 
@@ -79,3 +79,17 @@ def test_red_e_everywhere_in_ready_markup():
     assert brand.paint_html(brand.paint_html("<b>Ладэя</b>")) == '<b>Лад<span class="e">э</span>я</b>'   # не дважды
     look = (ROOT / "src/gas_pult/web/js/look.js").read_text(encoding="utf-8")
     assert "splitText" in look and "MutationObserver" in look        # новый текст в панели — окрашивается сам
+
+
+def test_wordmark_by_language_ru_c_en_b():
+    """Владелец 25.11: «B и C в зависимости от выбранного языка». RU (C) — «Ладэя», «э» красная; EN (B) — «ladeya»
+    строчными (CSS), «e» красная и зеркальная; в разметке и при копировании — «Ladeya», aria-label — «Ladeya»."""
+    assert brand.wordmark("Ладэя") == 'Лад<span class="e">э</span>я'
+    en = brand.wordmark("Ladeya")
+    assert en == brand.WORDMARK_EN and 'aria-label="Ladeya"' in en and re.sub(r"<[^>]+>", "", en) == "Ladeya"
+    assert '<span class="em">e</span>' in en and brand.wordmark("Botsmith") == "Botsmith"
+    look = (ROOT / "src/gas_pult/web/js/look.js").read_text(encoding="utf-8")
+    assert brand.WORDMARK_EN in look                                         # одна разметка на сервере и в панели
+    assert ".wm-en { text-transform: lowercase; }" in look and "transform: scaleX(-1)" in look
+    login = (ROOT / "src/gas_pult/web/js/loginlook.js").read_text(encoding="utf-8")
+    assert brand.WORDMARK_EN in login and "scaleX(-1)" in login

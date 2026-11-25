@@ -52,6 +52,8 @@ body.lg-look #login .lmark { display: none; }
 .lg-brand { display: flex; align-items: center; gap: 10px; font: 600 17px/1 var(--lg-font); letter-spacing: -.01em; }
 .lg-brand svg { width: 29px; height: 24px; color: var(--lg-text); }
 .lg-brand .e { color: var(--lg-accent); }
+.lg-brand .wm-en { text-transform: lowercase; }
+.lg-brand .wm-en .em { display: inline-block; transform: scaleX(-1); color: var(--lg-accent); }
 .lg-ctrl { display: flex; align-items: center; gap: 8px; }
 body.lg-look #login .lg-ctrl .scn-opts { margin: 0; gap: 4px; }
 body.lg-look #login .lg-ctrl .scn-opts button { min-height: 36px; min-width: 40px; padding: 0 9px; border-radius: 8px;
@@ -97,7 +99,8 @@ function build() {
   const panel = document.querySelector("#login > .panel");
   if (!panel || panel.querySelector(".lg-top")) return;
   const top = document.createElement("div"); top.className = "lg-top";
-  const nm = brandName(), word = nm === "Ладэя" ? 'Лад<span class="e">э</span>я' : esc(nm);   // знак-название: «э» красная (25.11)
+  const nm = brandName(), word = nm === "Ладэя" ? 'Лад<span class="e">э</span>я'     // знак-название по языку (25.11)
+    : nm === "Ladeya" ? '<span class="wm-en" aria-label="Ladeya">Lad<span class="em">e</span>ya</span>' : esc(nm);
   top.innerHTML = `<div class="lg-brand">${MARK}<span>${word}</span></div><div class="lg-ctrl"></div>`;
   const ctrl = top.querySelector(".lg-ctrl"), lang = $("loginLang");
   if (lang) ctrl.append(lang);                              // тот же переключатель языка — переносим, обработчики на месте

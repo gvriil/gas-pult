@@ -28,6 +28,10 @@ body.lk-intro #home .card:nth-of-type(4) { animation-delay: 120ms; } body.lk-int
 .e { color: #C2361A; }
 .brand-text .e, .lg-brand .e { -webkit-text-fill-color: #E8421C; color: #E8421C; }
 :root[data-theme="dark"] .e, :root[data-theme="dark"] .brand-text .e { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
+/* английский знак-название (вариант B): «ladeya» строчными, «e» красная и зеркальная; в тексте — «Ladeya» (копирование) */
+.wm-en { text-transform: lowercase; }
+.wm-en .em { display: inline-block; transform: scaleX(-1); -webkit-text-fill-color: #E8421C; color: #E8421C; }
+:root[data-theme="dark"] .wm-en .em { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
 @keyframes lk-in { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }   /* «Ответить» в строке состояния — путь к вопросу, не главное действие */
 `;
 const SVG = `<svg viewBox="0 0 120 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
@@ -68,7 +72,16 @@ function paintText(root) {
     }
   }
 }
-const markWord = () => paintText(document.body);
+const WM_EN = '<span class="wm-en" aria-label="Ladeya">Lad<span class="em">e</span>ya</span>';   // = brand.WORDMARK_EN
+function markEn() {                                 // знак-название на английском — только в .brand-text, не в тексте
+  const en = LANG === "en";                          // боковая панель пишет название по-русски и в английском — знак по языку
+  for (const el of document.querySelectorAll(".brand-text")) {
+    const host = el.querySelector("button") || el, t = host.textContent.trim();
+    if (host.querySelector(".wm-en") || !(t === "Ladeya" || (en && t === "Ладэя"))) continue;
+    host.innerHTML = WM_EN;
+  }
+}
+const markWord = () => { markEn(); paintText(document.body); };   // всё — один раз при загрузке
 
 export function init() {
   if (document.getElementById("bbStyle")) return sync();
@@ -80,7 +93,7 @@ export function init() {
       if (r.type === "characterData") queued.add(r.target);
       else for (const x of r.addedNodes) queued.add(x);
     }
-    if (first && queued.size) requestAnimationFrame(() => { const q = [...queued]; queued = new Set(); q.forEach(paintText); });
+    if (first && queued.size) requestAnimationFrame(() => { const q = [...queued]; queued = new Set(); q.forEach(paintText); markEn(); });
   }).observe(document.body, { subtree: true, childList: true, characterData: true });
   if (!document.querySelector("#home .card")) {     // карточек ещё нет — появятся с движением; уже нарисованы — не дёргаем
     document.body.classList.add("lk-intro"); setTimeout(() => document.body.classList.remove("lk-intro"), 1500);

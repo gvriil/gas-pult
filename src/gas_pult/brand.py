@@ -39,10 +39,17 @@ def paint_html(html: str) -> str:
     return "".join(out)
 
 
+WORDMARK_EN = '<span class="wm-en" aria-label="Ladeya">Lad<span class="em">e</span>ya</span>'
+
+
 def wordmark(name: str = APP_NAME_RU, cls: str = "e") -> str:
-    """Знак-название в HTML: «Лад<span class="e">э</span>я» — красную «э» красит CSS (``E_COLOR``). Латиница и любое
-    другое слово — без изменений."""
-    return name.replace("э", f'<span class="{cls}">э</span>', 1) if name == APP_NAME_RU else name
+    """Знак-название в HTML по языку (владелец 25.11: «B и C в зависимости от выбранного языка»):
+    русский (C) — «Лад<span class="e">э</span>я», красная «э»; английский (B) — ``WORDMARK_EN``: «ladeya» строчными
+    (CSS text-transform: копируется и читается как «Ladeya»), «e» красная и зеркальная (CSS scaleX(-1)). Любое другое
+    слово — без изменений. Только в знаке-названии; в предложениях английское «Ladeya» — обычным текстом."""
+    if name == APP_NAME_RU:
+        return name.replace("э", f'<span class="{cls}">э</span>', 1)
+    return WORDMARK_EN if name == APP_NAME_EN else name
 OLD = ("Гаврилой", "Гаврилы", "Гавриле", "Гаврилу", "Гаврила", "Gavrila")   # прежнее имя — для теста
 
 
