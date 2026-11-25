@@ -27,6 +27,7 @@ from gas_pult import (
     ago,
     balance,
     chatmcp,
+    claude_trust,
     ctxsnap,
     drive_inbox,
     harness,
@@ -49,6 +50,7 @@ from gas_pult.humanize import BUSY, DIALOG
 from gas_pult.panel.projects import EFFORTS, effort_flag
 from gas_pult.people import has_telegram
 from gas_pult.telegram import TelegramError
+from gas_pult.tmux import trust_keys
 
 
 def effort_ok(profile: str | None, model: str | None = "") -> bool:
@@ -457,8 +459,18 @@ class SessionsPart:
                     sel = next((i for i in reversed(range(len(lines))) if re.match(r"^\s*❯\s*\d+\.\s", lines[i])), None)
                 else:
                     tgt = next((i for i, x in enumerate(lines) if target and target in x), None)
+                    if tgt is None and target:                # узкое окно перенесло пункт на две строки
+                        tgt = next((i for i, x in enumerate(lines) if len(c := x.replace("❯", "").strip()) >= 6
+                                    and target.startswith(c)), None)
                     marks = [i for i, x in enumerate(lines) if "❯" in x]
                     sel = min(marks, key=lambda i: abs(i - tgt)) if marks and tgt is not None else None
+                if (sel is None or tgt is None) and re.match(r"Yes, I trust", target, re.I) and \
+                        (keys := trust_keys("\n".join(lines))):   # «Да, доверяю» — как автоответ (25.11)
+                    for k in keys:
+                        self.tmux.keys(w["id"], k)
+                        time.sleep(0.1)
+                    time.sleep(1.5)
+                    return self.tmux.screen(w["id"], 40)
                 if sel is None or tgt is None:
                     raise ValueError("пункт не найден на экране — обновите экран")
                 if sel == tgt:
@@ -577,6 +589,7 @@ class SessionsPart:
             chatmcp.put(self.CHAT_MCP, sid, mcp_off)
         cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, sid))
         cmd += f" --resume {sid}" if resume else f" --session-id {sid}"
+        claude_trust.ensure(path, self.cfg.roots(), home)            # папка пульта — без вопроса «доверять?» (25.11)
         wid = self.tmux.new_window(self.free_wname(base), path, cmd,
                                    mark=profile or "claude", by=str(person) if home else "", sid=sid)
         if not home:

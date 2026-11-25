@@ -18,6 +18,7 @@ from gas_pult import (
     chat_move,
     chat_trash,
     chatmcp,
+    claude_trust,
     harness,
     humanize,
     models,
@@ -212,6 +213,8 @@ class ProjectsPart:
                              "другое название или имя папки") from None
         if instructions:
             (path / "CLAUDE.md").write_text(instructions + "\n", encoding="utf-8")
+        claude_trust.ensure(path, self.cfg.roots(),                  # доверенная заранее — без вопроса (25.11)
+                            self.pult.claude_dir(person) if person is not None else None)
         pid = self.projects.create(str(path), name, by=person, profile=profile, model=model)
         self._proj = (0.0, {})
         return {"id": pid, "name": name, "folder": path.name, "path": projects.tilde(str(path), self.pult.home)}

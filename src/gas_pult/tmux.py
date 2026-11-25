@@ -33,7 +33,7 @@ TRUST_OPT = re.compile(r"^\s*(❯\s*)?(\d+\.\s*)?(Yes, I trust|No, exit|No\b)", 
 def trust_keys(text: str) -> list[str] | None:
     """Клавиши, чтобы ответить «да» на вопрос о доверии папке: [«Down»…, «Enter»]; не вопрос о доверии или не
     понятно, где «Yes» и курсор, — None (тогда ничего не нажимаем: Enter на «No, exit» закрыл бы Claude)."""
-    if not TRUST_ASK.search(text):
+    if not TRUST_ASK.search(" ".join(text.split())):     # узкое окно переносит вопрос на две строки (25.11)
         return None
     lines = text.splitlines()
     opts = [i for i, x in enumerate(lines) if TRUST_OPT.match(x)]
@@ -443,15 +443,24 @@ class Tmux:
         self.run("send-keys", "-t", wid, "Enter")
         self.watch_trust(wid)
 
-    def accept_trust(self, wid: str, wait: float = TRUST_WAIT, step: float = 1.0) -> bool:
-        """Ждать до ``wait`` с вопрос «доверять папке?» в окне и ответить «да». True — ответили."""
+    def accept_trust(self, wid: str, wait: float = TRUST_WAIT, step: float = 0.3, settle: float = 2.0) -> bool:
+        """Ждать до ``wait`` с вопрос «доверять папке?» в окне и ответить «да». True — ответили и вопроса больше нет.
+
+        25.11 (владелец: «доверять» не сработало, человек не смог написать): нажатия, отправленные пока Claude Code
+        ещё рисует экран, теряются — раньше пульт после первой попытки переставал следить. Теперь опрос каждые 0,3 с,
+        после нажатий ждём до ``settle`` с, что вопрос исчез, иначе отвечаем снова."""
         end = time.monotonic() + wait
         while time.monotonic() < end:
-            text = "\n".join(self.screen(wid, 30))
-            if keys := trust_keys(text):
+            if keys := trust_keys("\n".join(self.screen(wid, 30))):
                 for k in keys:
                     self.run("send-keys", "-t", wid, k)
-                return True
+                    time.sleep(0.05)
+                gone = time.monotonic() + settle
+                while time.monotonic() < gone:
+                    time.sleep(step)
+                    if not TRUST_ASK.search(" ".join("\n".join(self.screen(wid, 30)).split())):
+                        return True
+                continue
             time.sleep(step)
         return False
 
