@@ -521,5 +521,9 @@
  "s.conn.ask": "Ask the administrator",
  "s.conn.ask.text": "Please connect my email or messenger to Ladeya.",
  "s.conn.asked": "Request sent to the administrator",
- "theme.to.light": "Light theme"
+ "theme.to.light": "Light theme",
+ "help.tour": "Show the tour",
+ "tour.offer.title": "Want a quick look around?",
+ "tour.offer.text": "One minute, five steps. The last one shows how to add Ladeya to your Home Screen.",
+ "tour.offer.no": "Not now"
 }

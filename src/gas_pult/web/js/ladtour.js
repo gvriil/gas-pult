@@ -46,6 +46,11 @@ const CSS = `
 .lt-how .s img { width: 34px; height: 34px; border-radius: 8px; }
 .lt-how .a { color: var(--text-muted); }
 .lt-how .hl { outline: 2px solid var(--accent-primary); outline-offset: 2px; border-radius: 6px; }
+.lt-offer { margin: 12px 0; padding: 14px 16px 12px; border: 1px solid var(--border-subtle); border-radius: 14px;
+  background: var(--bg-surface); animation: lt-in .2s ease both; }
+.lt-offer b { display: block; font-size: calc(16px * var(--fz, 1)); margin: 0 0 4px; }
+.lt-offer p { margin: 0 0 10px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); line-height: 1.45; }
+.lt-offer .lt-row { justify-content: flex-end; } .lt-offer .btn { width: auto; min-height: 44px; padding: 0 16px; margin: 0; }
 .lt-steps { margin: 0 0 14px; padding-left: 20px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); line-height: 1.45; }
 `;
 const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
@@ -131,4 +136,34 @@ export function start() {
   });
   addEventListener("keydown", key, true); addEventListener("resize", paint);
   paint();
+}
+
+// Предложение тура при первом входе (штаб 25.11): карточка «Показать тур» / «Не сейчас» под лентой простого
+// режима — не модальное окно, читать и писать не мешает. Выбор помнится: на сервере (/api/tour, вид simple — у каждого
+// свой) и на устройстве (store) — по ссылке, где сервер отметку не принимает, хватит устройства. Один раз.
+const OFFER_KEY = "tour:simple";
+function remember(state) {
+  store(OFFER_KEY, state);
+  api("/api/tour", { tour: "simple", state }).catch(() => {});
+}
+export async function offer() {
+  if (store(OFFER_KEY) || document.getElementById("ltOffer") || !SIM.on) return;
+  try { const t = await api("/api/tour"); if (t?.simple) return store(OFFER_KEY, t.simple); } catch (e) { /* нет ответа — решит устройство */ }
+  const feed = $("sFeed"); if (!feed || !SIM.on) return;
+  if (!document.getElementById("ltStyle")) {
+    const s = document.createElement("style"); s.id = "ltStyle"; s.textContent = CSS; document.head.append(s);
+  }
+  const box = document.createElement("div"); box.id = "ltOffer"; box.className = "lt-offer"; box.setAttribute("role", "region");
+  box.setAttribute("aria-label", L("tour.offer.title", "Показать, как тут всё устроено?"));
+  box.innerHTML = `<b>${esc(L("tour.offer.title", "Показать, как тут всё устроено?"))}</b>`
+    + `<p>${esc(L("tour.offer.text", "Минута, пять шагов. Последний — как добавить Ладею на экран «Домой»."))}</p>`
+    + `<div class="lt-row"><button class="btn quiet" type="button" data-lt-no>${esc(L("tour.offer.no", "Не сейчас"))}</button>`
+    + `<button class="btn" type="button" data-lt-go>${esc(L("help.tour", "Показать тур"))}</button></div>`;
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    box.remove();
+    if (b.hasAttribute("data-lt-go")) { remember("done"); start(); } else remember("dismissed");
+  });
+  feed.after(box);                                    // под сообщениями, у поля ввода — видно и при длинной истории
+  box.scrollIntoView?.({ block: "nearest" });
 }

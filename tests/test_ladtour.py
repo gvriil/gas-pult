@@ -32,3 +32,24 @@ def test_demo_one_tap_and_no_chat_list():
 def test_no_external_scripts_and_no_blue():
     assert "cdnjs" not in TOUR and "http" not in TOUR.replace("//", "")
     assert not re.search(r"#(2563EB|4285F4|60A5FA)", TOUR, re.I)
+
+
+INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+
+
+def test_simple_mode_help_and_first_entry_offer():
+    """Штаб 25.11: «Показать тур» в «?» простого режима (2 нажатия) и одно предложение при первом входе — карточкой,
+    не модальным окном; выбор помнится на сервере (вид simple) и на устройстве."""
+    assert 'SIM.on ? part("ladtour").then((m) => m.start()) : startTour(tourKind(), true)' in INDEX
+    assert 'if (!DEMO) afterPaint(() => part("ladtour").then((m) => m.offer())' in INDEX
+    assert 'api("/api/tour", { tour: "simple", state })' in TOUR and 'store(OFFER_KEY, state)' in TOUR
+    assert 'aria-modal' not in TOUR.split("export async function offer")[1]          # карточка в ленте, не модальное
+    assert 'body.biz-demo .hgo button[data-go="go:simple.agents"] { display: none; }' in DEMO
+
+
+def test_server_keeps_simple_tour(tmp_path):
+    from gas_pult import people
+    p = people.People(tmp_path / "people.json", [1])
+    p.add(2, "member", "Иван")
+    p.set_tour(2, "simple", "dismissed")
+    assert p.tour(2)["simple"] == "dismissed" and p.tour(1)["simple"] is None

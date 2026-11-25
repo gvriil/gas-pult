@@ -86,6 +86,7 @@ body.biz-demo #simple .s-who b { white-space: normal; overflow: visible; text-ov
 body.biz-demo #simple .s-who small { white-space: nowrap; font-size: 12px; }
 body.biz-demo #simple #sWho { pointer-events: none; } body.biz-demo #simple #sWho > .i.s16 { display: none; }   /* демо — один чат, без списка (владелец 25.11) */
 body.biz-demo #simple #sVid, body.biz-demo #simple #sTourBtn { margin-right: 6px; }
+body.biz-demo .hgo button[data-go="go:simple.agents"] { display: none; }   /* и из «?» — без перехода к списку чатов */
 body.biz-demo #simple .s-demo { color: var(--bz-text-3); }
 body.biz-demo #simple .s-vid { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px; min-height: 36px; padding: 0 12px;
   border: 1px solid var(--bz-line); border-radius: 8px; background: var(--bz-surface); color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
