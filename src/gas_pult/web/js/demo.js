@@ -85,6 +85,8 @@ body.biz-demo #simple .s-who b { white-space: normal; overflow: visible; text-ov
 @media (max-width: 480px) { body.biz-demo #simple #sHelp span { display: none; } body.biz-demo #simple #sHelp { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; } }
 body.biz-demo #simple .s-who small { white-space: nowrap; font-size: 12px; }
 body.biz-demo #simple .s-demo { color: var(--bz-text-3); }
+body.biz-demo #simple .s-vid { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--bz-line); border-radius: 8px; background: var(--bz-surface); color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
 body.biz-demo #simple .s-secs { gap: 2px; padding: 0; box-shadow: inset 0 -1px 0 var(--bz-line); }
 body.biz-demo #simple .s-secs .scn-opt { border: 0; background: none; border-radius: 0; min-height: 44px; padding: 0 12px; font-size: 15px;
   font-weight: 500; color: var(--text-secondary); box-shadow: none; }
@@ -111,6 +113,17 @@ function bizStyle() {                                  // один раз: ст�
   const st = document.createElement("style"); st.id = "bizCss"; st.textContent = BIZ_CSS; document.head.append(st);
   document.body.classList.add("biz-demo");
   part("retailfont").then((m) => m.init()).catch(() => {});
+  setTimeout(bizVideo, 1500);
+}
+// «Смотреть, 1 мин» и в простом режиме (framewatcher 25.11): тихая вторичная кнопка под шапкой; ролик — тот же, что в
+// полосе демо (js/demovideo.js); ролика на сервере нет — кнопки нет.
+function bizVideo() {
+  const src = $("dvBtn"), at = $("sDemo");
+  if (!src || !at || !SIM.on || $("sVid")) return;
+  const b = document.createElement("button");
+  b.type = "button"; b.id = "sVid"; b.className = "s-vid"; b.innerHTML = ic("play", "s16") + "<span>" + (LANG === "en" ? "Watch, 1 min" : "Смотреть, 1 мин") + "</span>";
+  b.onclick = () => src.click();
+  at.after(b);
 }
 function demoBiz(R) {                                  // данные бизнес-демо поверх общих: окна, источник, без расхода
   const s = R["/api/sessions"], en = LANG === "en";
