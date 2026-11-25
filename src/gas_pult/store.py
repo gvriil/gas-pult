@@ -107,12 +107,25 @@ def vfile(path) -> Path:
     return path.with_name(f".{path.name}.v")
 
 
+_VCACHE: dict[str, tuple[tuple, int]] = {}      # .<имя>.v → (подпись, версия): читается на каждый load (25.11)
+
+
 def file_version(path) -> int:
-    """Версия схемы, в которой записан файл: число из ``.<имя>.v``; нет файла или мусор — 0."""
+    """Версия схемы, в которой записан файл: число из ``.<имя>.v``; нет файла или мусор — 0. Кэш — по подписи файла."""
+    f = vfile(path)
     try:
-        return max(0, int(vfile(path).read_text(encoding="utf-8").strip()))
-    except (OSError, ValueError):
+        st = f.stat()
+    except OSError:
         return 0
+    sig, key = (st.st_ino, st.st_mtime_ns, st.st_size), str(f)
+    if (hit := _VCACHE.get(key)) and hit[0] == sig:
+        return hit[1]
+    try:
+        v = max(0, int(f.read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        v = 0
+    _VCACHE[key] = (sig, v)
+    return v
 
 
 def version(name: str) -> int:

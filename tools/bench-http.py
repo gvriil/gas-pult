@@ -107,6 +107,7 @@ def load(base: str, who: list, toks: dict, reqs: int) -> dict:
     times: dict[str, list[float]] = {"sessions": [], "history": [], "write": []}
     errs = [0]
     why: dict[str, int] = {}
+    slow: dict[str, int] = {}
     lock = threading.Lock()
 
     def req(kind, path, tok, body=None):
@@ -120,9 +121,13 @@ def load(base: str, who: list, toks: dict, reqs: int) -> dict:
         except OSError as e:
             ok = False
             with lock:
-                why[type(e).__name__ + ": " + str(getattr(e, "reason", e))[:60]] = why.get(type(e).__name__, 0) + 1
+                k = f"{kind} {type(e).__name__}: {str(getattr(e, 'reason', e))[:50]}"
+                why[k] = why.get(k, 0) + 1
         dt = time.perf_counter() - t0
         with lock:
+            if dt > 2:
+                k = f"{kind} {'ok' if ok else 'err'} >{int(dt)}s"
+                slow[k] = slow.get(k, 0) + 1
             times[kind].append(dt)
             errs[0] += not ok
 
@@ -155,7 +160,8 @@ def load(base: str, who: list, toks: dict, reqs: int) -> dict:
     ms = lambda xs, q: round(bl.pct(xs, q)) if xs else None   # noqa: E731 — pct уже в мс
     return {"clients": len(who), "n": len(allt), "errors": errs[0], "rps": round(len(allt) / sec, 1),
             "p50": ms(allt, 50), "p95": ms(allt, 95), "p99": ms(allt, 99),
-            **{f"{k}_p95": ms(v, 95) for k, v in times.items()}, "why": why}
+            **{f"{k}_p95": ms(v, 95) for k, v in times.items()}, "why": why,
+            "slow": dict(sorted(slow.items(), key=lambda x: -x[1])[:8])}
 
 
 def run(clients: int, reqs: int, spaces: int, mode: str, profile: str = "") -> dict:

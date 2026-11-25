@@ -19,6 +19,7 @@ API для экрана пространств (часть C): ``status()`` — 
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -93,13 +94,40 @@ def paths(slug: str, base_root: Path | None = None) -> dict[str, Path]:
                 "meta": base / META}
 
 
+# Кэш по подписи файлов (inode, mtime, размер): список пространств, отметка и описания читаются на каждый
+# /api/sessions — при 100 клиентах это главная очередь к процессу панели (docs/STORAGE.md, замер 24.11). Файл
+# изменился — подпись другая, читаем заново; вызывающий получает копию.
+_cache: dict[tuple, tuple] = {}
+
+
+def _sig(p: Path):
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+def _cached(key: tuple, sig, make):
+    hit = _cache.get(key)
+    if hit and hit[0] == sig:
+        return copy.deepcopy(hit[1])
+    val = make()
+    _cache[key] = (sig, val)
+    return copy.deepcopy(val)
+
+
 def marker(base_root: Path | None = None) -> dict | None:
     """Отметка настройки (``pult-tenant-setup install``): владелец, путь к tmux. Нет или не читается — None."""
-    try:
-        m = json.loads(((base_root or root()) / MARKER).read_text())
-    except (OSError, ValueError):
-        return None
-    return m if isinstance(m, dict) else None
+    f = (base_root or root()) / MARKER
+
+    def read():
+        try:
+            m = json.loads(f.read_text())
+        except (OSError, ValueError):
+            return None
+        return m if isinstance(m, dict) else None
+    return _cached(("marker", str(f)), _sig(f), read)
 
 
 def enabled(base_root: Path | None = None) -> bool:
@@ -132,8 +160,14 @@ def ready(slug: str, base_root: Path | None = None, runner=None, now=time.monoto
 
 
 def load(slug: str, base_root: Path | None = None) -> dict | None:
-    """Описание пространства (``tenant.json``, пишет ``pult-tenant``); бюджет — из ``budget.json``."""
+    """Описание пространства (``tenant.json``, пишет ``pult-tenant``); бюджет — из ``budget.json``. Кэш — по подписи
+    обоих файлов и дате (бюджет без start считается от даты файла)."""
     p = paths(slug, base_root)
+    return _cached(("load", str(p["meta"])), (_sig(p["meta"]), _sig(p["budget"]), date.today()),
+                   lambda: _load(slug, p))
+
+
+def _load(slug: str, p: dict) -> dict | None:
     try:
         meta = json.loads(p["meta"].read_text())
     except (OSError, ValueError):
@@ -150,11 +184,15 @@ def load(slug: str, base_root: Path | None = None) -> dict | None:
 
 
 def slugs(base_root: Path | None = None) -> list[str]:
-    try:
-        names = sorted(os.listdir(base_root or root()))
-    except OSError:
-        return []
-    return [n for n in names if SLUG.match(n) and "--" not in n]
+    d = Path(base_root or root())
+
+    def read():
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            return []
+        return [n for n in names if SLUG.match(n) and "--" not in n]
+    return _cached(("slugs", str(d)), _sig(d), read)          # папка изменилась (добавили, убрали) — новая подпись
 
 
 def api_profiles(jurisdiction: str = "") -> list[str]:
