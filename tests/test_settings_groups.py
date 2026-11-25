@@ -15,7 +15,7 @@ def test_settings_are_a_lazy_part():
 
 def test_groups_in_order_and_nothing_lost():
     titles = re.findall(r'\{ title: "([^"]+)"', SET)
-    assert titles == ["Внешний вид и язык", "Аккаунт и вход", "ИИ, подключения и бюджет", "Команда и клиенты",
+    assert titles == ["Внешний вид и язык", "Аккаунт и вход", "Подключения и оплата", "Команда и клиенты",
                       "Система и справка"]                                 # владелец 20.11: 5 разделов по Gemini
     for label in ('label: "Тема", icon: "eye", seg:', "Размер текста", "Анкеты клиентов", "Ключи входа — Face ID",
                   "Способы входа",
