@@ -45,8 +45,18 @@ def test_dark_aa():
     assert check(dark) == []
 
 
-def test_v2_values_from_review():
+def test_v3_values_from_mark():
+    """Палитра знака «Лад» (владелец 25.11): графит, тёплый белый, акцент — красный знака; синего нет нигде."""
     light, dark = tokens(':root, :root[data-theme="light"] {'), tokens(':root[data-theme="dark"] {')
-    assert light["--accent-primary"] == "#2563EB" and light["--text-primary"] == "#111827"
-    assert dark["--bg-canvas"] == "#111214" and dark["--bg-surface"] == "#1C1E22"
-    assert dark["--text-primary"] == "#F3F4F6"
+    assert light["--accent-primary"] == "#C2361A" and light["--text-primary"] == "#111111"
+    assert light["--bg-canvas"] == "#F4F4F2" and dark["--accent-primary"] == "#FF5A2D"
+    assert dark["--bg-canvas"] == "#0C0C0B" and dark["--text-primary"] == "#F4F4F2"
+
+
+def test_no_blue_in_tokens():
+    """Синий (оттенок 190°–260°, насыщенный) — ни в одном токене обеих тем."""
+    import colorsys
+    for sel in (':root, :root[data-theme="light"] {', ':root[data-theme="dark"] {'):
+        for k, v in tokens(sel).items():
+            h, lt, sat = colorsys.rgb_to_hls(*(int(v[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+            assert not (190 <= h * 360 <= 260 and sat > .35 and .15 < lt < .9), (sel, k, v)

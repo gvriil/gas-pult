@@ -16,32 +16,33 @@
   /* ===== Токены v2 (разбор стиля Gemini 21.11, «по всем пунктам да»): нейтральные серые, синий #2563EB, статусы —
      точкой; оттенки подобраны так, что текст на каждом фоне — AA (≥ 4,5:1) в обеих темах (tests/test_design_tokens_v2.py) ===== */
   :root, :root[data-theme="light"] {
-    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F3F4F6; --bg-terminal: #1E1F20;
+    --bg-canvas: #F4F4F2; --bg-surface: #FFFFFF; --bg-subtle: #EFEEEA; --bg-terminal: #1E1F20;
     --tq-red: #C5221F; --tq-orange: #C45A00; --tq-yellow: #9A7400; --tq-green: #137333;   /* задачи (17.11), к фону ≥3,9:1 */
-    --border-subtle: #D5D9DF; --border-focus: #2563EB; --field-border: #6B7280; --field-ph: #5F6368;
-    --text-primary: #111827; --text-secondary: #374151; --text-muted: #4B5563;
-    --accent-primary: #2563EB; --accent-soft: #DBEAFE; --on-accent: #FFFFFF;
-    --status-idle: #5F6672; --status-running: #15803D; --status-approval: #A85300; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
-    --status-success: #15803D; --status-danger: #C81E1E; --status-stopped: #C81E1E;
-    --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
+    --border-subtle: #D9D6CF; --border-focus: #4A4843; --field-border: #6E6B64; --field-ph: #66635C;
+    --text-primary: #111111; --text-secondary: #4A4843; --text-muted: #5C5A54;
+    --accent-primary: #C2361A; --accent-soft: #F9E1D8; --on-accent: #FFFFFF;
+    --status-idle: #5C5A54; --status-running: #137333; --status-approval: #A85300; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
+    --status-success: #137333; --status-danger: #B42318; --status-stopped: #B42318;
+    --brand: linear-gradient(90deg, #111111, #111111);   /* знак «Лад» (25.11): название — графитом, без градиента «ИИ» */
     --row-hv: 5%; --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 8px;   /* пилюль нет (владелец 20.11): прямоугольник со скруглением 8 px */
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
     --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
     /* Значки проектов в узкой полосе: фон и буквы (контраст ≥ 4,5:1 в обеих темах) */
-    --pj1-bg: #D3E3FD; --pj1-fg: #0842A0; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #E9DDFF; --pj3-fg: #4A2C8A;
+    --pj1-bg: #E6E2DA; --pj1-fg: #3D3A34; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #F6DDD3; --pj3-fg: #8A2A12;
     --pj4-bg: #FFDDB8; --pj4-fg: #7A4100; --pj5-bg: #FFD8E4; --pj5-fg: #8C1D48; --pj6-bg: #C2E8E7; --pj6-fg: #00504F;
   }
   :root[data-theme="dark"] { --row-hv: 7%;
-    --bg-canvas: #111214; --bg-surface: #1C1E22; --bg-subtle: #25272C; --bg-terminal: #0E0E0F;
+    --bg-canvas: #0C0C0B; --bg-surface: #181816; --bg-subtle: #22221F; --bg-terminal: #0E0E0F;
     --tq-red: #F28B82; --tq-orange: #FCAD70; --tq-yellow: #FDD663; --tq-green: #81C995;   /* к фону ≥6,9:1 */
-    --border-subtle: #2E3137; --border-focus: #60A5FA; --field-border: #747A80; --field-ph: #9AA0A6;
-    --text-primary: #F3F4F6; --text-secondary: #B4BAC4; --text-muted: #8B93A1;
-    --accent-primary: #60A5FA; --accent-soft: #1E3A5F; --on-accent: #0B1220;
-    --status-idle: #8B93A1; --status-running: #22C55E; --status-approval: #F59E0B; --status-approval-bg: #3A2E00; --on-approval: #1F1300;
+    --border-subtle: #2C2B28; --border-focus: #B9B7B0; --field-border: #78766F; --field-ph: #9A988F;
+    --text-primary: #F4F4F2; --text-secondary: #B9B7B0; --text-muted: #9A988F;
+    --accent-primary: #FF5A2D; --accent-soft: #3A1A10; --on-accent: #111111;
+    --brand: linear-gradient(90deg, #F4F4F2, #F4F4F2);
+    --status-idle: #9A988F; --status-running: #22C55E; --status-approval: #F59E0B; --status-approval-bg: #3A2E00; --on-approval: #1F1300;
     --status-success: #4ADE80; --status-danger: #F87171; --status-stopped: #F87171;
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
     --qr-bg: #FFFFFF;
-    --pj1-bg: #1B2B48; --pj1-fg: #A8C7FA; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #34245A; --pj3-fg: #D0BCFF;
+    --pj1-bg: #2A2824; --pj1-fg: #D9D5CC; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #3A1E14; --pj3-fg: #FFB59C;
     --pj4-bg: #4A2C00; --pj4-fg: #FFB870; --pj5-bg: #4A1730; --pj5-fg: #FFB0CB; --pj6-bg: #003D3C; --pj6-fg: #80D5D2;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -52,7 +53,7 @@
   html { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg-canvas); }
   body { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: var(--app-h, 100%); overflow: hidden; contain: layout;
          margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
-         font: calc(14.5px * var(--fz, 1))/1.52 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+         font: calc(14.5px * var(--fz, 1))/1.52 "Golos Ladeya", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   button:disabled { opacity: .5; cursor: default; }
   button:not(:disabled):active { transform: scale(.97); }
@@ -306,7 +307,7 @@
   .pcards { display: grid; gap: 10px; margin: 0 0 12px; } .pcard { display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%;
     padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer; }
   .pcard:hover { border-color: var(--accent-primary); } .pcard.on { border-color: var(--accent-primary); background: var(--accent-soft); }
-  .pcard .i { flex: none; width: 22px; height: 22px; color: var(--accent-primary); margin-top: 2px; }
+  .pcard .i { flex: none; width: 22px; height: 22px; color: var(--text-secondary); margin-top: 2px; }
   .pcard b { display: block; font-size: calc(16px * var(--fz, 1)); margin: 0 0 3px; } .pcard small { display: block; color: var(--text-muted); font-size: calc(13.5px * var(--fz, 1)); line-height: 1.4; }
   /* режим разработчика (таблица отладочного, согласована владельцем 20.11): без возможности «Экран терминала» нет
      вкладок «Переписка/Экран», кнопки >_, клавиш 1/2/3/Esc, «Команд» и кнопок «Выполнить» */
@@ -762,7 +763,7 @@
   .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
   .toast { animation: fade .15s ease; max-width: min(560px, 100%);
            background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
-  .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
+  .demo { background: var(--bg-subtle); color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
   /* демо смотрят инвесторы и клиенты: полоска закреплена сверху и не уезжает при прокрутке (штаб 22.11); шапка — под ней */
   .demo { position: sticky; top: 0; z-index: 6; }
   body.demo-on .top { top: var(--demo-h, 0px); }
@@ -840,11 +841,11 @@
   /* Обзор UI 21.11 (В): в открытом чате на компьютере «Подсказать» — 0 нажатий из 4; в шапке — ⋯, подсказка — в нём */
   body.in-chat.split:not(.focus) #helpBtn { display: none; } body.in-chat.split:not(.focus) #chatMoreBtn { display: grid; }
   .hpill { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 32px; padding: 0 10px 0 7px; border: 1px solid var(--border-subtle);
-           border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--accent-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
+           border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--text-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
   .hpill .i { width: 18px; height: 18px; }
   .sheet:not(.help) { position: relative; }
   .sheet .hpill.insheet { position: absolute; top: 10px; right: 12px; width: auto; min-height: 0; height: 30px; padding: 0 10px 0 7px; gap: 4px; font-size: calc(13px * var(--fz, 1)); z-index: 1; }
-  .sheet .hpill.insheet .i { color: var(--accent-primary); }
+  .sheet .hpill.insheet .i { color: var(--text-secondary); }
   .sheet.hp > h3:first-of-type, .sheet.hp > .sback + h3 { padding-right: 116px; }
   @media (max-width: 480px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }   /* 20.11: название чата не обрезается */
   .help-bg { z-index: 35; }
@@ -924,7 +925,7 @@
   .s-top .s-row { display: flex; align-items: center; gap: 8px; min-height: 58px; }
   .s-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 6px 4px; text-align: left; border-radius: var(--radius-md); }
   .s-who:active { background: var(--bg-subtle); }
-  .s-who > .i { color: var(--accent-primary); }
+  .s-who > .i { color: var(--text-secondary); }
   .s-who .n { min-width: 0; display: flex; flex-direction: column; }
   .s-who b { font-size: calc(17px * var(--fz, 1)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .s-who small { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
@@ -1608,7 +1609,7 @@ const P = {
   book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
   code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
   down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', up: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
-  spark: '<path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5-.6-4.9-4.6-8.9-9.5-9.5 4.9-.6 8.9-4.6 9.5-9.5z" fill="url(#gsp)" stroke="none"/><defs><linearGradient id="gsp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs>',
+  spark: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',   // лампа вместо звезды «ИИ» (владелец 25.11)
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/>',
   sideopen: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15M13.5 10l2 2-2 2"/>',
@@ -7949,6 +7950,7 @@ paintIcons();
 applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
 afterPaint(() => part("themebtn").then((m) => m.init()).catch(() => {}));
+afterPaint(() => part("golosfont").then((m) => m.init()).catch(() => {}));   // Golos Text (25.11), свой файл
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", () => { fitViewport(); keepAnch(); }); }
 // iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
