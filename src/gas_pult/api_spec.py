@@ -558,6 +558,7 @@ DESCR: dict[str, str | tuple[str, str, str]] = {
     "/api/focus/send": "Отправить ссылку себе в Telegram",
     "/api/focus/qr": "QR ссылки (POST — адрес с токеном не попадает в журнал прокси)",
     "/api/focus/browser": "Разрешить фокус-ссылке подключить свой браузер",
+    "/api/focus/auto": "Ссылка на проект: новые окна владельца в папке видны человеку (вкл/выкл)",
     "/api/focus/open": ("Первое открытие фокус-ссылки: привязать устройство (cookie). Без согласия с политикой ПДн "
                         "и условиями — 409 code=privacy, docs; повтор с privacy: true — согласие в журнал",
                         "token, privacy", "ok, name, id, mode; cookie"),

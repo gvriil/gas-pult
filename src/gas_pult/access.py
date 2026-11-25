@@ -16,7 +16,7 @@ STT_STREAM = "/api/stt/stream"                            # голос пото�
 TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
 OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "/api/bridge/log",
               "/api/bridge/drafts", "/api/bridge/confirm", "/api/bridge/reject", "/api/bridge/private",
-              "/api/focus/browser",
+              "/api/focus/browser", "/api/focus/auto",
               "/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
