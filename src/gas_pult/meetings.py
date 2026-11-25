@@ -414,7 +414,7 @@ def _wrap(text: str, width: int, lines: int) -> list[str]:
 
 def card_svg(v: dict, mark: str = "") -> str:
     """Карточка-превью для пересылки (1200×630): главная мысль, тема, дата, длительность, знак Ладеи. SVG собран на
-    сервере без зависимостей; весь текст экранирован. ``mark`` — содержимое brand/gavrila-mark.svg."""
+    сервере без зависимостей; весь текст экранирован. ``mark`` — содержимое brand/ladeya-mark.svg."""
     e = html.escape
     when = ""
     if v.get("started"):
@@ -429,7 +429,7 @@ def card_svg(v: dict, mark: str = "") -> str:
     lines = "".join(f'<tspan x="80" y="{y0 + i * 66}">{e(s)}</tspan>' for i, s in enumerate(big))
     title = _wrap(v.get("title") or "", 60, 1)
     m = re.search(r"<svg[^>]*viewBox=\"([^\"]+)\"[^>]*>(.*)</svg>", mark or "", re.S)
-    logo = (f'<svg x="1040" y="64" width="80" height="218" viewBox="{e(m.group(1))}" color="#2563EB">'
+    logo = (f'<svg x="1000" y="64" width="120" height="100" viewBox="{e(m.group(1))}">'
             f"{m.group(2)}</svg>") if m else ""
     font = "font-family=\"system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif\""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">'

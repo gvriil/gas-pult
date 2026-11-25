@@ -999,7 +999,7 @@ function demoWav(sec) {                                  // тишина 8 кГ�
   return new Blob([b], { type: "audio/wav" });
 }
 async function demoCard(v) {                             // та же раскладка, что meetings.card_svg на сервере
-  const e = (x) => esc(x), mark = await fetch("brand/gavrila-mark.svg").then((r) => r.text()).catch(() => "");
+  const e = (x) => esc(x), mark = await fetch("brand/ladeya-mark.svg").then((r) => r.text()).catch(() => "");
   const m = /<svg[^>]*viewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(mark);
   const words = (v.gist || v.title).split(/\s+/), lines = []; let cur = "";
   for (const x of words) { if ((cur + " " + x).trim().length <= 30) cur = (cur + " " + x).trim(); else { lines.push(cur); cur = x; } }
@@ -1009,7 +1009,7 @@ async function demoCard(v) {                             // та же раскл
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#FFFFFF"/><rect width="16" height="630" fill="#2563EB"/>`
     + `<text x="80" y="100" ${f} font-size="28" font-weight="600" fill="#2563EB">Протокол встречи</text><text ${f} font-size="54" font-weight="700" fill="#111827">${big.map((s, i) => `<tspan x="80" y="${y0 + i * 66}">${e(s)}</tspan>`).join("")}</text>`
     + `<text x="80" y="500" ${f} font-size="30" fill="#4B5563">${e(v.title)}</text><text x="80" y="560" ${f} font-size="28" fill="#5F6672">${e(meta)}</text>`
-    + (m ? `<svg x="1040" y="64" width="80" height="218" viewBox="${e(m[1])}" color="#2563EB">${m[2]}</svg>` : "")
+    + (m ? `<svg x="1000" y="64" width="120" height="100" viewBox="${e(m[1])}">${m[2]}</svg>` : "")
     + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Ладея</text></svg>`;
   return new Blob([svg], { type: "image/svg+xml" });
 }

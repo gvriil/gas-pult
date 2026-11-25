@@ -2,7 +2,8 @@
 «Ладея by Botsmith»; прежнее «Гаврила» / «Gavrila» снято). Здесь — единственное место: сервер подставляет его в
 страницу (``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма, уведомления и сообщения
 бота. Падежи — ``FORMS``. Код, пакет, пути, службы и адреса остаются ``gas-pult``/«пульт» (docs/BRAND.md).
-Знак (``web/brand/``) — прежний, пока штаб не сделает новый; в демо и у гостя — только текст «Ладея» и «by Botsmith»."""
+Знак «Лад» (владелец 25.11): четыре палочки и пятая, красная, ниже — «встаёт на место»; светлый и тёмный варианты,
+значок приложения 512 (``web/brand/ladeya-*.svg``); подпись «Ладея» рядом — текстом."""
 
 import re
 
@@ -16,10 +17,14 @@ OLD = ("Гаврилой", "Гаврилы", "Гавриле", "Гаврилу",
 
 
 FILES_DIR = "web/brand/"   # знак и значки: gavrila-mark.svg (currentColor), -small (≤ 24 px), png — экран «Домой»
-MARK = FILES_DIR + "gavrila-mark.svg"
+MARK = FILES_DIR + "ladeya-mark.svg"
+MARK_DARK = FILES_DIR + "ladeya-mark-dark.svg"
+APP_ICON = FILES_DIR + "ladeya-app-icon.svg"
 LOCKUP = FILES_DIR + "gavrila-lockup.svg"
 # адрес → (файл в web/brand/, тип): прежние адреса значков (GAS-20) сохранены, браузеры и iPhone их уже знают
-ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # знак в панели — CSS mask
+ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # прежний знак — старые кэши
+         "/brand/ladeya-mark.svg": ("ladeya-mark.svg", "image/svg+xml"),     # знак «Лад» в панели: светлая тема
+         "/brand/ladeya-mark-dark.svg": ("ladeya-mark-dark.svg", "image/svg+xml"),   # тёмная тема
          "/favicon.svg": ("favicon.svg", "image/svg+xml"), "/favicon-32.png": ("favicon-32.png", "image/png"),
          "/favicon-32-dark.png": ("favicon-32-dark.png", "image/png"),
          "/apple-touch-icon.png": ("apple-touch-180.png", "image/png"),
@@ -38,13 +43,12 @@ TAGLINE = "Агент делает рутину — вы подтверждае�
 # Вариант страницы — только на /?demo и /?brand=botsmith: «Ладея» + «by Botsmith», без знака, своя строка под ним.
 BS_NAME = "Botsmith"
 BS_TAGLINE = "Личный ИИ-помощник и цифровой сотрудник"          # framewatcher 25.11, для М.Видео
-BS_GRAD = ("linear-gradient(90deg,#2f5a09,#4a7f12)", "linear-gradient(90deg,#8bc34a,#9ccc65)")   # светлая, тёмная
+BS_GRAD = ("linear-gradient(90deg,#111111,#111111)", "linear-gradient(90deg,#F4F4F2,#F4F4F2)")   # цвет знака
 ICONS["/brand/botsmith-icon.svg"] = ("botsmith-icon.svg", "image/svg+xml")
-BS_CSS = ('<style id="bsBrand">.gmark{display:none!important}'            # знак пока текстовый (25.11)
+BS_CSS = ('<style id="bsBrand">'
           '.brand-text::after{content:" ' + BY + '";font-size:12px;font-weight:500;letter-spacing:0;'
           '-webkit-text-fill-color:var(--text-secondary);color:var(--text-secondary);margin-left:6px}'
           '.nav-h h2{flex:none;font-size:calc(17px * var(--fz, 1))}'
-          '.nmark{width:22px;height:22px}.tmark{width:24px;height:24px}.lmark{width:44px;height:44px}'
           '#brandSub{font-size:0}#brandSub::after{content:"' + BS_TAGLINE + '";font-size:12px}'
           ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span{font-size:0}'
           ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span::after{content:"'

@@ -458,7 +458,7 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
     def meeting_card(self, mid: str) -> tuple:
         """Карточка-превью (SVG 1200×630): главная мысль, дата, длительность, знак Ладеи."""
         try:
-            mark = resources.files("gas_pult").joinpath("web/brand/gavrila-mark.svg").read_text(encoding="utf-8")
+            mark = resources.files("gas_pult").joinpath("web/brand/ladeya-mark.svg").read_text(encoding="utf-8")
         except OSError:
             mark = ""
         v = meetings.view(self.meeting_dir(mid), full=False)
