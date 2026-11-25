@@ -1,0 +1,8 @@
+{
+  "_source": "по документации YCLIENTS API v2 (github.com/alexmaltsevgit/yclients-openapi, через Context7 25.11.2026); данные выдуманные; не проверено на песочнице",
+  "success": false,
+  "data": null,
+  "meta": {
+    "message": "Не авторизован"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "_source": "по документации YCLIENTS API v2 (github.com/alexmaltsevgit/yclients-openapi, через Context7 25.11.2026); данные выдуманные; не проверено на песочнице",
+  "success": true,
+  "data": [
+    {
+      "id": 11,
+      "company_id": 4564,
+      "staff_id": 6544,
+      "staff": {
+        "id": 6544,
+        "name": "Анна Т."
+      },
+      "services": [
+        {
+          "id": 331,
+          "title": "Стрижка",
+          "cost": 1500,
+          "amount": 1
+        }
+      ],
+      "client": {
+        "id": 9001,
+        "name": "Иван Тестов",
+        "phone": "79000000000"
+      },
+      "datetime": "2026-11-26T12:00:00+03:00",
+      "date": "2026-11-26 12:00:00",
+      "create_date": "2026-11-20T10:00:00+0300",
+      "comment": "",
+      "online": true,
+      "attendance": 0,
+      "confirmed": 1,
+      "seance_length": 3600,
+      "deleted": false,
+      "paid_full": 0,
+      "last_change_date": "2026-11-24T09:00:00+0300"
+    },
+    {
+      "id": 12,
+      "company_id": 4564,
+      "staff_id": 6544,
+      "staff": {
+        "id": 6544,
+        "name": "Анна Т."
+      },
+      "services": [
+        {
+          "id": 331,
+          "title": "Стрижка",
+          "cost": 1500,
+          "amount": 1
+        }
+      ],
+      "client": {
+        "id": 9001,
+        "name": "Иван Тестов",
+        "phone": "79000000000"
+      },
+      "datetime": "2026-11-26T15:00:00+03:00",
+      "date": "2026-11-26 15:00:00",
+      "create_date": "2026-11-20T10:00:00+0300",
+      "comment": "",
+      "online": true,
+      "attendance": 2,
+      "confirmed": 1,
+      "seance_length": 3600,
+      "deleted": false,
+      "paid_full": 0,
+      "last_change_date": "2026-11-24T09:00:00+0300"
+    },
+    {
+      "id": 13,
+      "company_id": 4564,
+      "staff_id": 6544,
+      "staff": {
+        "id": 6544,
+        "name": "Анна Т."
+      },
+      "services": [
+        {
+          "id": 331,
+          "title": "Стрижка",
+          "cost": 1500,
+          "amount": 1
+        }
+      ],
+      "client": {
+        "id": 9001,
+        "name": "Иван Тестов",
+        "phone": "79000000000"
+      },
+      "datetime": "2026-11-26T17:00:00+03:00",
+      "date": "2026-11-26 17:00:00",
+      "create_date": "2026-11-20T10:00:00+0300",
+      "comment": "",
+      "online": true,
+      "attendance": -1,
+      "confirmed": 1,
+      "seance_length": 3600,
+      "deleted": true,
+      "paid_full": 0,
+      "last_change_date": "2026-11-24T09:00:00+0300"
+    }
+  ],
+  "meta": {
+    "count": 3
+  }
+}

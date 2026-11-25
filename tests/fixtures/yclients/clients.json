@@ -1,0 +1,31 @@
+{
+  "_source": "по документации YCLIENTS API v2 (github.com/alexmaltsevgit/yclients-openapi, через Context7 25.11.2026); данные выдуманные; не проверено на песочнице",
+  "success": true,
+  "data": [
+    {
+      "id": 9001,
+      "name": "Иван Тестов",
+      "phone": "79000000000",
+      "email": "ivan@example.com",
+      "visits": 5,
+      "spent": 7500,
+      "balance": 0,
+      "last_change_date": "2026-11-10T10:00:00+0300",
+      "importance_id": 0,
+      "discount": 0
+    },
+    {
+      "id": 9002,
+      "name": "Мария Образцова",
+      "phone": "79000000001",
+      "email": "",
+      "visits": 1,
+      "spent": 1500,
+      "balance": -300,
+      "last_change_date": "2026-10-01T10:00:00+0300"
+    }
+  ],
+  "meta": {
+    "total_count": 2
+  }
+}

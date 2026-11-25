@@ -1,0 +1,31 @@
+{
+  "_source": "по документации YCLIENTS API v2 (github.com/alexmaltsevgit/yclients-openapi, через Context7 25.11.2026); данные выдуманные; не проверено на песочнице",
+  "success": true,
+  "data": [
+    {
+      "id": 6544,
+      "name": "Анна Т.",
+      "specialization": "Мастер",
+      "position": {
+        "id": 1,
+        "title": "Парикмахер"
+      },
+      "fired": 0,
+      "hidden": 0,
+      "rating": 4.8,
+      "votes_count": 12
+    },
+    {
+      "id": 6545,
+      "name": "Пётр С.",
+      "specialization": "Мастер",
+      "position": {
+        "id": 1,
+        "title": "Парикмахер"
+      },
+      "fired": 1,
+      "hidden": 0
+    }
+  ],
+  "meta": []
+}
