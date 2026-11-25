@@ -30,7 +30,7 @@ function groups() {
     { label: "Уведомления", icon: "bell", sub: pushState(), run: () => part("push").then((m) => m.open()) },
     ...(meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Устройства для «Поделиться»", icon: "share", sub: "фото, ссылки и файлы из других приложений — в Ладэю; iPhone и Android", run: () => part("share").then((m) => m.devicesSheet()) }] : []),
     ] },
-    { title: "ИИ, подключения и бюджет", icon: "chip", items: [
+    { title: "Подключения и оплата", icon: "chip", items: [   // таблица 2 (владелец 25.11: «да»)
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),
     ...(meta?.space && meta?.role !== "owner" ? [{ label: "Подключения", icon: "puzzle", sub: "свои подключения пространства: GitHub, Linear, поиск, свой сервер — ключи только у вас", run: () => part("spacemcp").then((m) => m.open()) }] : []),
     // 1С и CRM (apitokens.py, владелец 22.11): владелец пульта — свои токены; человек пространства (не наблюдатель) — свои

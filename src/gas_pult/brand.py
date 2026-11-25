@@ -90,6 +90,8 @@ BS_CSS = ('<style id="bsBrand">'
           ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span{font-size:0}'
           ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span::after{content:"'
           + BS_TAGLINE + '";font-size:12px;white-space:normal}'
+          '@media (max-width:520px){#subtitle span::after{content:none!important}#subtitle{display:none}'
+          '#title.brand-text::after{content:none}}'   # 390: в шапке — только название
           ':root{--brand:' + BS_GRAD[0] + '!important}'                  # название — цвет Botsmith, не градиент панели
           '@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--brand:' + BS_GRAD[1] + '!important}}'
           ':root[data-theme=dark]{--brand:' + BS_GRAD[1] + '!important}</style>')

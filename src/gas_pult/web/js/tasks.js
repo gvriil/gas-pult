@@ -142,7 +142,7 @@ function tasksSheet(keep) {
   styles();
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.tasks");
   bg.innerHTML = `<div class="sheet tsk" role="dialog" aria-label="Задачи" data-tasks="1"><h3>Задачи${open.length ? " · не решено " + open.length : ""}</h3>
-    <form class="tsk-add" autocomplete="off">${ic("plus")}<input id="tskNew" maxlength="200" placeholder="Добавить задачу" aria-label="Новая задача — Enter, чтобы добавить" enterkeyhint="done"><button type="button" class="tsk-due" data-due aria-label="Срок — по желанию" title="Срок — по желанию">${ic("cal")}<span></span></button><input id="tskDue" type="date" tabindex="-1" aria-hidden="true"><button type="submit" aria-label="Добавить">${ic("plus")}</button></form>
+    <form class="tsk-add" autocomplete="off"><input id="tskNew" maxlength="200" placeholder="Добавить задачу" aria-label="Новая задача — Enter, чтобы добавить" enterkeyhint="done"><button type="button" class="tsk-due" data-due aria-label="Срок — по желанию" title="Срок — по желанию">${ic("cal")}<span></span></button><input id="tskDue" type="date" tabindex="-1" aria-hidden="true"><button type="submit" aria-label="Добавить">${ic("plus")}</button></form>
     ${open.length ? "" : `<p class="tsk-empty">Всё решено. Скажите агенту в чате «добавь задачу …» — она появится здесь.</p>`}
     ${body}<button class="cancel" data-close>Закрыть</button></div>`;
   document.body.append(bg);

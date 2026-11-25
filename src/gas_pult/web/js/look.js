@@ -32,6 +32,8 @@ body.lk-intro #home .card:nth-of-type(4) { animation-delay: 120ms; } body.lk-int
 .wm-en { text-transform: lowercase; }
 .wm-en .em { display: inline-block; transform: scaleX(-1); -webkit-text-fill-color: #E8421C; color: #E8421C; }
 :root[data-theme="dark"] .wm-en .em { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
+/* телефон (обзор 25.11): в верхней шапке тесно — знак остаётся в боковой панели и на входе, название — целиком */
+@media (max-width: 420px) { .top .tmark { display: none !important; } #title.brand-text { overflow: visible; text-overflow: clip; } }
 @keyframes lk-in { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }   /* «Ответить» в строке состояния — путь к вопросу, не главное действие */
 `;
 const SVG = `<svg viewBox="0 0 120 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
