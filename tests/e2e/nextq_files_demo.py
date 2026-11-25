@@ -57,6 +57,10 @@ def check(pg, tag: str, phone: bool, shots: str, name: str):
     assert qbtn.evaluate("b => getComputedStyle(b).opacity") == "1" and qbtn.is_visible(), f"{tag}: кнопка не видна"
     pg.evaluate(CLIP)
     qbtn.click()
+    try:                                               # WebKit: копирование успевает не сразу — ждём до 3 с
+        pg.wait_for_function("() => window.__clip != null", timeout=3000)
+    except Exception:
+        pass
     assert pg.evaluate("() => window.__clip") == SAMPLE, f"{tag}: образец {pg.evaluate('() => window.__clip')!r}"
     assert "Скопировано" in qbtn.inner_text(), f"{tag}: нет «Скопировано» у образца"
     code = pg.locator("#content .msg.ai .codebox:has(pre) .ccopy").first
