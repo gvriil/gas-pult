@@ -84,6 +84,8 @@ body.biz-demo #simple { --bz-line: rgba(17,17,17,.09); --bz-control: #85827A; --
 body.biz-demo #simple .s-who b { white-space: normal; overflow: visible; text-overflow: clip; font-size: 16px; line-height: 20px; letter-spacing: -.02em; }
 @media (max-width: 480px) { body.biz-demo #simple #sHelp span { display: none; } body.biz-demo #simple #sHelp { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; } }
 body.biz-demo #simple .s-who small { white-space: nowrap; font-size: 12px; }
+body.biz-demo #simple #sWho { pointer-events: none; } body.biz-demo #simple #sWho > .i.s16 { display: none; }   /* демо — один чат, без списка (владелец 25.11) */
+body.biz-demo #simple #sVid, body.biz-demo #simple #sTourBtn { margin-right: 6px; }
 body.biz-demo #simple .s-demo { color: var(--bz-text-3); }
 body.biz-demo #simple .s-vid { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px; min-height: 36px; padding: 0 12px;
   border: 1px solid var(--bz-line); border-radius: 8px; background: var(--bz-surface); color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
@@ -124,7 +126,14 @@ function bizVideo() {
   b.type = "button"; b.id = "sVid"; b.className = "s-vid"; b.innerHTML = ic("play", "s16") + "<span>" + (LANG === "en" ? "Watch, 1 min" : "Смотреть, 1 мин") + "</span>";
   b.onclick = () => src.click();
   at.after(b);
+  // «Показать тур» — одно нажатие (владелец 25.11): 4–5 шагов и «На экран «Домой»» (js/ladtour.js)
+  const tb = document.createElement("button");
+  tb.type = "button"; tb.id = "sTourBtn"; tb.className = "s-vid"; tb.innerHTML = ic("spark", "s16") + "<span>" + (LANG === "en" ? "Show the tour" : "Показать тур") + "</span>";
+  tb.onclick = () => part("ladtour").then((m) => m.start()).catch(() => toast(LANG === "en" ? "Tour unavailable — no connection" : "Тур недоступен — нет связи", 3500));
+  b.after(tb);
 }
+// Chrome на Android предлагает установку событием до тура — держим его для кнопки «Установить» в шаге «Домой»
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); window.__ladeyaInstall = e; });
 function demoBiz(R) {                                  // данные бизнес-демо поверх общих: окна, источник, без расхода
   const s = R["/api/sessions"], en = LANG === "en";
   s.cost = null; s.limits = null;
