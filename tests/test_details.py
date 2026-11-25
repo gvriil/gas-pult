@@ -28,7 +28,8 @@ def test_header_and_input_line_quiet():
     p = fn("function paintSession(s) {")
     assert "folder(s.path)" not in p and "provChip(s)" not in p and "контекст " not in p
     i = fn("function sinfo(s) {")
-    assert "[ctxWarn(s), lim ? limitsLine(limitsInfo) : \"\"]" in i
+    assert "quietLimits(s)" in i
+    assert 'if (meta?.role !== "owner" || !dev("dev_cost_tokens")) return ctxWarn(s);' in INDEX
     assert "const loud = (s) => s?.status === \"busy\" || s?.status === \"dialog\";" in INDEX
 
 
