@@ -71,8 +71,8 @@ $("commandsView").addEventListener("click", async (e) => {
   if (b.dataset.cterm) return termOpen(b, "/api/commands/term", { id: c.id }, c.cmd);
   if (b.dataset.cout) {                               // весь вывод — с сервера (в списке только хвост)
     if (!c.done.cut) return copyText(c.done.out, "Вывод скопирован");
-    try { return copyText((await api("/api/commands/output?id=" + c.id)).out, "Вывод скопирован"); }
-    catch (err) { return copyText(c.done.out, "Скопирован конец вывода — весь уже не хранится"); }
+    // полный вывод едет с сервера — копирование начинается сразу в нажатии (буфер, 25.11); нет полного — конец вывода
+    return copyText(api("/api/commands/output?id=" + c.id).then((d) => d.out, () => c.done.out), "Вывод скопирован");
   }
   const put = (item) => { Object.assign(c, item); cmdSig = ""; renderCommands(); };
   if (b.dataset.ccopy) {

@@ -1486,6 +1486,7 @@ function part(name) {
   return PARTS[name] = go(0).catch((e) => { delete PARTS[name]; throw e; });
 }
 if (DEMO) part("demo");                               // демо — сразу, параллельно с остальной загрузкой
+if (params.has("clipdiag")) part("clipdiag").then((m) => m.start());   // самопроверка буфера обмена (25.11)
 // Фокус (задача 41): ссылка «…/#focus=<токен>» — только чат одной сессии. Токен — после «#»: на сервер и в журналы он
 // не уходит; страница отдаёт его один раз (POST /api/focus/open) и убирает из адреса.
 const FOCUS_TOKEN = (/(?:^#|&)focus=([A-Za-z0-9_-]{24,64})/.exec(location.hash) || [])[1] || "";
@@ -1621,14 +1622,22 @@ function applyTheme() {
 // Копировать: navigator.clipboard, а где его нет или он отказал (старый iOS, WebView Telegram) — выделение текста
 // в скрытом поле и execCommand("copy"); не вышло и так — шторка с выделенным текстом, скопировать рукой.
 // quiet — без всплывашки: кнопка сама покажет «Скопировано» (copyBtn). → true, если текст в буфере.
+// text — строка или обещание строки (текст ещё едет с сервера): тогда запись в буфер начинается сразу, в нажатии
+// (ClipboardItem с обещанием — Safari иначе теряет «жест»), а текст подставляется, когда придёт (буфер, 25.11).
 async function copyText(text, what = "Скопировано", quiet = false) {
   const done = () => { if (!quiet) toast(what); return true; };
+  if (typeof text !== "string") {
+    const p = Promise.resolve(text).then((x) => String(x ?? ""));
+    try { await navigator.clipboard.write([new ClipboardItem({ "text/plain": p.then((x) => new Blob([x], { type: "text/plain" })) })]); return done(); } catch (e) {}
+    text = await p.catch(() => "");
+  }
   try { await navigator.clipboard.writeText(text); return done(); } catch (e) {}
-  const t = document.createElement("textarea");
-  t.value = text; t.readOnly = true; t.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
-  document.body.append(t); t.focus(); t.select(); t.setSelectionRange(0, text.length);
+  const t = document.createElement("span");          // iPhone: «только чтение» не выделяется — span с выделением Range
+  t.textContent = text; t.contentEditable = "true"; t.style.cssText = "position:fixed;top:0;left:0;opacity:0;white-space:pre;user-select:text;-webkit-user-select:text";
+  document.body.append(t);
+  const r = document.createRange(); r.selectNodeContents(t); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
   let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
-  t.remove();
+  sel.removeAllRanges(); t.remove();
   if (ok) return done();
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.copy");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Скопируйте вручную</h3><div class="field"><textarea rows="8" readonly></textarea></div>
