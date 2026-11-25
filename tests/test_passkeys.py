@@ -318,3 +318,17 @@ def test_second_factor_after_passkey(tmp_path, monkeypatch, wa):
         assert st == 200 and d["state"] == "2fa" and not ck and len(sent) == 1
     finally:
         srv.shutdown()
+
+
+def test_login_button_only_on_key_address(tmp_path, monkeypatch, wa):
+    """Штаб 25.11: на втором адресе (ladeya.app) ключи пульта не работают — кнопки «Войти с ключом» нет; на своём
+    адресе, его поддоменах и по адресу машины (127.0.0.1, localhost) — есть."""
+    panel, srv, _ = serve(tmp_path, monkeypatch, SECTION)
+    try:
+        m = panel.login_methods
+        assert m(RP)["passkey"] and m(RP + ":8443")["passkey"] and m("a." + RP)["passkey"]
+        assert m("127.0.0.1:8765")["passkey"] and m("localhost")["passkey"] and m("[::1]:80")["passkey"]
+        assert m("")["passkey"]
+        assert not m("ladeya.app:8443")["passkey"] and not m("x" + RP)["passkey"]
+    finally:
+        srv.shutdown()

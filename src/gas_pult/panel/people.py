@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import sys
 import time
 
@@ -169,9 +170,14 @@ class PeoplePart:
         """Люди для панели: страна — кодами и временем, без хеша номера."""
         return [{**p, "country": country.public(p.get("country"))} for p in self.people.list()]
 
-    def login_methods(self) -> dict:
-        """Способы входа для экрана входа (без входа): только «включено ли», без настроек."""
-        return {"telegram": True, "owner_code": True, "email": self.email.enabled, "passkey": self.keys.enabled,
+    def login_methods(self, host: str = "") -> dict:
+        """Способы входа для экрана входа (без входа): только «включено ли», без настроек. Вход по ключу — только на
+        адресе, к которому привязаны ключи (``rp_id``): на другом адресе (ladeya.app, 25.11) кнопка не работала бы."""
+        rp, h = self.keys.rp_id, "" if host.startswith("[") else host.split(":")[0].lower()   # [::1] — не имя
+        named = bool(h) and h != "localhost" and not re.fullmatch(r"[\d.]+", h)    # имя домена, не адрес машины
+        here = not named or not rp or h == rp or h.endswith("." + rp)
+        return {"telegram": True, "owner_code": True, "email": self.email.enabled,
+                "passkey": self.keys.enabled and here,
                 "invite": tenants.enabled(),                                         # «Есть код приглашения?»
                 **self.oidc.methods()}                                              # google, yandex
 
