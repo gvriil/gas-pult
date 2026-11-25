@@ -75,6 +75,7 @@ const BIZ_SCREEN = ["● МойСклад: 12 покупателей без ак
 function demoBiz(R) {                                  // данные бизнес-демо поверх общих: окна, источник, без расхода
   const s = R["/api/sessions"], en = LANG === "en";
   s.cost = null; s.limits = null;
+  Object.assign(R["/api/meta"], { desktop: false, tty: false });   // бизнес-демо: без «Экрана», «Браузера» и «Терминала» (владелец 25.11)
   for (const x of s.sessions) {
     const b = BIZ_S[x.id]; if (!b) continue;
     const src = en ? BIZ_SRC_EN[b[2]] : b[2], text = en ? b[4] : b[3];
@@ -95,8 +96,8 @@ function demoTeam(body) {                            // «Команда» в д
 function demoUi(body) {
   const role = params.get("role") || "owner", c = DEMO_PERSONAS[LANG] || DEMO_PERSONAS.ru;
   const all = c.caps.map((x) => x.id), ceil = role === "viewer" ? all.filter((x) => x !== "cap.dev_models_mcp") : all;
-  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" || (BIZ && params.get("simple") !== "0") ? "business_owner" : "developer"), added: [], hidden: [], onboarded: !params.has("persona") };
-  if (body?.persona) Object.assign(st, { persona: body.persona, added: [], hidden: [], onboarded: true });
+  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" || (BIZ && params.get("simple") !== "0") ? "business_owner" : "developer"), added: [], hidden: BIZ ? ["cap.dev_terminal"] : [], onboarded: !params.has("persona") };
+  if (body?.persona) Object.assign(st, { persona: body.persona, added: [], hidden: BIZ ? ["cap.dev_terminal"] : [], onboarded: true });
   for (const [k, on] of Object.entries(body?.add || {})) {
     if (on && !ceil.includes(k)) throw new Error("эту возможность вам не разрешил владелец пульта");
     st.added = st.added.filter((x) => x !== k); st.hidden = st.hidden.filter((x) => x !== k); (on ? st.added : st.hidden).push(k);
