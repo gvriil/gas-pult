@@ -67,15 +67,56 @@ const BIZ_ASK = { kind: "question", known: true, sig: "biz-offer",
   title_ru: "Отправить персональное предложение 12 покупателям?", title_en: "Send a personal offer to 12 customers?",
   detail_ru: "«Здравствуйте! Для вашего нового смартфона — чехол и защитное стекло со скидкой 10 % до воскресенья.» Список — из МойСклад, отправка — в Telegram.",
   detail_en: "“Hello! A case and a screen protector for your new smartphone — 10% off until Sunday.” List from MoySklad, sent via Telegram.",
-  options: [{ key: "q1", label_ru: "Да", label_en: "Yes", send: { n: "1" }, level: 1, note_ru: "", note_en: "" },
+  options: [{ key: "q1", label_ru: "Да, отправить", label_en: "Yes, send", send: { n: "1" }, level: 1, note_ru: "", note_en: "" },
     { key: "q2", label_ru: "Нет", label_en: "No", send: { n: "2" }, level: 1, note_ru: "", note_en: "" },
     { key: "q3", label_ru: "Изменить текст", label_en: "Edit the text", send: { n: "3" }, level: 1, note_ru: "", note_en: "" }] };
 const BIZ_SCREEN = ["● МойСклад: 12 покупателей без аксессуаров за неделю", "", "☐ Предложение", "", "Отправить персональное предложение 12 покупателям?", "",
   "❯ 1. Да", "     Скидка 10 % на чехол и стекло до воскресенья — в Telegram", "  2. Нет", "  3. Изменить текст", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"];
+// Простой режим бизнес-демо — токены дизайн-ТЗ v1.1 (framewatcher 25.11): белая карточка «Да» с янтарной полосой, основная
+// кнопка во всю ширину, разделы — текстом, заголовок без обрезки, цифры tabular-nums. Только в бизнес-демо (body.biz-demo):
+// настоящий простой режим клиентов и панель владельца не меняются.
+const BIZ_CSS = `
+body.biz-demo #simple { --bz-line: rgba(21,25,34,.08); --bz-control: #7C8797; --bz-accent: #2454D6; --bz-accent-h: #1D43B1;
+  --bz-on: #FFFFFF; --bz-pending: #B45309; --bz-pending-t: #854D0E; --bz-surface: #FFFFFF; --bz-surface-2: #F0F3F7; --bz-text-3: #626D7D;
+  font-family: "Inter RT", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+:root[data-theme="dark"] body.biz-demo #simple { --bz-line: rgba(255,255,255,.08); --bz-control: #77869C; --bz-accent: #8CA9FF;
+  --bz-accent-h: #A5BAFF; --bz-on: #101828; --bz-pending: #F5C46B; --bz-pending-t: #F5C46B; --bz-surface: #171C25; --bz-surface-2: #202632; --bz-text-3: #98A5B8; }
+body.biz-demo #simple .s-who b { white-space: normal; overflow: visible; text-overflow: clip; font-size: 16px; line-height: 20px; letter-spacing: -.02em; }
+@media (max-width: 480px) { body.biz-demo #simple #sHelp span { display: none; } body.biz-demo #simple #sHelp { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; } }
+body.biz-demo #simple .s-who small { white-space: nowrap; font-size: 12px; }
+body.biz-demo #simple .s-demo { color: var(--bz-text-3); }
+body.biz-demo #simple .s-secs { gap: 2px; padding: 0; box-shadow: inset 0 -1px 0 var(--bz-line); }
+body.biz-demo #simple .s-secs .scn-opt { border: 0; background: none; border-radius: 0; min-height: 44px; padding: 0 12px; font-size: 15px;
+  font-weight: 500; color: var(--text-secondary); box-shadow: none; }
+body.biz-demo #simple .s-secs .scn-opt.on, body.biz-demo #simple .s-secs .scn-opt[aria-pressed="true"] { color: var(--text-primary); box-shadow: inset 0 -2px 0 var(--bz-accent); }
+body.biz-demo #simple .s-ask { position: relative; background: var(--bz-surface); border: 1px solid var(--bz-line); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04); padding: 16px 16px 16px 19px; }
+body.biz-demo #simple .s-ask::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 12px 0 0 12px; background: var(--bz-pending); }
+body.biz-demo #simple .s-ask .q { flex-direction: column; gap: 6px; font-size: 18px; line-height: 26px; letter-spacing: -.02em; }
+body.biz-demo #simple .s-ask .q .i { display: none; }
+body.biz-demo #simple .s-ask .q::before { content: "Требует решения"; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px;
+  font-weight: 500; letter-spacing: 0; color: var(--bz-pending-t); }
+body.biz-demo #simple .s-ask .scn-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+body.biz-demo #simple .s-ask .scn-opt { width: 100%; min-height: 48px; border-radius: 8px; border: 1px solid var(--bz-control); background: var(--bz-surface);
+  color: var(--text-primary); font-size: 16px; font-weight: 600; box-shadow: none; }
+body.biz-demo #simple .s-ask .scn-opt[data-sopt="0"] { grid-column: 1 / -1; min-height: 52px; border: 0; background: var(--bz-accent); color: var(--bz-on); }
+body.biz-demo #simple .s-ask .scn-opt[data-sopt="0"]:hover { background: var(--bz-accent-h); }
+body.biz-demo #simple .md table { font-variant-numeric: tabular-nums; border-collapse: separate; border-spacing: 0; border: 1px solid var(--bz-line); border-radius: 12px; overflow: hidden; }
+body.biz-demo #simple .md th, body.biz-demo #simple .md td { border: 0; box-shadow: inset 0 -1px 0 var(--bz-line); padding: 10px 12px; }
+body.biz-demo #simple .md tr:last-child td { box-shadow: none; }
+body.biz-demo #simple .md th { background: var(--bz-surface-2); font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+body.biz-demo #simple .md td:not(:first-child), body.biz-demo #simple .md th:not(:first-child) { text-align: right; }`;
+function bizStyle() {                                  // один раз: стили бизнес-демо и шрифт Inter (часть retailfont, если есть)
+  if (document.getElementById("bizCss")) return;
+  const st = document.createElement("style"); st.id = "bizCss"; st.textContent = BIZ_CSS; document.head.append(st);
+  document.body.classList.add("biz-demo");
+  part("retailfont").then((m) => m.init()).catch(() => {});
+}
 function demoBiz(R) {                                  // данные бизнес-демо поверх общих: окна, источник, без расхода
   const s = R["/api/sessions"], en = LANG === "en";
   s.cost = null; s.limits = null;
   Object.assign(R["/api/meta"], { desktop: false, tty: false });   // бизнес-демо: без «Экрана», «Браузера» и «Терминала» (владелец 25.11)
+  bizStyle();
   for (const x of s.sessions) {
     const b = BIZ_S[x.id]; if (!b) continue;
     const src = en ? BIZ_SRC_EN[b[2]] : b[2], text = en ? b[4] : b[3];
