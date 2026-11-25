@@ -68,7 +68,7 @@ def agent_env() -> bool:
 TEXT_MAX = 2000
 OTHER_MAX = 300
 ALIAS = re.compile(r"^[a-z0-9][a-z0-9-]{1,14}$")   # короткое имя ссылки: /q/med (адрес для людей, 23.11)
-# Бренд страницы анкеты (владелец 23.11: анкета клиента Botsmith — без «Ладеи» и pult). gavrila — страница как была.
+# Бренд страницы анкеты (владелец 23.11: анкета клиента Botsmith — без «Ладэи» и pult). gavrila — страница как была.
 BOTSMITH_MARK = ('<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">'
                  '<rect width="32" height="32" rx="7" fill="#3a6b0b"/>'
                  '<path d="M10 9v14h7a4 4 0 0 0 0-8h-7m7 0a3.5 3.5 0 0 0 0-6h-7" fill="none" '

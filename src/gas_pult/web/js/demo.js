@@ -1020,7 +1020,7 @@ async function demoCard(v) {                             // та же раскл
     + `<text x="80" y="100" ${f} font-size="28" font-weight="600" fill="#2563EB">Протокол встречи</text><text ${f} font-size="54" font-weight="700" fill="#111827">${big.map((s, i) => `<tspan x="80" y="${y0 + i * 66}">${e(s)}</tspan>`).join("")}</text>`
     + `<text x="80" y="500" ${f} font-size="30" fill="#4B5563">${e(v.title)}</text><text x="80" y="560" ${f} font-size="28" fill="#5F6672">${e(meta)}</text>`
     + (m ? `<svg x="1000" y="64" width="120" height="100" viewBox="${e(m[1])}">${m[2]}</svg>` : "")
-    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Ладея</text></svg>`;
+    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Лад<tspan fill="#E8421C">э</tspan>я</text></svg>`;   // знак-название: «э» красная
   return new Blob([svg], { type: "image/svg+xml" });
 }
 function demoMeeting(path, body) {

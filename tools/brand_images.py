@@ -59,10 +59,11 @@ def main():
         bg, fg, _ = THEMES["dark"]                       # maskable: знак в безопасной зоне (круг 80 %) — высота 56 %
         shot("icon-maskable-512.png", 512, 512, page(512, 512, bg, mark(300)))   # знак в безопасной зоне (круг 80 %)
         for t, (bg, fg, _) in THEMES.items():            # экраны запуска iOS: знак по центру, имя под ним
+            word = brand.wordmark().replace('class="e"', f'style="color:{brand.E_COLOR[t]}"')   # «э» красная (25.11)
             for w, h, s in IPHONES:
                 shot(f"splash-{w}x{h}-{t}.png", w, h, page(w, h, bg, f'<div style="text-align:center">{mark(120, t)}'
                      f'<div style="font-size:22px;font-weight:600;color:{fg};margin-top:8px">'
-                     f'{brand.APP_NAME_RU}</div></div>'), s)
+                     f'{word}</div></div>'), s)
         b.close()
     print("\n".join(out))
 

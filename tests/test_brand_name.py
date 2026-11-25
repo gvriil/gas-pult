@@ -1,4 +1,4 @@
-"""Владелец 25.11: продукт — «Ладея» / «Ladeya» (by Botsmith); «Гаврила» в том, что видит человек, не встречается.
+"""Владелец 25.11: продукт — «Ладэя» / «Ladeya» (by Botsmith); «Гаврила» в том, что видит человек, не встречается.
 
 Проверяем всё, что уходит человеку: панель (web/: страницы, части, словари, «Что нового»), код сервера и бота (строки
 писем, уведомлений, сообщений), документы для клиентов и README. Исключения — ниже: прежнее имя хранит только
@@ -38,6 +38,29 @@ def test_old_name_nowhere_user_facing():
 
 
 def test_one_place_and_forms():
-    assert (brand.APP_NAME_RU, brand.APP_NAME_EN, brand.BY) == ("Ладея", "Ladeya", "by Botsmith")
-    assert brand.FORMS["род"] == "Ладеи" and brand.FORMS["вин"] == "Ладею" and brand.FORMS["твор"] == "Ладеей"
+    assert (brand.APP_NAME_RU, brand.APP_NAME_EN, brand.BY) == ("Ладэя", "Ladeya", "by Botsmith")
+    assert brand.FORMS["род"] == "Ладэи" and brand.FORMS["вин"] == "Ладэю" and brand.FORMS["твор"] == "Ладэей"
     assert all(OLD.search(w) for w in brand.OLD)
+
+
+OLD_E = re.compile(r"(?<![А-Яа-яЁё])Ладе(я|и|ю|е|ей)(?![А-Яа-яЁё])")     # «Ладея» через «е» — до 25.11
+
+
+def test_ladeya_with_e_nowhere_user_facing():
+    """Владелец 25.11: «Ладэя» — с «э». Прежнее написание через «е» не встречается в том, что видит человек.
+    Исключения — те же (история, правила) и слово-обращение протоколов: распознавание речи пишет и так, и так."""
+    bad = []
+    for p in files():
+        rel = p.relative_to(ROOT).as_posix()
+        if rel in SKIP or rel.startswith(SKIP_DIRS):
+            continue
+        for n, line in enumerate(p.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            if OLD_E.search(line) and not (rel == "src/gas_pult/meetings.py" and "распознавание" in line):
+                bad.append(f"{rel}:{n}: {line.strip()[:80]}")
+    assert not bad, "\n".join(bad[:20])
+
+
+def test_wordmark_red_e_only_as_mark():
+    assert brand.APP_NAME_RU == "Ладэя" and brand.FORMS["вин"] == "Ладэю" and brand.APP_NAME_EN == "Ladeya"
+    assert brand.wordmark() == 'Лад<span class="e">э</span>я' and brand.wordmark("Ladeya") == "Ladeya"
+    assert brand.E_COLOR == {"light": "#E8421C", "dark": "#FF5A2D", "light_small": "#C2361A"}

@@ -139,7 +139,7 @@ def test_bot_broadcast_and_answers_reach_owner_phone(tmp_path, monkeypatch):
     assert got == []                                                   # нет устройств — ничего
     webpush.Hub(tmp_path / "push").add(1, {"endpoint": EP}, "телефон")
     p.broadcast("⏳ [План] упёрлась в лимит подписки")
-    assert got == [(1, "Ладея", "[План] упёрлась в лимит подписки", "")]
+    assert got == [(1, "Ладэя", "[План] упёрлась в лимит подписки", "")]
 
 
 def test_redirect_from_push_service_is_not_followed(tmp_path):
@@ -157,6 +157,6 @@ def test_settings_show_push_state_and_telegram_way_out():
     web = Path(__file__).resolve().parents[1] / "src/gas_pult/web/js"
     st = (web / "settings.js").read_text(encoding="utf-8")
     assert "sub: pushState()" in st and "на этом устройстве выключены — включить" in st
-    assert "откройте Ладею значком с экрана «Домой»" in st
+    assert "откройте Ладэю значком с экрана «Домой»" in st
     js = (web / "push.js").read_text(encoding="utf-8")
     assert 'label: "Открыть в браузере"' in js and "tg.openLink(location.origin" in js

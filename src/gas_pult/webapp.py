@@ -396,7 +396,7 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         self.approvals = approvals.Approvals()                 # «Да» человека — только здесь, в памяти (штаб 22.11)
         self.hub.approve = lambda svc, pid, dg: self.approvals.take("", svc, pid, dg)   # мост — в этом процессе
         self.hub.private = self.devices.private          # «Личные данные не уходят модели» — флаг устройства
-        self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Ладею (share.py)
+        self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Ладэю (share.py)
         self.share_tokens = share.Tokens(cfg.data / "share_tokens.json")  # iPhone: токены «Быстрой команды»
         self.api_tokens = apitokens.Tokens(cfg.data / "api_tokens.json")   # 1С и CRM: /api/v1 (apitokens.py)
         self.api_log = apitokens.Log(cfg.data / "api-tokens-log.jsonl")     # журнал вызовов /api/v1
@@ -456,7 +456,7 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         return v
 
     def meeting_card(self, mid: str) -> tuple:
-        """Карточка-превью (SVG 1200×630): главная мысль, дата, длительность, знак Ладеи."""
+        """Карточка-превью (SVG 1200×630): главная мысль, дата, длительность, знак Ладэи."""
         try:
             mark = resources.files("gas_pult").joinpath("web/brand/ladeya-mark.svg").read_text(encoding="utf-8")
         except OSError:
@@ -806,7 +806,7 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
         time.sleep(1)
         return self.tmux.screen(w["id"], 40)
 
-    # ---------- «Поделиться» в Ладею (share.py) ----------
+    # ---------- «Поделиться» в Ладэю (share.py) ----------
     def share_receive(self, uid: int, f: BinaryIO, ctype: str, n: int, via: str) -> dict:
         """Тело «поделились» → запись человека ``uid``. multipart — файлы потоком в inbox (``upload``), поля —
         title/text/url; JSON и urlencoded — только текст и ссылка (iPhone «Быстрая команда»)."""
@@ -843,11 +843,11 @@ class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, Spaces
             raise
 
     def share_notify(self, uid: int, rec: dict):
-        """iPhone: «Поделились: … — откройте Ладею» в бот самому человеку (не другим). Сбой Telegram — не ошибка."""
+        """iPhone: «Поделились: … — откройте Ладэю» в бот самому человеку (не другим). Сбой Telegram — не ошибка."""
         what = rec.get("title") or rec.get("url") or rec.get("text") or ", ".join(x["name"] for x in rec["files"])
         what = " ".join(str(what).split())[:120]
         base = (self.public_url or "").rstrip("/")
-        text = f"Поделились: {what} — откройте Ладею" + (f"\n{base}/?share={rec['id']}" if base else "")
+        text = f"Поделились: {what} — откройте Ладэю" + (f"\n{base}/?share={rec['id']}" if base else "")
 
         def go():
             try:
@@ -958,7 +958,7 @@ SW_JS = """self.addEventListener("push", (e) => {   // сигнал без со�
     const dev = [...new Uint8Array(h)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
     const r = await fetch("/api/push/last?dev=" + dev, { credentials: "include" });
     const items = r.ok ? (await r.json()).items || [] : [];
-    if (!items.length) return self.registration.showNotification("Ладея", { body: "Есть новое — откройте" });
+    if (!items.length) return self.registration.showNotification("Ладэя", { body: "Есть новое — откройте" });
     for (const x of items) {
       await self.registration.showNotification(x.title, { body: x.body, tag: x.w || x.id, data: { id: x.w } });
     }
@@ -1829,7 +1829,7 @@ def handler(panel: Panel):
             role = panel.people.role(rec["uid"]) if rec else None
             if not role or not allowed(role, "member") or panel.people.tenant(rec["uid"]):
                 self.close_connection = True
-                return self.json({"error": "нужен токен устройства: Ладея → Настройки → Аккаунт и вход → "
+                return self.json({"error": "нужен токен устройства: Ладэя → Настройки → Аккаунт и вход → "
                                            "Устройства для «Поделиться»", "code": "token"}, 401)
             n = self.share_len()
             if n > MAX_BODY or n < 0:

@@ -1,4 +1,4 @@
-// Фирменный вид «Ладеи» (штаб 25.11, шаг 2). Фон: пять монолитов знака — едва заметно (3–5 % контраста к фону), только там,
+// Фирменный вид «Ладэи» (штаб 25.11, шаг 2). Фон: пять монолитов знака — едва заметно (3–5 % контраста к фону), только там,
 // где нет текста для чтения: главная (список) и «Новый чат». В ленте сообщений фона нет. Красный монолит один раз за
 // загрузку «встаёт на место» (transform, 2,4 с), дальше слой неподвижен — без нагрузки; prefers-reduced-motion — сразу
 // на месте. Слой — первый ребёнок body (z-index −1: над фоном body, под содержимым).
@@ -23,6 +23,9 @@ body.bb-on:not(.bb-done) .bb-bg .r { animation: bb-rise 2.4s cubic-bezier(.2,.7,
 body.lk-intro #home .card { animation: lk-in .22s cubic-bezier(.2,.7,.2,1) both; }
 body.lk-intro #home .card:nth-of-type(2) { animation-delay: 40ms; } body.lk-intro #home .card:nth-of-type(3) { animation-delay: 80ms; }
 body.lk-intro #home .card:nth-of-type(4) { animation-delay: 120ms; } body.lk-intro #home .card:nth-of-type(n+5) { animation-delay: 160ms; }
+/* знак-название «Ладэя»: «э» красная (владелец 25.11) — в шапке, боковой панели и заголовке главной; в обычном тексте нет */
+.brand-text .e { -webkit-text-fill-color: #E8421C; color: #E8421C; }
+:root[data-theme="dark"] .brand-text .e { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
 @keyframes lk-in { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }   /* «Ответить» в строке состояния — путь к вопросу, не главное действие */
 `;
 const SVG = `<svg viewBox="0 0 120 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
@@ -42,8 +45,21 @@ function sync() {
   }
 }
 
+// Знак-название: в элементах .brand-text слово «Ладэя» → «Лад<span class="e">э</span>я». Текст ставит ядро
+// (textContent), поэтому следим за изменениями и оборачиваем снова; другой текст (название проекта) не трогаем.
+function markWord() {
+  for (const el of document.querySelectorAll(".brand-text")) {
+    const host = el.querySelector("button") || el;
+    if (host.childElementCount === 0 && host.textContent.trim() === "Ладэя") host.innerHTML = 'Лад<span class="e">э</span>я';
+  }
+}
+
 export function init() {
   if (document.getElementById("bbStyle")) return sync();
+  markWord();
+  let queued = false;                                 // не чаще раза за кадр: лента чата меняется часто
+  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; markWord(); }); } }).observe(document.body, { subtree: true, childList: true, characterData: true,
+    attributes: true, attributeFilter: ["class"] });
   if (!document.querySelector("#home .card")) {     // карточек ещё нет — появятся с движением; уже нарисованы — не дёргаем
     document.body.classList.add("lk-intro"); setTimeout(() => document.body.classList.remove("lk-intro"), 1500);
   }

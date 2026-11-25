@@ -1,4 +1,4 @@
-// Экран входа «Ладея» (владелец 25.11 через штаб: «уровня лучших студий», «магия, но сдержанно»; основа — эталон Gemini,
+// Экран входа «Ладэя» (владелец 25.11 через штаб: «уровня лучших студий», «магия, но сдержанно»; основа — эталон Gemini,
 // фон — пять монолитов знака за матовым стеклом). Только экран входа: класс body.lg-look живёт, пока #login виден.
 // Палитра знака: графит #111111, тёплый белый #F4F4F2, акцент #E8421C (на тёмном #FF5A2D); синего нет.
 // Движение — только transform: красный монолит один раз «встаёт на место», дальше едва заметный дрейф 36 с;
@@ -51,6 +51,7 @@ body.lg-look #login .lmark { display: none; }
 .lg-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 28px; }
 .lg-brand { display: flex; align-items: center; gap: 10px; font: 600 17px/1 var(--lg-font); letter-spacing: -.01em; }
 .lg-brand svg { width: 29px; height: 24px; color: var(--lg-text); }
+.lg-brand .e { color: var(--lg-accent); }
 .lg-ctrl { display: flex; align-items: center; gap: 8px; }
 body.lg-look #login .lg-ctrl .scn-opts { margin: 0; gap: 4px; }
 body.lg-look #login .lg-ctrl .scn-opts button { min-height: 36px; min-width: 40px; padding: 0 9px; border-radius: 8px;
@@ -96,7 +97,8 @@ function build() {
   const panel = document.querySelector("#login > .panel");
   if (!panel || panel.querySelector(".lg-top")) return;
   const top = document.createElement("div"); top.className = "lg-top";
-  top.innerHTML = `<div class="lg-brand">${MARK}<span>${esc(brandName())}</span></div><div class="lg-ctrl"></div>`;
+  const nm = brandName(), word = nm === "Ладэя" ? 'Лад<span class="e">э</span>я' : esc(nm);   // знак-название: «э» красная (25.11)
+  top.innerHTML = `<div class="lg-brand">${MARK}<span>${word}</span></div><div class="lg-ctrl"></div>`;
   const ctrl = top.querySelector(".lg-ctrl"), lang = $("loginLang");
   if (lang) ctrl.append(lang);                              // тот же переключатель языка — переносим, обработчики на месте
   const tb = document.createElement("button"); tb.type = "button"; tb.className = "lg-theme";
