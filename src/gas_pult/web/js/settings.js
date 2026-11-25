@@ -56,7 +56,7 @@ function groups() {
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Корзина чатов", icon: "trash", sub: "удалённые сессии и чаты — вернуть; скрытые — показать снова", run: chatTrash }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
-    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOURS[k].title, icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, подключения, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
+    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOUR_TITLES[k], icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, подключения, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ] },
   ].map((g) => ({ ...g, items: g.items.filter(Boolean) })).filter((g) => g.items.some((x) => !x.head));

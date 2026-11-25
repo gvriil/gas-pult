@@ -19,7 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 INDEX = (ROOT / "src" / "gas_pult" / "web" / "index.html").read_text(encoding="utf-8") \
     + (ROOT / "src" / "gas_pult" / "web" / "js" / "settings.js").read_text(encoding="utf-8") \
     + (ROOT / "src" / "gas_pult" / "web" / "js" / "connections.js").read_text(encoding="utf-8")   # части (20.11, 24.11)
-TOURS = json.loads(re.search(r'<script type="application/json" id="tourData">(.*?)</script>', INDEX, re.S).group(1))
+# данные тура — часть js/tourdata.js (вынесено из ядра 25.11): «export const TOURS = {…};»
+_TD = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/tourdata.js").read_text(encoding="utf-8")
+TOURS = json.loads(_TD[_TD.index("export const TOURS = ") + len("export const TOURS = "):_TD.rindex(";")])
 SCREENS = {"home", "session", "integrations", "any"}
 
 
