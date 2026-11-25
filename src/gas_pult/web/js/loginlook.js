@@ -16,12 +16,12 @@ const GRAIN = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www
 const CSS = `
 body.lg-look { --lg-bg: #F4F4F2; --lg-glass: rgba(255,255,255,.72); --lg-text: #111111; --lg-text2: #55544E;
   --lg-border: rgba(17,17,17,.12); --lg-accent: #E8421C; --lg-accent-h: #D13714; --lg-accent-a: #B82D0E;
-  --lg-mono: #111111; --lg-mono-o: .9; --lg-shine: rgba(255,255,255,.9); --lg-field: rgba(255,255,255,.6);
+  --lg-mono: #4A463F; --lg-mono-o: .92; --lg-red-h: 38%; --lg-red-o: .78; --lg-shine: rgba(255,255,255,.9); --lg-field: rgba(255,255,255,.6);
   --lg-font: "Golos Ladeya", system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--lg-bg); color: var(--lg-text); }
 :root[data-theme="dark"] body.lg-look { --lg-bg: #0C0C0B; --lg-glass: rgba(20,20,18,.66); --lg-text: #F4F4F2;
   --lg-text2: #A3A29B; --lg-border: rgba(244,244,242,.12); --lg-accent: #FF5A2D; --lg-accent-h: #FF7048;
-  --lg-accent-a: #E04820; --lg-mono: #2A2A27; --lg-mono-o: 1; --lg-shine: rgba(255,255,255,.07); --lg-field: rgba(0,0,0,.25); }
+  --lg-accent-a: #E04820; --lg-mono: #2A2A27; --lg-mono-o: 1; --lg-red-h: 56%; --lg-red-o: 1; --lg-shine: rgba(255,255,255,.07); --lg-field: rgba(0,0,0,.25); }
 body.lg-look header#top { display: none; }
 body.lg-look main { background: transparent; }
 .lg-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }
@@ -31,7 +31,7 @@ body.lg-look .lg-bg { display: block; }
   animation: lg-drift 36s steps(36) infinite alternate; will-change: transform; }   /* шаг раз в секунду: стекло
   пересчитывает размытие раз в секунду, а не 60 раз (замер 25.11: плавный дрейф — 41–77 % ядра, шагами — см. PR) */
 .lg-mono i { flex: 1; height: 80%; background: var(--lg-mono); opacity: var(--lg-mono-o); }
-.lg-mono i.r { height: 56%; background: var(--lg-accent); opacity: 1; transform-origin: 50% 100%;
+.lg-mono i.r { height: var(--lg-red-h); background: var(--lg-accent); opacity: var(--lg-red-o); transform-origin: 50% 100%;
   animation: lg-rise 2.6s cubic-bezier(.2,.7,.1,1) .2s both; }
 .lg-grain { position: absolute; inset: 0; background: url("${GRAIN}"); opacity: .06; mix-blend-mode: multiply; }
 :root[data-theme="dark"] .lg-grain { opacity: .09; mix-blend-mode: screen; }
@@ -77,8 +77,9 @@ body.lg-look #login .lg-ctrl button:focus-visible { outline: 2px solid var(--lg-
 body.lg-look #login input { min-height: 48px; border-radius: 10px; border: 1px solid var(--lg-border); background: var(--lg-field);
   color: var(--lg-text); font-family: inherit; }
 body.lg-look #login input:focus { outline: 2px solid var(--lg-accent); outline-offset: 0; border-color: transparent; }
-body.lg-look #login .login-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; margin: 14px 0 0;
-  padding: 16px 0 0; border-top: 1px solid var(--lg-border); }
+body.lg-look #login .login-links { display: grid; grid-template-columns: 1fr auto; align-items: center; justify-items: start;
+  gap: 10px 12px; margin: 14px 0 0; padding: 16px 0 0; border-top: 1px solid var(--lg-border); }
+body.lg-look #login .login-links > :nth-child(2n of :not([hidden])) { justify-self: end; }   /* две в ряд, третья — слева под ними */
 body.lg-look #login .linkbtn { font: 500 13px/1.3 var(--lg-font); color: var(--lg-text2); text-decoration: none; padding: 4px 0; }
 body.lg-look #login .linkbtn:hover { color: var(--lg-text); }
 `;
