@@ -78,12 +78,15 @@ export function open(w) {
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = "sheet.bug";
   bg.innerHTML = `<div class="sheet" role="dialog" aria-labelledby="bugTitle"><h3 id="bugTitle">Сообщить об ошибке</h3>
     <p class="note" style="margin:4px 16px 10px">Сообщение уйдёт команде, не в чат с ИИ. Ответим здесь, в этом чате.</p>
-    <div class="field" style="margin:0 16px"><label for="bugText">Что не так?</label><textarea id="bugText" rows="4" maxlength="${MAX}" placeholder="Например: нажал «Отправить», а фото не ушло"></textarea></div>
+    <div class="field" style="margin:0 16px"><label for="bugText">Что не так?</label><textarea id="bugText" rows="4" maxlength="${MAX}" placeholder="Например: нажал «Отправить», а фото не ушло"></textarea>
+${matchMedia("(pointer: fine)").matches ? `
+      <p class="note" style="margin:4px 0 0">Картинку можно вставить из буфера (Ctrl+V). Отправить — Ctrl+Enter.</p>` : ""}</div>
     <div style="margin:10px 16px 0;display:flex;align-items:center;gap:10px">
       <img id="bugPrev" alt="Снимок экрана" hidden style="width:64px;height:64px;flex:none;object-fit:cover;object-position:top;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);background:var(--bg-subtle)">
       <div style="flex:1;min-width:0"><p class="note" id="bugShotNote" role="status" style="margin:0"></p>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"><button class="btn ghost sm" id="bugDrop" type="button" hidden>${ic("x")} Убрать снимок</button>
-        <button class="btn ghost sm" id="bugPick" type="button">${ic("image")} Своя картинка</button></div></div>
+        <button class="btn ghost sm" id="bugPick" type="button">${ic("image")} Своя картинка</button>
+        <button class="btn ghost sm" id="bugMic" type="button" aria-pressed="false">${ic("mic")} <span>Надиктовать</span></button></div></div>
       <input type="file" id="bugFile" accept="image/*" hidden></div>
     <details style="margin:10px 16px 0"><summary class="note">Что приложим автоматически</summary>
       <ul class="note" style="margin:6px 0 0;padding-left:18px">
@@ -106,10 +109,50 @@ export function open(w) {
   const auto = snap().then((u) => { if (how === "wait") show(u, "auto"); },
     (e) => { ctx.shot_note = "снимок не получился: " + e.message; if (how === "wait") show("", "failed"); });
   document.body.append(bg);
-  const close = () => { bg.remove(); document.removeEventListener("keydown", esc_); };
+  const close = () => { if (rec) rec.stop(); bg.remove(); document.removeEventListener("keydown", esc_); };
   const esc_ = (e) => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", esc_);
-  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) close(); });
+  // Щелчок по фону закрывает, только если и нажали, и отпустили на фоне, а текста нет (papasan 24.11: растянул поле
+  // за уголок, отпустил мышь вне листа — лист закрылся вместе с текстом)
+  let downBg = false;
+  bg.addEventListener("pointerdown", (e) => { downBg = e.target === bg; });
+  bg.addEventListener("click", (e) => {
+    if (e.target.closest("[data-close]")) return close();
+    if (e.target === bg && downBg && !text.value.trim()) close();
+  });
+  text.addEventListener("keydown", (e) => {                 // Ctrl+Enter / ⌘+Enter — отправить (владелец 23.11)
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $f("#bugGo").click(); }
+  });
+  bg.addEventListener("paste", async (e) => {               // картинка из буфера (владелец 23.11)
+    const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith("image/"));
+    if (!f) return;
+    e.preventDefault();
+    try { show(await (await part("feedback")).shrink(f), "own"); msg.textContent = ""; }
+    catch (er) { msg.textContent = er.message; }
+  });
+  const micB = $f("#bugMic");                                // голосом (владелец 24.11): запись → текст в поле
+  let rec = null;
+  micB.onclick = async () => {
+    if (rec) return rec.stop();
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { msg.textContent = "Этот браузер не даёт микрофон — диктуйте кнопкой на клавиатуре"; return; }
+    let stream;
+    try { stream = await micGet(); } catch (er) { return micHelp(er, () => micB.click()); }
+    const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+    const chunks = [];
+    rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
+    rec.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop()); rec = null;
+      micB.setAttribute("aria-pressed", "false"); micB.querySelector("span").textContent = "Распознаю…"; micB.disabled = true;
+      try {
+        const d = await (await part("voicejob")).sttJob(new Blob(chunks, { type: type || "audio/webm" }), new AbortController().signal);
+        const t = (d.text || "").trim();
+        if (t) { text.value = (text.value + " " + t).trim(); text.focus(); } else msg.textContent = "Ничего не расслышал — попробуйте ещё раз";
+      } catch (er) { msg.textContent = "Не распознал: " + er.message; }
+      micB.disabled = false; micB.querySelector("span").textContent = "Надиктовать";
+    };
+    rec.start(); micB.setAttribute("aria-pressed", "true"); micB.querySelector("span").textContent = "Стоп";
+  };
   drop.onclick = () => show("", "removed");
   $f("#bugPick").onclick = () => file.click();
   file.onchange = async () => {
