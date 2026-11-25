@@ -511,5 +511,14 @@
  "s.attach.fail": "“{n}” was not sent: {e}",
  "s.attach.demo": "In the demo the file goes nowhere",
  "theme.to.dark": "Dark theme",
- "theme.to.light": "Light theme"
+ "theme.to.light": "Light theme",
+ "s.conn": "Connect email or messenger",
+ "s.conn.title": "Email and messengers",
+ "s.conn.msg": "Messengers",
+ "s.conn.mail": "Email",
+ "s.conn.mail.owner": "Connect email in the full mode: Settings → “Connect email or messenger”.",
+ "s.conn.admin": "Email and messengers are connected by the space administrator. Tap — they will get your request.",
+ "s.conn.ask": "Ask the administrator",
+ "s.conn.ask.text": "Please connect my email or messenger to Ladeya.",
+ "s.conn.asked": "Request sent to the administrator"
 }
