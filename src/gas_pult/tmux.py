@@ -315,11 +315,12 @@ class Tmux:
     def _windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
                        "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}\t"
-                       "#{@gas_pult_sid}\t#{@gas_pult_from}")
+                       "#{@gas_pult_sid}\t#{@gas_pult_from}\t#{@gas_pult_focus}")
         # from — окно, из которого это открыли командой tmux (spawned.py): видно по фокус-ссылке родителя
         # sid — id сессии Claude Code (``--session-id``): у окна свой журнал, а не «последний в папке»
-        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid", "from"), line.split("\t"),
-                       strict=False)) for line in out.splitlines()]
+        # focus — id фокус-ссылки, по которой окно открыли (``set_focus``): по ссылке на проект видны только такие
+        keys = ("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid", "from", "focus")
+        ws = [dict(zip(keys, line.split("\t"), strict=False)) for line in out.splitlines()]
         procs = tty_procs([w.get("tty", "") for w in ws])
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             procs_w = procs.get(w.get("tty", "").removeprefix("/dev/"), [])        # [[pid, argv…], …]
@@ -531,6 +532,11 @@ class Tmux:
             self.set_sid(wid, sid)
         self.watch_trust(wid)
         return wid
+
+    def set_focus(self, wid: str, rid: str):
+        """Метка окна ``@gas_pult_focus`` — фокус-ссылка, по которой его открыли. Живёт и гаснет вместе с окном: новое
+        окно с тем же номером (после перезапуска tmux) метки не получит."""
+        self.run("set-option", "-w", "-t", wid, "@gas_pult_focus", rid)
 
     def set_sid(self, wid: str, sid: str):
         """Метка окна ``@gas_pult_sid`` — id сессии Claude Code, чей журнал читать; пусто — снять (старый способ)."""

@@ -118,13 +118,28 @@ class FocusPart:
         return {"ok": True}
 
     def focus_sessions(self, rec: dict) -> list[dict]:
-        """Сессии, видимые по ссылке: одна её сессия или все окна её проекта — и окна, которые агент открыл из них
-        (``focus_spawned``)."""
+        """Сессии, видимые по ссылке: одна её сессия или окна её проекта, открытые по этой ссылке (``focus_wins``), —
+        и окна, которые агент открыл из них (``focus_spawned``). Окна владельца в той же папке не видны (штаб 25.11)."""
         kids = self.focus_spawned(rec)
         if rec.get("proj"):
+            mine = self.focus_wins(rec)
             return [s for s in self.sessions(None) if not s.get("space")
-                    and (s.get("project") == rec["proj"] or s["id"] in kids)]
+                    and ((s.get("project") == rec["proj"] and s["id"] in mine) or s["id"] in kids)]
         return [s for s in self.sessions(None) if s["id"] == rec["w"] or s["id"] in kids]
+
+    def focus_wins(self, rec: dict, wins: list[dict] | None = None) -> set[str]:
+        """Окна, открытые по ссылке на проект: метка окна ``@gas_pult_focus`` = id ссылки (ставит новый чат и
+        «Продолжить» по ссылке). Метка живёт с окном: окно с тем же номером после перезапуска tmux — без неё.
+        Демо-ссылка — показ клиенту чатов владельца: все окна проекта, как раньше."""
+        rid = str(rec.get("id") or "")
+        try:
+            wins = self.tmux.windows() if wins is None else wins
+        except (OSError, LookupError):
+            return set()
+        if focus.Focus.is_demo(rec):
+            pd = self.project_data()
+            return {w["id"] for w in wins if not w.get("space") and self.project_of(pd, w) == rec["proj"]}
+        return {w["id"] for w in wins if rid and not w.get("space") and w.get("focus") == rid}
 
     SPAWN_DEPTH = 4                         # окно из окна из окна…: дальше — не ищем (и цикл опций не крутим вечно)
 
@@ -145,11 +160,7 @@ class FocusPart:
                 kids.setdefault(p, []).append(w["id"])
         if not kids:
             return set()
-        if rec.get("proj"):
-            pd = self.project_data()
-            base = {w["id"] for w in wins if self.project_of(pd, w) == rec["proj"]}
-        else:
-            base = {rec["w"]} if rec.get("w") else set()
+        base = self.focus_wins(rec, wins) if rec.get("proj") else ({rec["w"]} if rec.get("w") else set())
         seen, edge = set(base), set(base)
         for _ in range(self.SPAWN_DEPTH):
             edge = {k for p in edge for k in kids.get(p, ()) if k not in seen}
@@ -217,8 +228,8 @@ class FocusPart:
         return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
 
     def focus_owns(self, rec: dict, wid: str) -> bool:
-        """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта; и окна, открытые
-        из них агентом (``focus_spawned``)."""
+        """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — окно проекта, открытое по ней (метка
+        ``@gas_pult_focus``); и окна, открытые из них агентом (``focus_spawned``)."""
         if not wid:
             return False
         if not rec.get("proj"):
@@ -227,7 +238,8 @@ class FocusPart:
             w = self.tmux.window(wid)
         if not w or w.get("space"):
             return False
-        return self.project_of(self.project_data(), w) == rec["proj"] or wid in self.focus_spawned(rec)
+        mine = focus.Focus.is_demo(rec) or w.get("focus") == rec.get("id")     # демо — все окна проекта
+        return (mine and self.project_of(self.project_data(), w) == rec["proj"]) or wid in self.focus_spawned(rec)
 
     def focus_token(self, url: str) -> dict:
         """Действующая ссылка по адресу ``…/#focus=<токен>`` (для QR и «Отправить себе»)."""

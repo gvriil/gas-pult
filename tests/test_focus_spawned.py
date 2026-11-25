@@ -113,7 +113,8 @@ def test_single_link_sees_spawned_window_not_foreign(server):  # noqa: F811
 def test_project_link_sees_window_spawned_into_other_folder(server, monkeypatch):  # noqa: F811
     s = server
     proj_server(s, monkeypatch)
-    _, cookie = proj_link(s)
+    d, cookie = proj_link(s)
+    s["wins"].w["@1"]["focus"] = d["id"]                    # окно @1 открыто по этой ссылке (штаб 25.11)
     s["wins"].w["@3"] = {"id": "@3", "name": "dom", "path": "/srv/dom", "cmd": "claude", "from": "@1"}
     s["wins"].w["@4"] = {"id": "@4", "name": "x", "path": "/srv/x", "cmd": "claude", "from": "@2"}   # из чужого
     code, d, _ = call(s["base"], "/api/sessions", None, cookie, FX)

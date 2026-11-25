@@ -66,6 +66,9 @@ class Wins:
     def windows(self):
         return list(self.w.values())
 
+    def set_focus(self, wid, rid):
+        self.w[wid]["focus"] = rid
+
     @contextlib.contextmanager
     def scope(self, slug):
         yield
@@ -380,7 +383,9 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
     code, m, _ = call(s["base"], "/api/meta", None, cookie, FX)
     assert code == 200 and m["focus"]["proj"] == "p-shop" and m["focus"]["exp"] == d["exp"] and m["focus"]["w"] == ""
     code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert [x["id"] for x in r["sessions"]] == ["@1"]                                 # только окна проекта
+    assert r["sessions"] == []                          # окно владельца в папке проекта (@1) по ссылке не видно (25.11)
+    for path, body in (("/api/history?w=@1", None), ("/api/send", {"w": "@1", "text": "x"})):
+        assert call(s["base"], path, body, cookie, FX)[0] == 403, path
     assert call(s["base"], "/api/project?id=p-shop", None, cookie, FX)[0] == 200
     assert call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)[0] == 200   # завершённые чаты
     # новая сессия в проекте — и она сразу доступна
@@ -388,7 +393,7 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
     assert code == 200 and made == [("p-shop", r["id"])]
     assert call(s["base"], "/api/send", {"w": r["id"], "text": "привет"}, cookie, FX)[0] == 200
     code, ss, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert sorted(x["id"] for x in ss["sessions"]) == ["@1", r["id"]]
+    assert [x["id"] for x in ss["sessions"]] == [r["id"]]                            # только открытое по ссылке
     # чужой проект и его окно — 403; общий список проектов, люди, новая папка — 403
     for path, body in (("/api/project?id=p-other", None), ("/api/project/sessions?id=p-other", None),
                        ("/api/project/session", {"id": "p-other"}),
@@ -399,11 +404,12 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
         code, r2, _ = call(s["base"], path, body, cookie, FX)
         assert code == 403 and r2.get("code") == "focus_scope", (path, code, r2)
     assert made == [("p-shop", r["id"])]                                            # в чужом проекте ничего не создано
-    # «Завершить» одно окно проекта — ссылка на проект живёт
-    code, c, _ = call(s["base"], "/api/close", {"w": "@1"}, cookie, FX)
-    assert code == 200 and c["result"] == "закрыто" and s["closed"] == ["@1"]
+    # «Завершить» своё окно проекта — ссылка на проект живёт; окно владельца — нельзя
+    assert call(s["base"], "/api/close", {"w": "@1"}, cookie, FX)[0] == 403
+    code, c, _ = call(s["base"], "/api/close", {"w": r["id"]}, cookie, FX)
+    assert code == 200 and c["result"] == "закрыто" and s["closed"] == [r["id"]]
     code, ss, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert code == 200 and [x["id"] for x in ss["sessions"]] == [r["id"]]
+    assert code == 200
     assert call(s["base"], "/api/close", {"w": "@2"}, cookie, FX)[0] == 403          # окно другого проекта — нет
     # проект удалили из списка — ссылка гаснет
     data["projects"].pop("p-shop")

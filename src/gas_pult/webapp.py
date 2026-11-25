@@ -2160,6 +2160,9 @@ def handler(panel: Panel):
                 r = self.post(path)
                 if isinstance(r, dict):
                     panel.focus.add_chat(rec["id"], r.get("sid") or "")
+                    if r.get("id"):                        # окно — этой ссылки: по ней видно только такие
+                        with contextlib.suppress(OSError, LookupError):
+                            panel.tmux.set_focus(str(r["id"]), rec["id"])
                 return r
             if path == "/api/sessions":
                 ss = panel.focus_sessions(rec)
