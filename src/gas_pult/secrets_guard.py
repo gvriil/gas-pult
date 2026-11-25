@@ -4,7 +4,7 @@
 
 - ``UserPromptSubmit`` — в сообщении человека секрет: сообщение **не отправляется** (Claude Code 2.1 не даёт хуку
   заменить текст сообщения — только остановить его), человек видит «Убрал из сообщения …: ключи и пароли не
-  показываются; чтобы подключить сервис — «Настройки → Подключения» в Гавриле; отправьте сообщение без ключа».
+  показываются; чтобы подключить сервис — «Настройки → Подключения» в Ладее; отправьте сообщение без ключа».
   ``suppressOriginalPrompt`` — текст с ключом не попадает в запись разговора.
 - ``PreToolUse`` — чтение ``.env*`` (Read, Grep, команды Bash) закрыто; ``.env.example`` (и ``.sample``, ``.template``)
   — открыт. База паролей коннекторов (``connectors.kdbx`` и ``connectors.key``, ``connwatch``) закрыта целиком.
@@ -34,7 +34,7 @@ from pathlib import Path
 SCRIPT = "gas-pult-secrets.py"           # имя копии в <папка Claude>/hooks/
 TAG = "gas-pult-secrets"                 # по нему install узнаёт свои записи в settings.json
 EVENTS = {"UserPromptSubmit": None, "PreToolUse": "Read|Grep|Bash|NotebookRead", "PostToolUse": "*"}
-KEYS_PLACE = "«Настройки → Подключения» в Гавриле"
+KEYS_PLACE = "«Настройки → Подключения» в Ладее"
 ALLOWED_ENV = (".env.example", ".env.sample", ".env.template", ".env.dist")
 
 # Имя переменной с секретом: …_KEY, …TOKEN, …SECRET, …PASSWORD (и PASSWD, PWD, PASS, CREDENTIALS), apikey.
@@ -414,7 +414,7 @@ def handle(data: dict) -> dict | None:
         if vault := vault_target(tool, inp):
             return {"hookSpecificOutput": {
                 "hookEventName": "PreToolUse", "permissionDecision": "deny",
-                "permissionDecisionReason": (f"Файл {vault} закрыт: база паролей коннекторов (защита Гаврилы). Её "
+                "permissionDecisionReason": (f"Файл {vault} закрыт: база паролей коннекторов (защита Ладеи). Её "
                                              "читает только пульт (gas-pult connectors), агентам — нельзя. Нужен "
                                              "вход в сервис — поставьте задачу человеку.")}}
         name = env_target(tool, inp)
@@ -422,7 +422,7 @@ def handle(data: dict) -> dict | None:
             return None
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse", "permissionDecision": "deny",
-            "permissionDecisionReason": (f"Файл {name} закрыт: в нём секреты (защита Гаврилы). Список переменных — в "
+            "permissionDecisionReason": (f"Файл {name} закрыт: в нём секреты (защита Ладеи). Список переменных — в "
                                          ".env.example; значение спросите у человека, а сам ключ он положит в "
                                          f"{KEYS_PLACE}. Если команда нужна (например, скопировать шаблон в .env), "
                                          "попросите человека выполнить её самому.")}}
@@ -434,7 +434,7 @@ def handle(data: dict) -> dict | None:
         types = _uniq(types)
         return {"hookSpecificOutput": {
             "hookEventName": "PostToolUse", "updatedToolOutput": new,
-            "additionalContext": (f"В выводе инструмента скрыто: {', '.join(types)} (защита Гаврилы). Значения не "
+            "additionalContext": (f"В выводе инструмента скрыто: {', '.join(types)} (защита Ладеи). Значения не "
                                   "нужны: ссылайтесь на имя переменной. Человеку: ключи и пароли не показываются; "
                                   f"чтобы подключить сервис, откройте {KEYS_PLACE}.")}}
     return None

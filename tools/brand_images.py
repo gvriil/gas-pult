@@ -4,14 +4,17 @@
     python tools/brand_images.py
 Пересобирать после смены знака или названия. Владелец 21.11: «миниатюра для PWA должна быть с лого»."""
 
+import sys
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from gas_pult import brand
+
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / "src/gas_pult/web/brand"
 MARK = (BRAND / "gavrila-mark.svg").read_text(encoding="utf-8")
-LOCKUP = (BRAND / "gavrila-lockup.svg").read_text(encoding="utf-8")
 THEMES = {"light": ("#F4F4F2", "#111111", "#4B5563"), "dark": ("#111111", "#F2F2F2", "#9CA3AF")}   # фон, знак, подпись
 # iPhone: CSS-ширина × высота × плотность (портрет) — экраны запуска apple-touch-startup-image
 IPHONES = [(440, 956, 3), (430, 932, 3), (428, 926, 3), (402, 874, 3), (393, 852, 3), (390, 844, 3), (375, 812, 3),
@@ -41,9 +44,11 @@ def main():
             pg.close()
             out.append(name)
 
-        bg, fg, _ = THEMES["dark"]                       # превью ссылки: lockup «знак + Gavrila» на тёмном, как образец
-        shot("og-1200x630.png", 1200, 630, page(1200, 630, bg, f'<div style="width:900px;height:353px;color:{fg}">'
-             + LOCKUP.replace("<svg ", '<svg width="100%" height="100%" ', 1) + "</div>"))
+        bg, fg, sub = THEMES["dark"]                     # превью ссылки: знак + «Ladeya by Botsmith» (25.11)
+        shot("og-1200x630.png", 1200, 630, page(1200, 630, bg, '<div style="display:flex;align-items:center;gap:40px">'
+             + mark(260, fg) + f'<div><div style="font-size:120px;font-weight:700;letter-spacing:-.03em;color:{fg}">'
+             f'{brand.APP_NAME_EN}</div><div style="font-size:40px;font-weight:500;color:{sub};margin-top:4px">'
+             f'{brand.BY}</div></div></div>'))
         for name, size in (("icon-512.png", 512), ("icon-192.png", 192), ("apple-touch-180.png", 180)):   # «Домой»
             shot(name, size, size, page(size, size, bg, mark(int(size * 0.62), fg)))
         for t, (_, fg2, _) in THEMES.items():          # вкладка: прозрачный фон, знак во всю высоту
@@ -54,7 +59,8 @@ def main():
         for t, (bg, fg, _) in THEMES.items():            # экраны запуска iOS: знак по центру, имя под ним
             for w, h, s in IPHONES:
                 shot(f"splash-{w}x{h}-{t}.png", w, h, page(w, h, bg, f'<div style="text-align:center">{mark(120, fg)}'
-                     f'<div style="font-size:22px;font-weight:600;color:{fg};margin-top:8px">Гаврила</div></div>'), s)
+                     f'<div style="font-size:22px;font-weight:600;color:{fg};margin-top:8px">'
+                     f'{brand.APP_NAME_RU}</div></div>'), s)
         b.close()
     print("\n".join(out))
 

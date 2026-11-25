@@ -1,4 +1,4 @@
-"""«Поделиться» в Гаврилу (share.py): Android share_target → POST /share, iPhone → POST /api/share с токеном
+"""«Поделиться» в Ладею (share.py): Android share_target → POST /share, iPhone → POST /api/share с токеном
 устройства, свои записи — только свои."""
 
 import http.client

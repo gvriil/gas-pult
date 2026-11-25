@@ -6,8 +6,8 @@
 // Состояние уведомлений этого устройства — сразу в подписи (владелец 20.11: «опять только Telegram»; подписок не было:
 // «Включить» ни разу не нажимали). Подписку проверяет экран «Уведомления»; здесь — то, что видно без запроса.
 function pushState() {
-  if (tg?.initData) return "здесь, в Telegram, — присылает бот; на телефон — откройте Гаврилу в браузере";
-  if (!("PushManager" in window) || !("Notification" in window)) return /iPhone|iPad/.test(navigator.userAgent) ? "на iPhone — откройте Гаврилу значком с экрана «Домой»" : "этот браузер не умеет уведомления";
+  if (tg?.initData) return "здесь, в Telegram, — присылает бот; на телефон — откройте Ладею в браузере";
+  if (!("PushManager" in window) || !("Notification" in window)) return /iPhone|iPad/.test(navigator.userAgent) ? "на iPhone — откройте Ладею значком с экрана «Домой»" : "этот браузер не умеет уведомления";
   return Notification.permission === "granted" ? "на этом устройстве включены · проверить, устройства" : "на этом устройстве выключены — включить";
 }
 
@@ -28,7 +28,7 @@ function groups() {
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о важном", run: () => part("email").then(() => emailSheet()) },
     { label: "Уведомления", icon: "bell", sub: pushState(), run: () => part("push").then((m) => m.open()) },
-    ...(meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Устройства для «Поделиться»", icon: "share", sub: "фото, ссылки и файлы из других приложений — в Гаврилу; iPhone и Android", run: () => part("share").then((m) => m.devicesSheet()) }] : []),
+    ...(meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Устройства для «Поделиться»", icon: "share", sub: "фото, ссылки и файлы из других приложений — в Ладею; iPhone и Android", run: () => part("share").then((m) => m.devicesSheet()) }] : []),
     ] },
     { title: "ИИ, подключения и бюджет", icon: "chip", items: [
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),

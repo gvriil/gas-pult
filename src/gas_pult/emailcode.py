@@ -46,7 +46,7 @@ RESEND_AFTER = 60
 PER_HOUR = 5
 IP_PER_HOUR = 20
 TIMEOUT = 20
-SAME_ANSWER = "Если адрес привязан к Гаврила, мы отправили на него код. Он действует 10 минут."
+SAME_ANSWER = "Если адрес привязан к Ладее, мы отправили на него код. Он действует 10 минут."
 # Подсказка в docs/AUTH.md и config.example.toml: Яндекс — для РФ, Gmail или другой — для остальных.
 PRESETS = {"yandex": ("smtp.yandex.ru", 465), "gmail": ("smtp.gmail.com", 465), "mailru": ("smtp.mail.ru", 465)}
 HMAC_KEY = "email_hmac"                      # ключ HMAC в secrets.json — создаётся при первом коде

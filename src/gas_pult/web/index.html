@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
-<title>Гаврила</title>
-<meta name="application-name" content="Гаврила"><meta name="apple-mobile-web-app-title" content="Гаврила">
+<title>Ладея</title>
+<meta name="application-name" content="Ладея"><meta name="apple-mobile-web-app-title" content="Ладея">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: light)"><link rel="icon" href="/favicon-32-dark.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: dark)"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -1157,7 +1157,7 @@
   <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 </div>
 <aside class="nav" id="nav" aria-label="Чаты" inert>
-  <div class="nav-h"><span class="gmark nmark" aria-hidden="true"></span><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Гаврила</button></h2>
+  <div class="nav-h"><span class="gmark nmark" aria-hidden="true"></span><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Ладея</button></h2>
     <button class="icon" id="navSearchBtn" type="button" aria-label="Поиск (Ctrl+K)" title="Поиск (Ctrl+K)"></button>
     <button class="icon" id="navFoldBtn" type="button" aria-label="Свернуть всё" title="Свернуть всё"></button>
     <button class="icon" id="navMoreBtn" type="button" aria-label="Ещё: новая папка, из модуля, в фокусе" title="Ещё" aria-haspopup="menu" aria-expanded="false"></button>
@@ -1179,7 +1179,7 @@
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
-    <span class="gmark tmark" aria-hidden="true"></span><div class="titles"><h1 class="serif" id="title">Гаврила</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
+    <span class="gmark tmark" aria-hidden="true"></span><div class="titles"><h1 class="serif" id="title">Ладея</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="composeBtn" hidden aria-label="Новый чат" title="Новый чат"></button>
     <button class="icon" id="switchBtn" hidden aria-label="Другой чат"></button>
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
@@ -1273,7 +1273,7 @@
   <section id="persona" hidden><div class="panel terms" id="personaBox"></div></section>
 
   <section id="home" hidden>
-    <div class="brand"><h1 class="serif brand-text">Гаврила</h1><div class="sub"><span id="brandSub"></span></div></div>
+    <div class="brand"><h1 class="serif brand-text">Ладея</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Чаты</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Подключения</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
@@ -1551,8 +1551,8 @@ const wideMQ = matchMedia("(min-width: 1024px)");
 const split = () => (!FOCUS || meta?.focus?.mode !== "demo") && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
-const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Гаврила";   // brand.py — одно место
-const brandName = () => (typeof LANG !== "undefined" && LANG === "en" ? DICT?.["login.brand"] || "Gavrila" : BRAND);   // на английском — латиницей
+const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Ладея";   // brand.py — одно место
+const brandName = () => (typeof LANG !== "undefined" && LANG === "en" ? DICT?.["login.brand"] || "Ladeya" : BRAND);   // на английском — латиницей
 // Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
 const openUrl = (url) => (tg?.initData ? tg.openLink(url) : window.open(url, "_blank", "noopener"));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -4347,7 +4347,7 @@ function teamAdd(t) {                                // свой отчёт об
   if (!t || team.some((x) => x.id === t.id)) return;
   setTeam([...(teamW === current ? team : []), t]); if (tab === "chat" && view === "session") { renderChat(false); stickBottom(); }
 }
-const teamName = () => (LANG === "en" ? brandName() + " team" : BRAND === "Гаврила" ? "Команда Гаврилы" : "Команда " + BRAND);
+const teamName = () => (LANG === "en" ? brandName() + " team" : BRAND === "Ладея" ? "Команда Ладеи" : "Команда " + BRAND);
 const teamCard = (t) => `<div class="tmsg k-${esc(t.kind)}" data-key="t:${esc(t.id)}" role="note"><div class="tm-h">${ic("team", "s16")}<b>${esc(teamName())}</b><span class="when">${esc(localTs(t.ts))}</span></div><div class="tm-b">${esc(t.text)}</div></div>`;
 function mergeChat(h) {   // свежий хвост переписки — к тому, что уже на экране; читатель остаётся на своём месте
   const atBottom = atEnd(220), first = h.items[0]?.i ?? Infinity;

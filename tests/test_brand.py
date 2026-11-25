@@ -1,4 +1,4 @@
-"""Владелец 20.11: «пока «Гаврила» вместо «Пульт» — во всём, что видит человек; сменить потом в одном месте»."""
+"""Название в одном месте (владелец 20.11; 25.11 — «Ладея» / «Ladeya», by Botsmith), «Пульт» в интерфейсе не видно."""
 import json
 import re
 from pathlib import Path
@@ -10,7 +10,8 @@ INDEX = (WEB / "index.html").read_text(encoding="utf-8")
 
 
 def test_one_place_and_manifest():
-    assert brand.NAME == "Gavrila" and brand.NAME_RU == "Гаврила" == brand.DEFAULT
+    assert brand.APP_NAME_EN == brand.NAME == "Ladeya"
+    assert brand.APP_NAME_RU == brand.NAME_RU == "Ладея" == brand.DEFAULT
     m = brand.manifest()
     assert m["name"] == m["short_name"] == brand.NAME_RU and m["display"] == "standalone" and m["start_url"] == "/"
     assert '<link rel="manifest" href="/manifest.webmanifest">' in INDEX

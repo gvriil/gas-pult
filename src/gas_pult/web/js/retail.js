@@ -27,7 +27,8 @@ const CSS = `
 /* шапка: логотип, тонкий индикатор шагов, одна строка маркировки */
 #rt .rt-top { position: sticky; top: 0; z-index: 3; background: var(--surface); box-shadow: 0 1px 0 var(--line); }
 #rt .rt-top-in { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 20px; max-width: 1200px; margin: 0 auto; }
-#rt .rt-logo { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -.01em; }
+#rt .rt-logo { display: flex; align-items: baseline; gap: 6px; font-weight: 700; font-size: 18px; letter-spacing: -.02em; }
+#rt .rt-by { font-size: 12px; font-weight: 500; color: var(--text-3); letter-spacing: 0; }
 #rt .rt-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--text); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-size: 15px; }
 #rt .rt-tag { color: var(--text-3); font-size: 14px; }
 #rt .rt-count { margin-left: auto; color: var(--text-2); font-size: 14px; font-weight: 500; }
@@ -265,7 +266,7 @@ export async function init() {
   NOTE = `Концепция пилота · учебные данные · подключения к ${to || "вашим системам"} нет`;
   root = document.createElement("div");
   root.id = "rt"; root.dataset.t = q.get("theme") === "dark" ? "dark" : "light";   // для QR — светлая (ТЗ v1)
-  root.innerHTML = `<header class="rt-top"><div class="rt-top-in"><div class="rt-logo"><span class="rt-mark">B</span>Botsmith</div>
+  root.innerHTML = `<header class="rt-top"><div class="rt-top-in"><div class="rt-logo">Ладея<span class="rt-by">by Botsmith</span></div>
 <span class="rt-tag">Демо · 1 мин</span><span class="rt-count rt-num" id="rtCount"></span></div>
 <div class="rt-bar" id="rtBar" role="img"><i></i></div></header>
 <p class="rt-note">${rtIc("info")}${h(NOTE)}</p>
@@ -279,7 +280,7 @@ export async function init() {
 <button class="rt-b rt-sec-b" type="button" data-try>Примерить на себя</button><button class="rt-b rt-sec-b" type="button" data-full>Полное демо</button></div></section></div>`;
   document.body.append(root);
   document.body.style.overflow = "hidden";
-  document.title = "Botsmith · после покупки";
+  document.title = "Ладея";
   $r("[data-again]").onclick = () => { root.scrollTop = 0; play(); };
   $r("[data-try]").onclick = () => { location.href = "/?demo&simple=0"; };
   $r("[data-full]").onclick = () => { location.href = "/?demo"; };

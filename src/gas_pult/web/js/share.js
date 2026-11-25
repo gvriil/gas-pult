@@ -1,6 +1,6 @@
-// «Поделиться» в Гаврилу — часть по требованию (#191). Владелец 21.11: «Хочу поделиться фото, ссылкой, файлом —
-// Гаврила должен быть в списке «Поделиться»». Сервер: share.py.
-// - Android: Гаврила с экрана «Домой» есть в системном «Поделиться» (share_target) → POST /share → /?share=<id>.
+// «Поделиться» в Ладею — часть по требованию (#191). Владелец 21.11: «Хочу поделиться фото, ссылкой, файлом —
+// Ладея должен быть в списке «Поделиться»». Сервер: share.py.
+// - Android: Ладея с экрана «Домой» есть в системном «Поделиться» (share_target) → POST /share → /?share=<id>.
 // - iPhone: Safari так не умеет — «Быстрая команда» шлёт POST /api/share с токеном устройства (страница iphoneGuide).
 // Шторка «Поделились»: превью (текст, ссылка, миниатюры) и «Куда отправить»: новый чат, один из последних чатов,
 // «Сохранить во Входящие». Ничего не уходит само — текст встаёт в поле ввода, отправляет человек.
@@ -32,9 +32,9 @@ const CSS = `.shr .shr-prev { margin: 2px 16px 8px; padding: 12px; border-radius
 const css = () => { if (!document.getElementById("shrCss")) document.head.insertAdjacentHTML("beforeend", `<style id="shrCss">${CSS}</style>`); };
 
 const WHY = {
-  login: ["Войдите и поделитесь снова", "Без входа Гаврила не знает, чьё это. Войдите и снова нажмите «Поделиться» — запись появится здесь."],
-  denied: ["Нет прав на запись", "У вас доступ только на просмотр — поделиться в Гаврилу может участник или владелец пульта."],
-  big: ["Больше 50 МБ", "Гаврила принимает до 50 МБ за раз. Отправьте файлы частями."],
+  login: ["Войдите и поделитесь снова", "Без входа Ладея не знает, чьё это. Войдите и снова нажмите «Поделиться» — запись появится здесь."],
+  denied: ["Нет прав на запись", "У вас доступ только на просмотр — поделиться в Ладею может участник или владелец пульта."],
+  big: ["Больше 50 МБ", "Ладея принимает до 50 МБ за раз. Отправьте файлы частями."],
   error: ["Не получилось", "Запись не дошла целиком. Поделитесь ещё раз — если повторится, отправьте файл через скрепку в чате."],
 };
 
@@ -44,7 +44,7 @@ const DEMO_ITEMS = [{ id: "demo", at: Date.now() / 1000 - 40, via: "android", ti
   files: [{ name: "счёт-ноябрь.jpg", path: "/home/u/.local/share/gas-pult/inbox/20261121-101500-a1b2c3-schet.jpg", size: 412000, image: true },
     { name: "фото-стенда.jpg", path: "/home/u/.local/share/gas-pult/inbox/20261121-101500-d4e5f6-stend.jpg", size: 280000, image: true },
     { name: "договор.pdf", path: "/home/u/.local/share/gas-pult/inbox/20261121-101500-0a1b2c-dogovor.pdf", size: 1250000, image: false }] }];
-let demoDone = false, demoDevs = [{ id: "d1", name: "iPhone Гаврилы", created: Date.now() / 1000 - 86400 * 3, seen: Date.now() / 1000 - 3600 }];
+let demoDone = false, demoDevs = [{ id: "d1", name: "iPhone Ладеи", created: Date.now() / 1000 - 86400 * 3, seen: Date.now() / 1000 - 3600 }];
 
 const size = (n) => n >= 1 << 20 ? (n / (1 << 20)).toFixed(1).replace(".", ",") + " МБ" : Math.max(1, Math.round(n / 1024)) + " КБ";
 const when = (t) => (t ? new Date(t * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -155,7 +155,7 @@ export async function devicesSheet() {
   let devs;
   try { devs = await devices(); } catch (e) { return toast(e.message, 4000); }
   sheet("Устройства для «Поделиться»", [
-    { info: true, icon: "share", label: "Android: установите Гаврилу на экран «Домой»", sub: "Chrome → ⋮ → «Добавить на гл. экран». После этого Гаврила есть в «Поделиться» сам — токен не нужен" },
+    { info: true, icon: "share", label: "Android: установите Ладею на экран «Домой»", sub: "Chrome → ⋮ → «Добавить на гл. экран». После этого Ладея есть в «Поделиться» сам — токен не нужен" },
     { info: true, icon: "phone", label: "iPhone: «Быстрая команда» с токеном", sub: "Safari не даёт сайтам место в «Поделиться» — поэтому команда. Токен — свой у каждого устройства" },
     ...devs.map((d) => ({ label: d.name || "iPhone", icon: "phone", sub: `добавлен ${when(d.created)} · ${d.seen ? "был " + when(d.seen) : "ещё не присылал"} · нажмите, чтобы отозвать`,
       run: () => confirmDanger(`Отозвать «${d.name}»? Быстрая команда на нём перестанет работать.`, async () => {
@@ -166,30 +166,30 @@ export async function devicesSheet() {
 }
 
 // Схема без скриншотов iOS (рисуем сами): что происходит при «Поделиться».
-const SCHEME = `<svg class="shr-scheme" viewBox="0 0 520 70" role="img" aria-label="Фото или ссылка, Поделиться, команда «В Гаврилу», Гаврила">
+const SCHEME = `<svg class="shr-scheme" viewBox="0 0 520 70" role="img" aria-label="Фото или ссылка, Поделиться, команда «В Ладею», Ладея">
   <rect x="2" y="16" width="104" height="38" rx="9"/><text x="54" y="40" text-anchor="middle">Фото, ссылка</text>
   <path d="M108 35h22m-6-5l6 5-6 5"/>
   <rect x="134" y="16" width="104" height="38" rx="9"/><text x="186" y="40" text-anchor="middle">«Поделиться»</text>
   <path d="M240 35h22m-6-5l6 5-6 5"/>
-  <rect x="266" y="16" width="118" height="38" rx="9"/><text x="325" y="40" text-anchor="middle">«В Гаврилу»</text>
+  <rect x="266" y="16" width="118" height="38" rx="9"/><text x="325" y="40" text-anchor="middle">«В Ладею»</text>
   <path d="M386 35h22m-6-5l6 5-6 5"/>
-  <rect class="on" x="412" y="16" width="106" height="38" rx="9"/><text class="on" x="465" y="40" text-anchor="middle">Гаврила</text></svg>`;
+  <rect class="on" x="412" y="16" width="106" height="38" rx="9"/><text class="on" x="465" y="40" text-anchor="middle">Ладея</text></svg>`;
 
 const demoTok = () => ["gps", "demo", "0".repeat(28)].join("_");   // демо: не настоящий токен
 
 export function iphoneGuide() {
   const url = location.origin + "/api/share";
   let token = "";
-  const bg = frame(`<h3>Гаврила в «Поделиться» на iPhone</h3>${SCHEME}
+  const bg = frame(`<h3>Ладея в «Поделиться» на iPhone</h3>${SCHEME}
     <p class="note">Safari не даёт сайтам место в меню «Поделиться». Поэтому — «Быстрая команда»: один раз настроить, дальше — как у приложения.</p>
     <ol class="shr-steps">
       <li>Нажмите «Создать токен и скопировать» ниже. Токен покажется один раз.</li>
-      <li>Откройте «Команды» (Shortcuts) → «+». Назовите команду «В Гаврилу».</li>
+      <li>Откройте «Команды» (Shortcuts) → «+». Назовите команду «В Ладею».</li>
       <li>Нажмите ⓘ (Сведения) → включите «Показывать в меню «Поделиться»».</li>
       <li>Добавьте действие «Получить содержимое URL». Адрес: <code>${esc(url)}</code></li>
       <li>Метод — <code>POST</code>. Заголовки → добавить: ключ <code>Authorization</code>, значение <code>Bearer</code>, пробел и токен.</li>
       <li>Тело запроса — «Форма». Поле <code>files</code>, тип «Файл», значение — «Ввод быстрой команды». Для текста и ссылок — второе поле <code>text</code>, тип «Текст», то же значение.</li>
-      <li>Готово: в фото или Safari нажмите «Поделиться» → «В Гаврилу». Придёт сообщение бота, запись — в Гавриле.</li>
+      <li>Готово: в фото или Safari нажмите «Поделиться» → «В Ладею». Придёт сообщение бота, запись — в Ладее.</li>
     </ol>
     <code class="shr-code" id="shrTok">токен ещё не создан</code>
     <p class="note">Готовый файл команды не даём: новые iOS открывают только файлы, подписанные через Apple. Отозвать токен — «Настройки» → «Аккаунт и вход» → «Устройства для «Поделиться»».</p>
