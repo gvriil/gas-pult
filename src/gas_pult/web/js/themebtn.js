@@ -8,8 +8,8 @@ const dark = () => document.documentElement.dataset.theme === "dark";
 function paint(b) {
   const d = dark();
   b.innerHTML = `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d ? SUN : MOON}</svg>`;
-  b.setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема");
-  b.title = d ? "Светлая тема" : "Тёмная тема";
+  const t = T(d ? "theme.to.light" : "theme.to.dark");
+  b.setAttribute("aria-label", t); b.title = t;
 }
 
 function button(id) {
