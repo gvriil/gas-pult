@@ -1343,6 +1343,7 @@
   </div></header>
   <div class="s-scroll" id="sScroll"><div class="s-col">
     <div class="s-tips" id="sTips" hidden></div>
+    <div id="sFirst" hidden></div>
     <div class="chat" id="sFeed"></div>
     <div class="act off" id="sAct" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>
     <div id="sAsk" aria-live="polite"></div>
@@ -7542,6 +7543,9 @@ function sRender(toBottom) {
   const items = SIM.hist.map(sMsg).join("") + (SIM.hist.at(-1)?.role === "assistant" && canEdit() ? `<div class="nextq" data-key="nq:${SIM.hist.at(-1).i}"></div>` : "") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${fileTxt(p.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("");
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
+  const first = !items && SIM.got === SIM.w;          // пустой чат — «Что поручим сегодня?» (js/firstscreen.js, 26.11)
+  $("sFirst").hidden = !(first && SIM.fs);
+  if (first && SIM.fs === undefined) { SIM.fs = null; part("firstscreen").then((m) => { SIM.fs = m.allowed(meta?.role, DEMO); if (SIM.fs) m.fill($("sFirst"), LANG); sRender(); if (SIM.fs) $("sScroll").scrollTop = 0; }).catch(() => { SIM.fs = false; }); }
   if (had) fresh.forEach((el) => el.classList.contains("msg") && !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
   fresh.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));

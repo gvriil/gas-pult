@@ -632,7 +632,7 @@ function demoApi(path, body) {
   if (key.startsWith("/api/chat/")) return demoChat(key, body, R["/api/sessions"]);
   if (key === "/api/help/ask") return demoHelp(body);
   if (key.startsWith("/api/repos")) return demoRepos(key, path, body);
-  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? (BIZ && !params.get("ask") ? BIZ_ASK : SIMPLE_DEMO[params.get("ask") || "bash"]) || null : null });
+  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered && !params.has("first") ? (BIZ && !params.get("ask") ? BIZ_ASK : SIMPLE_DEMO[params.get("ask") || "bash"]) || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
   if (key === "/api/key" && body?.key === "Escape" && params.get("ask") === "question" && !SIM.on) {   // «Отмена» — вопрос закрыт
     demoApi.toolDone = true; demoApi.scr?.splice(0, demoApi.scr.length, "● Вопрос закрыт", "", "❯ ");
@@ -640,7 +640,7 @@ function demoApi(path, body) {
   }
   // rev — как у сервера: меняется и когда растёт последний ответ (ход Claude дописывается в журнал по блоку)
   const demoRev = () => "demo0000-" + demoApi.h.length + "-" + (demoApi.h.at(-1)?.text.length || 0);
-  if (!demoApi.h) demoApi.h = BIZ ? bizHist() : params.get("simple") === "1" ? simpleDemoHist() : [
+  if (!demoApi.h) demoApi.h = params.has("first") ? [] : BIZ ? bizHist() : params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
     { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 user       7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
@@ -692,7 +692,7 @@ function demoApi(path, body) {
     return Promise.resolve({ more: xs.length > 30, rev: demoRev(), items: xs.slice(-30) });
   }
   if (key.startsWith("/api/tty")) return demoTty(key, path, body);
-  if (key === "/api/history") return Promise.resolve({ more: true, rev: demoRev(), items: demoApi.h.slice(-30), team: demoTeamMsgs(path),
+  if (key === "/api/history") return Promise.resolve({ more: demoApi.h.length > 0, rev: demoRev(), items: demoApi.h.slice(-30), team: demoTeamMsgs(path),
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === demoRev() ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
     if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;
