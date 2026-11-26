@@ -62,7 +62,7 @@ def test_ladeya_with_e_nowhere_user_facing():
 
 def test_wordmark_red_e_only_as_mark():
     assert brand.APP_NAME_RU == "Ладэя" and brand.FORMS["вин"] == "Ладэю" and brand.APP_NAME_EN == "Ladeya"
-    assert brand.wordmark() == 'Лад<span class="e">э</span>я' and brand.wordmark("Ladeya") == brand.WORDMARK_EN
+    assert brand.wordmark() == brand.WORDMARK_RU and brand.wordmark("Ladeya") == brand.WORDMARK_EN
     assert brand.E_COLOR == {"light": "#E8421C", "dark": "#FF5A2D", "light_small": "#C2361A"}
 
 
@@ -82,14 +82,16 @@ def test_red_e_everywhere_in_ready_markup():
 
 
 def test_wordmark_by_language_ru_c_en_b():
-    """Владелец 25.11: «B и C в зависимости от выбранного языка». RU (C) — «Ладэя», «э» красная; EN (B) — «ladeya»
-    строчными (CSS), «e» красная и зеркальная; в разметке и при копировании — «Ladeya», aria-label — «Ladeya»."""
-    assert brand.wordmark("Ладэя") == 'Лад<span class="e">э</span>я'
-    en = brand.wordmark("Ladeya")
-    assert en == brand.WORDMARK_EN and 'aria-label="Ladeya"' in en and re.sub(r"<[^>]+>", "", en) == "Ladeya"
-    assert '<span class="em">e</span>' in en and brand.wordmark("Botsmith") == "Botsmith"
-    look = (ROOT / "src/gas_pult/web/js/look.js").read_text(encoding="utf-8")
-    assert brand.WORDMARK_EN in look                                         # одна разметка на сервере и в панели
-    assert ".wm-en { text-transform: lowercase; }" in look and "transform: scaleX(-1)" in look
-    login = (ROOT / "src/gas_pult/web/js/loginlook.js").read_text(encoding="utf-8")
-    assert brand.WORDMARK_EN in login and "scaleX(-1)" in login
+    """Владелец 26.11: знак-название — антиква картинкой по языку: «ЛАДЭЯ» (красная «Э») и «LADEYA» (красная зеркальная
+    «E»); название — в aria-label. Одна разметка на сервере, в панели и на входе."""
+    ru, en = brand.wordmark("Ладэя"), brand.wordmark("Ladeya")
+    assert ru == brand.WORDMARK_RU and 'aria-label="Ладэя"' in ru and 'role="img"' in ru
+    assert en == brand.WORDMARK_EN and 'aria-label="Ladeya"' in en and brand.wordmark("Botsmith") == "Botsmith"
+    web = ROOT / "src/gas_pult/web"
+    look = (web / "js/look.js").read_text(encoding="utf-8")
+    assert brand.WORDMARK_RU in look and brand.WORDMARK_EN in look
+    login = (web / "js/loginlook.js").read_text(encoding="utf-8")
+    assert brand.WORDMARK_RU in login and brand.WORDMARK_EN in login
+    for lang in ("ru", "en"):
+        for th in ("", "-dark"):
+            assert f"/brand/wordmark-{lang}{th}.svg" in brand.ICONS and f"wordmark-{lang}{th}.svg" in look

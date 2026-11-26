@@ -1,11 +1,9 @@
 // Экран входа «Ладэя» (владелец 25.11 через штаб: «уровня лучших студий», «магия, но сдержанно»; основа — эталон Gemini,
-// фон — пять монолитов знака за матовым стеклом). Только экран входа: класс body.lg-look живёт, пока #login виден.
+// фон — 13 струн знака-арфы за матовым стеклом, 26.11). Только экран входа: класс body.lg-look живёт, пока #login виден.
 // Палитра знака: графит #111111, тёплый белый #F4F4F2, акцент #E8421C (на тёмном #FF5A2D); синего нет.
-// Движение — только transform: красный монолит один раз «встаёт на место», дальше едва заметный дрейф 36 с;
+// Движение — только transform: красная струна один раз «встаёт на место», дальше едва заметный дрейф 36 с;
 // prefers-reduced-motion — без движения. Зерно и виньетка — статичные. Часть по требованию (#191): ядро не растёт.
-const MARK = `<svg viewBox="0 0 120 100" aria-hidden="true"><g fill="currentColor"><rect x="4" y="10" width="18" height="80"/>`
-  + `<rect x="26" y="10" width="18" height="80"/><rect x="48" y="10" width="18" height="80"/><rect x="70" y="10" width="18" height="80"/></g>`
-  + `<rect x="92" y="34" width="18" height="56" fill="var(--lg-accent)"/></svg>`;
+const MARK = '<span class="lg-mark" aria-hidden="true"></span>';   // знак-арфа (26.11), 28 px — упрощённый
 const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>';
 const MOON = '<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>';
 // зерно: шум SVG один раз в картинку фона — не анимируется, не пересчитывается
@@ -16,22 +14,22 @@ const GRAIN = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www
 const CSS = `
 body.lg-look { --lg-bg: #F4F4F2; --lg-glass: rgba(255,255,255,.72); --lg-text: #111111; --lg-text2: #55544E;
   --lg-border: rgba(17,17,17,.12); --lg-accent: #E8421C; --lg-accent-h: #D13714; --lg-accent-a: #B82D0E;
-  --lg-mono: #4A463F; --lg-mono-o: .92; --lg-red-h: 38%; --lg-red-o: .78; --lg-shine: rgba(255,255,255,.9); --lg-field: rgba(255,255,255,.6);
+  --lg-mono: #4A463F; --lg-mono-o: .92; --lg-red-o: .78; --lg-shine: rgba(255,255,255,.9); --lg-field: rgba(255,255,255,.6);
   --lg-font: "Golos Ladeya", system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--lg-bg); color: var(--lg-text); }
 :root[data-theme="dark"] body.lg-look { --lg-bg: #0C0C0B; --lg-glass: rgba(20,20,18,.66); --lg-text: #F4F4F2;
   --lg-text2: #A3A29B; --lg-border: rgba(244,244,242,.12); --lg-accent: #FF5A2D; --lg-accent-h: #FF7048;
-  --lg-accent-a: #E04820; --lg-mono: #2A2A27; --lg-mono-o: 1; --lg-red-h: 56%; --lg-red-o: 1; --lg-shine: rgba(255,255,255,.07); --lg-field: rgba(0,0,0,.25); }
+  --lg-accent-a: #E04820; --lg-mono: #2A2A27; --lg-mono-o: 1; --lg-red-o: 1; --lg-shine: rgba(255,255,255,.07); --lg-field: rgba(0,0,0,.25); }
 body.lg-look header#top { display: none; }
 body.lg-look main { background: transparent; }
 .lg-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }
 body.lg-look .lg-bg { display: block; }
 .lg-mono { position: absolute; right: max(-4vw, calc(50vw - 600px)); bottom: -6vh; width: min(140vw, 1200px);
-  height: min(112vh, 1000px); display: flex; gap: 3.3%; align-items: flex-end;
+  height: min(112vh, 1000px); display: flex; justify-content: space-between; align-items: flex-end;
   animation: lg-drift 36s steps(36) infinite alternate; will-change: transform; }   /* шаг раз в секунду: стекло
   пересчитывает размытие раз в секунду, а не 60 раз (замер 25.11: плавный дрейф — 41–77 % ядра, шагами — см. PR) */
-.lg-mono i { flex: 1; height: 80%; background: var(--lg-mono); opacity: var(--lg-mono-o); }
-.lg-mono i.r { height: var(--lg-red-h); background: var(--lg-accent); opacity: var(--lg-red-o); transform-origin: 50% 100%;
+.lg-mono i { flex: none; width: 1.6%; border-radius: 99px 99px 0 0; background: var(--lg-mono); opacity: var(--lg-mono-o); }
+.lg-mono i.r { background: var(--lg-accent); opacity: var(--lg-red-o); transform-origin: 50% 100%;
   animation: lg-rise 2.6s cubic-bezier(.2,.7,.1,1) .2s both; }
 .lg-grain { position: absolute; inset: 0; background: url("${GRAIN}"); opacity: .06; mix-blend-mode: multiply; }
 :root[data-theme="dark"] .lg-grain { opacity: .09; mix-blend-mode: screen; }
@@ -50,10 +48,14 @@ body.lg-look #login .panel { width: 100%; max-width: 400px; margin: 0; padding: 
 body.lg-look #login .lmark { display: none; }
 .lg-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 28px; }
 .lg-brand { display: flex; align-items: center; gap: 10px; font: 600 17px/1 var(--lg-font); letter-spacing: -.01em; }
-.lg-brand svg { width: 29px; height: 24px; color: var(--lg-text); }
+.lg-brand .lg-mark { flex: none; width: 21px; height: 28px; background: url(/brand/ladeya-mark-small.svg) center / contain no-repeat; }
+:root[data-theme="dark"] .lg-brand .lg-mark { background-image: url(/brand/ladeya-mark-small-dark.svg); }
+.lg-brand .wm { display: block; height: 17px; background: center / contain no-repeat; }
+.lg-brand .wm-ru { aspect-ratio: 411 / 95; background-image: url(/brand/wordmark-ru.svg); }
+.lg-brand .wm-en { aspect-ratio: 443 / 74; height: 13px; background-image: url(/brand/wordmark-en.svg); }
+:root[data-theme="dark"] .lg-brand .wm-ru { background-image: url(/brand/wordmark-ru-dark.svg); }
+:root[data-theme="dark"] .lg-brand .wm-en { background-image: url(/brand/wordmark-en-dark.svg); }
 .lg-brand .e { color: var(--lg-accent); }
-.lg-brand .wm-en { text-transform: lowercase; }
-.lg-brand .wm-en .em { display: inline-block; transform: scaleX(-1); color: var(--lg-accent); }
 .lg-ctrl { display: flex; align-items: center; gap: 8px; }
 body.lg-look #login .lg-ctrl .scn-opts { margin: 0; gap: 4px; }
 body.lg-look #login .lg-ctrl .scn-opts button { min-height: 36px; min-width: 40px; padding: 0 9px; border-radius: 8px;
@@ -99,8 +101,8 @@ function build() {
   const panel = document.querySelector("#login > .panel");
   if (!panel || panel.querySelector(".lg-top")) return;
   const top = document.createElement("div"); top.className = "lg-top";
-  const nm = brandName(), word = nm === "Ладэя" ? 'Лад<span class="e">э</span>я'     // знак-название по языку (25.11)
-    : nm === "Ladeya" ? '<span class="wm-en" aria-label="Ladeya">Lad<span class="em">e</span>ya</span>' : esc(nm);
+  const nm = brandName(), word = nm === "Ладэя" ? '<span class="wm wm-ru" role="img" aria-label="Ладэя"></span>'   // по языку (26.11)
+    : nm === "Ladeya" ? '<span class="wm wm-en" role="img" aria-label="Ladeya"></span>' : esc(nm);
   top.innerHTML = `<div class="lg-brand">${MARK}<span>${word}</span></div><div class="lg-ctrl"></div>`;
   const ctrl = top.querySelector(".lg-ctrl"), lang = $("loginLang");
   if (lang) ctrl.append(lang);                              // тот же переключатель языка — переносим, обработчики на месте
@@ -110,7 +112,7 @@ function build() {
   new MutationObserver(() => paintTheme(tb)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   panel.prepend(top);
   const bg = document.createElement("div"); bg.className = "lg-bg"; bg.setAttribute("aria-hidden", "true");
-  bg.innerHTML = `<div class="lg-mono"><i></i><i></i><i></i><i></i><i class="r"></i></div><div class="lg-grain"></div><div class="lg-vig"></div>`;
+  bg.innerHTML = `<div class="lg-mono"><i style="height:90%"></i><i style="height:86%"></i><i style="height:80%"></i><i style="height:75%"></i><i style="height:69%"></i><i style="height:64%"></i><i class="r" style="height:58%"></i><i style="height:53%"></i><i style="height:48%"></i><i style="height:42%"></i><i style="height:37%"></i><i style="height:32%"></i><i style="height:26%"></i></div><div class="lg-grain"></div><div class="lg-vig"></div>`;
   document.body.prepend(bg);
 }
 

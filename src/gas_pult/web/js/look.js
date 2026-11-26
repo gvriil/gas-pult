@@ -1,5 +1,5 @@
-// Фирменный вид «Ладэи» (штаб 25.11, шаг 2). Фон: пять монолитов знака — едва заметно (3–5 % контраста к фону), только там,
-// где нет текста для чтения: главная (список) и «Новый чат». В ленте сообщений фона нет. Красный монолит один раз за
+// Фирменный вид «Ладэи» (штаб 25.11, шаг 2). Фон: 13 струн знака-арфы (26.11; было — пять монолитов) — едва заметно (3–5 % контраста к фону), только там,
+// где нет текста для чтения: главная (список) и «Новый чат». В ленте сообщений фона нет. Красная струна один раз за
 // загрузку «встаёт на место» (transform, 2,4 с), дальше слой неподвижен — без нагрузки; prefers-reduced-motion — сразу
 // на месте. Слой — первый ребёнок body (z-index −1: над фоном body, под содержимым).
 // Акцент — только главное действие: в вопросе Claude первый вариант («Да, …») — заливка акцентом, остальные нейтральные.
@@ -28,18 +28,20 @@ body.lk-intro #home .card:nth-of-type(4) { animation-delay: 120ms; } body.lk-int
 .e { color: #C2361A; }
 .brand-text .e, .lg-brand .e { -webkit-text-fill-color: #E8421C; color: #E8421C; }
 :root[data-theme="dark"] .e, :root[data-theme="dark"] .brand-text .e { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
-/* английский знак-название (вариант B): «ladeya» строчными, «e» красная и зеркальная; в тексте — «Ladeya» (копирование) */
-.wm-en { text-transform: lowercase; }
-.wm-en .em { display: inline-block; transform: scaleX(-1); -webkit-text-fill-color: #E8421C; color: #E8421C; }
-:root[data-theme="dark"] .wm-en .em { -webkit-text-fill-color: #FF5A2D; color: #FF5A2D; }
+/* знак-название (владелец 26.11): «ЛАДЭЯ» с красной «Э» или «LADEYA» с красной зеркальной «E» — антиква, по языку
+   интерфейса; картинка (web/brand/wordmark-*.svg), текст — в aria-label */
+.wm { display: inline-block; vertical-align: -.14em; height: .9em; background: center / contain no-repeat; }
+.wm-ru { aspect-ratio: 411 / 95; background-image: url(/brand/wordmark-ru.svg); }
+.wm-en { aspect-ratio: 443 / 74; height: .7em; vertical-align: 0; background-image: url(/brand/wordmark-en.svg); }
+:root[data-theme="dark"] .wm-ru { background-image: url(/brand/wordmark-ru-dark.svg); }
+:root[data-theme="dark"] .wm-en { background-image: url(/brand/wordmark-en-dark.svg); }
 /* телефон (обзор 25.11): в верхней шапке тесно — знак остаётся в боковой панели и на входе, название — целиком */
 @media (max-width: 420px) { .top .tmark { display: none !important; } #title.brand-text { overflow: visible; text-overflow: clip; } }
 @keyframes lk-in { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }   /* «Ответить» в строке состояния — путь к вопросу, не главное действие */
 `;
-const SVG = `<svg viewBox="0 0 120 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
-  + `<rect class="m" x="4" y="10" width="18" height="90"/><rect class="m" x="26" y="10" width="18" height="90"/>`
-  + `<rect class="m" x="48" y="10" width="18" height="90"/><rect class="m" x="70" y="10" width="18" height="90"/>`
-  + `<rect class="r" x="92" y="34" width="18" height="66"/></svg>`;
+// фон — 13 струн арфы (знак 26.11): от длинной к короткой, 7-я — красная
+const SVG = `<svg viewBox="0 0 248 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
+  + `<rect class="m" x="0" y="0" width="5" height="100" rx="2.5"/><rect class="m" x="20" y="5" width="5" height="95" rx="2.5"/><rect class="m" x="40" y="11" width="5" height="89" rx="2.5"/><rect class="m" x="60" y="17" width="5" height="83" rx="2.5"/><rect class="m" x="80" y="23" width="5" height="77" rx="2.5"/><rect class="m" x="100" y="29" width="5" height="71" rx="2.5"/><rect class="r" x="120" y="35" width="5" height="65" rx="2.5"/><rect class="m" x="140" y="41" width="5" height="59" rx="2.5"/><rect class="m" x="160" y="47" width="5" height="53" rx="2.5"/><rect class="m" x="180" y="53" width="5" height="47" rx="2.5"/><rect class="m" x="200" y="59" width="5" height="41" rx="2.5"/><rect class="m" x="220" y="65" width="5" height="35" rx="2.5"/><rect class="m" x="240" y="71" width="5" height="29" rx="2.5"/></svg>`;
 
 const want = () => view === "home" || document.body.classList.contains("drafting");
 
@@ -74,13 +76,14 @@ function paintText(root) {
     }
   }
 }
-const WM_EN = '<span class="wm-en" aria-label="Ladeya">Lad<span class="em">e</span>ya</span>';   // = brand.WORDMARK_EN
-function markEn() {                                 // знак-название на английском — только в .brand-text, не в тексте
+const WM = { ru: '<span class="wm wm-ru" role="img" aria-label="Ладэя"></span>',   // = brand.wordmark(): картинка-название
+  en: '<span class="wm wm-en" role="img" aria-label="Ladeya"></span>' };
+function markEn() {                                 // знак-название (26.11) — только в .brand-text, не в тексте
   const en = LANG === "en";                          // боковая панель пишет название по-русски и в английском — знак по языку
   for (const el of document.querySelectorAll(".brand-text")) {
     const host = el.querySelector("button") || el, t = host.textContent.trim();
-    if (host.querySelector(".wm-en") || !(t === "Ladeya" || (en && t === "Ладэя"))) continue;
-    host.innerHTML = WM_EN;
+    if (host.querySelector(".wm") || !(t === "Ladeya" || t === "Ладэя")) continue;
+    host.innerHTML = en || t === "Ladeya" ? WM.en : WM.ru;
   }
 }
 const markWord = () => { markEn(); paintText(document.body); };   // всё — один раз при загрузке
