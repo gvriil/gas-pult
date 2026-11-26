@@ -1,5 +1,6 @@
-"""Картинки бренда из знака «Лад» (web/brand/ladeya-mark*.svg, значок — ladeya-app-icon.svg): значки вкладки и экрана
-«Домой», превью ссылки (og), экраны запуска iOS, maskable-иконка.
+"""Картинки бренда из знака-арфы (владелец 26.11; web/brand/ladeya-mark*.svg, мелкий — ladeya-mark-small*.svg,
+значок — ladeya-app-icon.svg, названия — wordmark-ru/en*.svg): значки вкладки и экрана «Домой», превью ссылки (og),
+экраны запуска iOS, maskable-иконка.
 Рисует браузер (Playwright, как в тестах интерфейса) — без новых зависимостей ядра. Запуск из корня репозитория:
     python tools/brand_images.py
 Пересобирать после смены знака или названия. Владелец 21.11: «миниатюра для PWA должна быть с лого»."""
@@ -14,10 +15,14 @@ from gas_pult import brand
 
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / "src/gas_pult/web/brand"
-MARK = {"light": (BRAND / "ladeya-mark.svg").read_text(encoding="utf-8"),          # чёрные палочки + красная
+MARK = {"light": (BRAND / "ladeya-mark.svg").read_text(encoding="utf-8"),          # арфа: графит + 7-я струна красная
         "dark": (BRAND / "ladeya-mark-dark.svg").read_text(encoding="utf-8")}
+SMALL = {"light": (BRAND / "ladeya-mark-small.svg").read_text(encoding="utf-8"),   # 16–32 px: 5 толстых струн
+         "dark": (BRAND / "ladeya-mark-small-dark.svg").read_text(encoding="utf-8")}
+WORD = {t: (BRAND / f"wordmark-ru{'' if t == 'light' else '-dark'}.svg").read_text(encoding="utf-8")
+        for t in ("light", "dark")}                                                  # «ЛАДЭЯ», красная «Э»
 APP = (BRAND / "ladeya-app-icon.svg").read_text(encoding="utf-8")                # значок 512: тёмный фон
-THEMES = {"light": ("#F4F4F2", "#111111", "#4B5563"), "dark": ("#111111", "#F2F2F2", "#9CA3AF")}   # фон, знак, подпись
+THEMES = {"light": ("#F4F4F2", "#232326", "#5C5B55"), "dark": ("#0C0C0B", "#F4F4F2", "#9E9D96")}   # фон, знак, подпись
 # iPhone: CSS-ширина × высота × плотность (портрет) — экраны запуска apple-touch-startup-image
 IPHONES = [(440, 956, 3), (430, 932, 3), (428, 926, 3), (402, 874, 3), (393, 852, 3), (390, 844, 3), (375, 812, 3),
            (375, 667, 2)]
@@ -27,6 +32,10 @@ FONT = "'Noto Sans', Inter, -apple-system, 'Segoe UI', Roboto, sans-serif"   # �
 def page(w, h, bg, body):
     return (f'<html><body style="margin:0;width:{w}px;height:{h}px;background:{bg};display:flex;align-items:center;'
             f'justify-content:center;font-family:{FONT}">{body}</body></html>')
+
+
+def word(height, theme):
+    return WORD[theme].replace("<svg ", f'<svg height="{height}" ', 1)
 
 
 def mark(size, theme="dark", src=None):
@@ -46,24 +55,20 @@ def main():
             pg.close()
             out.append(name)
 
-        bg, fg, sub = THEMES["dark"]                     # превью ссылки: знак + «Ladeya by Botsmith» (25.11)
-        shot("og-1200x630.png", 1200, 630, page(1200, 630, bg, '<div style="display:flex;align-items:center;gap:40px">'
-             + mark(260) + f'<div><div style="font-size:120px;font-weight:700;letter-spacing:-.03em;color:{fg}">'
-             f'{brand.APP_NAME_EN}</div><div style="font-size:40px;font-weight:500;color:{sub};margin-top:4px">'
-             f'{brand.BY}</div></div></div>'))
+        bg, _fg, sub = THEMES["light"]                    # превью ссылки: арфа + «ЛАДЭЯ» + by Botsmith (26.11)
+        shot("og-1200x630.png", 1200, 630, page(1200, 630, bg, '<div style="display:flex;align-items:center;gap:48px">'
+             + mark(300, "light") + f'<div>{word(118, "light")}<div style="font-size:36px;font-weight:500;color:{sub};'
+             f'margin-top:18px;letter-spacing:.02em">{brand.APP_NAME_EN} {brand.BY}</div></div></div>'))
         for name, size in (("icon-512.png", 512), ("icon-192.png", 192), ("apple-touch-180.png", 180)):   # «Домой»
             shot(name, size, size, page(size, size, bg, mark(size, src=APP)))   # значок приложения целиком
-        for t in THEMES:                                 # вкладка: прозрачный фон, знак во всю ширину
+        for t in THEMES:                                 # вкладка: прозрачный фон, упрощённый знак во всю высоту
             shot("favicon-32.png" if t == "light" else "favicon-32-dark.png", 32, 32,
-                 page(32, 32, "transparent", mark(32, t)), clear=True)
-        bg, fg, _ = THEMES["dark"]                       # maskable: знак в безопасной зоне (круг 80 %) — высота 56 %
-        shot("icon-maskable-512.png", 512, 512, page(512, 512, bg, mark(300)))   # знак в безопасной зоне (круг 80 %)
-        for t, (bg, fg, _) in THEMES.items():            # экраны запуска iOS: знак по центру, имя под ним
-            word = brand.wordmark().replace('class="e"', f'style="color:{brand.E_COLOR[t]}"')   # «э» красная (25.11)
+                 page(32, 32, "transparent", mark(32, src=SMALL[t])), clear=True)
+        shot("icon-maskable-512.png", 512, 512, page(512, 512, bg, mark(290, "light")))   # безопасная зона — круг 80 %
+        for t, (bg, _fg, _) in THEMES.items():            # экраны запуска iOS: знак по центру, название под ним
             for w, h, s in IPHONES:
                 shot(f"splash-{w}x{h}-{t}.png", w, h, page(w, h, bg, f'<div style="text-align:center">{mark(120, t)}'
-                     f'<div style="font-size:22px;font-weight:600;color:{fg};margin-top:8px">'
-                     f'{word}</div></div>'), s)
+                     f'<div style="margin-top:14px">{word(26, t)}</div></div>'), s)
         b.close()
     print("\n".join(out))
 

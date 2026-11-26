@@ -51,7 +51,7 @@ export async function publicView() {
   catch (e) { page.innerHTML = `<div class="mt-gone">${ic("lock")}<h2 class="serif">Ссылка не действует</h2><p>${esc(e.message)}</p></div>`; return; }
   document.getElementById("focusEnd")?.remove();
   document.title = v.title + " — протокол";
-  page.innerHTML = `<div class="mt-wrap"><header class="mt-brand"><img src="brand/ladeya-mark.svg" alt="" width="29" height="24"><span>Протокол встречи</span>${v.exp ? `<small>ссылка действует до ${esc(day(v.exp))}</small>` : ""}</header>${body(v)}</div>`;
+  page.innerHTML = `<div class="mt-wrap"><header class="mt-brand"><img src="brand/ladeya-mark-small.svg" alt="" width="18" height="24"><span>Протокол встречи</span>${v.exp ? `<small>ссылка действует до ${esc(day(v.exp))}</small>` : ""}</header>${body(v)}</div>`;
   wire(page, v);
 }
 

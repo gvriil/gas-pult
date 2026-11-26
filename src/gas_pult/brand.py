@@ -3,8 +3,10 @@
 подставляет его в страницу (``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма,
 уведомления и сообщения бота. Падежи — ``FORMS``. Код, пакет, пути, службы и адреса остаются ``gas-pult``/«пульт»
 (docs/BRAND.md).
-Знак «Лад» (владелец 25.11): четыре палочки и пятая, красная, ниже — «встаёт на место»; светлый и тёмный варианты,
-значок приложения 512 (``web/brand/ladeya-*.svg``); подпись «Ладэя» рядом — текстом.
+Знак — арфа (владелец 26.11): 13 струн, 7-я красная, графит + красный; светлый и тёмный варианты, упрощённый для
+16–32 px (5 толстых струн: 1, 4, 7-я красная, 10, 13-я), значок приложения 512 (``web/brand/ladeya-*.svg``).
+Знак-название — антиква: «ЛАДЭЯ» с красной «Э» и «LADEYA» с красной зеркальной «E» (``web/brand/wordmark-*.svg``),
+по языку интерфейса.
 Знак-название (владелец 25.11): там, где название стоит как знак (шапка, вход, демо, тур, карточки, картинки), буква «э»
 красная — ``wordmark()``; в обычном тексте, ``<title>`` и манифесте — без окраски."""
 
@@ -39,17 +41,14 @@ def paint_html(html: str) -> str:
     return "".join(out)
 
 
-WORDMARK_EN = '<span class="wm-en" aria-label="Ladeya">Lad<span class="em">e</span>ya</span>'
+WORDMARK_RU = '<span class="wm wm-ru" role="img" aria-label="Ладэя"></span>'    # «ЛАДЭЯ», красная «Э» (26.11)
+WORDMARK_EN = '<span class="wm wm-en" role="img" aria-label="Ladeya"></span>'   # «LADEYA», красная зеркальная «E»
 
 
-def wordmark(name: str = APP_NAME_RU, cls: str = "e") -> str:
-    """Знак-название в HTML по языку (владелец 25.11: «B и C в зависимости от выбранного языка»):
-    русский (C) — «Лад<span class="e">э</span>я», красная «э»; английский (B) — ``WORDMARK_EN``: «ladeya» строчными
-    (CSS text-transform: копируется и читается как «Ladeya»), «e» красная и зеркальная (CSS scaleX(-1)). Любое другое
-    слово — без изменений. Только в знаке-названии; в предложениях английское «Ladeya» — обычным текстом."""
-    if name == APP_NAME_RU:
-        return name.replace("э", f'<span class="{cls}">э</span>', 1)
-    return WORDMARK_EN if name == APP_NAME_EN else name
+def wordmark(name: str = APP_NAME_RU) -> str:
+    """Знак-название в HTML по языку (владелец 26.11): антиква картинкой (web/brand/wordmark-*.svg, стили — js/look.js),
+    название — в aria-label. Любое другое слово — без изменений. Только в знаке-названии; в тексте — обычное слово."""
+    return {APP_NAME_RU: WORDMARK_RU, APP_NAME_EN: WORDMARK_EN}.get(name, name)
 OLD = ("Гаврилой", "Гаврилы", "Гавриле", "Гаврилу", "Гаврила", "Gavrila")   # прежнее имя — для теста
 
 
@@ -60,8 +59,11 @@ APP_ICON = FILES_DIR + "ladeya-app-icon.svg"
 LOCKUP = FILES_DIR + "gavrila-lockup.svg"
 # адрес → (файл в web/brand/, тип): прежние адреса значков (GAS-20) сохранены, браузеры и iPhone их уже знают
 ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # прежний знак — старые кэши
-         "/brand/ladeya-mark.svg": ("ladeya-mark.svg", "image/svg+xml"),     # знак «Лад» в панели: светлая тема
+         "/brand/ladeya-mark.svg": ("ladeya-mark.svg", "image/svg+xml"),     # знак-арфа в панели: светлая тема
          "/brand/ladeya-mark-dark.svg": ("ladeya-mark-dark.svg", "image/svg+xml"),   # тёмная тема
+         **{f"/brand/{n}.svg": (f"{n}.svg", "image/svg+xml") for n in (       # 16–32 px и знак-название (26.11)
+             "ladeya-mark-small", "ladeya-mark-small-dark", "wordmark-ru", "wordmark-ru-dark", "wordmark-en",
+             "wordmark-en-dark")},
          "/favicon.svg": ("favicon.svg", "image/svg+xml"), "/favicon-32.png": ("favicon-32.png", "image/png"),
          "/favicon-32-dark.png": ("favicon-32-dark.png", "image/png"),
          "/apple-touch-icon.png": ("apple-touch-180.png", "image/png"),
