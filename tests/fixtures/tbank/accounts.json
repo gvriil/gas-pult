@@ -1,0 +1,10 @@
+[
+  {"_source": "https://developer.tbank.ru/docs/api/get-api-v-4-bank-accounts (не проверено на песочнице; данные выдуманные)",
+   "accountNumber": "40702810000000000001", "name": "Расчётный счёт", "status": "NORM", "currency": "643",
+   "createdOn": "2024-03-01", "mainFlag": "Y", "bankBik": "044525974", "accountType": "Current",
+   "balance": {"balance": 152340.5, "realOtb": 150000, "otb": 152340.5, "authorized": 2340.5, "pendingPayments": 0},
+   "transitAccount": {"accountNumber": "40702810000000000002"}},
+  {"accountNumber": "40702840000000000003", "name": "Валютный счёт USD", "status": "NORM", "currency": "840",
+   "createdOn": "2024-05-10", "mainFlag": "N", "bankBik": "044525974", "accountType": "Current",
+   "balance": {"balance": 1200, "otb": 1200}}
+]
