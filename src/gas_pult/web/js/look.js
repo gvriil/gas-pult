@@ -98,7 +98,7 @@ export function init() {
       if (r.type === "characterData") queued.add(r.target);
       else for (const x of r.addedNodes) queued.add(x);
     }
-    if (first && queued.size) requestAnimationFrame(() => { const q = [...queued]; queued = new Set(); q.forEach(paintText); markEn(); });
+    if (first && queued.size) requestAnimationFrame(() => { const q = [...queued]; queued = new Set(); markEn(); q.forEach(paintText); });   // сначала знак-название: его текст не красим
   }).observe(document.body, { subtree: true, childList: true, characterData: true });
   if (!document.querySelector("#home .card")) {     // карточек ещё нет — появятся с движением; уже нарисованы — не дёргаем
     document.body.classList.add("lk-intro"); setTimeout(() => document.body.classList.remove("lk-intro"), 1500);

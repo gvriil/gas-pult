@@ -1,6 +1,6 @@
-"""Картинки бренда из знака-арфы (владелец 26.11; web/brand/ladeya-mark*.svg, мелкий — ladeya-mark-small*.svg, значок —
-ladeya-app-icon.svg, названия — wordmark-ru/en*.svg): значки вкладки и экрана «Домой», превью ссылки (og), экраны запуска
-iOS, maskable-иконка.
+"""Картинки бренда из знака-арфы (владелец 26.11; web/brand/ladeya-mark*.svg, мелкий — ladeya-mark-small*.svg,
+значок — ladeya-app-icon.svg, названия — wordmark-ru/en*.svg): значки вкладки и экрана «Домой», превью ссылки (og),
+экраны запуска iOS, maskable-иконка.
 Рисует браузер (Playwright, как в тестах интерфейса) — без новых зависимостей ядра. Запуск из корня репозитория:
     python tools/brand_images.py
 Пересобирать после смены знака или названия. Владелец 21.11: «миниатюра для PWA должна быть с лого»."""
@@ -55,7 +55,7 @@ def main():
             pg.close()
             out.append(name)
 
-        bg, fg, sub = THEMES["light"]                    # превью ссылки: арфа + «ЛАДЭЯ» + by Botsmith (26.11)
+        bg, _fg, sub = THEMES["light"]                    # превью ссылки: арфа + «ЛАДЭЯ» + by Botsmith (26.11)
         shot("og-1200x630.png", 1200, 630, page(1200, 630, bg, '<div style="display:flex;align-items:center;gap:48px">'
              + mark(300, "light") + f'<div>{word(118, "light")}<div style="font-size:36px;font-weight:500;color:{sub};'
              f'margin-top:18px;letter-spacing:.02em">{brand.APP_NAME_EN} {brand.BY}</div></div></div>'))
@@ -65,7 +65,7 @@ def main():
             shot("favicon-32.png" if t == "light" else "favicon-32-dark.png", 32, 32,
                  page(32, 32, "transparent", mark(32, src=SMALL[t])), clear=True)
         shot("icon-maskable-512.png", 512, 512, page(512, 512, bg, mark(290, "light")))   # безопасная зона — круг 80 %
-        for t, (bg, fg, _) in THEMES.items():            # экраны запуска iOS: знак по центру, название под ним
+        for t, (bg, _fg, _) in THEMES.items():            # экраны запуска iOS: знак по центру, название под ним
             for w, h, s in IPHONES:
                 shot(f"splash-{w}x{h}-{t}.png", w, h, page(w, h, bg, f'<div style="text-align:center">{mark(120, t)}'
                      f'<div style="margin-top:14px">{word(26, t)}</div></div>'), s)
