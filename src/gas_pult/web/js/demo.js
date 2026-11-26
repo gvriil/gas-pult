@@ -433,9 +433,9 @@ function demoApi(path, body) {
                                { id: "gmail", title: "Gmail", match: "Gmail", about: "Почта: найти, прочитать, ответить", example: "Что важного в почте?" },
                                { id: "gcal", title: "Google Календарь", match: "Calendar", about: "Встречи и планы", example: "Что у меня завтра?" },
                                { id: "gdrive", title: "Google Диск", match: "Drive", about: "Документы и таблицы", example: "Найди договор" }],
-                  presets: [{ id: "github", key_url: "https://github.com/settings/personal-access-tokens/new", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
-                            { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", fields: [], after: "" },
-                            { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
+                  presets: [{ id: "github", key_url: "https://github.com/settings/personal-access-tokens/new", url: "https://api.githubcopilot.com/mcp/", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
+                            { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", url: "https://mcp.notion.com/mcp", fields: [], after: "" },
+                            { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", url: "{base}/api/mcp", fields: [{ key: "base", label: "Адрес Home Assistant", placeholder: "https://home.example.com:8123" }, { key: "token", label: "Долгосрочный токен", secret: true, placeholder: "eyJ…" }], after: "" }] },
   };
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };

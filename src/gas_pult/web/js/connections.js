@@ -151,6 +151,24 @@ export function card(d, id) {
 }
 
 // ---------- согласие перед подключением ----------
+// Права до подключения (штаб 26.11, аудит Atoms п. 3): только то, что знает каталог пульта (mcp.py / routes/integrations):
+// куда идут данные — адрес сервера MCP из шаблона, программа на сервере пульта или коннектор аккаунта Claude; что
+// понадобится — поля шаблона. Ничего не додумываем: нет сведений — строки нет.
+function facts(it) {
+  const cat = typeof mcpData !== "undefined" ? mcpData : null, id = String(it.what || "");
+  const p = id.startsWith("mcp:") ? cat?.presets?.find((x) => "mcp:" + x.id === id) : null;
+  const rows = [];
+  if (id.startsWith("connector:")) rows.push(["Куда идут данные", "через ваш аккаунт Claude (коннектор claude.ai) — пульт ключей не хранит"]);
+  if (p?.url) {
+    let host = ""; try { host = new URL(p.url).host; } catch (e) { /* адрес с {base} — его вписывает человек */ }
+    rows.push(["Куда идут данные", host ? "сервер " + host + " (" + p.title + ")" : "ваш сервер " + p.title + " — адрес, который вы впишете"]);
+  } else if (p) rows.push(["Где работает", "программа на сервере пульта, не у стороннего MCP-сервера"]);
+  if (p) {
+    const need = (p.fields || []).filter((f) => !f.optional).map((f) => f.label), opt = (p.fields || []).filter((f) => f.optional).map((f) => f.label);
+    rows.push(["Что понадобится", need.length ? need.join(", ") : opt.length ? "ничего обязательного; по желанию — " + opt.join(", ") : "ключ не нужен"]);
+  }
+  return rows.map(([k, v]) => `<p class="cn-what"><b>${esc(k)}:</b> ${esc(v)}.</p>`).join("");
+}
 let C = null;
 export function reset() { C = null; }
 export async function given(what) { try { C ||= await api("/api/consent"); return C.given.includes(what); } catch (e) { return false; } }
@@ -162,6 +180,7 @@ export async function ask(it) {
     const html = `<div class="cn-consent">${it.id ? `<div class="hero">${mono(it.title, it.id)}<h2 class="serif">${esc(it.title)}</h2></div>` : ""}
       <p class="cn-what"><b>Что подключается:</b> ${esc(it.title)}${it.kind ? " — " + esc(it.kind) : ""}.</p>
       <p class="cn-what"><b>Что сможет агент:</b> ${esc(it.can || it.about || "читать и делать в сервисе то, что разрешает подключение")}.</p>
+      ${facts(it)}
       <ul class="note">${C.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
       <p class="cn-mine">Аккаунт и соблюдение правил сервиса — на вас.</p>
       <label class="cn-check"><input type="checkbox" data-agree><span>${esc(C.check)}</span></label>
