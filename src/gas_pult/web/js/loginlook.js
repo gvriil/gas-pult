@@ -28,8 +28,8 @@ body.lg-look .lg-bg { display: block; }
   height: min(112vh, 1000px); display: flex; justify-content: space-between; align-items: flex-end;
   animation: lg-drift 36s steps(36) infinite alternate; will-change: transform; }   /* шаг раз в секунду: стекло
   пересчитывает размытие раз в секунду, а не 60 раз (замер 25.11: плавный дрейф — 41–77 % ядра, шагами — см. PR) */
-.lg-mono i { flex: none; width: 1.6%; border-radius: 99px 99px 0 0; background: var(--lg-mono); opacity: var(--lg-mono-o); }
-.lg-mono i.r { background: var(--lg-accent); opacity: var(--lg-red-o); transform-origin: 50% 100%;
+.lg-mono i { flex: none; width: 2px; background: linear-gradient(var(--lg-mono) 0 var(--g, 30%), transparent var(--g, 30%) calc(var(--g, 30%) + 3%), var(--lg-mono) 0); opacity: calc(var(--lg-mono-o) * .55); }   /* тонкая струна с разрывом — гравюра (26.11) */
+.lg-mono i.r { width: 3px; background: var(--lg-accent); opacity: var(--lg-red-o); transform-origin: 50% 100%;
   animation: lg-rise 2.6s cubic-bezier(.2,.7,.1,1) .2s both; }
 .lg-grain { position: absolute; inset: 0; background: url("${GRAIN}"); opacity: .06; mix-blend-mode: multiply; }
 :root[data-theme="dark"] .lg-grain { opacity: .09; mix-blend-mode: screen; }
@@ -112,7 +112,7 @@ function build() {
   new MutationObserver(() => paintTheme(tb)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   panel.prepend(top);
   const bg = document.createElement("div"); bg.className = "lg-bg"; bg.setAttribute("aria-hidden", "true");
-  bg.innerHTML = `<div class="lg-mono"><i style="height:90%"></i><i style="height:86%"></i><i style="height:80%"></i><i style="height:75%"></i><i style="height:69%"></i><i style="height:64%"></i><i class="r" style="height:58%"></i><i style="height:53%"></i><i style="height:48%"></i><i style="height:42%"></i><i style="height:37%"></i><i style="height:32%"></i><i style="height:26%"></i></div><div class="lg-grain"></div><div class="lg-vig"></div>`;
+  bg.innerHTML = `<div class="lg-mono"><i style="--g:20%;height:90%"></i><i style="--g:23%;height:86%"></i><i style="--g:26%;height:80%"></i><i style="--g:29%;height:75%"></i><i style="--g:32%;height:69%"></i><i style="--g:35%;height:64%"></i><i class="r" style="height:58%"></i><i style="--g:41%;height:53%"></i><i style="--g:44%;height:48%"></i><i style="--g:47%;height:42%"></i><i style="--g:50%;height:37%"></i><i style="--g:53%;height:32%"></i><i style="--g:56%;height:26%"></i></div><div class="lg-grain"></div><div class="lg-vig"></div>`;
   document.body.prepend(bg);
 }
 

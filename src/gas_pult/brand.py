@@ -3,8 +3,9 @@
 подставляет его в страницу (``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма,
 уведомления и сообщения бота. Падежи — ``FORMS``. Код, пакет, пути, службы и адреса остаются ``gas-pult``/«пульт»
 (docs/BRAND.md).
-Знак — арфа (владелец 26.11): 13 струн, 7-я красная, графит + красный; светлый и тёмный варианты, упрощённый для
-16–32 px (5 толстых струн: 1, 4, 7-я красная, 10, 13-я), значок приложения 512 (``web/brand/ladeya-*.svg``).
+Знак — арфа в технике гравюры (владелец 26.11): корпус режут светлые штрихи к свету, струны с разрывами, 7-я красная
+целая. Лесенка (``tools/harp_engraving.py``): ≥96 px — ``ladeya-mark``, 48–95 — ``-m``, 24–47 — ``-small`` (силуэт и
+5 тонких струн), 16–23 — ``favicon`` (силуэт и красная струна); ≥192 — ``-xl`` (значки и превью).
 Знак-название — антиква: «ЛАДЭЯ» с красной «Э» и «LADEYA» с красной зеркальной «E» (``web/brand/wordmark-*.svg``),
 по языку интерфейса.
 Знак-название (владелец 25.11): там, где название стоит как знак (шапка, вход, демо, тур, карточки, картинки), буква «э»
@@ -62,7 +63,9 @@ ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # �
          "/brand/ladeya-mark.svg": ("ladeya-mark.svg", "image/svg+xml"),     # знак-арфа в панели: светлая тема
          "/brand/ladeya-mark-dark.svg": ("ladeya-mark-dark.svg", "image/svg+xml"),   # тёмная тема
          **{f"/brand/{n}.svg": (f"{n}.svg", "image/svg+xml") for n in (       # 16–32 px и знак-название (26.11)
-             "ladeya-mark-small", "ladeya-mark-small-dark", "wordmark-ru", "wordmark-ru-dark", "wordmark-en",
+             "ladeya-mark-small", "ladeya-mark-small-dark", "ladeya-mark-m", "ladeya-mark-m-dark",
+             "ladeya-mark-xl", "ladeya-mark-xl-dark",
+             "wordmark-ru", "wordmark-ru-dark", "wordmark-en",
              "wordmark-en-dark")},
          "/favicon.svg": ("favicon.svg", "image/svg+xml"), "/favicon-32.png": ("favicon-32.png", "image/png"),
          "/favicon-32-dark.png": ("favicon-32-dark.png", "image/png"),
