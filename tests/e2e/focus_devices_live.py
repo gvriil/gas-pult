@@ -91,7 +91,7 @@ def run(engine: str = "chromium", shots: str = "") -> list[str]:
                       and "status of 410" not in m.text and "interactive-widget" not in m.text   # Safari: мета-тег
                       and errs.append(f"{engine}: {m.text}"))
                 pg.on("pageerror", lambda e: errs.append(f"{engine}: {e}"))
-                pg.goto(url)
+                pg.goto(url, timeout=60_000)   # CI под нагрузкой: 30 с не хватало (26.11, прогон 45746751579)
                 agree(pg, url)
                 return pg
 
