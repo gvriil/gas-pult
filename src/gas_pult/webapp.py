@@ -77,6 +77,7 @@ from gas_pult import (
     harness,
     helper,
     humanize,
+    injection_guard,
     invites,
     logins,
     meetings,
@@ -1798,6 +1799,14 @@ def handler(panel: Panel):
                     if not isinstance(b, dict) or b.get("kind") == "command" or "cmd" in b:
                         return self.json({"error": "задачи с командой сервера через токен не создаются",
                                           "code": "v1_scope"}, 403)
+                if method == "POST" and path == "/api/send":    # LLM01: текст 1С и CRM — данные, не инструкции
+                    try:
+                        b = json.loads(self.body() or b"{}")
+                    except ValueError:
+                        return self.json({"error": "тело — JSON"}, 400)
+                    if isinstance(b, dict) and str(b.get("text") or "").strip():
+                        b["text"] = injection_guard.external(str(b["text"]), rec.get("name") or "API")
+                    self.raw = json.dumps(b).encode()
                 self.apitok, self.focused = {"uid": rec["by"], "role": role}, None
                 self.path = path + (f"?{url.query}" if url.query else "")
                 if not self.permit(path, method):

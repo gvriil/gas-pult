@@ -66,7 +66,7 @@ def run(shots: str = ""):
                       and errs.append(m.text))      # 403 — ожидаемые ответы сервера
                 pg.on("pageerror", lambda e: errs.append(str(e)))
                 pg.on("dialog", lambda d: d.accept())
-                pg.goto(url)
+                pg.goto(url, timeout=60_000)   # CI под нагрузкой: 30 с не хватало (26.11, прогон 45746751579)
                 agree(pg, url)
                 return pg
 
