@@ -1346,6 +1346,7 @@
     <div id="sFirst" hidden></div>
     <div class="chat" id="sFeed"></div>
     <div class="act off" id="sAct" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>
+    <div class="steplog" id="sLog" hidden></div>
     <div id="sAsk" aria-live="polite"></div>
   </div></div>
   <div class="s-dock"><div class="s-col">
@@ -4642,7 +4643,7 @@ function renderChat(toBottom) {
         lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>` }[p.state]}</div><div class="macts">${mCopyBtn()}</div></div>`).join("")
     + (lastAi == null || !canEdit() ? "" : `<div class="nextq" data-key="nq:${lastAi}"></div>`)
     + (lastAi == null ? "" : `<div class="cmds" data-key="cmds:${lastAi}"></div>`)       // команды из последнего ответа (renderCmds)
-    + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
+    + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div><div class="steplog" id="actLog" hidden></div>');
   voiceUi();
   const msgs = fresh.filter((el) => el.classList.contains("msg"));   // дообработка — только новых и изменившихся
   if (had) msgs.forEach((el) => !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
@@ -7833,7 +7834,8 @@ applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
 afterPaint(() => part("themebtn").then((m) => m.init()).catch(() => {}));
 afterPaint(() => part("golosfont").then((m) => m.init()).catch(() => {}));   // Golos Text (25.11), свой файл
-afterPaint(() => part("look").then((m) => m.init()).catch(() => {}));   // фирменный вид: фон, акцент «Да»
+afterPaint(() => part("look").then((m) => m.init()).catch(() => {}));
+if (!DEMO || params.has("steps")) afterPaint(() => part("steplog").then((m) => m.init()).catch(() => {}));   // «Ход работы» (26.11)   // фирменный вид: фон, акцент «Да»
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", () => { fitViewport(); keepAnch(); }); }
 // iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
