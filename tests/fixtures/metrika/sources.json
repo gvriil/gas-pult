@@ -1,0 +1,85 @@
+{
+ "_source": "не проверено на песочнице: по примеру из документации Яндекс Метрики, https://yandex.ru/dev/metrika/ru/stat/localize; названия, сайты и цифры выдуманы (22.11.2026)",
+ "query": {
+  "timezone": "+03:00",
+  "dimensions": [
+   "ym:s:lastTrafficSource"
+  ],
+  "metrics": [
+   "ym:s:visits",
+   "ym:s:users",
+   "ym:s:bounceRate"
+  ],
+  "sort": [
+   "-ym:s:visits"
+  ],
+  "date1": "2026-11-14",
+  "date2": "2026-11-20",
+  "limit": 10,
+  "offset": 1
+ },
+ "data": [
+  {
+   "dimensions": [
+    {
+     "name": "Переходы из поисковых систем",
+     "id": "organic"
+    }
+   ],
+   "metrics": [
+    820.0,
+    700.0,
+    18.5
+   ]
+  },
+  {
+   "dimensions": [
+    {
+     "name": "Прямые заходы",
+     "id": "direct"
+    }
+   ],
+   "metrics": [
+    410.0,
+    300.0,
+    30.24390244
+   ]
+  },
+  {
+   "dimensions": [
+    {
+     "name": "Переходы по рекламе",
+     "id": "ad"
+    }
+   ],
+   "metrics": [
+    150.0,
+    140.0,
+    40.0
+   ]
+  }
+ ],
+ "total_rows": 3,
+ "total_rows_rounded": false,
+ "sampled": false,
+ "contains_sensitive_data": true,
+ "sample_share": 1.0,
+ "sample_size": 0,
+ "sample_space": 0,
+ "data_lag": 120,
+ "totals": [
+  1380.0,
+  1100.0,
+  24.0
+ ],
+ "min": [
+  150.0,
+  140.0,
+  18.5
+ ],
+ "max": [
+  820.0,
+  700.0,
+  40.0
+ ]
+}

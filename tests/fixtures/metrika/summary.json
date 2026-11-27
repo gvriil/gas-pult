@@ -1,0 +1,53 @@
+{
+ "_source": "не проверено на песочнице: по примеру из документации Яндекс Метрики, https://yandex.ru/dev/metrika/ru/stat/openapi/data_1; названия, сайты и цифры выдуманы (22.11.2026)",
+ "query": {
+  "timezone": "+03:00",
+  "dimensions": [],
+  "metrics": [
+   "ym:s:visits",
+   "ym:s:users",
+   "ym:s:pageviews",
+   "ym:s:bounceRate",
+   "ym:s:avgVisitDurationSeconds",
+   "ym:s:percentNewVisitors"
+  ],
+  "sort": [],
+  "date1": "2026-11-20",
+  "date2": "2026-11-20",
+  "limit": 100,
+  "offset": 1
+ },
+ "data": [],
+ "total_rows": 1,
+ "total_rows_rounded": false,
+ "sampled": false,
+ "contains_sensitive_data": false,
+ "sample_share": 1.0,
+ "sample_size": 0,
+ "sample_space": 0,
+ "data_lag": 120,
+ "totals": [
+  240.0,
+  198.0,
+  612.0,
+  21.25,
+  95.4,
+  64.141414
+ ],
+ "min": [
+  240.0,
+  240.0,
+  240.0,
+  240.0,
+  240.0,
+  240.0
+ ],
+ "max": [
+  240.0,
+  240.0,
+  240.0,
+  240.0,
+  240.0,
+  240.0
+ ]
+}

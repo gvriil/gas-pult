@@ -1,0 +1,24 @@
+{
+ "_source": "не проверено на песочнице: по примеру из документации Яндекс Метрики, https://yandex.ru/dev/metrika/ru/management/openapi/goal/goals; названия, сайты и цифры выдуманы (22.11.2026)",
+ "goals": [
+  {
+   "id": 30606879,
+   "name": "Заявка с сайта",
+   "type": "action",
+   "is_retargeting": 0,
+   "conditions": [
+    {
+     "type": "exact",
+     "url": "form_sent"
+    }
+   ]
+  },
+  {
+   "id": 30606884,
+   "name": "Клик по телефону",
+   "type": "phone",
+   "is_retargeting": 0,
+   "conditions": []
+  }
+ ]
+}
