@@ -69,7 +69,7 @@ def _open(pg, brief=None):
 
 def test_order_and_done_folded(page):
     pg, errs = page
-    assert _open(pg) == ["decisions", "today", "done", "failed", "subs"]     # «Подписки и балансы» — последней
+    assert _open(pg) == ["decide", "decisions", "today", "done", "failed", "subs"]   # «Решить сегодня» — первым
     assert pg.evaluate('document.querySelector("[data-tour=brief-done]").open') is False
     assert pg.locator(".brief [data-group=done] h3").inner_text().split() == ["Сделано", "2"]
     assert not pg.locator(".brief [data-group=done] li").first.is_visible()
@@ -87,7 +87,7 @@ def test_empty_groups_hidden_decisions_one_line(page):
     pg, errs = page
     got = _open(pg, {"decisions": [], "today": [], "done": [], "failed": [], "more": {},
                      "headline": "Решений от вас не ждут. Ночью срочного не было."})
-    assert got == ["decisions", "subs"]          # подписки и балансы — всегда (GAS-60: «ничего не пропускать»)
+    assert got == ["decide", "decisions", "subs"]          # подписки и балансы — всегда (GAS-60)
     assert pg.locator(".brief [data-group=decisions]").inner_text().strip() == "Решений от вас не ждут"
     assert pg.locator(".brief .bl").inner_text().strip() == "Ночью срочного не было."             # без повтора
     assert errs == []
