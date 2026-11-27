@@ -8,7 +8,7 @@
 
 import json
 
-from gas_pult import tracks
+from gas_pult import deadlines, tracks
 from gas_pult.routes import SENT
 
 
@@ -71,6 +71,13 @@ def tracks_get(self, q: dict):
     return tracks.listing()
 
 
-GET = {"/api/brief": brief, "/api/tasks": tasks, "/api/tracks": tracks_get}
+
+def deadlines_get(self, q: dict):
+    """GET /api/deadlines — «Подписки и балансы»: реестры сроков, неделя Claude, расход — только чтение"""
+    cfg = self.panel.cfg
+    return deadlines.listing(list(getattr(cfg, "deadlines", []) or []), getattr(cfg, "cost_cmd", "") or "")
+
+
+GET = {"/api/brief": brief, "/api/tasks": tasks, "/api/tracks": tracks_get, "/api/deadlines": deadlines_get}
 POST = {"/api/brief/prefs": brief_prefs, "/api/brief/act": brief_act, "/api/tasks/add": tasks_add,
         "/api/tasks/update": tasks_update, "/api/tasks/remove": tasks_remove, "/api/tasks/run": tasks_run}

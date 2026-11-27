@@ -2716,6 +2716,39 @@
     }
    }
   },
+  "/api/deadlines": {
+   "get": {
+    "summary": "«Подписки и балансы»: сроки из реестров, неделя Claude, расход за сутки — только чтение",
+    "tags": [
+     "Прочее"
+    ],
+    "operationId": "get_deadlines",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/demo/info": {
    "get": {
     "summary": "Демо без входа: есть ли ролик «Смотреть, 1 мин» (/media/demo.mp4)",

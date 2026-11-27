@@ -489,6 +489,13 @@ function demoApi(path, body) {
       { id: "T4", what: "Встреча с поставщиком в четверг", to: "Поставщик (Telegram)", state: "закрыта", open: false, created: d(50), updated: d(20), check: "ответ в Telegram — проверка раз в 5 минут", last: "Подтвердил 12:30", stale: false }] });
   }
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
+  if (path === "/api/deadlines") return Promise.resolve({ configured: true, cost: "За 24 ч: $12.40",   // примеры
+    claude: { passed: 70, reset: Math.round(Date.now() / 1000 + 2 * 86400) }, items: [
+      { what: "Сервер магазина", when: "—", balance: "5,50 $ — продление не пройдёт", days: -2, level: "over" },
+      { what: "Хостинг сайта", when: "", balance: "", days: 3, level: "d3" },
+      { what: "Домен shop.example", when: "", balance: "", days: 12, level: "d14" },
+      { what: "Касса онлайн", when: "", balance: "", days: 140, level: "ok" },
+      { what: "Кредиты модели (предоплата)", when: "— (предоплата)", balance: "16,69 $", days: null, level: "none" }] });
   if (path.startsWith("/api/brief")) return demoBrief(path, body);
   if (path.startsWith("/api/desktop/tabs")) return demoTabs(path, body);   // вкладки Chrome стола на телефоне (22.11)
   if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)

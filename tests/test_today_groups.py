@@ -1,6 +1,7 @@
 """«Сегодня» с первого взгляда (владелец 21.11; ориентиры — Things 3 «Today», Linear Inbox, «Напоминания»): итог
 одной строкой, затем группы «Ждут вашего Да» → «Сегодня» → «Сделано» (свёрнуто, со счётчиком) → «Не выполнено».
-Пустая группа не показывается, кроме «Ждут вашего Да» — там одна строка «Решений от вас не ждут». «Да» по-прежнему
+Пустая группа не показывается, кроме «Ждут вашего Да» — там одна строка «Решений от вас не ждут» — и «Подписок и
+балансов» (GAS-60, 27.11): она последняя и есть всегда. «Да» по-прежнему
 просит подтверждения, строки разработки скрыты у пользователя. Разметку проверяем в браузере демо, если есть
 Playwright; иначе — только статически."""
 
@@ -68,7 +69,7 @@ def _open(pg, brief=None):
 
 def test_order_and_done_folded(page):
     pg, errs = page
-    assert _open(pg) == ["decisions", "today", "done", "failed"]
+    assert _open(pg) == ["decisions", "today", "done", "failed", "subs"]     # «Подписки и балансы» — последней
     assert pg.evaluate('document.querySelector("[data-tour=brief-done]").open') is False
     assert pg.locator(".brief [data-group=done] h3").inner_text().split() == ["Сделано", "2"]
     assert not pg.locator(".brief [data-group=done] li").first.is_visible()
@@ -86,7 +87,7 @@ def test_empty_groups_hidden_decisions_one_line(page):
     pg, errs = page
     got = _open(pg, {"decisions": [], "today": [], "done": [], "failed": [], "more": {},
                      "headline": "Решений от вас не ждут. Ночью срочного не было."})
-    assert got == ["decisions"]
+    assert got == ["decisions", "subs"]          # подписки и балансы — всегда (GAS-60: «ничего не пропускать»)
     assert pg.locator(".brief [data-group=decisions]").inner_text().strip() == "Решений от вас не ждут"
     assert pg.locator(".brief .bl").inner_text().strip() == "Ночью срочного не было."             # без повтора
     assert errs == []
