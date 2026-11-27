@@ -5561,7 +5561,7 @@ async function sttRun(blob, sendNow, where = MIC_FULL) {
 function sttFail(text, blob, sendNow, where = MIC_FULL) {
   const bar = micBarOpen(where); bar.className = "recbar err"; haptic("notificationOccurred", "error");
   bar.innerHTML = `${ic("warn", "s16")}<span class="msg" role="alert">${esc(text)}</span>
-    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>${blob ? (tg?.platform && tg.platform !== "unknown" ? `<button class="txt keep">${ic("down", "s16")}Сохранить на сервере</button` : `<a class="txt" download="запись.webm" href="${URL.createObjectURL(blob)}">${ic("down", "s16")}Скачать</a`)>` : ""}
+    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>${blob ? (tg?.platform && tg.platform !== "unknown" ? `<button class="txt keep">${ic("down", "s16")}Сохранить на сервере</button>` : `<a class="txt" download="запись.webm" href="${URL.createObjectURL(blob)}">${ic("down", "s16")}Скачать</a>`) : ""}
     <button class="no" aria-label="Закрыть" title="Закрыть">${ic("x", "s16")}</button>`;
   bar.querySelector(".no").onclick = micBarClose;
   bar.querySelector(".again").onclick = () => { if (blob) return sttRun(blob, sendNow, where); micBarClose(); micTap(where); };

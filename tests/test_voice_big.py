@@ -68,4 +68,5 @@ def test_keep_only_saves_without_recognition(tmp_path):
 def test_mini_app_offers_save_not_download():
     from pathlib import Path
     html = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
-    assert "Сохранить на сервере" in html and 'api("/api/stt?keep=1", blob' in html
+    assert "Сохранить на сервере</button>`" in html and 'api("/api/stt?keep=1", blob' in html
+    assert "Скачать</a>`)" in html                                            # обе ветки шаблона закрыты
