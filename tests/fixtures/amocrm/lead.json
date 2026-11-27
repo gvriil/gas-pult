@@ -1,0 +1,57 @@
+{
+ "_source": "amocrm.ru/developers/content/crm_platform/leads-api (пример ответа из документации, через Context7; данные выдуманные; не проверено на песочнице)",
+ "id": 19619,
+ "name": "Абонемент семейный — Ивановы",
+ "price": 19999.99,
+ "responsible_user_id": 504141,
+ "group_id": 0,
+ "status_id": 32392165,
+ "pipeline_id": 3177727,
+ "loss_reason_id": null,
+ "source_id": null,
+ "created_by": 504141,
+ "updated_by": 504141,
+ "created_at": 1795672800,
+ "updated_at": 1795676400,
+ "closed_at": null,
+ "closest_task_at": 1795845600,
+ "is_deleted": false,
+ "custom_fields_values": null,
+ "score": null,
+ "account_id": 28805383,
+ "_links": {
+  "self": {
+   "href": "https://demo-club.amocrm.ru/api/v4/leads/19619"
+  }
+ },
+ "_embedded": {
+  "tags": [
+   {
+    "id": 5,
+    "name": "сайт",
+    "color": null
+   }
+  ],
+  "companies": [
+   {
+    "id": 1,
+    "_links": {
+     "self": {
+      "href": "https://demo-club.amocrm.ru/api/v4/companies/1"
+     }
+    }
+   }
+  ],
+  "contacts": [
+   {
+    "id": 3,
+    "is_main": true,
+    "_links": {
+     "self": {
+      "href": "https://demo-club.amocrm.ru/api/v4/contacts/3"
+     }
+    }
+   }
+  ]
+ }
+}

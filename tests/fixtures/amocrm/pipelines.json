@@ -1,0 +1,106 @@
+{
+ "_source": "amocrm.ru/developers/content/crm_platform/leads_pipelines (пример ответа из документации, через Context7; данные выдуманные; не проверено на песочнице)",
+ "_total_items": 1,
+ "_links": {
+  "self": {
+   "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines"
+  }
+ },
+ "_embedded": {
+  "pipelines": [
+   {
+    "id": 3177727,
+    "name": "Воронка",
+    "sort": 1,
+    "is_main": true,
+    "is_unsorted_on": true,
+    "is_archive": false,
+    "account_id": 28805383,
+    "_links": {
+     "self": {
+      "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines/3177727"
+     }
+    },
+    "_embedded": {
+     "statuses": [
+      {
+       "id": 142,
+       "name": "Успешно реализовано",
+       "sort": 10000,
+       "is_editable": false,
+       "pipeline_id": 3177727,
+       "color": "#c1c1c1",
+       "type": 0,
+       "account_id": 28805383,
+       "_links": {
+        "self": {
+         "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines/3177727/statuses/142"
+        }
+       }
+      },
+      {
+       "id": 32392156,
+       "name": "Неразобранное",
+       "sort": 10,
+       "is_editable": false,
+       "pipeline_id": 3177727,
+       "color": "#c1c1c1",
+       "type": 1,
+       "account_id": 28805383,
+       "_links": {
+        "self": {
+         "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines/3177727/statuses/32392156"
+        }
+       }
+      },
+      {
+       "id": 32392159,
+       "name": "Первичный контакт",
+       "sort": 20,
+       "is_editable": true,
+       "pipeline_id": 3177727,
+       "color": "#c1c1c1",
+       "type": 0,
+       "account_id": 28805383,
+       "_links": {
+        "self": {
+         "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines/3177727/statuses/32392159"
+        }
+       }
+      },
+      {
+       "id": 32392165,
+       "name": "Принимают решение",
+       "sort": 30,
+       "is_editable": true,
+       "pipeline_id": 3177727,
+       "color": "#c1c1c1",
+       "type": 0,
+       "account_id": 28805383,
+       "_links": {
+        "self": {
+         "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines/3177727/statuses/32392165"
+        }
+       }
+      },
+      {
+       "id": 143,
+       "name": "Закрыто и не реализовано",
+       "sort": 11000,
+       "is_editable": false,
+       "pipeline_id": 3177727,
+       "color": "#c1c1c1",
+       "type": 0,
+       "account_id": 28805383,
+       "_links": {
+        "self": {
+         "href": "https://demo-club.amocrm.ru/api/v4/leads/pipelines/3177727/statuses/143"
+        }
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

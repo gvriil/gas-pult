@@ -1,0 +1,59 @@
+{
+ "_source": "amocrm.ru/developers/content/crm_platform/tasks-api (пример ответа из документации, через Context7; данные выдуманные; не проверено на песочнице)",
+ "_page": 1,
+ "_links": {
+  "self": {
+   "href": "https://demo-club.amocrm.ru/api/v4/tasks?limit=20&page=1"
+  }
+ },
+ "_embedded": {
+  "tasks": [
+   {
+    "id": 7087,
+    "created_by": 504141,
+    "updated_by": 504141,
+    "created_at": 1795586400,
+    "updated_at": 1795586400,
+    "responsible_user_id": 504141,
+    "group_id": 0,
+    "entity_id": 19619,
+    "entity_type": "leads",
+    "duration": 0,
+    "is_completed": false,
+    "task_type_id": 1,
+    "text": "Перезвонить про семейный абонемент",
+    "result": [],
+    "complete_till": 1700000000,
+    "account_id": 28805383,
+    "_links": {
+     "self": {
+      "href": "https://demo-club.amocrm.ru/api/v4/tasks/7087"
+     }
+    }
+   },
+   {
+    "id": 7090,
+    "created_by": 504141,
+    "updated_by": 504141,
+    "created_at": 1795586400,
+    "updated_at": 1795586400,
+    "responsible_user_id": 504141,
+    "group_id": 0,
+    "entity_id": 3,
+    "entity_type": "contacts",
+    "duration": 0,
+    "is_completed": false,
+    "task_type_id": 2,
+    "text": "Пригласить на бесплатную тренировку",
+    "result": [],
+    "complete_till": 4100000000,
+    "account_id": 28805383,
+    "_links": {
+     "self": {
+      "href": "https://demo-club.amocrm.ru/api/v4/tasks/7090"
+     }
+    }
+   }
+  ]
+ }
+}
