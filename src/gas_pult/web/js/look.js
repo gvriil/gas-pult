@@ -6,12 +6,12 @@
 // Часть по требованию (#191): ядро не растёт.
 const CSS = `
 .bb-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .24s ease;
-  --bb-mono: #EFEEEA; --bb-red: #F8ECE6; }   /* к фону 1,05:1 — 5 % */
-:root[data-theme="dark"] .bb-bg { --bb-mono: #131312; --bb-red: #1C100B; }
+  --bb-mono: #DCDAD4; --bb-red: #F2C9BA; }   /* тонкие струны: линия 2 px — темнее, чем прежние плиты (26.11) */
+:root[data-theme="dark"] .bb-bg { --bb-mono: #2A2A27; --bb-red: #4A2015; }
 body.bb-on .bb-bg { opacity: 1; }
 .bb-bg svg { position: absolute; right: max(-6vw, calc(50vw - 640px)); bottom: -4vh; height: min(86vh, 820px); width: auto; }
-.bb-bg .m { fill: var(--bb-mono); }
-.bb-bg .r { fill: var(--bb-red); transform-box: fill-box; transform-origin: 50% 100%; }
+.bb-bg .m { fill: none; stroke: var(--bb-mono); stroke-width: .3; }
+.bb-bg .r { fill: none; stroke: var(--bb-red); stroke-width: .3; transform-box: fill-box; transform-origin: 50% 100%; }
 body.bb-on:not(.bb-done) .bb-bg .r { animation: bb-rise 2.4s cubic-bezier(.2,.7,.1,1) .15s both; }
 @keyframes bb-rise { from { transform: translate3d(0, 100%, 0); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .bb-bg .r { animation: none !important; } .bb-bg { transition: none; } }
@@ -39,9 +39,9 @@ body.lk-intro #home .card:nth-of-type(4) { animation-delay: 120ms; } body.lk-int
 @media (max-width: 420px) { .top .tmark { display: none !important; } #title.brand-text { overflow: visible; text-overflow: clip; } }
 @keyframes lk-in { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }   /* «Ответить» в строке состояния — путь к вопросу, не главное действие */
 `;
-// фон — 13 струн арфы (знак 26.11): от длинной к короткой, 7-я — красная
+// фон — 13 тонких струн с разрывом по диагонали света (гравюра 26.11), 7-я — красная целая
 const SVG = `<svg viewBox="0 0 248 100" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">`
-  + `<rect class="m" x="0" y="0" width="5" height="100" rx="2.5"/><rect class="m" x="20" y="5" width="5" height="95" rx="2.5"/><rect class="m" x="40" y="11" width="5" height="89" rx="2.5"/><rect class="m" x="60" y="17" width="5" height="83" rx="2.5"/><rect class="m" x="80" y="23" width="5" height="77" rx="2.5"/><rect class="m" x="100" y="29" width="5" height="71" rx="2.5"/><rect class="r" x="120" y="35" width="5" height="65" rx="2.5"/><rect class="m" x="140" y="41" width="5" height="59" rx="2.5"/><rect class="m" x="160" y="47" width="5" height="53" rx="2.5"/><rect class="m" x="180" y="53" width="5" height="47" rx="2.5"/><rect class="m" x="200" y="59" width="5" height="41" rx="2.5"/><rect class="m" x="220" y="65" width="5" height="35" rx="2.5"/><rect class="m" x="240" y="71" width="5" height="29" rx="2.5"/></svg>`;
+  + `<path class="m" d="M2.5 0V20.0M2.5 23.5V100"/><path class="m" d="M22.5 5V25.2M22.5 28.7V100"/><path class="m" d="M42.5 11V31.2M42.5 34.7V100"/><path class="m" d="M62.5 17V37.2M62.5 40.7V100"/><path class="m" d="M82.5 23V43.2M82.5 46.7V100"/><path class="m" d="M102.5 29V49.2M102.5 52.7V100"/><path class="r" d="M122.5 35V100"/><path class="m" d="M142.5 41V61.2M142.5 64.7V100"/><path class="m" d="M162.5 47V67.2M162.5 70.7V100"/><path class="m" d="M182.5 53V73.2M182.5 76.7V100"/><path class="m" d="M202.5 59V79.2M202.5 82.7V100"/><path class="m" d="M222.5 65V85.2M222.5 88.7V100"/><path class="m" d="M242.5 71V91.2M242.5 94.7V100"/></svg>`;
 
 const want = () => view === "home" || document.body.classList.contains("drafting");
 

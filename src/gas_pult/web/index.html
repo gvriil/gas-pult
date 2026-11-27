@@ -93,10 +93,11 @@
   body.clean-top #subtitle, body.clean-top #helpBtn, body.clean-top #settingsBtn, body.clean-top #tabsBar,
   body.clean-top:not(.tab-screen) #screenBtn, body.clean-top #focusExp:not(.soon) > :not([data-fdev]) { display: none !important; }   /* фокус: срок — в меню; «На другом устройстве» — видно (22.11) */
   body.clean-top #chatMoreBtn, body.clean-top.tab-screen #screenBtn { display: grid !important; }
-  .gmark { flex: none; display: inline-block; background: url(brand/ladeya-mark.svg) center / contain no-repeat; }   /* знак-арфа (26.11) */
+  .gmark { flex: none; display: inline-block; background: url(brand/ladeya-mark.svg) center / contain no-repeat; }   /* знак-арфа, гравюра (26.11): ≥96 px — полная, 48–95 — -m, 24–47 — -small */
   :root[data-theme="dark"] .gmark { background-image: url(brand/ladeya-mark-dark.svg); }
   .nmark, .tmark { background-image: url(brand/ladeya-mark-small.svg); }   /* 16–32 px — упрощённый: 5 толстых струн */
   :root[data-theme="dark"] :is(.nmark, .tmark) { background-image: url(brand/ladeya-mark-small-dark.svg); }
+  .lmark { background-image: url(brand/ladeya-mark-m.svg); } :root[data-theme="dark"] .lmark { background-image: url(brand/ladeya-mark-m-dark.svg); }
   .nmark { width: 18px; height: 24px; margin: 0 6px 0 2px; } .lmark { display: block; width: 46px; height: 62px; margin: 4px 0 8px; }
   .tmark { display: none; width: 20px; height: 27px; margin: 0 6px 0 4px; } body:has(#title.brand-text) .tmark { display: block; }
   body.no-dup.has-nav:not(.side-mini) #top .tmark { visibility: hidden; }   /* на ПК знак — в панели, сверху не дублируем */
@@ -1489,6 +1490,7 @@ function part(name) {
   const go = (n) => import(`/js/${name}.js`).catch((e) => n < 2 ? new Promise((r) => setTimeout(r, [500, 1500][n])).then(() => go(n + 1)) : Promise.reject(e));
   return PARTS[name] = go(0).catch((e) => { delete PARTS[name]; throw e; });
 }
+if (params.has("logo")) part("logotry").then((m) => m.start());   // примерка знака (26.11)
 if (DEMO) part("demo");                               // демо — сразу, параллельно с остальной загрузкой
 if (params.has("clipdiag")) part("clipdiag").then((m) => m.start());   // самопроверка буфера обмена (25.11)
 // Фокус (задача 41): ссылка «…/#focus=<токен>» — только чат одной сессии. Токен — после «#»: на сервер и в журналы он
