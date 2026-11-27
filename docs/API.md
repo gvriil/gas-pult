@@ -91,7 +91,7 @@
 | `/api/rec/drop` | POST | участник и выше | `SPACE_OK`, `FOCUS` | «Отменить запись»: куски удалить | `id` | `ok` |
 | `/api/rec/finish` | POST | участник и выше | `SPACE_OK`, `FOCUS` | «Стоп»: куски с сервера — в распознавание | `id` | — |
 | `/api/rec/status` | GET | любой вошедший | `SPACE_OK`, `FOCUS` | Какие куски записи уже на сервере (после обрыва) | `id` | — |
-| `/api/stt` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Распознать голос; `?job=1` — фоново (GAS-34) | `тело — звук, Content-Type` | `text`, `fallback` |
+| `/api/stt` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Распознать голос; `?job=1` — фоново (GAS-34) | `тело — звук, Content-Type` | `kept`, `text`, `fallback` |
 | `/api/stt/job` | GET | любой вошедший | `SPACE_OK`, `FOCUS` | Фоновое распознавание: состояние и текст | `id` | — |
 | `/api/stt/retry` | POST | участник и выше | `SPACE_OK`, `FOCUS` | Повторить нераспознанную запись (она хранится на сервере) | `id` | — |
 | `/api/stt/stream` | GET | без входа | `SPACE_OK` | Голос потоком: WebSocket к службе T-one; вход — первым сообщением | `WebSocket` | — |
