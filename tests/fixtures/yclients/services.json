@@ -1,0 +1,27 @@
+{
+  "_source": "по документации YCLIENTS API v2 (github.com/alexmaltsevgit/yclients-openapi, через Context7 25.11.2026); данные выдуманные; не проверено на песочнице",
+  "success": true,
+  "data": [
+    {
+      "id": 331,
+      "title": "Стрижка",
+      "category_id": 1,
+      "price_min": 1500,
+      "price_max": 2000,
+      "duration": 3600,
+      "active": 1
+    },
+    {
+      "id": 332,
+      "title": "Окрашивание",
+      "category_id": 2,
+      "price_min": 4000,
+      "price_max": 4000,
+      "duration": 7200,
+      "active": 0
+    }
+  ],
+  "meta": {
+    "total_count": 2
+  }
+}
