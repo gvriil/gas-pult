@@ -7,6 +7,8 @@
 
 import urllib.parse
 
+from gas_pult.uploads import KEEP_CAP, MAX_VOICE
+
 
 def tts_about(self, q: dict):
     """GET /api/tts/about — «Что здесь умеет» — голосом (текст из карты помощника)"""
@@ -71,8 +73,12 @@ def stt(self):
     """POST_RAW /api/stt — запись голоса → текст: сразу или фоново (``?job=1``, GAS-34)"""
     panel = self.panel
     if "job=1" in urllib.parse.urlparse(self.path).query:   # фоново, GAS-34
-        return panel.stt_job(self.body(), self.headers.get("Content-Type", ""), self.terms_uid(),
-                             cloud=not self.space())
+        n, ctype = int(self.headers.get("Content-Length", 0) or 0), self.headers.get("Content-Type", "")
+        if self.raw is None and n > MAX_VOICE:                 # запись не теряем: сначала на диск, потом причина
+            name = panel.stt_keep_stream(self.rfile, min(n, KEEP_CAP), ctype)
+            raise ValueError(f"запись {n >> 20} МБ длиннее предела распознавания {MAX_VOICE >> 20} МБ — сохранена на "
+                             f"сервере ({name}); разбейте на части или скачайте и пришлите файлом")
+        return panel.stt_job(self.body(MAX_VOICE), ctype, self.terms_uid(), cloud=not self.space())
     before = panel.fallback_note()
     text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())
     now = panel.fallback_note()
