@@ -1795,10 +1795,11 @@ def handler(panel: Panel):
                         b = json.loads(self.body() or b"{}")
                     except ValueError:
                         return self.json({"error": "тело — JSON"}, 400)
-                    self.raw = json.dumps(b).encode()        # обработчик прочитает то же тело (H.body)
                     if not isinstance(b, dict) or b.get("kind") == "command" or "cmd" in b:
                         return self.json({"error": "задачи с командой сервера через токен не создаются",
                                           "code": "v1_scope"}, 403)
+                    b = injection_guard.external_task(b, rec.get("name") or "API")   # LLM01: текст 1С и CRM
+                    self.raw = json.dumps(b).encode()        # обработчик прочитает то же тело (H.body)
                 if method == "POST" and path == "/api/send":    # LLM01: текст 1С и CRM — данные, не инструкции
                     try:
                         b = json.loads(self.body() or b"{}")
