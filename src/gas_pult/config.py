@@ -91,6 +91,8 @@ class Config:
     drive_root: str = "~/drive"                             # Google Диск (rclone): <проект>/Входящие; "" — выкл.
     events_keep_days: int = 400                             # события продукта (funnel.py): сколько дней хранить
     storage: str = "json"                                   # json | dual | sqlite — хранение (sqlstore.py)
+    deadlines: list[str] = field(default_factory=list)      # реестры сроков (md, «Когда кончается») — только чтение
+    cost_cmd: str = ""                                      # команда «расход за сутки» для «Сегодня»; "" — без строки
 
     @property
     def data(self) -> Path:

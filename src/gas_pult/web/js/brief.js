@@ -177,6 +177,7 @@ function briefView(bg) {
     ${ndone ? `<section class="grp" data-group="done"><details class="fold" data-tour="brief-done"><summary><h3>${ic("check")}Сделано <span class="n">${ndone}</span>${ic("chev", "chev")}</h3></summary>
       <ul>${b.done.map((r) => rowHtml(r)).join("")}</ul>${moreHtml(b, "done")}</details></section>` : ""}
     ${nf ? `<section class="grp warn" data-group="failed" data-tour="brief-failed"><h3>${ic("warn")}Не выполнено <span class="n">${nf}</span></h3><ul>${b.failed.map((r) => rowHtml(r)).join("")}</ul>${moreHtml(b, "failed")}</section>` : ""}
+    <section class="grp subs" id="subsBox" data-group="subs"></section>
     ${off.length ? `<div class="off" data-more>Не подключено: ${off.map((s) => esc(s.label + (s.note ? " — " + s.note : ""))).join("; ")}</div>` : ""}
   </div>`;
   bg.querySelector("[data-bx]").onclick = close;
@@ -188,6 +189,31 @@ function briefView(bg) {
   bg.querySelectorAll("[data-chat]").forEach((x) => { x.onclick = () => { close(); chatWith(chatText(ROWS[+x.dataset.chat])); }; });
   bg.querySelectorAll("[data-more]").forEach((x) => { x.onclick = (e) => { if (!e.target.closest("a, button")) x.classList.toggle("open"); }; });
   if (!D.tour) briefTour();                            // первый брифинг — тур сам, дальше — по «?»
+  subsLoad(bg);
+}
+
+// «Подписки и балансы» (владелец 27.11, GAS-60): сроки из реестров, неделя Claude, расход за сутки — только чтение
+// (/api/deadlines, deadlines.py). «Осталось N дней», пороги 14 / 3 / 1, просроченное — красным; без даты — тоже в списке.
+const SUBS_CSS = `.brief .subs ul { list-style: none; margin: 0; padding: 0; }
+.brief .subs li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+.brief .subs li b { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.brief .subs li .d { flex: none; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+.brief .subs li small { display: block; font-size: calc(12px * var(--fz, 1)); color: var(--text-muted); font-weight: 400; }
+.brief .subs .over .d, .brief .subs .d1 .d, .brief .subs .hot { color: var(--status-error, #C2361A); font-weight: 600; }
+.brief .subs .d3 .d { color: var(--status-warning, #B45309); font-weight: 600; } .brief .subs .d14 .d { color: var(--status-warning, #B45309); }
+.brief .subs .none .d { color: var(--text-muted); } .brief .subs p { margin: 4px 0; font-size: calc(13px * var(--fz, 1)); }`;
+const subsDays = (x) => x.days == null ? "без даты" : x.days < 0 ? `просрочено ${-x.days} дн.` : x.days === 0 ? "сегодня" : `осталось ${x.days} дн.`;
+async function subsLoad(bg) {
+  const box = bg.querySelector("#subsBox"); if (!box) return;
+  if (!document.getElementById("subsCss")) document.head.insertAdjacentHTML("beforeend", `<style id="subsCss">${SUBS_CSS}</style>`);
+  let d; try { d = await api("/api/deadlines"); } catch (e) { box.remove(); return; }
+  const red = d.items.filter((x) => x.level === "over" || x.level === "d1").length, c = d.claude;
+  const reset = c?.reset ? new Date(c.reset * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  box.innerHTML = `<h3>${ic("coin")}Подписки и балансы${red ? ` <span class="n">${red}</span>` : ""}</h3>`
+    + (c ? `<p class="${c.passed >= 85 ? "hot" : ""}">Неделя подписки Claude: ${c.passed ? `пройдено ${c.passed} %` : "меньше 70 %"}${reset ? " · сброс " + esc(reset) : ""}</p>` : "")
+    + (d.cost ? `<p>Расход по ценам API: ${esc(d.cost)}</p>` : "")
+    + (d.items.length ? `<ul>${d.items.map((x) => `<li class="${x.level}"><b>${esc(x.what)}${x.balance && x.balance !== "—" ? `<small>Баланс: ${esc(x.balance)}</small>` : ""}${x.days == null && x.when && x.when !== "—" ? `<small>${esc(x.when)}</small>` : ""}</b><span class="d">${esc(subsDays(x))}</span></li>`).join("")}</ul>`
+      : `<p>${d.configured ? "В реестрах сроков нет строк." : "Реестр сроков не подключён: config.toml → deadlines."}</p>`);
 }
 
 async function act(bg, r, a, sure = false) {
