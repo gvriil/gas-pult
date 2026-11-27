@@ -5561,10 +5561,14 @@ async function sttRun(blob, sendNow, where = MIC_FULL) {
 function sttFail(text, blob, sendNow, where = MIC_FULL) {
   const bar = micBarOpen(where); bar.className = "recbar err"; haptic("notificationOccurred", "error");
   bar.innerHTML = `${ic("warn", "s16")}<span class="msg" role="alert">${esc(text)}</span>
-    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>${blob ? `<a class="txt" download="запись.webm" href="${URL.createObjectURL(blob)}">${ic("down", "s16")}Скачать</a>` : ""}
+    <button class="txt again">${ic(blob ? "refresh" : "mic", "s16")}${blob ? "Повторить" : "Записать"}</button>${blob ? (tg?.platform && tg.platform !== "unknown" ? `<button class="txt keep">${ic("down", "s16")}Сохранить на сервере</button>` : `<a class="txt" download="запись.webm" href="${URL.createObjectURL(blob)}">${ic("down", "s16")}Скачать</a>`) : ""}
     <button class="no" aria-label="Закрыть" title="Закрыть">${ic("x", "s16")}</button>`;
   bar.querySelector(".no").onclick = micBarClose;
   bar.querySelector(".again").onclick = () => { if (blob) return sttRun(blob, sendNow, where); micBarClose(); micTap(where); };
+  const keep = bar.querySelector(".keep");             // Telegram Mini App: «Скачать» не работает — запись на сервер (27.11)
+  if (keep) keep.onclick = async () => { keep.disabled = true;
+    try { const d = await api("/api/stt?keep=1", blob, blob.type || "audio/webm"); toast("Запись сохранена на сервере: " + d.kept, 6000); }
+    catch (e) { keep.disabled = false; toast("Не сохранилось: " + e.message, 5000); } };
 }
 // ---------- голос потоком (задача 46): удержание микрофона → текст в поле, пока говорите ----------
 // Звук: AudioWorklet (нет — ScriptProcessor) → PCM 16 кГц моно, кусками по 100 мс → WebSocket /api/stt/stream → служба
