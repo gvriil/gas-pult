@@ -1,6 +1,6 @@
 """Узкая полоса при свёрнутой панели чатов (ПК) в демо (Playwright).
 
-    python tests/e2e/rail_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/rail_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 1366 светлая и тёмная: панель свёрнута — слева полоса 60 px (не пусто), основная колонка сдвинута на 60 px; сверху
 ⇥ раскрыть, ✎ новый чат, ⌕ поиск; ниже — проекты квадратами с инициалами (закреплённые — сверху), цифра — активные
@@ -10,6 +10,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 CONTRAST = """(el) => {
   const rgb = (c) => c.match(/[\\d.]+/g).slice(0, 3).map(Number);
@@ -44,7 +46,7 @@ def run(base: str, shots: str = ""):
             assert abs(top["x"] - 60) < 1, f"{tag}: шапка не сдвинута на ширину полосы ({top})"
             assert not pg.is_visible("#navBtn") and not pg.is_visible("#composeBtn"), f"{tag}: дубль ☰/✎ в шапке"
             ids = pg.eval_on_selector_all("#rail button", "els => els.map((e) => e.id)")
-            assert ids == ["railOpen", "railNew", "railSearch", "railSettings"], ids   # 20.11: без значков проектов
+            assert ids == ["railOpen", "railNew", "railSearch", "railSpend", "railSettings"], ids
             for b in pg.locator("#rail button").all():
                 assert b.get_attribute("title") and b.get_attribute("aria-label"), f"{tag}: значок без подсказки"
             if shots:

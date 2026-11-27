@@ -4,44 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
-<title>Гаврила</title>
-<meta name="application-name" content="Гаврила"><meta name="apple-mobile-web-app-title" content="Гаврила">
+<title>Ладэя</title>
+<meta name="application-name" content="Ладэя"><meta name="apple-mobile-web-app-title" content="Ладэя">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: light)"><link rel="icon" href="/favicon-32-dark.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: dark)"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  /* ===== Дизайн-система: тёплая бумага + терракота; статусы семантические (свободна ≠ зелёный) ===== */
-  /* ===== Палитра в духе Gemini (Material 3): белый и #F0F4F9, синий акцент; статусы — по смыслу ===== */
-  /* ===== Токены v2 (разбор стиля Gemini 21.11, «по всем пунктам да»): нейтральные серые, синий #2563EB, статусы —
-     точкой; оттенки подобраны так, что текст на каждом фоне — AA (≥ 4,5:1) в обеих темах (tests/test_design_tokens_v2.py) ===== */
+  /* ===== Токены — от знака «Лад» (25.11): графит, тёплый белый, акцент знака; AA в обеих темах (test_design_tokens_v2) ===== */
   :root, :root[data-theme="light"] {
-    --bg-canvas: #FFFFFF; --bg-surface: #FFFFFF; --bg-subtle: #F3F4F6; --bg-terminal: #1E1F20;
+    --bg-canvas: #F4F4F2; --bg-surface: #FFFFFF; --bg-subtle: #EFEEEA; --bg-terminal: #1E1F20;
     --tq-red: #C5221F; --tq-orange: #C45A00; --tq-yellow: #9A7400; --tq-green: #137333;   /* задачи (17.11), к фону ≥3,9:1 */
-    --border-subtle: #E6E8EC; --border-focus: #2563EB; --field-border: #80868B; --field-ph: #5F6368;
-    --text-primary: #111827; --text-secondary: #4B5563; --text-muted: #5F6672;
-    --accent-primary: #2563EB; --accent-soft: #DBEAFE; --on-accent: #FFFFFF;
-    --status-idle: #5F6672; --status-running: #15803D; --status-approval: #A85300; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
-    --status-success: #15803D; --status-danger: #C81E1E; --status-stopped: #C81E1E;
-    --brand: linear-gradient(90deg, #4285F4 0%, #9B72CB 50%, #D96570 100%);
+    --border-subtle: #D9D6CF; --border-focus: #4A4843; --field-border: #6E6B64; --field-ph: #66635C;
+    --text-primary: #111111; --text-secondary: #4A4843; --text-muted: #5C5A54;
+    --accent-primary: #C2361A; --accent-soft: #F9E1D8; --on-accent: #FFFFFF;
+    --status-idle: #5C5A54; --status-running: #137333; --status-approval: #A85300; --status-approval-bg: #FFF4D6; --on-approval: #FFFFFF;
+    --status-success: #137333; --status-danger: #B42318; --status-stopped: #B42318;
+    --brand: linear-gradient(90deg, #111111, #111111);   /* знак «Лад» (25.11): название — графитом, без градиента «ИИ» */
     --row-hv: 5%; --radius-sm: 8px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 8px;   /* пилюль нет (владелец 20.11): прямоугольник со скруглением 8 px */
     --shadow-sm: 0 1px 2px rgba(31,31,31,.06); --shadow-lg: 0 -6px 24px rgba(31,31,31,.10);
     --qr-bg: #FFFFFF;                                 /* фон QR-кода: камера читает тёмное на светлом при любой теме */
     /* Значки проектов в узкой полосе: фон и буквы (контраст ≥ 4,5:1 в обеих темах) */
-    --pj1-bg: #D3E3FD; --pj1-fg: #0842A0; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #E9DDFF; --pj3-fg: #4A2C8A;
+    --pj1-bg: #E6E2DA; --pj1-fg: #3D3A34; --pj2-bg: #C4EED0; --pj2-fg: #0D652D; --pj3-bg: #F6DDD3; --pj3-fg: #8A2A12;
     --pj4-bg: #FFDDB8; --pj4-fg: #7A4100; --pj5-bg: #FFD8E4; --pj5-fg: #8C1D48; --pj6-bg: #C2E8E7; --pj6-fg: #00504F;
   }
   :root[data-theme="dark"] { --row-hv: 7%;
-    --bg-canvas: #111214; --bg-surface: #1C1E22; --bg-subtle: #25272C; --bg-terminal: #0E0E0F;
+    --bg-canvas: #0C0C0B; --bg-surface: #181816; --bg-subtle: #22221F; --bg-terminal: #0E0E0F;
     --tq-red: #F28B82; --tq-orange: #FCAD70; --tq-yellow: #FDD663; --tq-green: #81C995;   /* к фону ≥6,9:1 */
-    --border-subtle: #2E3137; --border-focus: #60A5FA; --field-border: #747A80; --field-ph: #9AA0A6;
-    --text-primary: #F3F4F6; --text-secondary: #B4BAC4; --text-muted: #8B93A1;
-    --accent-primary: #60A5FA; --accent-soft: #1E3A5F; --on-accent: #0B1220;
-    --status-idle: #8B93A1; --status-running: #22C55E; --status-approval: #F59E0B; --status-approval-bg: #3A2E00; --on-approval: #1F1300;
+    --border-subtle: #2C2B28; --border-focus: #B9B7B0; --field-border: #78766F; --field-ph: #9A988F;
+    --text-primary: #F4F4F2; --text-secondary: #B9B7B0; --text-muted: #9A988F;
+    --accent-primary: #FF5A2D; --accent-soft: #3A1A10; --on-accent: #111111;
+    --brand: linear-gradient(90deg, #F4F4F2, #F4F4F2);
+    --status-idle: #9A988F; --status-running: #22C55E; --status-approval: #F59E0B; --status-approval-bg: #3A2E00; --on-approval: #1F1300;
     --status-success: #4ADE80; --status-danger: #F87171; --status-stopped: #F87171;
     --shadow-sm: none; --shadow-lg: 0 -6px 24px rgba(0,0,0,.5);
     --qr-bg: #FFFFFF;
-    --pj1-bg: #1B2B48; --pj1-fg: #A8C7FA; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #34245A; --pj3-fg: #D0BCFF;
+    --pj1-bg: #2A2824; --pj1-fg: #D9D5CC; --pj2-bg: #0F3D22; --pj2-fg: #81C995; --pj3-bg: #3A1E14; --pj3-fg: #FFB59C;
     --pj4-bg: #4A2C00; --pj4-fg: #FFB870; --pj5-bg: #4A1730; --pj5-fg: #FFB0CB; --pj6-bg: #003D3C; --pj6-fg: #80D5D2;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -52,7 +50,7 @@
   html { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg-canvas); }
   body { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: var(--app-h, 100%); overflow: hidden; contain: layout;
          margin: 0; background: var(--bg-canvas); color: var(--text-primary); overscroll-behavior: none; font-variant-numeric: tabular-nums;
-         font: calc(14.5px * var(--fz, 1))/1.52 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+         font: calc(14.5px * var(--fz, 1))/1.52 "Golos Ladeya", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   button:disabled { opacity: .5; cursor: default; }
   button:not(:disabled):active { transform: scale(.97); }
@@ -93,12 +91,14 @@
   body:not(.focus) #title .caret { display: none; }
   /* Шапка чата у человека (фокус-ссылка, роль без терминала): только название и ⋯ (владелец 21.11); остальное — в ⋯ */
   body.clean-top #subtitle, body.clean-top #helpBtn, body.clean-top #settingsBtn, body.clean-top #tabsBar,
-  body.clean-top:not(.tab-screen) #screenBtn, body.clean-top #focusExp:not(.soon) { display: none !important; }
+  body.clean-top:not(.tab-screen) #screenBtn, body.clean-top #focusExp:not(.soon) > :not([data-fdev]) { display: none !important; }   /* фокус: срок — в меню; «На другом устройстве» — видно (22.11) */
   body.clean-top #chatMoreBtn, body.clean-top.tab-screen #screenBtn { display: grid !important; }
-  .gmark { flex: none; display: inline-block; color: var(--text-primary); background: currentColor;   /* знак v2: цвет — из темы */
-           -webkit-mask: url(brand/gavrila-mark.svg) center / contain no-repeat; mask: url(brand/gavrila-mark.svg) center / contain no-repeat; }
-  .nmark { width: 9px; height: 22px; margin: 0 4px 0 2px; } .lmark { display: block; width: 20px; height: 54px; margin: 4px 0 8px; }
-  .tmark { display: none; width: 10px; height: 26px; margin: 0 2px 0 4px; } body:has(#title.brand-text) .tmark { display: block; }
+  .gmark { flex: none; display: inline-block; background: url(brand/ladeya-mark.svg) center / contain no-repeat; }   /* знак-арфа (26.11) */
+  :root[data-theme="dark"] .gmark { background-image: url(brand/ladeya-mark-dark.svg); }
+  .nmark, .tmark { background-image: url(brand/ladeya-mark-small.svg); }   /* 16–32 px — упрощённый: 5 толстых струн */
+  :root[data-theme="dark"] :is(.nmark, .tmark) { background-image: url(brand/ladeya-mark-small-dark.svg); }
+  .nmark { width: 18px; height: 24px; margin: 0 6px 0 2px; } .lmark { display: block; width: 46px; height: 62px; margin: 4px 0 8px; }
+  .tmark { display: none; width: 20px; height: 27px; margin: 0 6px 0 4px; } body:has(#title.brand-text) .tmark { display: block; }
   body.no-dup.has-nav:not(.side-mini) #top .tmark { visibility: hidden; }   /* на ПК знак — в панели, сверху не дублируем */
   .top h1 { margin: 0; font-size: calc(18px * var(--fz, 1)); font-weight: 600; letter-spacing: -.01em; line-height: 1.33; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -139,13 +139,24 @@
   /* Фокус на проект: шторка его сессий — по имени в шапке и «куда пишете»; срок входа — строкой под шапкой */
   body.focus.focus-proj #title .caret, body.focus.focus-proj #target .caret { display: inline-grid !important; }
   body.focus.focus-proj #menu [data-act=switch] { display: flex !important; }
+  /* Ссылка на сессию, а агент открыл из неё ещё окно (23.11): та же шторка чатов */
+  body.focus.focus-multi #title .caret, body.focus.focus-multi #target .caret { display: inline-grid !important; }
+  body.focus.focus-multi #menu [data-act=switch] { display: flex !important; }
   body.focus-empty #dock, body.focus-empty #tabsBar, body.focus-empty #mini { display: none !important; }
   /* Демо-ссылка: только просмотр и выбор вариантов — поля ввода, клавиш и опасных пунктов меню нет */
   body:not(.focus-demo) .demo-note { display: none; }
   body.focus-demo #input, body.focus-demo #plus, body.focus-demo #mic, body.focus-demo #send, body.focus-demo #hintBtn,
+  body.focus-demo #bugBtn, body.drafting #bugBtn, body.focus:not(.split) #bugBtn,   /* телефон по ссылке — жук в «⋯», имя не сжимаем */
   body.focus-demo #menuBtn, body.focus-demo #draftBar, body.focus-demo #attach, body.focus-demo #keys, body.focus-demo #menu button[data-owner],
   body.focus-demo #menu button:not([data-act^=say]):not([data-act=refresh]):not([data-act=switch]) { display: none !important; }
   body.focus-demo:not(.focus-proj) #menu [data-act=switch] { display: none !important; }
+  /* Сообщения команды в чате (teammsg.py): своя карточка — не ответ Claude и не ввод человека */
+  .tmsg { margin: 6px 0 14px; padding: 10px 12px; border-radius: var(--radius-md, 12px); border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-primary); background: var(--bg-subtle); }
+  .tmsg.k-fixed { border-left-color: var(--status-success); }
+  .tmsg .tm-h { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
+  .tmsg .tm-h b { color: var(--text-primary); font-weight: 600; } .tmsg .tm-h .when { margin-left: auto; }
+  .tmsg .tm-h svg { color: var(--accent-primary); } .tmsg.k-fixed .tm-h svg { color: var(--status-success); }
+  .tmsg .tm-b { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .demo-note { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; color: var(--text-secondary); font-size: calc(14px * var(--fz, 1)); }
   .demo-note svg { flex: none; color: var(--accent-primary); }
   .focus-exp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0 16px 8px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
@@ -221,6 +232,7 @@
   .sinfo b { color: var(--text-secondary); font-weight: 500; }
   .sinfo .warn, .ctx.warn { color: var(--status-approval); }
   .sinfo .ctx { margin-left: 0; padding-right: 0; }
+  .qlims { display: inline-flex; flex-wrap: wrap; gap: 0 6px; font-variant-numeric: tabular-nums; } .qlims i { font-style: normal; opacity: .6; } .ql.warn { color: var(--status-approval); }
   .ctx .bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
   .ctx.warn { color: var(--status-approval); } .ctx.warn .bar i { background: var(--status-approval); }
   .preview.twin { color: var(--status-danger); white-space: normal; display: flex; gap: 6px; align-items: flex-start; }
@@ -294,7 +306,7 @@
   .pcards { display: grid; gap: 10px; margin: 0 0 12px; } .pcard { display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%;
     padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer; }
   .pcard:hover { border-color: var(--accent-primary); } .pcard.on { border-color: var(--accent-primary); background: var(--accent-soft); }
-  .pcard .i { flex: none; width: 22px; height: 22px; color: var(--accent-primary); margin-top: 2px; }
+  .pcard .i { flex: none; width: 22px; height: 22px; color: var(--text-secondary); margin-top: 2px; }
   .pcard b { display: block; font-size: calc(16px * var(--fz, 1)); margin: 0 0 3px; } .pcard small { display: block; color: var(--text-muted); font-size: calc(13.5px * var(--fz, 1)); line-height: 1.4; }
   /* режим разработчика (таблица отладочного, согласована владельцем 20.11): без возможности «Экран терминала» нет
      вкладок «Переписка/Экран», кнопки >_, клавиш 1/2/3/Esc, «Команд» и кнопок «Выполнить» */
@@ -400,10 +412,11 @@
   @media (hover: hover) { .chat .me .mcopy, .chat .me .medit { opacity: 0; transition: opacity .15s ease; }
     .chat .me:hover .mcopy, .chat .me:focus-within .mcopy, .chat .me:hover .medit, .chat .me:focus-within .medit, .chat .me .mcopy.done { opacity: 1; }
     .mcopy:hover, .ccopy:hover { color: var(--text-primary); background: var(--bg-subtle); } }
-  .codebox { position: relative; margin: 8px 0; } .codebox > pre { margin: 0; padding-right: 44px; }
+  .codebox { position: relative; margin: 8px 0; } .codebox > pre, .md .codebox > pre { margin: 0; padding-top: 36px; } .md .codebox > blockquote { margin: 0; padding-top: 32px; } .codebox > blockquote > :first-child { margin-top: 0; }
+  .fgot { display: flex; align-items: center; gap: 6px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); } .fgot .i { flex: none; }
   .codebox .ccopy { position: absolute; top: 4px; right: 4px; height: 28px; border-radius: var(--radius-sm); background: var(--bg-surface);
                     box-shadow: 0 0 0 1px var(--border-subtle); color: var(--text-secondary); }
-  .log summary .ccopy { margin-left: auto; height: 26px; }
+  .log summary .ccopy { margin-left: auto; height: 26px; } @media (max-width: 600px) { .log summary .ccopy:not(.done) span { display: none; } }
   /* Голос: карточки. Нажатие на карточку — сразу выбрать (галочка), ▶ — послушать короткую фразу (кеш на сервере) */
   .vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 2px 0 8px; }
   .vcard { display: flex; align-items: center; gap: 2px; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); padding: 0 6px 0 0; }
@@ -515,6 +528,12 @@
   .ask .tip { margin: 8px 0 0; font-size: calc(12px * var(--fz, 1)); color: var(--text-secondary); }
   .ask button.opt b { color: var(--status-approval); min-width: 14px; font-variant-numeric: tabular-nums; }
   .ask button.opt:last-child { margin-bottom: 0; }
+  .s-ask .s-nudge { margin: 8px 0 0; font-weight: 600; }
+  .ask.nudge, .s-ask.nudge { animation: nudge .9s ease 2; box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-approval) 55%, transparent); }
+  .ask.nudge button.opt:not([data-esc]):not(.cc-esc) { border-color: var(--status-approval); }
+  .ask .tip#askTip { color: var(--text-primary); font-weight: 600; }
+  @keyframes nudge { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--status-approval) 30%, transparent); } }
+  @media (prefers-reduced-motion: reduce) { .ask.nudge, .s-ask.nudge { animation: none; } }
   .keys { display: grid; grid-template-columns: repeat(7, 1fr) 1.5fr; gap: 5px; margin: 0 0 8px; }
   .keys button { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 10px; min-height: 40px; padding: 0; font-weight: 600; font-size: calc(14px * var(--fz, 1)); transition: transform .08s; }
   .keys button:not(:disabled):active { transform: scale(.96); background: var(--bg-subtle); }
@@ -743,7 +762,10 @@
   .sheet .cancel { justify-content: center; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
   .toast { animation: fade .15s ease; max-width: min(560px, 100%);
            background: var(--text-primary); color: var(--bg-canvas); padding: 10px 14px; border-radius: var(--radius-md); font-size: calc(14px * var(--fz, 1)); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
-  .demo { background: var(--accent-soft); color: var(--accent-primary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
+  .demo { background: var(--bg-subtle); color: var(--text-secondary); font-size: calc(12px * var(--fz, 1)); text-align: center; padding: 5px 8px; }
+  /* демо смотрят инвесторы и клиенты: полоска закреплена сверху и не уезжает при прокрутке (штаб 22.11); шапка — под ней */
+  .demo { position: sticky; top: 0; z-index: 6; }
+  body.demo-on .top { top: var(--demo-h, 0px); }
   .brand { display: none; } .brand h1 { margin: 0; font-size: calc(20px * var(--fz, 1)); font-weight: 600; }
   .pick { text-align: center; color: var(--text-secondary); padding: 16vh 24px 0; } .pick .i { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--text-muted); }
   .pick h2 { color: var(--text-primary); font-size: calc(22px * var(--fz, 1)); font-weight: 600; margin: 0 0 6px; }
@@ -818,11 +840,11 @@
   /* Обзор UI 21.11 (В): в открытом чате на компьютере «Подсказать» — 0 нажатий из 4; в шапке — ⋯, подсказка — в нём */
   body.in-chat.split:not(.focus) #helpBtn { display: none; } body.in-chat.split:not(.focus) #chatMoreBtn { display: grid; }
   .hpill { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 32px; padding: 0 10px 0 7px; border: 1px solid var(--border-subtle);
-           border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--accent-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
+           border-radius: var(--radius-pill); background: var(--bg-surface); color: var(--text-primary); font-size: calc(13px * var(--fz, 1)); font-weight: 600; white-space: nowrap; }
   .hpill .i { width: 18px; height: 18px; }
   .sheet:not(.help) { position: relative; }
   .sheet .hpill.insheet { position: absolute; top: 10px; right: 12px; width: auto; min-height: 0; height: 30px; padding: 0 10px 0 7px; gap: 4px; font-size: calc(13px * var(--fz, 1)); z-index: 1; }
-  .sheet .hpill.insheet .i { color: var(--accent-primary); }
+  .sheet .hpill.insheet .i { color: var(--text-secondary); }
   .sheet.hp > h3:first-of-type, .sheet.hp > .sback + h3 { padding-right: 116px; }
   @media (max-width: 480px) { .top .hpill span { display: none; } .top .hpill { padding: 0 7px; } }   /* 20.11: название чата не обрезается */
   .help-bg { z-index: 35; }
@@ -902,7 +924,7 @@
   .s-top .s-row { display: flex; align-items: center; gap: 8px; min-height: 58px; }
   .s-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 6px 4px; text-align: left; border-radius: var(--radius-md); }
   .s-who:active { background: var(--bg-subtle); }
-  .s-who > .i { color: var(--accent-primary); }
+  .s-who > .i { color: var(--text-secondary); }
   .s-who .n { min-width: 0; display: flex; flex-direction: column; }
   .s-who b { font-size: calc(17px * var(--fz, 1)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .s-who small { color: var(--text-secondary); font-size: calc(13px * var(--fz, 1)); }
@@ -1050,6 +1072,7 @@
   @media (pointer: coarse) { .nav-sec.fold { min-height: 44px; } .nav-h .icon, .nav-sec .nav-add { min-width: 44px; min-height: 44px; } }
   .nav-foot { display: flex; align-items: center; gap: 10px; flex: none; min-height: 44px; margin: 4px 8px 8px; padding: 0 12px; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; }
   .nav-foot:hover { background: var(--bg-subtle); } .nav-foot svg { width: 18px; height: 18px; }
+  #navSpend { margin-bottom: 0; } #navSpend:not([hidden]) + #navSet { border-top: 0; margin-top: 0; }
   .nav-sec.has-add { display: flex; align-items: center; margin-right: 2px; } .nav-sec.has-add span { flex: 1; }
   .nav-add { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary);
              display: grid; place-items: center; cursor: pointer; flex: none; }
@@ -1135,7 +1158,7 @@
   <div class="net" id="net" hidden role="status"><span id="netIcon" style="flex:none"></span><span id="netText">Нет связи с сервером</span><button id="netRetry"></button></div>
 </div>
 <aside class="nav" id="nav" aria-label="Чаты" inert>
-  <div class="nav-h"><span class="gmark nmark" aria-hidden="true"></span><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Гаврила</button></h2>
+  <div class="nav-h"><span class="gmark nmark" aria-hidden="true"></span><h2 class="serif brand-text"><button type="button" id="navHome" class="nav-home" title="Главная: сессии и проекты">Ладэя</button></h2>
     <button class="icon" id="navSearchBtn" type="button" aria-label="Поиск (Ctrl+K)" title="Поиск (Ctrl+K)"></button>
     <button class="icon" id="navFoldBtn" type="button" aria-label="Свернуть всё" title="Свернуть всё"></button>
     <button class="icon" id="navMoreBtn" type="button" aria-label="Ещё: новая папка, из модуля, в фокусе" title="Ещё" aria-haspopup="menu" aria-expanded="false"></button>
@@ -1145,18 +1168,19 @@
   <button class="nav-new nav-row" id="navToday" type="button" hidden></button><button class="nav-new nav-row" id="navTasks" type="button" hidden></button><button class="nav-new nav-row" id="navMeet" type="button" hidden></button>
   <div class="nav-q" id="navQBox" hidden><input id="navQ" type="search" placeholder="Чаты, проекты, команды…" autocomplete="off" aria-label="Поиск по чатам, проектам и командам (Ctrl+K)"></div>
   <div class="nav-list" id="navList" role="list"></div>
+  <button class="nav-foot" id="navSpend" type="button" hidden></button>
   <button class="nav-foot" id="navSet" type="button"></button>
 </aside>
 <div class="nav-bg" id="navBg"></div>
 <nav class="rail" id="rail" data-tour="rail" aria-label="Свёрнутая панель чатов: проекты"></nav>
 <div id="scroller">
-<div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/" style="color:inherit" data-l="demo.signin">войти</a></div>
+<div class="demo" id="demoBar" hidden><span data-l="demo.bar">Демо-режим: панель на примерах, ваши действия никуда не уходят</span> · <a href="/?brand=botsmith" style="color:inherit" data-l="demo.signin">войти</a></div>
 <header class="top" id="top">
   <div class="spaces" id="spaces" hidden role="group" aria-label="Где вы сейчас"><button class="sp-mine on" type="button" data-space="mine" aria-pressed="true"></button><button class="sp-tasks" type="button" data-space="tasks" aria-label="Задачи"></button><button class="sp-brief" data-space="brief" hidden></button><button class="sp-desk" type="button" data-space="desk" hidden aria-label="Браузер агентов" title="Браузер агентов — входы и вкладки агентов"></button><button class="sp-desk sp-term" type="button" data-space="term" hidden aria-label="Терминал сервера" title="Терминал сервера"></button></div>
   <div class="toprow">
     <button class="icon" id="navBtn" hidden aria-label="Список чатов"></button>
     <button class="icon" id="backBtn" hidden aria-label="Назад"></button>
-    <span class="gmark tmark" aria-hidden="true"></span><div class="titles"><h1 class="serif" id="title">Гаврила</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
+    <span class="gmark tmark" aria-hidden="true"></span><div class="titles"><h1 class="serif" id="title">Ладэя</h1><div class="sub" id="subtitle"><span>загружаю…</span></div></div>
     <button class="icon" id="composeBtn" hidden aria-label="Новый чат" title="Новый чат"></button>
     <button class="icon" id="switchBtn" hidden aria-label="Другой чат"></button>
     <button class="icon" id="screenBtn" data-tour="screen" hidden aria-label="Экран терминала"></button>
@@ -1174,9 +1198,10 @@
     <div class="panel">
       <div class="scn-opts s-langsw" id="loginLang" role="group"></div>
       <span class="gmark lmark" aria-hidden="true"></span><h2 class="serif" style="margin:2px 0 6px;font-size:21px" data-l="login.title">Вход</h2>
-      <p class="note" style="margin:0 0 12px" data-l="login.note">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит владельца.</p>
+      <p class="note" style="margin:0 0 12px" data-l="login.note">Пароль не нужен: подтвердите вход в своём Telegram. Нет доступа — бот спросит администратора пространства.</p>
       <div id="loginStep1">
         <div class="result ok" id="inviteNote" hidden></div>
+        <div id="loginFocus" hidden></div>
         <button class="btn" id="tgLogin" data-l="login.tg">Войти через Telegram</button>
         <div id="tgWait" hidden></div>
         <button class="btn ghost" id="pkLogin" hidden data-l="login.passkey">Войти с Face ID / ключом</button>
@@ -1249,7 +1274,7 @@
   <section id="persona" hidden><div class="panel terms" id="personaBox"></div></section>
 
   <section id="home" hidden>
-    <div class="brand"><h1 class="serif brand-text">Гаврила</h1><div class="sub"><span id="brandSub"></span></div></div>
+    <div class="brand"><h1 class="serif brand-text">Ладэя</h1><div class="sub"><span id="brandSub"></span></div></div>
     <div class="seg" id="homeSeg" data-tour="home-tabs"><button data-v="projects" id="projSegBtn" hidden>Проекты</button><button data-v="sessions" class="on">Чаты</button><button data-v="commands" id="cmdsSeg" data-tour="commands">Команды</button><button data-v="integrations" data-member>Подключения</button></div>
     <div id="setupView" hidden></div>
     <div id="sessionsView"></div>
@@ -1293,6 +1318,7 @@
       <div class="dchips" id="draftBar" hidden></div>
       <div class="live" id="live"><i></i><span>обновляется</span></div>
       <button class="tool" id="hintBtn" hidden aria-label="Вставить подсказку Claude"></button>
+      <button class="tool" id="bugBtn" type="button" aria-label="Сообщить об ошибке" title="Сообщить об ошибке"></button>
       <button class="tool" id="mic" aria-label="Голосом: держите и говорите — текст появится в поле" title="Держите и говорите — текст появится в поле; коснитесь — запись до «Стоп»"></button>
       <button class="tool send" id="send" aria-label="Отправить" hidden></button>
     </div>
@@ -1317,8 +1343,10 @@
   </div></header>
   <div class="s-scroll" id="sScroll"><div class="s-col">
     <div class="s-tips" id="sTips" hidden></div>
+    <div id="sFirst" hidden></div>
     <div class="chat" id="sFeed"></div>
     <div class="act off" id="sAct" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div>
+    <div class="steplog" id="sLog" hidden></div>
     <div id="sAsk" aria-live="polite"></div>
   </div></div>
   <div class="s-dock"><div class="s-col">
@@ -1331,45 +1359,6 @@
   </div></div>
 </div>
 
-<!-- Короткий тур: шаги {target, screen, title, text}; target — data-tour="…" на экране (нет на экране — шаг пропускается),
-     screen — куда перейти перед шагом (home | session | integrations | any). Тексты — только здесь (docs/MINI_APP.md#тур). -->
-<script type="application/json" id="tourData">
-{
-  "business": {
-    "title": "для бизнеса",
-    "steps": [
-      {"target": "sessions", "screen": "home", "title": "Ваши агенты", "text": "Сколько агентов работает и ждёт вас; ниже — карточка на каждого. Зелёная точка — работает, жёлтая — ждёт вашего ответа, серая — свободен. Нажмите карточку — откроется переписка."},
-      {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — колонкой значков: цифра — сколько агентов работает, жёлтая точка — кто-то ждёт ответа. Нажмите значок — чаты проекта; развернуть панель — кнопкой сверху."},
-      {"target": "new", "screen": "home", "title": "Новый агент", "text": "«Новый чат» → «Из модуля» — готовый агент под задачу: правила и навыки уже настроены, нужно только имя папки."},
-      {"target": "try", "screen": "home", "title": "Примерить на себя", "text": "День с агентом в вашей роли и польза в цифрах — до того, как что-то создавать и платить."},
-      {"target": "cost", "screen": "home", "title": "Расход", "text": "Сколько стоила работа агентов сегодня. Нажмите — подробности по агентам и лимиты, чтобы не выйти за бюджет."},
-      {"target": "help", "screen": "any", "title": "? Подсказать", "text": "Есть на каждом экране: что здесь делать и куда перейти. Там же — «Показать тур по этому экрану»."},
-      {"target": "settings", "screen": "any", "title": "Настройки", "text": "Тема, страна, расход. Тур можно пройти снова: «Настройки» → «Пройти тур»."}
-    ]
-  },
-  "dev": {
-    "title": "для разработчика",
-    "steps": [
-      {"target": "home-tabs", "screen": "home", "title": "Сессии, команды, подключения", "text": "Три вкладки главной: окна Claude Code, команды из ответов и подключённые сервисы."},
-      {"target": "sessions", "screen": "home", "title": "Чаты", "text": "Сводка и карточки окон Claude Code в tmux на сервере: статус, модель, ветка, контекст и расход. Нажмите карточку — переписка."},
-      {"target": "rail", "screen": "home", "title": "Свёрнутая панель", "text": "Проекты — квадратами: цифра — активные чаты, точка — ждёт ответа или новое. Нажатие — чаты проекта; сверху — развернуть, новый чат, поиск."},
-      {"target": "new", "screen": "home", "title": "Новый чат", "text": "В папке проекта; «Новая папка» — пустой проект; «Из модуля» — агент с готовыми правилами и навыками."},
-      {"target": "cost", "screen": "home", "title": "Расход и лимиты", "text": "Токены и деньги за день. Лимит на чат и на день — «Настройки» → «Расход и лимиты»: дошли — сессия встанет на паузу."},
-      {"target": "commands", "screen": "home", "title": "Команды", "text": "Команды из ответов всех сессий. «Выполнить» запускает на сервере пульта; опасные — с подтверждением."},
-      {"target": "tabs", "screen": "session", "title": "Переписка и экран", "text": "«Переписка» — чат с Claude; «Экран» — терминал tmux как есть, с клавишами 1/2/3, Esc, Ctrl+C."},
-      {"target": "screen", "screen": "session", "title": "Экран терминала", "text": "Терминал tmux как есть: варианты ответа и клавиши 1/2/3, Esc, Ctrl+C."},
-      {"target": "status", "screen": "session", "title": "Строка статуса", "text": "Что агент делает сейчас и сколько. Нет реакции — «Проверить статус», дальше «Сообщить по готовности» и «Остановить»."},
-      {"target": "composer", "screen": "session", "title": "Сообщение", "text": "Уходит в окно этой сессии. Голос, фото и файлы — кнопками рядом."},
-      {"target": "menu", "screen": "session", "title": "Меню сессии", "text": "Слэш-команды, модель и усилия, озвучка, активная сессия для бота, другие сессии."},
-      {"target": "target", "screen": "session", "title": "Куда уйдёт", "text": "Имя сессии у поля ввода — чтобы не написать не туда. Нажмите, чтобы сменить сессию."},
-      {"target": "integrations", "screen": "integrations", "title": "Подключения", "text": "MCP-серверы и коннекторы: GitHub, Notion, Google и свои. У каждого человека — свои, в его папке Claude Code."},
-      {"target": "models", "screen": "integrations", "title": "Модели и ключи", "text": "Сессии не только на Claude: OpenRouter, GLM, DeepSeek. Ключи поставщиков и запасные — здесь."},
-      {"target": "help", "screen": "any", "title": "? Подсказать", "text": "На каждом экране: что делать и куда перейти. Там же — «Показать тур по этому экрану»."},
-      {"target": "settings", "screen": "any", "title": "Настройки", "text": "Тема, страна, расход и лимиты, люди. Тур — снова: «Настройки» → «Пройти тур»."}
-    ]
-  }
-}
-</script>
 <!-- Секреты в поле ввода: правила — копия secrets_guard.RULES (хук Claude Code); тест сверяет, что они те же. -->
 <script type="application/json" id="secretRules">
 [
@@ -1501,11 +1490,14 @@ function part(name) {
   return PARTS[name] = go(0).catch((e) => { delete PARTS[name]; throw e; });
 }
 if (DEMO) part("demo");                               // демо — сразу, параллельно с остальной загрузкой
+if (params.has("clipdiag")) part("clipdiag").then((m) => m.start());   // самопроверка буфера обмена (25.11)
 // Фокус (задача 41): ссылка «…/#focus=<токен>» — только чат одной сессии. Токен — после «#»: на сервер и в журналы он
 // не уходит; страница отдаёт его один раз (POST /api/focus/open) и убирает из адреса.
 const FOCUS_TOKEN = (/(?:^#|&)focus=([A-Za-z0-9_-]{24,64})/.exec(location.hash) || [])[1] || "";
 const FOCUS = !!FOCUS_TOKEN || params.has("focus");
 if (FOCUS_TOKEN) history.replaceState(null, "", location.pathname + (params.has("focus") ? location.search : (location.search ? location.search + "&" : "?") + "focus"));
+// экран «Домой» из фокуса: значок открывает фокус (/?focus), а не вход в пульт — манифест для фокуса (brand.manifest)
+if (FOCUS) document.querySelector('link[rel="manifest"]')?.setAttribute("href", "/manifest.webmanifest?focus");
 const SLINK = params.has("slink") && !FOCUS_TOKEN;  // ссылка на пространство (GAS-38): полная панель пространства, js/spacelink.js
 // Статусы: свободна — спокойный серый, работает — синий, ждёт ответа — янтарный (зелёный — только «готов результат»).
 const ST = { idle: { label: "свободна", cls: "s-idle" }, busy: { label: "работает", cls: "s-running" }, dialog: { label: "ждёт ответа", cls: "s-approval" },
@@ -1524,8 +1516,8 @@ const wideMQ = matchMedia("(min-width: 1024px)");
 const split = () => (!FOCUS || meta?.focus?.mode !== "demo") && wideMQ.matches && view !== "login";          // десктоп: список слева, сессия справа
 
 const $ = (id) => document.getElementById(id);
-const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Гаврила";   // brand.py — одно место
-const brandName = () => (typeof LANG !== "undefined" && LANG === "en" ? DICT?.["login.brand"] || "Gavrila" : BRAND);   // на английском — латиницей
+const BRAND = document.querySelector('meta[name="application-name"]')?.content || "Ладэя";   // brand.py — одно место
+const brandName = () => (typeof LANG !== "undefined" && LANG === "en" ? DICT?.["login.brand"] || "Ladeya" : BRAND);   // на английском — латиницей
 // Внешняя ссылка: в Telegram — его методом, в браузере — новой вкладкой (страница панели остаётся на месте).
 const openUrl = (url) => (tg?.initData ? tg.openLink(url) : window.open(url, "_blank", "noopener"));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -1555,6 +1547,7 @@ const P = {
   volfull: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/>',
   share: '<circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 15V6a2 2 0 0 1 2-2H15"/>',
+  paste: '<path d="M9 4.5H6.5a1.5 1.5 0 0 0-1.5 1.5v13a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H15"/><rect x="9" y="3" width="6" height="3" rx="1"/><path d="M9 12.5h6M9 16h4"/>',
   bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>', chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', refresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4.5v4.5h-4.5"/>',
   top: '<path d="M12 20V9M6.5 14.5L12 9l5.5 5.5M5 4.5h14"/>', power: '<path d="M12 3.5v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/>',
@@ -1579,7 +1572,7 @@ const P = {
   book: '<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M5 17.5a2 2 0 0 1 2-2h11"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>',
   code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>', server: '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.5M7.5 16.5h.5"/>',
   down: '<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>', up: '<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>', chevron: '<path d="M9 6l6 6-6 6"/>',
-  spark: '<path d="M12 2.5c.6 4.9 4.6 8.9 9.5 9.5-4.9.6-8.9 4.6-9.5 9.5-.6-4.9-4.6-8.9-9.5-9.5 4.9-.6 8.9-4.6 9.5-9.5z" fill="url(#gsp)" stroke="none"/><defs><linearGradient id="gsp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs>',
+  spark: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',   // лампа вместо звезды «ИИ» (владелец 25.11)
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/>',
   sideopen: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15M13.5 10l2 2-2 2"/>',
@@ -1593,11 +1586,13 @@ const P = {
   flask: '<path d="M9.5 3.5h5M10.5 3.5v6L5 18.5a1.5 1.5 0 0 0 1.3 2.2h11.4a1.5 1.5 0 0 0 1.3-2.2L13.5 9.5v-6"/><path d="M7.5 15h9"/>',
   rew15: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 3.8v3.5H8"/><text x="12.3" y="15.2" font-size="7.6" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">15</text>',
   fwd15: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 3.8v3.5H16"/><text x="11.7" y="15.2" font-size="7.6" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">15</text>',
+  bug: '<path d="M9 7.5V6.5a3 3 0 0 1 6 0v1"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M3.5 13.5H7M17 13.5h3.5M5 8.5l2.4 1.4M19 8.5l-2.4 1.4M5 19l2.5-1.7M19 19l-2.5-1.7"/>',
+  team: '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M15.5 5.8a3 3 0 0 1 0 5.4M17 14.5c1.9.6 3.1 2.1 3.5 4.5"/>',
 };
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`;
 function paintIcons() {
   $("hintBtn").innerHTML = ic("bulb"); $("backBtn").innerHTML = ic("back"); $("switchBtn").innerHTML = ic("swap"); $("settingsBtn").innerHTML = ic("settings");
-  $("menuBtn").innerHTML = ic("menu"); $("mcpChip").innerHTML = ic("puzzle"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send");
+  $("menuBtn").innerHTML = ic("menu"); $("mcpChip").innerHTML = ic("puzzle"); $("plus").innerHTML = ic("attach"); $("mic").innerHTML = ic("mic"); $("send").innerHTML = ic("send"); $("bugBtn").innerHTML = ic("bug");
   $("netIcon").innerHTML = ic("warn"); $("updateBar").insertAdjacentHTML("afterbegin", ic("refresh", "s16")); $("ptr").innerHTML = ic("refresh"); $("netRetry").innerHTML = ic("refresh", "s16") + "Переподключить";
   $("pickIcon").innerHTML = ic("chat"); $("toBottom").innerHTML = ic("down"); $("helpBtn").innerHTML = ic("help") + "<span>Подсказать</span>";
   $("newBtn").innerHTML = ic("compose") + "Новый чат";
@@ -1616,7 +1611,8 @@ function paintIcons() {
     + `<button data-act="sos" class="tester-only">${ic("bell")}Позвать на помощь</button>`      // тестировщик пространства
     + `<button data-act="mcp" class="focus-only">${ic("puzzle")}Подключено у поставщика</button>`   // фокус: только просмотр
     + `<button data-act="repos" class="focus-only">${ic("folder")}Репозитории</button>`
-    + `<button data-act="ease" class="focus-only">${ic("settings")}Удобства</button>`;          // фокус: имя, тема, шрифт (js/ease.js)        // фокус: репозитории сессии (задача 43)
+    + `<button data-act="ease" class="focus-only">${ic("settings")}Удобства</button>`          // фокус: имя, тема, шрифт (js/ease.js)
+    + `<button data-act="bug">${ic("bug")}Сообщить об ошибке</button>`;          // и на телефоне, где жука в строке нет
 }
 
 // ---------- тема ----------
@@ -1630,14 +1626,22 @@ function applyTheme() {
 // Копировать: navigator.clipboard, а где его нет или он отказал (старый iOS, WebView Telegram) — выделение текста
 // в скрытом поле и execCommand("copy"); не вышло и так — шторка с выделенным текстом, скопировать рукой.
 // quiet — без всплывашки: кнопка сама покажет «Скопировано» (copyBtn). → true, если текст в буфере.
+// text — строка или обещание строки (текст ещё едет с сервера): тогда запись в буфер начинается сразу, в нажатии
+// (ClipboardItem с обещанием — Safari иначе теряет «жест»), а текст подставляется, когда придёт (буфер, 25.11).
 async function copyText(text, what = "Скопировано", quiet = false) {
   const done = () => { if (!quiet) toast(what); return true; };
+  if (typeof text !== "string") {
+    const p = Promise.resolve(text).then((x) => String(x ?? ""));
+    try { await navigator.clipboard.write([new ClipboardItem({ "text/plain": p.then((x) => new Blob([x], { type: "text/plain" })) })]); return done(); } catch (e) {}
+    text = await p.catch(() => "");
+  }
   try { await navigator.clipboard.writeText(text); return done(); } catch (e) {}
-  const t = document.createElement("textarea");
-  t.value = text; t.readOnly = true; t.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
-  document.body.append(t); t.focus(); t.select(); t.setSelectionRange(0, text.length);
+  const t = document.createElement("span");          // iPhone: «только чтение» не выделяется — span с выделением Range
+  t.textContent = text; t.contentEditable = "true"; t.style.cssText = "position:fixed;top:0;left:0;opacity:0;white-space:pre;user-select:text;-webkit-user-select:text";
+  document.body.append(t);
+  const r = document.createRange(); r.selectNodeContents(t); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
   let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
-  t.remove();
+  sel.removeAllRanges(); t.remove();
   if (ok) return done();
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.copy");
   bg.innerHTML = `<div class="sheet" role="dialog"><h3>Скопируйте вручную</h3><div class="field"><textarea rows="8" readonly></textarea></div>
@@ -1651,9 +1655,9 @@ async function copyText(text, what = "Скопировано", quiet = false) {
 // morph сравнивал её как есть; блоки кода получают кнопку дообработкой новых узлов (codeCopy) — как ссылки (linkify).
 const copyLbl = () => LT("link.copy", "Копировать");
 const mCopyBtn = () => `<button type="button" class="mcopy" data-mcopy="1" aria-label="${esc(LT("copy.msg", "Копировать сообщение"))}" title="${esc(copyLbl())}">${ic("copy", "s16")}</button>`;
-const cCopyBtn = () => `<button type="button" class="ccopy" data-cpcode="1" aria-label="${esc(LT("copy.code", "Копировать код"))}" title="${esc(LT("copy.code", "Копировать код"))}">${ic("copy", "s16")}</button>`;
-function codeCopy(root) {                            // pre в разметке ответа → обёртка с кнопкой справа сверху
-  root.querySelectorAll(".md pre").forEach((pre) => {
+const cCopyBtn = () => `<button type="button" class="ccopy" data-cpcode="1" aria-label="${esc(LT("copy.code", "Копировать код"))}" title="${esc(LT("copy.code", "Копировать код"))}">${ic("copy", "s16")}<span>${esc(copyLbl())}</span></button>`;
+function codeCopy(root) {                            // pre и образец текста (цитата) в ответе → обёртка с «Копировать» справа сверху
+  root.querySelectorAll(".md pre, .md > blockquote").forEach((pre) => {
     if (pre.closest(".log, .codebox")) return;
     const w = document.createElement("div"); w.className = "codebox";
     pre.replaceWith(w); w.append(pre); w.insertAdjacentHTML("beforeend", cCopyBtn());
@@ -1678,7 +1682,7 @@ document.addEventListener("click", async (e) => {
   e.preventDefault();                                // кнопка в заголовке свёрнутого блока — не раскрывать его
   let text = "";
   if (b.dataset.mcopy) { const m = b.closest(".msg"); text = (m && msgText(m)) || ""; }
-  else text = (b.closest(".codebox, .log")?.querySelector("pre")?.textContent || "").replace(/\n$/, "");
+  else { const el = b.closest(".codebox, .log")?.querySelector("pre, blockquote"); text = el?.tagName === "PRE" ? el.textContent.replace(/\n$/, "") : (el?.innerText || "").trim(); }
   if (!text) return;
   if (await copyText(text, LT("copy.done", "Скопировано"), true)) { copiedFlash(b); haptic("notificationOccurred", "success"); }
 });
@@ -1851,7 +1855,7 @@ function renderRail() {
   const head = railTool("railOpen", "sideopen", "Развернуть панель чатов", ' aria-expanded="false"')
     + (rw ? railTool("railNew", "compose", "Новый чат") : "") + railTool("railSearch", "search", "Поиск (Ctrl+K)");
   const f = $("rail").contains(document.activeElement) ? document.activeElement : null;   // опрос перерисовал — фокус на месте
-  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
+  if (setHTML($("rail"), head + `<span class="rgap" title="Развернуть панель чатов"></span>` + (spendOn() ? railTool("railSpend", "coin", spendTip()) : "") + railTool("railSettings", "settings", "Настройки")) !== false && f?.id) $(f.id)?.focus();
 }
 function railProject(btn) {                           // чаты проекта — меню у значка, справа от полосы
   const p = projOf(btn.dataset.rp); if (!p) return;
@@ -1869,6 +1873,7 @@ $("rail").addEventListener("click", (e) => {
   if (t.id === "railNew") return newChat();
   if (t.id === "railSearch") return navSearch(true);
   if (t.id === "railSettings") return go("go:settings");
+  if (t.id === "railSpend") return spendOpen();
   if (t.dataset.rp) return railProject(t);
   if (t.dataset.id) openSession(t.dataset.id);
 });
@@ -1957,6 +1962,7 @@ function renderNav() {
   const allShut = !NAV.exp.size && [...$("navList").querySelectorAll("[data-nsec]")].every((b) => NAV.shut.has(b.dataset.nsec));
   $("navFoldBtn").setAttribute("aria-label", allShut ? "Развернуть всё" : "Свернуть всё"); $("navFoldBtn").title = allShut ? "Развернуть всё" : "Свернуть всё";
   $("navFoldBtn").classList.toggle("shut", allShut); $("navSet").hidden = $("settingsBtn").hidden;
+  $("navSpend").hidden = $("settingsBtn").hidden || !spendOn(); if (!$("navSpend").hidden) spendLabel();
   renderRail();
 }
 // Палитра команд (план UX, пункт 5): Ctrl+K / ⌘K — тот же поиск панели чатов (#149), только в выдаче, кроме чатов и
@@ -2017,6 +2023,18 @@ $("navFoldBtn").onclick = () => {                     // «Свернуть вс
   navSave();
 };
 $("navSet").onclick = () => { navOpen(false); $("settingsBtn").click(); };
+// Расход по ценам API (владелец 22.11: строки «💰 По ценам API» — не в чаты): строка над «Настройками» и значок
+// в свёрнутой панели — только владельцу. Сумма за сегодня — todayText() (одно число с главной); экран — js/spend.js.
+function spendOn() { return meta?.role === "owner" && !FOCUS && !SLINK; }
+function spendText() { return costInfo?.today ? todayText() : "Расход"; }   // «Сегодня $8.36 · оценка» — как чип на главной
+const spendTip = () => costInfo?.today ? "Расход: " + todayText() : "Расход";
+function spendLabel() {
+  $("navSpend").innerHTML = ic("coin") + `<span>${esc(spendText())}</span>`;
+  $("navSpend").title = "Расход за сегодня: " + COST_WHAT;
+  const r = $("railSpend"); if (r) r.title = r.ariaLabel = spendTip();
+}
+function spendOpen() { navOpen(false); part("spend").then((m) => m.open()); }
+$("navSpend").onclick = spendOpen;
 $("navHome").onclick = () => { navOpen(false); current = null; show("home"); setHome("sessions"); };
 $("composeBtn").onclick = () => newChat();
 // Проект: название и архив (GAS-24) — только projects.json; удаление папки отсюда не делаем (необратимо).
@@ -2109,6 +2127,7 @@ function navItems0(row) {
   const name = s.title || s.name;
   return [...(canPin(s) ? [{ label: s.pinned ? "Открепить" : "Закрепить", icon: "pin", on: !!s.pinned, run: () => pinSet({ w: s.id }, !s.pinned, name) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role === "owner" && !FOCUS && !s.space && (s.harness || "claude") === "claude" && projOn() ? [{ label: "Перенести в проект…", icon: "folder", sub: "переписка та же — чат продолжится в папке другого проекта", run: () => part("chatmove").then((m) => m.open(s)) }] : []),
     ...(meta?.role === "owner" && !s.space && !s.schedule ? [{ label: "Удалить", icon: "trash", danger: true, run: () => navDelete(s) }] : []),
     ...(meta?.role === "owner" && s.schedule && !s.space ? [{ label: "Удалить", icon: "trash", danger: true, sub: "расписание выключится, папка — в корзину", run: () => moduleDelete(s) }] : []),
     ...(s.space && meta?.role !== "viewer" ? [{ label: T("ss.del.item"), icon: "trash", danger: true, run: () => ssClose(s, (f) => ssDelete(s.space, f)) }] : []),
@@ -2251,6 +2270,8 @@ function newChat(pid) {
 const chatWith = (text, pid) => { newChat(pid); setTimeout(() => { $("input").value = text; grow(); $("input").focus(); }, 80); };
 const readyProfiles = () => (meta?.profiles || []).filter((x) => (!x.needs_key || x.key) && !x.not_ready && !x.no_balance && x.allowed !== false);
 // Первый разговор: бейджики-сценарии (GAS-37, js/starters.js) — в пустой сессии и новом чате
+// Фразы из последнего ответа — кнопками «Можно спросить:» (js/nextq.js): нажатие ставит фразу в поле, не отправляет
+const nextQ = (box, m) => { const s = box.querySelector(".nextq"); if (s && s.__t !== m?.text) part("nextq").then((x) => x.paint(s, m?.text || "")).catch(() => {}); };
 const starters = () => { if (!FOCUS_DEMO?.() && meta?.role !== "viewer") part("starters").then((m) => m.paint()).catch(() => {}); };
 // Новый чат (владелец 19.11: «новая сессия — это новый чат… просто поле для ввода текста и выбора настроек, как у
 // Claude»): строка настроек, подсказка модели, первая отправка — js/newchat.js
@@ -2293,7 +2314,9 @@ document.addEventListener("keydown", (e) => {
   setFont(d === 0 ? FONT.def : fontPx + d);
 });
 
+const UIMSG = [];                                     // последние сообщения интерфейса — в «Сообщить об ошибке»
 function toast(text, ms = 2600) {
+  UIMSG.push(new Date().toISOString().slice(11, 19) + " " + String(text).slice(0, 200)); UIMSG.splice(0, UIMSG.length - 10);
   document.querySelectorAll(".toast").forEach((t) => t.remove());
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
   notice(t); setTimeout(() => t.remove(), ms);
@@ -2307,7 +2330,9 @@ const CONFIRM_PATHS = new Set(["/api/run", "/api/run/term", "/api/tasks/run", "/
 const PWA = matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
 // Ошибки JS — в журнал событий сервера (GAS-31): тип, текст ошибки, файл:строка, экран; не чаще 10 в минуту
 let jsErrs = [];
+const ERRS = [];                                      // последние ошибки JS — в «Сообщить об ошибке» (без отправки)
 function logErr(kind, msg, at) {
+  ERRS.push(`${kind}: ${String(msg || "").slice(0, 200)} ${at || ""}`.trim()); ERRS.splice(0, ERRS.length - 10);
   const now = Date.now(); jsErrs = jsErrs.filter((t) => now - t < 60000); if (jsErrs.length >= 10 || DEMO) return; jsErrs.push(now);
   fetch("/api/clientlog", { method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": tg?.initData || "" },
     body: JSON.stringify({ kind, msg: String(msg || "").slice(0, 160), at, screen: (() => { try { return view; } catch (e) { return ""; } })() }) }).catch(() => {});
@@ -2328,11 +2353,13 @@ async function api(path, body, raw, extra, signal) {
   let r;
   try { r = await fetch(path, { method: body ? "POST" : "GET", headers, credentials: "same-origin", body: body ? (raw ? body : JSON.stringify(body)) : undefined, signal }); }
   catch (e) { if (signal?.aborted) throw e; throw Object.assign(new Error("нет связи с сервером"), { net: true }); }   // сеть, а не ошибка сервера
-  if ((FOCUS || SLINK) && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error); throw new Error(err.error || "Чат завершён"); }
+  if ((FOCUS || SLINK) && r.status === 410) { const err = await r.json().catch(() => ({})); focusEnd(err.error, err.why); throw new Error(err.error || "Чат завершён"); }
   if (r.status === 401 && !path.startsWith("/api/login")) { showLogin(); throw new Error("нужен вход"); }   // 403 — не хватает прав: просто ошибка
   lastOk = Date.now();                              // сервер ответил — связь есть, даже если ответ «ошибка»
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
+    // значок с экрана «Домой», поставленный до 22.11, открывает «/», а на устройстве — cookie фокуса: сразу в фокус
+    if (r.status === 403 && err.code === "focus_scope" && !FOCUS && !SLINK) { location.replace("/?focus"); return new Promise(() => {}); }
     if (r.status === 403 && err.code === "terms") showTerms();      // условия ещё не приняты (или обновились)
     if (r.status === 403 && err.code === "country") showCountry();  // страна ещё не выбрана
     if (r.status === 403 && err.confirm === "code") { await confirmCode(); return api(path, body, raw, extra, signal); }
@@ -2758,7 +2785,11 @@ function skelMsgs() {
 // ---------- разметка ответов (план UX, пункт 10) ----------
 // marked и DOMPurify (~60 КБ) больше не держат первый показ: грузятся после него (mdLoad), а до загрузки ответ виден
 // простым текстом с переносами строк. Пришли — лента и простой режим перерисовываются (точечно: меняются только ответы).
-const MD_LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js", "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"];
+// Точная версия и SRI (как driver.js и xterm.js): подменённый на CDN файл браузер не выполнит — ответы останутся текстом.
+const MD_LIBS = [["https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js",
+  "sha512-xeUh+KxNyTufZOje++oQHstlMQ8/rpyzPuM+gjMFYK3z5ILJGE7l2NvYL+XfliKURMpBIKKp1XoPN/qswlSMFA=="],
+  ["https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js",
+  "sha512-jB0TkTBeQC9ZSkBqDhdmfTv1qdfbWpGE72yJ/01Srq6hEzZIz2xkz1e57p9ai7IeHMwEG7HpzG6NdptChif5Pg=="]];
 const mdReady = () => !!(window.marked && window.DOMPurify);
 const MDC = new Map();                                 // готовый HTML ответов: лента не пересчитывает markdown (#258)
 function md(t) {
@@ -2768,8 +2799,8 @@ function md(t) {
 }
 const afterPaint = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 2500 }) : setTimeout(f, 400));
 function mdLoad() {
-  return mdLoad.p ||= Promise.all(MD_LIBS.map((src) => new Promise((ok, no) => {
-    const el = document.createElement("script"); el.src = src; el.async = false; el.onload = ok; el.onerror = no; document.head.append(el);
+  return mdLoad.p ||= Promise.all(MD_LIBS.map(([src, sri]) => new Promise((ok, no) => {
+    const el = document.createElement("script"); el.src = src; el.integrity = sri; el.crossOrigin = "anonymous"; el.async = false; el.onload = ok; el.onerror = no; document.head.append(el);
   }))).then(() => {
     if (view === "session" && tab === "chat" && hist.length) renderChat(false);
     if (SIM.on && SIM.hist.length) sRender();
@@ -2778,7 +2809,13 @@ function mdLoad() {
 function setSub(html) { setHTML($("subtitle"), html); }
 
 // ---------- вход ----------
-function showLogin() { simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck(); }
+function showLogin() {
+  simpleHide(); show("login"); paintLoginLang(); loginMethods(); oidcReturn(); inviteCheck();
+  part("loginlook").then((m) => m.init()).catch(() => {});   // вид входа «Ладэя» (25.11) — своя часть
+  let fm = null; try { fm = localStorage.getItem("gp.focus"); } catch (e) { /* приватный режим */ }
+  if (fm) part("focusdev").then((m) => m.loginNote($("loginFocus"))).catch(() => {});   // открывали фокус-ссылку: вход не нужен
+  if (DEMO && params.get("tgwait")) part("tglogin").then((m) => m.demoState(params.get("tgwait")));   // снимки состояний ожидания
+}
 // Приглашение (/invite/<код> → /?invite=<код>): пометка над «Войти через Telegram»; после входа доступ — сразу.
 // Лёгкий вход (задача 34): если на пульте есть демо-пространства (guest) — сразу экран «Как вас зовут?» → панель,
 // без Telegram; ссылка для входа на другое устройство (kind=device) — одна кнопка «Войти», имя не спрашиваем.
@@ -2871,27 +2908,8 @@ const showCountry = (change) => part("country").then((m) => m.open(change));
 $("getCode").onclick = (e) => requestCode(e.target);
 $("tryDemo").onclick = () => { location.href = "/?demo"; };
 // Вход «через Telegram»: ссылка на бота → человек жмёт «Start» и «Войти» у себя → браузер сам замечает и входит.
-let tgTimer = null;
-$("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Готовлю вход…"), async () => {
-  try {
-    const d = await api("/api/login/tg", INVITE ? { invite: INVITE } : {});
-    tg?.initData ? tg.openTelegramLink(d.link) : window.open(d.link, "_blank");   // в браузере — новой вкладкой, не уходя со страницы
-    $("tgWait").hidden = false;
-    $("tgWait").innerHTML = `<div class="result wait">${ic("wait")}<span>${esc(LL("login.wait", "В Telegram нажмите «Запустить» (Start), затем «Войти». Жду подтверждения…"))}</span></div>
-      <p class="note" style="margin:6px 2px">${esc(LL("login.wait.note", "Не открылся Telegram или нет кнопки? Внизу чата с ботом нажмите «Запустить» (Start) — даже если бот уже запущен."))}</p>
-      <a class="btn ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${ic("ext")}${esc(LL("login.again", "Открыть Telegram ещё раз"))}</a>`;
-    clearInterval(tgTimer); const t0 = Date.now();
-    tgTimer = setInterval(async () => {
-      if (Date.now() - t0 > d.ttl * 1000) { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(LL("login.expired", "Ссылка устарела — нажмите «Войти через Telegram» ещё раз."))}</span></div>`; return; }
-      try {
-        const r = await api("/api/login/tg?id=" + encodeURIComponent(d.id));
-        if (r.state === "ok") { clearInterval(tgTimer); $("tgWait").hidden = true; haptic("notificationOccurred", "success"); await start(); }
-        else if (r.state === "2fa") { clearInterval(tgTimer); $("tgWait").hidden = true; askSecond(r); }
-        else if (r.state !== "wait") { clearInterval(tgTimer); $("tgWait").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(r.state === "no" ? LL("login.rejected", "Вход отклонён в Telegram.") : LL("login.restart", "Ссылка устарела — начните заново."))}</span></div>`; }
-      } catch (err) { /* сеть моргнула — следующая попытка через 2 с */ }
-    }, 2000);
-  } catch (err) { $("loginResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; }
-});
+// Вход «через Telegram» — js/tglogin.js: ожидание, «Telegram не ответил» через минуту, запасные пути, «Время вышло».
+$("tgLogin").onclick = (e) => busy(e.currentTarget, LL("login.preparing", "Готовлю вход…"), () => part("tglogin").then((m) => m.start()));
 $("resend").onclick = (e) => requestCode(e.target);
 async function requestCode(btn) {
   await busy(btn, "Отправляю…", async () => {
@@ -3056,20 +3074,20 @@ const loud = (s) => s?.status === "busy" || s?.status === "dialog";
 const ctxWarn = (s) => (ctxUsed(s) ?? 0) > 85 ? `<span class="ctx warn" title="Разговор почти заполнил память — Claude сожмёт его сам">Контекст: ${ctxUsed(s)}%</span>` : "";
 const chatDetails = (id) => part("details").then((m) => m.open(id));   // «Подробнее» — разработчику (js/details.js)
 const ctxUsed = (s) => s.context == null ? null : 100 - s.context;       // сервер отдаёт «свободно %»
-// Под полем ввода — на чём работает сессия: модель, усилие, контекст (строка статуса Claude Code, ctxsnap.py) и
-// лимиты подписки с временем сброса. Нет данных — строки нет (участник, демо без снимка).
+// Под полем ввода: контекст и лимиты (ctxsnap.py); нет данных — строки нет.
 const EFFORT_RU = { auto: "авто", low: "низкие", medium: "средние", high: "высокие", xhigh: "очень высокие", max: "максимум" };
 function resetAt(ts) {                               // «до вс 00:30» / «до 14:30» — когда лимит обнулится
   if (!ts) return "";
   const d = new Date(ts * 1000), today = new Date().toDateString() === d.toDateString();
   return (LANG === "en" ? " until " : " до ") + d.toLocaleString(LANG === "en" ? "en-GB" : "ru-RU", today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
-// Обзор UI 21.11 (А): вместо шифра «5 ч 21% ↻вс 00:30 · неделя 91% ↻пн 21:30» — «Лимит: 21% до вс 00:30»;
-// недельный — только когда больше 80 %.
-function limitsLine(L) {
-  const x = L?.limits; if (!x) return "";
-  const one = (k, name) => `<span class="${x[k].used >= 80 ? "warn" : ""}" title="Лимит подписки ${name}: сколько использовано и когда обнулится">${name === "на неделю" ? "Лимит на неделю" : "Лимит"}: ${x[k].used}%${resetAt(x[k].resets_at)}</span>`;
-  return (x.five_hour ? one("five_hour", "на 5 часов") : "") + (x.seven_day?.used > 80 ? one("seven_day", "на неделю") : "");
+// Владелец 25.11: 5 ч, неделя, контекст — одной серой строкой, сброс — в подсказке
+function quietLimits(s) {
+  if (meta?.role !== "owner" || !dev("dev_cost_tokens")) return ctxWarn(s);
+  const x = limitsInfo?.limits || {}, c = ctxUsed(s), q = (n, v, t) => v == null ? "" : `<span class="ql${v >= 85 ? " warn" : ""}" tabindex="0" title="${t}">${n} ${v} %</span>`;
+  const one = (k, n, t) => q(n, x[k]?.used, t + esc(resetAt(x[k]?.resets_at)).replace(/^ (до|until) /, ", сброс "));
+  const h = [...(s.harness && s.harness !== "claude" ? [] : [one("five_hour", "5 ч", "Лимит за 5 часов"), one("seven_day", "неделя", "Лимит за неделю")]), q("контекст", c, "Память разговора")].filter(Boolean);
+  return h.length ? `<span class="qlims">${h.join("<i>·</i>")}</span>` : "";
 }
 function usageLine(u) {                                // как у Pi: ↑ ввод, ↓ вывод, $; tok() — из раздела «расход»
   if (!u) return "";
@@ -3080,9 +3098,7 @@ function usageLine(u) {                                // как у Pi: ↑ вв
 function sinfo(s) {
   // окно другого агента (Pi): модель «поставщик/модель», контекст, ↑↓ токены и $ за сессию — из его журнала; лимиты
   // подписки Claude (5 ч, неделя) к нему не относятся — не показываем
-  const other = s?.harness && s.harness !== "claude";
-  const lim = !other && meta?.role === "owner" && dev("dev_cost_tokens") && Object.values(limitsInfo?.limits || {}).some((x) => x?.used >= 80);   // близко к пределу; у пользователя — в «Подробнее»
-  const html = s ? [ctxWarn(s), lim ? limitsLine(limitsInfo) : ""].filter(Boolean).join("") : "";   // остальное — «Подробнее»
+  const html = s ? quietLimits(s) : "";
   setHidden($("sinfo"), !html); setHTML($("sinfo"), html);
 }
 // ---------- «изменена N назад» (ago.py — те же правила и словари ago.*; тест сверяет обе реализации) ----------
@@ -3569,7 +3585,14 @@ const usd = (x) => x == null ? "цена неизвестна" : "$" + (x >= 100
 const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n || 0);
 // откуда цена (usage.py, задача 51): прайс Anthropic, счёт OpenRouter или оценка по тарифу Z.ai / DeepSeek
 const costSrc = (c) => ({ estimate: "оценка: токены × цены поставщика (Z.ai, DeepSeek)", provider: "по счёту OpenRouter", anthropic: "по ценам API Anthropic" })[c?.cost_source] || "по ценам API";
-const estTag = (c) => c?.cost_source === "estimate" ? " · оценка" : "";
+// «оценка» — сумму считаем мы (токены × прайс: Anthropic — с подпиской это не счёт; Z.ai, DeepSeek), а не счёт
+// OpenRouter; c.estimate — с 22.11, у старого сервера — по cost_source
+const estTag = (c) => c && (c.estimate ?? (!!c.cost_source && c.cost_source !== "provider")) ? " · оценка" : "";
+// Расход за сегодня — одно число везде (владелец 22.11: было «$28.70» в меню и «$8.36» на главной): меню и свёрнутая
+// панель, главная, лист «Расход», экран «Расход по ценам API». Источник один — d.cost.today (usage.py Meter.day: все
+// чаты Claude Code на учётке, с 00:00 по времени сервера, без задержки); почасовая сводка spend.py отстаёт до часа.
+const COST_WHAT = "все чаты Claude Code на вашей учётке с 00:00 по времени сервера; модели Claude — по прайсу API (с подпиской это оценка, а не счёт)";
+function todayText(c = costInfo?.today) { return c ? `Сегодня ${c.usd == null ? "цена ?" : usd(c.usd)}${estTag(c)}` : ""; }
 const tokLine = (c) => `ввод ${tok(c.tokens.in)} · вывод ${tok(c.tokens.out)} · кэш: запись ${tok(c.tokens.cw)}, чтение ${tok(c.tokens.cr)}`;
 // расход на карточке — только когда близко к лимиту сессии (≥ 80 %); иначе — «Подробнее» (20.11)
 const costNear = (s) => !!(s.cost?.limit && s.cost.usd != null && s.cost.usd >= s.cost.limit * 0.8);
@@ -3588,7 +3611,14 @@ function costBar(s) {
   return `<div class="costbar" data-costbar>${ic("pause", "s16")}<div class="t"><b>На паузе по расходу</b>${what ? ": " + what : ""}.${ask}
     ${own ? `<div class="acts"><button class="btn sm" data-cost-go="${esc(s.id)}">${ic("play", "s16")}Продолжить, +лимит</button>${p.state !== "stopped" ? `<button class="btn quiet sm" data-cost-stop="${esc(s.id)}">Остановить</button>` : ""}</div>` : ""}</div></div>`;
 }
-function costSummary() {
+// Неделя подписки рядом с расходом за сегодня (владелец 24.11: «а то мы невидимы»): ctxsnap.week — уровень и темп
+function weekChip() {
+  const w = limitsInfo?.week; if (!w || meta?.role !== "owner") return "";
+  const at = (t) => resetAt(t).replace(/^ (до|until) /, ""), tail = w.out_at ? ` · кончится ≈ ${at(w.out_at)}` : w.proj != null ? ` · к сбросу ≈ ${w.proj}%` : "";
+  return `<span class="chip${w.used >= 85 ? " bad" : ""}" title="Лимит подписки Claude на неделю и прогноз при нынешнем темпе">Неделя <b>${w.used}%</b> · сброс ${esc(at(w.resets_at))}${esc(tail)}</span>`;
+}
+function costSummary() { return weekChip() + costSum(); }
+function costSum() {
   const c = costInfo;
   if (c?.budget) {                                    // пространство: запас на период (задача 35)
     const b = c.budget;
@@ -3596,7 +3626,7 @@ function costSummary() {
   }
   if (!c?.today) return "";
   const lim = c.limits?.day, over = lim && c.today.usd != null && c.today.usd >= lim * 0.8;
-  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="Расход за сегодня по вашей учётке, ${esc(costSrc(c.today))}">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}${estTag(c.today)}</button>`;
+  return `<button class="chip cost${over ? " warn" : ""}" data-cost-sum data-tour="cost" title="${esc("Расход за сегодня: " + COST_WHAT)}">${ic("coin")}Сегодня <b>${c.today.usd == null ? "цена ?" : usd(c.today.usd)}</b>${lim ? " из $" + lim : ""}${estTag(c.today)}</button>`;
 }
 async function costDecide(id, act, btn) {
   await busy(btn, act === "go" ? "Продолжаю…" : "…", async () => {
@@ -3617,7 +3647,7 @@ function costSheet() {
   helpSheet("settings.cost");
   sheet("Расход", [
     ...(c.budget ? [{ info: true, icon: "coin", label: c.budget.text, sub: T("bud.sub", { r: usd(c.budget.reserve), d: c.budget.period_days }) }] : []),
-    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)}${estTag(c.today)} · ${tok(c.today.total)} токенов`, sub: tokLine(c.today) + (c.today.pending ? ` · ${c.today.pending} отв. ждут счёта OpenRouter` : c.today.unknown ? " · часть ответов — модели без цены" : "") },
+    { info: true, icon: "coin", label: `Сегодня: ${c.today.usd == null ? "цена неизвестна" : usd(c.today.usd)}${estTag(c.today)} · ${tok(c.today.total)} токенов`, sub: COST_WHAT + ". " + tokLine(c.today) + (c.today.pending ? ` · ${c.today.pending} отв. ждут счёта OpenRouter` : c.today.unknown ? " · часть ответов — модели без цены" : "") },
     ...(own ? [{ info: true, icon: "pause", label: `Лимит на чат: ${lim.session ? "$" + lim.session : "выключен"}`, sub: "превысила — пауза и вопрос вам в боте и здесь" },
                { info: true, icon: "wait", label: `Лимит на день: ${lim.day ? "$" + lim.day : "выключен"}`, sub: "по вашей учётке за сегодня (местное время сервера)" },
                { label: "Изменить лимиты", icon: "edit", run: limitsForm }] : []),
@@ -3660,6 +3690,7 @@ async function refresh() {
     sessions = d.sessions.filter((x) => !NAV.gone.has(x.id)).map(named); costInfo = d.cost || null; limitsInfo = d.limits || null;
     if (d.tasks && JSON.stringify(d.tasks) !== JSON.stringify(tasksInfo)) { tasksInfo = d.tasks; tasksTop(); if (!$("spaces").hidden) tasksCount(); } agoSkew = d.now ? d.now - Date.now() / 1000 : 0;
     watchSessions(sessions); fallbackNotices(d.fallback || []);
+    if (FOCUS) focusNew();                             // ссылка: агент открыл ещё чат — шторка чатов и подсказка
     checkBuild(d);
     if (view === "session" && cur()?.rev) store(seenKey(cur()), cur().rev);   // вы в сессии — значит, видели
     attnBadge();
@@ -3701,7 +3732,7 @@ async function refresh() {
 function paintTools(s) {                              // строка поля: режим (модель) и интеграции чата (Gemini №2)
   // человеку — режим (Gemini №7: усилие → «Быстро / Обычно / Глубоко»), разработчику и другим агентам — модель
   const k = s?.effort === "low" ? 0 : /^(high|xhigh|max)$/.test(s?.effort || "") ? 2 : 1, mode = !dev() && (s?.harness || "claude") === "claude";
-  const m = mode ? ["Быстро", "Обычно", "Глубоко"][k] : String(s?.model || "").replace(/^claude-?/i, "").trim() || "Модель";
+  const m = mode ? ["Быстро", "Обычно", "Глубоко"][k] : String(s?.model || "").replace(/^claude-?/i, "").trim() || "Авто";   // 24.11: не пустое «Модель»
   setHTML($("modeChip"), ic(mode ? ["bolt", "chat", "spark"][k] : "chip", "s16") + `<span>${esc(m)}</span>` + ic("chev", "s16"));
   const mcpOk = ["owner", "admin"].includes(meta?.role) && !s?.space && (s?.harness || "claude") === "claude";
   setHidden($("mcpChip"), !mcpOk); setHidden($("modeChip"), !s || meta?.role === "viewer");
@@ -3896,7 +3927,7 @@ async function chatView(sid) {                         // переписка з�
     const list = bg.querySelector(".chatv-list");
     list.__items = d.items;                            // для «Копировать» — исходный текст по номеру (data-n)
     list.innerHTML = (d.more ? '<div class="note">Показаны последние сообщения.</div>' : "") + (d.items.length ? d.items.map((m, n) => m.role === "user"
-      ? `<div class="msg me" data-n="${n}"><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`
+      ? `<div class="msg me" data-n="${n}"><div class="bubble">${fileTxt(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`
       : m.human ? `<div class="msg ai"><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`
       : `<div class="msg ai" data-n="${n}"><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("") : '<div class="empty">Сообщений нет.</div>');
     list.querySelectorAll(".bubble").forEach(linkify);   // ссылки — и в завершённом чате
@@ -4109,18 +4140,22 @@ function sessionSheet(id) {
   helpSheet("sheet.session");
   sheet(dn(s), shortMenu([
     ...(!FOCUS ? [{ label: "Подсказать", icon: "help", run: () => $("helpBtn").click() }] : []),   // в шапке чата «?» нет (Gemini №3, обзор UI 21.11)
+    { label: "Тур по экрану", icon: "spark", sub: "что есть на этом экране — по шагам", run: () => FOCUS ? part("focustour").then((m) => m.start()) : startTour(tourKind(), true) },
+    ...(!FOCUS_DEMO() ? [{ label: "Сообщить об ошибке", icon: "bug", sub: "команда получит задачу и снимок экрана", run: () => part("bugreport").then((m) => m.open(id)) }] : []),   // и в «⋯» — рядом с туром (владелец 23.11: все функции видны)
     ...(cleanTop() && dev() && tab === "chat" ? [{ label: "Экран терминала", icon: "term", run: () => setTab("screen") }] : []),
-    ...(cleanTop() && FOCUS_PROJ() ? [{ label: `Чаты проекта «${meta.focus.name}»`, icon: "folder", run: () => focusProjSheet() }] : []),
+    ...(cleanTop() && (FOCUS_PROJ() || FOCUS_MULTI()) ? [{ label: FOCUS_PROJ() ? `Чаты проекта «${meta.focus.name}»` : "Чаты по ссылке", icon: "folder", run: () => focusProjSheet() }] : []),
     ...(cleanTop() && FOCUS && meta?.focus?.exp ? [{ label: (FOCUS_DEMO() ? "Демо до " : "Вход по ссылке — до ") + new Date(meta.focus.exp * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), icon: "lock", run: () => {} }] : []),
     ...(dev() ? [{ label: "Показать подробности", icon: "eye", sub: "модель, папка, контекст, расход, экран", run: () => chatDetails(id) }] : []),
-    ...(dev() && meta?.role !== "viewer" && !FOCUS ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
+    ...(dev() && meta?.role !== "viewer" && !FOCUS_DEMO() ? [{ label: "Команды Claude", icon: "bolt", sub: "/compact, /clear, /status …", run: () => ACTIONS.commands() }] : []),   // из «4 квадратов» (Gemini №2)
     ...(!FOCUS && (s.harness || "claude") === "claude" ? [{ label: "Шаги", icon: "tasks", sub: "что делал агент: сообщение → инструменты → ответ", run: () => part("steps").then((m) => m.open(s)) }] : []),
     ...(["owner", "admin"].includes(meta?.role) && !FOCUS && !s.space && (s.harness || "claude") === "claude" ? [{ label: "Интеграции чата", icon: "puzzle", sub: s.mcp_off?.length ? "выключено: " + s.mcp_off.length : "все включены", run: () => part("newchat").then((m) => m.chatMcp(s)) }] : []),
     ...(s.space && meta?.role === "owner" ? [{ label: "Подключиться", sub: "читать и писать в сессию тестировщика; он увидит «Владелец подключился»", icon: "flask", run: () => spaceConnect(id) }] : []),
-    ...(s.space || !dev() ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
+    ...(s.space || !dev() || FOCUS ? [] : [{ label: "Сделать активной", sub: "ответы в чате бота будут от этого чата", icon: "place", run: () => api("/api/active", { w: id }).then(() => { toast("Теперь активная: " + s.name); refresh(); }) }]),
     ...(meta?.role === "owner" && !FOCUS && s.notify ? [{ label: "Уведомления: " + NOTIFY_T[s.notify], sub: s.notify_own ? "своя настройка этого чата" : "как в настройках бота", icon: "bell", run: () => notifySheet(s) }] : []),
     ...(meta?.role !== "viewer" && !FOCUS && !s.space ? [pinItem(s, { w: id }, s.title || s.name)] : []),
-    ...(meta?.role !== "viewer" && !FOCUS ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role !== "viewer" && !FOCUS_DEMO() ? [{ label: "Переименовать", icon: "edit", run: () => renameSession(s) }] : []),
+    ...(meta?.role === "owner" && !FOCUS && !s.space && (s.harness || "claude") === "claude" && projOn() ? [{ label: "Перенести в проект…", icon: "folder", sub: "переписка та же — чат продолжится в папке другого проекта", run: () => part("chatmove").then((m) => m.open(s)) }] : []),
+    ...(FOCUS && !FOCUS_DEMO() ? [{ label: "Открыть на другом устройстве", icon: "qr", sub: "компьютер или планшет — QR и ссылка на 15 минут", run: focusDev }] : []),
     ...(FOCUS && meta?.focus?.browser ? [{ label: "Подключить браузер", icon: "monitor", sub: "пульт будет работать в Chrome/Edge на вашем компьютере", run: () => part("bridge").then(() => bridgeSheet()) }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Создать фокус-ссылку", icon: "qr", sub: "только этот чат на другом устройстве — ссылка и QR, без входа в пульт", run: () => focusLink(id) }] : []),
     ...(canRepos(s) && dev() ? [{ label: "Подключить репозитории", icon: "folder", sub: s.repos?.length ? "подключено: " + s.repos.map((r) => r.name).join(", ") : "подключить репозиторий GitHub к этому чату — без перезапуска", run: () => repoSheet(id) }] : []),
@@ -4239,7 +4274,7 @@ async function loadContent() {
     if (tab === "chat") {
       const grew = !hist.length || h.items.at(-1)?.i !== hist.at(-1)?.i || h.items.at(-1)?.text.length !== hist.at(-1)?.text.length;
       const opened = !hist.length || $("content").className !== "chat" || journalOf(histRev) !== journalOf(h.rev);
-      histRev = h.rev || ""; markFresh();
+      histRev = h.rev || ""; markFresh(); setTeam(h.team);
       if (opened) { hist = h.items; histMore = h.more; renderChat(true); }   // открыли (или вернулись с «Экрана») — с конца
       else if (grew) mergeChat(h);   // переписка уже на экране: дорисовать, ранние сообщения и место чтения — не трогать
     } else renderTerm(scr.lines);
@@ -4263,6 +4298,7 @@ async function liveChat() {                         // каждые 3 с: мен
   try {
     const h = await api(`/api/history?w=${encodeURIComponent(current)}&rev=${encodeURIComponent(histRev)}`);
     markFresh();
+    if (setTeam(h.team) && h.same) { const at = atEnd(220); renderChat(false); if (at) stickBottom(); }
     if (h.same) return;
     if (journalOf(histRev) !== journalOf(h.rev)) { histRev = h.rev || ""; hist = h.items; histMore = h.more; return renderChat(true); }
     histRev = h.rev || "";
@@ -4273,6 +4309,18 @@ async function liveChat() {                         // каждые 3 с: мен
 // сменило журнал: /clear, /resume, или раньше панель брала «последний журнал папки»). Склеивать два разговора по
 // номерам сообщений нельзя — переписка заново, с конца.
 const journalOf = (rev) => String(rev || "").split("-")[0];
+// Сообщения команды (teammsg.py): поле team ответа /api/history — карточкой «Команда …» в ленте по времени
+let team = [], teamW = "";
+function setTeam(xs, w = current) {                 // → поменялось ли
+  const a = (xs || []).map((t) => t.id).join(), b = teamW === w ? team.map((t) => t.id).join() : "";
+  team = [...(xs || [])]; teamW = w; return a !== b;
+}
+function teamAdd(t) {                                // свой отчёт об ошибке: «Приняли» — сразу, не ждём опроса
+  if (!t || team.some((x) => x.id === t.id)) return;
+  setTeam([...(teamW === current ? team : []), t]); if (tab === "chat" && view === "session") { renderChat(false); stickBottom(); }
+}
+const teamName = () => (LANG === "en" ? brandName() + " team" : BRAND === "Ладэя" ? "Команда Ладэи" : "Команда " + BRAND);
+const teamCard = (t) => `<div class="tmsg k-${esc(t.kind)}" data-key="t:${esc(t.id)}" role="note"><div class="tm-h">${ic("team", "s16")}<b>${esc(teamName())}</b><span class="when">${esc(localTs(t.ts))}</span></div><div class="tm-b">${esc(t.text)}</div></div>`;
 function mergeChat(h) {   // свежий хвост переписки — к тому, что уже на экране; читатель остаётся на своём месте
   const atBottom = atEnd(220), first = h.items[0]?.i ?? Infinity;
   // якорь — сообщение, которое сейчас читают (первое видимое), и его отступ от верха экрана; после перерисовки — туда же
@@ -4406,10 +4454,20 @@ function logBlock(key, label, text, hint) {
   if (!dev()) { label = { Терминал: "Технический текст", Код: "Подробный вывод" }[label] || label; hint = ""; }   // без сырого начала
   return `<details class="log" data-log="${key}"${openLogs.has(key) ? " open" : ""}><summary>${ic("chevron", "s16")}<b>${label}</b><em>${n} ${plural(n, ["строка", "строки", "строк"])}${hint ? " · " + esc(hint) : ""}</em>${cCopyBtn()}</summary><pre>${esc(text)}</pre></details>`;
 }
+// Файл в сообщении (отзыв 22.11): строки «Файл из панели/Telegram: путь» —
+// «Снимок получен: имя» / «Файл получен: имя» (путь — в data-path для миниатюр js/media.js); «Посмотри файл.» не пишем.
+const FILE_RE = /^Файл из (?:панели|Telegram): (.+)$/gm, PIC_RE = /\.(jpe?g|png|webp|gif|heic|heif|bmp|tiff?|avif)$/i;
+function fileTxt(t) {
+  const ps = [...t.matchAll(FILE_RE)].map((x) => x[1].trim()), up = t.includes("(файл загружается…)");
+  if (!ps.length && !up) return esc(t);
+  let body = t.replace(FILE_RE, "").replace("(файл загружается…)", "").trim(); if (body === "Посмотри файл.") body = "";
+  return esc(body) + (ps.length ? ps.map((p) => `<span class="fgot" data-path="${esc(p)}">${ic(PIC_RE.test(p) ? "image" : "file", "s16")}${PIC_RE.test(p) ? "Снимок получен" : "Файл получен"}: ${esc(p.split("/").pop())}</span>`).join("")
+    : `<span class="fgot">${ic("wait", "s16")}Файл загружается…</span>`);
+}
 function userMsg(m) {                               // вставленный вывод терминала — свёрнут, ваш текст — открыт
   const lines = m.text.split("\n"), k = lines.findIndex((l) => TECH.test(l));
   const body = k < 0 ? [] : lines.slice(k);
-  if (body.length < 4 || body.filter((l) => TECH.test(l)).length < 2) return `<div class="bubble">${esc(m.text)}</div>`;
+  if (body.length < 4 || body.filter((l) => TECH.test(l)).length < 2) return `<div class="bubble">${fileTxt(m.text)}</div>`;
   const head = lines.slice(0, k).join("\n").trim();
   const first = body.find((l) => l.trim())?.trim().slice(0, 60);
   return (head ? `<div class="bubble">${esc(head)}</div>` : "") + logBlock(m.i + ":u", "Терминал", body.join("\n"), first);
@@ -4547,7 +4605,9 @@ function renderChat(toBottom) {
   const box = $("content"); if (box.className !== "chat") box.className = "chat";
   if (VK.w !== current) Object.assign(VK, { w: current, keep: VMAX });
   const cut = Math.max(0, hist.length - VK.keep), vis = cut ? hist.slice(cut) : hist;
-  if (!hist.length && !pending.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div><div id="starters"></div></div>`); starters(); return; }
+  const tq = teamW === current ? team.filter((t) => !(histMore || cut) || !vis[0] || t.ts >= vis[0].ts) : [];
+  let ti = 0; const tOut = (lim) => { let o = ""; while (ti < tq.length && (lim == null || tq[ti].ts < lim)) o += teamCard(tq[ti++]); return o; };
+  if (!hist.length && !pending.length && !tq.length) { morph(box, `<div class="panel"><div class="empty">${FOCUS_DEMO() ? "Сообщений пока нет — переписка появится здесь." : "Сообщений пока нет — напишите Claude внизу."}</div><div id="starters"></div></div>`); starters(); return; }
   const norm = (t) => t.replace(/\s+/g, " ").trim();
   const head = (t) => norm(t).slice(0, 60);               // журнал мог дописать вложения/вставку — сверяем начало
   pending = pending.filter((p) => !hist.some((m) => m.role === "user" && (norm(m.text) === norm(p.text) || head(m.text) === head(p.text)))
@@ -4572,17 +4632,18 @@ function renderChat(toBottom) {
   }
   const had =!!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='p:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));   // прошлые уже появились — при перестановке не повторять
-  const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => m.role === "user"
+  const fresh = morph(box, (histMore || cut ? '<button class="btn ghost" id="older">Показать ранее</button>' : "") + vis.map((m) => tOut(m.ts) + (m.role === "user"
     ? `<div class="msg me" data-i="${m.i}">${userMsg(m)}${m.queued ? `<div class="state ${QS[m.queued][0]}">${QS[m.queued][1]}</div>` : ""}<div class="macts"><span class="when">${esc(localTs(m.ts))}</span>${canEdit() ? `<button type="button" class="medit" data-medit="1" aria-label="Изменить и отправить заново" title="Изменить">${ic("edit", "s16")}</button>` : ""}${mCopyBtn()}</div></div>`
-    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + aiMsg(m)).join("")
-    + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${esc(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
+    : (m.i === NEWI.at ? '<div class="newdiv" data-key="newdiv" role="separator">Новое</div>' : "") + aiMsg(m))).join("") + tOut(null)
+    + pending.filter((p) => !p.w || p.w === current).map((p) => `<div class="msg me" data-key="p:${esc(p.id)}"><div class="bubble">${fileTxt(p.text)}</div><div class="state ${p.state === "sent" ? "ok" : /fail|lost/.test(p.state) ? "bad" : "wait"}">${
       { sending: "отправляется…", waking: "чат просыпается — сообщение уйдёт через несколько секунд…",
         wfail: "чат не проснулся — " + esc(p.err || "") + ` <button class="link" data-resend="${esc(p.id)}">Попробовать ещё</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>`, unsure: "связь прервалась — проверяю, дошло ли…",
         sent: cur()?.status === "busy" ? "доставлено · Claude занят и прочитает по ходу работы" : "доставлено в " + esc(cur()?.name || "сессию"),
         fail: "не отправлено — " + esc(p.err || "") + ` <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>`,
         lost: `нет связи — не знаю, дошло ли <button class="link" data-resend="${esc(p.id)}">Отправить ещё раз</button> <button class="link" data-unsend="${esc(p.id)}">Удалить</button>` }[p.state]}</div><div class="macts">${mCopyBtn()}</div></div>`).join("")
+    + (lastAi == null || !canEdit() ? "" : `<div class="nextq" data-key="nq:${lastAi}"></div>`)
     + (lastAi == null ? "" : `<div class="cmds" data-key="cmds:${lastAi}"></div>`)       // команды из последнего ответа (renderCmds)
-    + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div>');
+    + '<div class="act off" id="act" data-tour="status" role="status" aria-live="polite"><span class="dot"></span><span class="t"></span><span class="tm"></span></div><div class="actx" id="actx" hidden></div><div class="steplog" id="actLog" hidden></div>');
   voiceUi();
   const msgs = fresh.filter((el) => el.classList.contains("msg"));   // дообработка — только новых и изменившихся
   if (had) msgs.forEach((el) => !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
@@ -4596,7 +4657,9 @@ function renderChat(toBottom) {
   }));
   msgs.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // и в свёрнутом коде, и в «Терминал»
   msgs.forEach(codeCopy);                                  // короткие блоки кода — с кнопкой «Копировать» справа сверху
+  fresh.filter((el) => el.classList.contains("tmsg")).forEach((el) => linkify(el.querySelector(".tm-b")));
   if (fresh.some((el) => el.classList.contains("cmds"))) renderCmds();
+  nextQ(box, hist.at(-1));
   if (chatGrow) {                                       // где начинается новое (для follow) — и плавный рост
     const ys = (el, h) => SC.scrollTop + el.getBoundingClientRect().top - SC.getBoundingClientRect().top + h, add = msgs.filter((el) => el.classList.contains("enter"));
     newY = Math.min(...grown.map((el) => ys(el.querySelector(".bubble"), el.__h1)), ...add.map((el) => ys(el, 0)));
@@ -4676,18 +4739,7 @@ $("content").addEventListener("click", (e) => {
 });
 
 // ---------- вкладка «Команды»: все команды из ответов всех сессий, новые сверху; хранятся на сервере ----------
-let cmdLog = null, cmdSig = "";
-const KIND_HINT = { sudo: ["lock", "sudo вне разрешённого списка — выполните вручную в терминале"],
-  tty: ["key", "нужен ввод (пароль) — кнопкой не выполнится, откройте в терминале"], foreign: ["monitor", "для другой машины — скопируйте и выполните там"] };
-async function loadCommands(quiet) {
-  const box = $("commandsView");
-  if (!quiet && !cmdLog) box.innerHTML = '<div class="empty">Собираю команды из чатов…</div>';
-  try { cmdLog = await api("/api/commands"); } catch (e) { if (!quiet) box.innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; return; }
-  const sig = JSON.stringify(cmdLog.items.map((c) => [c.id, c.done?.at, c.done?.code, c.running, c.manual?.at]));
-  if (quiet && sig === cmdSig) return;                // ничего нового — не перерисовываем (раскрытый вывод не схлопнется)
-  cmdSig = sig; renderCommands();
-}
-// упала — команда, код и хвост вывода ушли в сессию на разбор (одну ошибку — один раз)
+const loadCommands = (quiet) => part("commands").then((m) => m.loadCommands(quiet)).catch((e) => toast(e.message, 4000));   // js/commands.js
 function triageNote(t, to) {
   const m = { sent: ["chat", `Отправлено на разбор в «${esc(to)}» — Claude предложит исправление`],
     dup: ["chat", `Эта ошибка уже отправлялась на разбор в «${esc(to)}»`],
@@ -4696,90 +4748,6 @@ function triageNote(t, to) {
     error: ["warn", "На разбор отправить не удалось"] }[t];
   return m ? `<div class="hint tri">${ic(m[0], "s16")}<span>${m[1]}</span></div>` : "";
 }
-// Честный статус команды — только по настоящему запуску через пульт (панель или ▶️ в боте):
-// выполняется · код 0 · код N · не запускалась; «сделано вручную» — отдельная пометка, карточка остаётся в списке.
-const STALE = 12 * 60 * 1000;                        // дольше таймаута выполнения (10 мин) — запуск прервался
-const tsMs = (t) => new Date(String(t).replace(" ", "T") + ":00Z").getTime();
-function cmdState(c) {
-  if (c.running) return Date.now() - tsMs(c.running) < STALE ? "running" : "lost";
-  if (c.done) return c.done.code === 0 ? "ok" : "fail";
-  return "new";
-}
-function cmdChip(c) {
-  const st = cmdState(c), d = c.done;
-  const chip = {
-    running: `<span class="chip s-running">${ic("wait", "s16")}выполняется</span>`,
-    lost: `<span class="chip bad">${ic("warn", "s16")}запуск прервался</span>`,
-    ok: `<span class="chip ok">${ic("check", "s16")}код 0</span>`,
-    fail: `<span class="chip bad">${ic("warn", "s16")}код ${esc(d?.code)}${d?.triage === "sent" || d?.triage === "dup" ? " · на разборе" : ""}</span>`,
-    new: `<span class="chip"><span class="sdot hollow"></span>не запускалась</span>`,
-  }[st];
-  const manual = c.manual ? `<span class="chip accent">${ic("check", "s16")}сделано вручную</span>` : "";
-  return st === "new" && manual ? manual : chip + manual;          // не запускалась, но сделана вручную — одна пометка
-}
-const CMD_FILTERS = [["all", "Все"], ["new", "Не запускались"], ["fail", "С ошибкой"]];
-const cmdIn = (f, c) => f === "all" || (f === "new" ? cmdState(c) === "new" && !c.manual : ["fail", "lost"].includes(cmdState(c)));
-function renderCommands() {
-  const owner = meta?.role === "owner", all = cmdLog?.items || [];
-  let f = store("cmdsFilter") || "all"; if (!CMD_FILTERS.some(([k]) => k === f)) f = "all";
-  const fresh = all.filter((c) => cmdIn("new", c)).length;
-  $("cmdsSeg").textContent = fresh ? `Команды · ${fresh}` : "Команды";
-  const items = all.filter((c) => cmdIn(f, c));
-  $("commandsView").innerHTML = `<div class="seg cmdf">${CMD_FILTERS.map(([k, label]) => {
-      const n = all.filter((c) => cmdIn(k, c)).length;
-      return `<button data-cf="${k}" class="${k === f ? "on" : ""}">${label}${n ? ` · ${n}` : ""}</button>`; }).join("")}</div>`
-    + (items.length ? items.map((c) => {
-      const st = cmdState(c), d = c.done;
-      const run = c.kind === "local" && owner && st !== "running"
-        ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-crun="${c.id}">${c.danger ? ic("warn") : ic("play")}${d ? "Выполнить снова" : "Выполнить на " + esc(cmdLog.host)}</button>`
-        : c.kind === "tty" && owner ? `<button class="btn sm ${c.danger ? "danger" : ""}" data-cterm="${c.id}">${ic("term")}Открыть в терминале</button>` : "";
-      const hint = c.kind !== "local" && !d ? `<div class="hint">${ic(KIND_HINT[c.kind][0], "s16")}${KIND_HINT[c.kind][1]}</div>` : "";
-      const out = d ? `<div class="result ${d.code === 0 ? "ok" : "bad"}"><div style="width:100%">${d.code === 0 ? "Готово" : "Ошибка"} · код ${esc(d.code)} · ${d.seconds} с · ${esc(localTs(d.at))}${d.by === "bot" ? " · кнопкой в боте" : ""}${d.cut ? " · показан конец вывода" : ""}
-          ${d.out ? `<pre class="out">${esc(d.out)}</pre><button class="btn sm ghost cpout" data-cout="${c.id}">${ic("copy")}Копировать вывод${d.cut ? " целиком" : ""}</button>` : " · вывода нет"}</div></div>${triageNote(d.triage, d.triage_to)}`
-        : st === "running" ? `<div class="result wait">${ic("wait")}<span>Выполняется с ${esc(localTs(c.running).slice(11))}…</span></div>` : "";
-      return `<div class="cmd st-${st}" data-cid="${c.id}">
-        <div class="meta"><b>${esc(c.win)}</b><span>· ${esc(localTs(c.ts))}</span><span class="chips">${cmdChip(c)}</span></div>
-        ${c.about ? `<div class="why">${esc(c.about)}</div>` : ""}
-        <pre>${esc(c.cmd)}</pre>${hint}
-        <div class="acts">${run}<button class="btn sm ghost" data-ccopy="${c.id}">${ic("copy")}Копировать</button>${owner
-          ? `<button class="btn sm ghost" data-cmark="${c.id}" data-done="${c.manual ? 0 : 1}">${c.manual ? "Снять пометку «вручную»" : ic("check") + "Отметить: сделано вручную"}</button>` : ""}</div>
-        <div class="out-wrap">${out}</div></div>`;
-    }).join("") : `<div class="empty">${!all.length ? "Команд пока нет — здесь появятся блоки кода из ответов всех сессий."
-      : f === "new" ? "Все команды запускались или отмечены вручную." : "Команд с ошибкой нет."}</div>`);
-}
-$("commandsView").addEventListener("click", async (e) => {
-  const b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.cf) { store("cmdsFilter", b.dataset.cf); return renderCommands(); }
-  const c = cmdLog?.items.find((x) => x.id === (b.dataset.crun || b.dataset.ccopy || b.dataset.cmark || b.dataset.cout || b.dataset.cterm)); if (!c) return;
-  if (b.dataset.cterm) return termOpen(b, "/api/commands/term", { id: c.id }, c.cmd);
-  if (b.dataset.cout) {                               // весь вывод — с сервера (в списке только хвост)
-    if (!c.done.cut) return copyText(c.done.out, "Вывод скопирован");
-    try { return copyText((await api("/api/commands/output?id=" + c.id)).out, "Вывод скопирован"); }
-    catch (err) { return copyText(c.done.out, "Скопирован конец вывода — весь уже не хранится"); }
-  }
-  const put = (item) => { Object.assign(c, item); cmdSig = ""; renderCommands(); };
-  if (b.dataset.ccopy) {
-    return copyText(c.cmd, "Команда скопирована");
-  }
-  if (b.dataset.cmark) return busy(b, "…", async () => {
-    try { put((await api("/api/commands/mark", { id: c.id, done: b.dataset.done === "1" })).item); } catch (err) { toast(err.message, 4000); }
-  });
-  const go = (confirmed) => busy(b, "Выполняю…", async () => {
-    const card = b.closest(".cmd");
-    try {
-      c.running = new Date().toISOString().slice(0, 16).replace("T", " ");    // сразу «выполняется» — не ждём ответа
-      card.querySelector(".chips").innerHTML = cmdChip(c);
-      const r = await api("/api/commands/run", { id: c.id, confirmed });
-      if (r.confirm) { c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c); return ask(); }
-      put(r.item); haptic("notificationOccurred", r.item.done.code === 0 ? "success" : "error");
-    } catch (err) {
-      c.running = null; card.querySelector(".chips").innerHTML = cmdChip(c);
-      card.querySelector(".out-wrap").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`;
-    }
-  });
-  const ask = () => confirmDanger("Команда меняет или удаляет данные:\n\n" + c.cmd.slice(0, 600) + "\n\nВыполнить?", () => go(true));
-  c.danger ? ask() : go(false);
-});
 
 // ---------- вход в MCP-сервис (ссылка на экране Claude Code) ----------
 function authCard(a, name, w) {
@@ -4865,11 +4833,25 @@ function loginSheet(l, w) {
 function setAsk(html, key = html) {
   const box = $("ask");
   if (box.dataset.key !== key) { box.innerHTML = html; box.dataset.key = key; }
+  if (askNudged && !askWaits()) {                    // вариант выбран — набранный во время вопроса текст ждёт в поле
+    askNudged = false; if ($("input").value.trim()) { toast("Вариант выбран — ваш текст в поле, отправьте его", 3500); $("input").focus(); }
+  }
   padDock();
+}
+// Claude ждёт выбора, а человек отправляет текст (22.11): не ошибка — подсветить варианты, текст остаётся в поле.
+let askNudged = false;
+// Меню без номеров (/mcp, /status) — не вопрос: их пульт перед отправкой закрывает сам (bot.ready_for_text).
+const askWaits = () => !!$("ask").querySelector("[data-n], [data-tc]");
+function askNudge() {
+  const box = $("ask").firstElementChild, tip = $("askTip");
+  askNudged = true; haptic("notificationOccurred", "warning");
+  if (tip) { tip.textContent = "Выберите вариант выше — ваш текст останется в поле и не пропадёт"; tip.hidden = false; }
+  if (box) { box.classList.remove("nudge"); void box.offsetWidth; box.classList.add("nudge"); box.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
 }
 function renderAsk(lines, auth, ask) {
   if (auth?.paste) { if (!$("authUrl")) setAsk(authCard(auth)); return; }
-  if (ask?.target !== undefined && !SIM.on) {         // разрешение инструмента — карточка «Да / Нет» (#258, js/toolcard.js)
+  // разрешение инструмента — карточка «Да / Нет» (#258), вопрос с вариантами — кнопки (22.11); js/toolcard.js
+  if (ask?.known && !SIM.on) {
     const h = window.toolCard?.(ask); if (h) return setAsk(h, "tc" + ask.sig);
     if (!window.toolCard) part("toolcard").then(() => renderAsk(lines, auth, ask)).catch(() => {});
   }
@@ -4888,22 +4870,15 @@ function renderAsk(lines, auth, ask) {
   // Карточку не перерисовываем, пока вопрос и пункты те же: кнопка под пальцем не подменяется до «click» (iPhone).
   const key = q + "\n" + opts.map((o) => o.n + o.text).join("\n");
   setAsk(`<div class="ask"><p class="q">${ic("warn")}<span>${esc(q)}</span></p>${opts.map((o) =>
-    `<button class="opt" data-n="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}
-    <p class="tip">Коснитесь пункта — выделится, ещё раз — выбрать</p></div>`, key);
-  if (Date.now() - askTap.t > 1500) markAsk(opts.find((o) => o.sel)?.n);   // свежий тап — его выделение не сбиваем
+    `<button class="opt${o.sel ? " sel" : ""}" data-n="${o.n}"><b>${o.n}</b><span>${esc(o.text)}</span></button>`).join("")}
+    <button class="opt" data-esc="1"><b></b><span>Отмена</span></button><p class="tip" id="askTip" hidden></p></div>`, key);
 }
-function markAsk(n) { document.querySelectorAll("#ask button[data-n]").forEach((b) => b.classList.toggle("sel", b.dataset.n === n)); }
-// Касание — выделить пункт (стрелками до ❯), второе касание того же пункта или выделенного — выбрать (стрелки и Enter).
-// Цифрой не выбираем: не всякое меню Claude Code её принимает.
-const askTap = { n: "", t: 0 };
+// Касание — выбрать пункт (стрелками до него и Enter; 22.11 — одним нажатием, как кнопки вопроса). Цифрой не выбираем:
+// не всякое меню Claude Code её принимает. «Отмена» — Esc.
 $("ask").onclick = (e) => {
   const b = e.target.closest("button[data-n]");
-  if (b) {
-    const n = b.dataset.n, go = b.classList.contains("sel") || (askTap.n === n && Date.now() - askTap.t < 600);
-    Object.assign(askTap, { n, t: Date.now() }); markAsk(n);
-    haptic("impactOccurred", go ? "medium" : "light");
-    return choose(n, go, b);
-  }
+  if (b) { haptic("impactOccurred", "medium"); return choose(b.dataset.n, true, b); }
+  if (e.target.closest("button[data-esc]")) return press("Escape");
   const t = e.target.closest("button[data-pick]"); if (t) pick(t.dataset.pick, t);
 };
 async function choose(n, go, btn) {
@@ -5168,10 +5143,12 @@ function padDock() { requestAnimationFrame(() => { const h = $("dock").offsetHei
 function closeMenu() { $("menu").hidden = true; $("menuBtn").classList.remove("on"); $("menuBtn").innerHTML = ic("menu"); padDock(); }
 $("modeChip").onclick = () => ACTIONS.models();
 $("mcpChip").onclick = () => ACTIONS.chatmcp();
+$("bugBtn").onclick = () => part("bugreport").then((m) => m.open(current));   // «Сообщить об ошибке» (js/bugreport.js)
 $("menuBtn").onclick = () => { const o = $("menu").hidden; $("menu").hidden = !o; $("menuBtn").classList.toggle("on", o); $("menuBtn").innerHTML = ic(o ? "x" : "menu"); padDock(); };
 
 const ACTIONS = {
   sos: () => callHelp(current),
+  bug: () => part("bugreport").then((m) => m.open(current)),
   ease: () => part("ease").then((m) => m.ease()),
   say: (b) => say(true, b),
   commands: () => helpSheet("sheet.commands") || sheet("Команды Claude", meta.commands.map((label, i) => ({
@@ -5226,7 +5203,7 @@ function draftSheet(text) {
 }
 // Шторка сессий: статус точкой, текущая отмечена; долгое нажатие — действия с сессией; ниже — «Новая» и «Все сессии».
 function openSwitcher() {
-  if (FOCUS) return FOCUS_PROJ() ? focusProjSheet() : undefined;   // фокус на сессию — только она; на проект — его сессии
+  if (FOCUS) return FOCUS_PROJ() || FOCUS_MULTI() ? focusProjSheet() : undefined;   // фокус на сессию — только она; на проект — его сессии
   helpSheet("sheet.switcher");
   sheet("Чаты", [...pinFirst([...sessions].sort(byChange)).map((s) => ({
     label: s.name, sub: `${s.pinned ? "закреплена · " : ""}${ST[s.status].label}${isNew(s) ? " · новый ответ" : ""}${s.changed ? " · " + agoText(s.changed) : ""} · ${folder(s.path)}`, dot: ST[s.status].cls, on: s.id === current,
@@ -5300,6 +5277,7 @@ async function sendText() {
   if (DRAFT) return draftSend();                    // новый чат: окно — при первой отправке
   const typed = $("input").value.trim();
   if (!typed && !files.length) return toast("Напишите, надиктуйте или прикрепите файл");
+  if (askWaits()) return askNudge();                // Claude ждёт выбора — текст и файлы остаются, варианты подсвечены
   if (typed && secretPass !== typed) { const s = redactSecrets(typed); if (s.found.length) return secretSheet(typed, s); }
   secretPass = null;
   // файл ещё грузится — сообщение не ждёт в поле: оно уже в переписке «отправляется», путь подставим по готовности
@@ -5341,6 +5319,10 @@ async function deliver(p, restore) {
       return renderChat(true);
     } catch (e) {
       actLocal = null;
+      if (e.code === "question") {                  // вопрос появился, пока писали: в окно ничего не ушло — текст в поле
+        pending = pending.filter((x) => x !== p); if (!$("input").value.trim()) $("input").value = p.text; grow(); renderChat(true);
+        if (p.w === current) { await loadContent(); askNudge(); } return;
+      }
       if (!e.net) { p.state = "fail"; p.err = e.message; restore?.(); haptic("notificationOccurred", "error"); return renderChat(true); }
     }
   }
@@ -5357,7 +5339,7 @@ function retryLost() {                               // GAS-21: связь ве�
 }
 addEventListener("online", retryLost);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) retryLost(); });
-// «+» (Gemini №9): на ПК — сразу выбор файла (там нет камеры и галереи); на телефоне — три пункта без подписей
+// «+»: ПК — выбор файла, телефон — камера/галерея/файл
 $("plus").onclick = () => split() && !matchMedia("(pointer: coarse)").matches ? $("fFile").click() : helpSheet("sheet.attach") || sheet("Прикрепить", [
   { label: "Камера", icon: "camera", run: () => $("fCam").click() },
   { label: "Галерея", icon: "image", run: () => $("fPhoto").click() },
@@ -5390,8 +5372,7 @@ function renderFiles() {
 $("attach").onclick = (e) => { const b = e.target.closest("[data-rmf]"); if (b) { files.splice(+b.dataset.rmf, 1); renderFiles(); } };
 // Микрофон всегда на месте (предсказуемо); «Отправить» появляется рядом, когда есть что отправить.
 function sync() { const has = !!$("input").value.trim() || files.length > 0; $("send").hidden = !has; $("hintBtn").hidden = !hint || has; }
-// Подсказка Claude Code (бледный текст в его строке ввода): в пустом поле — вместо «Сообщение для …»;
-// «вставить» (или Tab на компьютере) — текст в поле, отправляете сами.
+// Подсказка Claude Code: в пустом поле — вместо плейсхолдера; Tab — вставить
 function setHint(h) {
   if (h === hint) return;
   hint = h; sync();
@@ -5455,6 +5436,10 @@ async function micGet() {
   micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   return micStream;
 }
+// нет доступа — шаги под браузер и «Попробовать снова» (js/micperm.js, владелец 24.11); часть не загрузилась — как раньше
+function micHelp(e, retry) {
+  part("micperm").then((m) => m.help(e, retry)).catch(() => toast(LT("mic.denied", "Нет доступа к микрофону: {e}").replace("{e}", e?.message || ""), 5000));
+}
 function micPark() {                                // запись закончилась — дорожки выключены, поток ждёт следующей
   if (!micStream) return;
   if (document.hidden) return micRelease();
@@ -5485,7 +5470,7 @@ async function toggleMic() {
     return toast("Этот Telegram не даёт панели микрофон — диктуйте кнопкой микрофона на клавиатуре", 5000);
   let stream;
   try { stream = await micGet(); }
-  catch (e) { return toast("Нет доступа к микрофону: " + e.message, 5000); }
+  catch (e) { return micHelp(e, toggleMic); }
   const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
   // Запись не теряется (владелец 22.11, js/recsafe.js): куски по 10 с — сразу на сервер; обрыв — новый отрезок той же записи
   const RS = await part("recsafe").catch(() => null), S = RS?.session(type);
@@ -5671,7 +5656,7 @@ async function voiceStart(where) {
   const ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume?.().catch(() => {});
   let stream;
   try { stream = await micGet(); }
-  catch (e) { ac.close().catch(() => {}); vs = null; return toast(LT("mic.denied", "Нет доступа к микрофону: {e}").replace("{e}", e.message), 5000); }
+  catch (e) { ac.close().catch(() => {}); vs = null; return micHelp(e, () => voiceStart(where)); }
   if (vs !== s) return ac.close().catch(() => {});
   try {
     s.cap = await pcmCapture(ac, stream, (a) => {
@@ -5802,34 +5787,44 @@ const GLYPH = { gmail: "mail", gcal: "cal", gdrive: "folder", slack: "hash", lin
                 github: "code", homeassistant: "home", context7: "book", websearch: "search", http: "server", stdio: "term" };
 let LOGOS = null;                                     // логотипы сервисов (js/logos.js, Simple Icons) — грузятся с «Подключениями»
 const mono = (t, id) => `<span class="mono">${LOGOS?.byId(id) || (GLYPH[id] ? ic(GLYPH[id]) : esc(clean(t).slice(0, 1).toUpperCase()))}</span>`;
+// «Подключения» открываются сразу (владелец 23.11: было 8–10 с без отклика): каталог — из кэша браузера или
+// /api/mcp?catalog=1 (без опроса `claude mcp list`), статусы — вторым запросом; до них — скелетон и «проверяю…».
+// Места блоков (сервисы, модели, запасные, голос) заняты сразу — ничего не появляется и не пропадает (20.11).
+let CONN = null;                                      // js/connections.js: каталог по разделам, поиск, согласие
+const consentOk = (it) => part("connections").then((m) => m.ask(it)).catch((e) => { toast(e.message || "Не загрузилось — обновите страницу", 4500); return false; });
+const skelCard = '<div class="card skel"><i class="sk-name"></i><i class="sk-meta"></i></div>';
 async function loadMcp(fresh) {
-  await dictReady;                                     // разделы «Для любой модели» / «Через сайт Claude» — из словаря
-  LOGOS ??= await part("logos").catch(() => null);
-  const owner = meta?.role === "owner";                // участнику — только его сервисы; модели, ключи и голос — владельцу
+  const t0 = performance.now();
+  await dictReady;                                     // разделы и подписи — из словаря
+  [LOGOS, CONN] = await Promise.all([LOGOS || part("logos").catch(() => null), CONN || part("connections").catch(() => null)]);
+  if (!CONN) { $("integrationsView").innerHTML = `<div class="result bad">${ic("warn")}<span>«Подключения» не загрузились — проверьте связь и обновите страницу</span></div>`; return; }
+  const owner = meta?.role === "owner" && !FOCUS;      // участнику — только его сервисы; модели, ключи и голос — владельцу
   if (view === "home") setSub(owner ? "<span>голос, ключи API и сервисы</span>" : "<span>ваши сервисы</span>");
-  // Одно состояние «загружаю» и сразу весь экран (владелец 20.11: «сначала вываливаются модели, потом пропадают,
-  // появляются другие вещи»): раньше «Модели» рисовались сразу, а сервисы, голос и запасные приходили по одному
-  // и сдвигали их. Теперь ждём всё вместе и рисуем один раз; ошибка одного блока не мешает остальным.
   const box = $("integrationsView");
-  box.innerHTML = '<div class="empty">Загружаю подключения… (до 30 секунд)</div>';
+  box.innerHTML = '<div id="mcpBox" data-tour="integrations"></div>' + (owner ? '<div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");   // «Модели» — раздел «ИИ-модели и агенты» каталога
+  const first = mcpData?.presets && mcpData.cats ? { ...mcpData, servers: fresh ? null : mcpData.servers } : CONN.cached();
+  if (first) { mcpData = first; renderMcp(); } else $("mcpBox").innerHTML = CONN.skeleton();
+  if (owner) { $("fbBox").innerHTML = '<div class="section">Запасные</div>' + skelCard; $("voiceBox").innerHTML = skelCard; }
+  box.dataset.paint = Math.round(performance.now() - t0);   // замер: до первого вида каталога, мс
   const q = (u) => api(u).then((v) => ({ v }), (e) => ({ e }));
-  const cal = owner && !FOCUS ? part("calkeys").then((x) => x.calendarsSection()).catch(() => "") : "";   // «Календари» — тоже сразу
-  const [m, pr, vc, f, ch] = await Promise.all([q("/api/mcp" + (fresh ? "?fresh=1" : "")), ...(owner ? [q("/api/providers"), q("/api/voice/cards"), q("/api/fallback")] : [{}, {}, {}]), cal]);
+  const bad = (el, e) => { if ($(el)) $(el).innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; };
+  const full = q("/api/mcp" + (fresh ? "?fresh=1" : ""));
+  const rest = owner ? Promise.all([q("/api/providers"), q("/api/voice/cards"), q("/api/fallback")]) : null;
+  if (!first) {
+    const c = await q("/api/mcp?catalog=1");
+    if (!box.isConnected) return;
+    if (c.v && !mcpData?.servers) { mcpData = c.v; CONN.remember(c.v); renderMcp(); box.dataset.paint = Math.round(performance.now() - t0); }
+  }
+  full.then((m) => {
+    if (!box.isConnected) return;
+    if (m.e) { if (mcpData?.presets) toast("Статусы подключений не загрузились: " + m.e.message, 5000); else bad("mcpBox", m.e); return; }
+    const had = !!$("connQ"); mcpData = m.v; CONN.remember(m.v); renderMcp(had); box.dataset.full = Math.round(performance.now() - t0);
+  });
+  if (!rest) return;
+  const [pr, vc, f] = await rest;
   if (!box.isConnected) return;
-  box.innerHTML = '<div id="mcpBox" data-tour="integrations"></div>' + (owner ? '<div id="modelsBox" data-tour="models"></div><div id="fbBox" data-owner></div><div id="voiceBox"></div>' : "");
-  const bad = (el, e) => { $(el).innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(e.message)}</span></div>`; };
-  if (m.e) bad("mcpBox", m.e); else { mcpData = m.v; renderMcp(); if (ch && $("calKeys")) $("calKeys").innerHTML = ch; }
-  if (!owner) return;
-  renderModels();
   if (f.e) $("fbBox").innerHTML = `<div class="section">Запасные</div><div class="result bad">${ic("warn")}<span>${esc(f.e.message)}</span></div>`; else { fb = f.v; renderFallback(); }
   if (pr.e || vc.e) bad("voiceBox", pr.e || vc.e); else { prov = pr.v; vcards = vc.v; renderVoice(); }
-}
-function renderModels() {
-  const list = (meta?.profiles || []).filter((p) => p.needs_key);
-  $("modelsBox").innerHTML = `<div class="section">Модели</div>
-    <p class="note">Кроме Claude сессия может работать на моделях других поставщиков — по их ключу. Поставщик выбирается при «Новой сессии».</p>
-    ${list.map((p) => `<button class="card" data-prof="${p.id}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div>
-      <div class="meta">${esc(p.allowed === false ? p.denied || DENY : p.key ? (p.main || "модели Claude") : p.about)}</div></div><span class="chip ${p.key && !p.not_ready ? "ok" : ""}">${p.key ? (p.not_ready ? "нет адреса шлюза" : "ключ " + esc(p.key.tail)) : "нет ключа"}</span></div></button>`).join("")}`;
 }
 $("integrationsView").addEventListener("click", (e) => { const b = e.target.closest("[data-prof]"); if (b) profileForm(profileOf(b.dataset.prof)); });
 
@@ -5978,6 +5973,7 @@ $("integrationsView").addEventListener("click", async (e) => {
     catch (err) { toast(err.message, 4500); }
   }
   const eye = e.target.closest("[data-eye]"); if (eye) { const i = $(eye.dataset.eye); i.type = i.type === "password" ? "text" : "password"; }
+  if (e.target.id === "elSave" && !(await consentOk({ what: "key:elevenlabs", title: "ElevenLabs", about: "озвучивать ответы вашим ключом ElevenLabs: текст ответов уходит в ElevenLabs", kind: "ключ API" }))) return;
   if (e.target.id === "elSave") busy(e.target, "Проверяю ключ…", async () => {
     try { const d = await api("/api/keys", { provider: "elevenlabs", key: $("elKey").value });
           [prov, vcards] = await Promise.all([api("/api/providers"), api("/api/voice/cards")]); renderVoice();
@@ -5986,35 +5982,18 @@ $("integrationsView").addEventListener("click", async (e) => {
   });
   if (e.target.id === "elDel") confirmDanger("Удалить ключ ElevenLabs?", async () => { await api("/api/keys/remove", { provider: "elevenlabs" }); [prov, vcards] = await Promise.all([api("/api/providers"), api("/api/voice/cards")]); renderVoice(); toast("Ключ удалён, голос — снова на сервере"); });
 });
-const isOn = (c) => mcpData.servers.some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
+const isOn = (c) => (mcpData.servers || []).some((s) => s.ok && s.name.startsWith("claude.ai ") && s.name.toLowerCase().includes(c.match.toLowerCase()));
 const pname = (s) => s.name.replace(/^claude\.ai /, "").replace(/^plugin:[^:]+:/, "");
-function renderMcp() {
-  const srv = mcpData.servers, ok = srv.filter((s) => s.ok), bad = srv.filter((s) => !s.ok && s.removable);
-  const anyTiles = mcpData.presets.filter((p) => p.providers === "all" && !["http", "stdio"].includes(p.id));   // задача 38
-  $("mcpBox").innerHTML = `
-    <p class="note">${mcpData.personal ? "Подключения у каждого свои: здесь — ваши, они работают в сессиях, которые открыли вы. В первой своей сессии войдите в Claude на «Экране» — без входа коннекторы claude.ai не появятся."
-      : "Подключения у каждого человека пульта свои — здесь ваши."}</p>
-    <div class="section">Подключено</div>
-    ${ok.length ? `<div class="conn">${ok.map((s) => `<span class="chip ok">${LOGOS?.byName(s.name) || ic("check", "s16")}${esc(pname(s))}</span>`).join("")}</div>` : '<p class="note">Пока ничего. Выберите сервис ниже.</p>'}
-    ${bad.map((s) => `<div class="card" style="margin-top:8px;cursor:default"><div class="row">${LOGOS?.byName(s.name) || ""}<span class="name" style="flex:1">${esc(pname(s))}</span><span class="chip bad">${/auth/i.test(s.state) ? "нужен вход" : "не работает"}</span>
-      <button class="btn danger sm rm-inline" data-rm="${srv.indexOf(s)}">Отключить</button></div></div>`).join("")}
-    <div class="section">${esc(T("int.any.title"))}</div>
-    <p class="note">${esc(T("int.any.note"))} Нажмите на сервис — дальше всё по шагам.</p>
-    <div class="tiles">
-      ${anyTiles.map((p) => `<button class="tile" data-p="${mcpData.presets.indexOf(p)}">${mono(p.title, p.id)}<span>${esc(p.title)}</span><small>${esc(p.about.split(":")[0].split(" — ")[0])}</small>${dev() ? `<small class="chip ok">${esc(T("int.any.chip"))}</small>` : ""}</button>`).join("")}
-    </div>
-    <div class="section">${esc(T("int.claude.title"))}</div>
-    <p class="note">${esc(T("int.claude.note"))}</p>
-    <div class="tiles">
-      ${mcpData.connectors.map((c, i) => `<button class="tile ${isOn(c) ? "on" : ""}" data-c="${i}">${mono(c.title, c.id)}<span>${esc(c.title)}</span><small>${isOn(c) ? "подключено" : esc(c.about)}</small><small class="chip space">${esc(T("int.claude.chip"))}</small></button>`).join("")}
-      <button class="tile" data-more="1"><span class="mono">${ic("plus")}</span><span>Другой сервис</span><small>каталог claude.ai или вручную</small></button>
-    </div>
-    <div id="calKeys"></div>
-    <button class="btn ghost" id="mcpRefresh" style="margin-top:12px">${ic("refresh")}Обновить список</button>`;
-  if (meta?.role === "owner" && !FOCUS) paintCalKeys();              // «Календари»: секреты — полем, не в чат (js/calkeys.js)
+function renderMcp(keep) {                            // каталог по разделам и поиск — js/connections.js
+  const box = $("mcpBox"); if (!box || !CONN) return;
+  const old = keep ? [$("msgKeys"), $("calKeys")] : [];
+  CONN.render(box, mcpData, keep);
+  if (old[0] && old[1]) { $("msgKeys").replaceWith(old[0]); $("calKeys").replaceWith(old[1]); return CONN.filter(box); }
+  if (meta?.role === "owner" && !FOCUS) { paintCalKeys(); part("messengers").then((m) => m.section($("msgKeys"))).catch(() => {}); }   // + «Мессенджеры» (js/messengers.js)
 }
 function paintCalKeys() { part("calkeys").then(async (m) => { const h = await m.calendarsSection(); if ($("calKeys")) $("calKeys").innerHTML = h; }).catch(() => {}); }
 $("integrationsView").addEventListener("click", (e) => {
+  const cd = e.target.closest("[data-card]"); if (cd) return CONN?.card(mcpData, cd.dataset.card);
   const rm = e.target.closest("[data-rm]"), p = e.target.closest("[data-p]"), c = e.target.closest("[data-c]"), more = e.target.closest("[data-more]");
   const rf = e.target.closest("#mcpRefresh"); if (rf) return busy(rf, "Проверяю…", () => loadMcp(true));
   const ck = e.target.closest("[data-calkey]"); if (ck) return part("calkeys").then((m) => m.calendarSheet(ck.dataset.calkey, ck.classList.contains("on"), paintCalKeys));
@@ -6042,7 +6021,9 @@ function connectorView(c) {
     <div id="connNext">${on ? tryButton(c) : '<button class="btn ghost" id="connCheck">Проверить сейчас</button>'}</div>
     <details style="margin-top:10px"><summary class="note" style="display:inline">Не получается?</summary>
       <p class="note">Отметка не появляется 2–3 минуты — нажмите «Проверить сейчас». В claude.ai нет ${esc(c.title)} — «Другой сервис» → «Для продвинутых». Открытые сессии увидят сервис после перезапуска, новые — сразу.</p></details></div>`;
-  $("openClaude")?.addEventListener("click", () => { openUrl(mcpData.connectors_url); });
+  $("openClaude")?.addEventListener("click", async () => {   // согласие — до перехода в claude.ai (consents.py)
+    if (await consentOk({ what: "connector:" + c.id, id: c.id, title: c.title, about: c.about, kind: "коннектор claude.ai вашего аккаунта Claude" })) openUrl(mcpData.connectors_url);
+  });
   $("connCheck")?.addEventListener("click", (e) => busy(e.target, "Проверяю…", () => checkConn(c)));
   clearInterval(connTimer);
   if (!on) connTimer = setInterval(() => { if (view !== "mcpForm") return clearInterval(connTimer); checkConn(c); }, 10000);
@@ -6083,7 +6064,7 @@ function moreView() {
     <p class="note">После подключения сервис появится в «Подключено» («Обновить список»).</p>
     <div class="section">Для продвинутых</div>
     ${mcpData.presets.map((p, i) => `<button class="card" data-p2="${i}"><div class="row">${mono(p.title, p.id)}<div class="ctext"><div class="name">${esc(p.title)}</div><div class="meta" style="white-space:normal">${esc(p.about)}</div></div></div></button>`).join("")}
-    ${mcpData.servers.filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) => `<button class="btn ghost" data-login="${esc(s.name)}">${ic("key")}Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
+    ${(mcpData.servers || []).filter((s) => !s.ok && /auth/i.test(s.state) && s.removable).map((s) => `<button class="btn ghost" data-login="${esc(s.name)}">${ic("key")}Войти в ${esc(s.name)} через сервер</button>`).join("")}</div>`;
   $("openCatalog").onclick = () => { openUrl(mcpData.connectors_url); };
 }
 async function startLogin(name, btn) {
@@ -6122,7 +6103,9 @@ function mcpForm(p) {
     const url = p.key_url.replace("{base}", base);
     openUrl(url);
   });
-  $("mcpAdd").onclick = (e) => busy(e.target, "Подключаю и проверяю…", async () => {
+  $("mcpAdd").onclick = async (e) => { const btn = e.currentTarget;   // согласие — перед каждым подключением
+    if (!(await consentOk({ what: "mcp:" + p.id, id: p.id, title: p.title, about: p.about, kind: "сервер MCP в вашей папке Claude Code" }))) return;
+    busy(btn, "Подключаю и проверяю…", async () => {
     const values = Object.fromEntries(p.fields.map((f) => [f.key, $("f_" + f.key).value]));
     try {
       const d = await api("/api/mcp/add", { preset: p.id, name: $("f__name").value.trim(), values });
@@ -6131,8 +6114,8 @@ function mcpForm(p) {
         (needLogin ? `<button class="btn" data-login="${esc($("f__name").value.trim())}">${ic("key")}Войти в ${esc(p.title)}</button>` : "") +
         `<button class="btn ghost" id="mcpDone">Готово — к списку</button>`;
       $("mcpDone").onclick = back; haptic("notificationOccurred", "success");
-    } catch (err) { $("mcpResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
-  });
+    } catch (err) { if (err.code === "consent") CONN?.reset(); $("mcpResult").innerHTML = `<div class="result bad">${ic("warn")}<span>${esc(err.message)}</span></div>`; haptic("notificationOccurred", "error"); }
+  }); };
 }
 
 // ---------- модули-агенты: «Новый чат» → «Из модуля» ----------
@@ -6172,7 +6155,7 @@ async function openFolder(i, wid, btn) {
     catch (err) { toast("Не вышло: " + err.message, 5000); }
   }));
 }
-const integrOn = (x) => !mcpData ? null : x.kind === "connector" ? isOn(x) : x.kind === "preset" ? mcpData.servers.some((s) => s.ok && s.name === x.id) : null;
+const integrOn = (x) => !mcpData ? null : x.kind === "connector" ? isOn(x) : x.kind === "preset" ? (mcpData.servers || []).some((s) => s.ok && s.name === x.id) : null;
 function moduleIntegr(m) {
   if (!m.integrations.length) return '<p class="note">Не нужны — всё работает в папке пространства.</p>';
   return m.integrations.map((x) => {
@@ -6561,13 +6544,21 @@ async function focusMcp() {                         // интеграции се
   let d; try { d = await api("/api/mcp"); } catch (e) { return toast(e.message, 5000); }
   helpSheet("focus.mcp");
   sheet("Подключено у поставщика", [
-    { info: true, icon: "puzzle", label: "Подключено у Claude Code", sub: "работают в этой сессии; добавить или убрать — в полном пульте («Подключения»)" },
+    { info: true, icon: "puzzle", label: d.focus ? "Ваши подключения" : "Подключено у Claude Code", sub: d.focus ? (d.space ? "подключения вашего пространства; подключения владельца пульта по ссылке не видны" : "подключения владельца пульта по этой ссылке не видны") : "работают в этой сессии; добавить или убрать — в полном пульте («Подключения»)" },
     ...d.servers.map((x) => ({ info: true, label: x.name, dot: x.ok ? "s-idle" : "s-approval", sub: x.ok ? "работает" : x.state || "не подключено" })),
     ...(d.servers.length ? [] : [{ info: true, icon: "puzzle", label: "Подключений нет" }])]);
 }
 // Фокус на проект (меню проекта → «Фокус-ссылка на проект»): все его сессии, «Новый чат в проекте», завершённые
 // чаты — и ничего вне проекта (сервер отвечает 403). Под шапкой — имя проекта (шторка сессий) и срок входа.
 const FOCUS_PROJ = () => FOCUS && !!meta?.focus?.proj;
+const FOCUS_MULTI = () => FOCUS && !FOCUS_PROJ() && sessions.length > 1;   // ссылка на сессию + окна, открытые агентом
+let focusSeen = null;                               // id чатов по ссылке: новый (агент открыл окно) — сказать человеку
+function focusNew() {
+  document.body.classList.toggle("focus-multi", FOCUS_MULTI());
+  const ids = new Set(sessions.map((x) => x.id));
+  if (focusSeen) for (const x of sessions) if (!focusSeen.has(x.id) && !(FOCUS_PROJ() && x.project === meta.focus.proj)) toast(`Агент открыл новый чат «${x.title || x.name}» — он в списке чатов`, 5000);
+  focusSeen = ids;
+}
 const FOCUS_DEMO = () => FOCUS && meta?.focus?.mode === "demo";   // демо-ссылка: только просмотр и выбор вариантов
 function focusExp() {                               // «вход действует до ДД.ММ (через N дн.)»; за 2 дня — заметно
   const el = $("focusExp"), f = meta?.focus;
@@ -6578,23 +6569,25 @@ function focusExp() {                               // «вход действу
   const text = FOCUS_DEMO() ? (days < 1 ? "Демо до сегодня" : `Демо до ${date}`)
     : !soon ? `Вход действует до ${date} (через ${days} дн.)` : days < 1 ? `Вход истекает сегодня — попросите новую ссылку` : `Перезайти через ${n} — вход до ${date}`;
   const h = (FOCUS_PROJ() ? `<button type="button" data-fproj aria-label="Сессии проекта «${esc(f.name)}»">${ic("folder", "s16")}<b>${esc(f.name)}</b>${ic("chev", "s16")}</button>` : "")
-    + `<span title="Ссылка действует до ${esc(new Date(f.exp * 1000).toLocaleString("ru-RU"))}">${ic(soon ? "warn" : "lock", "s16")}${esc(text)}</span>`;
+    + `<span title="Ссылка действует до ${esc(new Date(f.exp * 1000).toLocaleString("ru-RU"))}">${ic(soon ? "warn" : "lock", "s16")}${esc(text)}</span>`
+    + (FOCUS_DEMO() ? "" : `<button type="button" data-fdev aria-label="Открыть этот чат на другом устройстве">${ic("qr", "s16")}<b>На другом устройстве</b></button>`);
   const cls = "focus-exp" + (soon ? " soon" : "");
   if (el.className !== cls) el.className = cls;
   if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
   if (el.hidden) el.hidden = false;
 }
-$("focusExp").addEventListener("click", (e) => { if (e.target.closest("[data-fproj]")) focusProjSheet(); });
+$("focusExp").addEventListener("click", (e) => { if (e.target.closest("[data-fproj]")) focusProjSheet(); if (e.target.closest("[data-fdev]")) focusDev(); });
+const focusDev = (id) => part("focusdev").then((m) => m.device(id));   // «Открыть на другом устройстве» (22.11)
 const byLast = (a, b) => lastMsg(b) - lastMsg(a);
 function focusProjSheet() {
   const f = meta.focus, list = [...sessions].sort(byLast);
   helpSheet("sheet.focus-proj");
-  sheet(`Проект «${f.name}»`, [
+  sheet(FOCUS_PROJ() ? `Проект «${f.name}»` : "Чаты по ссылке", [
     ...list.map((x) => ({ label: x.title || x.name, dot: (ST[x.status] || ST.idle).cls, on: x.id === current,
       sub: (ST[x.status] || ST.idle).label + (isNew(x) ? " · новый ответ" : "") + (lastMsg(x) ? " · " + agoText(lastMsg(x)) : ""), run: () => openSession(x.id) })),
     ...(list.length ? [] : [{ info: true, icon: "chat", label: "Открытых сессий нет", sub: FOCUS_DEMO() ? "демо — только просмотр" : "начните новую или продолжите завершённую" }]),
-    ...(FOCUS_DEMO() ? [] : [{ label: "Новый чат в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
-      { label: "Завершённые чаты", icon: "file", sub: "продолжить разговор, который закрыли", run: () => focusProjDone() }])]);
+    ...(FOCUS_DEMO() || !FOCUS_PROJ() ? [] : [{ label: "Новый чат в проекте", icon: "plus", sub: "ещё одно окно Claude в папке проекта", run: () => focusProjNew() },
+      { label: "Завершённые чаты — здесь", icon: "file", sub: "начатые по этой ссылке — продолжить", run: () => focusProjDone() }])]);
 }
 async function focusProjNew(btn) {
   const go = async () => { try { const d = await api("/api/project/session", { id: meta.focus.proj }); await refresh(); await openSession(d.id); } catch (e) { toast("Не вышло: " + e.message, 4500); } };
@@ -6605,7 +6598,7 @@ async function focusProjDone() {
   helpSheet("sheet.focus-proj");
   sheet("Завершённые чаты", d.chats.length ? d.chats.map((c) => ({ label: c.title || "Без названия", icon: "chat", sub: `${c.msgs} ${plural(c.msgs, ["сообщение", "сообщения", "сообщений"])}${c.last || c.mtime ? " · " + agoText(c.last || c.mtime) : ""} · продолжить`,
     run: async () => { try { const r = await api("/api/project/resume", { id: meta.focus.proj, sid: c.sid }); await refresh(); openSession(r.id); } catch (e) { toast("Не вышло: " + e.message, 4500); } } }))
-    : [{ info: true, icon: "chat", label: "Завершённых чатов нет" }]);
+    : [{ info: true, icon: "chat", label: "Завершённых чатов пока нет", sub: "здесь будут чаты, начатые по этой ссылке" }]);
 }
 function focusGone() {                              // сессию завершили: ссылка на сессию гаснет, на проект — живёт
   if (!FOCUS_PROJ()) return focusEnd("Чат завершён.");
@@ -6620,7 +6613,7 @@ function focusEmpty() {                             // в проекте нет 
   if (!$("content").querySelector("[data-key=fempty]")) $("content").innerHTML = h;
 }
 $("content").addEventListener("click", (e) => { const b = e.target.closest("[data-fnew], [data-fdone]"); if (!b || !FOCUS_PROJ() || FOCUS_DEMO()) return; b.dataset.fnew != null ? focusProjNew(b) : focusProjDone(); });
-function focusEnd(text) {
+function focusEnd(text, why) {
   if ($("focusEnd")) return;
   start.poll = null;
   document.querySelectorAll(".sheet-bg").forEach((b) => b.remove());
@@ -6628,15 +6621,19 @@ function focusEnd(text) {
   const d = document.createElement("div"); d.id = "focusEnd"; d.className = "focus-end"; d.setAttribute("role", "alert");
   d.innerHTML = `<div>${ic(done ? "power" : "lock")}<h2 class="serif">${done ? "Чат завершён" : "Ссылка не действует"}</h2>${done ? "" : `<p>${esc(text)}</p>`}<p class="note">Эту страницу можно закрыть.</p></div>`;
   document.body.append(d);
+  if (why && why !== "closed") part("focusdev").then((m) => m.gone(text, why)).catch(() => {});   // свой экран и «Попросить доступ»
 }
 async function focusStart() {
   document.body.classList.add("focus");             // экран сессии — openSession, когда известна сессия
   try {
-    const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN }) : null;   // первое открытие — привязка устройства
+    // первое открытие — привязка устройства; сначала — согласие на обработку ПДн (js/privacy.js, 409 code=privacy)
+    const o = FOCUS_TOKEN ? await api("/api/focus/open", { token: FOCUS_TOKEN })
+      .catch((e) => e.code === "privacy" ? part("privacy").then((m) => m.ask(FOCUS_TOKEN)) : Promise.reject(e)) : null;
     if (o?.mode === "space") return location.replace(location.pathname + "?slink");
     if (o?.mode === "meeting" || (DEMO && params.get("focus") === "meeting")) return part("meeting").then((m) => m.publicView());   // ссылка на протокол   // ссылка на пространство — полная панель
     if (o?.owner_here) return location.replace(location.pathname + (o.w ? "?session=" + encodeURIComponent(o.w) : ""));   // владелец — обычная панель
     meta = await api("/api/meta"); BUILD = meta.build;
+    try { localStorage.setItem("gp.focus", JSON.stringify({ id: meta.focus?.id, name: meta.focus?.name })); } catch (e) { /* приватный режим */ }
   } catch (e) { return focusEnd(e.message); }
   document.body.dataset.role = FOCUS_DEMO() ? "demo" : "owner";   // демо: сервер — «наблюдатель», кнопки вопроса — есть
   document.body.classList.toggle("focus-demo", FOCUS_DEMO());
@@ -6651,6 +6648,7 @@ async function focusStart() {
   start.done = true; afterPaint(mdLoad);
   start.poll ||= refresh;                            // опрос — общий секундный тик (tick, pollDue)
   keepAwake(); restoreDraft();
+  if (!DEMO || params.get("tour")) setTimeout(() => part("focustour").then((m) => m.offer()).catch(() => {}), 1500);   // тур фокуса — один раз (js/focustour.js)
 }
 $("backBtn").onclick = back;
 $("target").onclick = () => { haptic("selectionChanged"); FOCUS ? openSwitcher() : split() ? navSearch(true) : navOpen(true); };   // сменить чат — панель чатов (Gemini №3)
@@ -6910,7 +6908,7 @@ function openHelp() {
   if (document.querySelector(".help-bg")) return;
   const bg = document.createElement("div"); bg.className = "sheet-bg help-bg"; bg.ctx = helpContext();
   bg.innerHTML = `<div class="sheet help" role="dialog" aria-label="${esc(L("help.title", "Помощник"))}"><h3>${ic("help", "s16")}${esc(L("help.title", "Помощник"))}</h3><div class="hwhere"></div>
-    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" || SIM.on ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}Показать тур по этому экрану</button>`}${meta?.role === "owner" && !SIM.on && view !== "login" ? `<button class="htour" data-demo-here>${ic("flask", "s16")}Демо и тесты</button>` : ""}
+    <div class="hmsgs" aria-live="polite"></div><div class="hchips"></div>${view === "login" ? "" : `<button class="htour" data-tour-here>${ic("spark", "s16")}${SIM.on ? esc(L("help.tour", "Показать тур")) : "Показать тур по этому экрану"}</button>`}${meta?.role === "owner" && !SIM.on && view !== "login" ? `<button class="htour" data-demo-here>${ic("flask", "s16")}Демо и тесты</button>` : ""}
     <form class="hrow"><input name="q" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="${esc(L("help.ask", "Спросите, что непонятно…"))}" aria-label="${esc(L("help.ask.aria", "Вопрос помощнику"))}">
       <button class="hsend" type="submit" aria-label="${esc(L("help.send", "Спросить"))}">${ic("send")}</button></form>
     <button class="cancel" data-close>${esc(L("help.close", "Закрыть"))}</button></div>`;
@@ -6918,7 +6916,7 @@ function openHelp() {
     const b = e.target.closest("button");
     if (e.target === bg || b?.hasAttribute("data-close")) return bg.remove();   // лист под ним остаётся
     if (!b) return;
-    if (b.hasAttribute("data-tour-here")) { bg.remove(); return startTour(tourKind(), true); }
+    if (b.hasAttribute("data-tour-here")) { bg.remove(); return SIM.on ? part("ladtour").then((m) => m.start()) : startTour(tourKind(), true); }
     if (b.hasAttribute("data-demo-here")) { bg.remove(); return demoSheet(); }   // «Демо и тесты» — здесь (#203)
     const id = b.closest(".ha")?.dataset.id;
     if (b.dataset.chip) return helpAsk(bg, { chip: b.dataset.chip }, b.textContent);
@@ -6961,6 +6959,7 @@ async function enableAndGo(c, id) {
 }
 function goFromLink() {                                // #go=<id> из бота («📱 Открыть в панели») — сразу на нужный экран
   if (!FOCUS && (params.has("share") || meta?.shares)) part("share").then((m) => m.open()).catch(() => {});   // «Поделились»
+  if (!FOCUS && params.get("focusask") && meta?.role === "owner") part("focusdev").then((m) => m.ask(params.get("focusask"), params.get("do"))).catch(() => {});   // «Просят доступ» (22.11)
   const id = new URLSearchParams(location.hash.slice(1)).get("go") || params.get("go");
   if (id && /^go:[a-z0-9.\-]+$/.test(id)) setTimeout(() => go(id), 300);
   const sid = params.get("session");                  // «📱 Открыть сессию» из бота (зов тестировщика на помощь)
@@ -6971,7 +6970,7 @@ function goFromLink() {                                // #go=<id> из бота
 }
 
 // ---------- короткий тур (docs/MINI_APP.md#тур) ----------
-// Шаги {target, title, text} — по data-tour="…" (данные — #tourData); шага, чьего элемента нет на экране (скрыт
+// Шаги {target, title, text} — по data-tour="…" (данные — js/tourdata.js); шага, чьего элемента нет на экране (скрыт
 // ролью, шириной или ещё не открыт), нет. Предложение «Пройти короткий тур?» — один раз; дальше — «Настройки» →
 // «Пройти тур» и «? Подсказать» → «Показать тур по этому экрану». Отметки done/dismissed — на сервере (/api/tour),
 // у каждого свои; localStorage — только кэш. driver.js грузится с cdnjs только при старте тура (точная версия + SRI).
@@ -6981,9 +6980,11 @@ const DRIVER = {
   css: "https://cdnjs.cloudflare.com/ajax/libs/driver.js/1.8.0/driver.min.css",
   cssSri: "sha512-dBiCVIs5ayOv4qwu3u8yf+CvdLI2kFdXijpYiU5nM6mO61QRXzExoENn5nJiF3n8uBW/yEO+FoLLuYbkj8/frg==",
 };
-const TOURS = JSON.parse($("tourData").textContent), TOUR_KINDS = ["dev", "business"];
+const TOUR_KINDS = ["dev", "business"], TOUR_TITLES = {"business": "для бизнеса", "dev": "для разработчика"};   // шаги — js/tourdata.js
+let TOURS = null;
+const tourData = async () => (TOURS ||= (await part("tourdata")).TOURS);
 let tourOn = false;
-const tourKind = () => TOURS[store("tourKind")] ? store("tourKind") : meta?.role === "viewer" ? "business" : "dev";
+const tourKind = () => TOUR_KINDS.includes(store("tourKind")) ? store("tourKind") : meta?.role === "viewer" ? "business" : "dev";
 const tourKey = () => "tour:" + (meta?.uid ?? "");
 const tourEl = (t) => [...document.querySelectorAll(`[data-tour="${t}"]`)].find((el) => el.getClientRects().length && !el.closest("[hidden]"));
 function tourCache(v) {
@@ -7032,6 +7033,7 @@ function tourRun(drv, steps, label, more) {           // один экран т�
   });
 }
 async function startTour(kind = tourKind(), here = false) {
+  try { await tourData(); } catch (e) { return toast("Тур недоступен — нет связи", 3500); }
   if (tourOn || !TOURS[kind]) return;
   const from = document.activeElement;
   hideTourOffer();
@@ -7338,13 +7340,13 @@ const SIM = { projects: [], sec: null, yes: {}, on: false, w: null, list: [], hi
 const SIMPLE_TOOL = {"Read":"reads","Grep":"reads","Glob":"reads","LS":"reads","Edit":"edits","MultiEdit":"edits","Write":"writes","NotebookEdit":"edits","Bash":"acts","PowerShell":"acts","BashOutput":"acts","KillShell":"acts","Skill":"acts","WebSearch":"web","WebFetch":"web","Task":"helper","Agent":"helper","TodoWrite":"plans","TaskCreate":"plans","TaskUpdate":"plans","AskUserQuestion":"waiting","ExitPlanMode":"waiting"};
 const SIMPLE_PH = ["sent", "delivered", "started", "working", "thinking", "waiting", "done", "queued", "stuck", "idle"];
 // Демо (?demo&simple=1&ask=bash|edit|question|unknown): разбор тех же экранов сервером — python -m gas_pult.humanize.
-const SIMPLE_DEMO = {"bash":{"kind":"bash","known":true,"title_ru":"Агент хочет выполнить действие на компьютере","title_en":"The agent wants to run an action on the computer","detail_ru":"Это команда для компьютера, на котором работает агент: например, посчитать, собрать или удалить файлы. Если вы не ждали такого действия — нажмите «Нет».","detail_en":"This is a command for the computer the agent runs on: for example, to calculate, build or delete files. If you did not expect it, tap «No».","options":[{"key":"yes","label_ru":"Да","label_en":"Yes","send":{"n":"1"},"level":1,"note_ru":"Разрешить один раз — в следующий раз агент спросит снова.","note_en":"Allow once — the agent will ask again next time."},{"key":"yes-always","label_ru":"Да, и больше не спрашивать о таком","label_en":"Yes, and don't ask about this again","send":{"n":"2"},"level":2,"note_ru":"Агент запомнит разрешение для этой папки и дальше будет делать такие действия без вопросов. Выбирайте, только если уверены.","note_en":"The agent will remember the permission for this folder and will do such actions without asking. Choose only if you are sure."},{"key":"no-tell","label_ru":"Нет","label_en":"No","send":{"n":"3"},"level":1,"note_ru":"Агент не будет этого делать. Напишите ему, как поступить иначе.","note_en":"The agent will not do this. Write to it what to do instead."},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"233bf58ca6ca"},"edit":{"kind":"edit","known":true,"title_ru":"Агент хочет изменить документ","title_en":"The agent wants to change a document","detail_ru":"Агент подготовил правку в документе своего пространства и ждёт вашего согласия. Если не уверены — нажмите «Нет» и напишите, что сделать иначе.","detail_en":"The agent has prepared a change to a document in its workspace and waits for your approval. If unsure, tap «No» and write what to do instead.","options":[{"key":"yes","label_ru":"Да","label_en":"Yes","send":{"n":"1"},"level":1,"note_ru":"Разрешить один раз — в следующий раз агент спросит снова.","note_en":"Allow once — the agent will ask again next time."},{"key":"yes-all-edits","label_ru":"Да, и разрешить все правки до конца работы","label_en":"Yes, and allow all changes until the work is done","send":{"n":"2"},"level":2,"note_ru":"Агент будет менять и создавать документы без вопросов до конца этого разговора. Выбирайте, только если уверены.","note_en":"The agent will change and create documents without asking until the end of this conversation. Choose only if you are sure."},{"key":"no-tell","label_ru":"Нет","label_en":"No","send":{"n":"3"},"level":1,"note_ru":"Агент не будет этого делать. Напишите ему, как поступить иначе.","note_en":"The agent will not do this. Write to it what to do instead."},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"7e7d25b45f5d"},"question":{"kind":"question","known":true,"title_ru":"Какой отчёт прислать утром?","title_en":"Какой отчёт прислать утром?","detail_ru":"Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.","detail_en":"Pick an answer. If none fits, tap «Your own answer» and write it.","options":[{"key":"q1","label_ru":"Короткий — три цифры","label_en":"Короткий — три цифры","send":{"n":"1"},"level":1,"note_ru":"","note_en":"","raw":true},{"key":"q2","label_ru":"Подробный — по каждой мойке","label_en":"Подробный — по каждой мойке","send":{"n":"2"},"level":1,"note_ru":"","note_en":"","raw":true},{"key":"type","label_ru":"Свой вариант","label_en":"Your own answer","send":{"key":"Escape","compose":true},"level":1,"note_ru":"Напишите ответ своими словами в поле внизу.","note_en":"Write your answer in the field below."}],"sig":"17b353e5af0e"},"unknown":{"kind":"unknown","known":false,"title_ru":"Агент спрашивает разрешение","title_en":"The agent is asking for permission","detail_ru":"Агент ждёт вашего решения, но такой вопрос панель пока не умеет пересказать. «Разрешить» — согласиться с первым вариантом. «Не разрешать» — отказаться: агент остановится и спросит, что делать.","detail_en":"The agent is waiting for your decision, but the panel cannot retell this question yet. «Allow» agrees to the first option. «Don't allow» declines: the agent will stop and ask what to do.","options":[{"key":"allow","label_ru":"Разрешить","label_en":"Allow","send":{"n":"1"},"level":1,"note_ru":"","note_en":""},{"key":"deny","label_ru":"Не разрешать","label_en":"Don't allow","send":{"key":"Escape"},"level":1,"note_ru":"","note_en":""},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"4f9fadf709ef"}};
+const SIMPLE_DEMO = {"bash":{"kind":"bash","known":true,"title_ru":"Агент хочет выполнить действие на компьютере","title_en":"The agent wants to run an action on the computer","detail_ru":"Это команда для компьютера, на котором работает агент: например, посчитать, собрать или удалить файлы. Если вы не ждали такого действия — нажмите «Нет».","detail_en":"This is a command for the computer the agent runs on: for example, to calculate, build or delete files. If you did not expect it, tap «No».","options":[{"key":"yes","label_ru":"Да","label_en":"Yes","send":{"n":"1"},"level":1,"note_ru":"Разрешить один раз — в следующий раз агент спросит снова.","note_en":"Allow once — the agent will ask again next time."},{"key":"yes-always","label_ru":"Да, и больше не спрашивать о таком","label_en":"Yes, and don't ask about this again","send":{"n":"2"},"level":2,"note_ru":"Агент запомнит разрешение для этой папки и дальше будет делать такие действия без вопросов. Выбирайте, только если уверены.","note_en":"The agent will remember the permission for this folder and will do such actions without asking. Choose only if you are sure."},{"key":"no-tell","label_ru":"Нет","label_en":"No","send":{"n":"3"},"level":1,"note_ru":"Агент не будет этого делать. Напишите ему, как поступить иначе.","note_en":"The agent will not do this. Write to it what to do instead."},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"233bf58ca6ca"},"edit":{"kind":"edit","known":true,"title_ru":"Агент хочет изменить документ","title_en":"The agent wants to change a document","detail_ru":"Агент подготовил правку в документе своего пространства и ждёт вашего согласия. Если не уверены — нажмите «Нет» и напишите, что сделать иначе.","detail_en":"The agent has prepared a change to a document in its workspace and waits for your approval. If unsure, tap «No» and write what to do instead.","options":[{"key":"yes","label_ru":"Да","label_en":"Yes","send":{"n":"1"},"level":1,"note_ru":"Разрешить один раз — в следующий раз агент спросит снова.","note_en":"Allow once — the agent will ask again next time."},{"key":"yes-all-edits","label_ru":"Да, и разрешить все правки до конца работы","label_en":"Yes, and allow all changes until the work is done","send":{"n":"2"},"level":2,"note_ru":"Агент будет менять и создавать документы без вопросов до конца этого разговора. Выбирайте, только если уверены.","note_en":"The agent will change and create documents without asking until the end of this conversation. Choose only if you are sure."},{"key":"no-tell","label_ru":"Нет","label_en":"No","send":{"n":"3"},"level":1,"note_ru":"Агент не будет этого делать. Напишите ему, как поступить иначе.","note_en":"The agent will not do this. Write to it what to do instead."},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"7e7d25b45f5d"},"question":{"kind":"question","known":true,"title_ru":"Какой отчёт прислать утром?","title_en":"Какой отчёт прислать утром?","detail_ru":"Выберите вариант ответа. Если ни один не подходит — нажмите «Свой вариант» и напишите ответ.","detail_en":"Pick an answer. If none fits, tap «Your own answer» and write it.","options":[{"key":"q1","label_ru":"Короткий — три цифры","label_en":"Короткий — три цифры","send":{"n":"1"},"level":1,"note_ru":"","note_en":"","raw":true},{"key":"q2","label_ru":"Подробный — по каждой мойке","label_en":"Подробный — по каждой мойке","send":{"n":"2"},"level":1,"note_ru":"","note_en":"","raw":true},{"key":"type","label_ru":"Свой вариант","label_en":"Your own answer","send":{"key":"Escape","compose":true},"level":1,"note_ru":"Напишите ответ своими словами в поле внизу.","note_en":"Write your answer in the field below."}],"sig":"17b353e5af0e","header":"Отчёт"},"unknown":{"kind":"unknown","known":false,"title_ru":"Агент спрашивает разрешение","title_en":"The agent is asking for permission","detail_ru":"Агент ждёт вашего решения, но такой вопрос панель пока не умеет пересказать. «Разрешить» — согласиться с первым вариантом. «Не разрешать» — отказаться: агент остановится и спросит, что делать.","detail_en":"The agent is waiting for your decision, but the panel cannot retell this question yet. «Allow» agrees to the first option. «Don't allow» declines: the agent will stop and ask what to do.","options":[{"key":"allow","label_ru":"Разрешить","label_en":"Allow","send":{"n":"1"},"level":1,"note_ru":"","note_en":""},{"key":"deny","label_ru":"Не разрешать","label_en":"Don't allow","send":{"key":"Escape"},"level":1,"note_ru":"","note_en":""},{"key":"details","label_ru":"Показать подробности","label_en":"Show details","send":{"show":"details"},"level":1,"note_ru":"","note_en":""}],"sig":"4f9fadf709ef"}};
 const canNew = () => meta?.role !== "viewer";
 
 // Язык и режим — у каждого свои, на сервере. Язык, выбранный на первом экране до входа, сервер запоминает при входе.
 function simplePrefs(m) {
   let p = m?.prefs || { simple: false, lang: "ru", saved: false };
-  if (DEMO) p = { simple: params.get("simple") === "1", lang: LANG, saved: true };
+  if (DEMO) p = { simple: params.get("simple") === "1" || (!params.has("dev") && params.get("simple") !== "0"), lang: LANG, saved: true };   // бизнес-демо по QR — простой режим (25.11)
   else if (!p.saved && p.lang !== LANG && m?.role !== "owner") { api("/api/prefs", { lang: LANG }).catch(() => {}); p = { ...p, lang: LANG }; }   // владельцу — только его выбор
   if (p.lang !== LANG && LANGS.includes(p.lang)) { LANG = p.lang; dictReady = loadDict(LANG); }
   store("lang", LANG);
@@ -7359,7 +7361,7 @@ async function setLang(l) {
   if (SIM.on) { sPaint(); sRender(); $("sAsk").dataset.sig = ""; sAsk(); sAct(); }
 }
 async function switchMode(on) {                       // простой ⇄ полный: настройка на сервере, панель — заново
-  if (DEMO) { const u = new URL(location.href); on ? u.searchParams.set("simple", "1") : u.searchParams.delete("simple"); u.searchParams.set("lang", LANG); location.replace(u); return; }
+  if (DEMO) { const u = new URL(location.href); u.searchParams.set("simple", on ? "1" : "0"); u.searchParams.set("lang", LANG); location.replace(u); return; }
   try { await api("/api/prefs", { simple: on }); } catch (e) { return toast(on ? "Не получилось включить простой режим: " + e.message : T("s.fail"), 4000); }
   location.reload();
 }
@@ -7380,10 +7382,12 @@ async function simpleStart() {
   SIM.on = true; document.body.classList.add("simple-on");
   for (const id of ["login", "terms", "country", "persona"]) $(id).hidden = true;
   $("simple").hidden = false; sPaint();
+  if (meta?.role !== "viewer") part("sattach").then((m) => m.init()).catch(() => {});
   try { tg?.BackButton.hide(); } catch (e) {}
   await sLoad(true); restoreDraft(); placeNotices();
   if (!SIM.timer) SIM.timer = setInterval(sTick, 1500);
   start.done = true; afterPaint(mdLoad);
+  if (!DEMO) afterPaint(() => part("ladtour").then((m) => m.offer()).catch(() => {}));   // тур — предложить один раз
   keepAwake();
   goFromLink();
 }
@@ -7521,7 +7525,7 @@ async function sOlder(btn) {
 }
 function sMsg(m) {
   const k = m.i != null ? ` data-i="${m.i}"` : "";
-  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${esc(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
+  if (m.role === "user") return `<div class="msg me"${k}><div class="bubble">${fileTxt(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
   if (m.human) return `<div class="msg ai"${k}><div class="s-err">${ic("warn")}<span>${esc(m.human[LANG] || m.human.ru)}</span></div></div>`;
   return `<div class="msg ai"${k}><div class="bubble md">${md(m.text)}</div><div class="macts">${mCopyBtn()}</div></div>`;
 }
@@ -7537,13 +7541,16 @@ function sRender(toBottom) {
   }
   const had = !!box.querySelector(".msg[data-i]"), wasPending = !!box.querySelector(".msg[data-key^='sp:']");
   box.querySelectorAll(".msg.enter").forEach((el) => el.classList.remove("enter"));
-  const items = SIM.hist.map(sMsg).join("") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${esc(p.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("");
+  const items = SIM.hist.map(sMsg).join("") + (SIM.hist.at(-1)?.role === "assistant" && canEdit() ? `<div class="nextq" data-key="nq:${SIM.hist.at(-1).i}"></div>` : "") + SIM.pending.map((p, i) => `<div class="msg me" data-key="sp:${i}"><div class="bubble">${fileTxt(p.text)}</div><div class="macts">${mCopyBtn()}</div></div>`).join("");
   const fresh = morph(box, (SIM.more ? `<button class="btn ghost" type="button" data-solder="1">${esc(T("s.older"))}</button>` : "")
     + (items || (SIM.got === SIM.w ? `<div class="s-empty"><p>${esc(T("s.empty"))}</p></div>` : skelMsgs())));
+  const first = !items && SIM.got === SIM.w;          // пустой чат — «Что поручим сегодня?» (js/firstscreen.js, 26.11)
+  $("sFirst").hidden = !(first && SIM.fs);
+  if (first && SIM.fs === undefined) { SIM.fs = null; part("firstscreen").then((m) => { SIM.fs = m.allowed(meta?.role, DEMO); if (SIM.fs) m.fill($("sFirst"), LANG); sRender(); if (SIM.fs) $("sScroll").scrollTop = 0; }).catch(() => { SIM.fs = false; }); }
   if (had) fresh.forEach((el) => el.classList.contains("msg") && !el.classList.contains("mupd") && !(wasPending && el.classList.contains("me") && el.dataset.i) && el.classList.add("enter"));
   fresh.forEach((el) => el.querySelectorAll(".bubble, .log pre").forEach(linkify));   // дообработка — только новых
   fresh.forEach((el) => el.querySelectorAll("table").forEach((t) => { const w = document.createElement("div"); w.className = "tbl"; t.replaceWith(w); w.append(t); }));
-  fresh.forEach(codeCopy);
+  fresh.forEach(codeCopy); nextQ(box, SIM.hist.at(-1));
   sAct();
   if (toBottom && !params.has("noscroll")) sBottom();
 }
@@ -7591,7 +7598,7 @@ function sAsk() {
   const viewer = meta?.role === "viewer", all = a.options.map((o, i) => [o, i]);
   const one = all.filter(([o]) => o.level !== 2), two = all.filter(([o]) => o.level === 2);
   const chip = ([o, i]) => `<button class="scn-opt" type="button" data-sopt="${i}"${viewer && !o.send.show ? " disabled" : ""}>${esc(sLab(o))}</button>`;
-  box.innerHTML = `<div class="s-ask" role="group" aria-label="${esc(a["title_" + LANG] || a.title_ru)}"><p class="q">${ic("warn")}<span>${esc(a["title_" + LANG] || a.title_ru)}</span></p>
+  box.innerHTML = `<div class="s-ask" role="group" aria-label="${esc(a["title_" + LANG] || a.title_ru)}"><p class="q">${ic("warn")}<span>${a.header ? `<b>${esc(a.header)}.</b> ` : ""}${esc(a["title_" + LANG] || a.title_ru)}</span></p>
     <div class="scn-opts">${one.map(chip).join("")}${two.length && !viewer ? `<button class="scn-opt s-more" type="button" data-smore="1" aria-expanded="${SIM.open2}">${esc(T(SIM.open2 ? "s.less" : "s.more"))}</button>` : ""}</div>
     ${two.length && SIM.open2 ? `<div class="s-two"><p class="note">${esc(T("s.more.note"))}</p>${two.map(([o, i]) => `<div class="s-opt2">${chip([o, i])}<p>${esc(o["note_" + LANG] || "")}</p></div>`).join("")}</div>` : ""}
     ${viewer ? `<p class="note">${esc(T("s.viewonly"))}</p>` : ""}</div>`;
@@ -7617,12 +7624,18 @@ async function sSend() {
   if (micSendNow(MIC_SIMPLE)) return;               // Enter во время записи — «Стоп и отправить» (#208)
   const t = $("sInput"), text = t.value.trim();
   if (!text || !SIM.w) return;
-  if (SIM.ask) { toast(T("s.answer.first"), 3500); return $("sAsk").scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  if (SIM.ask) return sNudge();                     // текст остаётся в поле, варианты подсвечены (22.11)
   const p = { text, id: msgId() }; SIM.pending.push(p); t.value = ""; sGrow(); sRender(true);
   try {
     await api("/api/send", { w: SIM.w, text, id: p.id });
     SIM.act = { phase: "sent", since: Date.now() / 1000 + SIM.skew }; sAct(); setTimeout(sTick, 800);
-  } catch (e) { SIM.pending = SIM.pending.filter((x) => x !== p); t.value = text; sGrow(); sRender(); toast(T("s.fail.send"), 4000); }
+  } catch (e) { SIM.pending = SIM.pending.filter((x) => x !== p); t.value = text; sGrow(); sRender(); if (e.code === "question") { sTick(); return toast(T("s.answer.wait"), 4000); } toast(T("s.fail.send"), 4000); }
+}
+function sNudge() {
+  const c = $("sAsk").querySelector(".s-ask"); if (!c) return toast(T("s.answer.wait"), 3500);
+  if (!c.querySelector(".s-nudge")) c.insertAdjacentHTML("beforeend", `<p class="s-nudge" role="status">${esc(T("s.answer.wait"))}</p>`);
+  c.classList.remove("nudge"); void c.offsetWidth; c.classList.add("nudge"); haptic("notificationOccurred", "warning");
+  c.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 function sGrow() { fitLines($("sInput")); }
 $("sInput").addEventListener("input", sGrow);
@@ -7776,19 +7789,23 @@ function sSettings() {
   const mode = params.get("theme") || store("theme") || "auto";
   const html = `<p class="s-lbl">${esc(T("set.lang"))}</p><div class="scn-opts">${LANGS.map((l) => sChip(l === LANG, `data-lang="${l}"`, T("set.lang." + l))).join("")}</div>
     ${SIM.w && canNew() ? `<div class="scn-opts">${sChip(false, 'data-reply="1"', T("set.answers"), ic("chat"))}</div><p class="note">${esc(T("set.answers.sub"))}</p>` : ""}
+    ${meta?.role !== "viewer" ? `<div class="scn-opts">${sChip(false, 'data-conn="1"', T("s.conn"), ic("mail"))}</div>` : ""}
     <p class="s-lbl">${esc(T("set.theme"))}</p><div class="scn-opts">${["auto", "light", "dark"].map((m) => sChip(m === mode, `data-theme="${m}"`, T("set.theme." + m))).join("")}</div>
     ${UI ? `<p class="s-lbl">${esc(T("caps.title"))}</p><p class="note">${esc(T("caps.entry.sub", { role: personaTitle(UI.persona) }))}</p>
     <div class="scn-opts">${sChip(false, 'data-caps="1"', T("caps.open"), ic("settings"))}</div>` : `<p class="s-lbl">${esc(T("set.simple"))}</p><p class="note">${esc(T("set.simple.sub"))}</p>
     <div class="scn-opts">${sChip(false, 'data-full="1"', T("set.simple.off"))}</div><p class="note">${esc(T("set.simple.off.sub"))}</p>`}
     ${meta?.space && meta?.role !== "owner" ? `<p class="s-lbl">${esc(T("dev.title"))}</p><p class="note">${esc(T("dev.sub"))}</p><div class="scn-opts">${sChip(false, 'data-device="1"', T("dev.open"), ic("phone"))}</div>` : ""}
+    ${SIM.w ? `<div class="scn-opts">${sChip(false, 'data-bug="1"', T("set.bug"), ic("bug"))}</div>` : ""}
     <div class="scn-opts">${sChip(false, 'data-reload="1"', T("set.reload"), ic("refresh"))}${meta?.via === "browser" ? sChip(false, 'data-logout="1"', T("set.logout"), ic("power")) : ""}</div>`;
   sSheet(hv("simple.settings"), T("set.title"), html, async (b, bg) => {
     if (b.dataset.lang) { haptic("selectionChanged"); await setLang(b.dataset.lang); bg.remove(); return sSettings(); }
     if (b.dataset.theme) { store("theme", b.dataset.theme); applyTheme(); bg.remove(); return sSettings(); }
     if (b.dataset.reply) { bg.remove(); return sReply(); }
     if (b.dataset.full) { bg.remove(); return switchMode(false); }
+    if (b.dataset.conn) { bg.remove(); return part("sconnect").then((m) => m.open()); }
     if (b.dataset.caps) { bg.remove(); return capsSheet(); }
     if (b.dataset.device) { bg.remove(); return deviceSheet(); }
+    if (b.dataset.bug) { bg.remove(); return part("bugreport").then((m) => m.open(SIM.w)); }
     if (b.dataset.reload) return reloadPanel();
     if (b.dataset.logout) { try { await api("/api/logout", {}); } catch (e) {} location.reload(); }
   });
@@ -7815,6 +7832,10 @@ function simpleDemoHist() {
 paintIcons();
 applyTheme();
 afterPaint(() => part("zoom").catch(() => {}));
+afterPaint(() => part("themebtn").then((m) => m.init()).catch(() => {}));
+afterPaint(() => part("golosfont").then((m) => m.init()).catch(() => {}));   // Golos Text (25.11), свой файл
+afterPaint(() => part("look").then((m) => m.init()).catch(() => {}));
+if (!DEMO || params.has("steps")) afterPaint(() => part("steplog").then((m) => m.init()).catch(() => {}));   // «Ход работы» (26.11)   // фирменный вид: фон, акцент «Да»
 afterPaint(() => part("dropfiles").catch(() => {}));   // перетаскивание и вставка файлов (js/dropfiles.js)
 if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes?.(); } catch (e) {} tg.BackButton.onClick(back); tg.onEvent?.("themeChanged", applyTheme); tg.onEvent?.("viewportChanged", () => { fitViewport(); keepAnch(); }); }
 // iPad (владелец 17.11): Telegram показывает мини-приложение плавающим окном ~420 px, expand() — только по высоте.
@@ -7837,10 +7858,16 @@ addEventListener("resize", fitViewport);
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
 wideMQ.addEventListener?.("change", () => { show(view); refresh(); });
 termWrap = store("termWrap") === "1";
-if (DEMO) $("demoBar").hidden = false;
+if (DEMO) {
+  $("demoBar").hidden = false; document.body.classList.add("demo-on");
+  const dh = () => document.documentElement.style.setProperty("--demo-h", $("demoBar").offsetHeight + "px");
+  dh(); addEventListener("resize", dh);
+  part("demovideo").then((m) => m.init()).catch(() => {});   // «Смотреть, 1 мин» (js/demovideo.js)
+}
 dictReady.then(paintLoginLang);
 dictReady.then(agoTick);                              // «изменена N назад» — тексты из словаря
-if (DEMO && params.get("view") === "login") showLogin(); else if (FOCUS) focusStart(); else start();
+if (params.get("demo") === "retail") part("retail").then((m) => m.init()).catch(() => {});   // сценарий для ритейла (js/retail.js)
+else if (DEMO && params.get("view") === "login") showLogin(); else if (FOCUS) focusStart(); else start();
 
 </script>
 </body>

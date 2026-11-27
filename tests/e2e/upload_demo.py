@@ -1,6 +1,6 @@
 """Загрузка фото (владелец 15.11: «почему так долго загружается фото … оптимизировать»; Playwright).
 
-    python tests/e2e/upload_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/upload_demo.py http://127.0.0.1:8797/?demo&dev
 
 Узкое место — сеть телефона (223 КБ шли 52 с). Проверяем: фото 3000×2000 PNG сжимается на устройстве до ≤1920 px JPEG
 (байт меньше в разы), на значке файла — проценты загрузки, «Отправить» сразу (не «подождите»): сообщение в переписке
@@ -9,6 +9,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 MAKE = """async () => { const c = Object.assign(document.createElement('canvas'), {width: 3000, height: 2000});
   const g = c.getContext('2d'); const d = g.createImageData(3000, 2000);     // «фото»: плавные переходы + шум
@@ -58,4 +60,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

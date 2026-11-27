@@ -25,7 +25,7 @@ def test_e2e_palette():
     from playwright.sync_api import sync_playwright
     srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(WEB)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{srv.server_address[1]}/?demo"
+    base = f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev"
     try:
         with sync_playwright() as p:
             b = p.chromium.launch(channel="chrome")

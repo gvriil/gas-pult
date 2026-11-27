@@ -14,18 +14,25 @@
 …]``: ``load`` применяет все шаги новее версии из ``.v`` (нет файла — версия 0), ``save`` пишет данные, затем версию —
 под тем же замком; файл переводится при первой записи. Ключ ``_v`` внутри данных (с ранней сборки этой ветки)
 ``save`` убирает.
+
+Режим хранения (``sqlstore.py``, ключ ``storage`` в config.toml): для файлов из ``sqlstore.COLLECTIONS`` ``load`` и
+``save`` в режиме dual пишут ещё и в SQLite (читают JSON), в режиме sqlite — читают и пишут только SQLite. По
+умолчанию json — всё как раньше. Замок ``locked`` — тот же во всех режимах: он держит «прочитать → изменить →
+записать» целиком.
 """
 
 from __future__ import annotations
 
 import contextlib
 import fcntl
+import itertools
 import json
 import os
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
+from gas_pult import sqlstore
 from gas_pult.config import write_private
 
 VERSION_KEY = "_v"                      # ключ версии внутри данных — только с ранней сборки ветки; save его убирает
@@ -45,6 +52,14 @@ MIGRATIONS: dict[str, list[tuple[int, Callable]]] = {
 _guard = threading.Lock()
 _locks: dict[str, threading.RLock] = {}
 _held = threading.local()
+_gen = itertools.count(1)
+
+
+def hold(path) -> int | None:
+    """Номер текущего захвата ``locked(path)`` этим потоком (новый на каждый внешний захват) или None — замок не
+    взят. Пока захват длится, файл (и его коллекцию в SQLite) никто другой не пишет — ``sqlstore`` по нему верит
+    кэшу коллекции."""
+    return (getattr(_held, "g", None) or {}).get(_key(Path(path)))
 
 
 def _key(path: Path) -> str:
@@ -74,9 +89,14 @@ def locked(path):
         with open(path.with_name(f".{path.name}.lock"), "a") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
             depth[key] = 1
+            gens = getattr(_held, "g", None)
+            if gens is None:
+                gens = _held.g = {}
+            gens[key] = next(_gen)
             try:
                 yield
             finally:
+                gens.pop(key, None)
                 depth[key] = 0
                 fcntl.flock(fh, fcntl.LOCK_UN)
 
@@ -87,12 +107,25 @@ def vfile(path) -> Path:
     return path.with_name(f".{path.name}.v")
 
 
+_VCACHE: dict[str, tuple[tuple, int]] = {}      # .<имя>.v → (подпись, версия): читается на каждый load (25.11)
+
+
 def file_version(path) -> int:
-    """Версия схемы, в которой записан файл: число из ``.<имя>.v``; нет файла или мусор — 0."""
+    """Версия схемы, в которой записан файл: число из ``.<имя>.v``; нет файла или мусор — 0. Кэш — по подписи файла."""
+    f = vfile(path)
     try:
-        return max(0, int(vfile(path).read_text(encoding="utf-8").strip()))
-    except (OSError, ValueError):
+        st = f.stat()
+    except OSError:
         return 0
+    sig, key = (st.st_ino, st.st_mtime_ns, st.st_size), str(f)
+    if (hit := _VCACHE.get(key)) and hit[0] == sig:
+        return hit[1]
+    try:
+        v = max(0, int(f.read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        v = 0
+    _VCACHE[key] = (sig, v)
+    return v
 
 
 def version(name: str) -> int:
@@ -112,8 +145,53 @@ def migrate(name: str, d, v: int = 0):
 def load(path, default: Callable = dict, name: str | None = None):
     """Прочитать файл: нет, битый или не того вида (не ``type(default())``) — ``default()``."""
     path = Path(path)
+    m = sqlstore.mode_for(path)
+    if m == "sqlite" and default is sqlstore.shape(path.name):
+        d, v = sqlstore.read(path)
+        return migrate(name or path.name, d, v)
+    if path.name in sqlstore.COLLECTIONS and sqlstore.marker(path).exists():   # возврат с sqlite: выгрузить в JSON
+        sqlstore.heal(path)
+    return load_json(path, default, name)
+
+
+def get(path, key, name: str | None = None):
+    """Одна запись файла-словаря по ключу верхнего уровня (нет — None). В режиме sqlite — одна строка базы по ключу
+    (``sqlstore.get``), без чтения коллекции; в json и dual — как ``load(path).get(key)``. Записано в старой версии
+    схемы — через ``load`` (миграции — на весь файл)."""
+    path = Path(path)
+    if sqlstore.mode_for(path) == "sqlite" and sqlstore.shape(path.name) is dict:
+        s, v = sqlstore.get(path, str(key))
+        if v >= version(name or path.name):
+            return json.loads(s) if s is not None else None
+    return load(path, dict, name).get(str(key))
+
+
+_JCACHE: dict[str, tuple[tuple, str]] = {}      # путь → (подпись файла и версии, текст): без повторного чтения
+
+
+def _sig(path: Path) -> tuple:
+    st = path.stat()
     try:
-        d = json.loads(path.read_text(encoding="utf-8"))
+        sv = vfile(path).stat()
+        v = (sv.st_ino, sv.st_mtime_ns, sv.st_size)
+    except OSError:
+        v = None
+    return (st.st_ino, st.st_mtime_ns, st.st_size, v)
+
+
+def load_json(path, default: Callable = dict, name: str | None = None):
+    """Только JSON-файл (без режима хранения). Текст файла кэшируется по подписи (inode, mtime, размер): файл не
+    менялся — без open/read; разбор — каждый раз (вызывающий меняет полученный объект)."""
+    path = Path(path)
+    try:
+        sig, key = _sig(path), _key(path)
+        hit = _JCACHE.get(key)
+        if hit and hit[0] == sig:
+            text = hit[1]
+        else:
+            text = path.read_text(encoding="utf-8")
+            _JCACHE[key] = (sig, text)
+        d = json.loads(text)
     except (OSError, ValueError):
         return default()
     empty = default()
@@ -123,7 +201,30 @@ def load(path, default: Callable = dict, name: str | None = None):
 
 
 def save(path, d, name: str | None = None, **dumps):
-    """Записать атомарно (0600): данные, затем версию схемы в ``.<имя>.v``. Вызывать под ``locked(path)``."""
+    """Записать атомарно (0600): данные, затем версию схемы в ``.<имя>.v``. Вызывать под ``locked(path)``.
+    Режим dual — ещё и в SQLite; sqlite — только в SQLite (``sqlstore.py``)."""
+    path = Path(path)
+    m = sqlstore.mode_for(path) if isinstance(d, sqlstore.shape(path.name)) else "json"
+    if isinstance(d, dict) and VERSION_KEY in d:
+        d = {k: x for k, x in d.items() if k != VERSION_KEY}
+    if m == "sqlite":
+        sqlstore.write(path, d, version(name or path.name), sync_sig=False)
+        sqlstore.mark_sqlite_only(path)
+        return
+    sig = ""
+    if m == "dual":
+        sig = sqlstore.json_sig(path)
+        try:                                # копия JSON — до первой записи в режиме dual, а не после
+            sqlstore.prepare(path.parent)
+        except (OSError, sqlstore.sqlite3.Error) as e:
+            sqlstore.warn(f"{path.name}: копия JSON не снята ({type(e).__name__}: {e})")
+    save_json(path, d, name, **dumps)
+    if m == "dual":
+        sqlstore.dual_write(path, d, version(name or path.name), sig)
+
+
+def save_json(path, d, name: str | None = None, **dumps):
+    """Только JSON-файл (без режима хранения)."""
     path = Path(path)
     if isinstance(d, dict) and VERSION_KEY in d:
         d = {k: x for k, x in d.items() if k != VERSION_KEY}

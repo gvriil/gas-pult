@@ -40,6 +40,14 @@ def test_e2e_load_demo():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     try:
-        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
     finally:
         srv.shutdown()
+
+
+def test_cdn_scripts_have_sri():
+    """Скрипты с CDN — только с точной версией и SRI (OWASP LLM03 / ASI04, docs/SECURITY.md): marked, DOMPurify."""
+    i = PAGE.index("const MD_LIBS")
+    block = PAGE[i:PAGE.index("];", i)]
+    assert block.count("sha512-") == 2 and "marked/12.0.2/" in block and "dompurify/3.1.6/" in block
+    assert "el.integrity = sri" in PAGE and 'el.crossOrigin = "anonymous"' in PAGE

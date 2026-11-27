@@ -1,6 +1,6 @@
 """Палитра Ctrl+K / ⌘K (план UX, пункт 5; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/palette_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/palette_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Ctrl+K открывает поиск панели чатов (#149) — он же палитра: в выдаче чаты, проекты и, при запросе, команды
 («Открыть настройки», «Показать экран терминала»…). Enter — первый чат, а если чатов нет — первая команда; стрелки
@@ -8,6 +8,8 @@ Ctrl+K открывает поиск панели чатов (#149) — он ж�
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 
 def palette(pg, tries: int = 4):
@@ -82,4 +84,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

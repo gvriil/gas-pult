@@ -1,6 +1,6 @@
 """Меньше шума (план UX, пункт 9; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/quiet_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/quiet_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
   (а) нигде нет «обновлено ЧЧ:ММ:СС»; у поля ввода индикатора нет, пока связь есть; шапка и поле ввода не меняются
       от опроса (MutationObserver, 20 с по часам Playwright; «N назад» идёт само);
@@ -13,6 +13,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 WATCH = """() => { window.__m = 0;
   const mo = new MutationObserver((ms) => { for (const m of ms) {
     const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
@@ -20,7 +22,7 @@ WATCH = """() => { window.__m = 0;
   const all = { subtree: true, childList: true, characterData: true, attributes: true };
   ['top', 'dock'].forEach((id) => mo.observe(document.getElementById(id), all)); }"""
 VERBS = ("Начать", "Создать", "Открыть", "Показать", "Закрепить", "Открепить", "Переименовать", "Удалить", "Пригласить",
-         "Поднять", "Опустить")
+         "Поднять", "Опустить", "Перенести")
 
 
 def run(base: str, shots: str = ""):
@@ -111,4 +113,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

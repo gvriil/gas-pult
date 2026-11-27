@@ -54,10 +54,11 @@ def test_served_without_login(tmp_path, monkeypatch):
 
 
 def test_mark_in_panel():
-    """Знак v2 (21.11) — CSS mask из /gavrila-mark.svg: цвет — из темы, без 19 КБ векторов в ядре; три места."""
+    """Знак «Лад» (25.11): ladeya-mark.svg, в тёмной теме — ladeya-mark-dark.svg; без векторов в ядре; три места."""
     t = (WEB / "index.html").read_text(encoding="utf-8")
     assert t.count('<span class="gmark ') == 3 and '<symbol id="gmk' not in t
-    assert "mask: url(brand/gavrila-mark.svg) center / contain no-repeat;" in t and "background: currentColor;" in t
+    assert "background: url(brand/ladeya-mark.svg) center / contain no-repeat;" in t
+    assert ':root[data-theme="dark"] .gmark { background-image: url(brand/ladeya-mark-dark.svg); }' in t
     assert 'href="/favicon-32-dark.png" sizes="32x32" type="image/png" media="(prefers-color-scheme: dark)"' in t
 
 

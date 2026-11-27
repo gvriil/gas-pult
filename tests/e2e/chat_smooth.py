@@ -11,16 +11,17 @@
       в разметку на глазах («короткий → длинный»);
   CLS (layout-shift) по всем сценариям.
 
-Запуск: python tests/e2e/chat_smooth.py "http://127.0.0.1:<порт>/?demo" [--report]
+Запуск: python tests/e2e/chat_smooth.py "http://127.0.0.1:<порт>/?demo&dev" [--report]
 """
 import asyncio
 import json
 import sys
 from itertools import pairwise
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 from playwright.async_api import async_playwright
 
-BASE = "http://127.0.0.1:8797/?demo"
+BASE = "http://127.0.0.1:8797/?demo&dev"
 
 # кусок за куском — как блоки одного хода в журнале: абзац, список, код, таблица, вывод
 CHUNKS = [

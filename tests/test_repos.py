@@ -350,7 +350,7 @@ def test_focus_repos_only_own_session(server):
     owner = f"{webauth.COOKIE}={s['tok']}"
     code, d, _ = call(s["base"], "/api/focus/new", {"w": "@1", "base": s["base"]}, owner)
     assert code == 200
-    _, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1]}, "", fx)
+    _, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1], "privacy": True}, "", fx)
     cookie = setc.split(";")[0]
     code, d, _ = call(s["base"], "/api/repos?w=@1", None, cookie, fx)
     assert code == 200 and d["repos"][0]["full"] == "acme/shop"

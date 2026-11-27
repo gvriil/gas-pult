@@ -1,21 +1,69 @@
-"""Название продукта, которое видит человек (владелец 20.11: «gavrila app»: латиницей — «Gavrila», по-русски —
-«Гаврила»; главный адрес будет gavrila.app). Здесь — единственное место: сервер подставляет его в страницу
-(``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма, уведомления и сообщения бота.
-Код, пакет и пути остаются ``gas-pult``/«пульт». Знак — v2 (владелец 21.11: «возьми за основу это» — галстук с перьями
-и надпись Gavrila), файлы — ``web/brand/`` (источник — Диск владельца, «Бренд/Gavrila-знак-v2»). Малого варианта
-нет: перья крупные, на 16 px читается. В русском интерфейсе рядом со знаком — «Гаврила» текстом; lockup с латиницей —
-только превью ссылки и международное."""
+"""Название продукта, которое видит человек (владелец 25.11: «Ладэя» по-русски — с «э», «Ladeya» по-английски, бренд —
+«Ладэя by Botsmith»; прежнее «Гаврила» / «Gavrila» и написание «Ладея» сняты). Здесь — единственное место: сервер
+подставляет его в страницу (``<meta name="application-name">``, ``<title>``), манифест для экрана «Домой», письма,
+уведомления и сообщения бота. Падежи — ``FORMS``. Код, пакет, пути, службы и адреса остаются ``gas-pult``/«пульт»
+(docs/BRAND.md).
+Знак — арфа (владелец 26.11): 13 струн, 7-я красная, графит + красный; светлый и тёмный варианты, упрощённый для
+16–32 px (5 толстых струн: 1, 4, 7-я красная, 10, 13-я), значок приложения 512 (``web/brand/ladeya-*.svg``).
+Знак-название — антиква: «ЛАДЭЯ» с красной «Э» и «LADEYA» с красной зеркальной «E» (``web/brand/wordmark-*.svg``),
+по языку интерфейса.
+Знак-название (владелец 25.11): там, где название стоит как знак (шапка, вход, демо, тур, карточки, картинки), буква «э»
+красная — ``wordmark()``; в обычном тексте, ``<title>`` и манифесте — без окраски."""
 
-NAME = "Gavrila"                   # латиницей: английский интерфейс, адрес, логотип
-NAME_RU = "Гаврила"                # русский интерфейс (в русских строках — без латиницы, humanize.LATIN_OK)
-DEFAULT = "Гаврила"                # так записано в web/index.html — сервер меняет его на NAME_RU, если они разные
+import re
+
+APP_NAME_EN = "Ladeya"             # латиницей: английский интерфейс, адрес, логотип
+APP_NAME_RU = "Ладэя"              # русский интерфейс (в русских строках — без латиницы, humanize.LATIN_OK)
+NAME, NAME_RU = APP_NAME_EN, APP_NAME_RU   # прежние имена констант — их читает код
+DEFAULT = APP_NAME_RU              # так записано в web/index.html — сервер меняет его на NAME_RU, если они разные
+BY = "by Botsmith"                 # строка бренда: «Ладэя by Botsmith», «Ladeya by Botsmith»
+FORMS = {"им": "Ладэя", "род": "Ладэи", "дат": "Ладэе", "вин": "Ладэю", "твор": "Ладэей", "пр": "Ладэе"}   # без окраски
+OLD_E = ("Ладеей", "Ладея", "Ладеи", "Ладее", "Ладею")   # написание через «е» (до 25.11) — для теста
+# «э» знака: светлая (крупно, заливка), тёмная, мелкий текст на светлом (AA)
+E_COLOR = {"light": "#E8421C", "dark": "#FF5A2D", "light_small": "#C2361A"}
+
+
+# «э» в названии — красная ВЕЗДЕ в интерфейсе (владелец 25.11: «делай э в интерфейсе красного цвета везде»), в любом
+# падеже. Исключения, где окраска невозможна: <title>, манифест, og, текстовые уведомления Telegram и пуши, письма.
+WORD = re.compile(r"(?<![А-Яа-яЁё])(Лад)(э)(?=(?:я|и|е|ю|ей)(?![А-Яа-яЁё]))")
+_NO_PAINT = re.compile(r"<(script|style|title|textarea)\b[^>]*>.*?</\1\s*>|<!--.*?-->|<[^>]*>", re.S | re.I)
+
+
+def paint_html(html: str) -> str:
+    """Готовая разметка: в тексте (не в тегах, атрибутах, <title>, <script>, <style>, <textarea>) каждое «Ладэ…» →
+    «Лад<span class="e">э</span>…». Цвет — CSS панели (.e). Уже обёрнутое не трогаем: внутри «Лад<span» нет «Ладэ»."""
+    out, at = [], 0
+    for m in _NO_PAINT.finditer(html):
+        out.append(WORD.sub(r'\1<span class="e">\2</span>', html[at:m.start()]))
+        out.append(m.group(0))
+        at = m.end()
+    out.append(WORD.sub(r'\1<span class="e">\2</span>', html[at:]))
+    return "".join(out)
+
+
+WORDMARK_RU = '<span class="wm wm-ru" role="img" aria-label="Ладэя"></span>'    # «ЛАДЭЯ», красная «Э» (26.11)
+WORDMARK_EN = '<span class="wm wm-en" role="img" aria-label="Ladeya"></span>'   # «LADEYA», красная зеркальная «E»
+
+
+def wordmark(name: str = APP_NAME_RU) -> str:
+    """Знак-название в HTML по языку (владелец 26.11): антиква картинкой (web/brand/wordmark-*.svg, стили — js/look.js),
+    название — в aria-label. Любое другое слово — без изменений. Только в знаке-названии; в тексте — обычное слово."""
+    return {APP_NAME_RU: WORDMARK_RU, APP_NAME_EN: WORDMARK_EN}.get(name, name)
+OLD = ("Гаврилой", "Гаврилы", "Гавриле", "Гаврилу", "Гаврила", "Gavrila")   # прежнее имя — для теста
 
 
 FILES_DIR = "web/brand/"   # знак и значки: gavrila-mark.svg (currentColor), -small (≤ 24 px), png — экран «Домой»
-MARK = FILES_DIR + "gavrila-mark.svg"
+MARK = FILES_DIR + "ladeya-mark.svg"
+MARK_DARK = FILES_DIR + "ladeya-mark-dark.svg"
+APP_ICON = FILES_DIR + "ladeya-app-icon.svg"
 LOCKUP = FILES_DIR + "gavrila-lockup.svg"
 # адрес → (файл в web/brand/, тип): прежние адреса значков (GAS-20) сохранены, браузеры и iPhone их уже знают
-ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # знак в панели — CSS mask
+ICONS = {"/brand/gavrila-mark.svg": ("gavrila-mark.svg", "image/svg+xml"),   # прежний знак — старые кэши
+         "/brand/ladeya-mark.svg": ("ladeya-mark.svg", "image/svg+xml"),     # знак-арфа в панели: светлая тема
+         "/brand/ladeya-mark-dark.svg": ("ladeya-mark-dark.svg", "image/svg+xml"),   # тёмная тема
+         **{f"/brand/{n}.svg": (f"{n}.svg", "image/svg+xml") for n in (       # 16–32 px и знак-название (26.11)
+             "ladeya-mark-small", "ladeya-mark-small-dark", "wordmark-ru", "wordmark-ru-dark", "wordmark-en",
+             "wordmark-en-dark")},
          "/favicon.svg": ("favicon.svg", "image/svg+xml"), "/favicon-32.png": ("favicon-32.png", "image/png"),
          "/favicon-32-dark.png": ("favicon-32-dark.png", "image/png"),
          "/apple-touch-icon.png": ("apple-touch-180.png", "image/png"),
@@ -29,6 +77,41 @@ IPHONES = ((440, 956, 3), (430, 932, 3), (428, 926, 3), (402, 874, 3), (393, 852
 ICONS.update({f"/splash-{w}x{h}-{t}.png": (f"splash-{w}x{h}-{t}.png", "image/png")
               for w, h, _ in IPHONES for t in ("light", "dark")})
 TAGLINE = "Агент делает рутину — вы подтверждаете «Да». Ответы в телефоне, голосом и кнопкой."
+
+# Демо и вход для гостей — бренд Botsmith (владелец 24.11: «и из демо тоже… поставь botsmith»; строка — как в питче).
+# Вариант страницы — только на /?demo и /?brand=botsmith: «Ладэя» + «by Botsmith», без знака, своя строка под ним.
+BS_NAME = "Botsmith"
+BS_TAGLINE = "Личный ИИ-помощник и цифровой сотрудник"          # framewatcher 25.11, для М.Видео
+BS_GRAD = ("linear-gradient(90deg,#111111,#111111)", "linear-gradient(90deg,#F4F4F2,#F4F4F2)")   # цвет знака
+ICONS["/brand/botsmith-icon.svg"] = ("botsmith-icon.svg", "image/svg+xml")
+BS_CSS = ('<style id="bsBrand">'
+          '.brand-text::after{content:" ' + BY + '";font-size:12px;font-weight:500;letter-spacing:0;'
+          '-webkit-text-fill-color:var(--text-secondary);color:var(--text-secondary);margin-left:6px}'
+          '.nav-h h2{flex:none;font-size:calc(17px * var(--fz, 1))}'
+          '#brandSub{font-size:0}#brandSub::after{content:"' + BS_TAGLINE + '";font-size:12px}'
+          ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span{font-size:0}'
+          ':is(body:has(#login:not([hidden])),body:has(#home:not([hidden]))) #subtitle span::after{content:"'
+          + BS_TAGLINE + '";font-size:12px;white-space:normal}'
+          '@media (max-width:520px){#subtitle span::after{content:none!important}#subtitle{display:none}'
+          '#title.brand-text::after{content:none}}'   # 390: в шапке — только название
+          ':root{--brand:' + BS_GRAD[0] + '!important}'                  # название — цвет Botsmith, не градиент панели
+          '@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--brand:' + BS_GRAD[1] + '!important}}'
+          ':root[data-theme=dark]{--brand:' + BS_GRAD[1] + '!important}</style>')
+
+
+def botsmith_text(s: str) -> str:
+    """Демо и вход гостя (владелец 25.11): название — «Ладэя» (не Botsmith), строка под ним — ``BS_TAGLINE``."""
+    return s.replace(TAGLINE, BS_TAGLINE)
+
+
+def botsmith_page(page: bytes) -> bytes:
+    """Страница панели в бренде Botsmith: название во всех формах, знак, значок вкладки, превью ссылки, строка под
+    логотипом. Скрипты страницы те же — меняются только тексты и стили."""
+    s = botsmith_text(page.decode("utf-8"))
+    s = s.replace("import(`/js/${name}.js`)", "import(`/js/${name}.js?brand=botsmith`)")   # части — тоже Botsmith
+    s = s.replace(TAGLINE, BS_TAGLINE).replace('href="/favicon.svg"', 'href="/brand/botsmith-icon.svg"')
+    s = re.sub(r'<meta property="og:image[^>]*>', "", s)            # превью — прежний знак; своего у демо пока нет
+    return s.replace("</head>", BS_CSS + "</head>", 1).encode("utf-8")
 
 
 def head_tags() -> str:
@@ -49,8 +132,19 @@ def head_tags() -> str:
     return og + splash
 
 
-def manifest(name: str = NAME_RU) -> dict:
-    """Манифест веб-приложения: экран «Домой» и уведомления на iPhone (iOS 16.4+ — только у такого приложения)."""
+FOCUS_START = "/?focus"                 # фокус-ссылка на экране «Домой»: открывается снова фокус, а не вход в пульт
+
+
+def manifest(name: str = NAME_RU, focus: bool = False) -> dict:
+    """Манифест веб-приложения: экран «Домой» и уведомления на iPhone (iOS 16.4+ — только у такого приложения).
+
+    ``focus`` (владелец 22.11: «фокус-ссылку на экран Домой — ошибка»): значок открывает ``/?focus`` — устройство
+    узнаётся по cookie фокуса (iOS 17.2+ копирует cookie в приложение с экрана «Домой»), без входа в пульт.
+    Токена в манифесте нет. «Поделиться» (share_target) фокусу не положено — его нет."""
+    if focus:
+        m = manifest(name)
+        m.pop("share_target", None)
+        return {**m, "id": FOCUS_START, "start_url": FOCUS_START}
     return {"name": name, "short_name": name, "start_url": "/", "scope": "/", "display": "standalone",
             "background_color": "#FFFFFF", "theme_color": "#FFFFFF", "lang": "ru",
             "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},

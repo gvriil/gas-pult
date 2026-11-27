@@ -1,6 +1,6 @@
 """Скелетоны вместо «Загружаю…» (план UX, пункт 3; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/skel_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/skel_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Демо с медленной сетью при загрузке (``&slow=1200``): пока данных нет, на главной — серые карточки, в сессии и в
 простом режиме — заглушки сообщений; потом данные встают на их место. Сдвиг раскладки (CLS) после первой отрисовки
@@ -8,6 +8,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 CLS = """() => { window.__cls = 0;
   new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; })
@@ -49,4 +51,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

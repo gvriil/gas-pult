@@ -1,6 +1,6 @@
 """Задачи владельца в панели (#203; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/tasks_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/tasks_demo.py http://127.0.0.1:8797/?demo&dev
 
 Демо ``&space=1&home``: наверху «Задачи» с цветными счётчиками
 (подпись «Задачи: N срочно, …») (квадрант 1 матрицы Эйзенхауэра) вместо «Демо и тесты»; список — карточками по
@@ -11,6 +11,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 SPY = """() => { window.__sent = []; const a = window.api;
   window.api = (p, b, ...r) => { if (p === '/api/send') window.__sent.push(b); return a(p, b, ...r); }; }"""
@@ -99,4 +101,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

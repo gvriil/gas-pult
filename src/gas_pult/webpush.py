@@ -129,7 +129,7 @@ class Hub:
         return store.locked(self.dir / name)
 
     def add(self, uid, sub: dict, label: str = "", origin: str = "") -> dict:
-        ep = str((sub or {}).get("endpoint") or "")
+        ep = str((sub if isinstance(sub, dict) else {}).get("endpoint") or "")   # не словарь — «не похож», не 500
         if not allowed_endpoint(ep):
             raise ValueError("адрес подписки не похож на службу уведомлений браузера")
         with self._locked("subs.json"):

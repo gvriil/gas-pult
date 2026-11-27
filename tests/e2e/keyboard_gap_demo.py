@@ -1,6 +1,6 @@
 """После клавиатуры на iPhone не остаётся белой полосы (владелец 16.11; Playwright, Chromium с подменой iOS).
 
-    python tests/e2e/keyboard_gap_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/keyboard_gap_demo.py http://127.0.0.1:8797/?demo&dev
 
 iOS (Telegram, Safari): клавиатура закрылась, а ``visualViewport`` ещё «с клавиатурой» и событий больше не шлёт —
 каркас (--app-h) оставался на высоте с клавиатурой, внизу — белая треть экрана. Подменяем ``visualViewport`` так же:
@@ -9,6 +9,8 @@ iOS (Telegram, Safari): клавиатура закрылась, а ``visualView
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 FAKE_VV = """(() => {
   const vv = new EventTarget();
@@ -53,4 +55,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

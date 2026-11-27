@@ -17,6 +17,8 @@ import re
 import threading
 from pathlib import Path
 
+from gas_pult.focus import guest_unmark
+
 ROOT = Path(os.environ.get("PI_CODING_AGENT_SESSION_DIR") or Path.home() / ".pi" / "agent" / "sessions")
 SID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -79,7 +81,7 @@ def parse(f: Path) -> tuple[list[dict], str]:
         m, ts = e["message"], str(e.get("timestamp", ""))[:16].replace("T", " ")
         role = m.get("role")
         if role == "user":
-            t = text_of(m.get("content"))
+            t = guest_unmark(text_of(m.get("content")))       # пометка пульта «кто пишет» — не слова человека
             if t:
                 items.append({"role": "user", "text": t, "ts": ts})
         elif role == "assistant":

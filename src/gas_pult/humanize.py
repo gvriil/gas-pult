@@ -29,7 +29,7 @@ from importlib import resources
 # переключателе). Тест «нет латиницы на экране» берёт белый список отсюда — одно место.
 LATIN_OK = ("Claude", "Telegram", "Google", "Ozon", "WB", "Wildberries", "GigaChat", "YandexGPT", "ElevenLabs",
             "GASTECH", "iPhone", "Android", "OpenRouter", "DeepSeek", "GLM", "Notion", "Gmail", "Excel", "PDF",
-            "HoReCa", "Face ID", "Яндекс ID", "English", "Gavrila")      # латиницей — brand.NAME
+            "HoReCa", "Face ID", "Яндекс ID", "English", "Ladeya")      # латиницей — brand.NAME
 # В английском — ни одной кириллической буквы, кроме самоназвания языка в переключателе.
 CYRILLIC_OK = ("Русский",)
 
@@ -38,11 +38,18 @@ BOX = re.compile(r"^[\s│┃|╭╮╰╯─━┌┐└┘]+|[\s│┃|╭╮�
 HINT = r"(?:[^·\n]{1,40}·\s*)*"
 FOOT = re.compile(r"^\s*" + HINT + r"(Enter to (confirm|select)|Esc to (cancel|close|exit|go back)|"
                   r"↑/↓ to navigate)", re.I)
+# Меню и вопросы Claude Code узнаём по подсказке внизу («Enter to confirm/select», «Esc to …»). Нумерованная строка
+# сама по себе — не признак: Claude Code показывает ваши прошлые сообщения с «❯», и «❯ 1. Сделай…» — это вы, не меню.
+DIALOG = re.compile(r"^\s*(Do you (want|trust)|Select model|Review your answers\s*$)|^\s*" + HINT +
+                    r"(Enter to (confirm|select)|Esc to (cancel|close|go back))", re.M)
+BUSY = re.compile(r"esc to interrupt", re.I)              # Claude работает (из bot.py, 22.11: нужен panel/*)
 OPT = re.compile(r"^(❯\s*)?(\d{1,2})\.\s+(?:\[[ ✔✓x×]\]\s*)?(.+?)$")
 PLAIN_SEL = re.compile(r"^❯\s*(?!\d+\.)(\S.*)$")
 QUESTION = re.compile(r"\?\s*$")
 CONTINUE = re.compile(r"Press Enter to continue", re.I)
-ASKS = re.compile(r"^(Do you (want|trust)|Would you like to proceed|Ready to submit)", re.I)   # без подсказки
+# без подсказки внизу; «Review your answers» — сводка ответов Claude Code 2.1 без строки «Enter to …» (образец
+# tests/fixtures/cc_screens/submit.txt, 22.11)
+ASKS = re.compile(r"^(Do you (want|trust)|Would you like to proceed|Ready to submit|Review your answers$)", re.I)
 TABS = re.compile(r"[☐☒✔✓]\s+\S")                       # шапка вопросов агента: «☐ Формат  ☐ Срок  ✔ Submit»
 
 
@@ -255,6 +262,20 @@ def unknown(opts: list[dict] | None = None) -> dict:
         _details_chip()], known=False)
 
 
+def _ask_text(above: list[str]) -> tuple[str, str]:
+    """Вопрос агента (AskUserQuestion) целиком: заголовки вкладок «☐ Раунд  ✔ Submit» и все строки между ними и
+    пунктами — длинный вопрос переносится на несколько строк, а в конце бывает пояснение в скобках без «?» (владелец
+    24.11: «варианты ответа видно, а вопроса не видно»). Нет строки вкладок — ("", "")."""
+    i = next((k for k in range(len(above) - 1, -1, -1) if TABS.search(above[k])), -1)
+    if i < 0:
+        return "", ""
+    tabs = [t.strip(" ←→") for t in re.split(r"[☐☒✔✓]", above[i])]          # «← ☐ Отчёт ✔ Submit →»
+    tabs = [t for t in tabs if t]
+    head = ", ".join(t for t in tabs if t.lower() != "submit")
+    body = " ".join(x.strip() for x in above[i + 1:] if x.strip() and not re.match(r"^[─━]{5,}$", x.strip()))
+    return head, body[:1000]
+
+
 def parse(lines: list[str] | str, target: bool = False) -> dict | None:
     """Экран окна Claude Code → вопрос простыми словами или None (вопроса на экране нет). ``target`` — добавить, что
     именно хочет сделать агент (команда, файл): только для режима кода (#258); в простом режиме имён файлов нет."""
@@ -290,8 +311,13 @@ def parse(lines: list[str] | str, target: bool = False) -> dict | None:
     chips = [c for c in (_option(o, kind) for o in opts) if c]
     if kind != "question" and not any(c["level"] == 1 and not c["send"].get("show") for c in chips):
         return unknown(opts)
-    if kind == "question" and q:
-        return _result("question", chips, title=q)       # вопрос написала модель — оставляем как есть
+    if kind == "question":
+        head, body = _ask_text(above)
+        if body or q:                                    # вопрос написала модель — оставляем как есть
+            out = _result("question", chips, title=body or q)
+            if head:
+                out["header"] = head                     # заголовок вкладки: «Раунд» (☐ Раунд)
+            return out
     out = _result(kind, chips)
     if target and kind in TARGET_KINDS:                  # что именно: команда, файл, адрес (режим кода, #258)
         out["target"] = _target(kind, above, q)

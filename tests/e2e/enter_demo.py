@@ -1,6 +1,6 @@
 """Enter в поле ввода (задача 30; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/enter_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/enter_demo.py http://127.0.0.1:8797/?demo&dev
 
 Компьютер (мышь, pointer: fine): Enter — отправить, Shift+Enter — новая строка, Ctrl/Cmd+Enter — отправить.
 Телефон (is_mobile + touch, pointer: coarse): Enter — новая строка, Ctrl+Enter (внешняя клавиатура) — отправить,
@@ -9,6 +9,8 @@ enterkeyhint="enter". Во время IME-набора (isComposing) Enter не 
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 COMPOSING = """(sel) => {
   const t = document.querySelector(sel);

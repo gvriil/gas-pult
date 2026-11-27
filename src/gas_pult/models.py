@@ -33,7 +33,7 @@ import socket
 from itertools import pairwise
 from pathlib import Path
 
-from gas_pult import balance, mcp, providers
+from gas_pult import balance, base_mcp, google_guard, mcp, providers
 from gas_pult.config import config_dir, write_private
 
 # Санкционные страны: запрещены у всех поставщиков (Z.ai и DeepSeek запрещают санкционные регионы без перечня;
@@ -335,9 +335,18 @@ def with_home(cmd: str, home: Path | None) -> str:
     return f"CLAUDE_CONFIG_DIR={shlex.quote(str(home))} {cmd}" if home else cmd
 
 
-def command(base: str, profile: str, state: dict, home: Path | None = None) -> str:
+def google_blocked(profile: str, state: dict | None = None) -> str | None:
+    """Почему окну профиля нельзя данные Google (правило одно — ``base_mcp.learns_on_data``); None — можно."""
+    p = BY_ID.get(profile or "claude")
+    if not p or p["id"] == "claude":
+        return None
+    return base_mcp.learns_on_data(env_of(p, "", state or {}))
+
+
+def command(base: str, profile: str, state: dict, home: Path | None = None, path: str = "") -> str:
     """Команда запуска Claude Code в профиле. Для «claude» — как раньше; иначе файл настроек с ключом (0600).
-    ``home`` — папка Claude Code человека (``people.claude_dir``)."""
+    ``home`` — папка Claude Code человека (``people.claude_dir``), ``path`` — папка окна (её серверы MCP).
+    Модели, которой нельзя данные Google, — без серверов Google и с запретом ~/drive (``google_guard``)."""
     if profile in ("", "claude"):
         return with_home(base, home)
     p = BY_ID.get(profile)
@@ -349,8 +358,12 @@ def command(base: str, profile: str, state: dict, home: Path | None = None) -> s
     if not key:
         raise ValueError(f"нет ключа {p['title']} — добавьте его в «Подключения» → «Модели»")
     f = profiles_dir() / f"{profile}.json"
-    write_private(f, json.dumps({"env": env_of(p, key, state)}, ensure_ascii=False))
-    return with_home(f"{base} --settings {shlex.quote(str(f))}", home)
+    settings, extra = {"env": env_of(p, key, state)}, ""
+    if base_mcp.learns_on_data(settings["env"]):
+        settings["hooks"] = google_guard.hooks()
+        extra = google_guard.flags(profile, home, path)
+    write_private(f, json.dumps(settings, ensure_ascii=False))
+    return with_home(f"{base} --settings {shlex.quote(str(f))}{extra}", home)
 
 
 def profile_of(argv: list[str]) -> str:

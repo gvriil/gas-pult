@@ -247,7 +247,7 @@ def test_js_same_as_python_in_browser(monkeypatch):
     srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(WEB)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
     finally:
         srv.shutdown()
         monkeypatch.undo()

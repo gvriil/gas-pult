@@ -4,19 +4,20 @@ from gas_pult import webauth
 from gas_pult.webauth import Auth
 
 
-def test_code_login_and_logout(tmp_path):
-    a = Auth(tmp_path / "s.json")
+def test_code_login_and_logout(tmp_path, stored):
+    a = Auth(tmp_path / "web_sessions.json")
     rid, code = a.start()
     assert len(code) == 6 and code.isdigit()
     token = a.verify(rid, code, "test")
     assert a.check(token) and not a.check("чужой")
-    assert code not in (tmp_path / "s.json").read_text() and token not in (tmp_path / "s.json").read_text()
+    raw = stored.text(tmp_path / "web_sessions.json")
+    assert code not in raw and token not in raw
     a.logout(token)
     assert not a.check(token)
 
 
 def test_code_is_single_use_and_limited(tmp_path):
-    a = Auth(tmp_path / "s.json")
+    a = Auth(tmp_path / "web_sessions.json")
     rid, code = a.start()
     for _ in range(webauth.CODE_TRIES):
         with pytest.raises(ValueError):
@@ -26,7 +27,7 @@ def test_code_is_single_use_and_limited(tmp_path):
 
 
 def test_start_rate_limit(tmp_path):
-    a = Auth(tmp_path / "s.json")
+    a = Auth(tmp_path / "web_sessions.json")
     for _ in range(webauth.START_LIMIT[0]):
         a.start()
     with pytest.raises(ValueError, match="много"):

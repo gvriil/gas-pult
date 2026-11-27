@@ -63,7 +63,7 @@ export async function open() {
   helpSheet("settings");
   let p = null;
   try { p = DEMO ? DEMO_PREFS : await api("/api/notify/prefs"); } catch (e) {}
-  if (tg?.initData) return sheet("Уведомления", [{ info: true, icon: "bell", label: "Здесь, в Telegram, уведомления присылает бот", sub: "чтобы они приходили на телефон без Telegram — откройте Гаврилу в браузере и включите там" },
+  if (tg?.initData) return sheet("Уведомления", [{ info: true, icon: "bell", label: "Здесь, в Telegram, уведомления присылает бот", sub: "чтобы они приходили на телефон без Telegram — откройте Ладэю в браузере и включите там" },
     { label: "Открыть в браузере", icon: "ext", sub: "iPhone: дальше «Поделиться» → «На экран «Домой»», откройте значком и включите", run: () => { try { tg.openLink(location.origin + "/"); } catch (e) { window.open(location.origin + "/", "_blank"); } } },
     ...channels(p, null)]);
   if (!can()) return sheet("Уведомления", [{ info: true, icon: "warn", label: "Этот браузер не умеет уведомления", sub: ios() && !standalone() ? "iPhone: «Поделиться» → «На экран «Домой»», откройте пульт оттуда и включите здесь" : "откройте панель в Chrome, Edge, Firefox или Safari" },
@@ -73,7 +73,7 @@ export async function open() {
   const on = !!sub, here = on ? await devId(sub.endpoint) : "";
   // одна строка с тумблером справа (Gemini №11): включить — подписка; выключить — отписка этого устройства
   const deviceRow = { label: "На этом устройстве", icon: "bell", toggle: on, sub: on ? "даже когда панель закрыта"
-    : ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте Гаврилу оттуда" : "браузер спросит разрешение",
+    : ios() && !standalone() ? "iPhone: сначала «Поделиться» → «На экран «Домой»» и откройте Ладэю оттуда" : "браузер спросит разрешение",
     run: on ? async () => { try { await api("/api/push/unsubscribe", { id: here }); await sub.unsubscribe(); } catch (e) {} toast("Выключено на этом устройстве", 3000); open(); }
       : () => enable().then(open, (e) => toast("Не вышло: " + e.message, 6000)) };
   sheet("Уведомления", [

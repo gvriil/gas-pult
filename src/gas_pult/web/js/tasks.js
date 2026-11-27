@@ -112,8 +112,39 @@ const CARD_CSS = `.sheet.tsk { padding-bottom: calc(10px + env(safe-area-inset-b
 .sheet .tsk-acts button:hover .tsk-ok .i { opacity: .6; }
 .tsk-c.t-g .tsk-ok { background: var(--tq-green); border-color: var(--tq-green); } .tsk-c.t-g .tsk-ok .i { opacity: 1; color: var(--bg-surface); }
 .tsk-empty { margin: 8px 16px 12px; padding: 18px 16px; border: 1px dashed var(--border-subtle); border-radius: 12px; color: var(--text-secondary); text-align: center; font-size: calc(14px * var(--fz, 1)); }`;
+// «Поручения» (владелец 27.11, GAS-60): файл команды track штаба — только чтение (/api/tracks, tracks.py). Что, кому,
+// состояние, когда обновлено и как проверяется; открытое без движения дольше суток и «провал» / «нужно решение» —
+// красным. Закрытые не прячутся — своей свёрнутой группой.
+const TRK_T = { "передана": "передана", "принята": "принята", "в_работе": "в работе", "готово": "готово",
+  "ответ_получен": "ответ получен", "нужно_решение": "нужно решение", "провал": "провал", "закрыта": "закрыта" };
+const TRK_CSS = `.trk-c { margin: 0 16px 8px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface); }
+.trk-c.r { border-color: var(--status-error, #C2361A); box-shadow: inset 3px 0 0 var(--status-error, #C2361A); }
+.trk-c b { display: block; font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.trk-c .m { margin-top: 4px; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+.trk-c .m .st { color: var(--text-primary); font-weight: 600; } .trk-c.r .m .st, .trk-c .m .old { color: var(--status-error, #C2361A); }
+.trk-c .n { margin-top: 4px; font-size: calc(12px * var(--fz, 1)); color: var(--text-muted); overflow-wrap: anywhere; }`;
+let TRK = null;
+const trkRed = (t) => t.stale || t.state === "провал" || t.state === "нужно_решение";
+function trkCard(t) {
+  const meta = [esc(t.to), `<span class="st">${esc(TRK_T[t.state] || t.state)}</span>`,
+    `обновлено ${esc(t.updated.slice(8, 10) + "." + t.updated.slice(5, 7) + " " + t.updated.slice(11, 16))}`,
+    t.stale ? '<span class="old">без движения больше суток</span>' : ""].filter(Boolean).join(" · ");
+  return `<div class="trk-c${trkRed(t) ? " r" : ""}"><b>${esc(t.id)} · ${esc(t.what)}</b><div class="m">${meta}</div>`
+    + `<div class="n">Проверка: ${esc(t.check)}${t.last ? " · " + esc(t.last) : ""}</div></div>`;
+}
+function trkHtml(f) {
+  if (!TRK?.tasks?.length) return "";
+  let h = "";
+  for (const [k, title, list] of [["trk", "Поручения", TRK.tasks.filter((t) => t.open)], ["trkdone", "Закрытые поручения", TRK.tasks.filter((t) => !t.open)]]) {
+    if (!list.length) continue;
+    const off = k === "trkdone" ? !f[k] : !!f[k], red = list.filter(trkRed).length;
+    h += `<button type="button" class="tsk-g${off ? " off" : ""}${red ? " r" : ""}" data-fold="${k}" aria-expanded="${!off}">${ic("chev")}<span>${title}</span><em>${list.length}${red ? " · красных " + red : ""}</em></button>`;
+    if (!off) h += list.map(trkCard).join("");
+  }
+  return h;
+}
 function styles() {
-  if (!document.getElementById("tasksSideCss")) document.head.insertAdjacentHTML("beforeend", `<style id="tasksSideCss">${SIDE_CSS}\n${CARD_CSS}</style>`);
+  if (!document.getElementById("tasksSideCss")) document.head.insertAdjacentHTML("beforeend", `<style id="tasksSideCss">${SIDE_CSS}\n${CARD_CSS}\n${TRK_CSS}</style>`);
 }
 function card(t) {
   const g = taskGroup(t), ch = chatName(t), due = dueText(t);
@@ -142,10 +173,11 @@ function tasksSheet(keep) {
   styles();
   const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.dataset.help = hv("sheet.tasks");
   bg.innerHTML = `<div class="sheet tsk" role="dialog" aria-label="Задачи" data-tasks="1"><h3>Задачи${open.length ? " · не решено " + open.length : ""}</h3>
-    <form class="tsk-add" autocomplete="off">${ic("plus")}<input id="tskNew" maxlength="200" placeholder="Добавить задачу" aria-label="Новая задача — Enter, чтобы добавить" enterkeyhint="done"><button type="button" class="tsk-due" data-due aria-label="Срок — по желанию" title="Срок — по желанию">${ic("cal")}<span></span></button><input id="tskDue" type="date" tabindex="-1" aria-hidden="true"><button type="submit" aria-label="Добавить">${ic("plus")}</button></form>
+    <form class="tsk-add" autocomplete="off"><input id="tskNew" maxlength="200" placeholder="Добавить задачу" aria-label="Новая задача — Enter, чтобы добавить" enterkeyhint="done"><button type="button" class="tsk-due" data-due aria-label="Срок — по желанию" title="Срок — по желанию">${ic("cal")}<span></span></button><input id="tskDue" type="date" tabindex="-1" aria-hidden="true"><button type="submit" aria-label="Добавить">${ic("plus")}</button></form>
     ${open.length ? "" : `<p class="tsk-empty">Всё решено. Скажите агенту в чате «добавь задачу …» — она появится здесь.</p>`}
-    ${body}<button class="cancel" data-close>Закрыть</button></div>`;
+    <div id="trkBox">${trkHtml(f)}</div>${body}<button class="cancel" data-close>Закрыть</button></div>`;
   document.body.append(bg);
+  api("/api/tracks").then((d) => { TRK = d; const box = bg.querySelector("#trkBox"); if (box) box.innerHTML = trkHtml(folds()); }).catch(() => {});
   const sh = bg.firstElementChild, byId = (id) => TASKS.find((x) => x.id === id);
   bg.addEventListener("click", (e) => {
     if (e.target === bg || e.target.closest("[data-close]")) return bg.remove();
@@ -212,10 +244,11 @@ function taskSheet(t) {
     for (const o of t.options || []) a.push({ label: o, icon: "check", sub: t.chat_now ? "ответ уйдёт в чат «" + chatName(t) + "» дословно" : "чата задачи нет — только отметить", run: () => taskDecide(t, o) });
   }
   if (t.link) a.push({ label: "Открыть источник", icon: "ext", sub: t.link, run: () => openUrl(t.link) });
+  if (t.shot) a.push({ label: "Снимок экрана", icon: "image", sub: t.shot, run: () => copyText(t.shot, "Путь к снимку скопирован") });
   if (t.chat_now) a.push({ label: "Открыть чат «" + chatName(t) + "»", icon: "chat", sub: "откуда пришла задача", run: () => t.chat_now !== current && openSession(t.chat_now) });
   if (!t.chat_now) a.push({ label: "Продолжить в чате", icon: "chat", sub: "новый чат — задача уже в поле ввода", run: () => {   // чата нет — новый
     document.querySelectorAll(".sheet-bg").forEach((x) => x.remove());
-    chatWith(["Задача: " + t.title, t.next && "Дальше: " + t.next, t.due && "Срок: " + t.due, t.link && "Источник: " + t.link].filter(Boolean).join("\n") + "\n");
+    chatWith(["Задача: " + t.title, t.next && "Дальше: " + t.next, t.due && "Срок: " + t.due, t.link && "Источник: " + t.link, t.shot && "Снимок экрана: " + t.shot].filter(Boolean).join("\n") + "\n");
   } });
   a.push(t.status === "done" ? { label: "Вернуть в работу", icon: "refresh", run: () => taskSet(t, { status: "todo" }, "Задача снова в работе") }
     : { label: "Отметить выполненным", icon: "check", run: () => taskSet(t, { status: "done" }, "Выполнено") });

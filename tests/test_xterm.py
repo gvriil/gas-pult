@@ -31,7 +31,7 @@ def test_e2e_xterm_terminal():
                 pg = br.new_page(viewport={"width": w, "height": h}, is_mobile=mob, has_touch=mob)
                 errs = []
                 pg.on("pageerror", lambda e, errs=errs: errs.append(str(e)))
-                pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
+                pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@1&noscroll")
                 pg.wait_for_selector("#content .msg")
                 pg.evaluate("meta.tty = true; window.__sz = []; window.__api = api; window.api = (...a) => {"
                             " if (a[0] === '/api/tty/size') __sz.push(a[1]); return __api(...a); }; ttyOpen('@1'); 0")

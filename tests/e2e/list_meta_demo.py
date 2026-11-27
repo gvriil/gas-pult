@@ -1,7 +1,7 @@
 """Список чатов: строка метаданных и точка «новый ответ» (#189, UI/UX п.7–8; Playwright — pytest запускает,
 только если есть браузер).
 
-    python tests/e2e/list_meta_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/list_meta_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Демо: под названием @1 — «Opus 5.5 · усилия высокие · контекст 78%»; у @3 новый ответ (журнал сменился с прошлого
 просмотра) — точка справа и жирное название, у @1 точки нет. Открыли @3 — точка ушла. Строка не шире панели.
@@ -9,6 +9,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 SEED = "() => { try { localStorage.setItem('seen:@3:/home/u/projects/gas-pult', 'old'); } catch (e) {} }"
 
@@ -53,5 +55,6 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")
     print("ok")

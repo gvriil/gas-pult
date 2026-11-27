@@ -2,11 +2,18 @@
 
 Полный текст — ``docs/TERMS.md`` (черновик, на проверку юристу). Здесь — та же суть по пунктам. Поменяли смысл
 условий — поднимите ``VERSION``: бот и панель спросят согласие у всех заново. Согласие хранит ``People.accept``.
+
+Версия и дата редакции — одно место: ``VERSION`` (дата ``ГГГГ-ММ-ДД``). Страница ``/terms`` (``web/terms.html``)
+показывает именно её: сервер подставляет ``{{VERSION}}``, ``{{DATE_RU}}``, ``{{DATE_EN}}`` (``page``), как анкета —
+свой заголовок. Аудит 24.11: на странице стояло «17 ноября», в коде — 02.11.
 """
 
 from __future__ import annotations
 
-VERSION = "2026-11-02"                 # 02.11 — пункт о стране человека
+import datetime
+import hashlib
+
+VERSION = "2026-11-17"                 # 17.11 — редакция страницы /terms (владелец 24.11: все принимают заново)
 URL = "https://github.com/gvriil/gas-pult/blob/main/docs/TERMS.md"
 TITLE = "Условия использования пульта"
 POINTS = (
@@ -27,3 +34,39 @@ def bot_text() -> str:
     """Короткий текст условий для чата бота."""
     return (f"📄 {TITLE} (версия {VERSION})\n\n" + "\n\n".join(f"• {p}" for p in POINTS)
             + f"\n\nПолностью: {URL}")
+
+
+MONTHS_RU = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября",
+             "ноября", "декабря")
+MONTHS_EN = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+             "November", "December")
+
+
+def date_ru(v: str) -> str:
+    """``2026-11-02`` → «2 ноября 2026 года»."""
+    d = datetime.date.fromisoformat(v)
+    return f"{d.day} {MONTHS_RU[d.month - 1]} {d.year} года"
+
+
+def date_en(v: str) -> str:
+    """``2026-11-02`` → «2 November 2026»."""
+    d = datetime.date.fromisoformat(v)
+    return f"{d.day} {MONTHS_EN[d.month - 1]} {d.year}"
+
+
+def fill(raw: bytes, v: str, extra: dict | None = None) -> bytes:
+    """Подставить в шаблон страницы версию и дату (и ``extra`` — уже экранированные строки)."""
+    out = raw.decode("utf-8")
+    for k, x in {"VERSION": v, "DATE_RU": date_ru(v), "DATE_EN": date_en(v), **(extra or {})}.items():
+        out = out.replace("{{" + k + "}}", x)
+    return out.encode("utf-8")
+
+
+def page(raw: bytes) -> bytes:
+    """Страница ``/terms`` с версией и датой из ``VERSION``."""
+    return fill(raw, VERSION)
+
+
+def sha256(body: bytes) -> str:
+    """Хеш отданного текста документа — пишется в журнал согласий (``consents.record_doc``)."""
+    return hashlib.sha256(body).hexdigest()

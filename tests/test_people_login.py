@@ -12,13 +12,13 @@ from gas_pult.config import Config
 from gas_pult.people import People, allowed
 
 
-def test_roles_and_owner_protection(tmp_path):
+def test_roles_and_owner_protection(tmp_path, stored):
     p = People(tmp_path / "people.json", [1])
     assert p.role(1) == "owner" and p.role(2) is None and p.role("x") is None
     p.add(2, "member", "Иван", "ivan")
     p.add(3, "viewer")
     assert p.role(2) == "member" and p.role(3) == "viewer"
-    assert (tmp_path / "people.json").stat().st_mode & 0o777 == 0o600
+    assert stored.mode(tmp_path / "people.json") == 0o600
     with pytest.raises(ValueError):
         p.add(1, "viewer")
     with pytest.raises(ValueError):
@@ -47,7 +47,7 @@ def test_telegram_login_flow(tmp_path):
 
 
 def test_sessions_carry_person(tmp_path):
-    a = webauth.Auth(tmp_path / "s.json")
+    a = webauth.Auth(tmp_path / "web_sessions.json")
     t = a.issue(42, "ua")
     assert a.uid(t) == 42 and a.uid("nope") is None and a.check(t)
 
@@ -150,6 +150,9 @@ def test_calendar_keys_owner_only(server, monkeypatch, tmp_path):
     owner = panel.auth.issue(1)
     st, d = call(base, "/api/calendars/keys", None, owner)[:2]
     assert st == 200 and {x["kind"] for x in d["calendars"]} == {"google"}
+    st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
+    assert st == 409 and d.get("code") == "consent"          # 24.11: сначала согласие «аккаунт мой» (consents.py)
+    assert call(base, "/api/consent", {"what": "calendar:google", "title": "Google", "accepted": True}, owner)[0] == 200
     st, d = call(base, "/api/calendars/key", {"kind": "google", "url": "https://x.example/a.ics"}, owner)[:2]
     assert st == 400 and "Секретный адрес" in d["error"]
 

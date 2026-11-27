@@ -166,7 +166,7 @@ def test_screen_login_not_in_focus(server):
     code, d = call(s["base"], "/api/focus/new", {"w": "@1", "base": s["base"]}, s["owner"])
     assert code == 200, d
     token = d["url"].split("#focus=")[1]
-    req = urllib.request.Request(s["base"] + "/api/focus/open", json.dumps({"token": token}).encode(),
+    req = urllib.request.Request(s["base"] + "/api/focus/open", json.dumps({"token": token, "privacy": True}).encode(),
                                  {"Content-Type": "application/json", focus.HEADER: "1"})
     with urllib.request.urlopen(req) as r:
         cookie = r.headers["Set-Cookie"].split(";")[0]

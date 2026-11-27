@@ -151,12 +151,14 @@ def source(x: dict) -> str | None:
 def public(x: dict) -> dict:
     """Для панели: токены, деньги (None — цена неизвестна для всех ответов) и есть ли ответы без цены. Добавлено
     (задача 51): ``cost_source`` — откуда цена («anthropic» | «provider» | «estimate» | None), ``pending`` — сколько
-    ответов OpenRouter ещё ждут счёта."""
+    ответов OpenRouter ещё ждут счёта. Добавлено 22.11: ``estimate`` — в сумме есть наш подсчёт «токены × прайс»
+    (Anthropic по прайсу API — с подпиской не счёт; Z.ai, DeepSeek), а не только счёт OpenRouter: подпись «оценка»."""
     total = sum(x[k] for k in KINDS)
     priced = x["usd"] > 0 or not x["unpriced"]
     return {"tokens": {k: x[k] for k in KINDS}, "total": total,
             "usd": round(x["usd"], 4) if priced else None, "unknown": x["unpriced"] > 0,
-            "cost_source": source(x), "pending": max(0, x.get("n_wait", 0))}
+            "cost_source": source(x), "pending": max(0, x.get("n_wait", 0)),
+            "estimate": bool(x.get("n_anthropic", 0) + x.get("n_estimate", 0))}
 
 
 def local_day(ts: str) -> str:

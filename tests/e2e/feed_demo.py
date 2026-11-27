@@ -1,6 +1,6 @@
 """Лента по центру и новые сообщения (план UX, пункт 6; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/feed_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/feed_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 На компьютере (1366) лента — широкая колонка (до 1120 px) по центру основной области, поле ввода
 той же ширины и на той же линии.
@@ -9,6 +9,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 NEW_MSG = """() => {
   const i = Math.max(...hist.map((m) => m.i)) + 1;
@@ -74,4 +76,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

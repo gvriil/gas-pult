@@ -61,6 +61,6 @@ def test_e2e_chat_smooth():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     try:
-        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
     finally:
         srv.shutdown()

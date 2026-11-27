@@ -4,10 +4,10 @@
 
 - ``UserPromptSubmit`` — в сообщении человека секрет: сообщение **не отправляется** (Claude Code 2.1 не даёт хуку
   заменить текст сообщения — только остановить его), человек видит «Убрал из сообщения …: ключи и пароли не
-  показываются; чтобы подключить сервис — «Настройки → Подключения» в Гавриле; отправьте сообщение без ключа».
+  показываются; чтобы подключить сервис — «Настройки → Подключения» в Ладэе; отправьте сообщение без ключа».
   ``suppressOriginalPrompt`` — текст с ключом не попадает в запись разговора.
 - ``PreToolUse`` — чтение ``.env*`` (Read, Grep, команды Bash) закрыто; ``.env.example`` (и ``.sample``, ``.template``)
-  — открыт.
+  — открыт. База паролей коннекторов (``connectors.kdbx`` и ``connectors.key``, ``connwatch``) закрыта целиком.
 - ``PostToolUse`` — в выводе любого инструмента секреты и значения из ``.env*`` текущей папки заменяются заглушкой
   (``updatedToolOutput``: та же форма ответа, строки — без секретов).
 
@@ -34,7 +34,7 @@ from pathlib import Path
 SCRIPT = "gas-pult-secrets.py"           # имя копии в <папка Claude>/hooks/
 TAG = "gas-pult-secrets"                 # по нему install узнаёт свои записи в settings.json
 EVENTS = {"UserPromptSubmit": None, "PreToolUse": "Read|Grep|Bash|NotebookRead", "PostToolUse": "*"}
-KEYS_PLACE = "«Настройки → Подключения» в Гавриле"
+KEYS_PLACE = "«Настройки → Подключения» в Ладэе"
 ALLOWED_ENV = (".env.example", ".env.sample", ".env.template", ".env.dist")
 
 # Имя переменной с секретом: …_KEY, …TOKEN, …SECRET, …PASSWORD (и PASSWD, PWD, PASS, CREDENTIALS), apikey.
@@ -207,6 +207,165 @@ def env_target(tool: str, inp: dict) -> str | None:
     return None
 
 
+# ---------- база паролей коннекторов (connwatch) ----------
+VAULT_FILES = ("connectors.kdbx", "connectors.key")       # <данные>/connectors.kdbx и <config>/connectors.key
+_VAULT = re.compile(r"(?<![A-Za-z0-9_.\-])connectors\.(?:kdbx|key)(?![A-Za-z0-9_.\-])", re.I)
+
+
+def vault_target(tool: str, inp: dict) -> str | None:
+    """Имя файла базы паролей коннекторов, если инструмент его касается (``ls`` без конвейера — можно)."""
+    inp = inp if isinstance(inp, dict) else {}
+    if tool == "Bash":
+        cmd = str(inp.get("command") or "")
+        if re.match(r"\s*ls(?:\s|$)", cmd) and not re.search(r"[;&|`$]", cmd):
+            return None
+        m = _VAULT.search(cmd)
+        return m.group(0) if m else None
+    if tool in ("Read", "NotebookRead", "Grep"):
+        for k in ("file_path", "notebook_path", "path", "glob"):
+            v = str(inp.get(k) or "")
+            m = _VAULT.search(os.path.basename(v.rstrip("/")))
+            if m:
+                return m.group(0)
+    return None
+
+
+# ---------- папка Google Диска — не модели, которая учится на данных (Google API Limited Use) ----------
+# Ставит models.command в настройки профиля (--settings), только если base_mcp.learns_on_data запрещает профилю
+# данные Google (FCC «:free», DeepSeek напрямую, OpenRouter без deny и zdr). Хук: ``secrets_guard.py drive-hook
+# [корень …]``. Корни: ~/drive, его реальный путь (ссылка), точки монтирования rclone (fuse.rclone), GAS_PULT_DRIVE_ROOT
+# и пути из аргументов. Это вторая линия: первая — окно без серверов Google (--strict-mcp-config, google_guard.py).
+DRIVE_KEYS = ("file_path", "notebook_path", "path", "cwd", "directory", "dir", "folder", "root")
+
+
+def _drive_remotes() -> set[str]:
+    """Удалённые диски rclone с ``type = drive`` (Google Диск) из rclone.conf, если он есть."""
+    f = os.environ.get("RCLONE_CONFIG") or os.path.expanduser("~/.config/rclone/rclone.conf")
+    out, cur = set(), ""
+    try:
+        with open(f, encoding="utf-8", errors="replace") as h:
+            for ln in h:
+                if m := re.match(r"\s*\[(.+)\]\s*$", ln):
+                    cur = m.group(1)
+                elif re.match(r"\s*type\s*=\s*drive\s*$", ln):
+                    out.add(cur)
+    except OSError:
+        pass
+    return out
+
+
+def rclone_mounts(mounts: str = "/proc/self/mounts") -> list[str]:
+    """Точки монтирования rclone с Google Диском: удалённый диск с «google»/«drive» в имени или ``type = drive``
+    в rclone.conf (Яндекс Диск и другие — не трогаем)."""
+    try:
+        with open(mounts, encoding="utf-8", errors="replace") as f:
+            rows = [ln.split() for ln in f]
+    except OSError:
+        return []
+    google = _drive_remotes()
+    out = []
+    for r in rows:
+        if len(r) > 2 and r[2].startswith("fuse.rclone"):
+            remote = re.split(r"[{:]", r[0], maxsplit=1)[0]
+            if remote in google or re.search(r"google|drive", remote, re.I):
+                out.append(r[1].replace("\\040", " "))
+    return out
+
+
+def drive_roots(extra=()) -> list[str]:
+    """Закрытые папки: каждая — и как задана, и реальным путём (через символьные ссылки)."""
+    raw = [os.path.expanduser("~/drive"), os.environ.get("GAS_PULT_DRIVE_ROOT", ""), *rclone_mounts(), *extra]
+    out: list[str] = []
+    for r in raw:
+        r = os.path.expanduser(str(r or "").strip())
+        if not r or not os.path.isabs(r):
+            continue
+        for x in (os.path.normpath(r), os.path.realpath(r)):
+            if x != "/" and x not in out:
+                out.append(x)
+    return out
+
+
+def _inside(p: str, roots) -> bool:
+    return any(p == r or p.startswith(r + "/") for r in roots)
+
+
+def _resolve(s: str, cwd: str) -> list[str]:
+    s = s.strip().strip("'\"")
+    if not s or "\n" in s or len(s) > 4096:
+        return []
+    s = re.sub(r"^\$\{?HOME\}?(?=/|$)", os.path.expanduser("~"), os.path.expanduser(s))
+    p = os.path.normpath(os.path.join(cwd, s))
+    return [p, os.path.realpath(p)]
+
+
+def _tilde_forms(roots) -> list[str]:
+    """Как закрытую папку пишут в тексте: абсолютно, через ~ и через $HOME."""
+    home = os.path.expanduser("~")
+    out = list(roots)
+    for r in roots:
+        if r.startswith(home + "/"):
+            rel = r[len(home):]
+            out += ["~" + rel, "$HOME" + rel, "${HOME}" + rel]
+    return out
+
+
+def _strings(obj):
+    if isinstance(obj, str):
+        yield None, obj
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            for kk, s in _strings(v):
+                yield kk or k, s
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _strings(v)
+
+
+def drive_target(tool: str, inp: dict, cwd: str, roots) -> str | None:
+    """Путь в закрытой папке Диска, которого касается инструмент (или None). Любой инструмент: пути в аргументах,
+    текст с ~/drive и $HOME/drive; Bash — ещё и каждое слово команды относительно папки сессии."""
+    inp = inp if isinstance(inp, dict) else {}
+    cwd = cwd or os.getcwd()
+    if tool in ("Bash", "Grep", "Glob", "LS") and any(_inside(p, roots) for p in _resolve(cwd, "/")):
+        return cwd                                              # сессия сама стоит в папке Диска
+    forms = _tilde_forms(roots)
+    if tool == "Bash":                                          # команда: весь текст и каждое слово
+        cmd = str(inp.get("command") or "")
+        try:
+            toks = shlex.split(cmd, comments=True)
+        except ValueError:
+            toks = cmd.split()
+        words = [cmd, *(t for tok in toks for t in re.split(r"[=:,;|&<>()]", tok) if t)]
+        resolve = words[1:]
+    else:                                                       # любой инструмент (и MCP): поля с путём
+        resolve = [s for k, s in _strings(inp) if k in DRIVE_KEYS or (tool == "Glob" and k == "pattern")]
+        words = resolve
+    for s in words:
+        for f in forms:
+            i = s.find(f)
+            if i >= 0 and (i + len(f) == len(s) or s[i + len(f)] in "/'\" \t;|&)>:,*"):
+                return f
+    for s in resolve:
+        if any(_inside(p, roots) for p in _resolve(s, cwd)):
+            return s
+    return None
+
+
+def drive_handle(data: dict, roots) -> dict | None:
+    if data.get("hook_event_name") != "PreToolUse":
+        return None
+    hit = drive_target(str(data.get("tool_name") or ""), data.get("tool_input") or {}, data.get("cwd") or "", roots)
+    if not hit:
+        return None
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse", "permissionDecision": "deny",
+        "permissionDecisionReason": (f"Папка Google Диска закрыта для модели этого окна ({hit}): бесплатные модели, "
+                                     "DeepSeek напрямую и OpenRouter без запрета обучения могут учиться на данных "
+                                     "(Google API Limited Use, правило «Данные Google»). Откройте Диск в окне с "
+                                     "Claude или попросите человека переложить нужный файл в папку проекта.")}}
+
+
 # ---------- хук ----------
 def scrub(obj, env):
     """Та же форма, строки — без секретов. Возвращает (новое, типы)."""
@@ -251,12 +410,19 @@ def handle(data: dict) -> dict | None:
         return {"decision": "block", "reason": prompt_reason(types),
                 "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "suppressOriginalPrompt": True}}
     if ev == "PreToolUse":
-        name = env_target(str(data.get("tool_name") or ""), data.get("tool_input") or {})
+        tool, inp = str(data.get("tool_name") or ""), data.get("tool_input") or {}
+        if vault := vault_target(tool, inp):
+            return {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse", "permissionDecision": "deny",
+                "permissionDecisionReason": (f"Файл {vault} закрыт: база паролей коннекторов (защита Ладэи). Её "
+                                             "читает только пульт (gas-pult connectors), агентам — нельзя. Нужен "
+                                             "вход в сервис — поставьте задачу человеку.")}}
+        name = env_target(tool, inp)
         if not name:
             return None
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse", "permissionDecision": "deny",
-            "permissionDecisionReason": (f"Файл {name} закрыт: в нём секреты (защита Гаврилы). Список переменных — в "
+            "permissionDecisionReason": (f"Файл {name} закрыт: в нём секреты (защита Ладэи). Список переменных — в "
                                          ".env.example; значение спросите у человека, а сам ключ он положит в "
                                          f"{KEYS_PLACE}. Если команда нужна (например, скопировать шаблон в .env), "
                                          "попросите человека выполнить её самому.")}}
@@ -268,21 +434,22 @@ def handle(data: dict) -> dict | None:
         types = _uniq(types)
         return {"hookSpecificOutput": {
             "hookEventName": "PostToolUse", "updatedToolOutput": new,
-            "additionalContext": (f"В выводе инструмента скрыто: {', '.join(types)} (защита Гаврилы). Значения не "
+            "additionalContext": (f"В выводе инструмента скрыто: {', '.join(types)} (защита Ладэи). Значения не "
                                   "нужны: ссылайтесь на имя переменной. Человеку: ключи и пароли не показываются; "
                                   f"чтобы подключить сервис, откройте {KEYS_PLACE}.")}}
     return None
 
 
-def hook_main(stdin=None, stdout=None) -> int:
-    stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
+def hook_main(stdin=None, stdout=None, handler=None) -> int:
+    """``handler`` — своё правило (drive-hook); по умолчанию — секреты (``handle``)."""
+    stdin, stdout, handler = stdin or sys.stdin, stdout or sys.stdout, handler or handle
     try:
         data = json.loads(stdin.read() or "{}")
     except ValueError:
         print("gas-pult-secrets: на входе не JSON", file=sys.stderr)
         return 0
     try:
-        out = handle(data if isinstance(data, dict) else {})
+        out = handler(data if isinstance(data, dict) else {})
     except Exception as e:                              # хук не должен ломать сессию; значение в ошибку не попадает
         print(f"gas-pult-secrets: ошибка {type(e).__name__}", file=sys.stderr)
         return 0
@@ -393,6 +560,9 @@ def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["hook"]:
         return hook_main()
+    if argv[:1] == ["drive-hook"]:                      # окно модели, которой нельзя данные Google (models.command)
+        roots = drive_roots(argv[1:])
+        return hook_main(handler=lambda d: drive_handle(d, roots))
     if argv[:1] == ["check"]:                           # проверить текст со стандартного ввода: только типы
         types = find(sys.stdin.read(), env_values(os.getcwd()))
         print(", ".join(types) if types else "секретов не найдено")

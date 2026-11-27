@@ -1,6 +1,6 @@
 """Увеличение ленты как картинки (владелец 16.11: «нужен зум, как будто мы картинку приближаем»; Playwright).
 
-    python tests/e2e/zoom_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/zoom_demo.py http://127.0.0.1:8797/?demo&dev
 
 Компьютер: Ctrl + колесо над лентой (так же приходит щипок трекпада) → лента крупнее, шрифт панели и поле ввода —
 прежние, страница целиком не масштабируется; увеличенную ленту двигают вбок; двойной клик — 100 %. Телефон: два
@@ -9,6 +9,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 FZ = "() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fz')) || 1"
 PINCH = """([x, y, d0, d1]) => {
@@ -100,4 +102,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

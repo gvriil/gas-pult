@@ -18,13 +18,13 @@ W1 = {"id": "@1", "name": "shop", "path": "/srv/shop", "cmd": "claude"}
 W2 = {"id": "@2", "name": "other", "path": "/srv/other", "cmd": "claude"}
 
 
-def test_store_binds_first_device_and_keeps_only_hashes(tmp_path):
+def test_store_binds_first_device_and_keeps_only_hashes(tmp_path, stored):
     f = focus.Focus(tmp_path / "focus.json")
     link = f.new(W1, by=1)
-    raw = (tmp_path / "focus.json").read_text()
-    assert link["token"] not in raw and (tmp_path / "focus.json").stat().st_mode & 0o777 == 0o600
+    raw = stored.text(tmp_path / "focus.json")
+    assert link["token"] not in raw and stored.mode(tmp_path / "focus.json") == 0o600
     cookie, rec = f.open(link["token"], "", "iPhone · Safari")
-    assert rec["w"] == "@1" and cookie.split(".")[1] not in (tmp_path / "focus.json").read_text()
+    assert rec["w"] == "@1" and cookie.split(".")[1] not in stored.text(tmp_path / "focus.json")
     assert f.open(link["token"], cookie)[0] == cookie                       # то же устройство — снова можно
     c2, _ = f.open(link["token"], "", "Telegram")                            # 20.11: ещё два устройства того же
     c3, _ = f.open(link["token"], "", "Chrome")                              # человека — можно
@@ -65,6 +65,9 @@ class Wins:
 
     def windows(self):
         return list(self.w.values())
+
+    def set_focus(self, wid, rid):
+        self.w[wid]["focus"] = rid
 
     @contextlib.contextmanager
     def scope(self, slug):
@@ -122,7 +125,7 @@ def open_link(s, wid="@1"):
     code, d, _ = call(s["base"], "/api/focus/new", {"w": wid, "base": s["base"]}, owner(s))
     assert code == 200, d
     token = d["url"].split("#focus=")[1]
-    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, "", FX)
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)
     assert code == 200 and r["ok"], r
     return d, token, setc.split(";")[0]
 
@@ -131,12 +134,12 @@ def test_link_is_fragment_and_cookie_is_strict(server):
     d, token, cookie = open_link(server)
     assert d["url"] == f"{server['base']}/#focus={token}"        # токен после «#»: не уходит на сервер и в журналы
     assert cookie.startswith(focus.COOKIE + "=")
-    _, _, setc = call(server["base"], "/api/focus/open", {"token": token}, cookie, FX)
+    _, _, setc = call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, cookie, FX)
     for attr in ("HttpOnly", "Secure", "SameSite=Strict", "Path=/"):
         assert attr in setc
     for _ in range(focus.FOCUS_MAX - 1):                                     # ещё два устройства — можно
-        assert call(server["base"], "/api/focus/open", {"token": token}, "", FX)[0] == 200
-    code, r, _ = call(server["base"], "/api/focus/open", {"token": token}, "", FX)   # четвёртое — нет
+        assert call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)[0] == 200
+    code, r, _ = call(server["base"], "/api/focus/open", {"token": token, "privacy": True}, "", FX)   # четвёртое — нет
     assert code == 410 and r["code"] == "focus_gone" and "устройствах" in r["error"]
 
 
@@ -148,7 +151,7 @@ def test_focus_sees_only_its_session(server):
     code, d, _ = call(s["base"], "/api/meta", None, cookie, FX)
     assert code == 200 and d["focus"]["w"] == "@1" and d["via"] == "focus" and d["projects"] == []
     code, _, _ = call(s["base"], "/api/send", {"w": "@1", "text": "привет"}, cookie, FX)
-    assert code == 200 and s["sent"] == [("@1", "привет")]
+    assert code == 200 and s["sent"] == [("@1", focus.guest_note("shop") + "\n\nпривет")]   # 23.11: пометка агенту
     for path, body in (("/api/send", {"w": "@2", "text": "x"}), ("/api/key", {"w": "@2", "key": "Enter"}),
                        ("/api/new", {"i": 0}), ("/api/people", None), ("/api/focus/list", None),
                        ("/api/rename", {"w": "@2", "name": "x"}), ("/api/active", {"w": "@1"}),
@@ -160,7 +163,7 @@ def test_focus_sees_only_its_session(server):
     # без заголовка фокуса cookie фокуса ничего не открывает — тоже 403, не вход
     code, r, _ = call(s["base"], "/api/sessions", None, cookie)
     assert code == 403 and r["code"] == "focus_scope"
-    assert s["sent"] == [("@1", "привет")]
+    assert [(w, focus.guest_unmark(t)) for w, t in s["sent"]] == [("@1", "привет")]
 
 
 RUN_PATHS = (("/api/run", {"w": "@1", "i": 0, "sha": "x"}), ("/api/run/term", {"w": "@1", "i": 0, "sha": "x"}),
@@ -314,7 +317,7 @@ def test_e2e_focus_in_browser():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     try:
-        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
     finally:
         srv.shutdown()
 
@@ -352,17 +355,23 @@ def proj_server(s, monkeypatch):
         wid = f"@{len(wins.w) + 1}"
         wins.w[wid] = {"id": wid, "name": "shop-2", "path": data["projects"][pid]["path"], "cmd": "claude"}
         made.append((pid, wid))
-        return {"id": wid, "project": pid}
+        return {"id": wid, "project": pid, "sid": f"sid-{wid[1:]}"}
     monkeypatch.setattr(p, "project_session", project_session)
     monkeypatch.setattr(p, "project_info", lambda pid, who="owner": {"id": pid, "name": data["projects"][pid]["name"]})
-    monkeypatch.setattr(p, "project_chats", lambda pid, q="", before=None, person=None: {"chats": [], "more": False})
+    done = ["owner-old", "sid-3"]                        # завершённые журналы проекта: чат владельца и чат ссылки
+
+    def project_chats(pid, q="", before=None, person=None, only=None):
+        return {"chats": [{"sid": x} for x in done if only is None or x in only], "more": False}
+    monkeypatch.setattr(p, "project_chats", project_chats)
+    monkeypatch.setattr(p, "project_history", lambda pid, sid, before=None: {"items": [], "sid": sid})
+    monkeypatch.setattr(p, "project_resume", lambda pid, sid, person=None, uid=None: {"id": "@9", "sid": sid})
     return data, made
 
 
 def proj_link(s, pid="p-shop"):
     code, d, _ = call(s["base"], "/api/focus/new", {"base": s["base"], "proj": pid}, owner(s))
     assert code == 200 and d["proj"] == pid and d["name"] == "Магазин", d
-    code, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1]}, "", FX)
+    code, _, setc = call(s["base"], "/api/focus/open", {"token": d["url"].split("#focus=")[1], "privacy": True}, "", FX)
     assert code == 200
     return d, setc.split(";")[0]
 
@@ -374,7 +383,9 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
     code, m, _ = call(s["base"], "/api/meta", None, cookie, FX)
     assert code == 200 and m["focus"]["proj"] == "p-shop" and m["focus"]["exp"] == d["exp"] and m["focus"]["w"] == ""
     code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert [x["id"] for x in r["sessions"]] == ["@1"]                                 # только окна проекта
+    assert r["sessions"] == []                          # окно владельца в папке проекта (@1) по ссылке не видно (25.11)
+    for path, body in (("/api/history?w=@1", None), ("/api/send", {"w": "@1", "text": "x"})):
+        assert call(s["base"], path, body, cookie, FX)[0] == 403, path
     assert call(s["base"], "/api/project?id=p-shop", None, cookie, FX)[0] == 200
     assert call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)[0] == 200   # завершённые чаты
     # новая сессия в проекте — и она сразу доступна
@@ -382,7 +393,7 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
     assert code == 200 and made == [("p-shop", r["id"])]
     assert call(s["base"], "/api/send", {"w": r["id"], "text": "привет"}, cookie, FX)[0] == 200
     code, ss, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert sorted(x["id"] for x in ss["sessions"]) == ["@1", r["id"]]
+    assert [x["id"] for x in ss["sessions"]] == [r["id"]]                            # только открытое по ссылке
     # чужой проект и его окно — 403; общий список проектов, люди, новая папка — 403
     for path, body in (("/api/project?id=p-other", None), ("/api/project/sessions?id=p-other", None),
                        ("/api/project/session", {"id": "p-other"}),
@@ -393,16 +404,48 @@ def test_project_link_sees_its_project_only(server, monkeypatch):
         code, r2, _ = call(s["base"], path, body, cookie, FX)
         assert code == 403 and r2.get("code") == "focus_scope", (path, code, r2)
     assert made == [("p-shop", r["id"])]                                            # в чужом проекте ничего не создано
-    # «Завершить» одно окно проекта — ссылка на проект живёт
-    code, c, _ = call(s["base"], "/api/close", {"w": "@1"}, cookie, FX)
-    assert code == 200 and c["result"] == "закрыто" and s["closed"] == ["@1"]
+    # «Завершить» своё окно проекта — ссылка на проект живёт; окно владельца — нельзя
+    assert call(s["base"], "/api/close", {"w": "@1"}, cookie, FX)[0] == 403
+    code, c, _ = call(s["base"], "/api/close", {"w": r["id"]}, cookie, FX)
+    assert code == 200 and c["result"] == "закрыто" and s["closed"] == [r["id"]]
     code, ss, _ = call(s["base"], "/api/sessions", None, cookie, FX)
-    assert code == 200 and [x["id"] for x in ss["sessions"]] == [r["id"]]
+    assert code == 200
     assert call(s["base"], "/api/close", {"w": "@2"}, cookie, FX)[0] == 403          # окно другого проекта — нет
     # проект удалили из списка — ссылка гаснет
     data["projects"].pop("p-shop")
     code, r3, _ = call(s["base"], "/api/sessions", None, cookie, FX)
     assert code == 410 and "Проект" in r3["error"]
+
+
+def test_project_link_finished_chats_only_its_own(server, monkeypatch):
+    """Штаб 25.11 (GemoGuide): по ссылке на проект — завершённые чаты, начатые по ней; чаты владельца в той же папке
+    (его серверы, почта, задачи) — не видны, не читаются и не продолжаются."""
+    s = server
+    proj_server(s, monkeypatch)
+    _, cookie = proj_link(s)
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)
+    assert code == 200 and r["chats"] == []                                         # до первого чата — пусто
+    for path, body in (("/api/project/history?id=p-shop&sid=owner-old", None),
+                       ("/api/project/resume", {"id": "p-shop", "sid": "owner-old"})):
+        code, r2, _ = call(s["base"], path, body, cookie, FX)
+        assert code == 403 and r2.get("code") == "focus_scope", (path, code, r2)
+    code, n, _ = call(s["base"], "/api/project/session", {"id": "p-shop"}, cookie, FX)   # новый чат по ссылке
+    assert code == 200 and n["sid"] == "sid-3"
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)
+    assert [c["sid"] for c in r["chats"]] == ["sid-3"]                               # свой — виден, чужой — нет
+    assert call(s["base"], "/api/project/history?id=p-shop&sid=sid-3", None, cookie, FX)[0] == 200
+    code, rr, _ = call(s["base"], "/api/project/resume", {"id": "p-shop", "sid": "sid-3"}, cookie, FX)
+    assert code == 200 and rr["sid"] == "sid-3"
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, owner(s))   # владелец видит всё
+    assert [c["sid"] for c in r["chats"]] == ["owner-old", "sid-3"]
+
+
+def test_store_add_chat(tmp_path):
+    f = focus.Focus(tmp_path / "focus.json")
+    rid = f.new({"id": "", "path": "/p", "name": "p"}, 1, proj="p")["id"]
+    assert f.add_chat(rid, "a") is True and f.add_chat(rid, "a") is False and f.add_chat(rid, "") is False
+    assert f.add_chat("нет", "b") is False
+    assert focus.Focus.chats(f._load()[rid]) == {"a"}
 
 
 def test_session_link_cannot_open_project(server, monkeypatch):
@@ -485,12 +528,12 @@ def demo_link(s, wid="@1"):
 
 
 def demo_open(s, token, device=""):
-    code, r, setc = call(s["base"], "/api/focus/open", {"token": token}, device, FX)
+    code, r, setc = call(s["base"], "/api/focus/open", {"token": token, "privacy": True}, device, FX)
     assert code == 200, r
     return setc.split(";")[0]
 
 
-def test_store_demo_link_many_devices_limit_and_revoke(tmp_path):
+def test_store_demo_link_many_devices_limit_and_revoke(tmp_path, stored):
     f = focus.Focus(tmp_path / "focus.json")
     link = f.new(W1, 1, mode="demo")
     cookies = [f.open(link["token"], "", f"устройство {i}")[0] for i in range(focus.DEMO_MAX)]
@@ -500,7 +543,7 @@ def test_store_demo_link_many_devices_limit_and_revoke(tmp_path):
         f.open(link["token"], "")                                        # больше DEMO_MAX — нет
     item = f.listing()[0]
     assert item["mode"] == "demo" and item["devices"] == focus.DEMO_MAX and item["opens"] == focus.DEMO_MAX
-    raw = (tmp_path / "focus.json").read_text()
+    raw = stored.text(tmp_path / "focus.json")
     assert link["token"] not in raw and all(c.split(".")[1] not in raw for c in cookies)
     assert f.revoke(link["id"])
     for c in cookies:
@@ -703,3 +746,73 @@ def test_names_hide_window_names_and_status_titles():
     assert 'title: ok ? x.title : ""' in page and 'name: ok ? x.title : "Новый чат"' in page
     links = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/js/focuslinks.js").read_text(encoding="utf-8")
     assert 'if (!x.proj) x.name = sessions.find((y) => y.id === x.w)?.name || x.name || "Чат"' in links   # 21.11: часть
+
+
+def test_window_owned_by_mark_list_or_adopted_chat(server, monkeypatch):
+    """Штаб 25.11 («восстанови сессии в фокус-ссылках»): окно видно ссылке, если в метке её id (меток несколько —
+    через пробел) или если его разговор владелец вернул ссылке (sids); чужое окно — по-прежнему нет."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    rid = d["id"]
+    s["wins"].w["@1"].update(focus="другая " + rid)                      # метка двух ссылок
+    s["wins"].w["@3"] = {"id": "@3", "name": "shop-3", "path": "/srv/shop", "cmd": "claude", "sid": "old-chat"}
+    s["wins"].w["@4"] = {"id": "@4", "name": "shop-4", "path": "/srv/shop", "cmd": "claude", "sid": "owner-chat"}
+    assert s["p"].focus.add_chat(rid, "old-chat") is True              # вернули чат ссылке
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and sorted(x["id"] for x in r["sessions"]) == ["@1", "@3"], r
+    assert call(s["base"], "/api/history?w=@3", None, cookie, FX)[0] == 200
+    assert call(s["base"], "/api/history?w=@4", None, cookie, FX)[0] == 403   # окно владельца — скрыто
+    assert focus.Focus.owns_window({"id": "x"}, {"focus": "xy"}) is False      # «x» не совпадает с частью «xy»
+
+
+def test_owner_link_sees_whole_project(server, monkeypatch):
+    """Личная ссылка владельца (owner_link, штаб 25.11: ссылки владельца на штаб) — весь проект, как до #517: окна
+    владельца, все завершённые чаты, история и «Продолжить». Без флага — только своё."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    assert [x["id"] for x in call(s["base"], "/api/sessions", None, cookie, FX)[1]["sessions"]] == []
+    data = s["p"].focus._load()
+    data[d["id"]]["owner_link"] = True
+    s["p"].focus._save(data)
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and [x["id"] for x in r["sessions"]] == ["@1"]
+    code, r, _ = call(s["base"], "/api/project/sessions?id=p-shop", None, cookie, FX)
+    assert code == 200 and [c["sid"] for c in r["chats"]] == ["owner-old", "sid-3"]
+    assert call(s["base"], "/api/project/history?id=p-shop&sid=owner-old", None, cookie, FX)[0] == 200
+    assert call(s["base"], "/api/project?id=p-other", None, cookie, FX)[0] == 403     # чужой проект — всё равно нет
+
+
+def test_owner_window_in_client_project_goes_to_its_links(server, monkeypatch):
+    """Владелец 25.11: окно, которое владелец открывает в проекте клиента, не теряется для ссылки клиента — его
+    разговор сразу в ссылке, окно помечено. Окно без разговора (оболочка) — не отдаём; ссылка владельца — не трогаем."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    p = s["p"]
+    monkeypatch.setattr(p.projects, "of_path", lambda data, path: "p-shop" if path.startswith("/srv/shop") else None)
+    s["wins"].w["@7"] = {"id": "@7", "name": "shop-7", "path": "/srv/shop", "cmd": "claude", "sid": "owner-new"}
+    assert p.focus_adopt_new("/srv/shop", "@7", "owner-new") == [d["id"]]
+    assert "owner-new" in focus.Focus.chats(p.focus._load()[d["id"]]) and s["wins"].w["@7"]["focus"] == d["id"]
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and "@7" in [x["id"] for x in r["sessions"]]
+    assert p.focus_adopt_new("/srv/shop", "@8", "") == []                      # оболочка без разговора — нет
+    assert p.focus_adopt_new("/srv/other", "@9", "x") == []                    # чужой проект — нет
+
+
+def test_owner_window_hidden_when_auto_adopt_off(server, monkeypatch):
+    """Флаг ссылки auto_adopt (владелец 25.11: по умолчанию вкл.): выключен — новое окно владельца человеку не видно."""
+    s = server
+    proj_server(s, monkeypatch)
+    d, cookie = proj_link(s)
+    p = s["p"]
+    monkeypatch.setattr(p.projects, "of_path", lambda data, path: "p-shop" if path.startswith("/srv/shop") else None)
+    assert next(x for x in p.focus.listing() if x["id"] == d["id"])["auto_adopt"] is True     # по умолчанию — вкл.
+    code, r, _ = call(s["base"], "/api/focus/auto", {"id": d["id"], "on": False}, owner(s))
+    assert code == 200 and r["ok"] is True
+    assert call(s["base"], "/api/focus/auto", {"id": d["id"], "on": True}, cookie, FX)[0] == 403   # не по ссылке
+    s["wins"].w["@7"] = {"id": "@7", "name": "shop-7", "path": "/srv/shop", "cmd": "claude", "sid": "owner-new"}
+    assert p.focus_adopt_new("/srv/shop", "@7", "owner-new") == []
+    code, r, _ = call(s["base"], "/api/sessions", None, cookie, FX)
+    assert code == 200 and "@7" not in [x["id"] for x in r["sessions"]]

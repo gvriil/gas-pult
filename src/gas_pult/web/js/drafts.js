@@ -5,7 +5,8 @@
 // своего пространства) — это проверяет сервер.
 
 const SVC = { moysklad: "МойСклад", bitrix24: "Битрикс24", wildberries: "Wildberries", ozon: "Ozon", mail: "Почта",
-  cal: "Календарь", tgbiz: "Telegram для бизнеса", cdek: "СДЭК", docs: "Документы", mac: "Компьютер" };
+  cal: "Календарь", tgbiz: "Telegram для бизнеса", cdek: "СДЭК", docs: "Документы", mac: "Компьютер",
+  telegram: "Telegram", signal: "Signal", whatsapp: "WhatsApp" };
 let list = [], at = 0, busy = false;
 
 export const svcName = (s) => SVC[s] || s;

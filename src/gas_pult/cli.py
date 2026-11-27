@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 
 from gas_pult import __version__, config, rogroup, setup, transcripts
@@ -283,6 +284,56 @@ def cmd_geoip(a):
         print(f"  {ip} → {g.lookup(ip) or 'нет данных'}")
 
 
+def cmd_storage(a):
+    """Хранение служебных данных (``sqlstore.py``, docs/STORAGE.md): status | backup | verify | enable dual|sqlite |
+    disable (= json). Включение снимает копию JSON (один раз) и переносит данные; disable выгружает новое из SQLite."""
+    from gas_pult import sqlstore
+
+    data = config.data_dir()
+    if a.action == "enable":
+        if a.mode not in ("dual", "sqlite"):
+            raise SystemExit("Укажите режим: gas-pult storage enable dual  (или sqlite)")
+        r = sqlstore.enable(data, a.mode)
+        print(f"✓ Режим «{a.mode}» включён (storage в config.toml). Службы подхватят его без перезапуска.")
+        print(f"  Копия JSON: {r['backup'] or 'снималась раньше — см. gas-pult storage status'}")
+        for n, k in r["imported"].items():
+            print(f"  {n}: {'уже в SQLite' if k is None else f'перенесено записей — {k}'}")
+        print("  Проверить: gas-pult storage verify · вернуть JSON: gas-pult storage disable")
+        return
+    if a.action == "disable":
+        r = sqlstore.disable(data)
+        for n, k in r["exported"].items():
+            print(f"  {n}: из SQLite в JSON — записей {k}")
+        print("✓ Режим «json»: служебные данные снова только в JSON-файлах. База pult.sqlite3 осталась копией.")
+        return
+    if a.action == "backup":
+        print(f"✓ Копия JSON: {sqlstore.backup(data, force=True)}")
+        return
+    if a.action == "verify":
+        if not sqlstore.db_path(data).exists():
+            return print("Базы SQLite нет — сравнивать не с чем (режим json). Включить: gas-pult storage enable dual")
+        bad = 0
+        for n, r in sqlstore.verify(data).items():
+            diff = r["missing"] + r["extra"] + r["differ"]
+            bad += len(diff)
+            line = "совпадает" if not diff else (f"расходится: нет в SQLite {r['missing'][:5]}, лишние "
+                                                 f"{r['extra'][:5]}, разные {r['differ'][:5]}")
+            print(f"  {n}: JSON {r['json']} · SQLite {r['sqlite']} — {line}")
+        if bad:
+            raise SystemExit(f"✗ Расхождений: {bad}. В режиме sqlite это нормально (JSON не пишется); в dual — "
+                             "перенести заново: gas-pult storage enable dual")
+        return print("✓ JSON и SQLite совпадают.")
+    st = sqlstore.status(data)
+    print(f"Режим: {st['mode']} · база: {st['db']}" + ("" if st["exists"] else " (ещё не создана)"))
+    if st["exists"]:
+        print(f"  схема {st['schema']} · журнал {st['journal']} · {st['size'] // 1024} КБ · "
+              f"копия JSON: {st['backup'] or 'нет'}")
+        for n, c in st["collections"].items():
+            where = "новое только в SQLite" if c["sqlite_only"] else ("JSON = SQLite" if c["json_in_sync"] and
+                                                                      c["imported"] else "JSON менялся отдельно")
+            print(f"  {n}: строк {c['rows']} · {where if c['imported'] else 'не переносилось'}")
+
+
 def cmd_usage(a):
     """Отчёт по функциям панели сейчас: файл ``usage-ГГГГ-ММ.md`` в данных пульта и текст в консоль. В Telegram
     его шлёт бот сам, 1-го числа."""
@@ -293,6 +344,21 @@ def cmd_usage(a):
     path = features.write(data, r)
     print(features.markdown(r))
     print(f"Сохранено: {path}")
+
+
+def cmd_funnel(a):
+    """Воронка продукта из ``product-events.jsonl``: вошли → получили первый ответ → сказали «Да», по дням."""
+    from gas_pult import funnel
+
+    space = a.space
+    if space and space != "-":
+        from gas_pult import tenants
+        try:
+            space = tenants.check_slug(space)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+    r = funnel.report(funnel.Funnel(config.data_dir()).read(), a.days, "" if space == "-" else space)
+    print(funnel.text(r))
 
 
 def cmd_inbox(a):
@@ -756,6 +822,95 @@ def cmd_notify(a):
     print(f"отправлено владельцам: {sent}" + (f" · ответ придёт в окно {wid}" if wid else ""))
 
 
+def chat_window(panel, target: str) -> str:
+    """Окно сессии пульта по ``@N``, ``<сессия>:<имя>`` или имени tmux — id окна; не нашлось или имён два — отказ."""
+    target = str(target or "").strip()
+    if target.startswith("@"):
+        return target
+    sess, _, name = target.rpartition(":")
+    own = getattr(panel.tmux, "session", "main")
+    if sess and sess != own:
+        raise SystemExit(f"окна пульта — в сессии tmux «{own}», а не «{sess}»")
+    hits = [w for w in panel.tmux.windows() if w.get("name") == name and not w.get("space")]
+    if len(hits) != 1:
+        raise SystemExit(f"окно «{target}» не найдено" if not hits else f"окон «{name}» несколько — укажите @N")
+    return hits[0]["id"]
+
+
+def cmd_chat(a, panel=None, sleep=time.sleep):
+    """``gas-pult chat move <окно> <папка проекта> [--wait]`` — «Перенести в проект…» из штаба: та же логика, что
+    в панели (``Panel.chat_move``). Идёт ход: без ``--wait`` перенос встаёт в очередь панели (сделает фоновый цикл,
+    когда окно освободится), с ``--wait`` — команда ждёт конца хода сама."""
+    from gas_pult import chat_move
+
+    if a.action == "say":
+        return cmd_chat_say(a)
+    if panel is None:
+        from gas_pult import webapp
+
+        try:
+            cfg = config.load()
+        except config.ConfigError as e:
+            raise SystemExit(str(e)) from None
+        panel = webapp.Panel(cfg)
+    wid = chat_window(panel, a.window)
+    folder = os.path.realpath(os.path.expanduser(a.folder))
+    pid = panel.projects.of_path(panel.project_data(fresh=True), folder)
+    if not pid or not os.path.isdir(folder):
+        raise SystemExit(f"папка {a.folder} — не проект пульта (откройте в ней чат или «Новый проект»)")
+    deadline = time.time() + a.timeout
+    while True:
+        try:
+            r = panel.chat_move(wid, pid, defer=not a.wait)
+            break
+        except chat_move.Busy:
+            if time.time() > deadline:
+                raise SystemExit("чат всё ещё отвечает — не дождался; повторите или уберите --wait") from None
+            sleep(5)
+        except chat_move.Failed as e:
+            raise SystemExit(f"{e} (окно {e.wid})") from None
+        except (ValueError, LookupError) as e:
+            raise SystemExit(f"не перенёс: {e}") from None
+    if r.get("pending"):
+        print(f"{wid}: чат отвечает — перенесу в «{r['project_name']}», как только закончит (очередь панели)")
+    else:
+        print(f"{wid} → {r['id']}: чат продолжается в «{r['project_name']}»; старый журнал — в корзине чатов")
+    return r
+
+
+def cmd_chat_say(a, tmux=None):
+    """``gas-pult chat say <окно|проект> "<текст>"`` — сообщение команды в чат (teammsg.py): карточка «Команда» в
+    переписке окна (``@N``, ``main:<имя>``) или всех окон проекта (``pXXXXXXXXXX``). В tmux и Claude не уходит."""
+    from gas_pult import projects, teammsg
+
+    text = " ".join([a.folder, *(getattr(a, "rest", None) or [])]).strip()
+    ref = str(a.window or "").strip()
+    data = config.data_dir()
+    try:
+        if teammsg.PID.match(ref):
+            known = projects.Store(data / projects.FILE, os.path.expanduser("~")).read().get("projects") or {}
+            if ref not in known and not ref.startswith("s:"):
+                raise SystemExit(f"проекта {ref} нет — id проекта: «⋯» проекта в панели или projects.json")
+            to = teammsg.target(proj=ref)
+        else:
+            if tmux is None:
+                from gas_pult.tmux import Tmux
+                try:
+                    tmux = Tmux(config.load().session)
+                except config.ConfigError as e:
+                    raise SystemExit(str(e)) from None
+            wid = chat_window(types.SimpleNamespace(tmux=tmux), ref)   # chat_window ждёт panel.tmux
+            w = next((x for x in tmux.windows() if x["id"] == wid), None)
+            if not w:
+                raise SystemExit(f"окна {wid} нет")
+            to = teammsg.target(w=wid, sid=w.get("sid") or "")
+        m = teammsg.TeamMsgs(data / teammsg.FILE).say(to, text, getattr(a, "kind", "info") or "info")
+    except ValueError as e:
+        raise SystemExit(f"не записал: {e}") from None
+    print(f"сообщение команды {m['id']} → {'проект ' + to['proj'] if to.get('proj') else 'окно ' + to['w']}")
+    return m
+
+
 def cmd_last(a):
     print(transcripts.last_answer(os.path.abspath(a.path)) or "ответов не найдено")
 
@@ -776,6 +931,48 @@ def cmd_secrets(a):
         raise SystemExit(f"Ошибка: {e}") from None
     if a.action == "install":
         print("Новые сессии Claude Code в этой папке — со скрытием; открытые — после перезапуска.")
+
+
+def cmd_connectors(a):
+    """Сторож входа коннекторов (``connwatch``, ``relogin``): watch [--dry-run | --install | --uninstall] · vault init ·
+    forget [harness:имя] — забыть разрешённые права (следующий вход — через владельца)."""
+    from gas_pult import connwatch
+
+    if a.action == "vault":
+        if a.sub != "init":
+            raise SystemExit("gas-pult connectors vault init")
+        try:
+            print(connwatch.vault_init())
+        except RuntimeError as e:
+            raise SystemExit(f"Ошибка: {e}") from None
+        return
+    if a.action == "forget":
+        gone = connwatch.forget(config.data_dir(), a.sub)
+        print("забыл: " + ", ".join(gone) if gone else "нечего забывать")
+        return
+    if (a.install or a.uninstall) and a.dry_run:
+        print("было бы (--dry-run, ничего не записано и не запущено):")
+        for x in connwatch.install(remove=a.uninstall, dry=True):
+            print("  " + x)
+        return
+    if a.install or a.uninstall:
+        files = connwatch.install(remove=a.uninstall)
+        print("таймер убран" if a.uninstall else
+              f"таймер раз в 30 минут: {', '.join(files)} · systemctl --user list-timers {connwatch.UNIT}.timer")
+        return
+    pats = connwatch.excludes()
+    items = connwatch.collect()
+    for c in items:
+        if c["name"] == "*":
+            print(f"{connwatch.TITLES.get(c['harness'], c['harness'])}: {c['detail']}")
+            continue
+        mark = " (исключён)" if connwatch.excluded(c, pats) else ""
+        print(f"  {c['harness']:8} {c['state']:10} {c['name']}{mark}" + (f" — {c['detail']}" if c["detail"] else ""))
+    acts = connwatch.Watch(config.data_dir()).run(items, pats, dry=a.dry_run)
+    head = "было бы (--dry-run, ничего не записано):" if a.dry_run else "сделано:"
+    print(head if acts else "переходов нет")
+    for x in acts:
+        print("  " + x)
 
 
 def main(argv: list[str] | None = None):
@@ -812,6 +1009,10 @@ def main(argv: list[str] | None = None):
     s.add_argument("action", choices=["status", "update"], nargs="?", default="status")
     s.add_argument("ips", nargs="*", help="проверить адреса (только для status)")
     s.set_defaults(fn=cmd_geoip)
+    s = sub.add_parser("storage", help="хранение данных: status | backup | verify | enable dual|sqlite | disable")
+    s.add_argument("action", choices=["status", "backup", "verify", "enable", "disable"], nargs="?", default="status")
+    s.add_argument("mode", nargs="?", help="для enable: dual или sqlite")
+    s.set_defaults(fn=cmd_storage)
     s = sub.add_parser("offer", help="предложения бизнесу: new <файл> | new --name … | list | revoke <код> | example")
     s.add_argument("action", choices=["new", "list", "revoke", "example"])
     s.add_argument("file", nargs="?", help="new — файл-шаблон предложения; revoke — код")
@@ -839,9 +1040,21 @@ def main(argv: list[str] | None = None):
     s.add_argument("--config-dir", help="папка Claude Code (по умолчанию $CLAUDE_CONFIG_DIR или ~/.claude)")
     s.add_argument("--python", help="чем запускать хук (по умолчанию — этот Python)")
     s.set_defaults(fn=cmd_secrets)
+    s = sub.add_parser("connectors", help="вход коннекторов: watch [--dry-run|--install|--uninstall] · vault init · "
+                                          "forget [harness:имя]")
+    s.add_argument("action", choices=["watch", "vault", "forget"])
+    s.add_argument("sub", nargs="?", default="", help="vault — init; forget — harness:имя (пусто — все)")
+    s.add_argument("--dry-run", action="store_true", help="watch — только показать: ни состояния, ни задач, ни событий")
+    s.add_argument("--install", action="store_true", help="watch — поставить systemd-таймер раз в 30 минут")
+    s.add_argument("--uninstall", action="store_true", help="watch — убрать таймер")
+    s.set_defaults(fn=cmd_connectors)
     s = sub.add_parser("usage", help="функции панели: report — что не открывали 30 дней и что в ходу (файл и текст)")
     s.add_argument("action", choices=["report"], nargs="?", default="report")
     s.set_defaults(fn=cmd_usage)
+    s = sub.add_parser("funnel", help="воронка продукта: вошли → первый ответ → «Да» (события без ПД, funnel.py)")
+    s.add_argument("--days", type=int, default=30, help="за сколько дней (по умолчанию 30)")
+    s.add_argument("--space", help="только это пространство; «-» — только без пространства")
+    s.set_defaults(fn=cmd_funnel)
     s = sub.add_parser("notify", help="своё уведомление владельцам в бот (агенту: «готово, нужен ответ»)")
     s.add_argument("text", nargs="*", help="текст; пусто — из stdin")
     s.add_argument("--window", default="", help="окно (@N), куда пойдёт ответ; по умолчанию — своё окно tmux")
@@ -899,6 +1112,16 @@ def main(argv: list[str] | None = None):
     s.add_argument("--dry-run", action="store_true", help="показать, что куда пойдёт, ничего не трогая")
     s.add_argument("--claude-dir", default="", help="папка Claude Code (журналы — откуда проект файла)")
     s.set_defaults(fn=cmd_inbox)
+    s = sub.add_parser("chat", help="чаты: move <окно> <папка проекта> [--wait] — перенести чат в другой проект; "
+                                    "say <окно|проект> \"<текст>\" — сообщение команды в чат (в Claude не уходит)")
+    s.add_argument("action", choices=["move", "say"])
+    s.add_argument("window", help="окно tmux: main:<имя> или @N; у say — ещё и проект pXXXXXXXXXX")
+    s.add_argument("folder", help="move: папка проекта, куда перенести; say: текст сообщения")
+    s.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
+    s.add_argument("--kind", default="info", help="say: info (по умолчанию) | fixed | ack")
+    s.add_argument("--wait", action="store_true", help="идёт ход — ждать его конца (иначе — в очередь панели)")
+    s.add_argument("--timeout", type=int, default=6 * 3600, help="сколько секунд ждать с --wait")
+    s.set_defaults(fn=cmd_chat)
     s = sub.add_parser("last", help="последний ответ Claude в папке (текстом)")
     s.add_argument("path", nargs="?", default=".")
     s.set_defaults(fn=cmd_last)

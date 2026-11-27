@@ -24,7 +24,7 @@ def look(user: bool) -> dict:
             pg = b.new_page(viewport={"width": 390, "height": 844})
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/?demo")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/?demo&dev")
             pg.wait_for_timeout(2500)
             if user:
                 pg.evaluate(USER)
@@ -66,7 +66,7 @@ def test_user_sees_human_words():
 def test_developer_keeps_raw():
     need()
     o = look(user=False)
-    assert "Лимит на неделю" in (o["limits"] or "")
+    assert "неделя" in (o["limits"] or "") and "5 ч" in (o["limits"] or "")   # тихая строка (25.11)
     assert any("Терминал" in x and "Last login" in x for x in o["logs"])
     assert o["act"] not in ("Выполняет действие", "Думает", "Читает документ")   # сырой текст хода, не словарь
     assert "прочитано по ходу работы" in o["feed"]

@@ -1,6 +1,6 @@
 """Поле ввода без лишней раскладки (план UX, пункт 8; Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/input_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/input_demo.py http://127.0.0.1:8797/?demo&dev
 
 - Поле растёт со строками: измерение — один раз за кадр, сколько бы событий ввода ни пришло; до 6 строк, дальше —
   прокрутка внутри.
@@ -10,6 +10,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 SPY = """() => {                                   // сколько раз поле мерили (getComputedStyle на #input)
   window.__fits = 0;
@@ -77,4 +79,4 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")

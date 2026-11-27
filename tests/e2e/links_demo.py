@@ -1,6 +1,6 @@
 """Ссылки в переписке (задача 33; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/links_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/links_demo.py http://127.0.0.1:8797/?demo&dev
 
 В ленту подкладываются сообщения с опасными и неудобными адресами (полный режим ``?demo&open=@1`` и простой
 ``&simple=1``, ширина 390 и 1366, светлая и тёмная тема): нажимаемые — только http(s), с target и rel; адрес без схемы
@@ -11,6 +11,8 @@ on*, <script> и javascript:; длинный адрес не раздвигае�
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 LONG = "https://example.com/" + "a" * 30 + "/" + "b" * 400 + "?q=" + "c" * 200
 

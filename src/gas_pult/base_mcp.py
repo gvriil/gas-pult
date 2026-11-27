@@ -237,17 +237,18 @@ def _guard_log(found, base: str, openrouter: bool, ok: bool, why) -> None:
         pass
 
 
-def google_block_reason() -> str | None:
-    """Почему данные Диска нельзя отдать модели этого окна; None — можно."""
-    keys = ("GAS_PULT_MODEL", "OPENROUTER_MODEL", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
-            "CLAUDE_CODE_SUBAGENT_MODEL")                 # окно пульта: models.env_of — основная, быстрая, помощники
-    found = [(k, os.environ.get(k, "").strip().lower()) for k in keys]
+MODEL_KEYS = ("GAS_PULT_MODEL", "OPENROUTER_MODEL", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+              "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+              "CLAUDE_CODE_SUBAGENT_MODEL")       # окно пульта: models.env_of — основная, быстрая, помощники
+
+
+def _judge(env) -> tuple[list, str, bool, bool, str | None]:
+    found = [(k, str(env.get(k) or "").strip().lower()) for k in MODEL_KEYS]
     found = [(k, m) for k, m in found if m]
     models = [m for _, m in found]
-    base = (os.environ.get("ANTHROPIC_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").lower()
-    ok = "1" in (os.environ.get("GAS_GOOGLE_OK"), os.environ.get("GAS_CAL_GOOGLE_OK"))
-    openrouter = "openrouter" in base or bool(os.environ.get("OPENROUTER_MODEL"))
+    base = str(env.get("ANTHROPIC_BASE_URL") or env.get("OPENAI_BASE_URL") or "").lower()
+    ok = "1" in (env.get("GAS_GOOGLE_OK"), env.get("GAS_CAL_GOOGLE_OK"))
+    openrouter = "openrouter" in base or bool(env.get("OPENROUTER_MODEL"))
     why = None
     if bad := next((m for m in models if ":free" in m), None):
         why = f"бесплатная модель «{bad}» может учиться на данных"
@@ -257,6 +258,18 @@ def google_block_reason() -> str | None:
         why = "DeepSeek напрямую может учиться на данных"
     elif openrouter and not ok:
         why = "OpenRouter — только с data_collection=deny и zdr (пульт не подтвердил: GAS_GOOGLE_OK)"
+    return found, base, openrouter, ok, why
+
+
+def learns_on_data(env) -> str | None:
+    """Одно правило «модель учится на данных» для всего пульта: охранник Диска здесь, окна профилей (models.command —
+    без серверов Google и без ~/drive). ``env`` — окружение окна (models.env_of). Без журнала. None — можно."""
+    return _judge(env)[4]
+
+
+def google_block_reason() -> str | None:
+    """Почему данные Диска нельзя отдать модели этого окна; None — можно."""
+    found, base, openrouter, ok, why = _judge(os.environ)
     _guard_log(found, base, openrouter, ok, why)
     if not why:
         return None

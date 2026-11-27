@@ -69,7 +69,7 @@ TITLES = {"owner": "владелец", "admin": "админ", "member": "уча�
 LANGS = ("ru", "en")
 PREFS = {"simple": False, "lang": "ru"}            # по умолчанию — полный режим и русский: у текущих ничего не меняется
 RATES = (1.0, 1.25, 1.5, 2.0)                      # скорость озвучки в панели
-TOURS = ("business", "dev", "brief")        # тур для бизнеса, для разработчика и по брифингу (GAS-18)
+TOURS = ("business", "dev", "brief", "simple")   # бизнес, разработчик, брифинг (GAS-18), простой режим (25.11)
 TOUR_STATES = ("done", "dismissed")
 GUEST_FLOOR = -(10 ** 15)                   # гости — от −2·10¹⁵ до −10¹⁵: ни с Telegram ID, ни с группами не совпадут
 
@@ -110,6 +110,11 @@ class People:
     def _load(self) -> dict:
         return store.load(self.store)
 
+    def _get(self, uid) -> dict | None:
+        """Запись человека из people.json (в режиме sqlite — одна строка базы, ``store.get``)."""
+        p = store.get(self.store, str(uid))
+        return p if isinstance(p, dict) else None
+
     def _save(self, d: dict):
         store.save(self.store, d, ensure_ascii=False)
 
@@ -130,7 +135,7 @@ class People:
             return "owner"
         if uid < 0 and self.virtual and (v := self.virtual(uid)):
             return v["role"]
-        p = self._load().get(str(uid))
+        p = self._get(uid)
         return p["role"] if p and p.get("role") in ROLES and not expired(p) else None
 
     def add(self, uid: int, role: str, name: str = "", username: str = "", tenant: str | None = None,
@@ -224,7 +229,7 @@ class People:
             return None
         if uid < 0 and self.virtual and (v := self.virtual(uid)):
             return v["tenant"]
-        p = self._load().get(str(uid)) or {}
+        p = self._get(uid) or {}
         return p.get("tenant") or None if p.get("role") in ROLES and not expired(p) else None
 
     def remove(self, uid: int):
@@ -257,8 +262,8 @@ class People:
             uid = int(uid)
         except (TypeError, ValueError):
             return None
-        p = None if uid in self.owners else self._load().get(str(uid))
-        rec = (p or {}).get("terms") or self._load_terms().get(str(uid))
+        p = None if uid in self.owners else self._get(uid)
+        rec = (p or {}).get("terms") or store.get(self.terms_store, str(uid))
         return rec if isinstance(rec, dict) else None
 
     def accepted(self, uid, version: str = TERMS_VERSION) -> bool:
@@ -271,8 +276,8 @@ class People:
             uid = int(uid)
         except (TypeError, ValueError):
             return {}
-        p = None if uid in self.owners else self._load().get(str(uid))
-        rec = (p or {}).get("country") if p else self._load_side(self.country_store).get(str(uid))
+        p = None if uid in self.owners else self._get(uid)
+        rec = (p or {}).get("country") if p else store.get(self.country_store, str(uid))
         return dict(rec) if isinstance(rec, dict) else {}
 
     def set_country(self, uid: int, **fields) -> tuple[dict, bool]:
@@ -302,8 +307,8 @@ class People:
             uid = int(uid)
         except (TypeError, ValueError):
             return {**PREFS, "rate": 1.0, "saved": False}
-        p = None if uid in self.owners else self._load().get(str(uid))
-        rec = (p or {}).get("prefs") if p else self._load_side(self.prefs_store).get(str(uid))
+        p = None if uid in self.owners else self._get(uid)
+        rec = (p or {}).get("prefs") if p else store.get(self.prefs_store, str(uid))
         rec = rec if isinstance(rec, dict) else {}
         return {"simple": rec.get("simple") is True, "lang": rec.get("lang") if rec.get("lang") in LANGS else "ru",
                 "rate": rec.get("rate") if rec.get("rate") in RATES else 1.0, "saved": bool(rec)}
@@ -337,13 +342,13 @@ class People:
 
     def tour(self, uid) -> dict:
         """Отметки тура человека: ``{business, dev, brief, at}``; чего нет — None."""
-        empty = {"business": None, "dev": None, "brief": None, "at": None}
+        empty = {"business": None, "dev": None, "brief": None, "simple": None, "at": None}
         try:
             uid = int(uid)
         except (TypeError, ValueError):
             return empty
-        p = None if uid in self.owners else self._load().get(str(uid))
-        rec = (p or {}).get("tour") if p else self._load_side(self.tour_store).get(str(uid))
+        p = None if uid in self.owners else self._get(uid)
+        rec = (p or {}).get("tour") if p else store.get(self.tour_store, str(uid))
         rec = rec if isinstance(rec, dict) else {}
         out = {k: rec.get(k) if rec.get(k) in TOUR_STATES else None for k in TOURS}
         return {**out, "at": rec.get("at") if isinstance(rec.get("at"), int) else None}
@@ -351,7 +356,7 @@ class People:
     def set_tour(self, uid: int, kind: str, state: str) -> dict:
         """Запомнить отметку тура ``kind`` (business | dev | brief): done или dismissed."""
         if kind not in TOURS or state not in TOUR_STATES:
-            raise ValueError("тур: business, dev или brief; отметка: done или dismissed")
+            raise ValueError("тур: business, dev, brief или simple; отметка: done или dismissed")
         uid = int(uid)
         with self._locked():
             rec = {**self.tour(uid), kind: state, "at": int(time.time())}
@@ -370,8 +375,8 @@ class People:
             uid = int(uid)
         except (TypeError, ValueError):
             return {}
-        p = None if uid in self.owners else self._load().get(str(uid))
-        rec = (p or {}).get("ui") if p else self._load_side(self.ui_store).get(str(uid))
+        p = None if uid in self.owners else self._get(uid)
+        rec = (p or {}).get("ui") if p else store.get(self.ui_store, str(uid))
         return dict(rec) if isinstance(rec, dict) else {}
 
     def set_ui(self, uid: int, rec: dict):
@@ -394,8 +399,8 @@ class People:
             uid = int(uid)
         except (TypeError, ValueError):
             return {}
-        p = None if uid in self.owners else self._load().get(str(uid))
-        rec = (p or {}).get("email") if p else self._load_side(self.email_store).get(str(uid))
+        p = None if uid in self.owners else self._get(uid)
+        rec = (p or {}).get("email") if p else store.get(self.email_store, str(uid))
         return dict(rec) if isinstance(rec, dict) else {}
 
     def set_email(self, uid: int, **fields):

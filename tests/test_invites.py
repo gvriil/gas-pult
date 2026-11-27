@@ -28,12 +28,12 @@ def dirs(monkeypatch, tmp_path):
     return tmp_path
 
 
-def test_lifecycle(dirs):
+def test_lifecycle(dirs, stored):
     code = invites.create("demo")
     assert invites.CODE.match(code)
-    raw = invites.store().read_text()
+    raw = stored.text(invites.store())
     assert code not in raw and code[:invites.HINT] in raw          # в файле — только хеш и первые знаки
-    assert invites.store().stat().st_mode & 0o777 == 0o600
+    assert stored.mode(invites.store()) == 0o600
     assert invites.check(code)["tenant"] == "demo"
     assert invites.redeem(code, 5) == {"tenant": "demo", "role": "member", "access": 0, "plan": ""}
     assert invites.redeem(code, 6) is None and invites.check(code) is None     # один раз

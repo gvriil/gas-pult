@@ -4,6 +4,7 @@ import pytest
 
 from gas_pult import webapp
 from gas_pult.config import Config
+from gas_pult.panel import work
 
 
 @pytest.fixture
@@ -16,7 +17,7 @@ def panel(monkeypatch, tmp_path):
             {"i": 1, "cmd": "rm -rf build", "kind": "local", "danger": True, "sha": "bbb"},
             {"i": 2, "cmd": "brew install x", "kind": "foreign", "danger": False, "sha": "ccc"}]
     monkeypatch.setattr(p, "commands", lambda w: cmds)
-    monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: (0, 0.1, f"ran {cmd}"))
+    monkeypatch.setattr(work, "execute", lambda cmd, cwd: (0, 0.1, f"ran {cmd}"))
     monkeypatch.setattr(webapp.setup, "installed", lambda claude="claude": "/usr/bin/claude")   # в CI Claude Code нет
     return p
 
@@ -299,7 +300,7 @@ def test_command_mark_by_hand_is_separate_and_undo(logged):
 
 
 def test_command_shows_running_while_executing(logged, monkeypatch):
-    from gas_pult import webapp as wa
+    from gas_pult.panel import work as wa
     seen = []
     monkeypatch.setattr(wa, "execute", lambda cmd, cwd: seen.append(logged.journal.get("c1")["running"]) or (0, 1, ""))
     item = logged.command_run("c1", False)["item"]
@@ -331,7 +332,7 @@ def test_prompt_hint_parsing():
 
 
 def test_failed_command_in_tab_is_triaged_and_full_output_kept(logged, monkeypatch):
-    from gas_pult import webapp as wa
+    from gas_pult.panel import work as wa
     big = "\n".join(f"line {i}" for i in range(2000))
     monkeypatch.setattr(wa, "execute", lambda cmd, cwd: (2, 0.1, big))
     monkeypatch.setattr(logged.pult, "triage", lambda path, wid, cmd, code, out, paste=None: ("sent", "alpha"))
@@ -343,7 +344,7 @@ def test_failed_command_in_tab_is_triaged_and_full_output_kept(logged, monkeypat
 
 def test_chat_block_run_returns_full_output_when_cut(panel, monkeypatch):
     big = "y" * 5000
-    monkeypatch.setattr(webapp, "execute", lambda cmd, cwd: (0, 0.1, big))
+    monkeypatch.setattr(work, "execute", lambda cmd, cwd: (0, 0.1, big))
     monkeypatch.setattr(panel.tmux, "windows", lambda: [])
     r = panel.run(W, 0, "aaa", False)
     assert r["cut"] and r["full"] == big and len(r["out"]) < len(big)

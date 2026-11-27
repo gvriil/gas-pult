@@ -1,6 +1,6 @@
 """Проверка простого режима в демо панели (Playwright; pytest её не запускает — нужен браузер).
 
-    python tests/e2e/simple_mode.py http://127.0.0.1:8797/?demo [папка-для-скриншотов]
+    python tests/e2e/simple_mode.py http://127.0.0.1:8797/?demo&dev [папка-для-скриншотов]
 
 ``?demo&simple=1`` (русский) и ``&lang=en``: телефон 390, планшет 820, ПК 1366, светлая и тёмная тема. На экране
 (видимый текст, подсказки полей и подписи кнопок) — ни одной латинской буквы в русском, кроме имён собственных из
@@ -13,6 +13,8 @@
 import re
 import sys
 from pathlib import Path
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
@@ -129,8 +131,9 @@ def run(base: str, shots: str = ""):
             pg.goto(f"{base}{sep}view=login&lang=en")
             pg.wait_for_selector("#loginLang .scn-opt.on")
             pg.wait_for_timeout(400)
+            # шапку на входе прячет вид «Ладэя» (js/loginlook.js): innerText скрытого — весь текст, берём видимое
             txt = pg.evaluate("[...document.querySelectorAll('#top, #login, #demoBar')]"
-                              ".map((x) => x.innerText).join('\\n')")
+                              ".filter((x) => x.checkVisibility()).map((x) => x.innerText).join('\\n')")
             bad = strangers(txt, "en")
             assert not bad and "Sign in with Telegram" in txt, f"вход {w}px: {bad}"
             if shots:

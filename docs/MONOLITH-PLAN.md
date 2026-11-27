@@ -1,6 +1,6 @@
 # План: модульный монолит пульта (на утверждение владельцу)
 
-Статус: **предложение, кода нет.** Код — только после «да» владельца.
+Статус: **идёт перенос** (правило владельца 22.11 — «модульный монолит, всё на 100 %»); отметки — в разделе 4.
 
 Основания:
 - решение владельца 11.11 — «модульный монолит, без микросервисов»;
@@ -14,6 +14,7 @@
 |---|---|---|
 | `src/gas_pult/webapp.py` | 5252 | функции-помощники (~400), класс `Panel` (~2950: 22 раздела), обработчик HTTP `handler()` → класс `H` (~1620: `get`, `post`, `focus_do` — 229 веток `if path == …`), запуск сервера |
 | `src/gas_pult/bot.py` | 3007 | класс `Pult` (177 методов, 29 разделов): Telegram, окна, статус, монитор, голос, встречи, модули, мастер, люди, вход, тестировщики, предложения |
+| `src/gas_pult/webapp.py` (22.11, после шагов 2–3) | 5779 | было 6154 (main `31efc72`); `Panel` — примеси `panel/clients.py` (85) и `panel/voice.py` (343) |
 | `src/gas_pult/web/index.html` | 8046 | ядро панели: 769 979 байт из лимита 770 000 (запас 21 байт) |
 
 Покрытие тестами (`pytest --cov`, без e2e): см. раздел 6 — заполняется замером.
@@ -49,9 +50,27 @@
 
 ### 3.2. Маршруты HTTP → таблицы по областям
 
-Сейчас: 229 веток `if path == …` в трёх функциях. Станет: `routes/<область>.py`, в каждом словарь
+Было (19.11): 229 веток `if path == …` в трёх функциях; с 22.11 цепочка `get`/`post` пуста (шаг 7 ✓). Станет: `routes/<область>.py`, в каждом словарь
 `GET = {"/api/…": fn}`, `POST = {…}`. `H.get`/`H.post` сначала ищут путь в таблицах, потом — старая цепочка.
 Переносим по одной области, пока старая цепочка не опустеет.
+
+Как устроено (шаг 7, 22.11, `routes/__init__.py`): словари `GET` — `fn(self, q)`, `GET_W` — `fn(self, q, w)` (ветки
+после общего `w = self.win(…)`: окно ищет `H.get` до вызова), `POST_RAW` — `fn(self)` (тело читает сама: звук, файл),
+`POST` — `fn(self, b)` (тело — JSON, разбирает `H.post`). `self` — обработчик запроса (`webapp.H`, `self.panel` —
+его `Panel`), тело ветки переезжает как есть (плюс строка `panel = self.panel`; две ветки одного пути — одна
+функция: `if path == P and X` → `if X`). Права в таблицах не проверяются: `get`
+и `post` вызываются только после `H.permit`, `H.focus_call` или `H.v1_call` — одна точка проверки. Опись
+(`api_spec.scan`) читает и таблицы; путь — в одном месте, таблица или цепочка (`tests/test_routes.py`). `POST_W`
+(22.11, интеграции: `/api/mcp/finish`) — `fn(self, b, w)`, ветки после `w = self.win(b.get("w"))` в `post`: окно из
+тела ищет `H.post` до вызова (нет — 404 «окна уже нет», как раньше); ищется после `POST_P`, где разобран JSON. Опись
+отмечает у `POST_W` поле `w`, как у `GET_W`.
+Развилка (22.11, платежи и мессенджеры): `GET_P` — `fn(self, path, q)`, `POST_P` — `fn(self, path, b)`, ключ — кортеж
+путей (ветка `if path in ТАБЛИЦА`: ответ по `path` собирает модуль области — `billing.api`, `messengers.panel`);
+ищутся после `GET`/`GET_W` и после разбора JSON в `post` — там же, где стояли ветки. Опись понимает ключ-имя
+таблицы импорта (`billing_api.GET`) и константу-кортеж модуля области (`POST_PATHS`).
+Та же развилка — для одной ветки цепочки на несколько путей с `if path == …` внутри (22.11, уведомления:
+`/api/push/*` → `notify.PUSH_GET`/`PUSH_POST`, тело как есть). Ответ, отправленный самой веткой (`self.reply`, ETag
+`/api/tasks`), — `return SENT`; `SENT` живёт в `routes/__init__.py` (`webapp.SENT` — то же имя).
 
 Права (`OWNER_ONLY`, `FOCUS_GET`, `SPACE_OK`, …) переезжают в `access.py` — **одна таблица прав рядом с
 маршрутами**. `webapp.py` реэкспортирует имена.
@@ -68,6 +87,10 @@
 | `bot/screens.py` | экраны бота, мастер, условия, страна, люди, вход, тестировщики, предложения | 800 |
 | `bot.py` остаётся | `Pult.__init__`, обработчики сообщений и кнопок (диспетчер) | ~500 |
 
+Пакет — `botparts/`, а не `bot/` (22.11): пакет `gas_pult/bot/` заслонил бы модуль `bot.py` (импорт `gas_pult.bot`
+нашёл бы пакет). Модули таблицы выше — `botparts/<имя>.py`; `bot.py` остаётся модулем и реэкспортирует старые имена.
+Граница — как у `panel/*`: `botparts/*` не импортируют ни `bot`, ни `webapp` (`tests/test_module_boundaries.py`).
+
 ### 3.4. Панель (`index.html`) — отдельный трек
 
 Ядро заполнено. Правило уже есть (решение 14.11, #191): части — `web/js/<имя>.js`. План: вынести самые большие
@@ -76,14 +99,132 @@
 
 ## 4. Порядок (по одному модулю за PR)
 
-1. `access.py` — таблица прав (риск низкий, даёт обзор всех путей).
-2. `panel/clients.py` — верхний уровень 0010 (маленький, новый код — проще всего проверить подход).
-3. `panel/voice.py` и `bot/voice.py` (замкнутые области).
-4. `panel/projects.py`, `panel/work.py`.
-5. `panel/sessions.py` (самый связанный — после того как подход проверен).
-6. `panel/spaces.py`, `panel/people.py`.
-7. `routes/*` — по области за PR, тем же порядком.
-8. `bot/*` — по модулю за PR.
+1. ✓ `access.py` — таблица прав (риск низкий, даёт обзор всех путей) — #335.
+2. ✓ `panel/clients.py` — верхний уровень 0010 (маленький, новый код — проще всего проверить подход) — 22.11:
+   анкета (`anketa*`), «Что здесь умеет» (`about_text`), бейджики (`starters_for`).
+3. `panel/voice.py` и `bot/voice.py` (замкнутые области). ✓ `panel/voice.py` — 22.11 (вместе с шагом 2: голос,
+   карточки, распознавание, озвучка; `STT_*`, `brief`, `head_of` реэкспортирует `webapp`); ✓ `botparts/voice.py` —
+   22.11: `say`, `el_voice_id`, `choose_voice`, `voice_preview`, `current_voice`, `voice_rows`, `voice_text`,
+   `show_voice`, `on_voice` → примесь `VoicePart` (138 строк, только перенос); распознавание входящего голоса осталось
+   в `on_message` (диспетчер).
+4. ✓ `panel/projects.py` — 22.11: «Проекты», закрепление, корзина чатов, название чата и «Проекты» пространства →
+   примесь `ProjectsPart` (51 имя, только перенос; `NeedForce`, `EFFORTS`, `effort_flag` реэкспортирует `webapp`);
+   `temp_tick` (остатки озвучки) остался в `webapp`. ✓ `panel/work.py` — 22.11: задачи, брифинг, команды из ответов,
+   окно терминала, модули-агенты, репозитории → примесь `WorkPart` (28 имён, ≈340 строк, только перенос; `utc_now`
+   реэкспортирует `webapp`); `DIALOG` — из `bot.py` в `humanize.py` (`bot.DIALOG` жив), чтобы `panel/*` не
+   импортировал `bot`; тесты подменяют `execute` в `panel.work`, а не в `webapp`.
+5. ✓ `panel/sessions.py` — 22.11: список сессий, открыть/перезапустить/оживить/закрыть окно, модель и усилие,
+   пропуск по памяти, интеграции чата, вход в MCP, файлы из панели → примесь `SessionsPart` (46 имён, ≈750 строк,
+   только перенос; `effort_ok`, `find_auth`, `CONTEXT`, `MODEL_LINE`, `AUTH_WITH`, `URL_TAIL` реэкспортирует
+   `webapp`); `BUSY` — из `bot.py` в `humanize.py` (`bot.BUSY` жив). В `webapp` остались `command` и `key` (им нужны
+   `PROMPTS`, `KEYS` бота), `space_welcome` и сессии пространства (`space_close`…`space_restore`) — к шагу 6.
+6. ✓ `panel/spaces.py` — 22.11: приглашения и вход по приглашению (`invite_*`, `device_link`), тестировщики
+   («Позвать на помощь», бюджет пространства, задача от владельца, `owner_join`), пространство в панели (`space_info`,
+   `space_fields`), первый вход (`space_welcome`) и сессии пространства (`space_close`…`space_restore`) → примесь
+   `SpacesPart` (29 имён, ≈350 строк, только перенос; `BUSY` — из `humanize.py`). Фокус-ссылки (`focus_*`, в том числе
+   «Ссылка на пространство») и мост пространства (`bridge_space*`) остались в `webapp`. ✓ `panel/people.py` — 22.11:
+   страна человека (`countries`, `check`, `seen_ip`, `set_country`…), владелец и вид панели (`is_owner`, `ui`,
+   `set_ui`, `prefs`, `owner_space_fix`), «Команда» и люди (`team_info`, `people_list`, `admin_may`, `set_role`,
+   `set_access`, `forget_person`), вход через Telegram и ключи входа (`login_methods`, `key_label`, `login_start`,
+   `confirm_start`, `bot_where`, `confirm_done`) → примесь `PeoplePart` (24 имени, ≈230 строк, только перенос;
+   `STAFF_ROLES`, `TITLES` реэкспортирует `webapp`). В `webapp` остались уведомления (`notify_*`), отзыв, расход
+   (`cost_*`), ключи поставщиков моделей (`set_key`, `remove_key`), предложения (`offer_*`), «Поделиться», встречи.
+6а. ✓ `panel/focus.py` — 22.11: фокус-ссылки (`focus_new`, `focus_space` — «Ссылка на пространство»,
+   `focus_sessions`, `focus_owns`, `focus_token`, `focus_send`, `focus_rec`, `FOCUS_BASE`), демо-ссылка
+   (`demo_answer`, `DEMO_*`) и мост (`bridge_dev_ok`, `bridge_allowed`, `bridge_space`, `bridge_space_allowed`) →
+   примесь `FocusPart` (16 имён, 189 строк, только перенос). В `webapp` остались `focus_meta` (нужны `KEYS` бота,
+   `PANEL_KEYS` и `server_tz` из `webapp`), `focus_bridge` (ветки путей `/api/focus/bridge/*` — их читает
+   `api_spec` из `webapp.py`; ✓ шаг 7 — в `FocusPart`), `bridge_local_token` и `BRIDGE_MAX` (верхний уровень: секрет и предел
+   сообщения для маршрутов `/api/bridge/*` и `cli`), «Поделиться» (`share_*` — приём файлов в Ладэю, другая
+   область, не ссылки) и протоколы встреч (`meeting_*`, в том числе ссылка на протокол).
+7. `routes/*` — по области за PR, тем же порядком. ✓ Инфраструктура и голос — 22.11: `routes/voice.py` (13 путей:
+   `/api/tts*`, `/api/stt`, `/api/stt/job|retry`, `/api/rec/*`, `/api/voice/cards|preview|choose`; 14 веток, 45 строк
+   цепочки); `/api/stt/stream` (WebSocket до входа, `do_GET`) и `/api/providers` (ключи — область «Модели») — в
+   цепочке. ✓ Мессенджеры, платежи, протоколы встреч — 22.11: `routes/messengers.py` (9 путей: `/api/messengers` и
+   развилка `/api/messengers/*` → `messengers.panel`), `routes/billing.py` (8 путей: развилка `GET_P`/`POST_P` →
+   `billing.api`), `routes/meetings.py` (5 путей: `/api/meetings`, `/api/meeting*`; `/api/mt*` — в `focus_call`,
+   `Panel.meeting_public`); 9 веток, 18 строк цепочки; снимки ответов до переноса — `tests/fixtures/routes_*_snap.json`.
+   ✓ Задачи и брифинг, «Поделиться», уведомления, анкеты клиентов, токены 1С и CRM — 22.11: `routes/tasks.py` (8 путей:
+   `/api/tasks*`, `/api/brief*`; `/api/tasks`, `/api/tasks/add|update` — и через `/api/v1`), `routes/share.py` (6:
+   `/api/share/list|file|done`, `/api/share/devices*`; приём `/share`, `/api/share` — в `do_POST`), `routes/notify.py`
+   (7 путей / 8 пар: `/api/notify/prefs`, развилка `/api/push/*`), `routes/forms.py` (3: `/api/q/list|answers|new`;
+   анкета по ссылке и `/api/offer/*` — до входа, в `do_GET`/`do_POST`), `routes/api_tokens.py` (3: `/api/apitokens*`);
+   24 ветки, 77 строк цепочки.
+   ✓ Модели, ключи, расход и интеграции, репозитории, модули — 22.11: `routes/model_keys.py` (20 путей / 24 пары:
+   вход в Claude Code `/api/setup/*`, `/api/login/code|check`; ключи `/api/keys*`, `/api/providers`; OpenRouter,
+   `/api/fallback`, `/api/selftest`, `/api/cost/*`, `/api/spend`, `/api/balance/clear`, `/api/models`, `/api/funnel`;
+   `/api/model/default` — в «Сессиях и чате»), `routes/integrations.py` (19: `/api/mcp*`, `/api/calendars/*`,
+   `/api/drafts` и развилка `/api/drafts/yes|no`, `/api/modules*`, `/api/module/*`, `/api/repos*`; `/api/drafts/check`
+   — до входа, в `do_POST`); 40 веток, 136 строк цепочки. Связанной оказалась одна ветка — `/api/mcp/finish` после
+   `w = self.win(b.get("w"))`: добавлен `POST_W` (§3.2), область не заменялась. Снимки — и по фокус-ссылке
+   (`/api/mcp`, `/api/repos*`, `/api/mcp/finish`) и через `/api/v1/drafts`.
+   ✓ Проекты и чаты, пространства, мост, фокус-ссылки — 22.11 (граница пространств, одним PR):
+   `routes/projects.py` (14 путей: `/api/projects`, `/api/project*`, `/api/chat/trash|delete|move|restore`,
+   `/api/chat/mcp` — в `POST_W`), `routes/spaces.py` (15: `/api/spaces`, `/api/space/*`; `/api/space/upload` —
+   `POST_RAW`, развилки `/api/space/files|download` и `/api/space/mcp/add|remove`, `/api/space/connect` — `POST_W`;
+   «Завершить» по фокус-ссылке — своя ветка `H.focus_do`), `routes/bridge.py` (8: `/api/bridge/devices|log|drafts|
+   pair|revoke|private|confirm|reject`; установка, `ws`, `claim`, `rpc`, `code` — до входа, в `do_GET`/`do_POST`),
+   `routes/focus.py` (6: `/api/focus/list|new|send|qr|browser|revoke`; `/api/focus/open` — в `do_POST`); 45 веток,
+   168 строк цепочки. Две ветки одного пути (проект пространства через `self.sp`/`self.space()`, «Ссылка на
+   пространство») — одна функция, ветвление по пространству внутри неё как было; общая ветка
+   `/api/project/session|resume` — своей частью в каждой из двух функций. Версия страницы для `/api/projects` —
+   `H.build` (как `H.panel`). `Panel.focus_bridge` (пути `/api/focus/bridge/*`, только по фокус-ссылке) — в
+   `panel/focus.py`, опись (`api_spec.scan`) читает его оттуда. Снимки — владелец, наблюдатель, человек
+   пространства A с данными пространства B, гость фокус-ссылки (сессия, проект, «Браузер»), `/api/v1` (группа
+   «sessions»); `tests/test_space_isolation.py` — зелёный до и после.
+   ✓ Люди и вход, команды и терминал — 22.11: `routes/people.py` (37 путей / 42 пары: условия, `/api/prefs`,
+   `/api/persona`, тур, страна, «Команда» и люди, приглашения и вход на другое устройство, привязка Telegram, почты,
+   ключей входа и OIDC, код подтверждения `CONFIRM_API` — `POST_P`, помощник, «Позвать на помощь» — `POST_W`,
+   «Выйти»), `routes/commands.py` (15 путей: вкладка «Команды», `gp-term`, живой терминал — развилка `POST_P`,
+   «Выполнить» из ответа `/api/run`, `/api/run/term` — `POST_W`); 54 ветки, 193 строки цепочки. Ключи таблиц —
+   и имена констант `access.py` (`PERSONA`, `TOUR`, `USES`, `FEEDBACK`, `CONFIRM_API`). Сам вход — до `permit`, в
+   `do_GET`/`do_POST`, не тронут: `/api/login/*` (Telegram, код, ключ, почта, OIDC), `/api/invite`,
+   `/api/invite/check|enter`, помощник без входа (`HELP_OPEN`); по фокус-ссылке `/api/meta`, `/api/logout` — свои
+   ветки `H.focus_do`. Остались в цепочке: `/api/meta` (замыкание `whatsnew` и `desktop_up` из `webapp`),
+   «Рабочий стол» `/api/desktop/*`, `/api/shell/open`, `/api/links/prefs` (функции верхнего уровня `webapp`:
+   `desktop_up`, `desktop_tab`, `desk_*`, `shell_window`, `link_pref*` — тесты подменяют их в `webapp`; сначала
+   вынести их в свой модуль). Снимки — с Set-Cookie (имя и атрибуты): без входа, наблюдатель, участник, админ,
+   гость, человек пространства, фокус-ссылка, ссылка на пространство (действующая и погасшая), свежий вход без кода,
+   Mini App; команды — только на подделках `Panel` и `termwin`.
+   ✓ Сессии и чат, рабочий стол, «О пульте» — 22.11, последний PR шага: `routes/sessions.py` (36 путей / 37 пар:
+   `/api/sessions`, `/api/starters`, `/api/starter`, `/api/scenarios`, `/api/media`, `/api/model/default`,
+   `/api/activity`; `GET_W` — `/api/last|screen|ask|hint|cmds|steps|history`; `/api/upload` — `POST_RAW`; `/api/new`,
+   `/api/route`, `/api/order`, `/api/pin`, `/api/stopped/clear`, `/api/folder`, `/api/revive`, `/api/close`; `POST_W` —
+   `NOTIFY_DONE`, `/api/send|resend|rename|title|active|command|model|effort|key|select|restart`,
+   `/api/notify/level`), `routes/desktop.py` (8 / 9: `/api/desktop/url|open|mobile`, развилка `/api/desktop/tabs*`,
+   `/api/shell/open`, `/api/links/prefs`), `/api/meta` — в `routes/people.py`; 59 кусков, 229 строк цепочки. Общая часть
+   `post` после `self.win` — своей долей в функциях, как шла: `owner_seen` (владелец пишет в окно пространства) — у
+   `/api/send|select|key`, `panel.check` (страна поставщика) — у них и у `/api/command`, `/api/model`. Функции верхнего
+   уровня вынесены: `desktop_up`, `desktop_tab`, `desk_*`, `DESK_*`, `shell_window`, `link_pref*`, `CDP`, `LINK_OPEN`
+   → `gas_pult/desktop.py`; `MAX_BODY`, `upload_log` → `gas_pult/uploads.py` (`webapp` реэкспортирует; тесты подменяют
+   `desktop.desktop_up`, маршруты берут `desktop.x` при каждом вызове); `whatsnew` — `H.whatsnew`. Снимки до переноса
+   (`routes_sessions|chat|desk_snap.json`): владелец, наблюдатель, участник, админ, человек пространства A с окном B,
+   ссылка на пространство (действующая и погасшая), гость фокус-ссылки (сессия и проект), демо-ссылка (ответ и 409
+   «уже ответили»), `/api/v1` (группы «sessions» и «send»), «вопрос Claude» (400 `code=question`), битый JSON, 404
+   «окна уже нет» и «остановлен»; подделка tmux, настоящие окна не трогаются.
+   **Цепочка `get`/`post` пуста**: остались таблицы и строка `self.win(…)` перед `raise KeyError` — путь не из таблиц,
+   как раньше, сначала ищет окно (нет — 404 «окна уже нет», есть — 404 «нет такого метода»). До входа (`do_GET`/
+   `do_POST`: вход, приглашения, анкеты, предложения, мост, «Поделиться») и свои ветки ссылок (`focus_do`) — не
+   цепочка, остаются в `webapp.py` (2485 строк; до шага 7 — 3355, до этого PR — 2811).
+8. ✓ `bot/*` — по модулю за PR. ✓ 23.11, только перенос: `botparts/meetings.py` (протоколы встреч: `MT_KB`,
+   `meeting_*`, `_meeting_audio` — 6 имён), `botparts/telegram.py` (отправка и пауза 429 `send`, `send_answer`,
+   `bind`, `after_pause`, `pause_until`, `skipped`; доставка владельцам `broadcast`, `channels`, `push_*`, `mail_one`,
+   `_hub`, `PUSH_PLAIN`, `to`; `react`, `reply_target`; клавиатура `MENU` — 16 имён), `botparts/monitor.py` (монитор,
+   `show_dialog` и `dialog_hash`/`NOISE`, «доверять папке?», ответы Pi, лимит подписки, автоархив, расход, сводка и
+   брифинг, отчёт по функциям, предохранитель цепочек, автотест, `fail_tick`/`ci_tick` — 33 имени); общее —
+   `botparts/base.py` (`NotReady`, `AwaitsChoice`, `Denied`, `HINT`, `QUESTION`). `bot` реэкспортирует все имена;
+   `bot.py` — 2315 строк (было 3092). Тесты подменяют `datetime` и в `botparts.monitor`.
+   ✓ 23.11, вторая часть, только перенос: `botparts/windows.py` (состояние, активное окно, готовность к тексту,
+   доставка с замком, перепроверкой и сторожем черновиков, строка статуса и «Сообщить по готовности», названия чатов,
+   открыть/закрыть окно, `deliver`, `offer_hints` — 57 имён; `PANEL`, `PROMPT`, `free`, `KEYS`, `DEFAULTS`,
+   `escalate_rows`), `botparts/screens.py` (`show_tasks`, модули-агенты, окна и сводка, команды и разбор ошибок,
+   настройки, папки, условия, страна, люди, мастер входа в Claude Code, вход через Telegram, пространства и бюджет,
+   тестировщики, приглашения, предложения и демо — 79 имён; `TESTER_HELLO`, `public`, `DEMO_GONE`, `DEMO_RATE`,
+   `_clip`, `PHONE_KB`, `COMMANDS`, `NAME_OK`, `NOTIFY`, `TRIAGE_NOTE`). `bot` реэкспортирует все имена. `bot.py` —
+   587 строк: `Pult.__init__`, `on_callback` (193), `on_message`, «#ревью», `handle`, `admitted`, `run`. До цели ~500
+   не хватает ≈ 90 строк — это импорты, которые держат старые имена `bot.*` живыми (снимок `test_monolith_names`);
+   дальше — только сменой логики (таблица кнопок вместо `on_callback`), отдельным PR. Тесты, читающие исходник
+   (`test_tglinks`, `test_bot_labels`, `test_country`), смотрят и в `botparts/*`.
 
 Всего ~16 PR. Темп — 2–3 в день между продуктовыми задачами.
 
@@ -92,7 +233,9 @@
 - **Тесты до и после:** полный прогон `pytest` (≈ 2000) и e2e — до PR и после; число прошедших не уменьшается.
 - **Без смены поведения:** только перенос кода; правки логики — отдельными PR. Diff проверяется так:
   `git diff -M --color-moved` — переехавшие строки видны как перенос, а не как новые.
-- **Импорт не ломается:** реэкспорт старых имён из `webapp.py` и `bot.py`; тест «все старые имена доступны».
+- **Импорт не ломается:** реэкспорт старых имён из `webapp.py` и `bot.py`; тест «все старые имена доступны» —
+  `tests/test_monolith_names.py` (снимок имён `webapp` и `Panel` до переноса); `panel/*` не импортируют `bot` и
+  `webapp` — `tests/test_module_boundaries.py`.
 - **Слепая проверка вторым агентом** (generator-proverka) каждого PR: «перенос без изменений?».
 - **Форматирование и docstring** (`ruff format`, правила D) — отдельными PR по модулю, не вместе с переносом
   (решение 0009 п.4).

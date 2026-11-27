@@ -32,7 +32,7 @@ def test_e2e_feed_virtual():
             pg = br.new_page(viewport={"width": 390, "height": 844})
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
             pg.wait_for_timeout(1500)                                         # опросы демо успокоились
             pg.evaluate("window.__h = 0; window.__api = window.api; window.api = (...a) => { if (String(a[0])"

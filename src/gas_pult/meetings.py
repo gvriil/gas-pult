@@ -12,7 +12,7 @@ portfolio-hq/products/meeting-notes-research-2026-11-19.md).
 
 **Поручения вслух** (владелец 20.11): во время записи человек говорит «Клод, запиши …» — фрагмент становится отдельным
 пунктом-поручением протокола (дословно, с отметкой времени); «Клод, … отправь …» — агент готовит черновик отправки,
-отправка — только после «Да». Слова-обращения: Клод, Клауд, Claude, Гаврила (так их пишет распознавание речи).
+отправка — только после «Да». Слова-обращения: Клод, Клауд, Claude, Ладэя или Ладея (так их пишет распознавание речи).
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def transcript(m: dict) -> str:
     return "\n\n".join(out)
 
 
-WAKE = r"(?:клод|клауд|claude|гаврил[аы]?)"
+WAKE = r"(?:клод|клауд|claude|лад[еэ][яюие]|гаврил[аы]?)"   # «Ладэя» и «Ладея» — как запишет распознавание; прежнее имя
 # обращение → «запиши» или «отправь» → текст до конца фразы (точка, «!», «?», перевод строки)
 CMD = re.compile(WAKE + r"[\s,:—–-]+(запиши|отправь)\b[\s,:—–-]*(.*?)(?=[.!?…](?:\s|$)|\n|$)", re.I | re.S)
 SEND = re.compile(r"[\s,]*(?:и\s+)?отправь\b", re.I)
@@ -413,8 +413,8 @@ def _wrap(text: str, width: int, lines: int) -> list[str]:
 
 
 def card_svg(v: dict, mark: str = "") -> str:
-    """Карточка-превью для пересылки (1200×630): главная мысль, тема, дата, длительность, знак Гаврилы. SVG собран на
-    сервере без зависимостей; весь текст экранирован. ``mark`` — содержимое brand/gavrila-mark.svg."""
+    """Карточка-превью для пересылки (1200×630): главная мысль, тема, дата, длительность, знак Ладэи. SVG собран на
+    сервере без зависимостей; весь текст экранирован. ``mark`` — содержимое brand/ladeya-mark.svg."""
     e = html.escape
     when = ""
     if v.get("started"):
@@ -429,7 +429,7 @@ def card_svg(v: dict, mark: str = "") -> str:
     lines = "".join(f'<tspan x="80" y="{y0 + i * 66}">{e(s)}</tspan>' for i, s in enumerate(big))
     title = _wrap(v.get("title") or "", 60, 1)
     m = re.search(r"<svg[^>]*viewBox=\"([^\"]+)\"[^>]*>(.*)</svg>", mark or "", re.S)
-    logo = (f'<svg x="1040" y="64" width="80" height="218" viewBox="{e(m.group(1))}" color="#2563EB">'
+    logo = (f'<svg x="1000" y="64" width="120" height="100" viewBox="{e(m.group(1))}">'
             f"{m.group(2)}</svg>") if m else ""
     font = "font-family=\"system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif\""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">'
@@ -441,7 +441,7 @@ def card_svg(v: dict, mark: str = "") -> str:
             + f'<text x="80" y="560" {font} font-size="28" fill="#5F6672">{e(meta)}</text>'
             f"{logo}"
             f'<text x="1120" y="580" text-anchor="end" {font} font-size="24" font-weight="600" fill="#111827">'
-            f"Гаврила</text></svg>")
+            f'Лад<tspan fill="#E8421C">э</tspan>я</text></svg>')   # знак-название: «э» красная (25.11)
 
 
 def saved_dur(folder: Path) -> float | None:

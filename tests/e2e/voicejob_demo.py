@@ -1,6 +1,6 @@
 """GAS-34 (Playwright): длинная запись — фоновое задание без лимита 90 с; сбой — запись не теряется.
 
-    python tests/e2e/voicejob_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/voicejob_demo.py http://127.0.0.1:8797/?demo&dev
 
   (а) запись → «Распознаю…» → текст в поле, в IndexedDB ничего не осталось;
   (б) ?stt=fail — ошибка с «Повторить» и «Скачать», запись — в IndexedDB; перезагрузка → «Есть нераспознанная запись»;
@@ -8,6 +8,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 COUNT = """() => new Promise((ok) => { const r = indexedDB.open("gas-pult", 1);
   r.onupgradeneeded = () => r.result.createObjectStore("voice");

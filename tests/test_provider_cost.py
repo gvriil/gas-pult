@@ -32,7 +32,9 @@ class _Now(datetime):
 @pytest.fixture(autouse=True)
 def same_day(monkeypatch):
     from gas_pult import bot as _b
+    from gas_pult.botparts import monitor as _mon  # расход и пауза Pult — в botparts/monitor.py (шаг 8)
     monkeypatch.setattr(_b, "datetime", _Now)
+    monkeypatch.setattr(_mon, "datetime", _Now)
     from gas_pult import space_budget as _sb
     from gas_pult import usage as _u
     from gas_pult import webapp as _w

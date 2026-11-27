@@ -22,45 +22,50 @@ import contextlib
 import gzip
 import hashlib
 import hmac
-import io
+import io  # noqa: F401 — webapp.* жив (panel/sessions.py)
 import json
 import os
 import re
 import secrets
-import shlex
-import shutil
-import socket
+import shlex  # noqa: F401 — webapp.* жив (panel/sessions.py)
+import shutil  # noqa: F401 — webapp.* жив (panel/sessions.py)
+import socket  # noqa: F401 — webapp.* жив (desktop.py)
 import stat
 import subprocess
 import sys
 import threading
 import time
+import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
-from datetime import date, datetime, timedelta
+import uuid  # noqa: F401 — webapp.* жив (panel/sessions.py)
+from datetime import date, datetime, timedelta  # noqa: F401 — webapp.datetime жив (panel/work.py)
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from typing import BinaryIO, ClassVar
+from typing import BinaryIO, ClassVar  # noqa: F401 — webapp.* жив (panel/sessions.py)
 
 from gas_pult import (
-    ago,
+    ago,  # noqa: F401 — webapp.* жив (panel/sessions.py)
+    alerts,
+    apitokens,
     approvals,
     asr,
-    balance,
+    balance,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     brand,
     bridge,
     bridge_install,
-    calkeys,
-    chat_trash,
+    calkeys,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
+    chat_trash,  # noqa: F401 — корзина чатов в panel/projects.py; имя webapp.chat_trash живо
     chatlog,
-    chatmcp,
+    chatmcp,  # noqa: F401 — webapp.* жив (panel/sessions.py)
+    consents,
     country,
-    ctxsnap,
-    deskmobile,
-    desktabs,
+    ctxsnap,  # noqa: F401 — webapp.* жив (routes/sessions.py)
+    deskmobile,  # noqa: F401 — webapp.* жив (routes/desktop.py)
+    desktabs,  # noqa: F401 — webapp.* жив (routes/desktop.py)
     drafts,
     drive_inbox,
     emailcode,
@@ -68,15 +73,17 @@ from gas_pult import (
     features,
     feedback,
     focus,
+    funnel,
     harness,
     helper,
     humanize,
+    injection_guard,
     invites,
     logins,
     meetings,
     models,
     modules,
-    notifylevel,
+    notifylevel,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     notifyroute,
     offer_report,
     offers,
@@ -84,44 +91,49 @@ from gas_pult import (
     onboarding,
     passkeys,
     personas,
-    pi_journal,
+    pi_journal,  # noqa: F401 — webapp.* жив (panel/sessions.py)
+    privacy,
     projects,
     providers,
     qr,
     recparts,
-    repos,
+    repos,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     router,
-    scenarios,
-    selftest,
+    routes,
+    scenarios,  # noqa: F401 — webapp.* жив (routes/sessions.py)
+    selftest,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
     setup,
     share,
-    space_budget,
-    space_files,
-    space_mcp,
+    space_budget,  # noqa: F401 — webapp.* жив (panel/spaces.py)
+    space_files,  # noqa: F401 — webapp.* жив (routes/)
+    space_mcp,  # noqa: F401 — webapp.* жив (routes/)
     space_projects,
-    space_sessions,
+    space_sessions,  # noqa: F401 — webapp.* жив (panel/spaces.py)
     spaces,
-    speech,
-    starters,
-    steps,
+    speech,  # noqa: F401 — webapp.speech: голос в panel/voice.py, имя живо
+    spend,  # noqa: F401 — webapp.* жив (routes/model_keys.py, routes/integrations.py)
+    starters,  # noqa: F401 — webapp.* жив (routes/sessions.py)
+    steps,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     tasks,
+    teammsg,
     tenants,
     terms,
-    termwin,
-    testers,
-    tmux,
-    transcripts,
+    termwin,  # noqa: F401 — webapp.* жив (routes/)
+    testers,  # noqa: F401 — webapp.* жив (panel/spaces.py)
+    tmux,  # noqa: F401 — webapp.* жив (panel/sessions.py)
+    transcripts,  # noqa: F401 — webapp.* жив (routes/sessions.py)
     usage,
-    voice,
+    voice,  # noqa: F401 — webapp.voice (тесты подменяют voice.synth): голос в panel/voice.py
     webauth,
     webpush,
     wsock,
 )
-from gas_pult import brief as morning_brief  # «brief» ниже — «Кратко» для озвучки
+from gas_pult import brief as morning_brief  # noqa: F401 — «brief» ниже — «Кратко» для озвучки; webapp.morning_brief жив
 from gas_pult.access import (  # noqa: F401 — таблица прав переехала в access.py; старые имена webapp.* живы
     ADMIN_OK,
     BRIEF,
     BUDGET_PATHS,
+    BUG,
     CONFIRM,
     CONFIRM_API,
     COUNTRY_FREE,
@@ -162,73 +174,78 @@ from gas_pult.access import (  # noqa: F401 — таблица прав пере
     TOUR,
     TTY,
     USES,
+    V1_GET,
+    V1_NEVER,
+    V1_POST,
+    V1_PREFIX,
 )
-from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, Pult
-from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space
+from gas_pult.billing import api as billing_api  # noqa: F401 — платежи: маршруты в routes/billing.py; имя живо
+from gas_pult.bot import BUSY, DIALOG, KEYS, PROMPTS, AwaitsChoice, Pult  # noqa: F401 — webapp.BUSY жив (panel/spaces.py)
+from gas_pult.commands import DANGER, FULL, SPACE_RUN, TAIL, execute, extract, in_space  # noqa: F401 — реэкспорт
 from gas_pult.config import Config
-from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp
+from gas_pult.desktop import (  # noqa: F401 — рабочий стол, ссылки сайтов, «Терминал» — в desktop.py; webapp.* живы
+    CDP,
+    DESK_COOKIE,
+    DESK_PASSES,
+    DESK_TICKETS,
+    DESK_TTL,
+    DESKTOP_PORT,
+    DESKTOP_URL,
+    LINK_OPEN,
+    SHELL_WINDOW,
+    TICKET_TTL,
+    desk_cookie,
+    desk_pass,
+    desk_ticket,
+    desktop_tab,
+    desktop_up,
+    link_pref_set,
+    link_prefs,
+    shell_window,
+)
+from gas_pult.mcp import CONNECTORS, CONNECTORS_URL, PRESETS, Mcp  # noqa: F401 — webapp.* живы (routes/)
+from gas_pult.messengers import panel as messengers_panel  # noqa: F401 — маршруты в routes/messengers.py
 from gas_pult.openrouter import CALLBACK, OpenRouter
-from gas_pult.people import STAFF_ROLES, TITLES, People, allowed, has_telegram, is_guest
+from gas_pult.panel.clients import ClientsPart
+from gas_pult.panel.focus import FocusPart
+from gas_pult.panel.people import PeoplePart
+from gas_pult.panel.projects import (  # noqa: F401 — «Проекты» переехали в panel/projects.py; старые имена webapp.* живы
+    EFFORTS,
+    NeedForce,
+    ProjectsPart,
+    effort_flag,
+)
+from gas_pult.panel.sessions import (  # noqa: F401 — окна сессий переехали в panel/sessions.py; webapp.* живы
+    AUTH_WITH,
+    CONTEXT,
+    MODEL_LINE,
+    URL_TAIL,
+    SessionsPart,
+    effort_ok,
+    find_auth,
+)
+from gas_pult.panel.spaces import SpacesPart
+from gas_pult.panel.voice import (  # noqa: F401 — голос переехал в panel/voice.py; старые имена webapp.* живы
+    AUDIO_EXT,
+    EL_PAUSE,
+    HEAD_CHARS,
+    STT_EMPTY,
+    STT_JOB_TIMEOUT,
+    STT_KEEP_DAYS,
+    STT_TIMEOUT,
+    VoicePart,
+    brief,
+    head_of,
+)
+from gas_pult.panel.work import WorkPart, utc_now  # noqa: F401 — задачи, команды, модули — в panel/work.py
+from gas_pult.people import STAFF_ROLES, TITLES, People, allowed, has_telegram, is_guest  # noqa: F401 — webapp.* живы
 from gas_pult.telegram import Api, TelegramError
 from gas_pult.tmux import Tmux
+from gas_pult.uploads import MAX_BODY, upload_log  # noqa: F401 — загрузка файлов — в uploads.py; webapp.* живы
 from gas_pult.voice import catalog
-
-
-class NeedForce(ValueError):
-    """Действие можно сделать только принудительно (фоновые задачи сессии): панель спросит и повторит с ``force``."""
-
 
 PART_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")   # имя части интерфейса: web/js/<имя>.js
 PART_PATH = re.compile(r"/js/([a-z0-9][a-z0-9-]{0,40})\.js")
-DESKTOP_PORT = 6080                     # noVNC/websockify рабочего стола агентов (agent-desktop.service, штаб)
-DESKTOP_URL = "/desktop/vnc.html?autoconnect=1&resize=scale&reconnect=1&path=desktop/websockify"
-DESK_COOKIE, DESK_TTL = "gp_desk", 12 * 3600
-# Пропуск рабочего стола: выдаёт «Рабочий стол» (владельцу, после кода подтверждения). Нужен потому, что встроенный
-# экран — iframe: в Mini App вход идёт заголовком Telegram, а iframe и WebSocket noVNC шлют только cookie. Живёт в
-# памяти панели (перезапуск — нажать кнопку снова), путь /desktop/, 12 часов; роль владельца — на каждый запрос.
-DESK_PASSES: dict[str, tuple[int, float]] = {}
-
-
-def desk_pass(uid: int, now: float | None = None) -> str:
-    now = now or time.time()
-    for k in [k for k, (_, exp) in DESK_PASSES.items() if exp < now]:
-        DESK_PASSES.pop(k, None)
-    tok = secrets.token_urlsafe(24)
-    DESK_PASSES[tok] = (uid, now + DESK_TTL)
-    return tok
-
-
-DESK_TICKETS: dict[str, tuple[int, float]] = {}   # одноразовые ссылки «Открыть в браузере»: билет → (uid, до)
-TICKET_TTL = 120
-
-
-def desk_ticket(uid: int, now: float | None = None) -> str:
-    """Вкладка браузера (особенно из Mini App: tg.openLink — внешний браузер без cookie панели) входит по одноразовой
-    ссылке /desktop-enter?t=… (2 минуты, один раз) — она ставит свой пропуск и ведёт на noVNC."""
-    now = now or time.time()
-    for k in [k for k, (_, exp) in DESK_TICKETS.items() if exp < now]:
-        DESK_TICKETS.pop(k, None)
-    t = secrets.token_urlsafe(24)
-    DESK_TICKETS[t] = (uid, now + TICKET_TTL)
-    return t
-
-
-def desk_cookie(tok: str, tab: bool = False) -> str:
-    if tab:                                       # своя вкладка браузера: обычный cookie первого лица
-        return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=Lax"
-    # SameSite=None + Partitioned: Mini App в Telegram Web сам открыт во фрейме — без этого cookie не дойдёт
-    return f"{DESK_COOKIE}={tok}; Path=/desktop/; Max-Age={DESK_TTL}; HttpOnly; Secure; SameSite=None; Partitioned"
-
-
-def upload_log(n: int, secs: float, src: str) -> str:
-    """Строка журнала на каждую загрузку (владелец 15.11: «почему так долго загружается фото»): байты, секунды,
-    скорость, откуда (telegram — Mini App, browser, focus, bot). Без имени файла и содержимого."""
-    line = (f"upload: {n / 1024:.0f} КБ за {secs:.1f} с ({n / 1024 / max(secs, 0.001):.1f} КБ/с) · "
-            f"{src or 'неизвестно'}")
-    print(line, flush=True)
-    return line
-
-
 BRIDGE_MAX = 16 << 20                      # сообщение моста: base64 снимка экрана или страницы
 
 
@@ -248,78 +265,7 @@ def bridge_local_token(data: Path) -> str:
     return t
 
 
-CDP = "http://127.0.0.1:9222"            # Chrome рабочего стола (agent-browser, профиль ~/.local/share/agent-browser)
-SHELL_WINDOW = "ubuntu-shell"            # «Терминал» в панели: bash в домашней папке; gp-term — для «Выполнить»
-LINK_OPEN = ("desk", "here")
-
-
-def desktop_tab(url: str, cdp: str = CDP) -> dict:
-    """Новая вкладка в Chrome рабочего стола: ``PUT /json/new?<адрес>`` (DevTools). Только http(s), без пробелов и
-    управляющих символов. Chrome не отвечает — понятная ошибка."""
-    u = str(url or "").strip()
-    p = urllib.parse.urlparse(u)
-    if p.scheme not in ("http", "https") or not p.netloc or len(u) > 4096 or re.search(r"[\s\x00-\x1f\x7f]", u):
-        raise ValueError("открыть можно только адрес http:// или https://")
-    req = urllib.request.Request(cdp + "/json/new?" + urllib.parse.quote(u, safe=":/?#[]@!$&'()*+,;=%-._~"),
-                                 method="PUT")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            d = json.loads(r.read() or b"{}")
-    except (OSError, ValueError) as e:
-        raise ValueError(f"браузер рабочего стола не ответил (agent-browser, порт 9222): {e}") from e
-    return {"ok": True, "id": d.get("id", ""), "url": d.get("url", u)}
-
-
-def link_prefs(data: Path) -> dict:
-    """Где открывать ссылки сайта: {сайт: "desk" | "here"} (``link_open.json``, 0600). Решение владельца 17.11:
-    «спрашивать один раз и запоминать»."""
-    try:
-        d = json.loads((Path(data) / "link_open.json").read_text(encoding="utf-8"))
-        return {str(k): v for k, v in d.items() if v in LINK_OPEN} if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def link_pref_set(data: Path, host: str, where: str | None) -> dict:
-    host = str(host or "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9.-]{1,253}(:\d{1,5})?", host):
-        raise ValueError("неверное имя сайта")
-    if where not in (*LINK_OPEN, None):
-        raise ValueError("где открыть — desk или here")
-    d = link_prefs(data)
-    if where:
-        d[host] = where
-    else:
-        d.pop(host, None)
-    from gas_pult.config import write_private
-    write_private(Path(data) / "link_open.json", json.dumps(d, ensure_ascii=False))
-    return d
-
-
-def shell_window(tmux) -> str:
-    """Окно ``ubuntu-shell`` (bash в домашней папке) — есть, вернуть; нет — открыть в фоне. id окна."""
-    w = next((x for x in tmux.windows() if x.get("name") == SHELL_WINDOW), None)
-    if w:
-        return w["id"]
-    if hasattr(tmux, "ensure_session"):
-        tmux.ensure_session()
-    out = tmux.run("new-window", "-d", "-P", "-F", "#{window_id}", "-t", f"{tmux.session}:", "-n", SHELL_WINDOW,
-                   "-c", str(Path.home()), "bash -l")
-    if not out.strip():
-        raise RuntimeError("tmux не открыл окно терминала")
-    return out.split()[0]
-
-
-def desktop_up(port: int = DESKTOP_PORT) -> bool:
-    """Рабочий стол запущен: кто-то слушает 127.0.0.1:<port> (без него кнопку не показываем)."""
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-            return True
-    except OSError:
-        return False
-
-
-SENT = object()                         # обработчик сам отправил ответ (dispatch ничего не дописывает)
+SENT = routes.SENT                       # обработчик сам отправил ответ (dispatch ничего не дописывает)
 GZIP_LEVEL = 5                          # ответы API — быстро и в разы меньше; страница — заранее с уровнем 9
 GZIP_MIN = 1024                         # меньше — сжимать не стоит
 GZIP_TYPES = ("text/", "application/json", "application/javascript", "image/svg+xml")
@@ -332,33 +278,10 @@ def gzips(accept: str, ctype: str, body: bytes) -> bool:
 
 
 MAX_AGE = 24 * 3600                     # initData старше суток не принимаем
-MAX_BODY = 50 << 20                     # голосовое и файлы — до 50 МБ
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
-EFFORTS = ("auto", "low", "medium", "high", "xhigh", "max")   # /effort <уровень> — Claude Code принимает аргументом
 
 
-def effort_flag(level: str | None) -> str:
-    """Усилие чата — флагом запуска ``--effort`` (Claude Code 2.1.328: low, medium, high, xhigh, max). «auto» и пусто —
-    без флага: решает Claude Code. Флаг, а не ``/effort`` после запуска: команда в только что запущенное окно
-    терялась (владелец 19.11: «усилия не выбираются»)."""
-    return f" --effort {level}" if level in EFFORTS and level != "auto" else ""
-
-
-def effort_ok(profile: str | None, model: str | None = "") -> bool:
-    """Усилие — только у Claude Code со своей подпиской или ключом Anthropic, в том числе у Haiku (20.11: проверено —
-    ``claude -p --model haiku --effort low`` отвечает без ошибки, строка статуса Haiku показывает уровень);
-    другим программам (Pi, OpenCode) и поставщикам с чужим ключом флаг не передаём. ``model`` — для совместимости."""
-    del model
-    return (profile or "claude") == "claude"
 PANEL_KEYS = [("Ctrl+C", "C-c")]                     # прервать зависшую команду (в боте этой клавиши нет)
-CONTEXT = re.compile(r"left [\d.]+k? \((\d+)%\)")
-MODEL_LINE = re.compile(r"🤖 ([^·│\n]{2,40}?)\s*·")     # строка статуса: «🤖 Opus 5.5 · effort …»
-AUDIO_EXT = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav"}
-STT_TIMEOUT = 85                                          # с; панель ждёт ответа 90 с
-STT_JOB_TIMEOUT = 40 * 60                                 # с: фоновое распознавание длинной записи (GAS-34)
-STT_KEEP_DAYS = 7                                         # нераспознанная запись хранится, чтобы повторить
-STT_EMPTY = "Ничего не расслышал — попробуйте ещё раз"   # распознавание вернуло пустой текст
-EL_PAUSE = 600                                            # ElevenLabs отказал — столько секунд к нему не ходим
 STREAM_IDLE = 30                                          # с; панель молчит дольше (ни звука, ни «конец») — закрыть
 STREAM_MAX_S = 300                                        # одна диктовка — не длиннее 5 минут
 
@@ -378,69 +301,6 @@ def verify(init_data: str, token: str, now: float | None = None) -> dict | None:
         return json.loads(pairs.get("user", ""))
     except ValueError:
         return None
-
-
-AUTH_WITH = re.compile(r"Authenticating with (.+?)[….]*\s*$")
-URL_TAIL = re.compile(r"^\s+([A-Za-z0-9%&=_.~:/?#+\-]+)\s*$")
-
-
-def find_auth(lines: list[str]) -> dict | None:
-    """Вход в MCP-сервис на экране Claude Code: название и полная ссылка (продолжение ссылки — следующими строками)."""
-    service = next((m.group(1).strip() for line in lines if (m := AUTH_WITH.search(line))), None)
-    for i, line in enumerate(lines):
-        if m := re.search(r"https://\S*(authorize|oauth)\S*", line):
-            url = m.group(0)
-            for nxt in lines[i + 1:]:
-                if not (t := URL_TAIL.match(nxt)):
-                    break
-                url += t.group(1)
-            return {"service": service or "сервис", "url": url,
-                    "paste": any("paste the URL" in x or "URL >" in x for x in lines)}
-    return None
-
-
-HEAD_CHARS = 240             # начало озвучки: первые предложения, не длиннее (служба синтезирует их за ~0,3 с)
-
-
-def head_of(text: str, limit: int = HEAD_CHARS) -> str:
-    """Первые предложения текста, вместе не длиннее ``limit``; одно длинное — до пробела перед ``limit``."""
-    out = ""
-    for s in re.split(r"(?<=[.!?…])\s+|\n+", text.strip()):
-        s = s.strip()
-        if not s:
-            continue
-        if out and len(out) + 1 + len(s) > limit:
-            break
-        out = f"{out} {s}".strip()
-        if len(out) >= limit // 2:
-            break
-    if len(out) > limit:
-        cut = out.rfind(" ", 0, limit)
-        out = out[:cut if cut > 0 else limit]
-    return out
-
-
-def brief(text: str, limit: int = 700) -> str:
-    """«Кратко» для озвучки: первые абзацы до ~700 знаков — в наших ответах там вывод.
-
-    Сюда приходит текст после ``transcripts.clean``: пустые строки там уже схлопнуты в один перенос, поэтому делим
-    по любому переносу. Раньше делили по пустой строке — весь ответ был одним «абзацем», и «кратко» звучало целиком.
-    Первый абзац длиннее лимита режем по концу предложения (нет его — по пробелу)."""
-    out = ""
-    for para in re.split(r"\n+", text.strip()):
-        if not (para := para.strip()):
-            continue
-        if out and len(out) + len(para) + 1 > limit:
-            break
-        if len(para) > limit:                        # сюда попадаем только с пустым out
-            end = max(para.rfind(c, 0, limit) for c in ".!?…")
-            if end < limit // 3:
-                sp = para.rfind(" ", 0, limit)
-                end = (sp if sp > 0 else limit) - 1
-            out = para[:end + 1]
-            break
-        out += para + "\n"
-    return out.strip()
 
 
 TEMP_SKIP = {"inbox"}                                      # входящие файлы — своя очистка (#217)
@@ -467,7 +327,7 @@ def sweep_temp(data: Path, now: float, age: float) -> list[Path]:
     return gone
 
 
-class Panel:
+class Panel(ProjectsPart, SessionsPart, WorkPart, ClientsPart, VoicePart, SpacesPart, PeoplePart, FocusPart):
     """Действия панели поверх того же tmux и state.json, что у бота (окна, активное, голос)."""
 
     def __init__(self, cfg: Config):
@@ -502,6 +362,7 @@ class Panel:
         self.start_q: list[dict] = []                    # новые сессии, ждущие памяти (mem_gate)
         self.lock_q, self.q_thread = threading.Lock(), None
         self.events = chatlog.Log(cfg.data / "chat-events.jsonl")   # путь сообщения по id (GAS-31, отладка)
+        self.funnel = funnel.Funnel(cfg.data, cfg.events_keep_days)  # события продукта для воронки (funnel.py)
         self.wins: tuple[float, dict] = (0.0, {})                   # окна Claude для строки статуса (кэш 3 с)
         self.screens: dict[str, tuple[float, dict]] = {}             # окно → (когда, экран): не чаще раза в 2 с
         self.journal = self.pult.journal                             # вкладка «Команды»: все команды всех сессий
@@ -513,6 +374,8 @@ class Panel:
         self.offer_misses = offers.Misses()                          # перебор кодов предложений — по IP
         self.forms_links = onboarding.Links(cfg.data)                # анкеты клиентов по ссылке (решение 0010)
         self.q_misses = offers.Misses()                              # перебор кодов анкет — по IP
+        self.ask_guard = apitokens.Guard()                           # «Попросить доступ» по фокус-ссылке — по IP
+        self.ask_guard.LIMIT, self.ask_guard.WINDOW = 3, 600
         self.offer_tg = offers.TgDemos(cfg.data / "offer_tg.json")   # «Попробовать в Telegram» — токены для бота
         # дежурный помощник «? Подсказать» (helper.py): карта экранов, ответы без модели
         self.helper = helper.Helper(cfg.data)
@@ -527,13 +390,18 @@ class Panel:
         self.focus = focus.Focus(cfg.data / "focus.json")            # фокус-ссылки: одна сессия на устройстве
         self.people.virtual = self.focus.person      # ссылка на пространство — «тестировщик» на срок ссылки (GAS-38)
         self.tasks = tasks.Tasks(cfg.data / "tasks.json")            # задачи владельца (#203)
+        self.team_msgs = teammsg.TeamMsgs(cfg.data / teammsg.FILE)    # сообщения команды в чат (teammsg.py)
+        self.bug_rate = teammsg.Rate(3, 60)                          # «Сообщить об ошибке»: 3 в минуту с устройства
         self.devices = bridge.Devices(cfg.data / "bridge_devices.json")   # мосты к браузеру пользователя
         self.hub = bridge.Hub(cfg.data / "bridge_log.jsonl")
         self.approvals = approvals.Approvals()                 # «Да» человека — только здесь, в памяти (штаб 22.11)
         self.hub.approve = lambda svc, pid, dg: self.approvals.take("", svc, pid, dg)   # мост — в этом процессе
         self.hub.private = self.devices.private          # «Личные данные не уходят модели» — флаг устройства
-        self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Гаврилу (share.py)
+        self.shares = share.Store(cfg.data / "shares.json")                # «Поделиться» в Ладэю (share.py)
         self.share_tokens = share.Tokens(cfg.data / "share_tokens.json")  # iPhone: токены «Быстрой команды»
+        self.api_tokens = apitokens.Tokens(cfg.data / "api_tokens.json")   # 1С и CRM: /api/v1 (apitokens.py)
+        self.api_log = apitokens.Log(cfg.data / "api-tokens-log.jsonl")     # журнал вызовов /api/v1
+        self.api_guard = apitokens.Guard()                                  # подбор токена — 429
         self.uses = features.Uses(cfg.data / "features.json")        # какими функциями панели пользуются (отчёт)
         self.projects = projects.Store(cfg.data / projects.FILE, self.pult.home)   # «Проекты» (docs/PROJECTS.md)
         self._proj: tuple[float, dict] = (0.0, {})                  # (когда сверяли с папками, данные) — раз в 30 с
@@ -558,567 +426,6 @@ class Panel:
         w = self.tmux.window(wid)
         return w if w and harness.is_agent(w) else None
 
-    BRANCH_TTL = 10                                     # с: ветка git окна — не на каждый опрос списка
-
-    def branch_of(self, path: str) -> str:
-        """Ветка git папки окна; запоминается на 10 с (список сессий опрашивается раз в 3 с на каждое окно)."""
-        now, cache = time.monotonic(), self.__dict__.setdefault("_branches", {})
-        if (hit := cache.get(path)) and now - hit[0] < self.BRANCH_TTL:
-            return hit[1]
-        b = subprocess.run(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
-                           capture_output=True, text=True).stdout.strip()
-        cache[path] = (now, b)
-        return b
-
-    def sessions(self, pool: str | None = "owner", who: str | None = "owner") -> list[dict]:
-        """``pool`` — чей расход показывать на карточках (``cost``): «owner» или ID участника; None — ничей.
-        ``who`` — чьи закрепления (``pinned``): «owner» или Telegram ID человека (``H.pinner``)."""
-        self.balance_watch()
-        st = self.pult.state()
-        act, out, paused = st.get("active"), [], st.get("cost_paused") or {}
-        wins = self.tmux.windows()
-        pd = self.project_data(wins)
-        for w in wins:
-            def branch(path=w["path"]) -> str:
-                return self.branch_of(path)
-            if w.get("stopped"):                     # Claude завершился, в окне оболочка — «остановлена»
-                out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
-                            "status": "stopped", "context": None, "model": "", "active": w["id"] == act,
-                            "channel": False, "profile": w["mark"] if w["mark"] in models.BY_ID else "claude",
-                            "rev": "", "preview": "", "cost_paused": False, "cost": None,
-                            "project": self.project_of(pd, w),
-                            "sid": w.get("sid") or "",
-                            "pinned": self.pinned_of(pd, w, w.get("sid") or "", who),   # закреплена: время (добавлено)
-                            "repos": repos.public(repos.of(st, w["path"])),
-                            **ago.stamps(self.pult.acts.status(w["path"], self.pult.home_of(w), w.get("sid") or "",
-                                                               harness.of(w)))})
-                continue
-            if not harness.is_agent(w):
-                continue
-            # окно без метки открыл не пульт (вручную в tmux): не метим — иначе после выхода Claude оно навсегда
-            # оставалось «остановленной» сессией (#179 P1.6); такое окно просто пропадает из списка, как терминал
-            lines = self.tmux.screen(w["id"], 40)
-            scr = "\n".join(lines)
-            home = self.pult.home_of(w)                       # папка Claude того, кто открыл окно
-            sid = self.follow_sid(w, wins, home)              # свой журнал окна (--session-id); "" — старое окно
-            # когда менялась (ago.py): последний ход в журнале или смена экрана; ответ агента, ваше сообщение
-            when = ago.stamps(self.pult.acts.status(w["path"], home, sid, harness.of(w)),
-                              self.pult.changes.look(w["id"], lines))
-            ctx, mdl = CONTEXT.search(scr), MODEL_LINE.search(scr)
-            snap = ctxsnap.read(sid)                          # строка статуса Claude Code: модель, усилие, контекст
-            rev = harness.of(w).revision(w["path"], home, sid)
-            pi = self.pi_row(w, sid) if harness.of(w).name in harness.JOURNAL_ONLY else None   # Pi, OpenCode, Hermes
-            out.append({"id": w["id"], "name": w["name"], "path": w["path"], "branch": branch(),
-                        "status": "sleep" if w.get("sleep") else pi["status"] if pi else
-                        "dialog" if DIALOG.search(scr) else "busy" if BUSY.search(scr) else "idle",
-                        "sleep": bool(w.get("sleep")),                   # 💤 claude-sleep: первое сообщение разбудит
-                        # свободно % контекста: снимок строки статуса, иначе — текст экрана (старый способ)
-                        "context": pi["context"] if pi else 100 - snap["used"] if snap and snap["used"] is not None
-                        else int(ctx.group(1)) if ctx else None,
-                        # на чём работает сессия: снимок строки статуса, «🤖 …» на экране, иначе — модель из журнала
-                        "model": pi["model"] if pi else (snap or {}).get("model") or (
-                            mdl.group(1).strip() if mdl else self.model_of(w["path"], rev, home, sid, harness.of(w))),
-                        "harness": harness.of(w).name if harness.is_agent(w) else "",     # какой агент (добавлено)
-                        "usage": pi["usage"] if pi else None,     # окно Pi: ↑↓ токены, $, контекст (добавлено)
-                        # уровень усилий: выбранный в пульте (и «авто») важнее того, что Claude Code показал в строке
-                        "effort": (st.get("window_efforts") or {}).get(w["id"]) or (snap or {}).get("effort", ""),
-                        "effort_guess": bool((snap or {}).get("effort_guess")),
-                        "ctx_at": (snap or {}).get("at"),                # когда строка статуса обновлялась
-                        "active": w["id"] == act, "channel": w["channel"], "profile": w.get("profile") or "claude",
-                        "rev": rev,                                       # изменился журнал → «новый ответ»
-                        "preview": self.preview(w["path"], rev, home, sid, harness.of(w)),
-                        "sid": sid,                                       # id сессии Claude Code окна (добавлено)
-                        "twin": ((o := self.sid_owner(sid, w["id"], wins, running=True)) and o["name"]) or "",
-                        "notify": notifylevel.level(st, w["id"]),        # уровень уведомлений окна (добавлено)
-                        # один повтор после лимита подписки — когда (limitretry.py); нет — None
-                        "retry_at": ((st.get("limit_retries") or {}).get(w["id"]) or {}).get("at"),
-                        "notify_own": bool(notifylevel.own(st, w["id"])),
-                        "title": (ttl := self.chat_title(pd, w["path"], home, sid, harness.of(w))),   # название чата
-                        "title_status": projects.is_status(ttl),          # название-статус, смысла ещё нет
-                        "mcp_off": chatmcp.get(self.CHAT_MCP, sid),        # интеграции, выключенные в этом чате
-                        "title_own": bool(sid and ((pd.get("sessions") or {}).get(sid) or {}).get("title")),
-                        "cost_paused": w["id"] in paused,                 # на паузе по расходу — видно всем
-                        "cost": self.cost_of(w, pool, st),                # расход — только хозяину учётки
-                        "agent": self.agent_of(w["path"]),                # простой режим: имя агента модуля
-                        "sections": self.sections_of(w["path"]),          # разделы чата бизнес-ролей; [] — во всех
-                        "schedule": self.schedule_of(w["path"]),          # расписание модуля: on/paused/off, следующий
-                        **self.space_fields(w),                           # окно демо-пространства (spaces.py)
-                        **self.money_of(w, lines),                        # у поставщика нет денег (balance.py)
-                        "model_own": (st.get("window_models") or {}).get(w["id"], ""),   # модель — только этого чата
-                        "project": self.project_of(pd, w),                # проект окна (projects.py); "" — нет
-                        "repos": repos.public(repos.of(st, w["path"])),     # подключённые репозитории (задача 43)
-                        "pinned": self.pinned_of(pd, w, sid, who),             # закреплена: время закрепления, 0 — нет
-                        **when})                                          # когда менялась (ago.py)
-        return out
-
-    # ---------- «Проекты» (projects.py, docs/PROJECTS.md) ----------
-    PROJECT_SYNC = 30                                   # с: как часто сверять проекты с папками и окнами
-
-    def project_data(self, wins: list[dict] | None = None, fresh: bool = False) -> dict:
-        """Проекты владельца и участников; сверка с папками и окнами (миграция, досоздание) — не чаще раза в 30 с."""
-        if fresh or time.time() - self._proj[0] > self.PROJECT_SYNC or not self._proj[1]:
-            if wins is None:
-                wins = self.tmux.windows()
-            d = self.projects.sync(self.pult.projects(), wins, self.pult.state().get("add_dirs"))
-            self._proj = (time.time(), d)
-        return self._proj[1]
-
-    def pi_row(self, w: dict, sid: str) -> dict:
-        """Окно Pi: статус хода, модель «поставщик/модель», свободный контекст и расход — из журнала Pi (не из строки
-        статуса Claude Code и не лимиты подписки Claude)."""
-        h = harness.of(w)
-        f = h.journal(w["path"], sid=sid)
-        st, u = h.status(f), h.usage(f)
-        busy = st["phase"] in ("started", "working", "thinking")
-        return {"status": "busy" if busy else "idle", "usage": u,
-                "model": f"{u['provider']}/{u['model']}".strip("/") if u["model"] else getattr(h, "MODEL", ""),
-                "context": None if u["used"] is None else max(0, round(100 - u["used"]))}
-
-    def chat_title(self, d: dict, path: str, home, sid: str, h: harness.Harness | None = None) -> str:
-        """Название чата окна: своё (``projects.json``) → ``summary`` журнала → первое сообщение человека.
-        Журнал — через адаптер агента окна (R13): у Claude Code — ``title_of``, у Pi/OpenCode/Hermes — первое сообщение
-        человека из их ленты."""
-        if (own := ((d.get("sessions") or {}).get(sid) or {}).get("title")) if sid else None:
-            return str(own)
-        h = h or harness.of(None)
-        f = h.journal(path, home, sid)
-        if not f:
-            return ""
-        if h.name == harness.DEFAULT:
-            return projects.title_of(f)
-        first = next((m["text"] for m in h.history(path, 200, home=home, sid=sid)[0] if m.get("role") == "user"), "")
-        return " ".join(str(first).split())[:projects.TITLE_MAX]
-
-    def project_of(self, d: dict, w: dict) -> str:
-        """Проект окна: окно пространства — его папка ``home/projects/<имя>`` (``s:<пространство>:<имя>``, GAS-38)."""
-        if slug := w.get("space"):
-            f = space_projects.folder_of(slug, w.get("path", ""))
-            return space_projects.pid_of(slug, f) if f else ""
-        return self.projects.of_path(d, w.get("path", "")) or ""
-
-    def claude_homes(self) -> list:
-        """Папки Claude Code, где могут лежать журналы сессий проекта: владельца (None) и участников."""
-        out: list = [None]
-        base = self.cfg.data / "people"
-        with contextlib.suppress(OSError):
-            out += sorted(x / "claude" for x in base.iterdir() if (x / "claude" / "projects").is_dir())
-        return out
-
-    def project_public(self, p: dict, who: str | None = "owner") -> dict:
-        """Поля проекта для API (без личных путей: путь — с ``~``). ``pinned`` — закреплён ли у ``who``."""
-        at = int(projects.pins_of(self.project_data(), who)[0].get(p["id"]) or 0)
-        keys = ("id", "name", "path", "paths", "origin", "created", "profile", "model", "effort", "integrations",
-                "repos", "pinned", "archived", "share")
-        return {**{k: p.get(k) for k in keys}, "folder": os.path.basename(p["path"].rstrip("/")) or "~",
-                "pinned": bool(at), "pinned_at": at}           # закреплён этим человеком и когда (добавлено)
-
-    def projects_list(self, ss: list[dict], q: str = "", archived: bool = False,
-                      who: str | None = "owner") -> list[dict]:
-        """Список проектов для главной: счётчики окон (ждут ответа / работают / всего), чатов в журналах, последняя
-        активность и название последнего чата. ``ss`` — готовые сессии: статусы не считаем заново."""
-        d = self.project_data()
-        meta = d.get("sessions") or {}
-        homes = self.claude_homes()
-        by: dict[str, list[dict]] = {}
-        for x in ss:
-            if x.get("project"):
-                by.setdefault(x["project"], []).append(x)
-        q = " ".join(str(q or "").lower().split())
-        out = []
-        for pid, p in d["projects"].items():
-            mine = by.get(pid, [])
-            folders = self.projects.folders_of(p)
-            if not mine and not any(os.path.isdir(f) for f in folders):
-                continue                                  # папку удалили — проект не показываем (запись остаётся)
-            if bool(p.get("archived")) != archived:
-                continue
-            st = projects.stats([f for f in projects.session_files(folders, homes)     # скрытые и удалённые — не в счёт
-                                 if not (meta.get(f.stem) or {}).get("hidden")])
-            last = max([st["last"] or 0, *[int(x.get("changed") or 0) for x in mine]]) or None
-            lf = st["last_file"]
-            win = next((x for x in mine if lf and x.get("sid") == lf.stem), None)
-            item = {**self.project_public(p, who),
-                    "windows": len(mine),
-                    "waiting": sum(x["status"] == "dialog" for x in mine),
-                    "busy": sum(x["status"] == "busy" for x in mine),
-                    "chats": st["total"], "last": last,
-                    "last_title": (str((meta.get(lf.stem) or {}).get("title") or "") or projects.title_of(lf))
-                    if lf else "",
-                    "last_window": (win or {}).get("name", ""),   # последний чат открыт в окне — его имя (добавлено)
-                    "sessions": [x["id"] for x in mine]}
-            if q and not any(q in str(v).lower() for v in (item["name"], item["folder"], item["last_title"],
-                                                            *[x.get("name", "") for x in mine])):
-                continue
-            out.append(item)
-        # закреплённые — сверху, последний закреплённый первым; остальные — как раньше
-        out.sort(key=lambda x: (not x["pinned"], -x["pinned_at"], not x["waiting"], -(x["last"] or 0),
-                                x["name"].lower()))
-        return out
-
-    def project(self, pid: str) -> dict:
-        p = self.project_data()["projects"].get(str(pid or ""))
-        if not p:
-            raise LookupError("проекта нет — обновите список")
-        return p
-
-    def route(self, text: str, uid=None) -> dict:
-        """Подсказка модели для первого сообщения нового чата (router.py): только среди готовых профилей."""
-        ready = {p["id"] for p in models.public(self.pult.state(), None if uid is None else self.countries(uid))
-                 if (not p.get("needs_key") or p.get("key")) and not p.get("not_ready") and not p.get("no_balance")
-                 and p.get("allowed") is not False}
-        return {"route": router.route(text, ready)}
-
-    def project_session(self, pid: str, profile: str = "", person: int | None = None, uid=None,
-                        model: str = "", mcp_off: list | None = None, effort: str = "") -> dict:
-        """«Новая сессия в проекте»: ещё одно окно в главной папке проекта, даже если там уже работает чат — у каждого
-        свой журнал (``--session-id``). Поставщик и модель — по умолчанию проекта, если не выбраны."""
-        p = self.project(pid)
-        path = projects.untilde(p["path"], self.pult.home)
-        if not os.path.isdir(path):
-            raise ValueError("папки проекта нет на сервере")
-        profile = profile or p.get("profile") or ""
-        if uid is not None:
-            self.check(profile, uid)
-        out = self.open_in(path, profile, person, uid, model=router.valid_model(model) or p.get("model") or "",
-                           mcp_off=chatmcp.norm(mcp_off) if mcp_off else None,
-                           effort=effort if effort in EFFORTS else "")
-        return {**out, "project": p["id"]}
-
-    INSTR_MAX = 20000
-
-    def project_new(self, name: str, folder: str = "", instructions: str = "", profile: str = "", model: str = "",
-                    person: int | None = None) -> dict:
-        """«Новый проект» (панель чатов → «Проекты» → «+»): папка в первом корне проектов с ``git init`` — как «Новая
-        папка» (``Pult.make_folder``), ``CLAUDE.md`` из инструкций, запись в ``projects.json`` с поставщиком и моделью
-        по умолчанию. Окно не открываем: чат запустится при первой отправке (``/api/project/session``). Папка уже
-        есть — отказ, на диске ничего не трогаем."""
-        name = " ".join(str(name or "").split())[:projects.NAME_MAX]
-        if not name:
-            raise ValueError("назовите проект")
-        folder = str(folder or "").strip().lower() or projects.folder_of(name)
-        if not projects.FOLDER_OK.match(folder):
-            raise ValueError("имя папки: латиница в нижнем регистре, цифры, дефис (2–41 знак), без «/» и «..»")
-        if profile and profile not in models.BY_ID:
-            raise ValueError("такого поставщика нет")
-        if model and model not in self.cfg.models:
-            raise ValueError("такой модели нет в настройках (models)")
-        instructions = str(instructions or "").strip()
-        if len(instructions) > self.INSTR_MAX:
-            raise ValueError(f"инструкции длиннее {self.INSTR_MAX} знаков — сократите")
-        root = self.pult.module_root()
-        try:
-            path = self.pult.make_folder(folder)
-        except FileExistsError:
-            raise ValueError(f"папка «{folder}» уже есть в {projects.tilde(str(root), self.pult.home)} — выберите "
-                             "другое название или имя папки") from None
-        if instructions:
-            (path / "CLAUDE.md").write_text(instructions + "\n", encoding="utf-8")
-        pid = self.projects.create(str(path), name, by=person, profile=profile, model=model)
-        self._proj = (0.0, {})
-        return {"id": pid, "name": name, "folder": path.name, "path": projects.tilde(str(path), self.pult.home)}
-
-    def project_update(self, pid: str, name=None, archived=None) -> dict:
-        """Меню проекта «⋯» (GAS-24, перенесено из папки фокуса): название и архив — только в ``projects.json``."""
-        p = self.project(pid)
-        if name is not None:
-            name = " ".join(str(name).split())[:projects.TITLE_MAX]
-            if not name:
-                raise ValueError("название пустое")
-        rec = self.projects.set_project(p["id"], name=name, archived=None if archived is None else bool(archived))
-        self._proj = (0.0, {})
-        return {"id": p["id"], "name": rec.get("name"), "archived": bool(rec.get("archived"))}
-
-    # ---------- «Закрепить» проект, сессию и чат — свои у каждого человека (projects.json → pins[кто]) ----------
-    def pin_key(self, w: dict, sid: str = "") -> str:
-        """Ключ закрепления окна: id сессии Claude Code (переживает перезапуск с продолжением и «Продолжить»);
-        старое окно без метки — его папка."""
-        if sid := transcripts.valid_sid(sid or w.get("sid")):
-            return "sid:" + sid
-        return "path:" + projects.tilde(os.path.realpath(w.get("path") or ""), self.pult.home)
-
-    def pinned_of(self, d: dict, w: dict, sid: str = "", who: str | None = "owner") -> int:
-        return int(projects.pins_of(d, who)[1].get(self.pin_key(w, sid)) or 0)
-
-    def pin(self, who: str, on: bool, project: str = "", wid: str = "", pid: str = "", sid: str = "") -> dict:
-        """«Закрепить» / «Открепить»: проект (``project``), окно сессии (``wid``) или завершённый чат (``pid`` +
-        ``sid``). Свои у каждого человека (``who``); хранится на сервере — одинаково на телефоне и в браузере."""
-        if project:
-            self.project(project)
-            ts = self.projects.set_pin(who, on, pid=project)
-        elif wid:
-            w = self.tmux.window(wid)
-            if not w or w.get("space") or not (harness.is_agent(w) or w.get("stopped")):
-                raise LookupError("окна уже нет")
-            ts = self.projects.set_pin(who, on, key=self.pin_key(w))
-        else:
-            f = self.chat_file(self.project(pid), sid)
-            ts = self.projects.set_pin(who, on, key="sid:" + f.stem)
-        self._proj = (0.0, {})
-        return {"pinned": ts}
-
-    def project_files(self, p: dict) -> list[Path]:
-        return projects.session_files(self.projects.folders_of(p), self.claude_homes())
-
-    def chat_file(self, p: dict, sid: str) -> Path:
-        """Журнал чата проекта по id — только среди журналов этого проекта (id — uuid, путь не подставить)."""
-        sid = transcripts.valid_sid(sid)
-        f = next((f for f in self.project_files(p) if sid and f.stem == sid), None)
-        if not f:
-            raise LookupError("чата нет — Claude Code мог удалить старый журнал")
-        return f
-
-    def open_sids(self, p: dict) -> tuple[dict, set]:
-        """Окна проекта: id сессии → окно; журналы окон без метки (последний журнал их папки) — тоже заняты."""
-        d = self.project_data()
-        by_sid, legacy = {}, set()
-        for w in self.tmux.windows():
-            if w.get("space") or not (harness.is_agent(w) or w.get("mark")):
-                continue
-            if self.projects.of_path(d, w.get("path", "")) != p["id"]:
-                continue
-            if sid := transcripts.valid_sid(w.get("sid")):
-                by_sid[sid] = w
-            elif f := harness.of(w).journal(w["path"], self.pult.home_of(w)):     # R13: журнал — у агента окна
-                legacy.add(str(f))
-        return by_sid, legacy
-
-    def keep_days(self) -> int:
-        """Сколько дней Claude Code хранит журналы (``cleanupPeriodDays`` владельца, по умолчанию 30). Только читаем."""
-        with contextlib.suppress(OSError, ValueError, TypeError):
-            v = json.loads((Path.home() / ".claude" / "settings.json").read_text()).get("cleanupPeriodDays")
-            if isinstance(v, int) and v > 0:
-                return v
-        return 30
-
-    def my_claude(self, person: int | None) -> Path:
-        """Папка Claude Code того, кто спрашивает (не создаётся): владелец — ``~/.claude``."""
-        if person is None:
-            return transcripts.CLAUDE_PROJECTS.parent
-        return self.cfg.data / "people" / str(person) / "claude"
-
-    CHATS_PAGE = 20
-    SEARCH_FILES, SEARCH_SECS = 300, 2.0                 # поиск по тексту журналов — не дольше и не больше этого
-
-    def project_chats(self, pid: str, q: str = "", before: float | None = None, person: int | None = None) -> dict:
-        """Завершённые чаты проекта (журналы без окна): название, когда, сколько сообщений; новые сверху, страницами.
-        ``q`` — по названию, затем по тексту журналов (с лимитом файлов и времени). Закрепления — свои у ``person``
-        (None — владельца)."""
-        p = self.project(pid)
-        who = "owner" if person is None else str(person)
-        meta = self.project_data().get("sessions") or {}
-        by_sid, legacy = self.open_sids(p)
-        mine = self.my_claude(person)
-        files = []                                       # (когда последнее сообщение, время файла, журнал)
-        for f in self.project_files(p):
-            with contextlib.suppress(OSError):
-                files.append((projects.last_said(f), f.stat().st_mtime, f))
-        files.sort(key=lambda x: (-x[0], -x[1]))         # по последнему сообщению: служебные записи — не «только что»
-        q = " ".join(str(q or "").lower().split())
-        pins = projects.pins_of(self.project_data(), who)[1]
-        files = [(at, mt, f) for at, mt, f in files
-                 if not (f.stem in by_sid or str(f) in legacy or (meta.get(f.stem) or {}).get("hidden"))]
-        top = []                                          # закреплённые — сверху первой страницы, не по времени
-        for at, mt, f in files if before is None else []:
-            if pin := int(pins.get("sid:" + f.stem) or 0):
-                title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
-                if title and (not q or q in title.lower()):
-                    top.append({"sid": f.stem, "title": title, "mtime": int(mt), "last": at or int(mt),
-                                "msgs": projects.prompts(f), "mine": f.parent.parent.parent == mine, "pinned": pin})
-        out, scanned, t0, cut = [], 0, time.time(), False
-        for at, mt, f in files:
-            if pins.get("sid:" + f.stem) or (before is not None and (at or int(mt)) >= before):
-                continue
-            title = str((meta.get(f.stem) or {}).get("title") or "") or projects.title_of(f)
-            if not title:
-                continue                                  # журнал без единого сообщения человека — не чат
-            if q and q not in title.lower():
-                if scanned >= self.SEARCH_FILES or time.time() - t0 > self.SEARCH_SECS:
-                    cut = True
-                    continue
-                scanned += 1
-                if not projects.contains(f, q):
-                    continue
-            own = f.parent.parent.parent == mine
-            out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": own,
-                        "pinned": 0, "last": at or int(mt)})    # last — время последнего сообщения (добавлено)
-            if len(out) >= self.CHATS_PAGE:
-                break
-        more = bool(out) and len(out) >= self.CHATS_PAGE
-        top.sort(key=lambda x: -x["pinned"])
-        return {"chats": top + out, "more": more, "before": out[-1]["last"] if more else None, "cut": cut,
-                "keep_days": self.keep_days(), "active": len(by_sid) + len(legacy)}
-
-    def project_history(self, pid: str, sid: str, before: int | None = None) -> dict:
-        """Переписка завершённого чата без окна — окно открывается только по «Продолжить»."""
-        p = self.project(pid)
-        f = self.chat_file(p, sid)
-        items, more = transcripts.history("", 30, before, file=f)
-        for it in items:
-            if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
-                it["human"] = h
-        meta = (self.project_data().get("sessions") or {}).get(f.stem) or {}
-        return {"items": items, "more": more, "title": meta.get("title") or projects.title_of(f), "sid": f.stem}
-
-    def project_resume(self, pid: str, sid: str, person: int | None = None, uid=None) -> dict:
-        """«Продолжить»: новое окно в папке чата с ``--resume <id>``; чат уже открыт — его окно. Продолжить можно
-        только свой чат (журнал в своей папке Claude Code): чужая учётка — не наша."""
-        p = self.project(pid)
-        f = self.chat_file(p, sid)
-        by_sid, _ = self.open_sids(p)
-        if w := by_sid.get(f.stem) or self.sid_owner(f.stem, running=True):   # чат уже идёт — его окно
-            return {"id": w["id"], "existing": True, "sid": f.stem}     # активное окно бота не меняем (#179)
-        mine = self.my_claude(person)
-        if f.parent.parent.parent != mine:
-            raise ValueError("этот чат вёлся на другой учётке Claude — продолжить его может только её хозяин")
-        folder = next((x for x in self.projects.folders_of(p)
-                       if transcripts.project_dir(x, None if person is None else mine).name == f.parent.name),
-                      projects.untilde(p["path"], self.pult.home))
-        profile = p.get("profile") or ""
-        if uid is not None:
-            self.check(profile, uid)
-        return {**self.open_in(folder, profile, person, uid, resume=f.stem, model=p.get("model") or ""),
-                "project": p["id"]}
-
-    def set_title(self, w: dict, title) -> dict:
-        """Своё название чата окна (GAS-13 п.3; фокус-пользователь 19.11: «мне нужно переименовать вторую часть»):
-        хранится в ``projects.json`` по id разговора, автоматика его не перетирает; пустое — снова авто (summary
-        журнала). Имя окна tmux не меняется."""
-        sid = transcripts.valid_sid(self.follow_sid(w, self.tmux.windows(), self.pult.home_of(w)))
-        if not sid:
-            raise ValueError("у этой сессии ещё нет разговора — напишите первое сообщение, потом переименуйте")
-        title = " ".join(str(title or "").split())[:projects.TITLE_MAX]
-        pd = self.project_data()
-        self.projects.set_chat(sid, self.project_of(pd, w), title=title)
-        self._proj = (0.0, {})
-        return {"title": title or self.chat_title(self.project_data(fresh=True), w["path"], self.pult.home_of(w), sid,
-                                                  harness.of(w)),
-                "own": bool(title)}
-
-    def project_chat(self, pid: str, sid: str, title=None, hidden=None) -> dict:
-        """Переименовать или скрыть чат проекта — только в ``projects.json``; журнал Claude Code не меняется."""
-        p = self.project(pid)
-        f = self.chat_file(p, sid)
-        if title is not None:
-            title = " ".join(str(title).split())[:projects.TITLE_MAX]
-        rec = self.projects.set_chat(f.stem, p["id"], title=title, hidden=None if hidden is None else bool(hidden))
-        self._proj = (0.0, {})
-        return rec
-
-    def sid_owner(self, sid, skip: str = "", wins: list[dict] | None = None, running: bool = False) -> dict | None:
-        """Другое окно (не ``skip``), где этот разговор: id у живого процесса Claude или метка остановленного окна.
-        ``running`` — только окна, где Claude сейчас работает. Два процесса на один журнал пишут вперемешку: ответы
-        одного окна видны в другом (#178) — поэтому второй раз один разговор не запускаем и журнал не уносим."""
-        sid = transcripts.valid_sid(sid)
-        if not sid:
-            return None
-        for x in self.tmux.windows() if wins is None else wins:
-            if x["id"] == skip or x.get("space") or transcripts.valid_sid(x.get("sid")) != sid:
-                continue
-            if harness.is_agent(x) or (x.get("stopped") and not running):
-                return x
-        return None
-
-    def busy_sid(self, sid, skip: str = ""):
-        """Разговор уже идёт в другом окне — понятный отказ вместо второго процесса на тот же журнал."""
-        if o := self.sid_owner(sid, skip, running=True):
-            raise ValueError(f"этот разговор уже открыт в окне «{o['name']}» — откройте его там; второй запуск "
-                             "смешал бы ответы двух окон")
-
-    # ---------- «Удалить» сессию или чат: окно закрыто, журнал — в корзину пульта (chat_trash.py) ----------
-    def session_window(self, wid: str) -> dict:
-        """Окно сессии пульта для «Завершить»/«Удалить»: с Claude или остановленное (Claude вышел, осталась
-        оболочка). Остальные окна tmux владельца (просто терминалы) не трогаем."""
-        w = self.tmux.window(str(wid or ""))
-        if not w or not (harness.is_agent(w) or w.get("stopped")):
-            raise LookupError("окна уже нет")
-        return w
-
-    def window_journal(self, w: dict) -> Path | None:
-        """Журнал окна: по метке ``@gas_pult_sid``; старое окно без метки — последний журнал папки, но только если
-        других окон Claude в этой папке нет (иначе можно унести чужой разговор)."""
-        home, h = self.pult.home_of(w), harness.of(w)          # R13: журнал — у агента окна (Pi, OpenCode, Hermes)
-        if sid := transcripts.valid_sid(w.get("sid")):
-            return h.journal(w["path"], home, sid)
-        real = os.path.realpath(w["path"])
-        if any(x["id"] != w["id"] and (harness.is_agent(x) or x.get("stopped"))
-               and os.path.realpath(x.get("path", "")) == real for x in self.tmux.windows()):
-            return None
-        return h.journal(w["path"], home)
-
-    def chat_delete(self, wid: str = "", pid: str = "", sid: str = "", force: bool = False) -> dict:
-        """«Удалить»: окно сессии (``wid``) или завершённый чат проекта (``pid`` + ``sid``). Окно закрывается (Claude
-        выходит штатно; не вышел за 20 с — окно закрываем, разговор уже в журнале), журнал — в корзину пульта, чат
-        помечается скрытым в ``projects.json``: после обновления и перезапуска не возвращается. «Вернуть» —
-        ``chat_restore``. Фоновые задачи в окне — не удаляем: решить в самом окне."""
-        d = self.project_data(fresh=True)
-        f: Path | None = None
-        w = self.session_window(wid) if wid else None
-        if w is None:
-            p = self.project(pid)
-            f = self.chat_file(p, sid)
-            w = self.open_sids(p)[0].get(f.stem)            # чат ещё открыт в окне — закрыть и его
-        else:
-            f = self.window_journal(w)
-        draft = ""
-        if w:
-            if harness.is_agent(w):
-                r = self.pult.quit_ex(w)
-                draft = r["draft"]
-                if r["result"] == "background" and not force:
-                    raise NeedForce("не удалил: у сессии есть фоновые задачи — «Удалить принудительно» остановит их")
-                if r["result"] in ("busy", "background") and self.tmux.window(w["id"]):
-                    self.tmux.kill(w["id"])
-            else:
-                self.tmux.kill(w["id"])
-            self.focus.end_window(w["id"])                  # фокус-ссылки этой сессии гаснут
-            if (sch := self.schedule_of(w["path"])) and sch.get("state") == "on":
-                modules.set_schedule(Path(w["path"]), "paused")   # иначе расписание снова откроет удалённую сессию
-        out = {"result": "удалено", "closed": bool(w), "draft": draft, "trash": None,
-               **({"schedule": "paused"} if w and (self.schedule_of(w["path"]) or {}).get("state") == "paused" else {})}
-        if f and (o := self.sid_owner(f.stem, (w or {}).get("id", ""))):
-            out["kept"] = o["name"]                          # журнал открыт в другом окне — его разговор не уносим
-            return out
-        if f and f.is_file():
-            pid = (w and self.project_of(d, w)) or pid
-            meta = (d.get("sessions") or {}).get(f.stem) or {}
-            title = str(meta.get("title") or "") or projects.title_of(f) or (w or {}).get("name", "")
-            out["trash"] = chat_trash.put(self.cfg.data, f, title, pid)
-            self.projects.set_chat(f.stem, pid, hidden=True)
-            self._proj = (0.0, {})
-        return out
-
-    def chat_trash_list(self) -> dict:
-        """Корзина чатов и скрытые чаты (их журнал на месте) — для «Корзина» в панели."""
-        d = self.project_data()
-        chat_trash.purge(self.cfg.data)                 # старше 30 дней — в списке не показываем, стираем сразу
-        items = chat_trash.listing(self.cfg.data)
-        gone = {x["sid"] for x in items}
-        hidden = []
-        for sid, rec in (d.get("sessions") or {}).items():
-            if rec.get("hidden") and sid not in gone and rec.get("project") in d["projects"]:
-                p = d["projects"][rec["project"]]
-                with contextlib.suppress(LookupError):
-                    f = self.chat_file(p, sid)
-                    hidden.append({"sid": sid, "project": p["id"], "project_name": p["name"],
-                                   "title": str(rec.get("title") or "") or projects.title_of(f)})
-        names = {pid: p["name"] for pid, p in d["projects"].items()}
-        return {"trash": [{**x, "project_name": names.get(x["project"], "")} for x in items], "hidden": hidden,
-                "keep_days": chat_trash.KEEP_DAYS, "warn_days": chat_trash.WARN_DAYS}   # добавлено
-
-    TRASH_EVERY = 3600                                  # с: как часто фоновый цикл чистит корзину чатов
-
-    def trash_tick(self, now: float | None = None) -> list[str]:
-        """Из фонового цикла панели (раз в минуту): не чаще раза в час — окончательно удалить из корзины чатов
-        записи старше ``chat_trash.KEEP_DAYS``. Первый вызов после запуска — сразу."""
-        now = time.time() if now is None else now
-        if now - self._trash_at < self.TRASH_EVERY:
-            return []
-        self._trash_at = now
-        gone = chat_trash.purge(self.cfg.data, now)
-        if gone:
-            print(f"корзина чатов: удалено окончательно {len(gone)} (старше {chat_trash.KEEP_DAYS} дн.)", flush=True)
-        return gone
-
     TEMP_AGE = 3600                                     # с: остаток озвучки старше — мусор (озвучка идёт секунды)
 
     def temp_tick(self, now: float | None = None) -> list[Path]:
@@ -1132,290 +439,6 @@ class Panel:
         if gone:
             print(f"остатки озвучки: удалено {len(gone)} (старше {self.TEMP_AGE // 60} мин)", flush=True)
         return gone
-
-    def chat_restore(self, tid: str) -> dict:
-        """«Вернуть» из корзины: журнал — на место, чат снова в «Завершённых» своего проекта."""
-        rec = chat_trash.restore(self.cfg.data, tid)
-        self.projects.set_chat(rec["sid"], rec["project"], hidden=False)
-        self._proj = (0.0, {})
-        return rec
-
-    INSTR_MAX = 20000                                   # знаков CLAUDE.md в ответе: больше — обрезаем с пометкой
-    FILES_MAX = 200
-
-    def project_info(self, pid: str, who: str | None = "owner") -> dict:
-        """Проект: настройки, инструкции (``CLAUDE.md`` главной папки), файлы проекта, окна."""
-        d = self.project_data()
-        p = d["projects"].get(str(pid or ""))
-        if not p:
-            raise LookupError("проекта нет — обновите список")
-        root = Path(projects.untilde(p["path"], self.pult.home))
-        text, cut = "", False
-        with contextlib.suppress(OSError):
-            raw = (root / "CLAUDE.md").read_text(encoding="utf-8", errors="replace")
-            text, cut = raw[:self.INSTR_MAX], len(raw) > self.INSTR_MAX
-        files = []
-        fdir = root / (p.get("files") or "files")
-        with contextlib.suppress(OSError):
-            for f in sorted(fdir.iterdir(), key=lambda x: x.name.lower()):
-                if f.is_file() and not f.name.startswith("."):
-                    st = f.stat()
-                    files.append({"name": f.name, "size": st.st_size, "mtime": int(st.st_mtime)})
-                if len(files) >= self.FILES_MAX:
-                    break
-        homes = self.claude_homes()
-        st = projects.stats(projects.session_files(self.projects.folders_of(p), homes))
-        wins = [w["id"] for w in self.tmux.windows() if not w.get("space") and (harness.is_agent(w) or
-                                                                               w.get("mark"))
-                and self.projects.of_path(d, w.get("path", "")) == p["id"]]
-        return {**self.project_public(p, who), "instructions": text, "instructions_cut": cut,
-                "has_instructions": bool(text), "files": files, "files_dir": p.get("files") or "files",
-                "chats": st["total"], "last": st["last"], "windows": wins}
-
-    OWNER_HERE = 15 * 60                                 # с: «Владелец подключился» видно тестировщику 15 минут
-
-    def space_fields(self, w: dict) -> dict:
-        """Окно пространства: имя и название пространства, был ли владелец (``owner_here`` — когда, иначе None)."""
-        slug = w.get("space")
-        if not slug:
-            return {}
-        t = tenants.load(slug) or {}
-        seen = self.owner_seen.get(w["id"])
-        return {"space": slug, "space_title": t.get("title") or slug,
-                "owner_here": seen if seen and time.time() - seen < self.OWNER_HERE else None}
-
-    def invite_info(self, code: str, short: bool = False) -> dict:
-        """Экран входа по приглашению: действует ли и в какое пространство (название — без путей и ролей).
-        ``guest`` — можно войти без Telegram (только именем); ``kind=device`` — ссылка для входа на другое устройство
-        уже существующего человека (имя не спрашиваем)."""
-        rec = invites.check(code, short)            # короткий код — только из invite_check (с лимитом попыток)
-        if not rec:
-            return {"ok": False}
-        t = tenants.load(rec["tenant"]) if tenants.enabled() else None
-        out = {"ok": True, "title": (t or {}).get("title") or rec["tenant"], "guest": tenants.enabled(),
-               "kind": "device" if "uid" in rec and not rec.get("person") else "invite"}
-        if "name" in rec or rec.get("person"):         # одна ссылка: «Здравствуйте, <имя>!» → «Начать»
-            p = next((x for x in self.people.list() if x["id"] == rec.get("uid")), {}) if "uid" in rec else {}
-            out["welcome"], out["name"] = True, rec.get("name") or p.get("name") or "Гость"
-        elif "uid" in rec:
-            p = next((x for x in self.people.list() if x["id"] == rec["uid"]), {})
-            out["name"] = p.get("name") or ""
-        return out
-
-    def invite_check(self, code: str, ip: str) -> dict:
-        """Короткий код с экрана входа («Есть код приглашения?»): не больше 5 промахов с IP за 10 минут."""
-        self.invite_guard(ip)
-        info = self.invite_info(code, short=True)
-        if not info["ok"] or not info["guest"]:
-            self.invite_miss(code, ip)
-        return info
-
-    def invite_guard(self, ip: str):
-        if not tenants.enabled():
-            raise ValueError("вход по приглашению на этом пульте выключен")
-        if wait := self.invite_misses.blocked(ip):
-            raise emailcode.LimitError(f"слишком много неверных кодов — попробуйте через {max(1, wait // 60)} мин.",
-                                       wait)
-
-    def invite_miss(self, code: str, ip: str):
-        self.invite_misses.miss(ip)
-        emailcode.log("invite_failed", ip=ip, hint=invites.norm_short(code)[:3] + "…" if code else "")
-        raise ValueError("Код не подошёл: проверьте буквы и цифры. Код работает один раз и 24 часа — если он уже "
-                         "использован, попросите новый.")
-
-    def invite_enter(self, code: str, name: str, ip: str, ua: str) -> int:
-        """Вход по ссылке или короткому коду без Telegram. Приглашение — новый гость (имя → сразу панель);
-        ссылка для входа на другое устройство — сессия того, кому её выпустили. Код сгорает."""
-        self.invite_guard(ip)
-        rec = invites.check(code)
-        if not rec:
-            self.invite_miss(code, ip)
-        dev = webauth.device(ua)
-        if "uid" in rec:                                      # другое устройство: тот же человек
-            uid = int(rec["uid"])
-            if not self.people.role(uid) or not invites.redeem(code, uid):
-                self.invite_miss(code, ip)
-            how = "с нового устройства по ссылке-приглашению" if rec.get("person") else \
-                "по ссылке для входа на другое устройство"
-        else:
-            name = rec.get("name") or name                    # одна ссылка: имя дал владелец (или «Гость»)
-            name = " ".join(str(name or "").split())[:60]
-            if not name:
-                raise ValueError("Напишите, как вас зовут — так вас увидит владелец пульта")
-            uid = self.people.add_guest(name, rec["role"], rec["tenant"], until=invites.until_of(rec),
-                                        plan=rec.get("plan", ""))
-            if not invites.redeem(code, uid, bind="uses" in rec):   # v2: ссылка привязывается к человеку
-                self.people.remove(uid)
-                self.invite_miss(code, ip)
-            how = "по приглашению, без Telegram"
-            self.space_welcome(uid, rec["tenant"])
-        self.people.seen(uid, dev)
-        p = next((x for x in self.people.list() if x["id"] == uid), {})
-        emailcode.log("invite_ok", uid=uid, ip=ip, hint=rec.get("hint", ""), kind="device" if "uid" in rec else "guest")
-        t = tenants.load(rec["tenant"]) or {}
-        text = (f"🎟 {p.get('name') or 'Гость'} вошёл {how} — пространство «{t.get('title') or rec['tenant']}», "
-                f"{TITLES.get(p.get('role'), '')}.\nУстройство: {dev} · {time.strftime('%d.%m %H:%M')}.\n"
-                "Убрать — «Настройки» → «Люди» → «Отключить»: все его входы гаснут сразу.")
-        for chat in self.cfg.owners:
-            try:
-                self.pult.api("sendMessage", chat_id=chat, text=text)
-            except (TelegramError, OSError) as e:
-                print("invite:", e, file=sys.stderr, flush=True)
-        return uid
-
-    def device_link(self, uid: int, by) -> dict:
-        """Ссылка для входа на другое устройство: одноразовая, 24 часа; выпускает сам человек или владелец."""
-        role = self.people.role(uid)
-        if not role or role == "owner":
-            raise ValueError("ссылку для входа можно выпустить только человеку из «Людей»")
-        slug = self.people.tenant(uid)
-        if not slug or not tenants.enabled():
-            raise ValueError("ссылка для входа — для тестировщиков демо-пространства")
-        inv = invites.new(slug, role, by=by, uid=int(uid))
-        return {"path": f"/invite/{inv['code']}", "code": inv["short"], "ttl": invites.TTL}
-
-    def invite_qr(self, url: str, owner: bool, uid) -> bytes:
-        """PNG с QR ссылки ``…/invite/<код>``: только для действующего приглашения; не владельцу — только своей ссылки
-        для входа на другое устройство."""
-        m = re.match(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}/invite/([A-Za-z0-9_-]{16,64})$", url)
-        rec = invites.check(m.group(1), short=False) if m else None
-        if not rec or (not owner and rec.get("uid") != uid):
-            raise LookupError("приглашения нет: истёк срок, оно использовано или отозвано")
-        return qr.png_of(url)
-
-    FOCUS_BASE = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}$")
-
-    def focus_new(self, wid: str, by, base: str, proj: str = "", mode: str = "") -> dict:
-        """«Фокус-ссылка» из меню сессии (владелец): ссылка ``…/#focus=<токен>`` — токен показывается один раз.
-        ``proj`` — «Фокус-ссылка на проект» из меню проекта: все его сессии, окна у ссылки нет.
-        ``mode="demo"`` — «Демо-ссылка»: несколько устройств, только просмотр и выбор вариантов (focus.py)."""
-        if mode not in ("", focus.DEMO):
-            raise ValueError("неизвестный вид ссылки")
-        if proj:
-            p = self.project(proj)
-            w = {"id": "", "path": p["path"], "name": p["name"]}
-        else:
-            with self.tmux.all_spaces():
-                w = self.tmux.window(str(wid or ""))
-            if not w:
-                raise LookupError("окна уже нет")
-        base = (self.public_url or base or "").rstrip("/")
-        if not self.FOCUS_BASE.match(base):
-            raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
-        f = self.focus.new(w, by, proj=proj or None, mode=mode)
-        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": w["name"],
-                "proj": proj or None, **({"mode": focus.DEMO, "max": focus.DEMO_MAX} if mode else {})}
-
-    def focus_space(self, slug: str, by, base: str, ttl: str = "7d", limit: int = 3, rights: str = "full",
-                    name: str = "", audience: str = "client") -> dict:
-        """«Ссылка на пространство» (владелец, GAS-38): полная панель пространства ``slug`` — как у его тестировщика.
-        Срок ``ttl`` (``focus.SPACE_TTLS``), устройств ``limit`` (1, 3, 0 — без ограничения), права «full» / «read»."""
-        slug = tenants.check_slug(slug)
-        t = tenants.load(slug) if tenants.enabled() else None
-        if t is None:
-            raise LookupError("пространства нет")
-        if ttl not in focus.SPACE_TTLS:
-            raise ValueError("срок: 1h, 1d, 7d, 30d или none")
-        if limit not in focus.SPACE_MAX:
-            raise ValueError("устройств: 1, 3 или 0 — без ограничения")
-        if rights not in ("full", "read"):
-            raise ValueError("права: full или read")
-        if audience not in ("client", "self"):
-            raise ValueError("для кого: client или self")
-        base = (self.public_url or base or "").rstrip("/")
-        if not self.FOCUS_BASE.match(base):
-            raise ValueError("не знаю адрес панели снаружи — откройте панель по её адресу и повторите")
-        title = str(name or "").strip()[:60] or t.get("title") or slug
-        f = self.focus.new({"id": "", "path": "", "name": title, "space": slug}, by, ttl=focus.SPACE_TTLS[ttl],
-                           mode=focus.SPACE, limit=limit, rights=rights, audience=audience)
-        return {"url": f"{base}/#focus={f['token']}", "id": f["id"], "exp": f["exp"], "name": title, "space": slug,
-                "space_title": t.get("title") or slug, "mode": focus.SPACE, "max": limit, "rights": rights,
-                "forever": ttl == "none", "audience": audience}
-
-    def focus_sessions(self, rec: dict) -> list[dict]:
-        """Сессии, видимые по ссылке: одна её сессия или все окна её проекта."""
-        if rec.get("proj"):
-            return [s for s in self.sessions(None) if s.get("project") == rec["proj"] and not s.get("space")]
-        return [s for s in self.sessions(None) if s["id"] == rec["w"]]
-
-    def bridge_dev_ok(self, dev: dict | None) -> bool:
-        """Устройство моста работает: владельца — всегда; фокус-пользователя — пока жива его ссылка с «Браузер»."""
-        return bool(dev) and (not dev.get("focus") or self.focus.browser_ok(dev["focus"]))
-
-    def bridge_allowed(self, window: str) -> set[str]:
-        """Устройства для агента окна ``window``: окно фокус-ссылки с «Браузер» — только устройства этой ссылки;
-        любое другое окно (и без окна) — только устройства владельца. Чужое устройство агенту не видно."""
-        devs = self.devices.listing()
-        links = [r for r in ({**v, "id": k} for k, v in self.focus._load().items())
-                 if r.get("browser") and focus.Focus.live(r) and not r.get("space")] if window else []
-        # окна пространств — свой сервер tmux, их номера (@3) совпадают с окнами владельца: такие ссылки — только
-        # через мост пространства (bridge_space)
-        mine = {r["id"] for r in links if self.focus_owns(r, window)}
-        if mine:
-            return {d["id"] for d in devs if d.get("focus") in mine}
-        return {d["id"] for d in devs if not d.get("focus")}
-
-    def bridge_space(self, token: str) -> str:
-        """Пространство по токену его моста (``pult-tenant bridge``): хэш в ``<папка>/bridge.sha256``; нет — ""."""
-        if not token or not tenants.enabled():
-            return ""
-        h = hashlib.sha256(token.encode()).hexdigest()
-        for slug in tenants.slugs():
-            try:
-                want = (tenants.paths(slug)["base"] / "bridge.sha256").read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if want and secrets.compare_digest(want, h):
-                return slug
-        return ""
-
-    def bridge_space_allowed(self, slug: str) -> set[str]:
-        """Устройства для агента пространства: только фокус-ссылок этого пространства с «Браузер»."""
-        rids = {k for k, v in self.focus._load().items()
-                if v.get("space") == slug and v.get("browser") and focus.Focus.live(v)}
-        return {d["id"] for d in self.devices.listing() if d.get("focus") in rids}
-
-    def focus_owns(self, rec: dict, wid: str) -> bool:
-        """Окно ``wid`` — из этой ссылки: её сессия; у ссылки на проект — любое окно этого проекта."""
-        if not rec.get("proj"):
-            return bool(wid) and wid == rec["w"]
-        if not wid:
-            return False
-        with self.tmux.all_spaces():
-            w = self.tmux.window(wid)
-        return bool(w) and not w.get("space") and self.project_of(self.project_data(), w) == rec["proj"]
-
-    def focus_token(self, url: str) -> dict:
-        """Действующая ссылка по адресу ``…/#focus=<токен>`` (для QR и «Отправить себе»)."""
-        m = re.match(r"^https?://[A-Za-z0-9.:\[\]-]{1,200}/#focus=([A-Za-z0-9_-]{24,64})$", str(url or ""))
-        rec = self.focus.check_token(m.group(1)) if m else None
-        if not rec:
-            raise LookupError("фокус-ссылка не действует: сессия завершена, ссылку отозвали или вышел срок")
-        return rec
-
-    def focus_send(self, url: str, chat) -> dict:
-        """«Отправить себе в Telegram»: ссылка — сообщением в чат владельца с ботом (как в «Избранное»)."""
-        rec = self.focus_token(url)
-        if not chat or int(chat) < 0:
-            raise ValueError("не знаю ваш чат с ботом — войдите в панель через Telegram")
-        till = time.strftime("%d.%m %H:%M", time.localtime(rec["exp"]))
-        if focus.Focus.is_demo(rec):
-            text = (f"🎬 Демо-ссылка на «{rec['name']}»\n\nДля показа: открывается на нескольких устройствах (до "
-                    f"{focus.DEMO_MAX}), только просмотр и выбор вариантов в вопросах Claude — писать, загружать файлы "
-                    f"и менять настройки по ней нельзя. Действует до {till}. Отозвать — «Настройки» → «Фокус-ссылки»."
-                    f"\n\n{url}")
-        elif rec.get("proj"):
-            text = (f"🎯 Фокус-ссылка на проект «{rec['name']}»\n\nОткройте на нужном устройстве — там будут все "
-                    f"сессии этого проекта и новая сессия в нём, без остального пульта. Первое открытие привязывает "
-                    f"устройство. Ссылка действует до {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
-        else:
-            text = (f"🎯 Фокус-ссылка на сессию «{rec['name']}»\n\nОткройте на нужном устройстве — там будет только "
-                    f"чат этой сессии, без остального пульта. Первое открытие привязывает устройство. Ссылка гаснет, "
-                    f"когда сессию завершат, и не позже {till}. Отозвать — «Настройки» → «Фокус-ссылки».\n\n{url}")
-        self.pult.api("sendMessage", chat_id=int(chat), text=text, link_preview_options={"is_disabled": True},
-                      reply_markup={"inline_keyboard": [[{"text": "Открыть в браузере", "url": url}],
-                                                        [{"text": "Открыть в Telegram", "web_app": {"url": url}}]]})
-        return {"ok": True}
 
     # ---------- протоколы встреч в панели (meetings.py, владелец 22.11) ----------
     def meeting_dir(self, mid: str) -> Path:
@@ -1434,9 +457,9 @@ class Panel:
         return v
 
     def meeting_card(self, mid: str) -> tuple:
-        """Карточка-превью (SVG 1200×630): главная мысль, дата, длительность, знак Гаврилы."""
+        """Карточка-превью (SVG 1200×630): главная мысль, дата, длительность, знак Ладэи."""
         try:
-            mark = resources.files("gas_pult").joinpath("web/brand/gavrila-mark.svg").read_text(encoding="utf-8")
+            mark = resources.files("gas_pult").joinpath("web/brand/ladeya-mark.svg").read_text(encoding="utf-8")
         except OSError:
             mark = ""
         v = meetings.view(self.meeting_dir(mid), full=False)
@@ -1469,61 +492,6 @@ class Panel:
             return self.meeting_card(mid)
         raise focus.Denied("по ссылке на протокол — только этот протокол")
 
-    def focus_rec(self, cookie: str) -> dict:
-        """Запрос из фокуса: действующая ссылка этого устройства и живое окно её сессии; иначе ``focus.Gone``.
-        Окна нет (сессию завершили из панели или бота) — ссылка гаснет сразу."""
-        rec = self.focus.by_cookie(cookie)
-        if focus.Focus.is_meeting(rec):                     # ссылка на протокол: окна нет, живёт до срока и отзыва
-            return rec
-        if rec.get("mode") == focus.SPACE:                   # ссылка на пространство — полная панель, не режим фокуса
-            raise focus.Gone("Это ссылка на пространство — откройте её ещё раз.")
-        if rec.get("proj"):                                  # ссылка на проект: живёт, пока есть проект и срок
-            if rec["proj"] not in self.project_data()["projects"]:
-                self.focus.end(rec["id"])
-                raise focus.Gone("Проект удалён.")
-            return rec
-        with self.tmux.scope(rec.get("space")):
-            w = self.tmux.window(rec["w"])
-            if not w or w.get("path") != rec.get("path"):   # перезапустили из бота — то же окно папки (одно на проект)
-                w = next((x for x in self.tmux.windows() if x.get("path") == rec.get("path")
-                          and (harness.is_agent(x) or x.get("stopped"))), None)
-                if w:
-                    self.focus.move(rec["w"], w["id"])
-                    rec = {**rec, "w": w["id"]}
-        if not w:
-            # перезапуск (модель, поставщик — из фокуса, из панели или из бота) закрывает окно раньше, чем открывает
-            # новое: между ними окна нет. Гасим ссылку, только если окна нет дольше ``focus.GRACE``; «Завершить»
-            # гасит её сразу (``end_window``)
-            first = self.focus_gap.setdefault(rec["id"], time.time())
-            if time.time() - first < focus.GRACE:
-                raise focus.Wait("сессия перезапускается — подождите несколько секунд")
-            self.focus_gap.pop(rec["id"], None)
-            self.focus.end(rec["id"])
-            raise focus.Gone("Чат завершён.")
-        self.focus_gap.pop(rec["id"], None)
-        return rec
-
-    def focus_bridge(self, rec: dict, path: str, b: dict) -> dict:
-        """Фокус-пользователь и его компьютер: список своих устройств, код пары, отзыв. Только если владелец разрешил
-        «Браузер» для этой ссылки; чужие устройства (владельца, других ссылок) не видны и не отзываются."""
-        if not rec.get("browser"):
-            raise focus.Denied("владелец не разрешил подключать браузер по этой ссылке")
-        mine = [d for d in self.devices.listing() if d.get("focus") == rec["id"]]
-        if path == "/api/focus/bridge/pair":
-            return self.devices.pair_code(focus=rec["id"])
-        if path == "/api/focus/bridge/revoke":
-            did = str(b.get("id") or "")
-            if did not in {d["id"] for d in mine}:
-                raise focus.Denied("это устройство не из вашей ссылки")
-            return {"ok": self.devices.revoke(did)}
-        if path == "/api/focus/bridge/private":          # свой компьютер: «Личные данные не уходят модели»
-            did = str(b.get("id") or "")
-            if did not in {d["id"] for d in mine}:
-                raise focus.Denied("это устройство не из вашей ссылки")
-            return {"ok": self.devices.set_private(did, b.get("on") is not False)}
-        on = set(self.hub.online())
-        return {"devices": [{**d, "online": d["id"] in on} for d in mine]}
-
     def focus_meta(self, rec: dict) -> dict:
         """«meta» для фокуса: только то, что нужно одной сессии и её настройкам — без папок и имени сервера.
         Демо-ссылка: без команд, моделей, поставщиков и клавиш — только смотреть и выбирать вариант."""
@@ -1543,225 +511,6 @@ class Panel:
                 "focus": {"id": rec["id"], "name": rec.get("name", ""), "w": rec["w"], "space": rec.get("space"),
                           "exp": rec.get("exp"), "proj": rec.get("proj"),     # proj — ссылка на проект (добавлено)
                           "browser": bool(rec.get("browser"))}}            # можно подключить свой браузер
-
-    DEMO_KEYS = frozenset({"Up", "Down", "Enter"})   # демо-ссылка: клавиши — только чтобы выбрать пункт меню
-    DEMO_GAP = 3                            # с: после ответа гостя остальные нажатия — «уже ответили»
-    DEMO_ANSWERED = 30                      # с: вопроса уже нет, но ответили недавно — «уже ответили», не «нельзя»
-
-    def demo_answer(self, wid: str, go: bool, fn):
-        """Ответ гостя демо-ссылки на вопрос Claude: только когда на экране окна вопрос или меню (``DIALOG``); гости
-        жмут одновременно — первый ответ проходит, остальным «уже ответили» (409). Нет вопроса — 403."""
-        lock = self.demo_locks.setdefault(wid, threading.Lock())
-        with lock:
-            last = self.demo_done.get(wid, 0.0)
-            if go and time.time() - last < self.DEMO_GAP:
-                raise focus.Denied("Уже ответили — вариант выбрали на другом устройстве.", "answered", 409)
-            if not DIALOG.search("\n".join(self.tmux.screen(wid, 60))):
-                if time.time() - last < self.DEMO_ANSWERED:
-                    raise focus.Denied("Уже ответили — вариант выбрали на другом устройстве.", "answered", 409)
-                raise focus.Denied("по демо-ссылке можно только выбрать вариант, когда Claude задаёт вопрос")
-            out = fn()
-            if go:
-                self.demo_done[wid] = time.time()
-            return out
-
-    def forget_person(self, uid: int):
-        """Отключить человека: роль, сессии браузера и его ссылки для входа — сразу."""
-        self.people.remove(uid)
-        self.team.forget(uid)
-        self.auth.drop(uid)
-        invites.drop_for(uid)
-
-    def call_help(self, uid, w: dict) -> dict:
-        """«Позвать на помощь» из сессии пространства: владельцам — кто, сессия, последний вопрос агента и кнопка
-        «Открыть сессию». Из одной сессии — не чаще раза в 5 минут."""
-        slug = self.people.tenant(uid)
-        if not slug or w.get("space") != slug:
-            raise ValueError("позвать на помощь можно из сессии своего демо-пространства")
-        if time.time() - self.help_calls.get(w["id"], 0) < testers.HELP_EVERY:
-            raise ValueError("владелец уже получил сообщение — подождите несколько минут")
-        self.help_calls[w["id"]] = time.time()
-        person = next((p for p in self.people.list() if p["id"] == int(uid)), {"id": uid})
-        if rid := focus.rid_of(uid):                       # по ссылке на пространство — её название (GAS-38)
-            person = {"id": uid, "name": f"Гость по ссылке «{(self.focus._load().get(rid) or {}).get('name', '')}»"}
-        text, kb = testers.help_message(person, slug, w, self.pult.panel_url())
-        for chat in self.cfg.owners:
-            try:
-                self.pult.api("sendMessage", chat_id=chat, text=text, **({"reply_markup": kb} if kb else {}))
-            except (TelegramError, OSError) as e:
-                print("help:", e, file=sys.stderr, flush=True)
-        return {"ok": True}
-
-    def space_budget(self, slug: str, fresh: bool = False) -> dict | None:
-        """Запас пространства на период (space_budget.py): норма × дни + пополнения, расход по дням (журналы, цены
-        API; на подписке — оценка). Бюджета нет — None. Кэш 10 с: список сессий спрашивает часто."""
-        hit = self.budget_cache.get(slug)
-        if hit and not fresh and time.time() - hit[0] < 10:
-            return hit[1]
-        t = tenants.load(slug) or {}
-        cfg = t.get("budget")
-        if not cfg:
-            return None
-        today = date.today()
-        first, _ = space_budget.period(cfg, today)
-        home = tenants.paths(slug)["claude"]
-        accs = self.pult.meter.days(home, first.isoformat(), detail=True) if home.is_dir() else {}
-        seen = {d: round(x["usd"], 4) for d, x in accs.items()}
-        spent = space_budget.remember(slug, seen, first)     # максимум записанного: прошлые дни не уменьшаются
-        b = space_budget.state(cfg, spent, today, space_budget.extra(slug, first),
-                               estimate=(t.get("profile") or "") == "claude",
-                               source=usage.source(usage.merge(*accs.values())))
-        b["text"] = space_budget.text(b)
-        self.budget_cache[slug] = (time.time(), b)
-        return b
-
-    def budget_watch(self, slug: str, b: dict):
-        """Владельцу — на 80% и 100% запаса (раз за период; после пополнения — заново) и при потолке дня (раз в день);
-        с кнопкой «+ добавить»."""
-        t = tenants.load(slug) or {}
-        title = t.get("title") or slug
-        end = date.fromisoformat(b["end"]).strftime("%d.%m")
-        msgs = []
-        if (x := space_budget.warn_due(slug, b)) is not None:
-            if x >= 1:
-                msgs.append(f"💸 Запас пространства «{title}» исчерпан: ${b['spent']:.2f} из ${b['reserve']:.2f} "
-                            f"(период до {end}). Тестировщик не может писать агенту до нового периода или пополнения.")
-            else:
-                msgs.append(f"⚠️ Пространство «{title}» потратило {round(b['pct'] * 100)}% запаса: ${b['spent']:.2f} "
-                            f"из ${b['reserve']:.2f} (период до {end}). {b['text'][0].upper() + b['text'][1:]}.")
-        today = time.strftime("%Y-%m-%d")
-        if b["reason"] == "day" and self.budget_told.get(slug) != today:
-            self.budget_told[slug] = today
-            msgs.append(f"⏸ Пространство «{title}» дошло до потолка дня: ${b['today']:.2f} из ${b['day_cap']:.2f}. "
-                        "Тестировщик продолжит завтра — или пополните запас.")
-        kb = {"inline_keyboard": [[{"text": "➕ Добавить", "callback_data": f"bt:{slug}"}]]}
-        for text in msgs:
-            for chat in self.cfg.owners:
-                try:
-                    self.pult.api("sendMessage", chat_id=chat, text=text, reply_markup=kb)
-                except (TelegramError, OSError) as e:
-                    print("budget:", e, file=sys.stderr, flush=True)
-
-    def check_budget(self, slug: str):
-        """Тестировщик пишет, отвечает или открывает сессию: запас периода исчерпан (или потолок дня) — отказ
-        (ValueError) с понятным текстом; владельцу — сообщения (budget_watch)."""
-        b = self.space_budget(slug, fresh=True)
-        if not b:
-            return
-        self.budget_watch(slug, b)
-        if not b["over"]:
-            return
-        if b["reason"] == "day":
-            raise ValueError(f"На сегодня потрачен потолок дня (${b['today']:.2f} из ${b['day_cap']:.2f}). Завтра "
-                             "можно продолжить — владелец получил сообщение.")
-        nxt = (date.fromisoformat(b["end"]) + timedelta(days=1)).strftime("%d.%m")
-        raise ValueError(f"Запас пространства на период исчерпан (${b['spent']:.2f} из ${b['reserve']:.2f}). Владелец "
-                         f"получил сообщение и может пополнить запас; новый период — с {nxt}.")
-
-    def budget_add(self, slug: str, usd: float, by: int | None = None) -> dict:
-        """«+ добавить» из панели владельца: пополнить запас текущего периода."""
-        t = tenants.load(slug) or {}
-        if not t.get("budget"):
-            raise ValueError("у пространства нет бюджета — sudo bin/pult-tenant create <slug> --budget <USD>")
-        first, _ = space_budget.period(t["budget"], date.today())
-        space_budget.top_up(slug, usd, first, by)
-        return self.space_budget(slug, fresh=True)
-
-    def owner_join(self, w: dict) -> dict:
-        """Владелец подключился к окну пространства (сам — «Подключиться» — или написал, ответил на вопрос)."""
-        if not w.get("space"):
-            raise ValueError("это не сессия демо-пространства")
-        self.owner_seen[w["id"]] = time.time()
-        return {"ok": True, "space": w["space"]}
-
-    def space_task(self, slug: str, name: str, task: str) -> dict:
-        """«Поставить задачу» владельцем: новая сессия в пространстве с понятным именем; первое сообщение —
-        задание (уходит, когда Claude в окне готов принять текст). Тестировщик видит её у себя этой сессией."""
-        slug, name, task = tenants.check_slug(slug), name.strip()[:60], task.strip()
-        if not tenants.enabled() or not tenants.load(slug):
-            raise ValueError("нет такого пространства")
-        if not name:
-            raise ValueError("назовите сессию — так её увидит тестировщик")
-        wid = self.new_in_space(slug, name)["id"]       # своя папка, как у сессий тестировщика
-        self.owner_seen[wid] = time.time()
-        if task:
-            threading.Thread(target=self.first_message, args=(wid, task), daemon=True).start()
-        return {"id": wid, "name": name}
-
-    def first_message(self, wid: str, text: str, timeout: float = 90):
-        """Дождаться Claude в новом окне и отправить первое сообщение (то же, что «Отправить» в панели)."""
-        end, why = time.time() + timeout, "Claude не запустился"
-        while time.time() < end:
-            if w := self.window(wid):
-                try:
-                    with self.pult.via("panel"):
-                        self.pult.to_claude(w, text)
-                    return True
-                except Exception as e:                    # не готов ещё — пробуем, пока не выйдет время
-                    why = str(e)
-            time.sleep(2)
-        print(f"задание в {wid} не отправлено: {why}", flush=True)
-        return False
-
-    def sections_of(self, path: str) -> list[str]:
-        """Разделы (Поиск, Цифры, Бумаги, Общение) модуля пространства — по каталогу, раз в минуту."""
-        mk = modules.mark_of(Path(path))
-        if not mk:
-            return []
-        if time.time() - self.mod_sections[0] > 60:
-            self.mod_sections = (time.time(), {m["id"]: m["sections"] for m in modules.catalog()})
-        return list(self.mod_sections[1].get(str(mk.get("id")), []))
-
-    def schedule_of(self, path: str, now: datetime | None = None) -> dict | None:
-        """Расписание пространства из модуля (задача 39): состояние on/paused/off, «по будням 10:00, 17:00» и
-        следующий запуск. Папка не из модуля или у модуля нет расписания — None."""
-        mk = modules.mark_of(Path(path))
-        if not mk:
-            return None
-        if time.time() - self.mod_sched[0] > 60:
-            self.mod_sched = (time.time(), {m["id"]: m for m in modules.catalog()})
-        m = self.mod_sched[1].get(str(mk.get("id")))
-        if not m or not m.get("schedule"):
-            return None
-        nxt = modules.next_run(m, now or datetime.now()) if mk["schedule"] == "on" else None
-        return {"state": mk["schedule"], "text": modules.schedule_text(m),
-                "next": int(nxt.timestamp()) if nxt else None}
-
-    def set_schedule(self, path: str, state: str, uid=None) -> dict:
-        """Переключатель «Расписание»: on / paused / off — владельцу и тому, кто создал пространство."""
-        mk = modules.mark_of(Path(path))
-        if not mk:
-            raise ValueError("эта папка — не пространство из модуля")
-        if uid is not None and not self.is_owner(uid) and str(mk.get("by")) != str(uid):
-            raise PermissionError("расписание меняет владелец или тот, кто создал пространство")
-        modules.set_schedule(Path(path), state)
-        return self.schedule_of(path) or {"state": state}
-
-    def module_delete(self, w: dict, confirm: str) -> dict:
-        """«Удалить» сессию модуля: расписание — выключено навсегда, окно закрыто, папка — в корзину пульта
-        (``<данные>/trash/modules/<время>__<папка>``; вернуть — перенести обратно)."""
-        folder = Path(w["path"])
-        if not modules.mark_of(folder):
-            raise ValueError("это не пространство из модуля — «Завершить сессию»")
-        if confirm != folder.name:
-            raise ValueError("для удаления введите имя папки точно")
-        modules.set_schedule(folder, "off")             # даже если папку вернут — само не запустится
-        if harness.is_agent(w):
-            r = self.close_ex(w)
-            if r["result"] != "закрыто":
-                raise ValueError(r["result"])
-        elif self.tmux.window(w["id"]):
-            self.tmux.kill(w["id"])
-        trash = self.cfg.data / "trash" / "modules"
-        trash.mkdir(parents=True, exist_ok=True, mode=0o700)
-        dst = trash / f"{time.strftime('%Y%m%d-%H%M%S')}__{folder.name}"
-        shutil.move(str(folder), str(dst))
-        return {"result": "удалено", "trash": self.pult.short(str(dst))}
-
-    def agent_of(self, path: str) -> str:
-        """Название модуля, из которого создано пространство (простой режим зовёт агента так), иначе ""."""
-        mk = modules.mark_of(Path(path))
-        return str((mk or {}).get("title") or "")[:60]
 
     # ---------- расход (usage.py) ----------
     def cost_of(self, w: dict, pool: str | None, st: dict) -> dict | None:
@@ -1818,100 +567,6 @@ class Panel:
         self.pult.cost_watch(self.pult.state(), force=True)
         return self.cost_limits()
 
-    def follow_sid(self, w: dict, wins: list[dict], home) -> str:
-        """Метка окна ``@gas_pult_sid`` с поправкой на ``/clear`` (новый журнал — новый id): окно — единственное в
-        папке, появился более новый ничей журнал — метка переезжает на него (``transcripts.follow``)."""
-        sid = transcripts.valid_sid(w.get("sid"))
-        if not sid:
-            return ""
-        if w.get("live"):                               # id взят у самого процесса Claude — догадки не нужны
-            if w.get("tag") != sid and not w.get("space"):
-                self.tmux.set_sid(w["id"], sid)         # метка — вслед за процессом: переживёт его завершение
-            return sid
-        real = os.path.realpath(w["path"])
-        mates = [x for x in wins if x["id"] != w["id"] and harness.is_agent(x) and not x.get("space")
-                 and os.path.realpath(x.get("path", "")) == real and self.pult.home_of(x) == home]
-        if any(not transcripts.valid_sid(x.get("sid")) for x in mates):
-            return sid                                  # рядом старое окно без метки — его журнал не забираем
-        taken = {x.get("sid") for x in wins if x["id"] != w["id"] and transcripts.valid_sid(x.get("sid"))}
-        if nxt := transcripts.follow(w["path"], home, sid, taken):   # журнал любого другого окна — не наш
-            self.tmux.set_sid(w["id"], nxt)
-            w["sid"] = sid = nxt
-        return sid
-
-    def model_of(self, path: str, rev: str, home=None, sid: str = "", h: harness.Harness | None = None) -> str:
-        """Модель последнего ответа из журнала — когда строка статуса её не показывает; кэш по ревизии журнала.
-        Журнал — у адаптера агента окна (R13); красивое имя (``model_title``) — у моделей Claude Code."""
-        h = h or harness.of(None)
-        key = (path, str(home or ""), sid, h.name)
-        if self.model_cache.get(key, (None,))[0] != rev:      # (None,) — у нового окна журнала ещё нет (rev "")
-            m = h.last_model(path, home=home, sid=sid)
-            self.model_cache[key] = (rev, transcripts.model_title(m) if h.name == harness.DEFAULT else m)
-        return self.model_cache[key][1]
-
-    def preview(self, path: str, rev: str, home=None, sid: str = "", h: harness.Harness | None = None) -> str:
-        """Строка о последнем шаге сессии; пересчитывается, только когда журнал изменился. Журнал — у агента окна."""
-        h = h or harness.of(None)
-        key = (f"{home}|{path}" if home else path) + (f"|{sid}" if sid else "")
-        key += f"|{h.name}" if h.name != harness.DEFAULT else ""
-        if self.previews.get(key, (None,))[0] != rev:
-            self.previews[key] = (rev, h.preview(path, home=home, sid=sid))
-        return self.previews[key][1]
-
-    # ---------- страна человека (country.py) ----------
-    def countries(self, uid) -> set[str]:
-        """Страны, по которым проверяем поставщика для этого человека: признаки и страна сервера; не выбрана — пусто."""
-        return country.check_set(self.people.country(uid), self.cfg.region)
-
-    def check(self, profile: str, uid):
-        """Поставщик не разрешён для какой-то из стран человека — отказ ровно этим текстом."""
-        if profile in harness.JOURNAL_ONLY:              # Pi, OpenCode, Hermes — по правилам поставщика их модели
-            profile = harness.HARNESSES[profile].COUNTRY_AS
-        if not models.allowed(profile or "claude", self.countries(uid)):
-            raise ValueError(country.DENY)
-
-    def mark_by(self, wid: str, uid):
-        """Чьё окно — для запасных (``fallback.Switcher``): по странам этого человека."""
-        if uid is not None:
-            self.tmux.run("set-option", "-w", "-t", wid, "@gas_pult_by", str(uid))
-
-    def seen_ip(self, uid, ip: str, force: bool = False):
-        """Страна по IP — при входе (``force``) и не чаще ``IP_EVERY`` на запросах. IP не храним — код и время."""
-        if uid is None:
-            return
-        now, last = time.time(), self.ip_seen.get(uid)
-        if not force and last and last[1] == ip and now - last[0] < country.IP_EVERY:
-            return
-        self.ip_seen[uid] = (now, ip)
-        rec, tell = self.people.set_country(uid, ip_cc=self.geo.lookup(ip) or "", ip_at=int(now))
-        if tell:
-            self.tell_owners(uid, rec)
-
-    def set_country(self, uid, code: str) -> dict:
-        c = country.norm(code)
-        if not c:
-            raise ValueError("нет такой страны — нужен код из двух букв, например NL")
-        rec, tell = self.people.set_country(uid, chosen=c)
-        if tell:
-            self.tell_owners(uid, rec)
-        return self.country_info(uid)
-
-    def tell_owners(self, uid, rec: dict):
-        """Признаки страны разошлись — одна строка владельцам (имя/ID и коды стран, без номера и IP)."""
-        p = next((x for x in self.people.list() if x["id"] == uid), {})
-        line = country.notice(p.get("name") or (f"@{p['username']}" if p.get("username") else "человек"), uid, rec)
-        for chat in self.cfg.owners:
-            try:
-                self.pult.api("sendMessage", chat_id=chat, text=line)
-            except (TelegramError, OSError) as e:
-                print("country:", e, file=sys.stderr, flush=True)
-
-    def country_info(self, uid) -> dict:
-        rec = self.people.country(uid)
-        return {**country.public(rec), **self.geo.info(), "need": False,                     # 20.11: не спрашиваем
-                "server": (self.cfg.region or "").upper(), "check": sorted(self.countries(uid)),
-                "options": [{"code": c, "name": country.name(c)} for c in country.COMMON], "bot": self._bot}
-
     def notify_info(self, uid) -> dict:
         """Уведомления, часть B (notifyroute.py): каналы и события человека. Каналы и события — у владельцев: бот
         шлёт уведомления им; остальным — только устройства (Web Push)."""
@@ -1952,107 +607,71 @@ class Panel:
                                     + (" · есть снимок" if rec["shot"] else ""))
         return {"ok": True, "task": t.get("id")}
 
-    def is_owner(self, uid) -> bool:
+    def team_for(self, w: dict) -> list[dict]:
+        """Сообщения команды для чата окна ``w`` — его и его проекта (``teammsg.for_window``); сбой — пусто."""
         try:
-            return int(uid) in self.cfg.owners
-        except (TypeError, ValueError):
-            return False
+            proj = self.project_of(self.project_data(), w)
+        except Exception:
+            proj = ""
+        try:
+            return self.team_msgs.for_window(w, proj)
+        except (OSError, ValueError):
+            return []
 
-    def ui(self, uid, role: str | None) -> dict:
-        """Вид панели человека (``personas.view``): роль интерфейса, возможности, потолок, справочник.
+    def team_say(self, b: dict) -> dict:
+        """«Команда» пишет в чат окна или проекта (владелец; штаб — ``gas-pult chat say``). В tmux ничего не уходит."""
+        wid, proj = str(b.get("w") or ""), str(b.get("proj") or "")
+        kind = str(b.get("kind") or "info")
+        if wid:
+            w = self.tmux.window(wid)
+            if not w:
+                raise LookupError("окна уже нет")
+            to = teammsg.target(w=wid, sid=w.get("sid") or "")
+        else:
+            if proj not in self.project_data()["projects"]:
+                raise LookupError("проекта нет")
+            to = teammsg.target(proj=proj)
+        return {"ok": True, "msg": teammsg.public(self.team_msgs.say(to, str(b.get("text") or ""), kind))}
 
-        Владелец пульта — всегда «Моё пространство» с видом разработчика: экран выбора роли ему сам не показывается
-        (``onboarded``), другой вид — только временный просмотр в панели («Демо и тесты»), на сервере не хранится."""
-        rec = self.people.ui(uid)
-        if self.is_owner(uid):
-            rec = {**rec, "persona": personas.DEFAULT, "onboarded": True}
-        access = personas.access(role)
-        if sp := self.space_info(uid):
-            # тестировщик пространства — та же панель пульта, что у владельца, без его функций (владелец 19.11:
-            # «интерфейс должен быть точно такой же, как у нас в пульте, только без заморочек»): сессии и проекты,
-            # терминал (за «режимом разработчика», только своё пространство) и расход (бюджет пространства) — открыты
-            # (владелец 20.11, GAS-38); журнал — нет; модели и MCP — по потолку гостя (закрыты)
-            rec = {**rec, "persona": personas.DEFAULT, "onboarded": True, "added": [],
-                   "hidden": sorted(self.SPACE_HIDE)}
-            access = "guest"
-        elif not self.is_owner(uid) and "cap.dev_terminal" not in (rec.get("added") or []):
-            # терминал — только тем, кому нужен (владелец и Алексей 20.11): у участника без явного «добавить» — нет;
-            # включить — «Настройки» → «Возможности панели» (владелец задаёт потолок в «Команде»)
-            rec = {**rec, "hidden": sorted({*(rec.get("hidden") or []), "cap.dev_terminal"})}
-        out = personas.view(rec, access, self.team, uid, self.people.prefs(uid)["lang"])
-        own = self.is_owner(uid)                       # fixed — что владелец у себя не прячет (иначе ушёл бы в чат)
-        return {**out, "own_space": own, "fixed": sorted(personas.SPACE_FIXED) if own else [],
-                **({"space": sp} if sp else {})}
-
-    # терминал и расход пространству — открыты (владелец 20.11: «весь функционал, чтобы не было вырезано»; GAS-38):
-    # терминал — за «режимом разработчика» и только своё пространство, расход — бюджет пространства, не владельца
-    SPACE_HIDE = frozenset({"cap.audit_journal"})
-
-    def space_info(self, uid) -> dict | None:
-        """Пространство тестировщика для панели: имя, название, вид. Не тестировщик — None."""
-        slug = self.people.tenant(uid)
-        if not slug:
-            return None
-        t = tenants.load(slug) if tenants.enabled() else None
-        return {"slug": slug, "title": (t or {}).get("title") or slug, "ready": t is not None,
-                "persona": (t or {}).get("persona") or tenants.DEFAULT_PERSONA}
-
-    def set_ui(self, uid, role: str | None, b: dict) -> dict:
-        """Выбор человека: ``persona`` (сменить роль целиком), ``add`` ({cap: true|false}) — тумблеры. Простой режим
-        (#80) следует за видом: бизнес-роли — чат, разработчик — прежний интерфейс."""
-        add, persona = b.get("add"), None if b.get("persona") is None else str(b["persona"])
-        owner = self.is_owner(uid)
-        if self.people.tenant(uid):
-            raise ValueError("вид панели в демо-пространстве задаёт владелец пульта")
-        if owner and persona not in (None, personas.DEFAULT):
-            raise ValueError("ваше пространство — всегда вид разработчика; посмотреть как бизнес — «Демо и тесты», "
-                             "без сохранения")
-        rec = personas.change(self.people.ui(uid), personas.access(role), self.team, uid, persona,
-                              add if isinstance(add, dict) else None)
-        if owner and personas.simple(personas.effective(personas.DEFAULT, rec.get("added"), rec.get("hidden"),
-                                                         personas.ALL)):
-            raise ValueError("в вашем пространстве сессии не прячутся — посмотреть без них можно в «Демо и тестах»")
-        self.people.set_ui(uid, rec)
-        out = self.ui(uid, role)
-        if not owner:                                  # простой режим следует за выбором человека — не владельца
-            self.people.set_prefs(uid, simple=out["simple"])
-        return out
-
-    def prefs(self, uid, role: str | None) -> dict:
-        """Настройки панели; ``simple`` — по виду, если человек выбрал роль или владелец закрыл ему инженерное."""
-        p, v = self.people.prefs(uid), self.ui(uid, role)
-        if self.is_owner(uid) or self.people.tenant(uid):
-            return {**p, "simple": False}              # владелец и тестировщик пространства — полный пульт (19.11)
-        return {**p, "simple": v["simple"] if v["chosen"] or "cap.dev_sessions" not in v["ceiling"]
-                else p["simple"]}
-
-    def owner_space_fix(self):
-        """Один раз при старте: у владельца вид не разработчика или простой режим — это не его выбор (так было после
-        #82: экран выбора роли показывался и владельцу). Сбросить, прежние файлы — рядом с отметкой времени."""
-        for o in self.cfg.owners:
-            if self.people.ui(o).get("persona") in (None, personas.DEFAULT) and not self.people.prefs(o)["simple"]:
-                continue
-            stamp = time.strftime("%Y%m%d-%H%M%S")
-            for f in (self.people.ui_store, self.people.prefs_store):
-                if f.is_file():
-                    bak = f.with_name(f"{f.name}.bak-{stamp}")
-                    bak.write_bytes(f.read_bytes())
-                    bak.chmod(0o600)
-            self.people.set_ui(o, {**self.people.ui(o), "persona": personas.DEFAULT, "onboarded": True})
-            self.people.set_prefs(o, simple=False)
-            print(f"владелец: вид разработчика и полный режим восстановлены (бэкап *.bak-{stamp})", flush=True)
-
-    def team_info(self) -> dict:
-        """Экран «Команда»: общая политика для сотрудников и поправки по людям (только участники — staff)."""
-        people = [{"id": p["id"], "name": p.get("name") or "", "username": p.get("username") or "",
-                   **{f"own_{k}": v for k, v in self.team.person(p["id"]).items()},
-                   "ceiling": sorted(self.team.ceiling(p["id"])), "sections": self.team.sections(p["id"])}
-                  for p in self.people.list() if p.get("role") == "member"]
-        return {**self.team.policy(), "people": people, "catalog": personas.catalog()}
-
-    def people_list(self) -> list[dict]:
-        """Люди для панели: страна — кодами и временем, без хеша номера."""
-        return [{**p, "country": country.public(p.get("country"))} for p in self.people.list()]
+    def bug_report(self, who: tuple, w: dict, b: dict, ua: str, focus_rec: dict | None = None) -> dict:
+        """«Сообщить об ошибке» из чата: отчёт в ``bugs/``, задача владельцу и штабу, уведомление владельцу, человеку
+        в его чат — «Приняли». Не чаще ``bug_rate`` с устройства; окно уже проверено (своё, пространства, ссылки)."""
+        via, _, uid = who
+        dev, br = webauth.device_parts(ua)
+        key = f"f:{focus_rec['id']}" if focus_rec else f"u:{uid}"
+        if not self.bug_rate.hit(f"{key}:{hashlib.sha256((ua or '').encode()).hexdigest()[:12]}"):
+            raise ValueError("слишком часто — подождите минуту и отправьте ещё раз")
+        if focus_rec:
+            name = f"фокус-ссылка «{focus_rec.get('name') or ''}»"
+        else:
+            p = next((x for x in self.people.list() if x["id"] == uid), {}) if uid is not None else {}
+            own = self.is_owner(uid) or uid == webauth.LEGACY
+            name = "владелец" if own else p.get("name") or f"@{p.get('username', '')}"
+        space = w.get("space") or ""
+        to = teammsg.target(w=w["id"], sid=w.get("sid") or "", space=space)
+        try:
+            proj = self.project_of(self.project_data(), w)
+        except Exception:
+            proj = ""
+        title = ""
+        with contextlib.suppress(Exception):
+            title = self.chat_title(self.project_data(), w["path"], self.pult.home_of(w), w.get("sid") or "",
+                                    harness.of(w)) or w.get("name", "")
+        rec = teammsg.bug_save(self.cfg.data, str(b.get("text") or ""), device=dev, browser=br, who=name, to=to,
+                               proj=proj, chat_title=title or w.get("name", ""), ctx=b.get("ctx"),
+                               shot=str(b.get("shot") or ""))
+        t = teammsg.bug_task(rec, to)
+        if space:                                          # окно пространства — не окно владельца: без перехода в чат
+            t.update(chat="", sid="")
+        t = self.tasks.add(t, by="bug")
+        with contextlib.suppress(Exception):
+            self.pult.broadcast(f"Сообщили об ошибке ({name}; {dev or '—'}, {br or '—'}; чат «{rec['chat_title']}»"
+                                f"{', пространство ' + space if space else ''}"
+                                f"{', снимок экрана' if rec['shot'] else ''}): {rec['text'][:600]}")
+        ack = self.team_msgs.say(to, teammsg.ACK, "ack", t["id"])
+        self.events.event("bug", t["id"], w=w["id"], space=space, dev=f"{dev} · {br}".strip(" ·"), via=via,
+                          n=len(rec["text"]))
+        return {"ok": True, "task": t["id"], "ack": teammsg.public(ack)}
 
     def personal(self, uid) -> bool:
         """Некоммерческие голоса (Silero) — только владельцу и только при ``personal_voices = true``."""
@@ -2077,84 +696,6 @@ class Panel:
                 "projects": [self.pult.short(p) for p in self.pult.projects()],
                 "voices": [{"id": v, "label": catalog.label(v)} for v in voices],
                 "voice": self.voice(voices)}
-
-    def voice(self, voices: list[str] | None = None, personal: bool = False) -> str | None:
-        """Голос из настроек, если он доступен этому человеку; иначе — первый доступный (Silero → Piper)."""
-        voices = catalog.installed(personal) if voices is None else voices
-        v = self.pult.state().get("voice")
-        return v if v in voices else (voices[0] if voices else None)
-
-    def login_methods(self) -> dict:
-        """Способы входа для экрана входа (без входа): только «включено ли», без настроек."""
-        return {"telegram": True, "owner_code": True, "email": self.email.enabled, "passkey": self.keys.enabled,
-                "invite": tenants.enabled(),                                         # «Есть код приглашения?»
-                **self.oidc.methods()}                                              # google, yandex
-
-    def key_label(self, uid) -> str:
-        """Подпись ключа в менеджере паролей устройства: имя человека, без Telegram ID."""
-        p = next((x for x in self.people.list() if x["id"] == uid), {})
-        who = p.get("name") or (f"@{p['username']}" if p.get("username") else "") or TITLES.get(p.get("role"), "")
-        return f"Пульт {self.cfg.host} · {who}"
-
-    def login_start(self, ip: str, ua: str) -> str:
-        rid, code = self.auth.start()
-        text = (f"🔐 Вход в панель gas-pult из браузера\n\nКод: {code}\n\nДействует 5 минут. "
-                f"Откуда: {ip or '?'} · {ua[:80] or 'браузер'}.\nЕсли входите не вы — просто не вводите код.")
-        for chat in self.cfg.owners:
-            self.pult.api("sendMessage", chat_id=chat, text=text)
-        return rid
-
-    def confirm_start(self, token: str, uid: int, ip: str, ua: str) -> dict:
-        """Код подтверждения команд для сессии браузера (``CONFIRM``). Канал: почта, если человек включил второй
-        фактор (не тот же Telegram, что и вход), иначе — сообщение бота в его Telegram (вход кодом — владельцам)."""
-        rid, code = self.auth.confirm_start(token)
-        who = (self.cfg.owners or [None])[0] if uid == webauth.LEGACY else uid
-        where = f"{ip or '?'} · {webauth.device(ua)}"
-        if who is not None and self.email.wants_second(who):
-            addr = self.people.email(who)["address"]
-            subject, text = emailcode.code_text(code, f"подтверждения команд на сервере (вход: {where})")
-            self.email.deliver(addr, subject, text)
-            emailcode.log("confirm_sent", uid=who, ip=ip)
-            return {"id": rid, "via": "email", "to": emailcode.mask(addr), "ttl": webauth.CONFIRM_TTL}
-        text = (f"🔐 Подтверждение команд на сервере\n\nКод: {code}\n\nДействует 10 минут. Вход: {where}.\n"
-                "Новый вход в панель просит выполнять команды и писать в терминал. Если это не вы — не вводите код: "
-                "без него с этого входа команды не выполнятся.")
-        # код — всегда прямым сообщением бота, мимо каналов уведомлений (их выбор на код не влияет); закрепляем его,
-        # чтобы зеркало сессий в том же чате не утопило код (21.11: владелец не нашёл четыре дошедших кода)
-        where, pins, sent, err = self.bot_where(), [], 0, None
-        for chat in (self.cfg.owners if uid == webauth.LEGACY else [uid]):
-            try:                       # владелец, не открывший бота («user not found»), не мешает остальным
-                mid = self.pult.api("sendMessage", chat_id=chat, text=text, reply_markup={"inline_keyboard": [[
-                    {"text": "✅ Подтвердить вход", "callback_data": "cf:" + rid}]]}).get("message_id")
-            except (TelegramError, OSError) as e:
-                err = e
-                continue
-            sent += 1
-            if mid:
-                with contextlib.suppress(TelegramError, OSError):
-                    self.pult.api("pinChatMessage", chat_id=chat, message_id=mid, disable_notification=True)
-                    pins.append((chat, mid))
-        if not sent:
-            raise RuntimeError(f"бот не смог прислать код: {err}" if err else "некому прислать код")
-        self.tg_confirm.offer(rid, token, uid)          # кнопка «✅ Подтвердить вход» — без ввода цифр
-        self.confirm_pins[rid] = pins
-        return {"id": rid, "via": "telegram", "to": "Telegram", "ttl": webauth.CONFIRM_TTL,
-                "at": int(time.time()), **where}
-
-    def bot_where(self) -> dict:
-        """Где искать код: имя чата с ботом (как в списке чатов Telegram) и ссылка на бота; Telegram недоступен —
-        пусто."""
-        if not self._bot_name:
-            with contextlib.suppress(TelegramError, OSError, KeyError):
-                me = self.pult.api("getMe")
-                self._bot, self._bot_name = me["username"], me.get("first_name") or me["username"]
-        return {"chat": self._bot_name, "bot": self._bot} if self._bot_name else {}
-
-    def confirm_done(self, rid: str):
-        """Код подтверждён — снять закреп с его сообщений."""
-        for chat, mid in self.confirm_pins.pop(rid, []):
-            with contextlib.suppress(TelegramError, OSError):
-                self.pult.api("unpinChatMessage", chat_id=chat, message_id=mid)
 
     # ---------- предложения (offers.py): страница /offer/<код> без входа ----------
     def offer_country_ok(self, cc: str) -> bool:
@@ -2244,52 +785,6 @@ class Panel:
                                who=[self.helper.who_key("g", sid), self.helper.who_key("ip", ip)],
                                extra={"modules": mods})
 
-    # ---------- действия ----------
-    def send(self, w: dict, text: str, mid: str = "") -> bool:
-        """mid — id сообщения от браузера. Связь телефона рвётся, пока текст вставляется, и браузер повторяет запрос:
-        с тем же id второй раз не вставляем (ответ True — «уже было»). Повтор, пришедший во время первой вставки, ждёт
-        её исхода; не удалась — пробует сам."""
-        if mid:
-            with self.pult.lock:
-                now = time.time()
-                for k in [k for k, (_, t) in self.sent.items() if now - t > 900]:
-                    del self.sent[k]
-                ev, first = self.sent.get(mid, (None, 0))[0], mid not in self.sent
-                if first:
-                    ev = threading.Event()
-                    self.sent[mid] = (ev, now)
-            if not first:
-                ev.wait(120)
-                return True if mid in self.sent else self.send(w, text, mid)
-        try:
-            self.pult.to_claude(w, text)               # под замком окна — общим с ботом (flock)
-        except Exception:
-            with self.pult.lock:
-                self.sent.pop(mid, None)
-            raise
-        finally:
-            if mid:
-                ev.set()
-        return False
-
-    def activity(self, wid: str) -> dict:
-        """Живая строка статуса окна (activity.py): опрос раз в 1,5 с из открытого чата — поэтому список окон
-        кэшируется на 3 с (в нём ``ps`` по каждому окну), экран читается не чаще раза в 2 с, журнал — с хвоста."""
-        self.tmux.target(wid)                        # окно не своего пространства — «окна нет» (кэш общий)
-        now = time.time()
-        if wid not in self.wins[1] or now - self.wins[0] > 3:
-            self.wins = (now, {w["id"]: w for w in self.tmux.windows() if harness.is_agent(w)})
-        if not (w := self.wins[1].get(wid)):
-            raise LookupError("окна уже нет")
-        scr = self.screens.get(wid)
-        if not scr or now - scr[0] >= 2:
-            scr = self.screens[wid] = (now, self.pult.screen_state(wid))
-        home = self.pult.home_of(w)
-        return {**self.pult.activity(w, scr[1]), "rev": harness.of(w).revision(w["path"], home, w.get("sid") or "")}
-
-    def slash(self, w: dict, cmd: str) -> list[str]:
-        return self.pult.run_slash(w["id"], cmd)
-
     def command(self, w: dict, i: int) -> dict:
         cmds = self.pult.command_list()
         if not 0 <= i < len(cmds):
@@ -2305,114 +800,6 @@ class Panel:
         self.send(w, cmd)
         return {"sent": True}
 
-    def effort(self, w: dict, level: str) -> list[str]:
-        if level not in EFFORTS:
-            raise ValueError("такого уровня усилий нет")
-        st = self.pult.state()                          # запомнить у чата: перезапуск и «Продолжить» — с ним же
-        ef = {k: v for k, v in (st.get("window_efforts") or {}).items() if k != w["id"]}
-        self.pult.set_state(window_efforts={**ef, w["id"]: level})      # и «авто»: панель покажет выбор человека
-        return self.slash(w, f"/effort {level}")
-
-    def keep_model(self, w: dict, name: str) -> dict:
-        """Окно выбора: реальная модель чата (строка статуса) расходится с сохранённой — «Оставить» запоминает
-        реальную для следующего перезапуска (``window_models``), окно не перезапускается (вариант A, владелец 20.11)."""
-        if name not in self.cfg.models:
-            raise ValueError("такой модели нет в настройках (models)")
-        st = self.pult.state()
-        self.pult.set_state(window_models={**(st.get("window_models") or {}), w["id"]: name})
-        return {"ok": True, "model_own": name}
-
-    def model(self, w: dict, name: str, uid=None, effort: str | None = None) -> dict:
-        """Модель — только для этого чата (задача 37): окно перезапускается с ``--model`` у того же поставщика, разговор
-        продолжается. ``/model`` Claude Code не шлём: он сохраняет выбор в общие настройки (``~/.claude/settings.json``)
-        — модель менялась во всех сессиях. Модель по умолчанию для новых — отдельно: ``default_model``."""
-        if name not in self.cfg.models:
-            raise ValueError("такой модели нет в настройках (models)")
-        if w.get("space"):
-            raise ValueError("в сессии пространства модель задаёт его профиль")
-        if effort is not None and effort not in EFFORTS:
-            raise ValueError("такого уровня усилий нет")
-        return self.restart(w, w.get("profile") or (w.get("mark") if w.get("mark") in models.BY_ID else "claude"),
-                            keep=True, uid=uid, model=name, effort=effort)
-
-    def money_of(self, w: dict, lines: list[str]) -> dict:
-        """Поставщик окна ответил «нет денег» (Z.ai 1113, DeepSeek 402) — в карточку и отметку на час (balance.py)."""
-        prof = w.get("profile") or "claude"
-        if prof == "claude" or not balance.seen("\n".join(lines[-15:])):
-            return {}
-        if (new := balance.mark(self.pult.state(), prof)) is not None:
-            self.pult.set_state(no_balance=new)
-        return {"no_balance": True}
-
-    def balance_watch(self):
-        """Раз в час — баланс поставщиков, у которых есть бесплатная проверка (DeepSeek): нет денег — отметка, есть —
-        снять. В фоне: список сессий не ждёт сеть."""
-        if time.time() - self.balance_at < balance.TTL:
-            return
-        self.balance_at = time.time()
-
-        def run():
-            keys = providers.load_keys()
-            for prov in balance.BALANCE_URL:
-                ok = balance.check(prov, keys.get(prov, ""))
-                st = self.pult.state()
-                if ok is False and (new := balance.mark(st, prov)) is not None:
-                    self.pult.set_state(no_balance=new)
-                elif ok is True and prov in balance.marked(st):
-                    self.pult.set_state(no_balance=balance.clear(st, prov))
-        threading.Thread(target=run, daemon=True).start()
-
-    def default_model(self, name: str | None = None) -> dict:
-        """Модель Claude по умолчанию для новых сессий (``model`` в ``~/.claude/settings.json`` владельца) — только
-        явной настройкой владельца. ``name``: None — прочитать, «» — убрать (как решит Claude Code)."""
-        f = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "settings.json"
-        try:
-            d = json.loads(f.read_text())
-        except (OSError, ValueError):
-            d = {}
-        if name is not None:
-            if name and name not in self.cfg.models:
-                raise ValueError("такой модели нет в настройках (models)")
-            if name:
-                d["model"] = name
-            else:
-                d.pop("model", None)
-            tmp = f.with_name(f".{f.name}.gas-pult")
-            tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-            os.replace(tmp, f)
-        return {"model": d.get("model") or "", "models": list(self.cfg.models)}
-
-    def tty_window(self, wid: str, owner: bool, write: bool, space: str | None = None) -> dict:
-        """Окно для живого терминала (задача 50). Владельцу — любое окно его tmux, окно gp-term и окна пространств
-        (через их tmux). Тестировщику пространства — только окна своего пространства: командная строка там —
-        песочница пространства (свой пользователь Linux, GAS-38). Участнику — только окна сессий пульта; писать —
-        только пока в окне работает Claude (остановленная сессия — командная строка сервера, она только владельцу)."""
-        w = self.tmux.window(str(wid or ""))
-        if not w:
-            raise LookupError("окна уже нет")
-        if space:
-            if w.get("space") != space:
-                raise LookupError("окна уже нет")         # чужое окно — как несуществующее
-            return w
-        if owner:
-            return w
-        if w.get("space") or w.get("name") == termwin.WINDOW:
-            raise ValueError("это окно — только владельцу пульта")
-        if not (harness.is_agent(w) or w.get("mark")):
-            raise ValueError("это не окно сессии пульта")
-        if write and (not harness.is_agent(w) or w.get("stopped")):
-            raise ValueError("Claude в этой сессии остановлен — в командную строку сервера вводит только владелец")
-        return w
-
-    @staticmethod
-    def tty_kind(w: dict) -> str:
-        """Что за окно — для подписи в панели: сессия, окно терминала gp-term, остановленная сессия, своё окно."""
-        if w.get("name") == termwin.WINDOW:
-            return "term"
-        if w.get("stopped"):
-            return "stopped"
-        return "session" if harness.is_agent(w) or w.get("mark") else "shell"
-
     def key(self, w: dict, key: str) -> list[str]:
         if key not in {k for _, k in KEYS + PANEL_KEYS} and not re.fullmatch(r"[1-9]", key):   # цифры — пункты
             raise ValueError("неизвестная клавиша")
@@ -2420,845 +807,7 @@ class Panel:
         time.sleep(1)
         return self.tmux.screen(w["id"], 40)
 
-    def login_window(self, home=None) -> dict:
-        """Окно для входа в MCP: активная сессия, если свободна, иначе любая свободная — только того же человека
-        (``home`` — его папка Claude Code; вход сохранится у него, а не у хозяина чужого окна)."""
-        mine = {w["id"] for w in self.tmux.windows() if self.pult.home_of(w) == home}
-        sess = [s for s in self.sessions() if s["status"] == "idle" and s["id"] in mine]
-        pick = next((s for s in sess if s["active"]), None) or (sess[0] if sess else None)
-        if not pick:
-            raise ValueError("нет свободной сессии Claude — откройте новую («Сессии» → ＋) и повторите"
-                             if not home else "нет вашей свободной сессии Claude — откройте свою («Сессии» → ＋) "
-                             "и повторите: вход сохранится в ваших интеграциях")
-        return self.window(pick["id"])
-
-    def mcp_login(self, name: str, home=None) -> dict:
-        """Запуск входа в MCP-сервис из панели: /mcp → сервер → Authenticate → ссылка входа с экрана."""
-        w = self.login_window(home)
-        self.slash(w, "/mcp")
-        self.select(w, name)
-        self.select(w, "Authenticate")
-        for _ in range(15):
-            lines = self.tmux.screen(w["id"], 60)
-            if auth := find_auth(lines):
-                return {"w": w["id"], "session": w["name"], **auth}
-            time.sleep(1)
-        self.tmux.keys(w["id"], "Escape")
-        raise ValueError("Claude Code не показал ссылку входа — откройте сессию и проверьте «Экран»")
-
-    def login_check(self, w: dict, kind: str, home=None) -> dict:
-        """«Готово — проверить» в шторке «Нужен вход»: claude — ``claude auth status``, gh — ``gh auth status``,
-        mcp — ``claude mcp list`` (сервис с ✔); всё — и экран окна: запрос входа с него ушёл."""
-        login = logins.detect(self.tmux.screen(w["id"], 60))
-        if kind == "claude":
-            au = setup.auth(setup.installed(self.cfg.claude) or setup.executable(self.cfg.claude))
-            ok = au["logged_in"] is True
-            text = "вход в Claude выполнен" if ok else "вход в Claude ещё не выполнен"
-        elif kind == "gh":
-            exe = shutil.which("gh")
-            if not exe:
-                return {"ok": False, "text": "GitHub CLI (gh) на сервере не найден", "login": login}
-            try:
-                r = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, timeout=15)
-                ok = r.returncode == 0
-            except (OSError, subprocess.TimeoutExpired):
-                ok = False
-            text = "вход в GitHub выполнен" if ok else "gh auth status: вход не выполнен"
-        elif kind == "mcp":
-            svc = (login or {}).get("service", "")
-            bad = [x for x in self.mcp.list(fresh=True, home=home) if not x["ok"]]
-            ok = not login and not any(svc and x["name"] == svc for x in bad)
-            text = "вход в сервис выполнен" if ok else "сервис ещё ждёт входа — откройте ссылку и завершите вход"
-        else:
-            ok = not login
-            text = "запроса входа на экране больше нет" if ok else "окно всё ещё просит войти"
-        return {"ok": ok, "text": text, "login": None if ok else login}
-
-    def mcp_finish(self, w: dict, url: str, name: str, home=None) -> str:
-        """Адрес страницы после входа (http://localhost…/callback?code=…) → в поле «URL >» Claude Code."""
-        if self.pult.home_of(w) != home:
-            raise ValueError("это сессия другого человека — вход начните заново из своих «Подключений»")
-        u = urllib.parse.urlparse(url.strip())
-        if u.scheme != "http" or u.hostname not in ("localhost", "127.0.0.1") or "code=" not in u.query:
-            raise ValueError("нужен адрес страницы после входа: начинается с http://localhost и содержит code=")
-        self.send(w, url.strip())
-        time.sleep(4)
-        self.tmux.keys(w["id"], "Escape")              # закрыть меню /mcp, вернуться к вводу
-        time.sleep(1)
-        self.tmux.keys(w["id"], "Escape")
-        status = next((s for s in self.mcp.list(fresh=True, home=home) if s["name"] == name), None)
-        if status and status["ok"]:
-            return f"✔ {name} подключён"
-        return f"вход не подтвердился: {status['state'] if status else 'сервер не найден'} — попробуйте ещё раз"
-
-    def select(self, w: dict, target: str, n: str = "", go: bool = True) -> list[str]:
-        """Пункт меню: двигаем ❯ стрелками до строки с этим текстом (или номером n) и жмём Enter; go=False — только
-        выделить. Цифрой не выбираем — не всякое меню Claude её принимает. Выше меню бывают прошлые сообщения с «❯»
-        и «1. …» — номер ищем снизу (меню внизу экрана), а выделение — ближайшее к пункту."""
-        target = target.strip()[:200]
-        with self.pult.hold(w["id"]):
-            for _ in range(30):
-                lines = self.tmux.screen(w["id"], 60)
-                if n.isdigit():
-                    num = re.compile(rf"^\s*(❯\s*)?{int(n)}\.\s")
-                    tgt = next((i for i in reversed(range(len(lines))) if num.match(lines[i])), None)
-                    sel = next((i for i in reversed(range(len(lines))) if re.match(r"^\s*❯\s*\d+\.\s", lines[i])), None)
-                else:
-                    tgt = next((i for i, x in enumerate(lines) if target and target in x), None)
-                    marks = [i for i, x in enumerate(lines) if "❯" in x]
-                    sel = min(marks, key=lambda i: abs(i - tgt)) if marks and tgt is not None else None
-                if sel is None or tgt is None:
-                    raise ValueError("пункт не найден на экране — обновите экран")
-                if sel == tgt:
-                    if not go:
-                        return lines[-40:]
-                    self.tmux.keys(w["id"], "Enter")
-                    time.sleep(1.5)
-                    return self.tmux.screen(w["id"], 40)
-                self.tmux.keys(w["id"], "Down" if tgt > sel else "Up")
-                time.sleep(0.25)
-        raise ValueError("не получилось выбрать этот пункт — выберите стрелками ↑ ↓ и ⏎")
-
-    def new(self, i: int, profile: str = "", person: int | None = None, uid=None) -> dict:
-        """``person`` — Telegram ID участника: окно с его папкой Claude Code (вход, MCP); None — владелец.
-        ``uid`` — кто нажал: по его странам проверяется поставщик и ставится метка окна для запасных."""
-        if slug := self.tmux.scoped:                     # тестировщик: окно — только в его пространстве
-            return self.new_in_space(slug)
-        if uid is not None:
-            self.check(profile, uid)                     # поставщик не для страны — отказ сразу
-        dirs = self.pult.projects()
-        if not 0 <= i < len(dirs):
-            raise ValueError("список папок изменился — обновите панель")
-        path = dirs[i]
-        if w := self.pult.project_window(path):             # одно окно на проект: открываем уже работающее
-            return {"id": w["id"], "existing": w["name"]}   # активное окно бота — только явным выбором (#179)
-        return {"id": self.open_in(path, profile, person, uid)["id"]}
-
-    # ---------- пропуск новой сессии по памяти (GAS-25 п.1; зависание сервера 18.11, GAS-22) ----------
-    # Свободной памяти меньше ``tmux.LOW_MB`` и после усыпления простаивающих (``tmux.make_room``) — новое окно не
-    # открываем: запрос встаёт в очередь, человеку — понятный ответ; освободится память — окно откроется само и
-    # придёт сообщение в Telegram. Ждём не дольше ``MEM_WAIT`` с, потом — «не дождался».
-    MEM_WAIT = 30 * 60
-
-    def mem_gate(self, start, label: str, uid=None):
-        free = tmux.free_mb()
-        if free is None or free >= tmux.LOW_MB:
-            return start()
-        tmux.make_room()
-        time.sleep(3)                                     # усыпление освобождает память за секунды
-        free = tmux.free_mb()
-        if free is None or free >= tmux.LOW_MB:
-            return start()
-        with self.lock_q:
-            self.start_q.append({"start": start, "label": label, "uid": uid, "at": time.time()})
-            pos = len(self.start_q)
-            if not self.q_thread or not self.q_thread.is_alive():
-                self.q_thread = threading.Thread(target=self._start_queue, daemon=True, name="mem-queue")
-                self.q_thread.start()
-        print(f"память: свободно {free} МБ < {tmux.LOW_MB} — «{label}» в очереди ({pos})", file=sys.stderr, flush=True)
-        raise ValueError(f"На сервере мало памяти (свободно {free / 1024:.1f} ГБ). Сессия «{label}» в очереди"
-                         f"{f' — {pos}-я' if pos > 1 else ''}: откроется сама, когда память освободится, и придёт "
-                         "сообщение. Освободить сейчас — закройте или усыпите ненужные сессии.")
-
-    def _start_queue(self):
-        while True:
-            time.sleep(20)
-            with self.lock_q:
-                if not self.start_q:
-                    return
-                job = self.start_q[0]
-                if time.time() - job["at"] > self.MEM_WAIT:
-                    self.start_q.pop(0)
-                    self._q_tell(job, f"⏳ Сессия «{job['label']}» не открылась: памяти на сервере так и не хватило "
-                                      f"за {self.MEM_WAIT // 60} минут. Закройте ненужные сессии и откройте снова.")
-                    continue
-                free = tmux.free_mb()
-                if free is not None and free < tmux.LOW_MB:
-                    continue
-                self.start_q.pop(0)
-            try:
-                job["start"]()
-                self._q_tell(job, f"✅ Память освободилась — сессия «{job['label']}» открыта. Она в списке сессий.")
-            except Exception as e:
-                self._q_tell(job, f"Сессия «{job['label']}» не открылась: {e}")
-
-    # ---------- анкета клиента по ссылке (решение 0010, onboarding.py) ----------
-    def anketa(self, code: str) -> tuple[dict, dict]:
-        rec = self.forms_links.get(code)
-        form = onboarding.forms(self.cfg.data).get(rec["form"]) if rec else None
-        if not rec or not form:
-            raise LookupError("ссылка не найдена или устарела")
-        return rec, form
-
-    def anketa_submit(self, code: str, answers) -> dict:
-        rec, form = self.anketa(code)
-        answers = onboarding.clean(form, answers)
-        if miss := onboarding.missing(form, answers):
-            raise ValueError("Ответьте, пожалуйста, на обязательные вопросы: " + "; ".join(miss[:3]))
-        rec = self.forms_links.submit(code, answers)
-        onboarding.store_answers(self.cfg.data, form, rec, answers)
-        text = onboarding.summary(form, answers, rec["client"]) + "\nВсе ответы — панель → «Анкеты клиентов»."
-        for chat in self.cfg.owners:                      # владельцу — сразу: «прошёл — взяли в работу»
-            try:
-                self.pult.api("sendMessage", chat_id=chat, text=text)
-            except (TelegramError, OSError) as e:
-                print(f"анкета: сообщение владельцу: {e}", file=sys.stderr, flush=True)
-        return {"ok": True}
-
-    def anketa_answers(self, rid: str) -> dict:
-        """Владельцу: ответы анкеты по id ссылки — текстом вопросов, и описание клиента."""
-        rec = self.forms_links.by_id(rid)
-        if not rec:
-            raise LookupError("нет такой анкеты")
-        form = onboarding.forms(self.cfg.data).get(rec["form"])
-        ans = rec.get("draft") or {}
-        rows = [{"q": q["text"], "a": (", ".join(ans[q["id"]]["pick"] + ([f"свой: {ans[q['id']]['other']}"]
-                                       if ans[q["id"]].get("other") else [])) if isinstance(ans[q["id"]], dict)
-                                       else str(ans[q["id"]])) if q["id"] in ans else "—"}
-                for q in (onboarding.questions(form) if form else [])]
-        prof = self.cfg.data / "clients" / f"{rid}.json"
-        return {"client": rec["client"], "form": rec["form"], "sent": rec.get("sent"), "rows": rows,
-                "profile": json.loads(prof.read_text()) if prof.exists() else None}
-
-    def _q_tell(self, job: dict, text: str):
-        chats = [job["uid"]] if has_telegram(job.get("uid")) else list(self.cfg.owners)
-        for chat in chats:
-            try:
-                self.pult.api("sendMessage", chat_id=chat, text=text)
-            except (TelegramError, OSError) as e:
-                print(f"память: сообщение {chat}: {e}", file=sys.stderr, flush=True)
-
-    def open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
-                model: str = "", name: str = "", mcp_off: list | None = None, effort: str = "") -> dict:
-        label = name or (os.path.basename(path) if path != self.pult.home else "home")
-        return self.mem_gate(lambda: self._open_in(path, profile, person, uid, resume, model, name, mcp_off, effort),
-                             label, uid)
-
-    def _open_in(self, path: str, profile: str = "", person: int | None = None, uid=None, resume: str = "",
-                 model: str = "", name: str = "", mcp_off: list | None = None, effort: str = "") -> dict:
-        """Новое окно с Claude в папке — без правила «одно окно на папку»: у окна свой журнал (``--session-id`` и
-        метка ``@gas_pult_sid``) или продолжение выбранного (``resume`` — ``--resume <id>``). ``model`` — модель только
-        этого чата (``window_models``), как у «Модель» в меню."""
-        base = name or (os.path.basename(path) if path != self.pult.home else "home")
-        if profile in harness.JOURNAL_ONLY:              # Pi, OpenCode, Hermes: своя команда, свой журнал, метка
-            h = harness.HARNESSES[profile]
-            sid = (pi_journal.valid_sid(resume) or str(uuid.uuid4())) if profile == "pi" else resume   # у OC/Hermes id
-            cmd = h.launch(sid, resume=bool(resume), path=path)             # + автопамять проекта папки
-            wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
-                                       mark=profile, sid=sid)       # сессии создаёт сама программа — по папке окна
-            self.mark_by(wid, uid)
-            return {"id": wid, "sid": sid}
-        self.need_claude()
-        home = self.pult.claude_dir(person) if person is not None else None
-        st = self.pult.state()
-        cmd = models.command(self.cfg.claude, profile, st, home=home)
-        if model:
-            cmd += f" --model {shlex.quote(model)}"
-        if not effort_ok(profile, model):
-            effort = ""
-        cmd += effort_flag(effort)                                   # усилие нового чата — сразу при запуске
-        cmd += repos.flags(st, path)                                 # подключённые к папке репозитории (задача 43)
-        sid = transcripts.valid_sid(resume) or str(uuid.uuid4())     # свой журнал окна: --session-id или --resume
-        if mcp_off is not None:                                      # интеграции, выключенные для этого чата
-            chatmcp.put(self.CHAT_MCP, sid, mcp_off)
-        cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, sid))
-        cmd += f" --resume {sid}" if resume else f" --session-id {sid}"
-        wid = self.tmux.new_window(f"{base}-{time.strftime('%H%M')}", path, cmd,
-                                   mark=profile or "claude", by=str(person) if home else "", sid=sid)
-        if not home:
-            self.mark_by(wid, uid)
-        if model:                                   # активное окно бота не трогаем — только явным выбором (#179)
-            self.pult.set_state(window_models={**(st.get("window_models") or {}), wid: model})
-        if effort_flag(effort):
-            self.pult.set_state(window_efforts={**(self.pult.state().get("window_efforts") or {}), wid: effort})
-        return {"id": wid, "sid": sid}
-
-    FIRST_PROJECT = "Мой проект"
-
-    def space_welcome(self, uid: int, slug: str, accept: bool = True):
-        """Вход по приглашению в пространство — сразу внутри (владелец 19.11: «онбординг простой — не спрашивать ни про
-        страну, ни про что: если человек по ссылке попал — он уже проверен; он должен сразу начинать пользоваться»):
-        условия отмечены приглашением владельца, страна — юрисдикция пространства (нет — регион сервера), первая
-        сессия «Мой проект» — если в пространстве ещё нет ни одной. Сбой сессии не мешает входу."""
-        t = tenants.load(slug) or {}
-        if accept:                                      # ссылка «для клиента» — соглашается сам (terms_line)
-            self.people.accept(uid)
-        code = country.norm(t.get("jurisdiction")) or country.norm(self.cfg.region) or "NL"
-        self.people.set_country(uid, chosen=code)
-        try:
-            with self.tmux.all_spaces():
-                if not self.space_windows(slug) and not space_sessions.listing(slug):
-                    self.new_in_space(slug, self.FIRST_PROJECT)
-        except Exception as e:                          # sudo, tmux, диск — вход всё равно состоялся
-            print(f"пространство {slug}: первая сессия не открылась: {e}", file=sys.stderr, flush=True)
-
-    CLAUDE_MISSING = ("В пространстве ещё не установлен Claude Code — сессия не запустится. Владелец пульта уже "
-                      "знает; попробуйте через несколько минут.")
-
-    def new_in_space(self, slug: str, name: str = "", effort: str = "") -> dict:
-        """Новая сессия в демо-пространстве: своя папка ``home/projects/<имя>`` (``space_sessions.create``) и окно
-        ``tenants.new_window`` в ней — от пользователя пространства, с его CLAUDE_CONFIG_DIR и моделью. Функция
-        выключена (нет настройки) — понятный отказ."""
-        if not tenants.enabled():
-            raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
-        name = space_sessions.folder_name(name) if str(name or "").strip() else f"Сессия {time.strftime('%d.%m %H-%M')}"
-        path = space_sessions.create(slug, name)
-        raw = tenants.new_window(slug, path.name, str(path), args=effort_flag(effort).strip())
-        self.space_claude_check(slug, raw)
-        return {"id": spaces.wid_of(slug, raw), "name": path.name, "folder": path.name}
-
-    def space_claude_check(self, slug: str, raw: str, wait: float = 2.0):
-        """Claude Code в пространстве не установлен — окно с «command not found»: закрыть и сказать понятно
-        (диагноз lexx 19.11: сессии «создавались», а в окне была пустая оболочка)."""
-        time.sleep(wait)
-        try:
-            tm = tenants.tmux_of(slug)
-            text = "\n".join(tm.screen(raw, 10))
-        except (RuntimeError, OSError):
-            return
-        if "claude: command not found" in text or "claude: not found" in text:
-            try:
-                tm.run("kill-window", "-t", raw)
-            except (RuntimeError, OSError):
-                pass
-            print(f"пространство {slug}: claude не установлен (docs/TENANTS.md, шаг 4)", file=sys.stderr, flush=True)
-            raise ValueError(self.CLAUDE_MISSING)
-
-    # ---------- сессии пространства: закрыть, продолжить, удалить в корзину (space_sessions.py) ----------
-    def space_windows(self, slug: str) -> list[dict]:
-        return [w for w in self.tmux.windows() if w.get("space") == slug]
-
-    def space_list(self, slug: str) -> dict:
-        """Закрытые сессии (папки без окна) и корзина — для «Закрытые» в панели тестировщика."""
-        open_paths = {w.get("path", "") for w in self.space_windows(slug)} | space_sessions.open_paths(slug)
-        drafts = self.space_drafts().get(slug, {})
-        closed = [{**x, "draft": bool(drafts.get(x["folder"]))} for x in space_sessions.closed(slug, open_paths)]
-        return {"closed": [{k: v for k, v in x.items() if k != "path"} for x in closed],
-                "trash": space_sessions.trash_list(slug), "keep_days": space_sessions.KEEP_DAYS}
-
-    def space_drafts(self) -> dict:
-        try:
-            return json.loads((self.cfg.data / "space-drafts.json").read_text())
-        except (OSError, ValueError):
-            return {}
-
-    def space_draft_set(self, slug: str, folder: str, text: str):
-        d = self.space_drafts()
-        if text:
-            d.setdefault(slug, {})[folder] = text[:20000]
-        else:
-            d.get(slug, {}).pop(folder, None)
-        webauth.write_private(self.cfg.data / "space-drafts.json", json.dumps(d, ensure_ascii=False))
-
-    def space_close(self, slug: str, wid: str, force: bool = False) -> dict:
-        """«Закрыть»: агент выходит штатно, окно закрывается; папка, файлы и разговор остаются. Агент работает —
-        без ``force`` не закрываем (``busy``: панель спросит «прервать работу?»). Черновик из поля — сохраняем."""
-        w = self.tmux.window(wid)
-        if not w or w.get("space") != slug:
-            raise LookupError("окна уже нет")
-        folder = os.path.basename(w.get("path", ""))
-        if not harness.is_agent(w):                          # Claude уже вышел — окно с оболочкой просто закрыть
-            self.tmux.kill(wid)
-            return {"result": "closed", "folder": folder, "draft": ""}
-        if not force and BUSY.search("\n".join(self.tmux.screen(wid, 40))):
-            return {"result": "busy", "folder": folder}
-        r = self.pult.quit_ex(w)
-        if r["result"] == "busy" and force:               # не вышел за 20 с — закрываем окно (разговор в журнале)
-            self.tmux.kill(wid)
-            r["result"] = "closed"
-        if r.get("draft"):
-            self.space_draft_set(slug, folder, r["draft"])
-        return {"result": r["result"], "folder": folder, "draft": r.get("draft", "")}
-
-    def space_resume(self, slug: str, folder: str) -> dict:
-        """«Продолжить»: окно в папке сессии — ``claude --continue`` (тот же разговор); черновик — обратно в поле."""
-        path = space_sessions.check_folder(slug, folder)
-        if any(w.get("path") == str(path) for w in self.space_windows(slug)) or space_sessions.is_open(slug, path):
-            raise ValueError("эта сессия уже открыта")
-        if folder not in {x["folder"] for x in space_sessions.listing(slug)}:
-            raise LookupError("нет такой сессии")
-        args = "--continue" if space_sessions.has_history(slug, path) else ""
-        args = (repos.flags(self.pult.state(), str(path)) + " " + args).strip()   # подключённые репозитории
-        raw = tenants.new_window(slug, folder, str(path), args=args)
-        draft = self.space_drafts().get(slug, {}).get(folder, "")
-        if draft:
-            self.space_draft_set(slug, folder, "")
-        return {"id": spaces.wid_of(slug, raw), "draft": draft, "continued": bool(args)}
-
-    def space_delete(self, slug: str, folder: str, confirm: str) -> dict:
-        """«Удалить»: только закрытую сессию и только с именем во втором подтверждении — в корзину на KEEP_DAYS."""
-        path = space_sessions.check_folder(slug, folder)
-        if confirm != folder:
-            raise ValueError("для удаления введите имя сессии точно")
-        if any(w.get("path") == str(path) for w in self.space_windows(slug)) or space_sessions.is_open(slug, path):
-            raise ValueError("сессия открыта — сначала закройте её")
-        out = space_sessions.trash(slug, folder)
-        self.space_draft_set(slug, folder, "")
-        return {**out, "keep_days": space_sessions.KEEP_DAYS}
-
-    def space_restore(self, slug: str, tid: str) -> dict:
-        return {"folder": space_sessions.restore(slug, tid)}
-
-    # ---------- «Проекты» пространства (GAS-38 п.1, space_projects.py): папки home/projects/<имя> ----------
-    def sp_windows(self, slug: str) -> list[dict]:
-        """Окна пространства — и владельцу, и тестировщику (без ограничения запроса)."""
-        return self.tmux.space(slug).windows()
-
-    def space_projects_list(self, slug: str, ss: list[dict], q: str = "") -> list[dict]:
-        """Проекты пространства для главной — в тех же полях, что ``projects_list`` у владельца. ``ss`` — готовые
-        сессии (свои окна пространства уже с полем ``project``)."""
-        if not tenants.enabled():
-            return []
-        title = (tenants.load(slug) or {}).get("title") or slug
-        root = space_sessions.projects(slug)
-        q = " ".join(str(q or "").lower().split())
-        out = []
-        for row in space_projects.listing(slug):
-            pid = space_projects.pid_of(slug, row["folder"])
-            mine = [x for x in ss if x.get("project") == pid]
-            st = space_projects.stats(slug, root / row["folder"])
-            lf = st["last_file"]
-            win = next((x for x in mine if lf and x.get("sid") == lf.stem), None)
-            item = {**space_projects.public(slug, row["folder"], title),
-                    "windows": len(mine), "waiting": sum(x["status"] == "dialog" for x in mine),
-                    "busy": sum(x["status"] == "busy" for x in mine), "chats": st["total"],
-                    "last": max([st["last"] or 0, row["changed"], *[int(x.get("changed") or 0) for x in mine]]) or None,
-                    "last_title": projects.title_of(lf) if lf else "", "last_window": (win or {}).get("name", ""),
-                    "sessions": [x["id"] for x in mine]}
-            if q and not any(q in str(v).lower() for v in (item["name"], item["last_title"],
-                                                            *[x.get("name", "") for x in mine])):
-                continue
-            out.append(item)
-        out.sort(key=lambda x: (not x["waiting"], -(x["last"] or 0), x["name"].lower()))
-        return out
-
-    def owner_space_projects(self, ss: list[dict]) -> list[dict]:
-        """Владельцу и админу — проекты всех готовых пространств (группа «Пространства»). Сбой одного пространства
-        (tmux, диск) не мешает остальным."""
-        out, slugs = [], getattr(self.tmux, "_slugs", None)      # готовые пространства (spaces.Routed)
-        for slug in slugs() if slugs else []:
-            try:
-                out += [{**x, "name": f"{x['space_title']} · {x['name']}"}   # чьё пространство — в названии
-                        for x in self.space_projects_list(slug, ss)]
-            except (RuntimeError, OSError, ValueError) as e:
-                print(f"пространство {slug}: проекты не прочитались: {e}", file=sys.stderr, flush=True)
-        return out
-
-    def space_project_info(self, pid: str, allowed: str | None) -> dict:
-        slug, folder, path = space_projects.parse(pid, allowed)
-        if folder not in {x["folder"] for x in space_projects.listing(slug)}:
-            raise LookupError(space_projects.NOT_FOUND)
-        text = space_projects.instructions(slug, path)
-        st = space_projects.stats(slug, path)
-        wins = [w["id"] for w in self.sp_windows(slug) if space_projects.folder_of(slug, w.get("path", "")) == folder
-                and (harness.is_agent(w) or w.get("mark"))]
-        title = (tenants.load(slug) or {}).get("title") or slug
-        return {**space_projects.public(slug, folder, title), "instructions": text[:self.INSTR_MAX],
-                "instructions_cut": len(text) > self.INSTR_MAX, "has_instructions": bool(text), "files": [],
-                "files_dir": "", "chats": st["total"], "last": st["last"], "windows": wins}
-
-    def space_project_chats(self, pid: str, allowed: str | None, q: str = "", before: float | None = None) -> dict:
-        """Завершённые чаты проекта пространства — как ``project_chats``: журналы без окна, новые сверху, страницами."""
-        slug, folder, path = space_projects.parse(pid, allowed)
-        if folder not in {x["folder"] for x in space_projects.listing(slug)}:
-            raise LookupError(space_projects.NOT_FOUND)
-        by_sid, legacy = space_projects.open_sids(slug, path, self.sp_windows(slug))
-        files = []
-        for f in space_projects.chat_files(slug, path):
-            with contextlib.suppress(OSError):
-                if f.stem not in by_sid and str(f) not in legacy:
-                    files.append((projects.last_said(f), f.stat().st_mtime, f))
-        files.sort(key=lambda x: (-x[0], -x[1]))
-        q = " ".join(str(q or "").lower().split())
-        out, scanned, t0, cut = [], 0, time.time(), False
-        for at, mt, f in files:
-            if before is not None and (at or int(mt)) >= before:
-                continue
-            title = projects.title_of(f)
-            if not title:
-                continue
-            if q and q not in title.lower():
-                if scanned >= self.SEARCH_FILES or time.time() - t0 > self.SEARCH_SECS:
-                    cut = True
-                    continue
-                scanned += 1
-                if not projects.contains(f, q):
-                    continue
-            out.append({"sid": f.stem, "title": title, "mtime": int(mt), "msgs": projects.prompts(f), "mine": True,
-                        "pinned": 0, "last": at or int(mt)})
-            if len(out) >= self.CHATS_PAGE:
-                break
-        more = bool(out) and len(out) >= self.CHATS_PAGE
-        return {"chats": out, "more": more, "before": out[-1]["last"] if more else None, "cut": cut,
-                "keep_days": self.keep_days(), "active": len(by_sid) + len(legacy)}
-
-    def space_project_history(self, pid: str, allowed: str | None, sid: str, before: int | None = None) -> dict:
-        slug, _folder, path = space_projects.parse(pid, allowed)
-        f = space_projects.chat_file(slug, path, sid)
-        items, more = transcripts.history("", 30, before, file=f)
-        for it in items:
-            if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
-                it["human"] = h
-        return {"items": items, "more": more, "title": projects.title_of(f), "sid": f.stem}
-
-    def space_project_open(self, slug: str, folder: str, path: Path, args: str, sid: str) -> str:
-        """Окно пространства в папке проекта; метка разговора — чтобы чат знал свой журнал."""
-        if folder not in {x["folder"] for x in space_projects.listing(slug, fresh=True)}:
-            raise LookupError(space_projects.NOT_FOUND)
-        args = (repos.flags(self.pult.state(), str(path)) + " " + args).strip()   # подключённые репозитории
-        raw = tenants.new_window(slug, folder, str(path), args=args)
-        with contextlib.suppress(RuntimeError, OSError):
-            tenants.tmux_of(slug).set_sid(raw, sid)
-        self.space_claude_check(slug, raw)
-        return raw
-
-    def space_project_session(self, pid: str, allowed: str | None, effort: str = "") -> dict:
-        """«Новый чат в проекте»: ещё одно окно пространства в ЭТОЙ папке, свой журнал (``--session-id``)."""
-        if not tenants.enabled():
-            raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
-        slug, folder, path = space_projects.parse(pid, allowed)
-        sid = str(uuid.uuid4())
-        raw = self.space_project_open(slug, folder, path, f"--session-id {sid}{effort_flag(effort)}", sid)
-        return {"id": spaces.wid_of(slug, raw), "sid": sid, "project": pid}
-
-    def space_project_resume(self, pid: str, allowed: str | None, sid: str) -> dict:
-        """«Продолжить» завершённый чат проекта пространства (``--resume``); уже открыт — его окно."""
-        slug, folder, path = space_projects.parse(pid, allowed)
-        f = space_projects.chat_file(slug, path, sid)
-        by_sid, legacy = space_projects.open_sids(slug, path, self.sp_windows(slug))
-        if w := by_sid.get(f.stem):
-            return {"id": w["id"], "existing": True, "sid": f.stem}
-        if str(f) in legacy:
-            raise ValueError("этот чат уже открыт — откройте его в списке активных")
-        raw = self.space_project_open(slug, folder, path, f"--resume {f.stem}", f.stem)
-        return {"id": spaces.wid_of(slug, raw), "sid": f.stem, "project": pid}
-
-    def space_project_new(self, slug: str, name: str, instructions: str = "") -> dict:
-        """«Новый проект» тестировщика: папка ``home/projects/<название>``; чат — при первой отправке."""
-        if not tenants.enabled():
-            raise ValueError("демо-пространство ещё не готово — владелец пульта включит его")
-        name = " ".join(str(name or "").split())
-        if not name:
-            raise ValueError("назовите проект")
-        path = space_projects.create(slug, name, instructions)
-        return {"id": space_projects.pid_of(slug, path.name), "name": path.name, "folder": path.name,
-                "path": "projects/" + path.name}
-
-    # ---------- модули-агенты (modules.py) ----------
-    def modules_list(self) -> dict:
-        """Каталог модулей для «Новое пространство → Из модуля»: имя папки по умолчанию — свободное."""
-        root, errors = self.pult.module_root(), []
-        items = [{**modules.public(m), "folder": modules.free_name(root, m["id"]),
-                  "existing": self.module_spaces(m["id"])} for m in modules.catalog(errors)]
-        return {"modules": items, "root": self.pult.short(str(root)), "errors": errors}
-
-    def module_spaces(self, mid: str) -> list[dict]:
-        """Пространства модуля, которые уже есть: папка, последнее изменение, номер в списке папок (для /api/new),
-        открытое окно — если есть."""
-        dirs = self.pult.projects()
-        out = []
-        for x in modules.existing(self.pult.module_root(), mid):
-            p = str(x["path"])
-            w = self.pult.project_window(p)
-            out.append({"folder": x["folder"], "path": self.pult.short(p), "changed": x["changed"],
-                        "i": dirs.index(p) if p in dirs else None, "open": w["id"] if w else None,
-                        "schedule": self.schedule_of(p)})
-        return out
-
-    def module_create(self, mid: str, name: str, profile: str = "", person: int | None = None, uid=None,
-                      lang: str = "", again: bool = False) -> dict:
-        """Пространство из модуля: папка в первом корне проектов → сессия в ней (как «Новая сессия») → первое
-        задание модуля, когда Claude будет готов. Проверки — до создания папки, чтобы не оставлять пустых.
-        ``lang`` (ru, en) — из простого режима: язык ответов агента в настройках Claude Code пространства.
-        Пространство этого модуля уже есть — без ``again`` (человек подтвердил «Создать ещё одно») не создаём."""
-        if name:
-            modules.check_name(name)                   # неверное имя — сразу, до вопроса «уже есть»
-        if not again and (have := modules.existing(self.pult.module_root(), mid)):
-            raise ValueError(f"пространство «{have[0]['folder']}» этого модуля уже есть — откройте его или "
-                             "подтвердите «Создать ещё одно»")
-        if uid is not None:
-            self.check(profile, uid)
-        self.need_claude()
-        path = modules.create(mid, self.pult.module_root(), name, by=person, lang=lang)
-        out = self.new(self.pult.projects().index(str(path)), profile, person, uid)
-        self.pult.send_later(out["id"], modules.get(mid)["start"])
-        return {**out, "path": self.pult.short(str(path)), "folder": path.name}
-
-    def new_folder(self, name: str, profile: str = "", person: int | None = None, uid=None) -> dict:
-        """«Новая папка» в панели — как 📁 в боте: папка в первом корне проектов, ``git init``, сессия в ней.
-        Проверки страны/поставщика и Claude — до создания папки, чтобы не оставлять пустых."""
-        if uid is not None:
-            self.check(profile, uid)
-        self.need_claude()
-        try:
-            path = self.pult.make_folder(name.strip().lower())
-        except FileExistsError:                         # занято — не ошибка: предложим открыть существующую
-            p = str(self.pult.module_root() / name.strip().lower())
-            dirs, w = self.pult.projects(), self.pult.project_window(p)
-            return {"exists": True, "folder": name.strip().lower(), "path": self.pult.short(p),
-                    "i": dirs.index(p) if p in dirs else None, "open": w["id"] if w else None}
-        out = self.new(self.pult.projects().index(str(path)), profile, person, uid)
-        return {**out, "path": self.pult.short(str(path)), "folder": path.name}
-
-    def revive(self, wid: str, uid=None) -> dict:
-        """Остановленная сессия: Claude заново в том же окне, у того же поставщика, с продолжением разговора.
-        Спящая (claude-sleep) — просто будим: человек её открыл, этого достаточно (владелец 18.11)."""
-        w = self.tmux.window(wid)
-        if w and w.get("sleep"):
-            self.tmux.wake_open(wid)
-            return {"id": wid, "woke": True}
-        if not w or not w.get("stopped"):
-            raise ValueError("сессия не остановлена — перезапускать нечего")
-        if w.get("space"):                              # окно пространства — его команда: свой PATH, профиль, ключ
-            t = tenants.load(w["space"])
-            if not t:
-                raise ValueError("пространства уже нет")
-            profile, cmd = w["mark"] or "claude", tenants.command(t) + repos.flags(self.pult.state(), w["path"])
-            self.tmux.respawn(wid, w["path"], cmd + " --continue", mark=profile)
-            return {"id": wid}
-        if w.get("mark") in harness.JOURNAL_ONLY:        # окно Pi/OpenCode/Hermes — снова оно, тот же разговор
-            if uid is not None:
-                self.check(w["mark"], uid)
-            cmd = harness.HARNESSES[w["mark"]].launch(w.get("sid") or "", resume=True, path=w["path"])
-            self.tmux.respawn(wid, w["path"], cmd, mark=w["mark"])
-            return {"id": wid}
-        profile = w["mark"] if w["mark"] in models.BY_ID else "claude"
-        if uid is not None:
-            self.check(profile, uid)
-        self.need_claude()
-        st = self.pult.state()
-        cmd = models.command(self.cfg.claude, profile, st, home=self.pult.home_of(w))  # нет ключа — тут
-        cmd += repos.flags(st, w["path"])                                    # подключённые репозитории (задача 43)
-        cmd += chatmcp.flags(chatmcp.get(self.CHAT_MCP, w.get("sid") or ""))   # выключенные интеграции чата
-        if own := (st.get("window_models") or {}).get(wid):                  # модель этого чата — та же
-            cmd += f" --model {shlex.quote(own)}"
-        if effort_ok(profile, own):
-            cmd += effort_flag((st.get("window_efforts") or {}).get(wid))   # и усилие
-        self.busy_sid(w.get("sid"), wid)                                     # тот же разговор уже идёт рядом
-        # @gas_pult_by и @gas_pult_sid окна остаются: свой журнал — тот же разговор (--resume), иначе --continue
-        self.tmux.respawn(wid, w["path"], cmd + harness.of(w).resume_args(w.get("sid")), mark=profile)
-        return {"id": wid}
-
-    @property
-    def CHAT_MCP(self) -> Path:
-        return self.cfg.data / "chat-mcp.json"
-
-    def chat_mcp(self, w: dict, off, uid=None) -> dict:
-        """Сменить набор интеграций посреди чата: только Claude Code; разговор продолжается (--resume)."""
-        if harness.of(w).name != "claude":
-            raise ValueError("интеграции на чат — только у Claude Code; у этого агента — в его настройках")
-        if not transcripts.valid_sid(w.get("sid")):
-            raise ValueError("у чата ещё нет разговора — напишите первое сообщение")
-        chatmcp.put(self.CHAT_MCP, w["sid"], off)
-        return {**self.restart(w, w.get("profile") or w.get("mark") or "claude", True, uid), "off": chatmcp.get(
-            self.CHAT_MCP, w["sid"])}
-
-    def restart(self, w: dict, profile: str, keep: bool = True, uid=None, model: str | None = None,
-                effort: str | None = None) -> dict:
-        """Сменить поставщика: штатно закрыть окно и открыть в той же папке с другим профилем.
-
-        ``keep`` — продолжить тот же разговор (``claude --continue``: новый поставщик получает всю переписку, контекст
-        не теряется); иначе — чистый лист. Одно окно на проект, поэтому «последний разговор папки» — именно этот.
-        """
-        name = w.get("mark") if w.get("mark") in harness.JOURNAL_ONLY else harness.of(w).name
-        if name in harness.JOURNAL_ONLY:               # Pi/OpenCode/Hermes: перезапуск — снова оно, тот же разговор
-            h = harness.HARNESSES[name]
-            if profile not in ("", name, "claude") and profile != (w.get("profile") or ""):
-                raise ValueError(f"в окне {h.title} модель меняется в самой программе: /model")
-            if uid is not None:
-                self.check(name, uid)
-            sid = (w.get("sid") or "") if keep else (str(uuid.uuid4()) if name == "pi" else "")
-            cmd = h.launch(sid, resume=keep, path=w["path"])
-            if (result := self.close(w)) != "закрыто":
-                raise ValueError(result)
-            wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=name, sid=sid)
-            self.mark_by(wid, w.get("by") or uid)
-            self.focus.move(w["id"], wid)
-            if routes := getattr(self.pult, "routes", None):
-                routes.moved(w["id"], wid)
-            return {"id": wid}
-        if uid is not None:
-            self.check(profile, uid)                                          # не для страны — до закрытия
-        home = self.pult.home_of(w)                    # папка того, кто открыл окно, а не того, кто нажал
-        st = self.pult.state()
-        cmd = models.command(self.cfg.claude, profile, st, home=home)   # нет ключа — ошибка до закрытия
-        own = dict(st.get("window_models") or {})
-        efforts = dict(st.get("window_efforts") or {})
-        same = profile == (w.get("profile") or w.get("mark") or "claude")
-        if effort is None:                              # усилие этого чата — прежнее (у того же поставщика)
-            effort = efforts.get(w["id"], "") if same else ""
-        if model is None:                               # смена поставщика: модель этого чата — его по умолчанию;
-            model = own.get(w["id"], "") if same else ""   # тот же поставщик (перезапуск) — прежняя модель чата
-        cmd += repos.flags(st, w["path"])                # подключённые репозитории — снова в сессии (задача 43)
-        cmd += f" --model {shlex.quote(model)}" if model else ""
-        if not effort_ok(profile, model):               # Haiku и чужие поставщики — без усилия, и не запоминаем
-            effort = ""
-        cmd += effort_flag(effort)
-        sid = transcripts.valid_sid(w.get("sid"))
-        off = chatmcp.get(self.CHAT_MCP, w.get("sid") or "")   # выключенные интеграции чата — и после перезапуска
-        cmd += chatmcp.flags(off)
-        if keep:                                        # свой журнал окна — тот же разговор (--resume), иначе последний
-            self.busy_sid(w.get("sid"), w["id"])        # метка окна могла указывать на чужой живой разговор
-            cmd += harness.of(w).resume_args(w.get("sid"))
-        else:                                           # чистый лист — новый журнал со своей меткой
-            sid = str(uuid.uuid4())
-            chatmcp.put(self.CHAT_MCP, sid, off)
-            cmd += f" --session-id {sid}"
-        result = self.close(w)
-        if result != "закрыто":
-            raise ValueError(result)
-        wid = self.tmux.new_window(w["name"], w["path"], cmd, mark=profile or "claude",
-                                   by=w.get("by", "") if home else "", sid=sid)
-        if not home:                                    # окно владельца: метка прежняя, иначе — кто нажал
-            self.mark_by(wid, w.get("by") or uid)
-        own.pop(w["id"], None)
-        self.focus.move(w["id"], wid)                   # фокус-ссылка — за той же сессией в новом окне
-        if routes := getattr(self.pult, "routes", None):    # ответы в Telegram на старые сообщения — в новое окно
-            routes.moved(w["id"], wid)
-        if model:
-            own[wid] = model                            # выбор — только этого чата: «Продолжить» и перезапуск — с ним
-        efforts.pop(w["id"], None)
-        if effort_flag(effort):
-            efforts[wid] = effort
-        upd = {"window_models": own, "window_efforts": efforts, "notify_levels": notifylevel.moved(st, w["id"], wid)}
-        if st.get("active") == w["id"]:                 # активная в боте — та же сессия, но чужую не делаем активной
-            upd["active"] = wid
-        self.pult.set_state(**upd)
-        return {"id": wid, **({"model": model} if model else {})}
-
-    # ---------- репозитории GitHub в сессии (задача 43, repos.py) ----------
-    def repo_list(self, w: dict) -> dict:
-        """Подключённые к сессии и что можно добавить: владельцу — его репозитории (gh), пространству — по его
-        токену. Нет токена у пространства — ``hint``: где взять и куда положить."""
-        out = {"added": repos.public(repos.of(self.pult.state(), w["path"])), "repos": [], "hint": None,
-               "error": "", "space": w.get("space") or ""}
-        try:
-            out["repos"] = repos.space_list(w["space"]) if w.get("space") else repos.owner_list()
-        except repos.NoToken as e:
-            out["hint"] = e.hint
-        except (RuntimeError, OSError, subprocess.SubprocessError) as e:
-            out["error"] = str(e)
-        return out
-
-    def repo_add(self, w: dict, src: str) -> dict:
-        """Клон (или ``pull --ff-only``, если папка уже есть) и ``/add-dir`` в живую сессию; путь — в список сессии,
-        чтобы перезапуск и «Продолжить» передали его как ``--add-dir``."""
-        full, _ = repos.parse(src)
-        if w.get("space"):
-            path, act = repos.space_fetch(w["space"], full)
-        else:
-            path, act = repos.owner_fetch(full, self.pult.module_root())
-        if os.path.normpath(path) == os.path.normpath(w["path"]):
-            raise ValueError("это папка самой сессии — она и так в ней")
-        self.pult.set_state(**{repos.STATE: repos.added(self.pult.state(), w["path"], path)})
-        live = not w.get("stopped") and w.get("cmd", "claude") == "claude"
-        lines = self.slash(w, f"/add-dir {path}") if live else []
-        return {"full": full, "path": path, "action": act, "sent": live,
-                "dialog": bool(DIALOG.search("\n".join(lines))),
-                "added": repos.public(repos.of(self.pult.state(), w["path"]))}
-
-    def repo_remove(self, w: dict, path: str) -> dict:
-        """«Отключить»: только из списка сессии — при следующем перезапуске ``--add-dir`` его не будет.
-        Папку с репозиторием не трогаем."""
-        st = self.pult.state()
-        if path not in repos.of(st, w["path"]):
-            raise LookupError("этот репозиторий к сессии не подключён")
-        self.pult.set_state(**{repos.STATE: repos.removed(st, w["path"], path)})
-        return {"added": repos.public(repos.of(self.pult.state(), w["path"]))}
-
-    def close(self, w: dict) -> str:
-        return self.close_ex(w)["result"]
-
-    def close_ex(self, w: dict, force: bool = False) -> dict:
-        """Завершить сессию: текст итога и неотправленный черновик из поля ввода (если был) — панель его покажет.
-        ``code`` — «background» (фоновые задачи) или «busy» (Claude не вышел): панель предложит «Закрыть
-        принудительно» (``force``) — окно закрывается, фоновые задачи останавливаются, переписка остаётся в журнале."""
-        if w.get("stopped"):                            # остановленная: Claude уже вышел — окно с оболочкой закрыть
-            self.tmux.kill(w["id"])
-            self.forget_window(w["id"])
-            return {"result": "закрыто", "draft": ""}
-        r = self.pult.quit_ex(w)
-        if r["result"] in ("background", "busy") and force:
-            if self.tmux.window(w["id"]):
-                self.tmux.kill(w["id"])
-            self.forget_window(w["id"])
-            return {"result": "закрыто", "draft": r["draft"], "forced": True}
-        if r["result"] not in ("background", "busy"):
-            self.forget_window(w["id"])
-        text = {"background": "не закрыл: у сессии есть фоновые задачи — их можно остановить, закрыв принудительно",
-                "busy": "Claude не вышел за 20 с (возможно, занят) — можно закрыть принудительно"}.get(r["result"],
-                                                                                                    "закрыто")
-        return {"result": text, "draft": r["draft"], **({"code": r["result"]} if text != "закрыто" else {})}
-
-    def forget_window(self, wid: str):
-        """Окно закрыто — его модель и усилие из состояния прочь: id окон tmux после перезапуска сервера начинаются
-        заново, и новое окно не должно подхватить чужой выбор (слепая проверка #323)."""
-        st = self.pult.state()
-        upd = {k: {i: v for i, v in (st.get(k) or {}).items() if i != wid}
-               for k in ("window_models", "window_efforts") if wid in (st.get(k) or {})}
-        if upd:
-            self.pult.set_state(**upd)
-
-    def clear_stopped(self) -> dict:
-        """«Убрать все остановленные»: закрыть окна сессий пульта, где Claude уже вышел (осталась оболочка).
-        Журналы не трогаем — разговоры остаются в «Завершённых» проекта. Окна пространств — не наши."""
-        gone = []
-        for w in self.tmux.windows():
-            if w.get("stopped") and not w.get("space"):
-                self.tmux.kill(w["id"])
-                self.focus.end_window(w["id"])
-                self.forget_window(w["id"])
-                gone.append(w["name"])
-        return {"closed": len(gone), "names": gone}
-
-    MEDIA: ClassVar[dict] = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
-                             ".gif": "image/gif", ".heic": "image/heic"}
-    MEDIA_MAX = 25 * 1024 * 1024
-
-    def focus_roots(self, rec: dict) -> list[str]:
-        """Откуда фокус-ссылке можно брать картинки ленты: папка её чата или проекта и папка этого проекта на Google
-        Диске (``<проект>/Входящие``, #217). inbox пульта и Диск целиком — нет: там файлы других чатов владельца."""
-        roots = []
-        if p := rec.get("path"):
-            roots.append(os.path.realpath(os.path.expanduser(p)))
-            if (d := self.cfg.drive_folder(p)) is not None:
-                roots.append(os.path.realpath(d))
-        return roots
-
-    def media(self, path: str, roots: list[str] | None = None) -> tuple:
-        """Картинка для ленты: только из inbox пульта и папок Google Диска (``drive_root``) — туда кладутся файлы
-        владельца (#217); ничего другого с сервера не отдаём (путь проверяем после realpath — без «..» и ссылок)."""
-        if roots is None:
-            roots = [os.path.realpath(self.cfg.data / "inbox")]
-            if (d := drive_inbox.drive_root(self.cfg.drive_root)) is not None:
-                roots.append(os.path.realpath(d))
-        real = os.path.realpath(os.path.expanduser(path or ""))
-        if not path or not any(real == r or real.startswith(r + os.sep) for r in roots):
-            raise LookupError("файл не найден")
-        ctype = self.MEDIA.get(os.path.splitext(real)[1].lower())
-        if not ctype:
-            raise ValueError("это не картинка")
-        try:
-            st = os.stat(real)
-            if st.st_size > self.MEDIA_MAX:
-                raise ValueError("картинка больше 25 МБ")
-            data = Path(real).read_bytes()
-        except OSError:
-            raise LookupError("файл не найден") from None
-        return (ctype, data, {"Cache-Control": "private, max-age=3600"})
-
-    def upload(self, name: str, data: bytes | BinaryIO, size: int | None = None, w: str = "") -> str:
-        """Файл из панели → папка проекта сессии ``w`` на Google Диске (``<проект>/Входящие``, #217); нет Диска или
-        папки проекта — inbox пульта, как раньше. Claude получает путь (как файлы из чата бота). Поток — кусками."""
-        safe = re.sub(r"[^\w.\-]+", "_", os.path.basename(urllib.parse.unquote(name)))[-80:].lstrip(".") or "file"
-        win = self.tmux.window(w) if w else None
-        folder = self.cfg.drive_folder(win.get("path", "")) if win and not win.get("space") else None
-        src = io.BytesIO(data) if isinstance(data, bytes | bytearray) else data
-        return str(drive_inbox.save(src, safe, folder=folder, inbox=self.cfg.data / "inbox",
-                                    inbox_name=f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}-{safe}",
-                                    size=size))
-
-    # ---------- «Поделиться» в Гаврилу (share.py) ----------
+    # ---------- «Поделиться» в Ладэю (share.py) ----------
     def share_receive(self, uid: int, f: BinaryIO, ctype: str, n: int, via: str) -> dict:
         """Тело «поделились» → запись человека ``uid``. multipart — файлы потоком в inbox (``upload``), поля —
         title/text/url; JSON и urlencoded — только текст и ссылка (iPhone «Быстрая команда»)."""
@@ -3295,11 +844,11 @@ class Panel:
             raise
 
     def share_notify(self, uid: int, rec: dict):
-        """iPhone: «Поделились: … — откройте Гаврилу» в бот самому человеку (не другим). Сбой Telegram — не ошибка."""
+        """iPhone: «Поделились: … — откройте Ладэю» в бот самому человеку (не другим). Сбой Telegram — не ошибка."""
         what = rec.get("title") or rec.get("url") or rec.get("text") or ", ".join(x["name"] for x in rec["files"])
         what = " ".join(str(what).split())[:120]
         base = (self.public_url or "").rstrip("/")
-        text = f"Поделились: {what} — откройте Гаврилу" + (f"\n{base}/?share={rec['id']}" if base else "")
+        text = f"Поделились: {what} — откройте Ладэю" + (f"\n{base}/?share={rec['id']}" if base else "")
 
         def go():
             try:
@@ -3335,56 +884,6 @@ class Panel:
             raise LookupError("файл не найден") from None
         return (ctype, data, {"Cache-Control": "private, max-age=3600"})
 
-    # ---------- голос: локально или ElevenLabs ----------
-    def voice_settings(self) -> dict:
-        st, keys = self.pult.state(), providers.key_info()
-        el, own = "elevenlabs" in keys, self.cfg.personal_voices        # настройки голоса — только владельцу
-        return {"tts": st.get("tts_provider", "local") if el else "local",
-                "stt": st.get("stt_provider", "local") if el else "local",
-                "el_voice": st.get("el_voice"), "keys": keys,
-                "local_voice": catalog.label(self.voice(personal=own) or ""),
-                "fallback": self.fallback_note(), "voice": self.voice(personal=own),
-                "local_voices": [{"id": v, "name": catalog.label(v)} for v in catalog.installed(own)]}
-
-    def el_voices(self) -> list[dict]:
-        key = providers.load_keys().get("elevenlabs")
-        return providers.el_voices(key) if key else []
-
-    def el_voice_name(self, vid: str | None) -> str:
-        """Имя голоса ElevenLabs для карточки (список аккаунта — не чаще раза в 10 минут)."""
-        t, voices = getattr(self, "_el_names", (0.0, []))
-        if time.time() - t > 600:
-            try:
-                voices = self.el_voices()
-            except providers.ProviderError:
-                voices = []
-            self._el_names = (time.time(), voices)
-        return next((v["name"] for v in voices if v["id"] == vid), "")
-
-    # ---------- карточки голосов: экран «Голос», шторка у ответа, /voice в боте ----------
-    def voice_cards(self, owner: bool, cloud: bool = True) -> dict:
-        """Голоса, доступные этому человеку: ElevenLabs первой, затем локальные (``catalog.ORDER``). Silero — только
-        владельцу при ``personal_voices``; не установленные — только владельцу. Выбирает — владелец.
-        ``cloud=False`` — тестировщик пространства: только локальные (ключ ElevenLabs — владельца)."""
-        personal = owner and self.cfg.personal_voices
-        st, key = self.pult.state(), cloud and "elevenlabs" in providers.key_info()
-        out = []
-        if cloud and (key or owner):
-            vid = st.get("el_voice") if key else None
-            out.append({"id": "elevenlabs", "name": (self.el_voice_name(vid) if vid else "") or "ElevenLabs",
-                        "kind": "облачный", "ok": key, "why": "" if key else "нужен ключ ElevenLabs", "install": ""})
-        out += catalog.cards(personal, owner)
-        cur = "elevenlabs" if key and st.get("tts_provider") == "elevenlabs" else self.voice(personal=personal)
-        # Голос без карточки (Piper: выбран раньше или запасной) — читает дальше; панель пишет, что это запасной.
-        fb = catalog.label(cur) if cur and cur in catalog.FALLBACK else ""
-        return {"cards": out, "current": cur, "can_choose": owner, "fallback": fb}
-
-    def choose_voice(self, vid: str):
-        self.pult.choose_voice(vid)                          # общее с ботом (/voice)
-
-    def voice_preview(self, vid: str, owner: bool) -> bytes:
-        return self.pult.voice_preview(vid, owner and self.cfg.personal_voices)[0]
-
     def set_key(self, provider: str, key: str) -> dict:
         key = key.strip()
         if provider in {p.get("key") for p in models.PROFILES} - {None}:
@@ -3413,32 +912,6 @@ class Panel:
             self._bot = self.pult.api("getMe")["username"]
         return self._bot
 
-    def admin_may(self, uid: int, by: str | None) -> dict:
-        """Человек из списка, которого может менять ``by``: владелец — любого, кроме владельца; админ — только
-        участников и наблюдателей (не других админов и не владельца)."""
-        p = next((x for x in self.people.list() if x["id"] == uid), None)
-        if not p or p["role"] == "owner":
-            raise ValueError("такого человека нет в списке")
-        if by != "owner" and p["role"] not in STAFF_ROLES:
-            raise ValueError("админа меняет только владелец")
-        return p
-
-    def set_role(self, uid: int, role: str, by: str | None = "owner"):
-        p = self.admin_may(uid, by)
-        if by != "owner" and role not in STAFF_ROLES:
-            raise ValueError("роль «админ» выдаёт только владелец")
-        if role == "admin" and (p.get("kind") == "guest" or p.get("tenant")):
-            raise ValueError("админ — только человек с Telegram и без демо-пространства")
-        self.people.add(uid, role, p.get("name", ""), p.get("username", ""))
-
-    def set_access(self, uid: int, days: int, by: str | None = "owner"):
-        """Продлить доступ человека: на ``days`` дней от сейчас (0 — бессрочно)."""
-        p = self.admin_may(uid, by)
-        if days not in invites.ACCESS:
-            raise ValueError("срок доступа: " + ", ".join(str(x) for x in invites.ACCESS) + " дней (0 — бессрочно)")
-        self.people.add(uid, p["role"], p.get("name", ""), p.get("username", ""),
-                        until=int(time.time() + days * 86400) if days else 0)
-
     def openrouter_done(self, code: str, state: str):
         """Возврат из OpenRouter после «Authorize»: код → ключ → secrets.json (как ключ, вставленный вручную)."""
         providers.save_key("openrouter", self.openrouter.finish(code, state))
@@ -3451,36 +924,6 @@ class Panel:
         """``base_url`` — адрес шлюза клиента (GigaChat, YandexGPT); ``None`` — не менять."""
         self.pult.set_state(model_profiles=models.set_models(self.pult.state(), profile, main, fast, base_url))
 
-    def set_providers(self, b: dict):
-        el = "elevenlabs" in providers.key_info()
-        upd = {}
-        for k in ("tts", "stt"):
-            if k in b:
-                if b[k] not in ("local", "elevenlabs") or (b[k] == "elevenlabs" and not el):
-                    raise ValueError("сначала сохраните ключ ElevenLabs")
-                upd[f"{k}_provider"] = b[k]
-        if b.get("el_voice"):
-            upd["el_voice"] = str(b["el_voice"])
-        if b.get("voice"):
-            if b["voice"] not in catalog.selectable(self.cfg.personal_voices):  # настройки голоса — владельцу
-                raise ValueError("этот голос не установлен: gas-pult voices install <имя>")
-            upd["voice"] = str(b["voice"])
-        self.pult.set_state(**upd)
-
-    def voice_fallback(self, what: str, e: Exception):
-        """ElevenLabs отказал — работаем локально и сообщаем: журнал службы и ``fallback`` в /api/providers.
-        Отказ сервиса (лимит, ключ, сеть) запоминаем на ``EL_PAUSE`` с: каждая следующая запись не ждёт ответа
-        ElevenLabs (до ``providers.TIMEOUT`` = 2 мин при зависшей сети), а сразу идёт локально."""
-        note = f"ElevenLabs недоступен ({what}): {e} — переключился на локальный голос"
-        print(note, file=sys.stderr, flush=True)
-        self.last_fallback = (time.time(), note)
-        if isinstance(e, providers.ProviderError):
-            self.el_pause_until = time.time() + EL_PAUSE
-
-    def el_ok(self) -> bool:
-        """ElevenLabs не отказывал последние ``EL_PAUSE`` с (см. ``voice_fallback``)."""
-        return time.time() >= getattr(self, "el_pause_until", 0.0)
-
     def fallback_info(self, uid=None) -> dict:
         """Запасные для панели: цепочка поставщиков, страны, кто годится, последние переключения, голос (#53)."""
         cs = None if uid is None else self.countries(uid)
@@ -3490,417 +933,6 @@ class Panel:
         cs = self.cfg.region if uid is None else self.countries(uid)
         self.pult.set_state(fallback_chain=fallback.validate(chain, cs))
         return self.fallback_info(uid)
-
-    def fallback_note(self) -> str:
-        t, note = getattr(self, "last_fallback", (0, ""))
-        return note if time.time() - t < 3600 else ""
-
-    def stt(self, data: bytes, ctype: str, cloud: bool = True) -> str:
-        """Голос из панели → текст. Пустая запись или пустой результат — понятная ошибка (400), не пустая строка."""
-        if not data:
-            raise ValueError(STT_EMPTY)
-        ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
-        if cloud and self.voice_settings()["stt"] == "elevenlabs" and self.el_ok():
-            try:
-                text = (providers.el_stt(providers.load_keys()["elevenlabs"], data, f"voice.{ext}") or "").strip()
-                if not text:
-                    raise ValueError(STT_EMPTY)
-                return text
-            except (providers.ProviderError, KeyError) as e:     # запасной путь — локальный whisper, молча не падаем
-                self.voice_fallback("распознавание", e)
-        path = self.cfg.data / "inbox" / f"web-{uuid.uuid4().hex}.{ext}"
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path.write_bytes(data)
-        try:                                             # служба T-one, нет её — whisper (voice.transcribe_any)
-            text = (voice.transcribe_any(path, self.cfg.whisper_model, STT_TIMEOUT, self.cfg.data) or "").strip()
-        except subprocess.TimeoutExpired:            # панель ждёт 90 с — сервер сдаётся чуть раньше и говорит почему
-            raise RuntimeError(f"распознавание не уложилось в {STT_TIMEOUT} с — длинная запись или сервер занят") \
-                from None
-        finally:
-            path.unlink(missing_ok=True)                 # голос не храним
-        if not text:
-            raise ValueError(STT_EMPTY)
-        return text
-
-    # ---------- фоновое распознавание: запись не теряется (GAS-34, владелец 18.11) ----------
-    # Запись сначала ложится на сервер (``voice-keep``, 0600), потом распознаётся в фоне без лимита 90 с; панель
-    # опрашивает ``/api/stt/job``. Готово — файл удаляется; не вышло — остаётся на ``STT_KEEP_DAYS`` дней для повтора.
-    def _keep_dir(self) -> Path:
-        d = self.cfg.data / "voice-keep"
-        d.mkdir(parents=True, exist_ok=True, mode=0o700)
-        return d
-
-    def stt_job(self, data: bytes | list[bytes], ctype: str, uid, cloud: bool = True) -> dict:
-        """``data`` — запись или её отрезки (запись по кускам после обрыва: у отрезка свой заголовок файла —
-        распознаём по отдельности, текст склеиваем)."""
-        segs = [x for x in (data if isinstance(data, list) else [data]) if x]
-        if not segs:
-            raise ValueError(STT_EMPTY)
-        ext = AUDIO_EXT.get(ctype.split(";")[0], "webm")
-        d, jid = self._keep_dir(), uuid.uuid4().hex[:16]
-        old = time.time() - STT_KEEP_DAYS * 86400
-        for f in d.iterdir():                             # старые нераспознанные — прочь
-            if f.stat().st_mtime < old:
-                f.unlink(missing_ok=True)
-        names = []
-        for i, x in enumerate(segs):
-            f = d / (f"{jid}.{ext}" if not i else f"{jid}-{i}.{ext}")
-            f.write_bytes(x)
-            f.chmod(0o600)
-            names.append(f.name)
-        self.stt_jobs[jid] = {"state": "work", "uid": uid, "at": time.time(), "file": names[0], "cloud": cloud,
-                              **({"files": names} if len(names) > 1 else {})}
-        self.events.event("stt_start", "stt:" + jid, bytes=sum(map(len, segs)))
-        threading.Thread(target=self._stt_run, args=(jid,), daemon=True, name=f"stt-{jid}").start()
-        return {"job": jid}
-
-    def _stt_run(self, jid: str):
-        job = self.stt_jobs[jid]
-        fs = [self._keep_dir() / n for n in job.get("files") or [job["file"]]]
-        f = fs[0]
-        before = self.fallback_note()
-        try:
-            parts = []
-            for x in fs:                                  # отрезки записи (после обрыва) — по отдельности
-                parts.append(self._stt_file(x, job["cloud"]))
-            text = " ".join(t for t in parts if t).strip()
-            if not text:
-                raise ValueError(STT_EMPTY)
-            now = self.fallback_note()
-            for x in fs:
-                x.unlink(missing_ok=True)                 # текст есть — голос не храним
-            fb = now if now and now != before else ""
-            self.events.event("stt_done", "stt:" + jid, secs=round(time.time() - job["at"], 1), len=len(text),
-                              fallback=bool(fb))
-            job.update(state="done", text=text, fallback=fb)      # последним: панель видит «готово» — файла уже нет
-        except Exception as e:                            # запись остаётся: «Повторить» возьмёт её с сервера
-            job.update(state="fail", error=str(e) or type(e).__name__, kept=f.exists())
-            self.events.event("stt_fail", "stt:" + jid, secs=round(time.time() - job["at"], 1), err=type(e).__name__)
-            print(f"распознавание {jid}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
-
-    def _stt_file(self, f: Path, cloud: bool) -> str:
-        text = ""
-        if cloud and self.voice_settings()["stt"] == "elevenlabs" and self.el_ok():
-            try:
-                ext = f.suffix.lstrip(".")
-                text = (providers.el_stt(providers.load_keys()["elevenlabs"], f.read_bytes(), f"voice.{ext}")
-                        or "").strip()
-            except (providers.ProviderError, KeyError) as e:
-                self.voice_fallback("распознавание", e)
-        return text or (voice.transcribe_any(f, self.cfg.whisper_model, STT_JOB_TIMEOUT, self.cfg.data) or "").strip()
-
-    def rec_finish(self, owner: str, rid: str, uid, cloud: bool = True) -> dict:
-        """«Стоп» записи по кускам: куски с сервера — в фоновое распознавание (как ``/api/stt?job=1``); сеанс — прочь.
-        Не хватает куска — ``ValueError`` (панель дошлёт и повторит или отправит запись целиком)."""
-        segs, ctype = self.recparts.assemble(owner, rid)
-        out = self.stt_job(segs, ctype, uid, cloud)
-        self.recparts.drop(owner, rid)
-        return {**out, "segs": len(segs)}
-
-    def stt_job_get(self, jid: str, uid) -> dict:
-        job = self.stt_jobs.get(str(jid))
-        if not job or job["uid"] != uid:
-            raise LookupError("распознавания нет — запишите ещё раз")
-        out = {"state": job["state"], "sec": round(time.time() - job["at"])}
-        out.update({k: job[k] for k in ("text", "error", "fallback", "kept") if k in job})
-        return out
-
-    def stt_retry(self, jid: str, uid) -> dict:
-        job = self.stt_jobs.get(str(jid))
-        if not job or job["uid"] != uid or job["state"] != "fail" or not (self._keep_dir() / job["file"]).exists():
-            raise LookupError("записи для повтора нет")
-        job.update(state="work", at=time.time())
-        for k in ("error", "kept"):
-            job.pop(k, None)
-        threading.Thread(target=self._stt_run, args=(jid,), daemon=True, name=f"stt-{jid}").start()
-        return {"job": jid}
-
-    def stt_stream(self, rate: int) -> asr.Stream:
-        """Поток в службу распознавания; её нет или занята — ``asr.Unavailable`` (панель уйдёт на ``/api/stt``).
-        Служба ушла после простоя — поднимаем её (до ``asr.START_WAIT`` с; звук панель копит, пока нет ``ready``)."""
-        asr.ensure_service(self.cfg.data)
-        return asr.Stream(rate, partials=True, path=asr.socket_path(self.cfg.data))
-
-    def message(self, w: dict, i: int | None) -> str:
-        home, sid = self.pult.home_of(w), w.get("sid") or ""
-        if i is None:
-            return harness.of(w).last_answer(w["path"], home, sid)
-        items, _ = harness.of(w).history(w["path"], limit=1, before=i + 1, home=home, sid=sid)
-        if not items or items[0]["i"] != i:
-            raise ValueError("сообщение не найдено — обновите переписку")
-        return items[0]["text"]
-
-    def tts(self, w: dict, full: bool, msg: int | None = None, personal: bool = False, cloud: bool = True,
-            head: bool = False) -> bytes:
-        """``head`` — только начало ответа (первые предложения): панель играет его сразу, пока готовится весь
-        ответ, — первый звук через доли секунды, а не после синтеза всего текста (#190)."""
-        text = transcripts.clean(self.message(w, msg))
-        text = (text if full else brief(text))[:3500]   # «кратко» (full=0) — для старых панелей; новая шлёт full=1
-        if head:
-            text = head_of(text)
-        if not text:
-            raise ValueError("нечего озвучивать")
-        return self.tts_text(text, personal, cloud)
-
-    ABOUT_MAX = 900                                     # знаков ≈ 60 с речи: «Что здесь умеет» — коротко
-
-    def about_text(self, screen: str) -> str:
-        """«Что здесь умеет» (владелец 19.11: «у каждой сессии возможность посмотреть тур или сразу прослушать»): текст
-        экрана из карты помощника (``help/screens.toml``) — название, зачем, шаги. Только из карты, не от клиента."""
-        s = helper.the_map()["screens"].get(str(screen))
-        if not s:
-            raise LookupError("для этого экрана описания нет")
-        steps = " ".join(f"{i}. {x}" for i, x in enumerate(s.get("steps") or [], 1))
-        return f"{s['title']}. {s.get('purpose', '')} {steps}".strip()[:self.ABOUT_MAX]
-
-    def starters_for(self, role: str | None, space: bool, slug: str = "", occ: str = "") -> dict:
-        """Бейджики первого разговора: что подключено — почта (ящики коннектора), календарь (файлы календарей),
-        документы. ``occ`` — ответ на «Чем вы занимаетесь?» (владелец 19.11): тогда 3–4 сценария под занятие."""
-        from gas_pult.connectors import calendar_mcp, mail_mcp
-        if space:                                      # пространство и фокус: только свои подключения, не владельца
-            have = {"docs"} if slug and (tenants.load(slug) or {}).get("docs") else set()
-        else:
-            have = {"mail"} if mail_mcp.boxes() else set()
-            if calendar_mcp.calendars():
-                have.add("calendar")
-            for x in self.mcp._cached(None)[1]:            # кэш `claude mcp list`: без ожидания
-                if "docs_mcp" in str(x.get("target", "")):
-                    have.add("docs")
-                if "mcp.vkusvill.ru" in str(x.get("target", "")):   # ВкусВилл (#327)
-                    have.add("vkusvill")
-        own = starters.for_occupation(occ, have, role, space) if occ else []
-        return {"starters": own or starters.listing(have, role, space), "occ": occ if own else "",
-                "occupations": starters.occupations() if role not in (None, "viewer") else []}
-
-    def tts_text(self, text: str, personal: bool = False, cloud: bool = True) -> bytes:
-        """Озвучить готовый текст: ElevenLabs (если выбран и отвечает) или локальный голос."""
-        vs = self.voice_settings()
-        el = cloud and vs["tts"] == "elevenlabs" and self.el_ok()
-        text = speech.speakable(text, latin_ok=el)      # числа словами; латиница — ElevenLabs читает сам
-        if el:
-            voice_id = vs["el_voice"] or next(iter(self.el_voices()), {}).get("id")
-            if not voice_id:
-                raise ValueError("в аккаунте ElevenLabs нет голосов")
-            try:
-                return providers.el_tts(providers.load_keys()["elevenlabs"], voice_id, text)
-            except (providers.ProviderError, KeyError) as e:     # запасной путь — локальный голос
-                self.voice_fallback("озвучка", e)
-        v = self.voice(personal=personal)                # Silero — только владельцу лично, остальным — Piper
-        if not v:
-            raise ValueError("голоса не установлены: gas-pult voices install irina")
-        out = self.cfg.data / f"web-{uuid.uuid4().hex}.mp3"
-        try:
-            voice.synth(v, text, out)
-            return out.read_bytes()
-        finally:
-            out.unlink(missing_ok=True)
-
-    def tts_warm(self, personal: bool = False) -> dict:
-        """Человек открыл сессию — поднять службу озвучки и загрузить голос заранее (в фоне, ответ сразу)."""
-        vs = self.voice_settings()
-        if vs["tts"] == "elevenlabs" and self.el_ok():
-            return {"ok": True, "voice": "elevenlabs"}
-        v = self.voice(personal=personal)
-        if v:
-            voice.warm(v, self.cfg.data)
-        return {"ok": bool(v), "voice": v or ""}
-
-
-    # ---------- ▶️ команды из последнего ответа ----------
-    def commands(self, w: dict) -> list[dict]:
-        out = []
-        answer = harness.of(w).last_answer(w["path"], self.pult.home_of(w), w.get("sid") or "")
-        for i, cmd in enumerate(extract(answer)):
-            kind = self.pult.cmds.kind(cmd)
-            out.append({"i": i, "cmd": cmd, "kind": kind, "danger": bool(DANGER.search(cmd)),
-                        "sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})
-        return out
-
-    def run(self, w: dict, i: int, sha: str, confirmed: bool) -> dict:
-        if in_space(w):
-            raise PermissionError(SPACE_RUN)
-        c = next((x for x in self.commands(w) if x["i"] == i and x["sha"] == sha), None)
-        if not c:
-            raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
-        if c["kind"] != "local":
-            raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
-                             "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(c["kind"],
-                                                                                      "она для другой машины"))
-        if c["danger"] and not confirmed:
-            return {"confirm": True}
-        code, secs, out = execute(c["cmd"], w["path"])
-        tri, to = self.triage(w["path"], w["id"], c["cmd"], code, out)
-        self.journal.collect([w], self.pult.cmds.kind)               # та же отметка — во вкладке «Команды»
-        self.journal.mark_cmd(w["path"], c["cmd"], self.done(code, secs, out, "panel", tri, to), out)
-        return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
-                **({"full": out[-FULL:]} if len(out) > TAIL else {}), "triage": tri, "triage_to": to}
-
-    # ---------- задачи владельца (tasks.py, #203) ----------
-    def task_chat(self, t: dict) -> dict | None:
-        """Окно задачи: сначала по разговору (окно могло смениться при перезапуске), потом по номеру окна."""
-        wins = [w for w in self.tmux.windows() if harness.is_agent(w) or w.get("stopped") or w.get("sleep")]
-        sid = transcripts.valid_sid(t.get("sid"))
-        return next((w for w in wins if sid and w.get("sid") == sid), None) or \
-            next((w for w in wins if t.get("chat") and w["id"] == t["chat"]), None)
-
-    # ---------- брифинг первого лица (brief.py, GAS-18) ----------
-    def brief_get(self, uid, fresh: bool = False) -> dict:
-        """Выбор источников и расписание человека; сам брифинг — только после выбора (первый вход — экран выбора).
-        Сборка — несколько секунд (почта): 5 минут держим готовый, ``fresh`` — собрать заново."""
-        rec = self.pult.brief_prefs.get(uid)
-        avail = morning_brief.available(self.cfg)
-        sel = morning_brief.chosen(rec, avail)
-        out = {"sel": sel, "schedule": morning_brief.schedule(rec, self.cfg.brief_at), "avail": avail,
-               "tour": self.people.tour(uid).get("brief")}
-        if sel["chosen"]:
-            cache = self.__dict__.setdefault("brief_cache", {})
-            got = cache.get(uid)
-            if fresh or not got:
-                got = cache[uid] = (time.time(), self.pult.brief_now(uid=uid))
-            elif time.time() - got[0] > 300:     # «Сегодня» сразу (владелец 21.11): отдаём готовый, свежий — в фоне,
-                self.brief_refresh(uid)          # панель заберёт его следующим запросом
-                out["stale"] = True
-            out["brief"], out["built"] = got[1], int(got[0])
-        return out
-
-    def brief_refresh(self, uid):
-        """Собрать брифинг в фоне (один сбор на человека за раз)."""
-        busy = self.__dict__.setdefault("brief_busy", set())
-        if uid in busy:
-            return
-
-        def run():
-            try:
-                self.brief_cache[uid] = (time.time(), self.pult.brief_now(uid=uid))
-            except Exception as e:                        # сбой сбора — остаётся прежний, панель не падает
-                print("brief:", type(e).__name__, e, flush=True)
-            finally:
-                busy.discard(uid)
-        busy.add(uid)
-        threading.Thread(target=run, daemon=True).start()
-
-    def brief_set(self, uid, b: dict) -> dict:
-        prefs = self.pult.brief_prefs
-        prefs.set(uid, list(b.get("sources") or []), b.get("boxes"), b.get("calendars"))
-        if b.get("time"):
-            prefs.set_schedule(uid, str(b["time"]), str(b.get("every") or "workdays"), b.get("days"),
-                               str(b.get("tz") or ""))
-        self.__dict__.get("brief_cache", {}).pop(uid, None)
-        rec = prefs.get(uid)
-        return {"sel": morning_brief.chosen(rec, morning_brief.available(self.cfg)),
-                "schedule": morning_brief.schedule(rec, self.cfg.brief_at)}
-
-    def brief_act(self, uid, b: dict) -> dict:
-        out = morning_brief.act(self.pult, uid, str(b.get("key") or ""), str(b.get("act") or ""),
-                                b.get("confirm") is True)
-        if "ask" not in out:
-            self.__dict__.get("brief_cache", {}).pop(uid, None)
-        return out
-
-    def task_list(self) -> list[dict]:
-        """Задачи с живым окном (``chat_now`` — куда «провалиться», ``chat_name``); окна нет — без него."""
-        out = []
-        for t in self.tasks.list():
-            w = self.task_chat(t) if (t.get("chat") or t.get("sid")) else None
-            out.append({**t, "chat_now": (w or {}).get("id", ""), "chat_name": (w or {}).get("name", "")})
-        return out
-
-    def task_run(self, tid: str, confirmed: bool) -> dict:
-        """«Выполнить» команду задачи: как ▶ у ответа Claude — те же правила (sudo, ввод пароля, другая машина —
-        вручную; опасное — второе подтверждение), в папке чата задачи; итог — в задачу (код и время, без вывода)."""
-        t = self.tasks.get(tid)
-        if not t:
-            raise LookupError("задачи уже нет")
-        if t.get("kind") != "command" or not t.get("cmd"):
-            raise ValueError("у этой задачи нет команды")
-        w = self.task_chat(t)
-        if w and in_space(w):
-            raise PermissionError(SPACE_RUN)
-        kind = self.pult.cmds.kind(t["cmd"])
-        if kind != "local":
-            raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
-                             "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(kind,
-                                                                                      "она для другой машины"))
-        if DANGER.search(t["cmd"]) and not confirmed:
-            return {"confirm": True}
-        code, secs, out = execute(t["cmd"], (w or {}).get("path") or self.pult.home)
-        self.tasks.update(tid, {"result": {"code": code, "at": time.time()}})
-        return {"code": code, "seconds": round(secs), "out": out[-TAIL:], "cut": len(out) > TAIL,
-                **({"full": out[-FULL:]} if len(out) > TAIL else {})}
-
-    # ---------- команде нужен ввод — окно терминала панели (termwin.py, задача 47) ----------
-    def term_open(self, cmd: str, kind: str, danger: bool, path: str, confirmed: bool) -> dict:
-        """Команда — в новом окне ``gp-term`` (пароль вводят там). Для другой машины — нет."""
-        if kind == "foreign":
-            raise ValueError("команда для другой машины — скопируйте и выполните там")
-        if danger and not confirmed:
-            return {"confirm": True}
-        return {"id": termwin.open_window(self.tmux, cmd, path), "name": termwin.WINDOW}
-
-    def term_run(self, w: dict, i: int, sha: str, confirmed: bool) -> dict:
-        if in_space(w):
-            raise PermissionError(SPACE_RUN)
-        c = next((x for x in self.commands(w) if x["i"] == i and x["sha"] == sha), None)
-        if not c:
-            raise ValueError("ответ Claude изменился — обновите вкладку «Ответ»")
-        return self.term_open(c["cmd"], c["kind"], c["danger"], w["path"], confirmed)
-
-    def command_term(self, cid: str, confirmed: bool) -> dict:
-        c = self.journal.get(cid)
-        if not c:
-            raise LookupError("команды уже нет в списке")
-        if in_space(c):
-            raise PermissionError(SPACE_RUN)
-        return self.term_open(c["cmd"], c["kind"], c["danger"], c["path"], confirmed)
-
-    def triage(self, path: str, wid: str, cmd: str, code, out: str) -> tuple[str, str]:
-        """Упала — в сессию на разбор (одну ошибку — один раз); вставка — под замком окна, как обычное сообщение."""
-        try:
-            return self.pult.triage(path, wid, cmd, code, out, paste=lambda w, text: self.send(w, text))
-        except Exception as e:                                      # разбор — не повод потерять итог выполнения
-            print(f"gas-pult webapp: не отправил ошибку на разбор: {e}", flush=True)
-            return "error", ""
-
-    @staticmethod
-    def done(code, secs: float, out: str, by: str, tri: str = "", to: str = "") -> dict:
-        return {"code": code, "seconds": round(secs), "at": utc_now(), "by": by, "out": out[-TAIL:],
-                "cut": len(out) > TAIL, "triage": tri, "triage_to": to}
-
-    # ---------- вкладка «Команды»: все команды из ответов всех сессий (время — UTC, как в транскрипте) ----------
-    def command_log(self, can_run: bool) -> dict:
-        wins = [w for w in self.tmux.windows() if harness.is_agent(w)]
-        self.journal.collect(wins, self.pult.cmds.kind)
-        items = self.journal.items()
-        if not can_run:
-            items = [{k: v for k, v in c.items() if k != "path"} for c in items]   # папки сервера — только владельцу
-        return {"items": items, "host": self.cfg.host}
-
-    def command_run(self, cid: str, confirmed: bool) -> dict:
-        c = self.journal.get(cid)
-        if not c:
-            raise LookupError("команды уже нет в списке")
-        if in_space(c):
-            raise PermissionError(SPACE_RUN)
-        if c["kind"] != "local":
-            raise ValueError("эту команду выполняйте вручную: " + {"sudo": "sudo вне разрешённого списка",
-                             "tty": "ей нужен ввод (пароль) — откройте её в терминале"}.get(c["kind"],
-                                                                                      "она для другой машины"))
-        if c["danger"] and not confirmed:
-            return {"confirm": True}
-        self.journal.update(cid, running=utc_now())                  # другим устройствам — «выполняется»
-        try:
-            code, secs, out = execute(c["cmd"], c["path"])
-        except Exception:
-            self.journal.update(cid, running=None)
-            raise
-        tri, to = self.triage(c["path"], c.get("wid", ""), c["cmd"], code, out)
-        item = self.journal.update(cid, running=None, done=self.done(code, secs, out, "panel", tri, to))
-        self.journal.save_output(cid, out)
-        return {"item": item}
-
-    def command_mark(self, cid: str, done: bool) -> dict:
-        """«Отметить: сделано вручную» — отдельная пометка; итог настоящего запуска (done) не трогаем."""
-        return {"item": self.journal.update(cid, manual={"at": utc_now()} if done else None)}
 
 
 def server_tz() -> str:
@@ -3920,10 +952,6 @@ def server_tz() -> str:
         return ""
 
 
-def utc_now() -> str:
-    return time.strftime("%Y-%m-%d %H:%M", time.gmtime())
-
-
 # Сервис-воркер: только клик по уведомлению — открыть панель на нужной сессии. Ни кэша, ни фоновых запросов.
 SW_JS = """self.addEventListener("push", (e) => {   // сигнал без содержимого — текст забираем с сервера по куке
   e.waitUntil(self.registration.pushManager.getSubscription().then(async (sub) => {
@@ -3931,7 +959,7 @@ SW_JS = """self.addEventListener("push", (e) => {   // сигнал без со�
     const dev = [...new Uint8Array(h)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
     const r = await fetch("/api/push/last?dev=" + dev, { credentials: "include" });
     const items = r.ok ? (await r.json()).items || [] : [];
-    if (!items.length) return self.registration.showNotification("Гаврила", { body: "Есть новое — откройте" });
+    if (!items.length) return self.registration.showNotification("Ладэя", { body: "Есть новое — откройте" });
     for (const x of items) {
       await self.registration.showNotification(x.title, { body: x.body, tag: x.w || x.id, data: { id: x.w } });
     }
@@ -3996,7 +1024,9 @@ def handler(panel: Panel):
     # превью ссылки и экраны запуска (brand.head_tags) — вставляются в <head> при старте; полный адрес — из запроса
     tags = brand.head_tags().replace(brand.DEFAULT, brand.NAME_RU).encode()
     page = page.replace(b'<link rel="manifest"', tags + b'\n<link rel="manifest"', 1)
+    page = brand.paint_html(page.decode("utf-8")).encode("utf-8")   # «э» в названии — красная везде (владелец 25.11)
     manifest = json.dumps(brand.manifest(), ensure_ascii=False).encode()
+    manifest_focus = json.dumps(brand.manifest(focus=True), ensure_ascii=False).encode()
     # части интерфейса по требованию (#191): web/js/<имя>.js — нативные ES-модули без сборки; читаются и сжимаются
     # один раз при старте, отдаются с ETag (после выкладки браузер получит новую версию, иначе — 304 без тела)
     parts = {}
@@ -4010,6 +1040,9 @@ def handler(panel: Panel):
     origin_pages: dict[str, tuple[bytes, bytes]] = {}   # адрес панели → страница с полным адресом превью (og:image)
     page_plain = page.replace(b"__ORIGIN__", b"")        # неизвестный адрес — ссылки от корня
     page_gz = gzip.compress(page_plain, 9)               # страница сжимается один раз при старте (887 → ~200 КБ)
+    bs_page = brand.botsmith_page(page_plain)             # демо и вход для гостей — Botsmith (24.11)
+    bs_gz = gzip.compress(bs_page, 9)
+    bs_parts: dict[str, tuple[bytes, bytes, str]] = {}   # части в бренде Botsmith — по первому запросу
 
     def page_for(host: str) -> tuple[bytes, bytes]:
         """Страница для адреса из запроса: ``og:image`` — полным адресом (так просят Telegram и iMessage). Адрес —
@@ -4023,7 +1056,28 @@ def handler(panel: Panel):
     whatsnew = json.loads(resources.files("gas_pult").joinpath("web/whatsnew.json").read_text(encoding="utf-8"))
     offer_page = resources.files("gas_pult").joinpath("web/offer.html").read_bytes()
     q_page = resources.files("gas_pult").joinpath("web/q.html").read_bytes()     # анкета клиента (0010)
-    terms_page = resources.files("gas_pult").joinpath("web/terms.html").read_bytes()   # /terms — без входа (17.11)
+    # /terms — без входа (17.11); версия и дата — из terms.VERSION (одно место, аудит 24.11)
+    terms_page = terms.page(resources.files("gas_pult").joinpath("web/terms.html").read_bytes())
+    # /privacy — политика ПДн (24.11): оператор — из operator.toml вне git, поэтому страница собирается на запрос
+    privacy_raw = resources.files("gas_pult").joinpath("web/privacy.html").read_bytes()
+
+    def doc_body(doc: str) -> tuple[str, bytes]:
+        """Документ, с которым соглашается человек: (версия, отдаваемые байты) — хеш в журнал считается от них."""
+        return (privacy.VERSION, privacy.page(privacy_raw)) if doc == "privacy" else (terms.VERSION, terms_page)
+
+    def docs_need(who: str) -> dict:
+        """Какие документы ``who`` ещё не принял на текущие версии: {документ: версия}."""
+        path = consents.path_of(panel.cfg.data)
+        return {d: v for d in consents.DOCS if not consents.has_doc(path, who, d, (v := doc_body(d)[0]))}
+
+    def docs_accept(who: str) -> list[dict]:
+        """Записать согласие ``who`` с политикой и условиями: документ, версия, SHA-256 отданного текста, время."""
+        path = consents.path_of(panel.cfg.data)
+        out = []
+        for d in consents.DOCS:
+            v, body = doc_body(d)
+            out.append(consents.record_doc(path, who, d, v, terms.sha256(body)))
+        return out
     help_map = resources.files("gas_pult").joinpath("web/help-map.json").read_bytes()   # карта для демо панели
     icons = {u: (resources.files("gas_pult").joinpath(brand.FILES_DIR + f).read_bytes(), t)   # знак K3 (20.11)
              for u, (f, t) in brand.ICONS.items()}
@@ -4043,6 +1097,8 @@ def handler(panel: Panel):
 
         renew = ""                              # Set-Cookie продлённой или новой сессии — уйдёт с ответом
         sl: tuple | None = None                 # (запись ссылки на пространство | None, почему погасла) — на запрос
+        apitok: dict | None = None              # запрос /api/v1 по токену (apitokens.py): {"uid", "role"}, проверен
+        sent_code = 0                           # код последнего ответа — для журнала /api/v1
 
         def log_message(self, fmt, *args):     # без логов запросов: в них initData
             pass
@@ -4050,7 +1106,74 @@ def handler(panel: Panel):
         def parse_request(self) -> bool:
             self.renew = ""                     # соединение keep-alive: у каждого запроса своё
             self.sl = None                      # ссылка на пространство — проверяется заново на каждый запрос
+            self.apitok = None                  # токен /api/v1 — тоже на каждый запрос
+            self.sent_code = 0                  # ответа ещё нет: упадёт обработчик — можно ответить 500 (crash)
             return super().parse_request()
+
+        def handle_one_request(self):
+            try:
+                super().handle_one_request()
+            except (ConnectionError, TimeoutError):      # человек ушёл, не дождавшись ответа — не сбой
+                raise
+            except Exception as e:                       # упало мимо dispatch: 500 JSON, а не обрыв (502 у Caddy)
+                self.crash(e)
+                self.close_connection = True
+
+        def crash(self, e: Exception):
+            """Необработанное исключение: трассировка — в журнал службы, событие ``server_error`` (путь без query,
+            класс, id) — сводкой владельцу (alerts.py), человеку — 500 JSON с тем же id."""
+            eid = secrets.token_hex(4)
+            path = urllib.parse.urlparse(getattr(self, "path", "") or "").path
+            print(f"server_error {eid} {path}:", file=sys.stderr, flush=True)
+            traceback.print_exception(e, file=sys.stderr)
+            panel.events.event("server_error", path=path[:120], exc=type(e).__name__, id=eid)
+            if not self.sent_code:                       # заголовки ещё не ушли — ответ ещё можно дать
+                try:
+                    self.json({"error": "внутренняя ошибка", "code": "server_error", "id": eid}, 500)
+                except OSError:
+                    pass
+
+        def send_response(self, code, message=None):
+            self.sent_code = code               # журнал /api/v1 пишет код ответа
+            super().send_response(code, message)
+
+        def send_video(self, f: Path):
+            """MP4 с поддержкой Range (206): без него Safari на iPhone видео не играет. Нет файла — 404."""
+            try:
+                size = f.stat().st_size
+            except OSError:
+                return self.reply(404, json.dumps({"error": "ролика нет"}, ensure_ascii=False).encode())
+            start, end = 0, size - 1
+            m = re.match(r"bytes=(\d*)-(\d*)$", self.headers.get("Range", ""))
+            if m and (m.group(1) or m.group(2)):
+                if m.group(1):
+                    start, end = int(m.group(1)), min(int(m.group(2) or size - 1), size - 1)
+                else:
+                    start = max(0, size - int(m.group(2)))
+                if start > end or start >= size:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.end_headers()
+                    return
+            self.send_response(206 if m and (m.group(1) or m.group(2)) else 200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(end - start + 1))
+            if m and (m.group(1) or m.group(2)):
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            with open(f, "rb") as fh:
+                fh.seek(start)
+                left = end - start + 1
+                while left > 0:
+                    chunk = fh.read(min(65536, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
 
         def reply(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", cookie: str = "",
                   headers: dict | None = None, packed: bytes | None = None, etag: str = ""):
@@ -4065,6 +1188,8 @@ def handler(panel: Panel):
             if gz:                                       # #191: страница 887 КБ и опрос раз в 3 с — сжатием в 4–7 раз
                 body = packed or gzip.compress(body, GZIP_LEVEL)
             self.send_response(code)
+            if code < 500:                               # отметка жизни панели — не чаще раза в минуту
+                alerts.beat(panel.cfg.data, "web")
             if cookie or self.renew:
                 self.send_header("Set-Cookie", cookie or self.renew)
             self.renew = ""
@@ -4097,6 +1222,8 @@ def handler(panel: Panel):
         def who(self) -> tuple[str, str | None, int | None]:
             """(откуда: «telegram» / «browser» / "", роль, Telegram ID). Роль — на каждый запрос, из people.json.
             Запрос из фокуса — права того, кто выпустил ссылку, но только в пределах ``FOCUS_*`` и одного окна."""
+            if self.apitok is not None:                   # /api/v1: права выпустившего токен, проверены v1_call
+                return "apitoken", self.apitok["role"], self.apitok["uid"]
             if self.focused is not None:
                 return "focus", "owner", self.focused.get("by")
             if self.headers.get(SLINK_HEADER):            # страница ссылки на пространство — только её cookie
@@ -4180,6 +1307,7 @@ def handler(panel: Panel):
                 return
             seen[uid] = now
             self.renew = webauth.set_cookie(panel.auth.issue(uid, self.client()[1]))
+            self.product("login", uid, "miniapp")
 
         def person(self) -> int | None:
             """Telegram ID вошедшего, если это не владелец: его окна и интеграции — в его папке Claude Code."""
@@ -4272,6 +1400,48 @@ def handler(panel: Panel):
                 raise LookupError("окна уже нет")
             return slug, w
 
+        def product(self, ev: str, uid=None, via: str = "", sp: str | None = None):
+            """Событие продукта (funnel.py): login / send / first_reply / yes / no. Человек — вошедший
+            (вход кодом владельцу — первый владелец), пространство — его. Ошибка аналитики запрос не ломает."""
+            try:
+                if uid is None and self.focused is not None:   # фокус-ссылка: человек не известен (права — автора)
+                    return
+                uid = self.terms_uid() if uid is None else uid
+                if uid == webauth.LEGACY:
+                    uid = (panel.cfg.owners or [None])[0]
+                if uid is None:
+                    return
+                sp = (panel.people.tenant(uid) or "") if sp is None else sp
+                if ev == "send":
+                    panel.funnel.send(uid, sp, via)
+                elif ev == "first_reply":
+                    panel.funnel.replied(uid, sp, via)
+                else:
+                    panel.funnel.event(ev, uid, sp, via)
+            except Exception as e:  # аналитика не ломает работу панели
+                print("funnel:", e, flush=True)
+
+        def product_seen(self, items: list[dict]):
+            """Переписка показана человеку: первый ответ агента после его сообщения — ``first_reply`` (один раз)."""
+            try:
+                uid = None if self.focused is not None else self.terms_uid()
+                if uid is not None and panel.funnel.sent_at(uid) is not None:
+                    panel.funnel.answered(uid, items, panel.people.tenant(uid) or "")
+            except Exception as e:
+                print("funnel:", e, flush=True)
+
+        def product_pick(self, w: dict, n: str = "", key: str = ""):
+            """Ответ на вопрос агента в чате (пункт меню или клавиша): «Да» / «Нет» — событием продукта. Экран читаем
+            до нажатия, ошибка — без события. Стрелки и «выделить» — не ответ: экран не читаем."""
+            if not n and key not in ("Enter", "Escape"):
+                return
+            try:
+                yn = funnel.choice(humanize.parse(panel.tmux.screen(w["id"], 60)), n=n, key=key)
+            except Exception:
+                return
+            if yn:
+                self.product(yn, via="chat")
+
         def terms_uid(self) -> int | None:
             """Чьё согласие с условиями проверять. Вход кодом владельцу (LEGACY) — первого владельца."""
             uid = self.who()[2]
@@ -4312,7 +1482,7 @@ def handler(panel: Panel):
                     self.json({"error": str(e), "code": "budget"}, 403)
                     return False
             free = ("/api/logout", "/api/terms/accept", "/api/country", "/api/prefs", NOTIFY_DONE, TOUR, PERSONA, USES,
-                    FEEDBACK, "/api/clientlog",
+                    FEEDBACK, "/api/clientlog", BUG,
                     *HELP_OPEN, *EMAIL_OWN, *PASSKEY_OWN, *OIDC_OWN, *INVITE_OWN, *PUSH_OWN)   # и наблюдателю
             need = (("admin" if path in ADMIN_OK else "owner") if path in OWNER_ONLY else
                     "member" if (method == "POST" and path not in free) or path in MEMBER_ONLY else "viewer")
@@ -4411,6 +1581,8 @@ def handler(panel: Panel):
 
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
+            if url.path.startswith(V1_PREFIX):           # 1С и CRM: токен, белый список access.V1_* (apitokens.py)
+                return self.v1_call("GET")
             if url.path == "/api/gate/desktop":         # Caddy forward_auth рабочего стола (#206): только владелец
                 return self.desktop_gate()
             if url.path == "/desktop-enter":             # одноразовая ссылка вкладки: пропуск и переход на noVNC
@@ -4420,18 +1592,38 @@ def handler(panel: Panel):
                     return self.oidc_page(403, "Ссылка устарела", "Откройте рабочий стол заново кнопкой в пульте.")
                 return self.go(DESKTOP_URL, (desk_cookie(desk_pass(got[0]), tab=True),))
             if url.path in ("/", "/index.html"):
+                qs = urllib.parse.parse_qs(url.query, keep_blank_values=True)
+                if "demo" in qs or qs.get("brand") == ["botsmith"]:     # демо из QR и вход гостя — Botsmith
+                    return self.reply(200, bs_page, "text/html; charset=utf-8", packed=bs_gz, etag=f'"{build}-bs"')
                 body, packed = page_for(self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "")
                 return self.reply(200, body, "text/html; charset=utf-8", packed=packed, etag=f'"{build}"')
+            if url.path == "/api/demo/info":            # демо без входа: есть ли ролик «Смотреть, 1 мин» (24.11)
+                has = demo_video(panel.cfg.data).is_file()
+                return self.reply(200, json.dumps({"video": "/media/demo.mp4" if has else None}).encode(),
+                                  headers={"Cache-Control": "no-cache"})
+            if url.path == "/media/demo.mp4":           # ролик для демо и QR в питче — файл вне git, с перемоткой
+                return self.send_video(demo_video(panel.cfg.data))
             if url.path == "/terms":                    # соглашение простым языком, RU и EN — без входа (17.11)
                 return self.reply(200, terms_page, "text/html; charset=utf-8")
+            if url.path == "/privacy":                  # политика ПДн, RU и EN — без входа (24.11, черновик)
+                if urllib.parse.parse_qs(url.query).get("lang") == ["en"]:
+                    return self.go("/privacy#en")
+                return self.reply(200, privacy.page(privacy_raw), "text/html; charset=utf-8",
+                                  headers={"Cache-Control": "no-cache"})
             if (m := PART_PATH.fullmatch(url.path)) and m.group(1) in parts:   # часть интерфейса (#191)
                 body, gz, etag = parts[m.group(1)]
+                if "brand=botsmith" in url.query:       # часть для страницы Botsmith (демо, вход гостя)
+                    if m.group(1) not in bs_parts:
+                        b = brand.botsmith_text(body.decode("utf-8")).encode("utf-8")
+                        bs_parts[m.group(1)] = (b, gzip.compress(b, 9), etag[:-1] + '-bs"')
+                    body, gz, etag = bs_parts[m.group(1)]
                 return self.reply(200, body, "text/javascript; charset=utf-8", packed=gz, etag=etag)
             if url.path in icons:                        # значок вкладки и экрана «Домой» — без входа, кэш на сутки
                 body, ctype = icons[url.path]
                 return self.reply(200, body, ctype, headers={"Cache-Control": "public, max-age=86400"})
             if url.path == "/manifest.webmanifest":     # экран «Домой» и пуш на iPhone (brand.py) — без входа
-                return self.reply(200, manifest, "application/manifest+json; charset=utf-8")
+                body = manifest_focus if url.query == "focus" else manifest     # фокус: значок открывает фокус
+                return self.reply(200, body, "application/manifest+json; charset=utf-8")
             if url.path == "/sw.js":                    # служебный файл уведомлений браузера (должен лежать в корне)
                 sw = SW_JS.replace(brand.DEFAULT, brand.NAME_RU).encode()
                 return self.reply(200, sw, "text/javascript; charset=utf-8")
@@ -4465,7 +1657,8 @@ def handler(panel: Panel):
             if url.path == "/api/login/tg":              # браузер ждёт подтверждения из Telegram (по своему rid)
                 return self.dispatch(lambda: self.tg_poll(q))
             if url.path == "/api/login/methods":         # экран входа: какие способы включены на этом пульте
-                return self.json(panel.login_methods())
+                host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").split(",")[0].strip()
+                return self.json(panel.login_methods(host))
             if m := OIDC_PATH.match(url.path):           # вход через Google / Яндекс ID: переходы браузера
                 return self.oidc_step(m.group(1), m.group(2), q)
             if self.headers.get(focus.HEADER):           # страница в режиме фокуса — только cookie фокуса
@@ -4476,291 +1669,13 @@ def handler(panel: Panel):
                 self.dispatch(lambda: self.get(url.path, q))
 
         def get(self, path: str, q: dict):
-            if path == "/api/sessions":
-                pool = self.pool()
-                if self.space():                          # тестировщик: без имени сервера и событий владельца
-                    sp = panel.space_info(self.terms_uid()) or {}
-                    return {"sessions": panel.sessions(pool, self.pinner()), "host": sp.get("title", ""),
-                            "build": build,
-                            "now": time.time(), "cost": panel.cost_summary(pool), "fallback": [], "space": sp}
-                with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
-                    ss = panel.sessions(pool, self.pinner())  # владелец: и окна пространств (группа «Пространства»)
-                return {"sessions": ss, "host": panel.cfg.host, "build": build,
-                        "now": time.time(),                                   # часы сервера: «N назад» без сдвига
-                        "cost": panel.cost_summary(pool),
-                        # лимиты подписки (5 часов, неделя) и время сброса — учётка владельца, видит только он
-                        "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
-                        "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
-                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
-                                     for x in fallback.recent(panel.pult.state())]}
-            if path == "/api/projects" and (slug := self.space()):   # тестировщик: проекты своего пространства
-                sp, ss = panel.space_info(self.terms_uid()) or {}, panel.sessions(self.pool(), self.pinner())
-                return {"projects": panel.space_projects_list(slug, ss, q.get("q", "")) if q.get("archived") != "1"
-                        else [], "order": projects.order_of(panel.project_data(), self.pinner()), "sessions": ss,
-                        "now": time.time(), "host": sp.get("title", ""), "build": build, "limits": None,
-                        "tasks": None, "new_root": "projects", "cost": panel.cost_summary(self.pool()), "fallback": [],
-                        "space": sp}
-            if path == "/api/projects":                  # «Проекты» (docs/PROJECTS.md): список для главной
-                pool = self.pool()
-                with panel.tmux.all_spaces() if self.who()[1] in ("owner", "admin") else contextlib.nullcontext():
-                    ss = panel.sessions(pool, self.pinner())
-                # всё, что отдаёт /api/sessions, — чтобы главной «Проекты» хватало одного запроса раз в 3 с
-                return {"projects": panel.projects_list(ss, q.get("q", ""), q.get("archived") == "1", self.pinner()),
-                        "order": projects.order_of(panel.project_data(), self.pinner()),   # свой порядок (20.11)
-                        "sessions": ss, "now": time.time(), "host": panel.cfg.host, "build": build,
-                        "limits": ctxsnap.limits() if self.who()[1] == "owner" else None,
-                        "tasks": panel.tasks.open_count() if self.who()[1] == "owner" else None,   # #203
-                        "new_root": projects.tilde(str(panel.pult.module_root()), panel.pult.home),   # «Новый проект»
-                        # проекты пространств — владельцу и админу, в группе «Пространства» (GAS-38, добавлено)
-                        "space_projects": panel.owner_space_projects(ss) if self.who()[1] in ("owner", "admin")
-                        else [],
-                        "cost": panel.cost_summary(pool),
-                        "fallback": [{k: x.get(k) for k in ("ts", "w", "text")}
-                                     for x in fallback.recent(panel.pult.state())]}
-            if path == "/api/project":
-                if (sp := self.sp(q.get("id", "")))[0]:      # проект пространства (GAS-38)
-                    return panel.space_project_info(q.get("id", ""), sp[1])
-                return panel.project_info(q.get("id", ""), self.pinner())
-            if path == "/api/project/sessions":          # завершённые чаты проекта (журналы без окна)
-                before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
-                if (sp := self.sp(q.get("id", "")))[0]:
-                    return panel.space_project_chats(q.get("id", ""), sp[1], q.get("q", ""), before)
-                return panel.project_chats(q.get("id", ""), q.get("q", ""), before, self.person())
-            if path == "/api/share/list":                # «Поделились» — только свои неразобранные записи
-                return panel.share_list(self.terms_uid())
-            if path == "/api/share/file":                # миниатюра картинки своей записи
-                return panel.share_file(self.terms_uid(), q.get("id", ""), q.get("i", ""))
-            if path == "/api/share/devices":             # устройства «Поделиться» (iPhone) — свои
-                return {"devices": panel.share_tokens.mine(self.terms_uid())}
-            if path == "/api/brief":                     # брифинг (GAS-18): собирает код, без модели
-                return panel.brief_get(self.terms_uid(), q.get("fresh") == "1")
-            if path == "/api/meetings":                  # протоколы встреч (владелец 22.11)
-                return panel.meeting_list()
-            if path == "/api/meeting":
-                return panel.meeting_view(str(q.get("id") or ""))
-            if path == "/api/meeting/audio":
-                return panel.meeting_audio(str(q.get("id") or ""))
-            if path == "/api/meeting/card":
-                return panel.meeting_card(str(q.get("id") or ""))
-            if path == "/api/tasks":                     # задачи владельца (#203): не менялись — 304 без тела
-                etag = panel.tasks.etag()
-                body = json.dumps({"tasks": panel.task_list()}, ensure_ascii=False).encode()
-                self.reply(200, body, etag=etag)
-                return SENT
-            if path == "/api/chat/trash":                # корзина чатов и скрытые чаты
-                return panel.chat_trash_list()
-            if path == "/api/project/history":           # переписка завершённого чата — без окна
-                before = int(q["before"]) if q.get("before", "").isdigit() else None
-                if (sp := self.sp(q.get("id", "")))[0]:
-                    return panel.space_project_history(q.get("id", ""), sp[1], q.get("sid", ""), before)
-                return panel.project_history(q.get("id", ""), q.get("sid", ""), before)
-            if path == "/api/meta":
-                kind, role, uid = self.who()
-                tu = self.terms_uid()
-                cinfo = panel.country_info(tu)
-                return {**panel.meta(tu), "via": kind, "role": role, "uid": uid, "build": build,
-                        "whatsnew": whatsnew[:1], "prefs": panel.prefs(tu, role), "ui": panel.ui(tu, role),
-                        "terms": {"version": terms.VERSION, "accepted": panel.people.accepted(tu)},
-                        "tty": bool(role) and self.dev_tty(),         # живой терминал (задача 50) — кнопка в панели
-                        "desktop": role == "owner" and kind != "focus" and desktop_up(),   # рабочий стол (#206)
-                        "projects_ui": True,      # «Проекты» (docs/PROJECTS.md): и в пространстве (GAS-38)
-                        "shares": panel.shares.pending(tu) if role and kind != "focus" else 0,   # «Поделились»
-                        "country": {k: cinfo[k] for k in ("chosen", "need", "mismatch", "phone", "ip_cc", "check")},
-                        **({"slink": {**{k: (self.slink()[0] or {}).get(k)
-                                         for k in ("name", "exp", "forever", "rights")},
-                                      "terms_line": (self.slink()[0] or {}).get("aud") != "self"
-                                      and not panel.people.accepted(tu)}}
-                           if kind == SLINK else {})}       # вход по ссылке на пространство: срок и права (GAS-38)
-            if path == "/api/terms":
-                return self.terms_info()
-            if path == "/api/prefs":
-                return panel.prefs(self.terms_uid(), self.who()[1])
-            if path == "/api/notify/prefs":                  # куда и о чём сообщать (notifyroute.py)
-                return panel.notify_info(self.push_uid())
-            if path in ("/api/push/key", "/api/push/devices", "/api/push/last"):   # уведомления на телефон — свои
-                uid = self.push_uid()
-                if path == "/api/push/key":
-                    return {"key": panel.push.public_key()}
-                if path == "/api/push/devices":
-                    return {"devices": panel.push.devices(uid)}
-                return {"items": panel.push.pending(uid, q.get("dev", [""])[0][:32])}
-            if path == PERSONA:
-                return panel.ui(self.terms_uid(), self.who()[1])
-            if path == "/api/team":
-                return panel.team_info()
-            if path == TOUR:                             # тур: пройден / «Не сейчас» — у каждого свой
-                return panel.people.tour(self.terms_uid())
-            if path == "/api/country":
-                return panel.country_info(self.terms_uid())
-            if path == "/api/email":
-                return panel.email.info(self.terms_uid())
-            if path == "/api/passkeys":
-                return panel.keys.info(self.terms_uid())
-            if path == "/api/oidc":
-                return panel.oidc.info(self.terms_uid())
-            if path == "/api/people":
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/tts/about":                  # «Что здесь умеет» — голосом (текст из карты помощника)
-                return ("audio/mpeg", panel.tts_text(panel.about_text(q.get("screen", "")),
-                                                     panel.cfg.personal_voices and self.who()[1] == "owner",
-                                                     cloud=not self.space()))
-            if path == "/api/starters":                   # первый разговор: бейджики-сценарии (GAS-37)
-                # фокус — без почты и календаря владельца: гостю ссылки — только сценарии без подключений
-                return panel.starters_for(self.who()[1], bool(self.space()) or self.focused is not None,
-                                          self.space() or "", str(q.get("occ") or ""))
-            if path == "/api/rec/status":                 # запись по кускам: что уже на сервере (после обрыва)
-                return panel.recparts.status(self.rec_owner(), str(q.get("id", "")))
-            if path == "/api/stt/job":                    # фоновое распознавание: состояние и текст (GAS-34)
-                return panel.stt_job_get(q.get("id", ""), self.terms_uid())
-            if path == "/api/calendars/keys":             # что подключено — без значений секретов
-                return {"calendars": calkeys.status()}
-            if path == "/api/setup/status":
-                return panel.setup_status(q.get("fresh") == "1")
-            if path == "/api/mcp":
-                home = self.home()
-                return {"servers": panel.mcp.list(q.get("fresh") == "1", home=home),
-                        "presets": [p for p in PRESETS if not home or p["id"] not in OWNER_PRESETS],
-                        "connectors": CONNECTORS, "connectors_url": CONNECTORS_URL,
-                        "personal": home is not None}          # список — свой у человека, не общий с владельцем
-            if path == "/api/modules":
-                return panel.modules_list()
-            if path == "/api/scenarios":                 # «Примерить на себя»: роли, день с агентом, польза
-                errors: list[str] = []
-                d = scenarios.api_data(errors)
-                return {**d, "errors": errors if self.who()[1] == "owner" else []}
-            if path == "/api/mcp/connected":
-                c = next((x for x in CONNECTORS if x["id"] == q.get("id")), None)
-                if not c:
-                    raise LookupError("нет такого сервиса")
-                s = panel.mcp.connected(c["match"], self.home())
-                return {"found": bool(s), "ok": bool(s and s["ok"]), "state": s["state"] if s else ""}
-            if path == "/api/openrouter/info":
-                return panel.openrouter_info()
-            if path == "/api/openrouter/models":
-                return {"models": panel.openrouter.models()}
-            if path == "/api/fallback":
-                return panel.fallback_info(self.terms_uid())
-            if path == SELFTEST:
-                return selftest.public(panel.cfg.data, panel.pult.state())
-            if path == "/api/cost/limits":
-                return panel.cost_limits()
-            if path == "/api/providers":
-                vs = panel.voice_settings()
-                return {**vs, "el_voices": panel.el_voices() if "elevenlabs" in vs["keys"] else []}
-            if path == "/api/commands":
-                return panel.command_log(self.who()[1] == "owner")
-            if path == "/api/commands/output":
-                out = panel.journal.output(q.get("id", ""))
-                if out is None:
-                    raise LookupError("вывода этой команды уже нет")
-                return {"out": out}
-            if path == "/api/voice/cards":
-                return panel.voice_cards(self.who()[1] == "owner", cloud=not self.space())
-            if path == "/api/voice/preview":
-                return ("audio/mpeg", panel.voice_preview(q.get("id", ""), self.who()[1] == "owner"))
-            if path == "/api/links/prefs":               # где открывать ссылки сайтов (только владелец)
-                return {"sites": link_prefs(panel.cfg.data)}
-            if path == "/api/bridge/devices":            # компьютеры с мостом к браузеру (только владелец)
-                on, names = set(panel.hub.online()), {x["id"]: x["name"] for x in panel.focus.listing()}
-                return {"devices": [{**d, "online": d["id"] in on and panel.bridge_dev_ok(d),
-                                     **({"focus_name": names.get(d["focus"], "ссылка погасла")}
-                                        if d.get("focus") else {})}
-                                    for d in panel.devices.listing()]}
-            if path == "/api/bridge/log":                # журнал действий по устройству (только владелец)
-                return {"log": panel.hub.history(str(q.get("id") or ""))}
-            if path == "/api/bridge/drafts":             # что ждёт «Да» человека: кнопка, команда, запись на Маке
-                names = {d["id"]: d["name"] for d in panel.devices.listing()}
-                said = lambda pid: panel.approvals.pending("", bridge.CONFIRM_SVC, pid)   # noqa: E731 — «Да» в памяти
-                return {"drafts": [{**x, "device_name": names.get(x["device"], "компьютер")}
-                                   for x in bridge.drafts(said) if x["device"] in names]}
-            if path == "/api/media":                     # фото в ленте (16.11): картинки из inbox и с Диска
-                return panel.media(str(q.get("p") or ""))
-            if path == "/api/invite/qr":                 # QR ссылки приглашения: владельцу — любой, человеку — своей
-                return ("image/png", panel.invite_qr(str(q.get("u") or ""), self.who()[1] in ("owner", "admin"),
-                                                     self.terms_uid()))
-            if path == "/api/q/list":                     # «Анкеты клиентов» (0010): ссылки без кодов и анкеты
-                fs = onboarding.forms(panel.cfg.data).values()
-                return {"links": panel.forms_links.listing(),
-                        "forms": [{"id": f["id"], "title": f["title"]} for f in fs]}
-            if path == "/api/q/answers":
-                return panel.anketa_answers(str(q.get("id") or ""))
-            if path == "/api/focus/list":                 # «Настройки» → «Фокус-ссылки»: действующие, без токенов
-                return {"links": panel.focus.listing()}
-            if path == "/api/model/default":             # владелец: модель Claude по умолчанию для новых сессий
-                return panel.default_model()
-            if path == "/api/term":                       # окно терминала панели: что на экране, живо ли
-                return termwin.screen(panel.tmux, q.get("id", ""))
-            if path == "/api/tty":                        # живой терминал: история окна страницами (задача 50)
-                w = panel.tty_window(str(q.get("w") or ""), self.who()[1] == "owner", write=False, space=self.space())
-                d = termwin.history(panel.tmux, w["id"], q.get("start"), q.get("end"), q.get("all") == "1",
-                                    q.get("color") == "1")             # color — экран для xterm.js (добавлено)
-                return {**d, "w": w["id"], "name": w.get("name", ""), "kind": panel.tty_kind(w),
-                        "path": w.get("path", ""), "login": self.login_of(w, d.get("lines") or [])}   # низ — экран
-            if path == "/api/spaces":                    # владелец: пространства для «Поставить задачу»
-                st = tenants.status(check=True)
-                for x in st.get("tenants", []):            # и запас каждого на период (задача 35)
-                    x["budget"] = panel.space_budget(x["slug"])
-                return st
-            if path == "/api/space/sessions":            # закрытые сессии пространства и корзина
-                return panel.space_list(self.space_of(q))
-            if path == "/api/drafts":                    # черновики коннекторов «Ждут вашего Да» (drafts.py)
-                slug = self.drafts_scope()
-                tm = tenants.tmux_of(slug) if slug else panel.tmux
-                yes = panel.approvals.pending                # «Да» уже нажато — ждёт агента, снова не показываем
-                return {"drafts": drafts.pending(slug, chat_of=lambda pane: drafts.chat_of(tm, pane, slug),
-                                                 approved=lambda svc, pid: yes(slug or "", svc, pid))}
-            if path == "/api/space/mcp":                 # свои интеграции пространства (GAS-38 (в)): без ключей
-                slug = self.space_of(q)                      # тестировщику — своё; владельцу и админу — по ``space``
-                return {"servers": space_mcp.listing(slug), "space": slug,
-                        "presets": space_mcp.presets() if self.space() else []}
-            if path in ("/api/space/files", "/api/space/download"):   # файлы папки сессии пространства
-                slug, w = self.space_win(q)
-                folder = space_files.folder_of(slug, w)
-                if path == "/api/space/files":
-                    return space_files.listing(slug, folder)
-                name, data = space_files.get(slug, folder, q.get("f", ""))
-                disp = "attachment; filename*=UTF-8''" + urllib.parse.quote(name)
-                return ("application/octet-stream", data, {"Content-Disposition": disp})
-            if path == "/api/activity":                  # строка статуса чата: что агент делает сейчас
-                return panel.activity(str(q.get("w") or ""))
-            if path == "/api/repos":                     # подключённые и что можно добавить (задача 43)
-                return panel.repo_list(self.repo_win(q))
-            w = self.win(q.get("w"))
-            if path == "/api/last":
-                return {"text": harness.of(w).last_answer(w["path"], panel.pult.home_of(w), w.get("sid") or "")}
-            if path == "/api/screen":
-                lines = panel.tmux.screen(w["id"], 60)
-                return {"lines": lines[-40:], "auth": find_auth(lines), "login": self.login_of(w, lines),
-                        "ask": humanize.parse(lines, target=True)}     # карточка инструмента (#258), добавлено
-            if path == "/api/ask":                        # простой режим: вопрос Claude простыми словами и чипы
-                return {"ask": humanize.parse(panel.tmux.screen(w["id"], 60))}
-            if path == "/api/hint":
-                return {"hint": panel.tmux.hint(w["id"])}
-            if path == "/api/cmds":
-                return {"cmds": panel.commands(w), "host": panel.cfg.host}
-            if path == "/api/tts":
-                msg = int(q["msg"]) if q.get("msg", "").isdigit() else None
-                return ("audio/mpeg", panel.tts(w, q.get("full") == "1", msg,
-                                                 panel.cfg.personal_voices and self.who()[1] == "owner",
-                                                 cloud=not self.space(), head=q.get("head") == "1"))
-            if path == "/api/tts/warm":                   # открыли сессию — голос загрузится заранее (#190)
-                return panel.tts_warm(panel.cfg.personal_voices and self.who()[1] == "owner")
-            if path == "/api/steps":                    # «Шаги» (GAS-16, слой 7): сообщение → инструменты → ответ
-                if harness.of(w).name != "claude":
-                    return {"turns": [], "note": "шаги видны только у Claude Code"}
-                f = transcripts.current(w["path"], panel.pult.home_of(w), w.get("sid") or "")
-                return {"turns": steps.turns(f, q.get("q", ""))}
-            if path == "/api/history":
-                before = int(q["before"]) if q.get("before", "").isdigit() else None
-                sid = w.get("sid") or ""                   # окно со своим журналом — его переписка
-                rev = harness.of(w).revision(w["path"], home := panel.pult.home_of(w), sid)
-                if before is None and q.get("rev") and q["rev"] == rev:
-                    return {"same": True, "rev": rev}          # журнал не менялся — переписку не пересчитываем
-                items, more = harness.of(w).history(w["path"], 30, before, home=home, sid=sid)
-                for it in items:                           # ошибка Claude Code — ещё и простыми словами (простой режим)
-                    if it.get("role") == "assistant" and (h := humanize.error(it.get("text") or "", strict=True)):
-                        it["human"] = h
-                return {"items": items, "more": more, "rev": rev}
+            if fn := routes.GET.get(path):              # таблицы областей (routes/): права уже проверены (permit,
+                return fn(self, q)                       # focus_call, v1_call) — как у веток ниже
+            if fn := routes.GET_W.get(path):            # ветки после «w = self.win(…)»: окно сессии — до вызова
+                return fn(self, q, self.win(q.get("w")))
+            if fn := routes.GET_P.get(path):            # развилка: несколько путей — одна функция (платежи)
+                return fn(self, path, q)
+            self.win(q.get("w"))   # путь не из таблиц — как раньше: окна нет — 404 «окна уже нет», иначе «нет метода»
             raise KeyError
 
         def openrouter_back(self, q: dict):
@@ -4774,6 +1689,8 @@ def handler(panel: Panel):
 
         def do_POST(self):
             path = urllib.parse.urlparse(self.path).path
+            if path.startswith(V1_PREFIX):               # 1С и CRM: токен, белый список access.V1_* (apitokens.py)
+                return self.v1_call("POST")
             if path == "/api/bridge/claim":             # мост: одноразовый код из панели → токен устройства
                 return self.dispatch(self.bridge_claim)
             if path == "/api/bridge/rpc":               # агент (gas-pult bridge-mcp) → мост; секрет — файл 0600
@@ -4804,6 +1721,8 @@ def handler(panel: Panel):
                 return self.dispatch(lambda: self.invite_login(path))
             if path == "/api/focus/open":                  # фокус-ссылка: первое открытие привязывает устройство
                 return self.dispatch(self.focus_open)
+            if path == "/api/focus/ask":                   # «Попросить доступ»: ссылка не открылась (до входа)
+                return self.dispatch(self.focus_ask)
             if path == "/share":                           # «Поделиться» Android (share_target): форма, кука входа
                 return self.share_post()
             if path == "/api/share":                       # «Поделиться» iPhone: токен устройства, не кука
@@ -4845,6 +1764,75 @@ def handler(panel: Panel):
             go = f"/?share={rec['id'] if rec else why}"
             return self.json({"go": go}) if sw else self.go(go)
 
+        def v1_call(self, method: str):
+            """``/api/v1/<путь>`` — псевдоним ``/api/<путь>`` для 1С и CRM. ``Authorization: Bearer <токен>``:
+            неизвестный, отозванный, просроченный или выпустивший без прежних прав — 401; путь не из белого списка
+            ``access.V1_*`` (или запись токеном «только чтение») — 403. Дальше — обычные ``permit`` и обработчик с
+            правами и пространством выпустившего. Каждый вызов — строка в журнале (без тел и параметров)."""
+            url = urllib.parse.urlparse(self.path)
+            ext, ip, rec = url.path, self.client_ip(), None
+            self.close_connection = True                 # токен — на каждый запрос заново, без keep-alive
+            try:
+                if panel.api_guard.blocked(ip):
+                    return self.json({"error": "слишком много неверных токенов — подождите минуту"}, 429)
+                rec = panel.api_tokens.check(apitokens.bearer(self.headers.get("Authorization", "")))
+                role = panel.people.role(rec["by"]) if rec else None
+                if rec and role and (panel.people.tenant(rec["by"]) or "") != rec["space"]:
+                    role = None                          # человека перевели в другое пространство — токен не его
+                if not role or (not rec["space"] and role != "owner"):
+                    if not rec:
+                        panel.api_guard.fail(ip)
+                    return self.json({"error": "нужен действующий токен: Настройки → Токены для 1С и CRM",
+                                      "code": "token"}, 401)
+                path = "/api/" + ext[len(V1_PREFIX):]
+                table = V1_GET if method == "GET" else V1_POST
+                ok = path not in V1_NEVER and any(path in table[g] for g in rec["groups"] if g in table)
+                if not ok or (method == "POST" and not rec["write"]):
+                    why = "токен только для чтения" if ok else "этот путь через токен закрыт"
+                    return self.json({"error": why, "code": "v1_scope"}, 403)
+                if method == "POST" and path in ("/api/tasks/add", "/api/tasks/update"):
+                    try:
+                        b = json.loads(self.body() or b"{}")
+                    except ValueError:
+                        return self.json({"error": "тело — JSON"}, 400)
+                    if not isinstance(b, dict) or b.get("kind") == "command" or "cmd" in b:
+                        return self.json({"error": "задачи с командой сервера через токен не создаются",
+                                          "code": "v1_scope"}, 403)
+                    b = injection_guard.external_task(b, rec.get("name") or "API")   # LLM01: текст 1С и CRM
+                    self.raw = json.dumps(b).encode()        # обработчик прочитает то же тело (H.body)
+                if method == "POST" and path == "/api/send":    # LLM01: текст 1С и CRM — данные, не инструкции
+                    try:
+                        b = json.loads(self.body() or b"{}")
+                    except ValueError:
+                        return self.json({"error": "тело — JSON"}, 400)
+                    if isinstance(b, dict) and str(b.get("text") or "").strip():
+                        b["text"] = injection_guard.external(str(b["text"]), rec.get("name") or "API")
+                    self.raw = json.dumps(b).encode()
+                self.apitok, self.focused = {"uid": rec["by"], "role": role}, None
+                self.path = path + (f"?{url.query}" if url.query else "")
+                if not self.permit(path, method):
+                    return None
+                q = dict(urllib.parse.parse_qsl(url.query))
+                with panel.tmux.scope(self.space()):
+                    self.dispatch(lambda: self.get(path, q) if method == "GET" else self.post(path))
+                return None
+            finally:
+                panel.api_log.write((rec or {}).get("id", ""), method, ext, self.sent_code or 500)
+
+        def api_owner(self) -> tuple[int, str]:
+            """Чьи токены /api/v1: владелец пульта — свои (пространство ""); человек пространства (не наблюдатель) —
+            свои в своём пространстве. Админу, участнику без пространства, наблюдателю — нет."""
+            role, uid = self.who()[1], self.terms_uid()
+            if self.focused is not None or self.apitok is not None or uid is None:
+                raise ValueError("токены выпускает владелец пульта или пространства")
+            if slug := self.space():
+                if not allowed(role, "member"):
+                    raise ValueError("наблюдателю токены не выдаются")
+                return uid, slug
+            if role != "owner":
+                raise ValueError("токены выпускает владелец пульта или пространства")
+            return uid, ""
+
         def share_api(self):
             """POST /api/share (iPhone «Быстрая команда»): ``Authorization: Bearer <токен устройства>``; multipart,
             JSON или форма. Нет токена, чужой, отозван, человек без роли — 401; больше 50 МБ — 413."""
@@ -4852,7 +1840,7 @@ def handler(panel: Panel):
             role = panel.people.role(rec["uid"]) if rec else None
             if not role or not allowed(role, "member") or panel.people.tenant(rec["uid"]):
                 self.close_connection = True
-                return self.json({"error": "нужен токен устройства: Гаврила → Настройки → Аккаунт и вход → "
+                return self.json({"error": "нужен токен устройства: Ладэя → Настройки → Аккаунт и вход → "
                                            "Устройства для «Поделиться»", "code": "token"}, 401)
             n = self.share_len()
             if n > MAX_BODY or n < 0:
@@ -5066,6 +2054,17 @@ def handler(panel: Panel):
                 r0 = panel.focus.check_token(token)
                 if r0 and r0.get("mode") not in (focus.SPACE, focus.MEETING) and not focus.Focus.is_demo(r0):
                     return {"ok": True, "owner_here": True, "w": r0.get("w") or "", "proj": r0.get("proj") or ""}
+            # согласие с политикой ПДн и условиями — до первого открытия (24.11): открытие — единственная дверь, через
+            # которую проходит каждое новое устройство, и до него сервер не получил от человека ничего (ни сообщений,
+            # ни голоса, ни файлов). Отказ не тратит место устройства. Не спрашиваем: демо и протокол встречи (только
+            # просмотр), ссылка на пространство «для себя» (владелец 19.11: свои устройства)
+            r0 = panel.focus.check_token(token)
+            ask = r0 and not focus.Focus.is_demo(r0) and not focus.Focus.is_meeting(r0) \
+                and not (r0.get("mode") == focus.SPACE and r0.get("aud") == "self")
+            if ask and (need := docs_need(f"focus:{r0['id']}")):
+                if (b if isinstance(b, dict) else {}).get("privacy") is not True:
+                    raise consents.DocNeeded(need)
+                docs_accept(f"focus:{r0['id']}")
             value, rec = panel.focus.open(token, self.focus_cookie(), webauth.device(self.client()[1]))
             age = max(60, int(rec["exp"] - time.time()))
             if rec.get("mode") == focus.SPACE and rec.get("space") and not panel.people.accepted(focus.vuid(rec["id"])):
@@ -5075,9 +2074,23 @@ def handler(panel: Panel):
                 with contextlib.suppress(Exception):
                     panel.space_welcome(focus.vuid(rec["id"]), rec["space"], accept=rec.get("aud") == "self")
             cookie = f"{focus.COOKIE}={value}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Strict"
-            return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""),
+            return ("cookie", cookie, {"ok": True, "name": rec.get("name", ""), "id": rec["id"],
                                        **({"mode": rec["mode"]} if rec.get("mode") in (focus.SPACE, focus.MEETING)
                                           else {})})
+
+        def focus_ask(self):
+            """«Попросить доступ» со страницы, где ссылка не открылась: ``{token?, id?, why, note}`` — владельцам.
+            Защита от перебора и спама: не больше ``ask_guard.LIMIT`` запросов с адреса за ``WINDOW`` (429)."""
+            ip = self.client_ip()
+            if panel.ask_guard.blocked(ip):
+                self.json({"error": "Запрос уже отправлен. Подождите 10 минут.", "code": "ask_limit"}, 429)
+                return SENT
+            panel.ask_guard.fail(ip)
+            b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 4096)) or b"{}")
+            b = b if isinstance(b, dict) else {}
+            return panel.focus_ask(str(b.get("token") or "")[:64], str(b.get("id") or "")[:12],
+                                   str(b.get("why") or ""), str(b.get("note") or ""),
+                                   webauth.device(self.client()[1]))
 
         def focus_call(self, method: str, path: str, q: dict):
             """Запрос страницы в режиме фокуса: действующая ссылка этого устройства, путь из ``FOCUS_*``, окно — только
@@ -5085,7 +2098,7 @@ def handler(panel: Panel):
             try:
                 rec = panel.focus_rec(self.focus_cookie())
             except focus.Gone as e:
-                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+                return self.json({"error": str(e), "code": "focus_gone", "why": e.why}, 410)
             except focus.Wait as e:                      # сессию перезапускают — ссылка жива, страница повторит
                 return self.json({"error": str(e), "code": "focus_wait"}, 503)
             if focus.Focus.is_meeting(rec):              # ссылка на протокол: только он, ни сессий, ни прав владельца
@@ -5143,6 +2156,26 @@ def handler(panel: Panel):
                 return panel.demo_answer(str(b.get("w") or ""), b.get("go", True) is not False, lambda: self.post(path))
             if path.startswith("/api/focus/bridge"):
                 return panel.focus_bridge(rec, path, b)
+            if path == "/api/focus/device":                # «Открыть на другом устройстве»: только своя запись
+                return panel.focus_device(rec["id"], str(b.get("base") or ""))
+            # Завершённые чаты по ссылке на проект — только начатые по ней (штаб 25.11: в чатах владельца в той же
+            # папке — его серверы, почта, задачи). Новый чат и «Продолжить» записывают id разговора в ссылку.
+            if path == "/api/project/sessions":
+                before = float(q["before"]) if re.fullmatch(r"\d+(\.\d+)?", q.get("before", "")) else None
+                only = None if focus.Focus.whole_project(rec) else sorted(focus.Focus.chats(rec))
+                return panel.project_chats(rec["proj"], q.get("q", ""), before, self.person(), only=only)
+            if path in ("/api/project/history", "/api/project/resume"):
+                sid = str((q if method == "GET" else b).get("sid") or "")
+                if sid not in focus.Focus.chats(rec) and not focus.Focus.whole_project(rec):
+                    raise focus.Denied("этот чат начат не по этой ссылке")
+            if path in ("/api/project/session", "/api/project/resume"):
+                r = self.post(path)
+                if isinstance(r, dict):
+                    panel.focus.add_chat(rec["id"], r.get("sid") or "")
+                    if r.get("id"):                        # окно — этой ссылки: по ней видно только такие
+                        with contextlib.suppress(OSError, LookupError):
+                            panel.tmux.set_focus(str(r["id"]), rec["id"])
+                return r
             if path == "/api/sessions":
                 ss = panel.focus_sessions(rec)
                 return {"sessions": ss, "host": rec.get("name", ""), "build": build, "now": time.time(), "cost": None,
@@ -5181,8 +2214,13 @@ def handler(panel: Panel):
             if code and not invites.check(code, short=False):    # через Telegram — только ссылкой (без перебора)
                 raise ValueError("приглашение недействительно: истёк срок, уже использовано или отозвано")
             rid, nonce = panel.logins.start(*self.client(), invite=code)
-            return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
-                    "ttl": webauth.LOGIN_TTL}
+            bot = panel.bot_username()
+            link = f"https://t.me/{bot}?start=login_{nonce}"
+            # запасные пути (штаб 22.11: на Mac ссылка t.me не открыла Telegram): tg:// — приложение напрямую, QR — с
+            # телефона; поле добавлено, старые поля — как были
+            return {"id": rid, "link": link, "ttl": webauth.LOGIN_TTL,
+                    "app": f"tg://resolve?domain={bot}&start=login_{nonce}",
+                    "qr": "data:image/png;base64," + base64.b64encode(qr.png_of(link, 6)).decode()}
 
         def invite_login(self, path: str):
             """«Есть код приглашения?» → проверка кода; «Как вас зовут?» → гость и cookie-сессия на 30 дней."""
@@ -5194,6 +2232,7 @@ def handler(panel: Panel):
                 return panel.invite_check(str(b.get("code") or ""), ip)
             uid = panel.invite_enter(str(b.get("code") or ""), str(b.get("name") or ""), ip, ua)
             panel.seen_ip(uid, ip, force=True)
+            self.product("login", uid, "invite")
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def tg_poll(self, q: dict):
@@ -5203,6 +2242,7 @@ def handler(panel: Panel):
                     return panel.email.second_start(uid, self.client_ip())
                 panel.seen_ip(uid, self.client_ip(), force=True)            # вход — сверяем страну по IP
                 panel.people.seen(uid, webauth.device(self.client()[1]))   # «вошёл: устройство, время»
+                self.product("login", uid, "telegram")
                 return ("cookie", webauth.set_cookie(panel.auth.issue(uid, self.client()[1])), {"state": "ok"})
             return {"state": state}
 
@@ -5219,6 +2259,7 @@ def handler(panel: Panel):
                 return panel.email.second_start(uid, ip)
             panel.seen_ip(uid, ip, force=True)
             panel.people.seen(uid, webauth.device(ua))
+            self.product("login", uid, "passkey")
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def email_login(self, path: str):
@@ -5234,6 +2275,7 @@ def handler(panel: Panel):
             else:
                 uid = panel.email.second_verify(str(b.get("id", "")), b.get("code"), ip)
             panel.seen_ip(uid, ip, force=True)
+            self.product("login", uid, "email" if path == "/api/login/email/verify" else "2fa")
             return ("cookie", webauth.set_cookie(panel.auth.issue(uid, ua)), {"state": "ok"})
 
         def oidc_page(self, code: int, title: str, text: str, cookies: tuple[str, ...] = ()):
@@ -5282,12 +2324,14 @@ def handler(panel: Panel):
                 frag = urllib.parse.urlencode({"2fa": d["id"], "to": d["to"]})
                 return self.go(f"/#{frag}", (drop,))                 # номер — во фрагменте: на сервер он не уходит
             panel.seen_ip(uid, ip, force=True)
+            self.product("login", uid, p)
             return self.go("/", (drop, webauth.set_cookie(panel.auth.issue(uid, ua))))
 
         def login(self):
             b = json.loads(self.body() or b"{}")
             token = panel.auth.verify(str(b.get("id", "")), str(b.get("code", "")), self.client()[1])
             panel.seen_ip((panel.cfg.owners or [None])[0], self.client_ip(), force=True)   # вход кодом — владелец
+            self.product("login", webauth.LEGACY, "code")
             return ("cookie", webauth.set_cookie(token), {"ok": True})
 
         # ---------- страница предложения: без входа, ничего из панели ----------
@@ -5314,7 +2358,7 @@ def handler(panel: Panel):
         def anketa_http(self, method: str, path: str):
             """``/q/<код>`` — страница анкеты; ``/api/q/<код>`` — анкета и черновик; ``…/save`` — черновик;
             ``…/submit`` — отправить. Неизвестный и просроченный код — один и тот же 404; перебор с IP — 429."""
-            m = re.match(r"^/(api/)?q/([A-Za-z0-9_-]{16,64})(?:/(save|submit))?/?$", path)
+            m = re.match(r"^/(api/)?q/([A-Za-z0-9_-]{16,64}|[a-z0-9][a-z0-9-]{1,14})(?:/(save|submit))?/?$", path)
             ip, api = self.client_ip(), path.startswith("/api/")
             if panel.q_misses.blocked(ip):
                 return self.offer_reply(429, {"error": "слишком много запросов — подождите 10 минут"}, page=False)
@@ -5327,19 +2371,32 @@ def handler(panel: Panel):
                 body = OFFER_404.encode() if not api else {"error": "ссылка не найдена или устарела"}
                 return self.offer_reply(404, body, page=not api)
             if not api:
-                return self.offer_reply(200, q_page, page=True, csp=q_csp)
+                return self.offer_reply(200, onboarding.page(q_page, form, rec), page=True, csp=q_csp)
             act = m.group(3) or ""
             if method == "GET" and not act:
                 return self.offer_reply(200, {"form": onboarding.public(form), "draft": rec.get("draft") or {},
                                               "sent": bool(rec.get("sent"))})
             if method != "POST" or not act:
                 return self.offer_reply(404, {"error": "нет такого метода"})
+            # запрос мимо прокси (прямо на 127.0.0.1 панели) — агент или e2e на этой машине, не клиент: боевую ссылку
+            # не пишем (штаб 23.11)
+            direct = self.client_address[0] in LOOPBACK and ip in LOOPBACK
+            try:
+                onboarding.guard(panel.cfg.data, rec, direct)
+            except PermissionError as e:
+                return self.offer_reply(403, {"error": str(e)})
             try:
                 b = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0) or 0), 262144)) or b"{}")
                 answers = b.get("answers") if isinstance(b, dict) else None
-                if act == "save":
+                if act == "save":                       # черновик — не отправка: согласие не спрашиваем
                     panel.forms_links.draft(m.group(2), onboarding.clean(form, answers))
                     return self.offer_reply(200, {"ok": True})
+                # отправка — только с отдельной галочкой «Согласен(на) на обработку ПДн по Политике» (24.11): без неё
+                # — 409 code=privacy; с ней — запись в журнал согласий: form:<id ссылки>, документ, версия, SHA-256
+                if not isinstance(b, dict) or b.get("privacy") is not True:
+                    return self.offer_reply(409, {"error": str(consents.DocNeeded({})), "code": "privacy",
+                                                  "docs": docs_need(f"form:{rec['id']}")})
+                docs_accept(f"form:{rec['id']}")
                 return self.offer_reply(200, panel.anketa_submit(m.group(2), answers))
             except (ValueError, LookupError) as e:
                 return self.offer_reply(400, {"error": str(e) or "ошибка"})
@@ -5428,544 +2485,16 @@ def handler(panel: Panel):
                     "accepted": rec.get("version") == terms.VERSION, "at": rec.get("at")}
 
         def post(self, path: str):
-            if path == "/api/space/upload":              # файл — в папку сессии пространства (от его пользователя)
-                slug, w = self.space_win(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)))
-                name = urllib.parse.unquote(self.headers.get("X-File-Name", "file"))
-                return {"name": space_files.put(slug, space_files.folder_of(slug, w), name, self.body())}
-            if path == "/api/upload":                    # поток в файл, не в память; ``w`` — проект на Диске
-                w = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)).get("w", "")
-                if w and self.focused and not panel.focus_owns(self.focused, w):
-                    w = ""                               # фокус-ссылка — только её сессия; чужая — в inbox
-                if self.raw is not None:
-                    return {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.raw, w=w)}
-                n = int(self.headers.get("Content-Length", 0))
-                if n > MAX_BODY:
-                    raise ValueError("слишком большой запрос")
-                t0 = time.monotonic()
-                out = {"path": panel.upload(self.headers.get("X-File-Name", "file"), self.rfile, size=n, w=w)}
-                upload_log(n, time.monotonic() - t0, "focus" if self.focused else self.via())
-                return out
-            if path == "/api/rec/chunk":                    # кусок записи (~10 с): не теряется при блокировке
-                rq = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query))
-                try:
-                    seg, seq = int(rq.get("seg", 0)), int(rq.get("seq", -1))
-                except ValueError:
-                    raise ValueError("неверный номер куска") from None
-                return panel.recparts.add(self.rec_owner(), str(rq.get("id", "")), seg, seq, self.body(),
-                                          self.headers.get("Content-Type", ""))
-            if path == "/api/stt" and "job=1" in urllib.parse.urlparse(self.path).query:   # фоново, GAS-34
-                return panel.stt_job(self.body(), self.headers.get("Content-Type", ""), self.terms_uid(),
-                                     cloud=not self.space())
-            if path == "/api/stt":
-                before = panel.fallback_note()
-                text = panel.stt(self.body(), self.headers.get("Content-Type", ""), cloud=not self.space())
-                now = panel.fallback_note()
-                return {"text": text, "fallback": now if now and now != before else ""}
+            if fn := routes.POST_RAW.get(path):         # таблицы областей (routes/): тело читает сама
+                return fn(self)
+            if fn := routes.POST.get(path):             # тело — JSON, как «b = json.loads(…)» ниже
+                return fn(self, json.loads(self.body() or b"{}"))
             b = json.loads(self.body() or b"{}")
-            if path == "/api/rec/finish":                  # «Стоп»: куски с сервера — в распознавание
-                return panel.rec_finish(self.rec_owner(), str(b.get("id", "")), self.terms_uid(),
-                                        cloud=not self.space())
-            if path == "/api/rec/drop":                    # «Отменить запись»: куски — прочь
-                return {"ok": panel.recparts.drop(self.rec_owner(), str(b.get("id", "")))}
-            if path == "/api/share/done":                  # «Сохранить во Входящие» / отправили — запись разобрана
-                return panel.shares.done(self.terms_uid(), str(b.get("id", "")))
-            if path == "/api/share/devices/new":           # токен «Быстрой команды»: показываем один раз
-                return panel.share_tokens.create(self.terms_uid(), str(b.get("name", "")))
-            if path == "/api/share/devices/revoke":
-                return panel.share_tokens.revoke(self.terms_uid(), str(b.get("id", "")))
-            if path == "/api/starter":                     # нажали бейджик: текст агенту + замер (без текста)
-                sid = str(b.get("id", ""))[:40]
-                panel.events.event("starter", "", starter=sid, w=str(b.get("w") or "")[:40])
-                wid = str(b.get("w") or "")             # «добавь задачу» — только в чатах владельца (задачи — его)
-                win = next((x for x in panel.tmux.windows() if x["id"] == wid), None) if wid else None
-                return {"prompt": starters.prompt(sid, tasks=self.who()[1] == "owner" and not (win and in_space(win)))}
-            if path == "/api/clientlog":                   # ошибка JS в браузере (GAS-31): тип, экран, место
-                panel.events.event("js_error", str(b.get("mid") or ""), kind=str(b.get("kind") or "")[:40],
-                                   msg=str(b.get("msg") or "")[:160], at=str(b.get("at") or "")[:120],
-                                   screen=str(b.get("screen") or "")[:40], dev=webauth.device(self.client()[1]))
-                return {"ok": True}
-            if path == "/api/stt/retry":                   # повтор нераспознанной записи — с сервера (GAS-34)
-                return panel.stt_retry(str(b.get("id", "")), self.terms_uid())
-            if path == USES:                               # открытые функции панели: id, не чаще раза в минуту
-                return {"n": panel.uses.record(b.get("ids") if isinstance(b.get("ids"), list) else [])}
-            if path == "/api/notify/prefs":
-                return panel.notify_set(self.push_uid(), b)
-            if path in ("/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test"):
-                uid = self.push_uid()
-                if path == "/api/push/subscribe":
-                    return panel.push.add(uid, b.get("sub") or {}, str(b.get("label") or ""),
-                                          "https://" + str(self.headers.get("Host") or "localhost"))
-                if path == "/api/push/unsubscribe":
-                    return {"ok": panel.push.remove(uid, str(b.get("id") or ""))}
-                n = panel.push.notify(uid, "Проверка уведомлений",
-                                      "Видите это — уведомления на это устройство работают.", wait=True)
-                return {"devices": n, "list": panel.push.devices(uid)}
-            if path == "/api/prefs":                       # простой режим и язык — у каждого свои
-                lang, uid, role = b.get("lang"), self.terms_uid(), self.who()[1]
-                if b.get("simple") is True and panel.is_owner(uid):
-                    raise ValueError("ваше пространство — всегда полный пульт; простой режим — в «Демо и тестах»")
-                if b.get("simple") is not None and not panel.is_owner(uid):   # прежний переключатель — смена роли
-                    cur = panel.ui(uid, role)["persona"]
-                    want = b.get("simple") is True
-                    if want != (cur in personas.SIMPLE):
-                        panel.set_ui(uid, role, {"persona": "business_owner" if want else "developer"})
-                rate = b.get("rate")
-                if rate is not None and (isinstance(rate, bool) or not isinstance(rate, int | float)):
-                    raise ValueError("скорость — 1, 1.25, 1.5 или 2")
-                p = panel.people.set_prefs(uid, None if b.get("simple") is None else b.get("simple") is True,
-                                           None if lang is None else str(lang), None if rate is None else float(rate))
-                return {**p, "simple": panel.prefs(uid, role)["simple"]}
-            if path == PERSONA:
-                return panel.set_ui(self.terms_uid(), self.who()[1], b if isinstance(b, dict) else {})
-            if path == "/api/team":
-                uid = b.get("id")
-                caps, secs = b.get("caps"), b.get("sections")
-                if uid is not None and int(uid) not in [p["id"] for p in panel.team_info()["people"]]:
-                    raise ValueError("это не сотрудник пульта")
-                panel.team.set(caps if isinstance(caps, list) else None, secs if isinstance(secs, list) else None,
-                               None if uid is None else int(uid), b.get("reset") is True)
-                return panel.team_info()
-            if path == "/api/terms/accept":
-                if str(b.get("version", "")) != terms.VERSION:
-                    raise ValueError("условия обновились — прочитайте новую версию")
-                panel.people.accept(self.terms_uid(), terms.VERSION)
-                return self.terms_info()
-            if path == "/api/country":
-                return panel.set_country(self.terms_uid(), str(b.get("code", "")))
-            if path == FEEDBACK:                          # «Отзыв» (feedback.py): текст и снимок → задачи штаба
-                return panel.feedback_add(self.who(), b)
-            if path == TOUR:
-                return panel.people.set_tour(self.terms_uid(), str(b.get("tour", "")), str(b.get("state", "")))
-            if path == "/api/passkeys/options":
-                uid = self.terms_uid()
-                return panel.keys.register_options(uid, panel.key_label(uid), self.client_ip())
-            if path == "/api/passkeys/add":
-                return {"keys": panel.keys.register_verify(self.terms_uid(), str(b.get("id", "")), b.get("credential"),
-                                                           str(b.get("name", "")), self.client_ip())}
-            if path == "/api/passkeys/remove":
-                return {"keys": panel.keys.remove(self.terms_uid(), str(b.get("id", "")))}
-            if path == "/api/oidc/link":                   # ссылка на привязку — открыть в браузере (и из Telegram)
-                p = str(b.get("provider", ""))
-                ticket = panel.oidc.ticket(self.terms_uid(), p, self.client_ip())
-                return {"url": f"/api/login/oidc/{p}/start?link={ticket}"}
-            if path == "/api/oidc/unlink":
-                return panel.oidc.unlink(self.terms_uid(), str(b.get("provider", "")))
-            if path == "/api/email/bind":
-                return panel.email.bind_start(self.terms_uid(), b.get("email"), self.client_ip())
-            if path == "/api/email/confirm":
-                return panel.email.bind_confirm(self.terms_uid(), b.get("email"), b.get("code"))
-            if path == "/api/email/remove":
-                return panel.email.unbind(self.terms_uid())
-            if path == "/api/email/options":
-                return panel.email.options(self.terms_uid(), b.get("second_factor"), b.get("notify"))
-            if path == "/api/help/ask":                    # роль — с сервера, не от клиента
-                return panel.help_ask(self.who()[1], self.terms_uid(), b if isinstance(b, dict) else {})
-            if path == "/api/help/feedback":
-                return panel.helper.feedback(str(b.get("id", "")), b.get("useful"), str(b.get("action", "")),
-                                             "member" if self.who()[1] == "admin" else self.who()[1])
-            if path in CONFIRM_API:                       # подтверждение кодом — только сессии браузера
-                if self.via() != "browser":
-                    raise ValueError("подтверждение кодом — для входа из браузера")
-                if path == "/api/confirm/start":
-                    return panel.confirm_start(self.session(), self.who()[2], *self.client())
-                if path == "/api/confirm/check":          # нажали «✅ Подтвердить вход» в боте — экран закрывается сам
-                    return {"ok": not panel.auth.needs_confirm(self.session())}
-                panel.auth.confirm_verify(self.session(), str(b.get("id", "")), str(b.get("code", "")))
-                panel.confirm_done(str(b.get("id", "")))
-                return {"ok": True}
-            if path == "/api/commands/run":
-                return panel.command_run(str(b.get("id", "")), bool(b.get("confirmed")))
-            if path == "/api/commands/mark":
-                return panel.command_mark(str(b.get("id", "")), b.get("done", True) is not False)
-            if path == "/api/people/role":
-                panel.set_role(int(b.get("id", 0)), str(b.get("role", "")), by=self.who()[1])
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/people/remove":
-                panel.admin_may(int(b.get("id", 0)), self.who()[1])
-                panel.forget_person(int(b.get("id", 0)))
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/people/access":           # продлить доступ: дней (0 — бессрочно)
-                panel.set_access(int(b.get("id", 0)), int(b.get("days", 0)), by=self.who()[1])
-                return {"people": panel.people_list(), **panel.geo.info()}
-            if path == "/api/logout" and self.via() == SLINK:   # ссылка на пространство: cookie стираем, ссылка живёт
-                gone = f"{focus.COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
-                return ("cookie", gone, {"ok": True})
-            if path == "/api/logout":
-                panel.auth.logout(self.session())
-                return ("cookie", webauth.set_cookie("", 0), {"ok": True})
-            if path == "/api/mcp/add":
-                home, preset = self.home(), str(b.get("preset", ""))
-                if home and preset in OWNER_PRESETS:
-                    raise ValueError("свою программу на сервере подключает только владелец")
-                return {"result": panel.mcp.add(preset, str(b.get("name", "")), b.get("values") or {}, home=home)}
-            if path == "/api/mcp/remove":
-                return {"result": panel.mcp.remove(str(b.get("name", "")), home=self.home())}
-            if path == "/api/keys":
-                return panel.set_key(str(b.get("provider", "")), str(b.get("key", "")))
-            if path == "/api/calendars/key":              # секрет календаря → файл 0600 и проверка (calkeys.py)
-                return calkeys.save(str(b.get("kind", "")), b)
-            if path == "/api/calendars/key/remove":
-                return calkeys.remove(str(b.get("kind", "")))
-            if path == "/api/keys/remove":
-                panel.remove_key(str(b.get("provider", "")))
-                return {"ok": True}
-            if path == "/api/providers":
-                panel.set_providers(b)
-                return {"ok": True}
-            if path == "/api/voice/choose":
-                panel.choose_voice(str(b.get("id", "")))
-                return panel.voice_cards(True)
-            if path == "/api/mcp/login":
-                return panel.mcp_login(str(b.get("name", "")), self.home())
-            if path == "/api/setup/login":                  # окно входа и ссылка с экрана (до 20 с)
-                return panel.login.start()
-            if path == "/api/setup/code":
-                r = panel.login.send_code(str(b.get("code", "")))
-                panel._setup = (0, {})
-                return r
-            if path == "/api/login/code":                   # шторка «Нужен вход»: код или адрес — в окно, одной строкой
-                w = self.win(b.get("w"))
-                if in_space(w):
-                    raise PermissionError("окно пространства — вход только из него самого")
-                panel.tmux.paste(w["id"], logins.clean_code(b.get("code")))   # код в журналы не пишем
-                return {"ok": True}
-            if path == "/api/login/check":
-                return panel.login_check(self.win(b.get("w")), str(b.get("kind") or ""), self.home())
-            if path == "/api/setup/cancel":
-                panel.login.cancel()
-                return {"ok": True}
-            if path == "/api/new" and (slug := self.space()):
-                return panel.new_in_space(slug, str(b.get("name", "")), str(b.get("effort") or ""))
-            if path == "/api/model/default":             # только явной настройкой — не из чата
-                return panel.default_model(str(b.get("model") or ""))
-            if path == "/api/commands/term":             # вкладка «Команды»: нужен ввод — в окне терминала
-                return panel.command_term(str(b.get("id", "")), bool(b.get("confirmed")))
-            if path == "/api/term/type":                 # строка (пароль) — в окно gp-term; из Mini App — нет
-                if self.headers.get("X-Telegram-Init-Data"):
-                    raise ValueError("пароль в Telegram не вводим — откройте панель в браузере или Termius")
-                termwin.type_line(panel.tmux, str(b.get("id", "")), str(b.get("text", "")))
-                return {"ok": True}
-            if path == "/api/term/key":                  # Ctrl+C, Ctrl+D, Enter
-                termwin.key(panel.tmux, str(b.get("id", "")), str(b.get("key", "")))
-                return {"ok": True}
-            if path == "/api/term/close":
-                termwin.close(panel.tmux, str(b.get("id", "")))
-                return {"ok": True}
-            if path in ("/api/tty/type", "/api/tty/key", "/api/tty/size"):   # живой терминал: текст, клавиши, размер
-                owner = self.who()[1] == "owner"
-                w = panel.tty_window(str(b.get("w") or ""), owner, write=True, space=self.space())
-                if path == "/api/tty/size":                    # окно tmux — под размер области терминала (17.11)
-                    return termwin.tty_size(panel.tmux, w["id"], b.get("cols"), b.get("rows"), bool(b.get("reset")))
-                if path == "/api/tty/key":
-                    termwin.tty_key(panel.tmux, w["id"], str(b.get("key", "")), owner)
-                    return {"ok": True}
-                if w.get("name") == termwin.WINDOW and self.headers.get("X-Telegram-Init-Data"):
-                    raise ValueError("в окно с паролем из Telegram не вводим — откройте панель в браузере")
-                termwin.tty_type(panel.tmux, w["id"], str(b.get("text", "")))
-                panel.pult.deliv.record(w["id"], "tty", str(b.get("text", "")), res="typed")   # без Enter, без текста
-                return {"ok": True}
-            if path == "/api/balance/clear":             # «Я пополнил» — снова предлагать поставщика
-                st = panel.pult.state()
-                panel.pult.set_state(no_balance=balance.clear(st, str(b.get("profile", ""))))
-                return {"ok": True}
-            if path == "/api/space/budget/add":         # владелец: «+ добавить» к запасу пространства
-                return panel.budget_add(tenants.check_slug(str(b.get("space", ""))), float(b.get("usd") or 0),
-                                        self.terms_uid())
-            if path == "/api/space/close":
-                r = panel.space_close(self.space_of(b), str(b.get("w", "")), b.get("force") is True)
-                if r.get("result") == "closed":
-                    panel.focus.end_window(str(b.get("w", "")))
-                return r
-            if path in ("/api/drafts/yes", "/api/drafts/no"):   # «Да» / «Нет» ровно этому черновику — только своему
-                self.same_origin()
-                slug, svc, pid = self.drafts_scope(), str(b.get("svc", "")), str(b.get("id", ""))
-                if path.endswith("/yes"):                   # «Да» — только в памяти панели (approvals.py), не на диске
-                    panel.approvals.grant(slug or "", svc, pid, drafts.digest(slug, svc, pid))
-                    r = {"ok": True}
-                else:
-                    r = drafts.reject(slug, svc, pid)
-                panel.events.event("draft_" + path.rsplit("/", 1)[1], "", svc=svc[:24])
-                return r
-            if path in ("/api/space/mcp/add", "/api/space/mcp/remove"):   # только в своём пространстве (GAS-38 (в))
-                if not (slug := self.space()):
-                    raise ValueError("интеграции пространства меняет его человек; владелец — pult-tenant mcp")
-                if path.endswith("/add"):
-                    return space_mcp.add(slug, str(b.get("preset", "")), str(b.get("name", "")), b.get("values") or {})
-                return space_mcp.remove(slug, str(b.get("name", "")))
-            if path == "/api/space/resume":
-                return panel.space_resume(self.space_of(b), str(b.get("folder", "")))
-            if path == "/api/space/delete":
-                return panel.space_delete(self.space_of(b), str(b.get("folder", "")), str(b.get("confirm", "")))
-            if path == "/api/space/restore":
-                return panel.space_restore(self.space_of(b), str(b.get("id", "")))
-            if path == "/api/new":
-                return panel.new(int(b.get("i", -1)), str(b.get("profile", "")), self.person(), self.terms_uid())
-            if path in ("/api/project/session", "/api/project/resume") and (sp := self.sp(b.get("id", "")))[0]:
-                if path == "/api/project/resume":         # проект пространства (GAS-38): окно — в его tmux
-                    return panel.space_project_resume(str(b.get("id", "")), sp[1], str(b.get("sid", "")))
-                return panel.space_project_session(str(b.get("id", "")), sp[1], str(b.get("effort") or ""))
-            if path == "/api/project/session":           # «Новая сессия в проекте» — ещё одно окно, свой журнал
-                return panel.project_session(str(b.get("id", "")), str(b.get("profile", "")), self.person(),
-                                             self.terms_uid(), model=str(b.get("model") or ""),
-                                             mcp_off=b.get("mcp_off") if isinstance(b.get("mcp_off"), list) else None,
-                                             effort=str(b.get("effort") or ""))
-            if path == "/api/route":                     # подсказка модели по первому сообщению (router.py)
-                return panel.route(str(b.get("text", ""))[:2000], self.terms_uid())
-            if path == "/api/project/resume":            # «Продолжить» завершённый чат (--resume)
-                return panel.project_resume(str(b.get("id", "")), str(b.get("sid", "")), self.person(),
-                                            self.terms_uid())
-            if path == "/api/order":                     # свой порядок: закреплённые, проекты, чаты (20.11)
-                ids = panel.projects.set_order(self.pinner(), str(b.get("grp") or ""), b.get("ids") or [])
-                panel._proj = (0.0, {})
-                return {"ok": True, "ids": ids}
-            if path == "/api/pin":                       # «Закрепить» / «Открепить»: проект, сессия или чат
-                return panel.pin(self.pinner(), b.get("on", True) is not False, str(b.get("project") or ""),
-                                 str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""))
-            if path == "/api/project/update":            # меню проекта: название и архив (projects.json)
-                return panel.project_update(str(b.get("id", "")), b.get("name"), b.get("archived"))
-            if path == "/api/project/chat":              # переименовать / скрыть чат проекта
-                return panel.project_chat(str(b.get("id", "")), str(b.get("sid", "")), b.get("title"),
-                                          b.get("hidden"))
-            if path == "/api/bridge/pair":               # одноразовый код пары (10 мин) для моста на компьютере
-                return panel.devices.pair_code()
-            if path == "/api/bridge/revoke":
-                return {"ok": panel.devices.revoke(str(b.get("id") or ""))}
-            if path == "/api/bridge/private":            # «Личные данные не уходят модели» для устройства
-                return {"ok": panel.devices.set_private(str(b.get("id") or ""), b.get("on") is not False)}
-            if path == "/api/bridge/confirm":            # «Да» человека в панели — только в памяти (approvals.py)
-                self.same_origin()
-                pid = str(b.get("id") or "")
-                rec = bridge._core._load(bridge.CONFIRM_SVC, pid)
-                panel.approvals.grant("", bridge.CONFIRM_SVC, pid, bridge._core._digest(rec["action"], rec["params"]))
-                return {"ok": True}
-            if path == "/api/bridge/reject":             # «Нет»: черновик убран, выполнить его нельзя
-                bridge.reject(str(b.get("id") or ""))
-                return {"ok": True}
-            if path == "/api/desktop/url":                # ссылка — вкладкой в Chrome рабочего стола (владелец 17.11)
-                if not desktop_up():
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                return desktop_tab(str(b.get("url") or ""))
-            if path == "/api/links/prefs":               # «Запомнить для этого сайта» / «Забыть» в Настройках
-                return {"sites": link_pref_set(panel.cfg.data, str(b.get("host") or ""), b.get("open"))}
-            if path == "/api/shell/open":                 # «Терминал» рядом с «Ubuntu»: окно ubuntu-shell
-                with panel.tmux.scope(None):
-                    return {"id": shell_window(panel.tmux), "name": SHELL_WINDOW}
-            if path == "/api/desktop/open":               # «Рабочий стол» (#206): код подтверждения — через CONFIRM
-                if not desktop_up():
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                uid = self.who()[2]
-                uid = uid if uid is not None else webauth.LEGACY
-                return ("cookie", desk_cookie(desk_pass(uid)),
-                        {"url": DESKTOP_URL, "tab": "/desktop-enter?t=" + desk_ticket(uid)})
-            if path == "/api/desktop/mobile":             # мобильный вид сайтов, пока стол смотрят с телефона (21.11)
-                on = bool(b.get("on"))
-                if on and not desktop_up():
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                return deskmobile.MOBILE.set(on, b.get("w"), b.get("h"), b.get("dpr"))
-            if path in ("/api/desktop/tabs", "/api/desktop/tabs/shot", "/api/desktop/tabs/act"):
-                if not desktop_up():                      # вкладки Chrome стола на телефоне (desktabs.py, 22.11)
-                    raise ValueError("рабочий стол не запущен на сервере (agent-desktop)")
-                if path == "/api/desktop/tabs":
-                    return desktabs.TABS.list(b.get("idle"))
-                if path == "/api/desktop/tabs/shot":
-                    return desktabs.TABS.shot(str(b.get("id") or ""))
-                return desktabs.TABS.act(str(b.get("op") or ""), str(b.get("id") or ""), str(b.get("url") or ""))
-            if path == "/api/brief/prefs":                # брифинг: источники, время, дни, пояс — у каждого свои
-                return panel.brief_set(self.terms_uid(), b)
-            if path == "/api/brief/act":                  # «Да / Нет / Позже»; «Да» с действием — после confirm
-                return panel.brief_act(self.terms_uid(), b)
-            if path == "/api/tasks/add":                  # задача владельца руками (#203)
-                return panel.tasks.add(b, by="owner")
-            if path == "/api/tasks/update":               # статус, «что дальше» и поля задачи
-                return panel.tasks.update(str(b.get("id") or ""), {k: v for k, v in b.items() if k != "id"})
-            if path == "/api/tasks/remove":
-                return {"ok": panel.tasks.remove(str(b.get("id") or ""))}
-            if path == "/api/tasks/run":                  # «Выполнить» команду задачи — с подтверждением кодом
-                return panel.task_run(str(b.get("id") or ""), b.get("confirmed") is True)
-            if path == "/api/chat/delete":                # «Удалить» сессию или чат: окно закрыто, журнал — в корзину
-                return panel.chat_delete(str(b.get("w") or ""), str(b.get("id") or ""), str(b.get("sid") or ""),
-                                         b.get("force") is True)
-            if path == "/api/stopped/clear":              # «Убрать все остановленные» — окна, журналы остаются
-                return panel.clear_stopped()
-            if path == "/api/chat/restore":               # «Вернуть» из корзины
-                return panel.chat_restore(str(b.get("id") or ""))
-            if path == "/api/project/new" and (slug := self.space()):   # тестировщик: папка в его пространстве
-                return panel.space_project_new(slug, str(b.get("name") or ""), str(b.get("instructions") or ""))
-            if path == "/api/project/new":                # «Новый проект»: папка, CLAUDE.md, запись; чат — при отправке
-                return panel.project_new(str(b.get("name") or ""), str(b.get("folder") or ""),
-                                         str(b.get("instructions") or ""), str(b.get("profile") or ""),
-                                         str(b.get("model") or ""), self.person())
-            if path == "/api/folder":                     # «Новая папка» → сессия в ней (как 📁 в боте)
-                return panel.new_folder(str(b.get("name", "")), str(b.get("profile", "")), self.person(),
-                                        self.terms_uid())
-            if path == "/api/modules/create":
-                return panel.module_create(str(b.get("id", "")), str(b.get("name", "")), str(b.get("profile", "")),
-                                           self.person(), self.terms_uid(), str(b.get("lang", "")),
-                                           b.get("again") is True)
-            if path == "/api/openrouter/start":
-                base = panel.public_url or f"https://{self.headers.get('Host', '')}"
-                return {"url": panel.openrouter.start(base)}
-            if path == "/api/fallback":
-                return panel.set_fallback(b.get("chain"), self.terms_uid())
-            if path == SELFTEST:                          # «Проверить сейчас» — в фоне, итог — GET
-                started = selftest.start(panel.cfg.data, panel.pult.state())
-                return {"started": started, **selftest.public(panel.cfg.data, panel.pult.state())}
-            if path == "/api/cost/limits":
-                return panel.set_cost_limits(b)
-            if path == "/api/cost/decide":                  # пауза по расходу: «go» — продолжить, «stop» — оставить
-                return {"result": panel.pult.cost_decide(str(b.get("w", "")), str(b.get("act", ""))),
-                        **panel.cost_limits()}
-            if path == "/api/models":
-                url = b.get("base_url")
-                panel.set_models(str(b.get("profile", "")), str(b.get("main", "")), str(b.get("fast", "")),
-                                 None if url is None else str(url))
-                return {"profiles": models.public(panel.pult.state(), panel.countries(self.terms_uid()))}
-            if path == "/api/revive":
-                return panel.revive(str(b.get("w", "")), self.terms_uid())
-            if path == "/api/focus/new" and b.get("space"):   # «Ссылка на пространство» (GAS-38)
-                return panel.focus_space(str(b["space"]), self.terms_uid(), str(b.get("base", "")),
-                                         str(b.get("ttl") or "7d"), int(b.get("max", 3) or 0),
-                                         str(b.get("rights") or "full"), str(b.get("name") or ""),
-                                         str(b.get("audience") or "client"))
-            if path == "/api/meeting/share":               # «Ссылка на протокол»: только этот протокол, 30 дней
-                return panel.meeting_share(str(b.get("id") or ""), self.terms_uid(), str(b.get("base", "")))
-            if path == "/api/focus/new":                   # «Фокус-ссылка» из меню сессии
-                return panel.focus_new(str(b.get("w", "")), self.terms_uid(), str(b.get("base", "")),
-                                       str(b.get("proj") or ""), str(b.get("mode") or ""))
-            if path == "/api/focus/send":                  # «Отправить себе в Telegram»
-                return panel.focus_send(str(b.get("url", "")), self.terms_uid())
-            if path == "/api/focus/qr":                    # QR — POST: адрес с токеном не попадает в журнал прокси
-                panel.focus_token(str(b.get("url", "")))
-                return ("image/png", qr.png_of(str(b["url"])))
-            if path == "/api/focus/browser":               # фокус-ссылка: разрешить подключить свой браузер
-                return {"ok": panel.focus.set_browser(str(b.get("id", "")), bool(b.get("on", True)))}
-            if path == "/api/focus/revoke":
-                return {"ok": panel.focus.revoke(str(b.get("id", ""))), "links": panel.focus.listing()}
-            if path == "/api/q/new":                      # новая личная ссылка на анкету клиента (0010)
-                fid = str(b.get("form") or "")
-                if fid not in onboarding.forms(panel.cfg.data):
-                    raise ValueError("нет такой анкеты")
-                r = panel.forms_links.new(fid, str(b.get("client") or ""), int(b.get("days") or onboarding.DAYS))
-                return r                                   # адрес собирает панель: свой origin + path
-            if path == "/api/invite/new":                  # владелец: ссылка, короткий код и QR — одно приглашение
-                ttl = invites.TTLS.get(str(b.get("ttl") or "1d"))
-                if not ttl:
-                    raise ValueError("срок ссылки: " + ", ".join(invites.TTLS))
-                inv = invites.new(str(b.get("space", "")), str(b.get("role") or "member"), ttl=ttl, by=self.terms_uid(),
-                                  uses=int(b.get("uses", 1)), access=int(b.get("access", 0)),
-                                  plan=str(b.get("plan") or ""), name=str(b.get("name") or ""))
-                return {"path": f"/invite/{inv['code']}", "code": inv["short"], "hint": inv["hint"], "ttl": ttl,
-                        "uses": int(b.get("uses", 1)), "access": int(b.get("access", 0))}
-            if path == "/api/invite/device":               # ссылка для входа на другое устройство: себе или владелец
-                role = self.who()[1]
-                if role in ("owner", "admin") and b.get("id") is not None:   # админ — только участникам и наблюдателям
-                    target = panel.admin_may(int(b["id"]), role)["id"]
-                else:
-                    target = self.terms_uid()
-                return panel.device_link(target, self.terms_uid())
-            if path == "/api/link/tg":                     # гость: «Привязать Telegram» — ссылка на бота
-                uid = self.terms_uid()
-                if not is_guest(uid):
-                    raise ValueError("Telegram у вас уже привязан")
-                rid, nonce = panel.logins.start(*self.client(), link=uid)
-                return {"id": rid, "link": f"https://t.me/{panel.bot_username()}?start=login_{nonce}",
-                        "ttl": webauth.LOGIN_TTL}
-            if path == "/api/space/task":
-                return panel.space_task(str(b.get("space", "")), str(b.get("name", "")), str(b.get("task", "")))
-            if path in ("/api/module/schedule", "/api/module/delete"):   # пространство из модуля (задача 39)
-                w = panel.tmux.window(str(b.get("w") or ""))
-                if not w:
-                    raise LookupError("окна уже нет")
-                if path == "/api/module/schedule":
-                    return panel.set_schedule(w["path"], str(b.get("state", "")), self.terms_uid())
-                return panel.module_delete(w, str(b.get("confirm", "")))
-            if path in ("/api/repos/add", "/api/repos/remove"):   # задача 43: клон и /add-dir; «Отключить»
-                w = self.repo_win(b)
-                if path == "/api/repos/add":
-                    return panel.repo_add(w, str(b.get("repo", "")))
-                return panel.repo_remove(w, str(b.get("path", "")))
-            if path == "/api/close":                       # и остановленную: окно с оболочкой просто закрыть
-                w = panel.session_window(b.get("w"))
-                if b.get("schedule"):                      # сессия модуля: оставить / приостановить / выключить
-                    panel.set_schedule(w["path"], str(b["schedule"]), self.terms_uid())
-                r = panel.close_ex(w, force=True) if b.get("force") is True else panel.close_ex(w)   # + черновик
-                if r["result"] == "закрыто":
-                    panel.focus.end_window(w["id"])        # фокус-ссылки этой сессии гаснут сразу
-                return r
-            w = self.win(b.get("w"))
-            if path == "/api/space/connect":
-                return panel.owner_join(w)
-            if path == "/api/help/call":                    # тестировщик: «Позвать на помощь» — владельцу в бот
-                return panel.call_help(self.terms_uid(), w)
-            helper = self.who()[1] in ("owner", "admin")
-            if w.get("space") and helper and path in ("/api/send", "/api/select", "/api/key"):
-                panel.owner_seen[w["id"]] = time.time()      # владелец пишет или отвечает — тестировщик увидит
-            if path == NOTIFY_DONE:                       # одно сообщение в бот, когда ход закончится (бот следит)
-                return {"result": panel.pult.ask_notify_done(w["id"], self.terms_uid())}
-            if path in ("/api/send", "/api/command", "/api/select", "/api/key", "/api/model"):
-                panel.check(w.get("profile") or "claude", self.terms_uid())   # сессия этого поставщика — для страны?
-            if path == "/api/send":
-                text = str(b.get("text", "")).strip()
-                if not text:
-                    raise ValueError("пустое сообщение")
-                mid = str(b.get("id", ""))[:64]           # повтор после обрыва связи — не «тот же вопрос»
-                panel.events.event("recv", mid, w=w["id"], src="focus" if self.focused is not None else "panel",
-                                   len=len(text), sha=chatlog.sha(text), dev=webauth.device(self.client()[1]),
-                                   via=self.via() + ("·pwa" if self.headers.get("X-Pult-Pwa") == "1" else ""))
-                if (ago := panel.repeat.check(w["id"], text, mid=mid)) is not None:
-                    panel.events.event("repeat_stop", mid, w=w["id"], ago=ago)
-                    raise ValueError(f"Этот вопрос уже отправлен {max(1, ago // 60)} мин назад — ответ появится выше. "
-                                     "Нужно ещё раз — отправьте снова в течение 2 минут.")
-                try:
-                    with panel.pult.via("focus" if self.focused is not None else "panel"):
-                        dup = panel.send(w, text, str(b.get("id", ""))[:64])
-                except Exception as e:
-                    panel.events.event("send_error", mid, w=w["id"], err=f"{type(e).__name__}: {e}")
-                    raise
-                panel.events.event("dup" if dup else "inserted", mid, w=w["id"])
-                panel.repeat.done(w["id"], text, mid=mid)
-                return {"ok": True, "dup": dup}
-            if path == "/api/resend":                     # «Отправить» у строки «Не отправлено» — Enter после проверки
-                return {"result": panel.pult.push_enter(w["id"], str(b.get("sha", ""))[:12])}
-            if path == "/api/rename":
-                return {"name": panel.tmux.rename(w["id"], str(b.get("name", "")))}
-            if path == "/api/title":                      # название чата (вторая часть), не имя окна; "" — авто
-                return panel.set_title(w, b.get("title"))
-            if path == "/api/active" and w.get("space"):
-                raise ValueError("сессия демо-пространства не бывает активной в чате бота — откройте её в панели")
-            if path == "/api/active":
-                panel.pult.set_state(active=w["id"])
-                return {"ok": True}
-            if path == "/api/notify/level":               # уровень уведомлений этой сессии (notifylevel.py)
-                lv = str(b.get("level") or "")
-                panel.pult.set_state(notify_levels=notifylevel.updated(panel.pult.state(), w["id"], lv))
-                return {"notify": notifylevel.level(panel.pult.state(), w["id"])}
-            if path == "/api/command":
-                return panel.command(w, int(b.get("i", -1)))
-            if path == "/api/model" and b.get("keep"):   # только запомнить модель для перезапуска — без перезапуска
-                return panel.keep_model(w, str(b.get("name", "")))
-            if path == "/api/model":                     # модель — только этого чата (перезапуск с --model)
-                return panel.model(w, str(b.get("name", "")), self.terms_uid(),
-                                   effort=str(b["effort"]) if b.get("effort") is not None else None)
-            if path == "/api/effort":
-                return {"lines": panel.effort(w, str(b.get("level", "")))}
-            if path == "/api/key":
-                return {"lines": panel.key(w, str(b.get("key", "")))}
-            if path == "/api/select":
-                go = b.get("go", True) is not False            # go: false — только выделить пункт
-                return {"lines": panel.select(w, str(b.get("text", "")), str(b.get("n", "")), go)}
-            if path == "/api/mcp/finish":
-                return {"result": panel.mcp_finish(w, str(b.get("url", "")), str(b.get("name", "")), self.home())}
-            if path == "/api/chat/mcp":                  # интеграции посреди чата: запомнить и перезапустить с --resume
-                return panel.chat_mcp(w, b.get("off"), self.terms_uid())
-            if path == "/api/restart":
-                if self.who()[1] == "admin" and str(b.get("profile", "")) not in ("", w.get("profile") or ""):
-                    raise ValueError("админ перезапускает сессию без смены модели: модель и расход — у владельца")
-                return panel.restart(w, str(b.get("profile", "")), b.get("keep", True) is not False, self.terms_uid())
-            if path == "/api/run":
-                return panel.run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
-            if path == "/api/run/term":                  # из ответа: нужен ввод — в окне терминала, не вслепую
-                return panel.term_run(w, int(b.get("i", -1)), str(b.get("sha", "")), bool(b.get("confirmed")))
+            if fn := routes.POST_P.get(path):           # развилка: несколько путей — одна функция (платежи и др.)
+                return fn(self, path, b)
+            if fn := routes.POST_W.get(path):           # ветки после «w = self.win(b.get("w"))»: окно — до вызова
+                return fn(self, b, self.win(b.get("w")))
+            self.win(b.get("w"))   # путь не из таблиц — как раньше: окна нет — 404 «окна уже нет», иначе «нет метода»
             raise KeyError
 
         def dispatch(self, fn):
@@ -5974,17 +2503,25 @@ def handler(panel: Panel):
             except KeyError:
                 return self.json({"error": "нет такого метода"}, 404)
             except focus.Gone as e:                      # фокус-ссылка не действует: страница покажет почему
-                return self.json({"error": str(e), "code": "focus_gone"}, 410)
+                return self.json({"error": str(e), "code": "focus_gone", "why": e.why}, 410)
             except focus.Denied as e:                    # демо-ссылке нельзя (403) или уже ответили (409)
                 return self.json({"error": str(e), "code": e.code}, e.status)
             except LookupError as e:
                 return self.json({"error": str(e)}, 404)
             except NeedForce as e:
                 return self.json({"error": str(e), "code": "force"}, 409)
+            except consents.DocNeeded as e:              # нет согласия с политикой ПДн и условиями (24.11)
+                return self.json({"error": str(e), "code": "privacy", "docs": e.docs}, 409)
+            except consents.Needed as e:                 # подключение без согласия на текущий текст (consents.py)
+                return self.json({"error": str(e), "code": "consent", "what": e.what, "v": consents.CONSENT_V}, 409)
             except emailcode.LimitError as e:
                 return self.json({"error": str(e), "retry": e.retry}, 429)
+            except AwaitsChoice as e:                    # Claude ждёт выбора: панель подсветит варианты, текст — в поле
+                return self.json({"error": str(e), "code": e.code}, 400)
             except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired, providers.ProviderError) as e:
                 return self.json({"error": str(e) or "ошибка"}, 400)
+            except Exception as e:                       # прочее — 500 JSON и событие, а не обрыв (502 у Caddy)
+                return self.crash(e)
             if out is SENT:                              # ответ уже отправлен (свой заголовок: ETag)
                 return None
             if isinstance(out, tuple) and out[0] == "cookie":
@@ -5993,6 +2530,9 @@ def handler(panel: Panel):
                 return self.reply(200, out[1], out[0], headers=out[2] if len(out) > 2 else None)
             return self.json(out)
 
+    H.panel = panel                             # для таблиц маршрутов (routes/): их функции получают обработчик
+    H.build = build                             # версия страницы — для таблиц маршрутов («/api/projects»)
+    H.whatsnew = whatsnew                       # «Что нового» — для таблиц маршрутов («/api/meta»)
     return H
 
 
@@ -6025,13 +2565,27 @@ def set_menu(api: Api, owners: list[int], url: str):
 WINDOWS_TTL = 2.0                                   # с: см. Tmux.ttl
 
 
+
+
+def demo_video(data) -> Path:
+    """Ролик для демо (/?demo, QR в питче): ``<данные пульта>/media/demo.mp4`` — вне git, кладёт владелец."""
+    return Path(data) / "media" / "demo.mp4"
+
+class Server(ThreadingHTTPServer):
+    """Сервер панели. Очередь входящих соединений — 128, а не 5 (по умолчанию в socketserver): при сотне клиентов
+    сразу лишние соединения ядро отбрасывало, браузер повторял через 1, 3, 7 с — хвост p99 до 30 с и обрывы
+    (замер 24.11, tools/bench-http.py)."""
+    request_queue_size = 128
+    daemon_threads = True
+
 def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | None = None):
     Tmux.ttl = WINDOWS_TTL                          # список окон — общий на цикл опроса браузера (tmux.py)
     panel = Panel(cfg)
     panel.owner_space_fix()                         # вид владельца — его выбор, не чужой (см. owner_space_fix)
+    getattr(panel.tmux, "spawn_hook", lambda: None)()   # окно из окна — видно по фокус-ссылке (spawned.py)
     menu_for = cfg.owners + [p["id"] for p in panel.people.list()               # кнопка «📱 Панель»; гостям без
                              if p["role"] != "owner" and has_telegram(p["id"])]   # Telegram — некуда
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler(panel))
+    srv = Server(("127.0.0.1", port), handler(panel))
 
     def learn_bot():                                       # имя бота — для ссылки «подтвердите номер в боте»
         panel.geo.lookup("192.0.2.1")                      # и база GeoIP — в память заранее, не на первом входе
@@ -6050,10 +2604,25 @@ def serve(cfg: Config, port: int = 8765, use_tunnel: bool = False, url: str | No
             except Exception as e:                         # цикл не падает из-за корзины
                 print("корзина чатов:", e, flush=True)
             try:
+                panel.move_tick()                          # отложенные переносы чатов: окно освободилось — переносим
+            except Exception as e:
+                print("перенос чатов:", e, flush=True)
+            try:
                 panel.temp_tick()                          # остатки озвучки (*.tmp.wav, пустые .mp3) — раз в час
             except Exception as e:
                 print("остатки озвучки:", e, flush=True)
     threading.Thread(target=sweep, daemon=True).start()
+
+    def alive():                                           # отметка heartbeat-web и без посетителей: запрос к себе
+        while True:                                        # же — сервер отвечает, значит панель жива (#438)
+            time.sleep(alerts.BEAT_EVERY)
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/alive", timeout=10).close()
+            except urllib.error.HTTPError:
+                pass                                       # ответ есть (401) — отметка уже записана
+            except OSError as e:
+                print("проверка жизни панели:", e, flush=True)
+    threading.Thread(target=alive, daemon=True).start()
     proc = None
     if use_tunnel:
         proc, url = tunnel(port)

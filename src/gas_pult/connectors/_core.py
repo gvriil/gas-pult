@@ -162,7 +162,7 @@ def propose(svc: str, action: str, params: dict, summary: str) -> dict:
             "status": "черновик: ждёт подтверждения человеком в пульте; затем вызовите apply с этим id"}
 
 
-CONFIRM_ONLY_PANEL = "подтверждение — только кнопкой «Да» в панели Гаврилы (черновик виден в «Ждут вашего «Да»»)"
+CONFIRM_ONLY_PANEL = "подтверждение — только кнопкой «Да» в панели Ладэи (черновик виден в «Ждут вашего «Да»»)"
 
 
 def confirm(svc: str, pid: str) -> None:
@@ -212,7 +212,7 @@ def take_confirmed(svc: str, pid: str, need_flag: bool = True, approve=None) -> 
     dg = _digest(rec["action"], rec["params"])
     if not (approve or _panel_ok)(svc, pid, dg):
         raise ToolError("нет подтверждения человека для этого черновика — покажите его человеку: «Да» — в панели "
-                        "Гаврилы («Ждут вашего «Да»»). Отметки на диске и команды подтверждения не действуют")
+                        "Ладэи («Ждут вашего «Да»»). Отметки на диске и команды подтверждения не действуют")
     d = _dir(svc)
     (d / f"{pid}.json").rename(d / f"{pid}.done")
     return rec

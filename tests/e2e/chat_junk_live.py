@@ -28,6 +28,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 ROOT = Path(__file__).resolve().parents[2]
 SID = "bbbbbbbb-0000-4000-8000-000000000001"
 NOTE = "<task-notification><task-id>x1</task-id><status>completed</status><summary>Агент закончил</summary>" \

@@ -78,7 +78,8 @@ class Config:
     commands: list[list[str]] = field(default_factory=list)  # свои кнопки ⚡: [["▶️ Старт", "/shtab start"]]
     brief_at: str = "07:30"                                 # утренний брифинг первого лица (GAS-18); "" — выкл.
     digest_at: str = "09:00"                                # сводка «ждёт владельца», если brief_at = ""
-    sleep_after_min: int = 30                               # ждёт ответа столько минут — спит (GAS-25); 0 — выкл.
+    sleep_after_min: int = 0                                # ждёт ответа столько минут — спит (GAS-25); 0 — выкл.
+    # (владелец 24.11: «чаты не должны уходить в архив и спать» — по умолчанию выключено)
     digest_github: str = ""                                 # чьи PR на GitHub в сводке (через gh); "" — без PR
     region: str = ""                                        # страна сервера (ISO, "NL"): какие поставщики разрешены
     personal_voices: bool = False                           # голоса Silero (CC BY-NC) — только владельцу, лично
@@ -88,6 +89,10 @@ class Config:
     google: dict = field(default_factory=dict)              # [google]: вход через Google (oidc.py); {} — выкл.
     yandex: dict = field(default_factory=dict)              # [yandex]: вход через Яндекс ID (oidc.py); {} — выкл.
     drive_root: str = "~/drive"                             # Google Диск (rclone): <проект>/Входящие; "" — выкл.
+    events_keep_days: int = 400                             # события продукта (funnel.py): сколько дней хранить
+    storage: str = "json"                                   # json | dual | sqlite — хранение (sqlstore.py)
+    deadlines: list[str] = field(default_factory=list)      # реестры сроков (md, «Когда кончается») — только чтение
+    cost_cmd: str = ""                                      # команда «расход за сутки» для «Сегодня»; "" — без строки
 
     @property
     def data(self) -> Path:
@@ -137,6 +142,8 @@ def load() -> Config:
     region = raw.get("region", "")
     if not isinstance(region, str) or (region and not re.fullmatch(r"[A-Za-z]{2}", region)):
         raise ConfigError(f"В {path} region — код страны из двух букв, например \"NL\"")
+    if raw.get("storage", "json") not in ("json", "dual", "sqlite"):
+        raise ConfigError(f"В {path} storage — \"json\", \"dual\" или \"sqlite\"")
     if not isinstance(raw.get("personal_voices", False), bool):
         raise ConfigError(f"В {path} personal_voices — true или false")
     for sec, keys in SECTIONS.items():

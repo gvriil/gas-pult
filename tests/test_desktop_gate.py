@@ -8,7 +8,7 @@ import urllib.request
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import focus, webapp, webauth
+from gas_pult import desktop, focus, webapp, webauth
 
 
 def gate(base, cookie=""):
@@ -40,10 +40,10 @@ def test_open_needs_desktop_and_confirm(server, monkeypatch):
     code, e = call(base, "/api/desktop/open", {}, tok)
     assert code == 403 and e.get("confirm") == "code"                         # свежий вход — код подтверждения
     monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: False)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: False)
     code, e = call(base, "/api/desktop/open", {}, tok)
     assert code == 400 and "не запущен" in e["error"]
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     assert call(base, "/api/desktop/open", {}, tok)[1]["url"] == webapp.DESKTOP_URL
     assert call(base, "/api/desktop/open", {}, p.auth.issue(2))[0] == 403     # участнику — нет
     assert call(base, "/api/meta", tok=tok)[1]["desktop"] is True
@@ -58,7 +58,7 @@ def test_pass_cookie_lets_iframe_in_without_panel_cookie(server, monkeypatch):
     p, base, *_ = server
     tok = p.auth.issue(1)
     monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     req = urllib.request.Request(base + "/api/desktop/open", data=b"{}", method="POST",
                                  headers={"Content-Type": "application/json", "Cookie": f"{webauth.COOKIE}={tok}"})
     with urllib.request.urlopen(req) as r:
@@ -97,7 +97,7 @@ def test_ui_part_and_e2e():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     try:
-        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev")
     finally:
         srv.shutdown()
 
@@ -110,7 +110,7 @@ def test_tab_link_one_time_sets_first_party_pass(server, monkeypatch):
     p, base, *_ = server
     tok = p.auth.issue(1)
     monkeypatch.setattr(p.auth, "needs_confirm", lambda tok, fresh=None: False)
-    monkeypatch.setattr(webapp, "desktop_up", lambda port=None: True)
+    monkeypatch.setattr(desktop, "desktop_up", lambda port=None: True)
     d = call(base, "/api/desktop/open", {}, tok)[1]
     assert d["tab"].startswith("/desktop-enter?t=")
     u = urllib.parse.urlparse(base)
@@ -134,3 +134,22 @@ def test_ticket_expires():
     t = webapp.desk_ticket(1, now=1000.0)
     webapp.desk_ticket(1, now=1000.0 + webapp.TICKET_TTL + 1)
     assert t not in webapp.DESK_TICKETS
+
+
+def test_desktop_clipboard_live():
+    """Буфер «Браузера» вживую (владелец 23.11): свой Xvnc, Chrome и noVNC (tests/e2e/desktop_clipboard_live.py) —
+    Ctrl/⌘+V кириллица и латиница, копия со стола, кнопка «Вставить» на телефоне; нет Xvnc/noVNC/Chrome — пропуск."""
+    import importlib.util
+    from pathlib import Path
+
+    import pytest
+
+    spec = importlib.util.spec_from_file_location("desktop_clipboard_live",
+                                                  Path(__file__).parent / "e2e" / "desktop_clipboard_live.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    why = mod.ready()
+    if why:
+        pytest.skip(why)
+    with mod.Stand() as st:
+        assert mod.run(st) == []

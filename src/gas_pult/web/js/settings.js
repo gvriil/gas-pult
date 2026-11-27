@@ -6,8 +6,8 @@
 // Состояние уведомлений этого устройства — сразу в подписи (владелец 20.11: «опять только Telegram»; подписок не было:
 // «Включить» ни разу не нажимали). Подписку проверяет экран «Уведомления»; здесь — то, что видно без запроса.
 function pushState() {
-  if (tg?.initData) return "здесь, в Telegram, — присылает бот; на телефон — откройте Гаврилу в браузере";
-  if (!("PushManager" in window) || !("Notification" in window)) return /iPhone|iPad/.test(navigator.userAgent) ? "на iPhone — откройте Гаврилу значком с экрана «Домой»" : "этот браузер не умеет уведомления";
+  if (tg?.initData) return "здесь, в Telegram, — присылает бот; на телефон — откройте Ладэю в браузере";
+  if (!("PushManager" in window) || !("Notification" in window)) return /iPhone|iPad/.test(navigator.userAgent) ? "на iPhone — откройте Ладэю значком с экрана «Домой»" : "этот браузер не умеет уведомления";
   return Notification.permission === "granted" ? "на этом устройстве включены · проверить, устройства" : "на этом устройстве выключены — включить";
 }
 
@@ -28,11 +28,13 @@ function groups() {
     { label: "Способы входа — Google, Яндекс ID", icon: "lock", sub: "войти своим аккаунтом Google или Яндекса вместо Telegram", run: oidcSheet },
     { label: "Почта для входа и оповещений", icon: "mail", sub: "вход по коду из письма, второй фактор, письма о важном", run: () => part("email").then(() => emailSheet()) },
     { label: "Уведомления", icon: "bell", sub: pushState(), run: () => part("push").then((m) => m.open()) },
-    ...(meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Устройства для «Поделиться»", icon: "share", sub: "фото, ссылки и файлы из других приложений — в Гаврилу; iPhone и Android", run: () => part("share").then((m) => m.devicesSheet()) }] : []),
+    ...(meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Устройства для «Поделиться»", icon: "share", sub: "фото, ссылки и файлы из других приложений — в Ладэю; iPhone и Android", run: () => part("share").then((m) => m.devicesSheet()) }] : []),
     ] },
-    { title: "ИИ, подключения и бюджет", icon: "chip", items: [
+    { title: "Подключения и оплата", icon: "chip", items: [   // таблица 2 (владелец 25.11: «да»)
     ...(meta?.role !== "viewer" && !meta?.space ? [{ label: "Подключения", icon: "puzzle", sub: "почта, календарь, документы, ВкусВилл, MCP — подключить и отключить", run: () => go("go:integrations") }] : []),
     ...(meta?.space && meta?.role !== "owner" ? [{ label: "Подключения", icon: "puzzle", sub: "свои подключения пространства: GitHub, Linear, поиск, свой сервер — ключи только у вас", run: () => part("spacemcp").then((m) => m.open()) }] : []),
+    // 1С и CRM (apitokens.py, владелец 22.11): владелец пульта — свои токены; человек пространства (не наблюдатель) — свои
+    ...(!FOCUS && ((meta?.role === "owner" && !meta?.space) || (meta?.space && ["member", "admin"].includes(meta?.role))) ? [{ label: "Токены для 1С и CRM", icon: "key", sub: "доступ к задачам и чатам по API; по умолчанию только чтение", run: () => part("apitokens").then((m) => m.open()) }] : []),
     ...(meta?.role === "owner" ? [{ label: "Модель по умолчанию", icon: "chip", sub: "для всех новых сессий Claude; модель одного чата — в самом чате", run: defaultModelSheet }] : []),
     ...(meta?.role !== "viewer" ? [{ label: "Расход и лимиты", icon: "coin", sub: meta?.role === "owner" ? "токены и деньги за день, лимит на сессию и на день" : "токены и деньги за день по вашей учётке", run: costSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Брифинг: источники и время", icon: "spark", run: () => briefGo("prefs") }] : []),
@@ -46,6 +48,7 @@ function groups() {
     ...(UI ? [{ label: T("caps.title"), icon: "settings", sub: T("caps.entry.sub", { role: personaTitle(UI.persona) }), run: capsSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Фокус-ссылки", icon: "qr", sub: "какие сессии открыты по фокус-ссылке; отозвать", run: focusList }] : []),
     ...(meta?.role === "owner" && !FOCUS ? [{ label: "Анкеты клиентов", icon: "file", sub: "ссылка клиенту — ответы сюда и в бот", run: () => part("forms").then((m) => m.open()) }] : []),
+    ...(meta?.role === "owner" && !FOCUS && !meta?.space ? [{ label: "Платежи", icon: "coin", sub: "счета и тарифы; оплата онлайн — когда будет юрлицо", run: () => part("billing").then((m) => m.open()) }] : []),
     ] },
     { title: "Система и справка", icon: "help", items: [
     { label: "Отзыв", icon: "chat", sub: "что не так или что улучшить — текстом или голосом, со снимком экрана", run: () => part("feedback").then((m) => m.open()) },
@@ -53,7 +56,7 @@ function groups() {
     ...(meta?.role === "owner" ? [{ label: "Проверка", icon: "check", sub: "Claude Code установлен, вход выполнен, ключи", run: setupSheet }] : []),
     ...(meta?.role === "owner" ? [{ label: "Корзина чатов", icon: "trash", sub: "удалённые сессии и чаты — вернуть; скрытые — показать снова", run: chatTrash }] : []),
     { label: "Обозначения", icon: "help", sub: "что значат точки, цвета и значки", run: legend },
-    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOURS[k].title, icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, подключения, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
+    ...[tourKind(), ...TOUR_KINDS.filter((k) => k !== tourKind())].map((k) => ({ label: "Пройти тур: " + TOUR_TITLES[k], icon: "spark", sub: k === "dev" ? "сессии, экран, команды, модели, подключения, расход" : "простыми словами: агенты, «Из модуля», «Примерить на себя», расход", run: () => { store("tourKind", k); startTour(k); } })),
     { label: "Перезагрузить панель", icon: "refresh", sub: "если что-то выглядит старым или зависло", run: reloadPanel },
     ] },
   ].map((g) => ({ ...g, items: g.items.filter(Boolean) })).filter((g) => g.items.some((x) => !x.head));
@@ -101,12 +104,18 @@ function openWide(at, gs) {
   s.classList.add("setwide"); s.append(nav, pane);
 }
 
+// Отчёт «два нажатия» 25.11: подключить почту или мессенджер — первым пунктом, Настройки → пункт (2 нажатия)
+const quick = () => meta?.role !== "viewer" && !meta?.space && !FOCUS ? [{ label: "Подключить почту или мессенджер", icon: "mail",
+  sub: "Gmail, Яндекс Почта, Telegram, WhatsApp, MAX", run: () => go("go:integrations") }] : [];
+
 export function open(at) {                            // at — номер раздела: открыть его сразу (тема переключилась)
   const gs = groups();
+  if (wide() && gs[0]) gs[0] = { ...gs[0], items: [...quick(), ...gs[0].items] };
   if (wide()) return openWide(gs[at] ? at : 0, gs);
   if (at != null && gs[at]) { helpSheet("settings"); return sheet(gs[at].title, gs[at].items); }
   helpSheet("settings");
   sheet("Настройки", [
+    ...quick(),
     ...gs.map((g) => ({ label: g.title, icon: g.icon, sub: brief(g.items),
       run: () => { helpSheet("settings"); sheet(g.title, g.items); } })),
     ...(meta?.via === "browser" ? [{ label: "Выйти на этом устройстве", icon: "power", danger: true, run: async () => { await api("/api/logout", {}); showLogin(); } }] : []),

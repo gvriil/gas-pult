@@ -1,0 +1,20 @@
+{
+  "00 GET /api/tts/about?screen=home": [200, "audio/mpeg", "MP3-about", [["about_text", ["home"], []], ["tts_text", ["о пульте", false], [["cloud", true]]]]],
+  "01 GET /api/rec/status?id=r1": [200, "application/json", {"segs": 0}, [["recparts.status", ["1::", "r1"], []]]],
+  "02 GET /api/stt/job?id=j1": [200, "application/json", {"state": "done", "text": "т"}, [["stt_job_get", ["j1", 1], []]]],
+  "03 GET /api/voice/cards": [200, "application/json", {"cards": []}, [["voice_cards", [true], [["cloud", true]]]]],
+  "04 GET /api/voice/preview?id=v1": [200, "audio/mpeg", "MP3-preview", [["voice_preview", ["v1", true], []]]],
+  "05 GET /api/tts?w=%401&msg=3&full=1&head=1": [200, "audio/mpeg", "MP3-tts", [["tts", ["dict", true, 3, false], [["cloud", true], ["head", true]]]]],
+  "06 GET /api/tts?w=%409": [404, "application/json", {"error": "окна уже нет"}, []],
+  "07 GET /api/tts/warm?w=%401": [200, "application/json", {"warm": true}, [["tts_warm", [false], []]]],
+  "08 GET /api/tts/warm": [404, "application/json", {"error": "окна уже нет"}, []],
+  "09 POST /api/rec/chunk?id=r1&seg=0&seq=2": [200, "application/json", {"ok": true}, [["recparts.add", ["1::", "r1", 0, 2, "bytes", "audio/webm"], []]]],
+  "10 POST /api/rec/chunk?id=r1&seg=x": [400, "application/json", {"error": "неверный номер куска"}, []],
+  "11 POST /api/stt": [200, "application/json", {"text": "привет", "fallback": ""}, [["fallback_note", [], []], ["stt", ["bytes", "audio/webm"], [["cloud", true]]], ["fallback_note", [], []]]],
+  "12 POST /api/stt?job=1": [200, "application/json", {"id": "j1"}, [["stt_job", ["bytes", "audio/webm", 1], [["cloud", true]]]]],
+  "13 POST /api/rec/finish": [200, "application/json", {"id": "j2"}, [["rec_finish", ["1::", "r1", 1], [["cloud", true]]]]],
+  "14 POST /api/rec/finish": [400, "application/json", {"error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}, []],
+  "15 POST /api/rec/drop": [200, "application/json", {"ok": true}, [["recparts.drop", ["1::", "r1"], []]]],
+  "16 POST /api/stt/retry": [200, "application/json", {"id": "j3"}, [["stt_retry", ["j1", 1], []]]],
+  "17 POST /api/voice/choose": [200, "application/json", {"cards": []}, [["choose_voice", ["v2"], []], ["voice_cards", [true], []]]]
+}

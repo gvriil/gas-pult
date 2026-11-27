@@ -73,5 +73,51 @@ def limits(root: Path | None = None, now: float | None = None) -> dict | None:
         snap = read(f.stem, root)
         if snap and snap["limits"]:
             out = {k: v for k, v in snap["limits"].items() if not v["resets_at"] or v["resets_at"] > now}
-            return {"limits": out, "at": snap["at"]} if out else None
+            if not out:
+                return None
+            w = week(out.get("seven_day"), now)
+            return {"limits": out, "at": snap["at"], **({"week": w} if w else {})}
     return None
+
+
+WEEK = 7 * 86400
+WARN, BAD = 70, 85                        # % недели: до 70 — обычный цвет, 70–85 — жёлтый, выше — красный (24.11)
+
+
+def week(x: dict | None, now: float | None = None) -> dict | None:
+    """Недельный лимит подписки и темп (владелец 24.11: «показывать недельные лимиты — а то мы невидимы»):
+    used, resets_at, level (ok | warn | bad), proj — сколько будет к сбросу при нынешнем темпе, % (None — рано
+    судить), out_at — когда кончится при этом темпе (только если раньше сброса)."""
+    if not x or x.get("used") is None or not x.get("resets_at"):
+        return None
+    now = time.time() if now is None else now
+    used, reset = float(x["used"]), float(x["resets_at"])
+    gone = now - (reset - WEEK)                          # прошло с начала недели лимита
+    proj = out_at = None
+    if gone > 3600 and used > 0:                         # первый час — темп ещё ни о чём не говорит
+        rate = used / gone                                # % в секунду
+        proj = round(used + rate * max(0.0, reset - now))
+        t100 = now + (100 - used) / rate if used < 100 else now
+        out_at = int(t100) if t100 < reset else None
+    level = "bad" if used > BAD else "warn" if used >= WARN else "ok"
+    return {"used": round(used), "resets_at": int(reset), "level": level, "proj": proj, "out_at": out_at}
+
+
+DAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+
+
+def day(t: float) -> str:
+    """«пт 20:00» — день недели и время сервера."""
+    from datetime import datetime
+    d = datetime.fromtimestamp(t)
+    return f"{DAYS[d.weekday()]} {d:%H:%M}"
+
+
+def week_text(w: dict | None) -> str:
+    """Одна строка для бота: «Неделя 71 % · сброс пт 20:00 · к сбросу ≈ 98 %» (время сервера)."""
+    if not w:
+        return ""
+    tail = f" · кончится ≈ {day(w['out_at'])}" if w.get("out_at") else \
+        f" · к сбросу ≈ {w['proj']} %" if w.get("proj") is not None else ""
+    return f"Неделя {w['used']} % · сброс {day(w['resets_at'])}{tail}"
+

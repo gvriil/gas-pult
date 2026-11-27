@@ -1,4 +1,4 @@
-"""Владелец 20.11: «пока «Гаврила» вместо «Пульт» — во всём, что видит человек; сменить потом в одном месте»."""
+"""Название в одном месте (владелец 20.11; 25.11 — «Ладэя» / «Ladeya», by Botsmith), «Пульт» в интерфейсе не видно."""
 import json
 import re
 from pathlib import Path
@@ -10,7 +10,8 @@ INDEX = (WEB / "index.html").read_text(encoding="utf-8")
 
 
 def test_one_place_and_manifest():
-    assert brand.NAME == "Gavrila" and brand.NAME_RU == "Гаврила" == brand.DEFAULT
+    assert brand.APP_NAME_EN == brand.NAME == "Ladeya"
+    assert brand.APP_NAME_RU == brand.NAME_RU == "Ладэя" == brand.DEFAULT
     m = brand.manifest()
     assert m["name"] == m["short_name"] == brand.NAME_RU and m["display"] == "standalone" and m["start_url"] == "/"
     assert '<link rel="manifest" href="/manifest.webmanifest">' in INDEX
@@ -25,3 +26,16 @@ def test_no_visible_pult_in_ui_strings():
     for lang in ("ru", "en"):
         want = brand.NAME_RU if lang == "ru" else brand.NAME
         assert json.loads((WEB / f"i18n/{lang}.json").read_text(encoding="utf-8"))["login.brand"] == want
+
+
+def test_focus_manifest_opens_focus():
+    """Владелец 22.11: фокус-ссылка на экране «Домой» открывает фокус, а не вход в пульт."""
+    m = brand.manifest(focus=True)
+    assert m["start_url"] == m["id"] == "/?focus" and m["scope"] == "/" and "share_target" not in m
+    assert brand.manifest()["start_url"] == "/"
+    assert '"/manifest.webmanifest?focus"' in INDEX and 'if (FOCUS) document.querySelector' in INDEX
+
+
+def test_old_home_icon_redirects_to_focus():
+    """Старый значок открывает «/»: ответ focus_scope ведёт в фокус (скриншот владельца 22.11)."""
+    assert 'err.code === "focus_scope" && !FOCUS && !SLINK) { location.replace("/?focus")' in INDEX

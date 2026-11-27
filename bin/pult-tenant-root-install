@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Одна команда root для пространств: копия pult-tenant для sudo, правило администратора и правило пульта.
+#   sudo bin/pult-tenant-root-install [--owner ПОЛЬЗОВАТЕЛЬ] [--dry-run]
+#   sudo bin/pult-tenant-root-install --uninstall   откат: убрать копию и правило администратора
+# Шаги: 1) бэкап копии и обоих файлов sudoers; 2) копия src и bin этого репозитория в /usr/local/lib/pult-tenant
+# (root:root, без записи для группы и прочих); 3) правило администратора в /etc/sudoers.d/gas-pult-tenant-admin
+# (владелец → root: только эта копия pult-tenant, без пароля); 4) pult-tenant-setup install (правило пульта — tmux и
+# claude — в /etc/sudoers.d/gas-pult-tenants); 5) visudo -c. Любая ошибка — откат копии и обоих файлов из бэкапа.
+# После неё владелец без пароля: sudo -n /usr/local/lib/pult-tenant/bin/pult-tenant repair-sudo | claude <имя> | …
+# Подробно — docs/TENANTS.md, «Если окна пространств не открываются (sudo)».
+set -Eeuo pipefail
+
+HERE=$(dirname "$(readlink -f "$0")")
+REPO=$(dirname "$HERE")
+DEST=/usr/local/lib/pult-tenant
+ADMIN=/etc/sudoers.d/gas-pult-tenant-admin
+RULE=/etc/sudoers.d/gas-pult-tenants
+BACKUP_ROOT=/srv/pult/etc-backup
+VISUDO=$(command -v visudo || echo /usr/sbin/visudo)
+
+DRY=0
+UNINSTALL=0
+OWNER=${SUDO_USER:-}
+while [ $# -gt 0 ]; do
+  case $1 in
+    --dry-run) DRY=1 ;;
+    --uninstall) UNINSTALL=1 ;;
+    --owner) OWNER=${2:-}; shift ;;
+    --owner=*) OWNER=${1#--owner=} ;;
+    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Неизвестный параметр: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+say() { printf '%s\n' "$*"; }
+ARMED=0  # 1 — после бэкапа: любая ошибка (и die) откатывает
+die() { printf 'Ошибка: %s\n' "$*" >&2; [ "$ARMED" = 1 ] && rollback; exit 1; }
+run() {  # команда, меняющая систему: печатается всегда, выполняется — кроме сухого прогона
+  printf '$'; printf ' %q' "$@"; printf '\n'
+  [ "$DRY" = 1 ] || "$@"
+}
+
+[ "$DRY" = 1 ] || [ "$(id -u)" = 0 ] || die "нужны права root: sudo $0 (или --dry-run — только показать шаги)"
+[ -n "$OWNER" ] || die "не знаю пользователя пульта: --owner ПОЛЬЗОВАТЕЛЬ (тот, под кем работает пульт)"
+[ "$OWNER" != root ] || die "пользователь пульта — не root: --owner ПОЛЬЗОВАТЕЛЬ"
+[[ $OWNER =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "странное имя пользователя: $OWNER"
+id -u "$OWNER" >/dev/null 2>&1 || die "нет пользователя $OWNER"
+[ -f "$HERE/pult-tenant" ] && [ -d "$REPO/src/gas_pult" ] || die "рядом нет bin/pult-tenant и src/gas_pult — запускайте из репозитория"
+
+BK="$BACKUP_ROOT/root-install.$(date +%Y%m%d-%H%M%S)"
+TMPD=$(mktemp -d)
+cleanup() { rm -rf "$TMPD"; }
+trap cleanup EXIT
+
+# 1. Бэкап: копия и оба файла sudoers (чего не было — отметка «.absent», откат его уберёт)
+backup() {
+  say "== 1. Бэкап: $BK"
+  run install -d -m 0700 "$BACKUP_ROOT"
+  run install -d -m 0700 "$BK"
+  local f
+  for f in "$DEST" "$ADMIN" "$RULE"; do
+    if [ -e "$f" ]; then run cp -a "$f" "$BK/$(basename "$f")"; else run touch "$BK/$(basename "$f").absent"; fi
+  done
+}
+
+rollback() {
+  trap - ERR
+  ARMED=0
+  say "!! ошибка — возвращаю из бэкапа $BK"
+  local f b
+  for f in "$DEST" "$ADMIN" "$RULE"; do
+    b="$BK/$(basename "$f")"
+    if [ -e "$b" ]; then rm -rf "$f"; cp -a "$b" "$f"; say "  возвращён $f"
+    elif [ -e "$b.absent" ]; then rm -rf "$f"; say "  убран $f (его не было)"; fi
+  done
+  "$VISUDO" -c >/dev/null 2>&1 && say "  visudo -c: sudoers в порядке" || say "  !! visudo -c: ошибка — проверьте /etc/sudoers.d"
+  exit 1
+}
+
+admin_text() {
+  cat <<EOF
+# gas-pult: администратор пространств ($OWNER) — bin/pult-tenant от root без пароля, только копия в $DEST
+# (root:root, без записи для других). Создано bin/pult-tenant-root-install; откат: sudo bin/pult-tenant-root-install --uninstall.
+# Правило пульта (tmux, claude) — в $RULE, его этот файл не трогает.
+$OWNER ALL=(root) NOPASSWD: $DEST/bin/pult-tenant
+EOF
+}
+
+if [ "$UNINSTALL" = 1 ]; then
+  backup
+  if [ -e "$ADMIN" ]; then run rm -f "$ADMIN"; else say "✓ правила администратора нет"; fi
+  if [ -e "$DEST" ]; then run rm -rf "$DEST"; else say "✓ копии $DEST нет"; fi
+  say "Готово: копия и правило администратора убраны (бэкап — $BK). Правило пульта $RULE не тронуто."
+  exit 0
+fi
+
+backup
+if [ "$DRY" = 0 ]; then ARMED=1; trap rollback ERR; fi
+
+say "== 2. Копия pult-tenant: $REPO/{src,bin} → $DEST"
+mkdir -p "$TMPD/new"
+cp -r "$REPO/src" "$REPO/bin" "$TMPD/new/"
+find "$TMPD/new" -name __pycache__ -type d -prune -exec rm -rf {} +
+run chown -R root:root "$TMPD/new"
+run chmod -R go-w,a+rX "$TMPD/new"
+run rm -rf "$DEST"
+run install -d -m 0755 -o root -g root "$(dirname "$DEST")"
+run cp -a "$TMPD/new" "$DEST"
+run chmod 0755 "$DEST"
+
+say "== 3. Правило администратора: $ADMIN"
+admin_text >"$TMPD/admin"
+sed 's/^/    /' "$TMPD/admin"
+if [ -f "$ADMIN" ] && cmp -s "$TMPD/admin" "$ADMIN"; then
+  say "✓ правило уже такое"
+elif "$VISUDO" -cf "$TMPD/admin" >/dev/null 2>&1; then
+  say "  visudo: правило верно"
+  run install -m 0440 -o root -g root "$TMPD/admin" "$ADMIN"
+else
+  [ "$DRY" = 1 ] && say "  visudo: правило НЕ принято (в сухом прогоне — без root)" || die "visudo не принял правило администратора"
+fi
+
+say "== 4. Правило пульта (tmux, claude): pult-tenant-setup install"
+if [ "$DRY" = 1 ]; then
+  "$HERE/pult-tenant-setup" install --owner "$OWNER" --dry-run
+else
+  "$HERE/pult-tenant-setup" install --owner "$OWNER"
+fi
+
+say "== 5. visudo -c"
+if [ "$DRY" = 1 ]; then
+  say "  (сухой прогон: проверка всего sudoers — после установки)"
+else
+  "$VISUDO" -c >/dev/null
+fi
+trap - ERR
+ARMED=0
+say "Готово. Бэкап — $BK. Откат: sudo $0 --uninstall (правило пульта остаётся; убрать — sudo bin/pult-tenant-setup uninstall)."
+say "Без пароля: sudo -n $DEST/bin/pult-tenant repair-sudo | claude <имя> | login-screen <имя> | list"

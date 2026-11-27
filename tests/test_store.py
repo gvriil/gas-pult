@@ -17,6 +17,13 @@ from gas_pult.people import People
 N = 200
 
 
+@pytest.fixture(autouse=True)
+def json_mode(monkeypatch):
+    """Здесь — слой JSON (файлы, версии, замок): режим json при любом GAS_PULT_TEST_STORAGE. Гонка и откат в dual и
+    sqlite — tests/test_sqlstore.py."""
+    monkeypatch.delenv("GAS_PULT_STORAGE", raising=False)
+
+
 def _people_writer(path: str, base: int):
     p = People(Path(path), [1])
     for i in range(N):
@@ -154,3 +161,27 @@ def test_nested_lock_same_thread_does_not_deadlock(tmp_path):
     with store.locked(f), store.locked(f):
         store.save(f, {"a": 1})
     assert store.update(f, lambda d: d.setdefault("b", 2)) == 2
+
+
+def test_load_json_text_cache_sees_every_change(tmp_path):
+    """24.11 (tools/bench-http.py): текст файла кэшируется по подписи (inode, mtime, размер) — любая запись видна сразу,
+    а полученный объект можно менять, не портя кэш."""
+    import os
+
+    from gas_pult import store
+    f = tmp_path / "x.json"
+    f.write_text('{"a": 1}')
+    d = store.load_json(f)
+    d["a"] = 99                                          # вызывающий меняет объект — кэш не портится
+    assert store.load_json(f) == {"a": 1}
+    t = tmp_path / "t.json"
+    t.write_text('{"a": 2}')
+    os.replace(t, f)                                     # запись как у write_private: новый inode
+    assert store.load_json(f) == {"a": 2}
+    with open(f, "w") as fh:                             # запись на месте, тот же размер
+        fh.write('{"a": 3}')
+    st = f.stat()
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 1000))
+    assert store.load_json(f) == {"a": 3}
+    f.unlink()
+    assert store.load_json(f) == {}

@@ -3,8 +3,9 @@
 Решение владельца 14.11: «чтобы я понимал, какие задачи не решены и какие решены — выполнить команду, позвонить,
 написать … сразу нажать, провалиться туда и продолжить работу … это для меня супер важно, чтобы не теряться».
 
-Хранилище — ``<данные пульта>/tasks.json`` (0600), запись атомарная под файловым замком: задачи кладут панель, бот и
-агенты (``gas-pult task add``) из разных процессов. Задача:
+Хранилище — ``<данные пульта>/tasks.json`` (0600), запись атомарная под файловым замком (``store.locked``): задачи
+кладут панель, бот и агенты (``gas-pult task add``) из разных процессов. Чтение и запись — ``store.load`` /
+``store.save``: в режиме хранения dual или sqlite задачи живут и в SQLite (docs/STORAGE.md). Задача:
 
 - ``title``; ``status``: todo (не начато) · doing (в работе) · waiting (ждёт владельца) · done (выполнено);
 - ``kind`` — тип действия и его поля: command (``cmd``) · call (``phone``) · write (``to``, ``draft``) · meeting
@@ -23,8 +24,6 @@
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import hashlib
 import json
 import re
@@ -33,7 +32,8 @@ import threading
 import time
 from pathlib import Path
 
-from gas_pult.config import write_private
+from gas_pult import sqlstore
+from gas_pult import store as jstore
 
 STATUSES = ("todo", "doing", "waiting", "done")
 KINDS = {"command": ("cmd",), "call": ("phone",), "write": ("to", "draft"), "meeting": ("with", "when"),
@@ -48,7 +48,11 @@ QUADRANTS = {1: "Срочно и важно — сделать сейчас", 2:
 Q_ORDER = {1: 0, 0: 1, 2: 2, 3: 3, 4: 4}          # «не разобрано» — сразу после срочного и важного
 MAX = 500                       # больше — самые старые выполненные уходят
 LIMITS = {"title": 200, "next": 300, "cmd": 2000, "phone": 40, "to": 120, "draft": 4000, "with": 200, "when": 80,
-          "question": 500, "link": 500, "chat": 20, "sid": 36, "by": 60, "due": 10, "chat_title": 80}
+          "question": 500, "link": 500, "chat": 20, "sid": 36, "by": 60, "due": 10, "chat_title": 80,
+          # отчёт об ошибке из чата (teammsg.py): проект, устройство, браузер, текст человека, куда ответить
+          "proj": 60, "device": 80, "browser": 80, "text": 2000, "team_to": 300,
+          "shot": 500}                  # снимок экрана к отчёту об ошибке — путь к файлу рядом с отчётом
+RAW = ("cmd", "draft", "text")  # строки без схлопывания пробелов и переводов строк
 
 
 def clean(d: dict) -> dict:
@@ -56,7 +60,7 @@ def clean(d: dict) -> dict:
     out = {}
     for k, n in LIMITS.items():
         if k in d and d[k] is not None:
-            out[k] = " ".join(str(d[k]).split())[:n] if k not in ("cmd", "draft") else str(d[k])[:n].strip()
+            out[k] = " ".join(str(d[k]).split())[:n] if k not in RAW else str(d[k])[:n].strip()
     for k in ("urgent", "important"):                    # да / нет / не оценено (None)
         if k in d:
             out[k] = yes(d[k])
@@ -152,30 +156,19 @@ class Tasks:
     def __init__(self, path: Path, clock=time.time):
         self.path, self.clock, self.lock = Path(path), clock, threading.Lock()
 
-    @contextlib.contextmanager
     def _locked(self):
-        with self.lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            with open(self.path.with_name(f".{self.path.name}.lock"), "a") as fh:
-                fcntl.flock(fh, fcntl.LOCK_EX)
-                try:
-                    yield
-                finally:
-                    fcntl.flock(fh, fcntl.LOCK_UN)
+        """Замок потоков и процессов — тот же файл ``.tasks.json.lock``, что и до ``store.py``."""
+        return jstore.locked(self.path)
 
     def _load(self) -> list[dict]:
-        try:
-            d = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
-        return [x for x in d if isinstance(x, dict) and x.get("id")] if isinstance(d, list) else []
+        return [x for x in jstore.load(self.path, list) if isinstance(x, dict) and x.get("id")]
 
     def _save(self, items: list[dict]):
         done = [x for x in items if x.get("status") == "done"]
         if len(items) > MAX and done:                       # лишнее — самые старые выполненные
             drop = {x["id"] for x in sorted(done, key=lambda x: x.get("done_at") or 0)[:len(items) - MAX]}
             items = [x for x in items if x["id"] not in drop]
-        write_private(self.path, json.dumps(items, ensure_ascii=False))
+        jstore.save(self.path, items, ensure_ascii=False)
 
     def list(self) -> list[dict]:
         """По порядку; ``q`` — квадрант (0 — не оценено), ``overdue`` — срок прошёл, ``group`` — группа списка."""
@@ -184,7 +177,10 @@ class Tasks:
                 for x in order(self._load())]
 
     def etag(self) -> str:
-        """Версия списка — по содержимому файла: не менялся — 304 без тела."""
+        """Версия списка — по содержимому файла (в режиме sqlite — по данным из SQLite): не менялся — 304 без тела."""
+        if sqlstore.mode_for(self.path) == "sqlite":
+            raw = json.dumps(self._load(), ensure_ascii=False, sort_keys=True).encode()
+            return '"' + hashlib.sha256(raw).hexdigest()[:16] + '"'
         try:
             return '"' + hashlib.sha256(self.path.read_bytes()).hexdigest()[:16] + '"'
         except OSError:
@@ -235,6 +231,12 @@ class Tasks:
                 new["result"] = {k: d["result"][k] for k in ("code", "at") if k in d["result"]}
             items[items.index(t)] = new
             self._save(items)
+        if new["status"] == "done" and t.get("status") != "done" and new.get("team_to"):
+            try:                                            # отчёт об ошибке закрыт — «Исправлено» человеку в чат
+                from gas_pult import teammsg
+                teammsg.on_done(self.path.parent, new)
+            except (OSError, ValueError) as e:
+                print("team_msg:", e, flush=True)
         return new
 
     def remove(self, tid: str) -> bool:

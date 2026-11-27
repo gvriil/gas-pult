@@ -1,6 +1,6 @@
 """Голос потоком (задача 46; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/stt_stream_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/stt_stream_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Распознавание в демо подменено (``DemoStt``: слово на каждые 0,4 с звука), микрофон — поддельный Chrome.
 Полный режим: держим микрофон — текст растёт в поле, пока «говорим», поле видно, кнопки спрятаны; отпустили — итог
@@ -11,6 +11,8 @@
 
 import sys
 import time
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 PHRASE = "Покажи, что изменилось за сегодня"
 NO_BAR = "!document.querySelector('.recbar')"

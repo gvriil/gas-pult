@@ -33,6 +33,8 @@ import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 ROOT = Path(__file__).resolve().parents[2]
 
 FAKE_CLAUDE = r'''#!/usr/bin/env python3
@@ -138,6 +140,21 @@ def serve(root: Path, port: int):
     srv.serve_forever()
 
 
+def agree(pg, url: str, timeout: int = 8000):
+    """24.11: по фокус-ссылке сначала окно согласия на обработку ПДн (js/privacy.js) — отметить и продолжить.
+    Окна нет (ссылка устарела, демо) — дальше как раньше."""
+    if "#focus=" not in url:
+        return
+    try:
+        pg.wait_for_selector("#pvAgree", timeout=timeout)
+    except Exception as e:                                # playwright TimeoutError — окна не было
+        if type(e).__name__ != "TimeoutError":
+            raise
+        return
+    pg.check("#pvAgree")
+    pg.click("#pvGo")
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -220,6 +237,7 @@ def run(shots: str = ""):
                 pg.on("pageerror", lambda e: errs.append(str(e)))
                 pg.on("dialog", lambda d: d.accept())
                 pg.goto(url)
+                agree(pg, url)
                 return pg
 
             def sheet_click(pg, text):
@@ -298,7 +316,9 @@ def run(shots: str = ""):
             assert inbox and inbox[0].read_bytes() == b"e2e", inbox
             pa.click("#menuBtn")
             pa.click("#menu [data-act=mcp]")
-            pa.wait_for_selector(".sheet >> text=docs-e2e", timeout=15000)
+            # 23.11: по ссылке серверы владельца не видны («Чужой человек в чате — не владелец»)
+            pa.wait_for_selector(".sheet >> text=подключения владельца пульта по этой ссылке не видны", timeout=15000)
+            assert pa.locator(".sheet >> text=docs-e2e").count() == 0
             pa.evaluate("document.querySelectorAll('.sheet-bg').forEach((b) => b.remove())")
             code, d = pa.evaluate(FETCH, ["/api/effort", {"w": shop, "level": "high"}])
             assert code == 200 and any("effort level to high" in x for x in d["lines"]), d

@@ -1,6 +1,6 @@
 """Режим «Фокус» (задача 41; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/focus_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/focus_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Владелец: меню сессии → «Создать фокус-ссылку» — шторка со ссылкой (токен после «#»), «Отправить себе в Telegram»,
 «Отозвать»; «Новый чат» → «В фокусе»; «Настройки» → «Фокус-ссылки». Устройство по ссылке (``&focus``): только чат
@@ -10,6 +10,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 VIS = """(sel) => [...document.querySelectorAll(sel)].some((e) => e.offsetParent !== null
   || getComputedStyle(e).position === "fixed" && getComputedStyle(e).display !== "none")"""

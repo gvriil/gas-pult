@@ -21,8 +21,8 @@ def test_local_cc0_no_network():
 
 def test_wired_everywhere_people_choose():
     page = (WEB / "index.html").read_text(encoding="utf-8")
-    assert "LOGOS?.byId(id) ||" in page and 'LOGOS ??= await part("logos")' in page     # «Подключения»
-    assert "LOGOS?.byName(s.name)" in page
+    assert "LOGOS?.byId(id) ||" in page and 'LOGOS || part("logos")' in page     # «Подключения»
+    assert "LOGOS?.byName(s.name)" in (WEB / "js/connections.js").read_text(encoding="utf-8")   # «Подключено» (23.11)
     nc = (WEB / "js/newchat.js").read_text(encoding="utf-8")
     assert nc.count("vis: LG?.byName(x.name)") == 2                       # «Новый чат» и «Интеграции чата»
 

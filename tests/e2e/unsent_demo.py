@@ -1,6 +1,6 @@
 """GAS-21 (Алексей: «сообщение не отправилось и дальше остаётся неотправленным, что бы ни происходило»; Playwright).
 
-    python tests/e2e/unsent_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/unsent_demo.py http://127.0.0.1:8797/?demo&dev
 
   (а) отказ сервера — «не отправлено» с «Отправить ещё раз» и «Удалить»; «Удалить» убирает строку;
   (б) «Отправить ещё раз» — уходит, строка «доставлено»;
@@ -9,6 +9,8 @@
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 FAIL = """() => { window.__api = window.__api || api; window.__mode = 'fail';
   window.api = async (path, body) => {

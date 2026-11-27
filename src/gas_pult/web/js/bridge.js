@@ -64,7 +64,7 @@ css.textContent = `
   .br-ill .k { fill: var(--bg-subtle); stroke: var(--field-border); } .br-ill .s { fill: var(--bg-canvas); stroke: var(--border-subtle); }
   .br-ill .a { fill: var(--accent-primary); } .br-ill .as { fill: var(--accent-soft); stroke: var(--accent-primary); }
   .br-ill .t { fill: var(--text-primary); font: 600 13px system-ui, sans-serif; } .br-ill .m { fill: var(--text-secondary); font: 12px system-ui, sans-serif; }
-  .br-ill .term { fill: var(--bg-terminal); } .br-ill .tt { fill: #8AB4F8; font: 12px ui-monospace, Menlo, monospace; } .br-ill .tw { fill: #E8EAED; font: 12px ui-monospace, Menlo, monospace; }
+  .br-ill .term { fill: var(--bg-terminal); } .br-ill .tt { fill: #FFB59C; font: 12px ui-monospace, Menlo, monospace; } .br-ill .tw { fill: #E8EAED; font: 12px ui-monospace, Menlo, monospace; }
   .br-ill .ok { fill: var(--status-running); } .br-ill .on-a { fill: var(--on-accent); font: 700 13px system-ui, sans-serif; }
   .br-ill .ln { stroke: var(--text-secondary); stroke-width: 2; fill: none; }
 `;

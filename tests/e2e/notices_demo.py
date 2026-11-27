@@ -1,6 +1,6 @@
 """Всплывающее не закрывает поле ввода (задача 26; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/notices_demo.py http://127.0.0.1:8797/?demo [папка-для-скриншотов]
+    python tests/e2e/notices_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-скриншотов]
 
 Телефон 390×844 с открытой клавиатурой (visualViewport подменён: видимая область на 336 px ниже) и без неё, ПК 1366;
 полный режим (``?demo&open=@1``) и простой (``&simple=1``), светлая и тёмная тема. На экране сразу всё всплывающее:
@@ -15,6 +15,8 @@ import json
 import re
 import sys
 from pathlib import Path
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 INDEX = Path(__file__).resolve().parents[2] / "src" / "gas_pult" / "web" / "index.html"
 KB = 336                                                     # высота клавиатуры iPhone, px

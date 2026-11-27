@@ -1,6 +1,6 @@
 """Простой режим по проектам (задача 49, PR 8 плана; Playwright).
 
-    python tests/e2e/simple_projects.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/simple_projects.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Имя вверху → «Проекты и чаты»: проекты чипами, чаты выбранного проекта, «Новый чат», «Прошлые чаты» → прошлый чат
 (только чтение) → «Продолжить этот чат». Чипы под шапкой — чаты открытого проекта. Ни слов «терминал», «код», ни путей
@@ -10,6 +10,8 @@
 import importlib.util
 import sys
 from pathlib import Path
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("simple_mode", HERE / "simple_mode.py")

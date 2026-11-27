@@ -130,6 +130,6 @@ def test_panel_records_in_slices_and_resumes():
     assert re.search(r"SLICE = 10000", part) and "/api/rec/chunk?id=" in part and "/api/rec/finish" in part
     assert 'navigator.wakeLock.request("screen")' in part and "S.lock?.release()" in part
     assert "Запись прервалась на" in part and "продолжаю" in part
-    assert "На iPhone при блокировке запись останавливается" in part and "Диктофон → Поделиться → Гаврила" in part
+    assert "На iPhone при блокировке запись останавливается" in part and "Диктофон → Поделиться → Ладэя" in part
     assert "blob.rec.finish()" in job                                                       # куски — с сервера
     assert '"/api/rec/chunk"' in (Path(webapp.__file__).read_text(encoding="utf-8"))

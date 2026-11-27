@@ -40,6 +40,113 @@ const DEMO_FAMILY = [["grave-search", "Найти место захоронен�
   ["family-photos", "Разобрать семейные фото", "разложить копии фото по годам и по людям и подписать, кто на снимке. Оригиналы не трогай"],
   ["family-story", "Записать рассказ близкого", "записать рассказ близкого человека и оформить его главой семейной книги"]];
 
+// Бизнес-демо (framewatcher и владелец 25.11, QR в колоде для ритейла): /?demo — простой режим, бизнес-сценарий «вход →
+// работа → выход», у чатов — источник данных (МойСклад, Битрикс24, Telegram, почта), расход и лимиты скрыты.
+// &dev — прежнее демо разработчика (на нём автотесты); &simple=0 — сразу полный режим.
+const BIZ = !params.has("dev");
+const BIZ_S = {   // окно: название ru/en, источник, строка-превью ru/en, папка
+  "@1": ["Заказы и остатки", "Orders and stock", "МойСклад", "Сверяю остатки по 214 товарам: 8 заказов ждут сборки", "Checking stock for 214 items: 8 orders wait for picking", "sklad"],
+  "@2": ["Утро руководителя магазина", "Store manager's morning", "Telegram", "Отправить персональное предложение 12 покупателям?", "Send a personal offer to 12 customers?", "magazin"],
+  "@3": ["Ответы покупателям", "Replies to customers", "Битрикс24", "Готово: 17 ответов на вопросы покупателей", "Done: 17 replies to customer questions", "pokupateli"],
+  "@4": ["Протокол планёрки", "Meeting minutes", "Почта", "Протокол разослан: 5 поручений со сроками", "Minutes sent: 5 tasks with deadlines", "planerki"],
+  "@5": ["Бот магазина", "Store bot", "Telegram", "", "", "bot"] };
+const BIZ_P = { "p-icon": ["Магазин", "Store"], "p-tgi": ["Склад и заказы", "Stock and orders"], "p-gas-pult": ["Покупатели", "Customers"],
+  "p-gastech-digest": ["Планёрки", "Meetings"], "p-shop-bot": ["Бот магазина", "Store bot"] };
+const BIZ_SRC_EN = { "МойСклад": "MoySklad", "Битрикс24": "Bitrix24", "Telegram": "Telegram", "Почта": "Email" };
+function bizHist() {
+  const en = LANG === "en";
+  return en ? [
+    { i: 1, role: "user", text: "Send me the morning numbers for the store", ts: "2026-11-25 07:58" },
+    { i: 2, role: "assistant", ts: "2026-11-25 08:00", text: "Good morning! Yesterday: revenue 1,240,000 — 97% of plan. 386 receipts, average 3,210.\n\n| Category | Revenue | Plan |\n|---|---|---|\n| Smartphones | 512,000 | 104% |\n| Laptops | 318,000 | 91% |\n| Home appliances | 314,000 | 99% |\n| Accessories | 96,000 | 78% |\n\nSource: MoySklad. Accessories are behind: 12 customers bought a smartphone this week without a case or a screen protector. I prepared a personal offer for them in Telegram: 10% off until Sunday." },
+    { i: 3, role: "user", text: "Good, show me the text and send it", ts: "2026-11-25 08:02" }] : [
+    { i: 1, role: "user", text: "Пришли утренние цифры по магазину", ts: "2026-11-25 07:58" },
+    { i: 2, role: "assistant", ts: "2026-11-25 08:00", text: "Доброе утро! Вчера выручка 1 240 000 ₽ — 97 % плана. Чеков 386, средний чек 3 210 ₽.\n\n| Категория | Выручка | План |\n|---|---|---|\n| Смартфоны | 512 000 ₽ | 104 % |\n| Ноутбуки | 318 000 ₽ | 91 % |\n| Бытовая техника | 314 000 ₽ | 99 % |\n| Аксессуары | 96 000 ₽ | 78 % |\n\nИсточник: МойСклад. Аксессуары отстают: 12 покупателей за неделю купили смартфон без чехла и стекла. Подготовил им персональное предложение в Telegram — скидка 10 % до воскресенья." },
+    { i: 3, role: "user", text: "Хорошо, покажи текст и отправь", ts: "2026-11-25 08:02" }];
+}
+const BIZ_ASK = { kind: "question", known: true, sig: "biz-offer",
+  title_ru: "Отправить персональное предложение 12 покупателям?", title_en: "Send a personal offer to 12 customers?",
+  detail_ru: "«Здравствуйте! Для вашего нового смартфона — чехол и защитное стекло со скидкой 10 % до воскресенья.» Список — из МойСклад, отправка — в Telegram.",
+  detail_en: "“Hello! A case and a screen protector for your new smartphone — 10% off until Sunday.” List from MoySklad, sent via Telegram.",
+  options: [{ key: "q1", label_ru: "Да, отправить", label_en: "Yes, send", send: { n: "1" }, level: 1, note_ru: "", note_en: "" },
+    { key: "q2", label_ru: "Нет", label_en: "No", send: { n: "2" }, level: 1, note_ru: "", note_en: "" },
+    { key: "q3", label_ru: "Изменить текст", label_en: "Edit the text", send: { n: "3" }, level: 1, note_ru: "", note_en: "" }] };
+const BIZ_SCREEN = ["● МойСклад: 12 покупателей без аксессуаров за неделю", "", "☐ Предложение", "", "Отправить персональное предложение 12 покупателям?", "",
+  "❯ 1. Да", "     Скидка 10 % на чехол и стекло до воскресенья — в Telegram", "  2. Нет", "  3. Изменить текст", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"];
+// Простой режим бизнес-демо — токены дизайн-ТЗ v1.1 (framewatcher 25.11): белая карточка «Да» с янтарной полосой, основная
+// кнопка во всю ширину, разделы — текстом, заголовок без обрезки, цифры tabular-nums. Только в бизнес-демо (body.biz-demo):
+// настоящий простой режим клиентов и панель владельца не меняются.
+const BIZ_CSS = `
+body.biz-demo #simple { --bz-line: rgba(17,17,17,.09); --bz-control: #85827A; --bz-accent: #C2361A; --bz-accent-h: #A82E14;
+  --bz-on: #FFFFFF; --bz-pending: #B45309; --bz-pending-t: #854D0E; --bz-surface: #FFFFFF; --bz-surface-2: #EFEEEA; --bz-text-3: #5C5A54;
+  font-family: "Inter RT", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+:root[data-theme="dark"] body.biz-demo #simple { --bz-line: rgba(255,255,255,.08); --bz-control: #8E8C85; --bz-accent: #FF5A2D;
+  --bz-accent-h: #FF7048; --bz-on: #111111; --bz-pending: #F5C46B; --bz-pending-t: #F5C46B; --bz-surface: #181816; --bz-surface-2: #22221F; --bz-text-3: #9A988F; }
+body.biz-demo #simple .s-who b { white-space: normal; overflow: visible; text-overflow: clip; font-size: 16px; line-height: 20px; letter-spacing: -.02em; }
+@media (max-width: 480px) { body.biz-demo #simple #sHelp span { display: none; } body.biz-demo #simple #sHelp { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; } }
+body.biz-demo #simple .s-who small { white-space: nowrap; font-size: 12px; }
+body.biz-demo #simple #sWho { pointer-events: none; } body.biz-demo #simple #sWho > .i.s16 { display: none; }   /* демо — один чат, без списка (владелец 25.11) */
+body.biz-demo #simple #sVid, body.biz-demo #simple #sTourBtn { margin-right: 6px; }
+body.biz-demo .hgo button[data-go="go:simple.agents"] { display: none; }   /* и из «?» — без перехода к списку чатов */
+body.biz-demo #simple .s-demo { color: var(--bz-text-3); }
+body.biz-demo #simple .s-vid { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--bz-line); border-radius: 8px; background: var(--bz-surface); color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+body.biz-demo #simple .s-secs { gap: 2px; padding: 0; box-shadow: inset 0 -1px 0 var(--bz-line); }
+body.biz-demo #simple .s-secs .scn-opt { border: 0; background: none; border-radius: 0; min-height: 44px; padding: 0 12px; font-size: 15px;
+  font-weight: 500; color: var(--text-secondary); box-shadow: none; }
+body.biz-demo #simple .s-secs .scn-opt.on, body.biz-demo #simple .s-secs .scn-opt[aria-pressed="true"] { color: var(--text-primary); box-shadow: inset 0 -2px 0 var(--bz-accent); }
+body.biz-demo #simple .s-ask { position: relative; background: var(--bz-surface); border: 1px solid var(--bz-line); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04); padding: 16px 16px 16px 19px; }
+body.biz-demo #simple .s-ask::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 12px 0 0 12px; background: var(--bz-pending); }
+body.biz-demo #simple .s-ask .q { flex-direction: column; gap: 6px; font-size: 18px; line-height: 26px; letter-spacing: -.02em; }
+body.biz-demo #simple .s-ask .q .i { display: none; }
+body.biz-demo #simple .s-ask .q::before { content: "Требует решения"; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px;
+  font-weight: 500; letter-spacing: 0; color: var(--bz-pending-t); }
+body.biz-demo #simple .s-ask .scn-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+body.biz-demo #simple .s-ask .scn-opt { width: 100%; min-height: 48px; border-radius: 8px; border: 1px solid var(--bz-control); background: var(--bz-surface);
+  color: var(--text-primary); font-size: 16px; font-weight: 600; box-shadow: none; }
+body.biz-demo #simple .s-ask .scn-opt[data-sopt="0"] { grid-column: 1 / -1; min-height: 52px; border: 0; background: var(--bz-accent); color: var(--bz-on); }
+body.biz-demo #simple .s-ask .scn-opt[data-sopt="0"]:hover { background: var(--bz-accent-h); }
+body.biz-demo #simple .md table { font-variant-numeric: tabular-nums; border-collapse: separate; border-spacing: 0; border: 1px solid var(--bz-line); border-radius: 12px; overflow: hidden; }
+body.biz-demo #simple .md th, body.biz-demo #simple .md td { border: 0; box-shadow: inset 0 -1px 0 var(--bz-line); padding: 10px 12px; }
+body.biz-demo #simple .md tr:last-child td { box-shadow: none; }
+body.biz-demo #simple .md th { background: var(--bz-surface-2); font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+body.biz-demo #simple .md td:not(:first-child), body.biz-demo #simple .md th:not(:first-child) { text-align: right; }`;
+function bizStyle() {                                  // один раз: стили бизнес-демо и шрифт Inter (часть retailfont, если есть)
+  if (document.getElementById("bizCss")) return;
+  const st = document.createElement("style"); st.id = "bizCss"; st.textContent = BIZ_CSS; document.head.append(st);
+  document.body.classList.add("biz-demo");
+  part("retailfont").then((m) => m.init()).catch(() => {});
+  setTimeout(bizVideo, 1500);
+}
+// «Смотреть, 1 мин» и в простом режиме (framewatcher 25.11): тихая вторичная кнопка под шапкой; ролик — тот же, что в
+// полосе демо (js/demovideo.js); ролика на сервере нет — кнопки нет.
+function bizVideo() {
+  const src = $("dvBtn"), at = $("sDemo");
+  if (!src || !at || !SIM.on || $("sVid")) return;
+  const b = document.createElement("button");
+  b.type = "button"; b.id = "sVid"; b.className = "s-vid"; b.innerHTML = ic("play", "s16") + "<span>" + (LANG === "en" ? "Watch, 1 min" : "Смотреть, 1 мин") + "</span>";
+  b.onclick = () => src.click();
+  at.after(b);
+  // «Показать тур» — одно нажатие (владелец 25.11): 4–5 шагов и «На экран «Домой»» (js/ladtour.js)
+  const tb = document.createElement("button");
+  tb.type = "button"; tb.id = "sTourBtn"; tb.className = "s-vid"; tb.innerHTML = ic("spark", "s16") + "<span>" + (LANG === "en" ? "Show the tour" : "Показать тур") + "</span>";
+  tb.onclick = () => part("ladtour").then((m) => m.start()).catch(() => toast(LANG === "en" ? "Tour unavailable — no connection" : "Тур недоступен — нет связи", 3500));
+  b.after(tb);
+}
+// Chrome на Android предлагает установку событием до тура — держим его для кнопки «Установить» в шаге «Домой»
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); window.__ladeyaInstall = e; });
+function demoBiz(R) {                                  // данные бизнес-демо поверх общих: окна, источник, без расхода
+  const s = R["/api/sessions"], en = LANG === "en";
+  s.cost = null; s.limits = null;
+  Object.assign(R["/api/meta"], { desktop: false, tty: false });   // бизнес-демо: без «Экрана», «Браузера» и «Терминала» (владелец 25.11)
+  bizStyle();
+  for (const x of s.sessions) {
+    const b = BIZ_S[x.id]; if (!b) continue;
+    const src = en ? BIZ_SRC_EN[b[2]] : b[2], text = en ? b[4] : b[3];
+    Object.assign(x, { active: x.id === "@2", name: en ? b[1] : b[0], path: "/home/u/projects/" + b[5], branch: "", source: src, cost: null,
+      preview: text ? `${src} · ${text}` : "", ...(x.title_own ? {} : { title: en ? b[1] : b[0] }) });
+  }
+}
 function demoTeam(body) {                            // «Команда» в демо: как personas.Team, в памяти страницы
   const t = demoApi.team ||= { staff_caps: null, sections: ["search", "analytics", "docs", "comms"], people: { 2: {} } }, c = DEMO_PERSONAS.ru;
   if (body) { const r = body.id != null ? (t.people[body.id] ||= {}) : t;
@@ -53,8 +160,8 @@ function demoTeam(body) {                            // «Команда» в д
 function demoUi(body) {
   const role = params.get("role") || "owner", c = DEMO_PERSONAS[LANG] || DEMO_PERSONAS.ru;
   const all = c.caps.map((x) => x.id), ceil = role === "viewer" ? all.filter((x) => x !== "cap.dev_models_mcp") : all;
-  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" ? "business_owner" : "developer"), added: [], hidden: [], onboarded: !params.has("persona") };
-  if (body?.persona) Object.assign(st, { persona: body.persona, added: [], hidden: [], onboarded: true });
+  const st = demoApi.ui ||= { persona: params.get("ui") || (params.get("simple") === "1" || (BIZ && params.get("simple") !== "0") ? "business_owner" : "developer"), added: [], hidden: BIZ ? ["cap.dev_terminal"] : [], onboarded: !params.has("persona") };
+  if (body?.persona) Object.assign(st, { persona: body.persona, added: [], hidden: BIZ ? ["cap.dev_terminal"] : [], onboarded: true });
   for (const [k, on] of Object.entries(body?.add || {})) {
     if (on && !ceil.includes(k)) throw new Error("эту возможность вам не разрешил владелец пульта");
     st.added = st.added.filter((x) => x !== k); st.hidden = st.hidden.filter((x) => x !== k); (on ? st.added : st.hidden).push(k);
@@ -91,6 +198,7 @@ function demoTty(key, path, body) {
 // Демо «Проектов»: проекты — папки сессий демо и ещё два без окон; завершённые чаты — с поиском и «Продолжить».
 function demoTitle(id) {                              // простой режим на английском — без русских слов и в демо-данных
   if (demoApi.titles?.[id]) return demoApi.titles[id];  // своё название чата (/api/title)
+  if (BIZ && BIZ_S[id]) return BIZ_S[id][LANG === "en" ? 1 : 0];
   return (LANG === "en" ? { "@1": "Room tests and report check", "@2": "Icons for the storefront", "@3": "Panel: dark theme", "@4": "Weekly digest" }
     : { "@1": "Тесты комнат и сверка П8", "@2": "Иконки для витрины", "@3": "Панель: тёмная тема", "@4": "Дайджест за неделю" })[id] || "";
 }
@@ -100,8 +208,10 @@ function demoProjects(key, path, body, ses) {
   const en = LANG === "en", L2 = (ru, eng) => (en ? eng : ru);
   const P = [["p-tgi", "tgi", L2("Ассистент ТГИ", "Assistant"), "auto"], ["p-icon", "icon", L2("Иконки магазина", "Shop icons"), "module:wb-reviews"], ["p-gas-pult", "gas-pult", L2("Пульт", "Panel"), "auto"],
     ["p-shop-bot", "shop-bot", L2("Магазин-бот", "Shop bot"), "auto"], ["p-gastech-digest", "gastech-digest", L2("Дайджест", "Digest"), "auto"], ["p-books", "books", L2("Бухгалтерия", "Accounting"), "module:acc-start"], ["p-home", "~", L2("Домашняя", "Home"), "auto"]];
+  if (BIZ) P.forEach((x) => { if (BIZ_P[x[0]]) x[2] = L2(...BIZ_P[x[0]]); });
   const DONE = { "p-tgi": [[L2("Отчёт П8 за октябрь", "October report"), 2 * 3600, 14], [L2("Комнаты: миграция базы", "Rooms: database move"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]],
     "p-books": [[L2("Акт сверки за октябрь", "October reconciliation"), D, 18], [L2("Описание платёжки", "Payment description"), 4 * D, 4]], "p-icon": [[L2("Цены конкурентов", "Competitor prices"), 3 * D, 12]] };
+  if (BIZ) DONE["p-tgi"] = [[L2("Инвентаризация за октябрь", "October stocktake"), 2 * 3600, 14], [L2("Перенос остатков со склада", "Stock transfer"), D + 5000, 31], [L2("Сверка по банку", "Bank reconciliation"), 9 * D, 6]];
   const SP = params.has("tester") || params.has("slink");                   // тестировщик (GAS-38): проекты — папки его пространства
   if (SP) { P.length = 0; P.push(...[[L2("Сверка счетов", "Invoice check")], [L2("Меню на зиму", "Winter menu")], [L2("Отчёт для собственника", "Owner report")]].map(([f]) => ["s:demo:" + f, f, f, "space"]));
     DONE["s:demo:" + P[0][1]] = [[L2("Акт сверки с поставщиком", "Supplier reconciliation"), D, 9]]; DONE["s:demo:" + P[1][1]] = [[L2("Цены на супы", "Soup prices"), 3 * D, 5]]; }
@@ -149,7 +259,15 @@ function demoProjects(key, path, body, ses) {
 // «Удалить» и «Корзина чатов» в демо: окно пропадает из списка, чат — из «Завершённых»; «Вернуть» — в «Завершённые».
 async function demoChat(key, body, ses) {
   const pj = demoApi.pj ||= { hidden: {}, titles: {} }, tr = demoApi.trash ||= [], now = Math.floor(Date.now() / 1000);
-  const name = (pid) => ({ "p-tgi": "Ассистент ТГИ", "p-icon": "Иконки магазина", "p-gas-pult": "Пульт", "p-shop-bot": "Магазин-бот", "p-gastech-digest": "Дайджест", "p-books": "Бухгалтерия" })[pid] || "";
+  const name = (pid) => ({ "p-tgi": "Ассистент ТГИ", "p-icon": "Иконки магазина", "p-gas-pult": "Пульт", "p-shop-bot": "Магазин-бот", "p-gastech-digest": "Дайджест", "p-books": "Бухгалтерия", ...(BIZ ? Object.fromEntries(Object.entries(BIZ_P).map(([k, v]) => [k, v[0]])) : {}) })[pid] || "";
+  if (key === "/api/chat/move") {                     // «Перенести в проект…»: занятый — «перенесу после хода»
+    const s = ses.sessions.find((x) => x.id === body.w); if (!s) throw new Error("окна уже нет");
+    if (body.cancel) return { cancelled: true };
+    if (body.project === s.project) throw new Error("чат уже в этом проекте");
+    if (s.status === "busy") return { pending: true, id: s.id, project: body.project, project_name: name(body.project), text: "Перенесу, как только закончит" };
+    s.project = body.project;
+    return { id: s.id, sid: "", project: body.project, project_name: name(body.project), moved: true, trash: null };
+  }
   if (key === "/api/chat/delete") {
     let rec;
     if (body.w) {
@@ -195,6 +313,24 @@ function demoRepos(key, path, body) {             // задача 43: списо
     { full: "gvriil/gas-pult", private: false, about: "Telegram-пульт и панель для сессий Claude Code" }, { full: "gvriil/gas-pult-docs", private: false, about: "Документация" },
     { full: "gvriil/shop-bot", private: true, about: "Бот магазина" }, { full: "gvriil/gastech-digest", private: true, about: "" }] }), 400));
 }
+// Расход владельца за сегодня (usage.py) — одно число в меню, на главной, в листе «Расход» и на экране расхода (22.11)
+const DEMO_TODAY = { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", estimate: true, pending: 0 };
+// Расход по ценам API (/api/spend, js/spend.js): часы — до прошлого полного (сводка раз в час), их сумма не больше
+// DEMO_TODAY; проекты — доли итога; 7 дней — по дням; live — итог дня, как в /api/sessions
+function demoSpend(path) {
+  const p = new URLSearchParams(path.split("?")[1] || "").get("period") || "today", now = new Date(), iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const W = [0, 0, 0, 0, 0, 0, 0, 0, 0.11, 0.53, 0.87, 0.73, 0.34, 0.62, 1.34, 1.09, 0.76, 0.42, 0.25, 0.39, 0.59, 0.22, 0.08, 0];
+  const last = p === "today" ? Math.max(now.getHours() - 1, 16) : 23, k = p === "yesterday" ? 0.8 : 1;
+  const hours = W.map((v, h) => ({ h, usd: h <= last ? Math.round(v * k * 100) / 100 : 0 }));
+  const dd = (i) => { const d = new Date(now); d.setDate(d.getDate() - i); return d; };
+  const days = [8.7, 5.2, 7.5, 3.4, 2.7, 6.8, 0].map((v, i) => ({ date: iso(dd(6 - i)), usd: i === 6 ? Math.round(hours.reduce((a, x) => a + x.usd, 0) * 100) / 100 : v }));
+  const total = Math.round((p === "7d" ? days : hours).reduce((a, x) => a + x.usd, 0) * 100) / 100;
+  const SH = [["shtab", 0.41], ["gas-pult", 0.27], ["shop", 0.14], ["books", 0.09], ["news", 0.06], ["прочее", 0.03]];
+  const from = p === "7d" ? dd(6) : p === "yesterday" ? dd(1) : now;
+  return Promise.resolve({ period: p, total, updated: Math.floor(now.setMinutes(1, 0, 0) / 1000), from: iso(from), to: iso(p === "yesterday" ? dd(1) : new Date()),
+    projects: total ? SH.map(([name, f]) => ({ name, usd: Math.round(total * f * 100) / 100 })) : [], ...(p === "7d" ? { days } : { hours }),
+    ...(p === "today" ? { live: DEMO_TODAY } : {}) });
+}
 function demoApi(path, body) {
   // когда менялись: шкала «N назад» видна целиком — секунды, минуты, часы, «вчера», давняя (>7 дн) остановленная
   const t0 = demoApi.t0 ||= Math.floor(Date.now() / 1000) - 8, H = 3600, D = 86400;
@@ -235,11 +371,14 @@ function demoApi(path, body) {
                        "@3": cst(pz ? 10.42 : 3.18, 900, 61000, 240000, 4100000, { paused: pz || null }),
                        "@4": cst(0.31, 2100, 48000, 0, 2250000, { cost_source: "estimate" }) } : role === "member" ? { "@2": cst(0.87, 300, 21000, 90000, 1100000, { limit: null }) } : {};
   if (!demoApi.seeded) { demoApi.seeded = 1; try { localStorage.setItem("seen:@3:/home/u/projects/gas-pult", "c1"); } catch (e) {} }
-  const screen = demoApi.scr ||= ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
+  // ?ask=question — вопрос агента с вариантами (вид экрана Claude Code 2.1, как в tests/fixtures/cc_question.txt)
+  const screen = demoApi.scr ||= BIZ && !params.get("ask") ? [...BIZ_SCREEN] : params.get("ask") === "question" ? ["☐ Отчёт", "", "Какой отчёт прислать утром?", "", "❯ 1. Короткий — три цифры",
+    "     Выручка, машины, средний чек", "  2. Подробный — по каждой мойке", "  3. Type something.", "", "Enter to select · ↑/↓ to navigate · Esc to cancel"] : ["● Bash(npm test)", "  ⎿  24 passed", "", " Bash command", "   rm -rf dist && npm run build", "",
     " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, and don't ask again for rm commands in this project", "   3. No, and tell Claude what to do differently (esc)"];
   const answer = "Готово: панель переписана.\n\n## Что изменилось\n\n| Что | Было | Стало |\n|---|---|---|\n| Тема | только светлая | светлая и тёмная |\n| Экран | текст | варианты — кнопками |\n\n- Поле ввода закреплено внизу\n- Шапка с вкладками закреплена сверху\n\n```bash\ngas-pult webapp --url https://pult.example.com\n```\n\nКак пользоваться панелью — https://github.com/gvriil/gas-pult/blob/main/docs/MINI_APP.md.";
   const TT = demoApi.titles ||= {};                   // «Название чата» (/api/title) — живёт до перезагрузки
   for (const x of S) if (x.id in TT) { x.title = TT[x.id] || x.title; x.title_own = !!TT[x.id]; }
+  if (path.split("?")[0] === "/api/spend") return demoSpend(path);
   if (path.split("?")[0] === "/api/chat/mcp") return Promise.resolve({ id: body.w, off: body.off || [] });
   if (path.split("?")[0] === "/api/steps") { const t0 = Date.now() / 1000; const all = [
     { at: t0 - 600, dur: 74, prompt: "Проверь сборку и запусти тесты", answer: "Тесты прошли: 58 из 58. Сборку можно запускать командой ниже.", steps: [
@@ -267,7 +406,7 @@ function demoApi(path, body) {
                      { id: "deepseek", title: "DeepSeek", short: "DeepSeek", about: "DeepSeek V4: быстро и очень дёшево", needs_key: true, key: { set: true, tail: "…7a1c" }, key_url: "https://platform.deepseek.com/api_keys", main: "deepseek-v4-pro[1m]", fast: "deepseek-flash", default_main: "deepseek-v4-pro[1m]", default_fast: "deepseek-flash", hint: "" },
                      { id: "gigachat", title: "GigaChat (через шлюз)", short: "GigaChat", about: "Сбер, для России. Только через ваш шлюз, совместимый с Anthropic (gpt2giga или LiteLLM), в России", needs_key: true, gateway: true, key: demoApi.gw ? { set: true, tail: "…9f2d" } : null, key_url: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", guide: "https://github.com/gvriil/gas-pult/blob/main/docs/RU-MODELS.md", base_url: demoApi.gw || "", not_ready: demoApi.gw ? "" : "не задан адрес шлюза GigaChat — «Подключения» → «Модели» → GigaChat (через шлюз)", regions: ["RU"], main: "GigaChat-2-Max", fast: "GigaChat-2-Lite", default_main: "GigaChat-2-Max", default_fast: "GigaChat-2-Lite", hint: "имя модели — как его знает ваш шлюз", allowed: false, denied: "Этот сервис недоступен в вашей стране по условиям поставщика" }] },
     "/api/sessions": { host: "ubuntu", now: Date.now() / 1000, tasks: demoTaskCount(), limits: { limits: { five_hour: { used: 21, resets_at: Date.now() / 1000 + 3 * 3600 }, seven_day: { used: 91, resets_at: Date.now() / 1000 + 2 * 86400 } }, at: Date.now() / 1000 }, sessions: S.map((x) => ({ ...x, effort: x.status === "stopped" ? "" : x.id === "@2" ? "medium" : "high", notify: x.status === "stopped" ? "" : (demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit" ? demoApi.nl[x.id] : "all"), notify_own: !!demoApi.nl?.[x.id] && demoApi.nl[x.id] !== "inherit", repos: (demoApi.rp ||= { "@3": [{ path: "/home/u/projects/gas-pult-docs", name: "gas-pult-docs" }] })[x.id] || [], changed: AT[x.id][0], said: AT[x.id][1], asked: AT[x.id][2], name: demoApi.names?.[x.id] || x.name, cost: COST[x.id] || null, cost_paused: x.id === "@3" && !!demoApi.pz, ...(x.id === "@2" && demoApi.answered ? { status: "busy" } : {}) })),
-      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? { tokens: { in: 4500, out: 214000, cw: 640000, cr: 12650000 }, total: 13508500, usd: 8.36, unknown: false, cost_source: "estimate", pending: 0 }
+      cost: role === "viewer" ? null : { pool: own ? "owner" : "own", today: own ? DEMO_TODAY
         : { tokens: { in: 300, out: 21000, cw: 90000, cr: 1100000 }, total: 1211300, usd: 0.87, unknown: false, cost_source: "anthropic", pending: 0 }, prices_checked: "2026-11-02", provider_prices_checked: "2026-11-07",
         ...(own ? { limits: demoApi.lim, paused: demoApi.pz ? 1 : 0 } : {}) } },
     "/api/cost/limits": { limits: demoApi.lim, paused: {}, prices_checked: "2026-11-02" },
@@ -294,9 +433,9 @@ function demoApi(path, body) {
                                { id: "gmail", title: "Gmail", match: "Gmail", about: "Почта: найти, прочитать, ответить", example: "Что важного в почте?" },
                                { id: "gcal", title: "Google Календарь", match: "Calendar", about: "Встречи и планы", example: "Что у меня завтра?" },
                                { id: "gdrive", title: "Google Диск", match: "Drive", about: "Документы и таблицы", example: "Найди договор" }],
-                  presets: [{ id: "github", key_url: "https://github.com/settings/personal-access-tokens/new", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
-                            { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", fields: [], after: "" },
-                            { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", fields: [], after: "" }] },
+                  presets: [{ id: "github", key_url: "https://github.com/settings/personal-access-tokens/new", url: "https://api.githubcopilot.com/mcp/", title: "GitHub", about: "Репозитории, issues, PR — читать, комментировать, создавать", fields: [{ key: "token", label: "Токен GitHub", secret: true, placeholder: "github_pat_…", hint: "github.com → Settings → Developer settings → Personal access tokens → Fine-grained." }], after: "" },
+                            { id: "notion", title: "Notion", about: "Страницы и базы Notion — читать и обновлять", url: "https://mcp.notion.com/mcp", fields: [], after: "" },
+                            { id: "homeassistant", title: "Home Assistant", about: "Умный дом: состояние устройств, свет, сценарии", url: "{base}/api/mcp", fields: [{ key: "base", label: "Адрес Home Assistant", placeholder: "https://home.example.com:8123" }, { key: "token", label: "Долгосрочный токен", secret: true, placeholder: "eyJ…" }], after: "" }] },
   };
   R["/api/providers"] = { tts: "elevenlabs", stt: "local", el_voice: "v2", local_voice: "Ирина", keys: { elevenlabs: { set: true, tail: "…9fQx" } },
                           el_voices: [{ id: "v1", name: "Rachel" }, { id: "v2", name: "Ксения (клон)" }] };
@@ -319,8 +458,16 @@ function demoApi(path, body) {
     { id: "f2", name: "Сверка счетов", space: "buh-demo", created: Date.now() / 1000 - 600, exp: Date.now() / 1000 + 7 * 86400, opened: null, device: "" },
     ...(params.has("spaces") ? [{ id: "f4", name: "Кафе — показ партнёру", w: "", space: "demo", mode: "space", devices: 2, max: 3, rights: "full", forever: false, created: Date.now() / 1000 - 900, exp: Date.now() / 1000 + 7 * 86400, opened: Date.now() / 1000 - 600, device: "iPhone · Safari" },
       { id: "f5", name: "Демо для бухгалтерии", w: "", space: "demo", mode: "space", devices: 0, max: 0, rights: "read", forever: true, created: Date.now() / 1000 - 1900, exp: Date.now() / 1000 + 36500 * 86400, opened: null, device: "" }] : [])] };
+  // «Открыть на другом устройстве» и «Просят доступ» (22.11): ?demo&focusask=a1 — владелец открыл кнопку из сообщения
+  R["/api/focus/device"] = { url: location.origin + "/#focus=demo-extra-demo-extra-demo-extra", exp: Math.floor(Date.now() / 1000) + 900, used: 1, max: 3, qr: demoQr() };
+  R["/api/focus/ask"] = { ok: true };
+  R["/api/focus/asks"] = { id: "a1", rid: "f1", name: "gas-pult", why: "nodevice", note: "Ольга, ноутбук в офисе", device: "Mac · Chrome", at: Math.floor(Date.now() / 1000) - 120,
+    link: { id: "f1", name: "gas-pult", w: "@1", proj: null, mode: "", used: 1, max: 3, live: true, why: "" } };
   if (FOCUS) {
     if (params.get("focus") === "gone") { focusEnd("Чат завершён."); return Promise.reject(new Error("Чат завершён.")); }
+    // &focus=nodevice | limit | expired | revoked | bad — ссылка не открылась: свой экран и «Попросить доступ» (22.11)
+    const FWHY = { nodevice: "Фокус-ссылка не открыта на этом устройстве.", limit: "Ссылку уже открыли на 3 устройствах.", expired: "Срок фокус-ссылки вышел.", revoked: "Владелец отозвал эту фокус-ссылку.", bad: "Ссылка неверна или устарела." };
+    if (FWHY[params.get("focus")] && path !== "/api/focus/ask") { focusEnd(FWHY[params.get("focus")], params.get("focus")); return Promise.reject(new Error(FWHY[params.get("focus")])); }
     // &focus=proj — ссылка на проект сессии @1 (все его окна); &fexp=1 — до конца срока сутки (предупреждение)
     const fp = params.get("focus") === "proj", pw = "p-" + folder(R["/api/sessions"].sessions.find((x) => x.id === "@1")?.path || "");
     const fexp = Math.floor(Date.now() / 1000) + (params.has("fexp") ? +params.get("fexp") || 1 : 7) * 86400 - 600;
@@ -332,7 +479,23 @@ function demoApi(path, body) {
   R["/api/close"] = { result: "закрыто", draft: "" };
   if (path.startsWith("/api/bridge/")) return demoBridge(path, body);   // «Компьютеры» (мост, 21.11)
   if (path.startsWith("/api/meeting") || path.startsWith("/api/mt")) return demoMeeting(path, body);   // протоколы встреч (22.11)
+  if (path === "/api/tracks") {                         // «Поручения» (track штаба) — примеры, только чтение
+    const d = (h) => { const x = new Date(Date.now() - h * 3600e3); const p = (n) => String(n).padStart(2, "0");
+      return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())} ${p(x.getHours())}:${p(x.getMinutes())}`; };
+    return Promise.resolve({ src: true, tasks: [
+      { id: "T7", what: "Счёт поставщику на 48 000 ₽ — согласовать сроки", to: "Бухгалтер (Telegram)", state: "ответ_получен", open: true, created: d(5), updated: d(1), check: "ответ в Telegram — проверка раз в 5 минут", last: "Согласен на оплату до пятницы", stale: false },
+      { id: "T6", what: "Анкета клиента: уточнить объём склада", to: "Клиент (анкета)", state: "передана", open: true, created: d(40), updated: d(30), check: "вручную — командой track", last: "", stale: true },
+      { id: "T5", what: "Отчёт по продажам за неделю", to: "окно «Магазин»", state: "в_работе", open: true, created: d(3), updated: d(2), check: "окно «Магазин» отметит готово", last: "Собираю данные МойСклад", stale: false },
+      { id: "T4", what: "Встреча с поставщиком в четверг", to: "Поставщик (Telegram)", state: "закрыта", open: false, created: d(50), updated: d(20), check: "ответ в Telegram — проверка раз в 5 минут", last: "Подтвердил 12:30", stale: false }] });
+  }
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
+  if (path === "/api/deadlines") return Promise.resolve({ configured: true, cost: "За 24 ч: $12.40",   // примеры
+    claude: { passed: 70, reset: Math.round(Date.now() / 1000 + 2 * 86400) }, items: [
+      { what: "Сервер магазина", when: "—", balance: "5,50 $ — продление не пройдёт", days: -2, level: "over" },
+      { what: "Хостинг сайта", when: "", balance: "", days: 3, level: "d3" },
+      { what: "Домен shop.example", when: "", balance: "", days: 12, level: "d14" },
+      { what: "Касса онлайн", when: "", balance: "", days: 140, level: "ok" },
+      { what: "Кредиты модели (предоплата)", when: "— (предоплата)", balance: "16,69 $", days: null, level: "none" }] });
   if (path.startsWith("/api/brief")) return demoBrief(path, body);
   if (path.startsWith("/api/desktop/tabs")) return demoTabs(path, body);   // вкладки Chrome стола на телефоне (22.11)
   if (path === "/api/desktop/open") return Promise.resolve({ url: "", demo: true });   // рабочий стол (#206): заглушка     // задачи владельца (#203)
@@ -364,6 +527,19 @@ function demoApi(path, body) {
         fields: [{ key: "token", label: "Ответ rclone authorize", secret: true, multiline: true, placeholder: "{\"access_token\":\"…\"}", hint: "На компьютере с браузером: rclone authorize \"drive\"." }] });
     const ALTC = { notion: "notion", gdrive: "drive" };
     for (const c of m.connectors) Object.assign(c, { providers: "claude", alt: ALTC[c.id] || "" });
+    // каталог по разделам (владелец 23.11): разделы, раздел у каждого пункта, Elicit, карточки «официальный путь»
+    const CAT = { notion: "docs", gmail: "mail", gdrive: "docs", drive: "docs", websearch: "research", elicit: "research", gcal: "other" };
+    m.presets.push({ id: "elicit", title: "Elicit", about: "Научные статьи: поиск, отчёты, систематические обзоры, исследовательский агент — официальный сервер Elicit. Только на тарифах Elicit Pro, Scale и Enterprise",
+      key_url: "https://support.elicit.com/en/articles/14757404-use-elicit-via-mcp-server", fields: [], providers: "all", after: "Вход через Elicit (OAuth 2.0): «Войти» ниже или в сессии /mcp → elicit → Authenticate." });
+    for (const x of [...m.presets, ...m.connectors]) x.cat = CAT[x.id] || "other";
+    m.cats = [["ai", "ИИ-модели и агенты"], ["messengers", "Мессенджеры"], ["mail", "Почта"], ["docs", "Документы и диски"], ["research", "Исследования"], ["other", "Прочее"]].map(([id, title]) => ({ id, title }));
+    m.cards = [{ id: "claude", cat: "ai", title: "Claude Code", state: "info", about: "Ваш аккаунт Claude: вход на «Экране» сессии (/login) или ключ API Anthropic. Подписку не передавайте другим людям" },
+      { id: "openai", cat: "ai", title: "ChatGPT и OpenAI", state: "info", about: "Только официально: ключ API OpenAI (platform.openai.com) или официальный вход в Codex. Логин и пароль ChatGPT пульт не принимает" },
+      { id: "telegram", cat: "messengers", title: "Telegram (как пользователь)", state: "info", owner: true, about: "Только официальный API Telegram: свои api_id и api_hash с my.telegram.org, вход по номеру и коду" },
+      { id: "whatsapp", cat: "messengers", title: "WhatsApp (личный)", state: "off", about: "Не поддерживается: запрещено правилами WhatsApp — личный аккаунт через неофициальные клиенты" },
+      { id: "whatsapp-business", cat: "messengers", title: "WhatsApp Business Platform", state: "info", about: "Официальный путь для компаний — Cloud API от Meta: номер компании и бизнес-аккаунт. В пульте пока не подключается кнопкой — через «Свой сервер (адрес)», если у вас есть MCP-сервер к Cloud API" },
+      { id: "max", cat: "messengers", title: "MAX", state: "off", about: "Нет официального пути для личного аккаунта: вход пользователем запрещён соглашением MAX. Для организации — бот (Bot API MAX)" },
+      { id: "mail", cat: "mail", title: "Почта по паролю приложения", state: "info", owner: true, about: "Яндекс, Mail.ru, Gmail, Yahoo — по IMAP с паролем приложения; черновик и отправка — после вашего «Да». Ящик подключает владелец сервера" }];
     const ok = { memory: true, tools: true, tool: true, webfetch: true };
     demoApi.st ||= { running: false };
     if (path === "/api/selftest" && body) demoApi.st = { running: true, at: Date.now() };
@@ -453,22 +629,48 @@ function demoApi(path, body) {
     { i: 1, cmd: "rm -rf dist && npm run build", kind: "local", danger: true, sha: "b" }, { i: 2, cmd: "brew install jq", kind: "foreign", danger: false, sha: "c" },
     { i: 3, cmd: "keepassxc-cli show -s ~/vault/demo.kdbx Сервисы/почта", kind: "tty", danger: false, sha: "d" }] };
   const key = path.split("?")[0];
+  // согласие на подключение (consents.py): в демо — в памяти страницы
+  if (key === "/api/consent") {
+    demoApi.cons ||= [];
+    if (body) { if (body.accepted !== true) return Promise.reject(new Error("отметьте «Понимаю: аккаунт мой, ответственность моя»")); if (!demoApi.cons.includes(body.what)) demoApi.cons.push(body.what); return Promise.resolve({ ok: true, v: "2026-11-24" }); }
+    return Promise.resolve({ v: "2026-11-24", title: "Подключение вашего аккаунта", check: "Понимаю: аккаунт мой, ответственность моя", given: [...demoApi.cons], log: [], points: [
+      "Вы подключаете свой аккаунт или свой ключ. Пульт не создаёт аккаунты и не делится ими.",
+      "Агент в ваших сессиях сможет читать и делать в сервисе то, что разрешает подключение. Отправка людям и платежи — только после вашего «Да» в панели, если сервис это поддерживает.",
+      "Аккаунт, ключ и соблюдение правил сервиса — на вас: условия поставщика, законы вашей страны, согласие людей, чью переписку видит агент.",
+      "Отключить можно в любой момент в «Подключениях». Дата и версия этого текста сохраняются на сервере пульта."] });
+  }
+  if (key === "/api/mcp" && /[?&]catalog=1/.test(path)) return Promise.resolve({ ...R["/api/mcp"], servers: null });
+  if (key === "/api/mcp" && params.get("mcpslow")) return new Promise((r) => setTimeout(() => r(R["/api/mcp"]), +params.get("mcpslow") || 0));   // демо: статусы — как на сервере, позже
   R["/api/meta"].projects_ui = true;                  // «Проекты» (задача 49): и у тестировщика пространства (GAS-38)
   R["/api/sessions"].sessions.forEach((x) => { if (!x.space) { x.project = "p-" + folder(x.path); x.title = demoTitle(x.id); } });
+  if (BIZ) demoBiz(R);
   if (key === "/api/projects" || key.startsWith("/api/project/") || key === "/api/project") return demoProjects(key, path, body, R["/api/sessions"]);
   if (key.startsWith("/api/chat/")) return demoChat(key, body, R["/api/sessions"]);
   if (key === "/api/help/ask") return demoHelp(body);
   if (key.startsWith("/api/repos")) return demoRepos(key, path, body);
-  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered ? SIMPLE_DEMO[params.get("ask") || "bash"] || null : null });
+  if (key === "/api/ask") return Promise.resolve({ ask: decodeURIComponent(path).includes("@2") && !demoApi.answered && !params.has("first") ? (BIZ && !params.get("ask") ? BIZ_ASK : SIMPLE_DEMO[params.get("ask") || "bash"]) || null : null });
   if (key === "/api/key" && SIM.on) demoApi.answered = Date.now() / 1000;
+  if (key === "/api/key" && body?.key === "Escape" && params.get("ask") === "question" && !SIM.on) {   // «Отмена» — вопрос закрыт
+    demoApi.toolDone = true; demoApi.scr?.splice(0, demoApi.scr.length, "● Вопрос закрыт", "", "❯ ");
+    return Promise.resolve({ lines: demoApi.scr });
+  }
   // rev — как у сервера: меняется и когда растёт последний ответ (ход Claude дописывается в журнал по блоку)
   const demoRev = () => "demo0000-" + demoApi.h.length + "-" + (demoApi.h.at(-1)?.text.length || 0);
-  if (!demoApi.h) demoApi.h = params.get("simple") === "1" ? simpleDemoHist() : [
+  if (!demoApi.h) demoApi.h = params.has("first") ? [] : BIZ ? bizHist() : params.get("simple") === "1" ? simpleDemoHist() : [
     { i: 7, role: "user", text: "Сделай панель удобнее: тёмная тема и кнопки диалога", ts: "2026-10-29 09:12" },
     { i: 8, role: "assistant", text: answer, ts: "2026-10-29 09:14" },
-    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 gavriil    7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
+    { i: 9, role: "user", text: "Проверь сборку и запусти тесты. Вот что было на сервере:\nLast login: Thu Oct 29 09:18:02 2026 from 203.0.113.11\nWARNING: connection is not using a post-quantum key exchange algorithm.\n$ lsof -i :8443\nCOMMAND   PID    USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ncaddy   1834 user       7u  IPv6  31337      0t0  TCP *:8443 (LISTEN)\n$ ssh hv uptime\n 09:18:40 up 12 days,  3:02,  1 user,  load average: 0.08, 0.05, 0.01", ts: "2026-10-29 09:20" },
     { i: 10, role: "assistant", text: "Тесты прошли: **58 из 58**. Сборку можно запускать командой ниже.\n\n```bash\nnpm test\n```\n\nПолный отчёт:\n\n```\n" + Array.from({ length: 24 }, (_, k) => `PASS  tests/rooms/case-${String(k + 1).padStart(2, "0")}.test.ts  (${(0.2 + k / 37).toFixed(2)} s)`).join("\n") + "\n```", ts: "2026-10-29 09:21" },
     { i: 11, role: "user", text: "И добавь кнопку обновления", ts: "2026-10-29 09:22", queued: "read" }];
+  // &nq=1 — последний ответ с фразами «Можно спросить» и образцом текста (отзыв 22.11, js/nextq.js); &nq=file — ещё
+  // ваш снимок без подписи и документ с подписью (строки «Снимок получен» / «Файл получен»)
+  if (params.get("nq") && !demoApi.nqAdded) {
+    demoApi.nqAdded = true;
+    const H = demoApi.h, n = (H.at(-1)?.i || 0) + 1;
+    if (params.get("nq") === "file") H.push({ i: n, role: "user", text: "Посмотри файл.\n\nФайл из панели: /home/u/drive/demo/Входящие/таблица-клиентов.png", ts: "2026-10-29 09:23" },
+      { i: n + 1, role: "user", text: "Сверь с прошлым месяцем\n\nФайл из панели: /home/u/drive/demo/Входящие/клиенты-октябрь.xlsx", ts: "2026-10-29 09:23" });
+    H.push({ i: n + 2, role: "assistant", ts: "2026-10-29 09:24", text: "Нашёл **12 дублей** в таблице клиентов: одинаковые телефоны у разных карточек.\n\nОбразец письма клиенту:\n\n> Здравствуйте! Мы объединили ваши записи — теперь все бонусы на одной карте.\n\nМожно спросить дальше:\n\n- «Сколько дублей нашлось по телефону?»\n- «Покажи дубли списком»\n- «Объедини дубли, но сначала покажи, что изменится»" });
+  }
   if (key === "/api/send") {                         // демо: вставка ~0,7 с, потом фазы строки статуса и ответ (&act=stuck — реакции нет)
     const now = new Date().toLocaleString("sv-SE").slice(0, 16), n = demoApi.h.length + 20, stuck = params.get("act") === "stuck" || params.get("act") === "unsent";
     demoApi.run = { w: body.w, t: Date.now() + 700, stuck, unsent: params.get("act") === "unsent" };
@@ -497,12 +699,16 @@ function demoApi(path, body) {
                 "@3": { phase: "done", text: "Готово", since: t0 - 1500 }, "@4": { phase: "done", text: "Готово", since: t0 - 7200 } };
     return Promise.resolve({ ...base, phase: "idle", text: "", since: 0, ...(A[w] || {}) });
   }
+  // сообщения команды (teammsg.py) в чате @1: «Команда» пишет тестировщику — карточкой, не в Claude
+  const demoTeamMsgs = (p, t = Date.now() / 1000 - 240) => new URLSearchParams(p.split("?")[1]).get("w") !== "@1" ? [] : demoApi.teamMsgs ||= [
+    { id: "dt1", at: t, ts: new Date(t * 1000).toISOString().slice(0, 16).replace("T", " "), from: "Команда", kind: "fixed",
+      text: "Исправлено: фото с телефона не уходило в чат. Проверьте, пожалуйста." }];
   if (key === "/api/history" && new URLSearchParams(path.split("?")[1]).get("before")) {   // раньше — по номеру сообщения
     const xs = demoApi.h.filter((m) => m.i < +new URLSearchParams(path.split("?")[1]).get("before"));
     return Promise.resolve({ more: xs.length > 30, rev: demoRev(), items: xs.slice(-30) });
   }
   if (key.startsWith("/api/tty")) return demoTty(key, path, body);
-  if (key === "/api/history") return Promise.resolve({ more: true, rev: demoRev(), items: demoApi.h.slice(-30),
+  if (key === "/api/history") return Promise.resolve({ more: demoApi.h.length > 0, rev: demoRev(), items: demoApi.h.slice(-30), team: demoTeamMsgs(path),
     ...(new URLSearchParams(path.split("?")[1]).get("rev") === demoRev() ? { same: true } : {}) });
   if (key === "/api/select" && body.n) {             // демо: ❯ переезжает на пункт; выбор — меню закрывается
     if (body.go && SIM.on) demoApi.answered = Date.now() / 1000;
@@ -550,6 +756,12 @@ function demoApi(path, body) {
     if (body) Object.assign(demoApi.tour, { [body.tour]: body.state, at: Date.now() / 1000 | 0 });
     return Promise.resolve({ ...demoApi.tour });
   }
+  if (key === "/api/bug") {                         // «Сообщить об ошибке»: никуда не уходит; что пришло — demoApi.bugs (e2e)
+    (demoApi.bugs ||= []).push(body);
+    const ack = { id: "demo-ack-" + Date.now(), ts: new Date().toISOString().slice(0, 16).replace("T", " "), at: Date.now() / 1000, from: "Команда", kind: "ack", text: "Приняли, сообщим, когда исправим." };
+    if (body.w === "@1") demoApi.teamMsgs?.push(ack);   // опрос демо отдаёт его же
+    return Promise.resolve({ ok: true, task: "demo-bug", ack });
+  }
   if (key === "/api/rename") { (demoApi.names ||= {})[body.w] = body.name; return Promise.resolve({ name: body.name }); }
   if (key === "/api/country" && body) { if (!/^[a-z]{2}$/i.test(body.code || "")) return Promise.reject(new Error("нет такой страны — нужен код из двух букв, например NL")); demoApi.cc = body.code.toUpperCase(); return Promise.resolve({ ...R["/api/country"], chosen: demoApi.cc, need: false }); }
   if (key === "/api/persona") return Promise.resolve(demoUi(body));
@@ -571,12 +783,13 @@ function demoApi(path, body) {
     if (m === "slow") return new Promise(() => {});  // ответа нет — сработает таймаут 90 с
     return new Promise((ok, no) => setTimeout(() => m === "fail" ? no(new Error("распознавание не удалось")) : ok({ text }), 2500));
   }
-  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes("@2") ? screen : ["● Готово", "", "❯ "],
+  const askW = (FOCUS || params.has("tester")) && params.get("ask") === "question" ? "@1" : "@2";   // фокус и пространство — их сессия @1
+  if (key === "/api/screen") return Promise.resolve({ lines: decodeURIComponent(path).includes(askW) ? screen : ["● Готово", "", "❯ "],
     auth: params.get("auth") ? { service: "notion", url: "https://mcp.notion.com/authorize?…", paste: true } : null,
     login: decodeURIComponent(path).includes("@1") ? DEMO_LOGIN[params.get("login")] || null : null,
     // ?tool=bash — карточка инструмента (#258): разбор как с сервера и команда в target
-    ask: decodeURIComponent(path).includes("@2") && SIMPLE_DEMO[params.get("tool")] && !demoApi.toolDone
-      ? { ...SIMPLE_DEMO[params.get("tool")], target: "rm -rf build && npm run build\nClean and rebuild the project" } : null });
+    ask: !decodeURIComponent(path).includes(askW) || demoApi.toolDone ? null : BIZ && !params.get("ask") && !params.get("tool") ? BIZ_ASK : SIMPLE_DEMO[params.get("tool")]
+      ? { ...SIMPLE_DEMO[params.get("tool")], target: "rm -rf build && npm run build\nClean and rebuild the project" } : params.get("ask") === "question" ? SIMPLE_DEMO.question : null });
   if (key === "/api/login/code") { demoApi.loginCode = body?.code || ""; return Promise.resolve({ ok: true }); }
   if (key === "/api/login/check") return Promise.resolve(demoApi.loginCode ? { ok: true, text: "вход выполнен", login: null } : { ok: false, text: "окно всё ещё просит войти" });
   if (key === "/api/login/methods") return Promise.resolve({ telegram: true, owner_code: true, email: true, passkey: true, google: true, yandex: true, invite: true });
@@ -587,6 +800,7 @@ function demoApi(path, body) {
   if (key === "/api/invite/new" || key === "/api/invite/device") return Promise.resolve({ path: "/invite/demo-AbCdEfGhIjKlMnOpQr", code: "PLANETA-482157", hint: "demo-A", ttl: { "7d": 604800, "30d": 2592000, "90d": 7776000, "365d": 31536000 }[body?.ttl] || 86400,
     ...(key === "/api/invite/new" && body?.uses !== undefined ? { uses: body.uses, access: body.access } : {}) });
   if (key === "/api/route") return Promise.resolve({ route: /сайт|браузер|форм/i.test(body?.text || "") ? { type: "browser", title: "рутина в браузере", profile: "claude", model: "haiku", name: "Haiku 5.5", why: "80/80 и 16/16, ≈ $0.04 за 8 задач" } : null });
+  if (key === "/api/messengers" || key.startsWith("/api/messengers/")) return Promise.resolve(demoMsg(key, body || {}));
   if (key === "/api/calendars/keys") return Promise.resolve({ calendars: [{ kind: "google", title: "Google Календарь", on: false }] });
   if (key === "/api/calendars/key") return Promise.resolve({ ok: true, checked: "событий в календаре: 12" });
   if (key === "/api/tts/about") {                     // «Что здесь умеет» → «Прослушать»: в демо — секунда тишины (WAV)
@@ -811,7 +1025,7 @@ function demoWav(sec) {                                  // тишина 8 кГ�
   return new Blob([b], { type: "audio/wav" });
 }
 async function demoCard(v) {                             // та же раскладка, что meetings.card_svg на сервере
-  const e = (x) => esc(x), mark = await fetch("brand/gavrila-mark.svg").then((r) => r.text()).catch(() => "");
+  const e = (x) => esc(x), mark = await fetch("brand/ladeya-mark.svg").then((r) => r.text()).catch(() => "");
   const m = /<svg[^>]*viewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(mark);
   const words = (v.gist || v.title).split(/\s+/), lines = []; let cur = "";
   for (const x of words) { if ((cur + " " + x).trim().length <= 30) cur = (cur + " " + x).trim(); else { lines.push(cur); cur = x; } }
@@ -821,8 +1035,8 @@ async function demoCard(v) {                             // та же раскл
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#FFFFFF"/><rect width="16" height="630" fill="#2563EB"/>`
     + `<text x="80" y="100" ${f} font-size="28" font-weight="600" fill="#2563EB">Протокол встречи</text><text ${f} font-size="54" font-weight="700" fill="#111827">${big.map((s, i) => `<tspan x="80" y="${y0 + i * 66}">${e(s)}</tspan>`).join("")}</text>`
     + `<text x="80" y="500" ${f} font-size="30" fill="#4B5563">${e(v.title)}</text><text x="80" y="560" ${f} font-size="28" fill="#5F6672">${e(meta)}</text>`
-    + (m ? `<svg x="1040" y="64" width="80" height="218" viewBox="${e(m[1])}" color="#2563EB">${m[2]}</svg>` : "")
-    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Гаврила</text></svg>`;
+    + (m ? `<svg x="1000" y="64" width="120" height="100" viewBox="${e(m[1])}">${m[2]}</svg>` : "")
+    + `<text x="1120" y="580" text-anchor="end" ${f} font-size="24" font-weight="600" fill="#111827">Лад<tspan fill="#E8421C">э</tspan>я</text></svg>`;   // знак-название: «э» красная
   return new Blob([svg], { type: "image/svg+xml" });
 }
 function demoMeeting(path, body) {
@@ -835,4 +1049,37 @@ function demoMeeting(path, body) {
   if (p.endsWith("/card")) return demoCard(p === "/api/mt/card" ? DEMO_MT.list[0] : v);
   if (p === "/api/meeting/share") return Promise.resolve({ url: location.origin + "/#focus=demo-meeting-demo-meeting-demo", id: "f8", exp: Math.floor(Date.now() / 1000) + 30 * 86400, name: v.title, mode: "meeting", max: 50 });
   return Promise.reject(new Error("нет такого метода"));
+}
+// «Мессенджеры» в демо (js/messengers.js): выбор, вход и QR — на примерах; QR — нарисованный образец, не настоящий
+function demoMsg(key, b) {
+  const m = demoApi.msg ||= { telegram: { c: false, on: false }, signal: { c: false, on: false }, whatsapp: { c: false, on: false } };
+  const txt = { telegram: "Модель будет читать переписку в чатах, которые вы откроете ей. По условиям Telegram для ИИ (п. 1.5 Telegram API Terms) нужно явное согласие собеседников этого чата — спросите их. Отправить сообщение модель может только черновиком и только после вашего «Да» в панели.",
+    signal: "Неофициальный способ. Нарушает условия Signal. Номер могут заблокировать. Лучше отдельный номер. Решаете вы.",
+    whatsapp: "Неофициальный способ. Нарушает условия WhatsApp. Номер могут заблокировать. Лучше отдельный номер. Решаете вы." };
+  const T = { telegram: "Telegram", signal: "Signal", whatsapp: "WhatsApp" };
+  if (key === "/api/messengers") return { idle: 600, catalog: [
+    { id: "telegram", title: "Telegram", about: "Ваш аккаунт: читать чаты, отвечать — после вашего «Да»", kind: "consent" },
+    { id: "signal", title: "Signal", about: "Связанное устройство: читать, отвечать — после вашего «Да»", kind: "risk" },
+    { id: "whatsapp", title: "WhatsApp (личный)", about: "Не поддерживается: запрещено правилами WhatsApp", kind: "off" },
+    { id: "max", title: "MAX", about: "Только бот организации", kind: "off" }],
+    services: Object.keys(T).map((id) => ({ id, title: T[id], consented: m[id].c, connected: m[id].on, who: m[id].on ? "*** 4567" : "", running: false, install: null, text: txt[id], api: m[id].on, allowed: 0 })) };
+  const what = key.slice("/api/messengers/".length), svc = what.startsWith("tg/") ? "telegram" : b.svc;
+  if (what === "consent") { m[svc].c = b.accepted === true; return { ok: true, consented: m[svc].c }; }
+  if (what === "off") { m[svc] = { c: false, on: false }; return { ok: true }; }
+  if (what === "tg/login") return { sent: "app" };
+  if (what === "tg/code" || what === "tg/password") { m.telegram.on = true; return { ok: true, who: "*** 4567" }; }
+  if (what === "link") return { qr: demoQr() };
+  if (what === "chats") return { allowed: ["1"], chats: [{ id: "1", name: "Анна (согласна)", kind: "user", unread: 2 }, { id: "2", name: "Семья", kind: "group", unread: 0 }, { id: "3", name: "Новости района", kind: "channel", unread: 5 }] };
+  if (what === "allow") return { allowed: b.chats || [] };
+  return { ok: true };
+}
+function demoQr() {                                   // образец «ДЕМО»: узоры по углам и случайные клетки — камера его не прочтёт
+  const n = 33, cell = (x, y) => { const f = (a, b) => x >= a && x < a + 7 && y >= b && y < b + 7;
+    for (const [a, b] of [[0, 0], [n - 7, 0], [0, n - 7]]) if (f(a, b)) { const dx = x - a, dy = y - b; return dx === 0 || dx === 6 || dy === 0 || dy === 6 || (dx > 1 && dx < 5 && dy > 1 && dy < 5); }
+    if ((x < 8 && (y < 8 || y > n - 9)) || (x > n - 9 && y < 8)) return false;
+    return ((x * 7 + y * 13 + x * y) % 5) < 2; };
+  let r = "";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (cell(x, y)) r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#fff"/><g fill="#111">${r}</g><rect x="9" y="13" width="15" height="7" fill="#fff"/><text x="16.5" y="18.4" font-size="5" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="#c00">ДЕМО</text></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }

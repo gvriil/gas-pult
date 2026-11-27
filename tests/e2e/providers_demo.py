@@ -1,6 +1,6 @@
 """Что работает у поставщика и автотест поставщиков (задача 38; Playwright, демо-режим).
 
-    python tests/e2e/providers_demo.py "http://127.0.0.1:8797/?demo" [папка-для-скриншотов]
+    python tests/e2e/providers_demo.py "http://127.0.0.1:8797/?demo&dev" [папка-для-скриншотов]
 
 Телефон 390 и ПК 1366, светлая и тёмная тема:
 - сессия DeepSeek (``open=@4``) — плашка «DeepSeek: недоступно — …», «Подробнее» открывает список, «×» скрывает;
@@ -13,6 +13,7 @@
 import sys
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 from playwright.sync_api import sync_playwright
 
 

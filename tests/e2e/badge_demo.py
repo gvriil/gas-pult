@@ -1,12 +1,14 @@
 """Счётчик внимания на вкладке и значке (#189, UI/UX п.3; Playwright — pytest запускает, только если есть браузер).
 
-    python tests/e2e/badge_demo.py http://127.0.0.1:8797/?demo
+    python tests/e2e/badge_demo.py http://127.0.0.1:8797/?demo&dev
 
 Демо: @2 ждёт ответа, у @3 — новый ответ (журнал сменился с прошлого просмотра) → вкладка «(2) …» и
 navigator.setAppBadge(2). Открыли @3 — «(1) …». Телефон 390 и компьютер 1366, светлая и тёмная тема, консоль без ошибок.
 """
 
 import sys
+
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
 
 INIT = """() => {
   try { localStorage.setItem('seen:@3:/home/u/projects/gas-pult', 'old'); } catch (e) {}
@@ -42,5 +44,5 @@ def run(base: str):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev")
     print("ok")

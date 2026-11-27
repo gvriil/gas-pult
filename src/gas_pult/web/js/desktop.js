@@ -19,7 +19,8 @@ const KEYS = { Enter: [0xff0d, "Enter"], Escape: [0xff1b, "Escape"], Tab: [0xff0
   Delete: [0xffff, "Delete"], Home: [0xff50, "Home"], End: [0xff57, "End"] };
 const MODS = { Ctrl: [0xffe3, "ControlLeft"], Alt: [0xffe9, "AltLeft"], Shift: [0xffe1, "ShiftLeft"] };
 // Ряд клавиш (владелец 15.11: «команды, Enter, Ctrl+C, если мы в терминале оказались, и чтобы это было понятно»)
-const KEYROW = [["Enter", "Enter ⏎", "Ввод (Enter)"], ["Escape", "Esc", "Escape"], ["Tab", "Tab", "Tab"],
+const KEYROW = [["paste", "Вставить", "Вставить текст из буфера устройства"], ["Enter", "Enter ⏎", "Ввод (Enter)"],
+  ["Escape", "Esc", "Escape"], ["Tab", "Tab", "Tab"],
   ["Backspace", "⌫", "Стереть (Backspace)"], ["Left", "←", "Влево"], ["Up", "↑", "Вверх"], ["Down", "↓", "Вниз"],
   ["Right", "→", "Вправо"], ["mod:Ctrl", "Ctrl", "Ctrl — нажмите, затем клавишу"], ["mod:Alt", "Alt", "Alt — нажмите, затем клавишу"],
   ["mod:Shift", "Shift", "Shift — нажмите, затем клавишу"], ["c", "Ctrl+C", "Прервать команду (Ctrl+C)"],
@@ -182,12 +183,41 @@ async function rfbScreen(view, st) {
       for (const ch of text) ch === "\n" ? scr.press(0xff0d, "Enter", mods) : scr.press(keysyms.lookup(ch.codePointAt(0)), null, mods);
     },
     paste(text) {                                      // в буфер стола и Ctrl+V — в поле, где стоит курсор
-      rfb.clipboardPasteFrom(text);
-      rfb.sendKey(0xffe3, "ControlLeft", true); rfb.sendKey(0x76, "KeyV"); rfb.sendKey(0xffe3, "ControlLeft", false);
+      rfb.clipboardPasteFrom(text); lift();
+      const held = !!(down().ControlLeft || down().ControlRight);   // Ctrl уже зажат человеком — не отпускать его на столе
+      if (!held) rfb.sendKey(0xffe3, "ControlLeft", true);
+      rfb.sendKey(0x76, "KeyV");
+      if (!held) rfb.sendKey(0xffe3, "ControlLeft", false);
     },
     key(name, mods = []) { scr.press(KEYS[name][0], KEYS[name][1], mods); },
     close() { try { rfb.disconnect(); } catch (_) {} },
   };
+  // Ctrl/⌘+V над экраном (владелец 23.11: «почини буфер обмена»): noVNC отменяет keydown и шлёт на стол голый Ctrl+V —
+  // вставлялось старое содержимое буфера стола. Ctrl/⌘+V до noVNC не пускаем и не отменяем: браузер шлёт событие paste
+  // с текстом из буфера устройства (без запроса разрешения) — его кладём в буфер стола и жмём там Ctrl+V. Нет paste
+  // за 400 мс (браузер не шлёт его в холст) — читаем буфер Clipboard API. С Mac ⌘+C/X/A/Z — как Ctrl (на столе Linux).
+  const cv = rfb._canvas || view, mac = /Mac|iPhone|iPad/.test(navigator.platform || "");
+  const down = () => rfb._keyboard?._keyDownList || {};
+  function lift() {                                    // ⌘/Win, зажатый на устройстве, — отпустить на столе: иначе Super+Ctrl+V
+    const l = down();
+    for (const c of ["MetaLeft", "MetaRight"]) if (l[c]) { rfb.sendKey(l[c], c, false); delete l[c]; }
+  }
+  let waitPaste = 0;
+  const pasted = (text) => { clearTimeout(waitPaste); waitPaste = 0; if (text) scr.onpaste ? scr.onpaste(text) : scr.paste(text); };
+  view.addEventListener("keydown", (e) => {
+    if (e.target !== cv || e.altKey || !(e.ctrlKey || e.metaKey)) return;
+    if (e.code === "KeyV" && e.repeat) { e.stopPropagation(); e.preventDefault(); return; }   // зажали — вставить один раз
+    if (e.code === "KeyV") {
+      e.stopPropagation(); clearTimeout(waitPaste);
+      waitPaste = setTimeout(() => navigator.clipboard?.readText?.().then(pasted, () => scr.onpaste?.("")), 400);
+    } else if (mac && e.metaKey && !e.ctrlKey && /^Key[CXAZ]$/.test(e.code)) {
+      e.stopPropagation(); e.preventDefault(); lift(); scr.press(e.code.charCodeAt(3) + 32, e.code, ["Ctrl"]);
+    }
+  }, true);
+  view.addEventListener("paste", (e) => {
+    if (!waitPaste && e.target !== cv) return;
+    e.preventDefault(); pasted(e.clipboardData?.getData("text/plain") || "");
+  }, true);
   rfb.addEventListener("connect", () => { st.textContent = "на связи"; scr.onready?.(); });
   rfb.addEventListener("clipboard", (e) => scr.onclip?.(String(e.detail?.text || "")));   // копия на столе → сюда
   rfb.addEventListener("disconnect", (e) => { st.textContent = e.detail?.clean ? "отключено" : "связь потеряна — «Переподключить»"; });
@@ -298,11 +328,13 @@ function deskShow(d) {
     <textarea class="desk-kbd" aria-label="Ввод на рабочий стол" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="enter"></textarea>
     <button class="desk-fab" data-desk="show" aria-label="Показать панель стола" title="Показать панель (можно перетащить)" hidden>${ic("monitor")}</button>
     <div class="desk-dock" role="toolbar" aria-label="Кнопки стола">
+      ${b("paste", ic("paste"), "Вставить текст из буфера устройства")}
       ${b("keys", ic("keyboard"), "Клавиши: Enter, Esc, стрелки, Ctrl", ' aria-pressed="false"')}
       ${b("menu", ic("lines"), "Меню стола", ' aria-haspopup="true" aria-expanded="false"')}</div>`;
   const st = el.querySelector(".desk-st"), view = el.querySelector(".desk-view"), pan = el.querySelector(".desk-pan");
   let human = 0;                                       // когда человек последний раз трогал стол (не «Рукой»)
   view.addEventListener("pointerdown", () => { human = Date.now(); }, true);
+  view.addEventListener("keydown", () => { human = Date.now(); }, true);
   const zl = el.querySelector(".desk-z"), kbd = el.querySelector(".desk-kbd");
   const later = () => setTimeout(() => relayout(), 80);
   document.body.append(el); document.body.classList.add("desk-on");
@@ -386,6 +418,10 @@ function deskShow(d) {
     } else if (e.inputType === "deleteContentBackward" && !kbd.value) { e.preventDefault(); send("Backspace"); }
   });
   kbd.addEventListener("keydown", () => { human = Date.now(); }, true);
+  kbd.addEventListener("paste", (e) => {             // «Вставить» в экранной клавиатуре — целиком через буфер стола
+    const t = e.clipboardData?.getData("text/plain"); if (!t || !deskScr) return;
+    e.preventDefault(); deskPut(t);
+  });
   kbd.addEventListener("input", () => { if (kbd.value) { const v = kbd.value; kbd.value = ""; sendText(v); } });
 
   // панель скрыта — плавающий значок (перетаскивается, место запоминается)
@@ -523,7 +559,9 @@ function deskShow(d) {
   el.addEventListener("click", (e) => {
     const kk = e.target.closest("[data-key]");
     if (kk) {
+      human = Date.now();                              // Ctrl+C из ряда клавиш — копия человека (сразу в буфер устройства)
       const k = kk.dataset.key;
+      if (k === "paste") return deskPaste(el);
       if (k.startsWith("mod:")) { const m = k.slice(4), on = !sticky.has(m); on ? sticky.add(m) : sticky.delete(m); kk.setAttribute("aria-pressed", String(on)); return; }
       if (k.length === 1) { modsOnce(); return deskScr?.type(k, ["Ctrl"]); }   // готовые сочетания Ctrl+…
       return send(k);
@@ -550,6 +588,7 @@ function deskShow(d) {
     if (k === "hide") return hideBar(true);
     if (k === "show") { if (t.dataset.dragged) { delete t.dataset.dragged; return; } return hideBar(false); }
     if (k.startsWith("clip")) return deskClip(el, k, t, later);
+    if (k === "paste") return deskPaste(el);
     if (k === "full") return deskFull(el);
   });
 
@@ -560,7 +599,17 @@ function deskShow(d) {
       if (!text || deskEl !== el) return;
       el.querySelector(".desk-clip-text").textContent = text.length > 300 ? text.slice(0, 300) + "…" : text;
       el.querySelector(".desk-clip-out").hidden = false; el.dataset.clip = "1"; deskClipText = text;
-      if (el.querySelector(".desk-clip").hidden) toast("На столе скопирован текст — «Буфер» → «Скопировать»", 3500);
+      // 23.11: копию, сделанную человеком (трогал стол последние 4 с), — сразу в буфер устройства; копии агента
+      // буфер человека не перетирают. Браузер не дал (Safari — только по нажатию) — открыть «Буфер» с кнопкой
+      const ask = () => { deskClipBox(el, true); toast("Скопировано на столе — нажмите «Скопировать»", 3500); };
+      if (Date.now() - human > 4000) { if (el.querySelector(".desk-clip").hidden) toast("На столе скопирован текст — «Буфер» → «Скопировать»", 3500); return; }
+      if (!navigator.clipboard?.writeText) return ask();
+      navigator.clipboard.writeText(text).then(() => toast("Скопировано: «" + deskShort(text) + "»", 2500), ask);
+    };
+    scr.onpaste = (text) => {                            // Ctrl/⌘+V над экраном
+      if (deskEl !== el) return;
+      if (!text) { deskClipBox(el, true); return toast("Браузер не дал прочитать буфер — вставьте текст в поле", 4500); }
+      deskPut(text);
     };
     scr.onready = () => { hand(!pan.hidden); fit(); };
   }, (e) => { st.textContent = "не подключился: " + e.message; });
@@ -570,13 +619,40 @@ function deskShow(d) {
 // Буфер обмена (владелец 15.11: «копия не проходит … пароль неудобно вписывать»). Текст — только в памяти страницы:
 // не пишется в журналы и хранилище, поле очищается после отправки.
 let deskClipText = "";
+const deskShort = (t) => { t = t.replace(/\s+/g, " ").trim(); return t.length > 24 ? t.slice(0, 24) + "…" : t; };
+function deskClipBox(el, on) {                         // панель «Буфер»: открыть/закрыть, фокус — в поле
+  const box = el.querySelector(".desk-clip"), inp = el.querySelector(".desk-clip-in");
+  if (inp && !inp.dataset.autoPut) {                   // вставили в поле — сразу на стол, без второго шага (буфер, 25.11)
+    inp.dataset.autoPut = "1";
+    inp.addEventListener("paste", () => setTimeout(() => {
+      const t = inp.value; if (!t || !deskScr) return;
+      deskPut(t); inp.value = ""; haptic("impactOccurred", "light"); toast("Вставлено на стол: «" + deskShort(t) + "»", 2500);
+    }, 0));
+  }
+  box.hidden = !on; el.querySelector(".desk-bar [data-desk=clip]")?.setAttribute("aria-expanded", String(on));
+  if (on) el.querySelector(".desk-clip-in").focus({ preventScroll: true });
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+}
+// Текст — на стол: буфер стола + Ctrl+V; сервер без буфера UTF-8 (Latin-1) — не-латиницу набираем клавишами
+function deskPut(text) {
+  const typed = /[^\u0000-\u00ff]/.test(text) && !deskScr.utf8;
+  typed ? deskScr.type(text) : deskScr.paste(text);
+  return typed;
+}
+// «Вставить» (телефон — обязательно: там нет Ctrl+V): буфер устройства → стол одним нажатием; браузер не дал
+// прочитать буфер (Telegram, старый iOS, отказ в разрешении) — поле «Вставьте текст сюда» в панели «Буфер»
+async function deskPaste(el) {
+  if (!deskScr) return toast("Стол ещё не подключён", 3000);
+  let text = "";
+  try { text = await navigator.clipboard.readText(); } catch (_) {}
+  if (deskEl !== el) return;
+  if (!text) { deskClipBox(el, true); return toast("Нажмите и удерживайте поле → «Вставить» — текст сразу уйдёт на стол", 5000); }
+  deskPut(text); haptic("impactOccurred", "light");
+  toast("Вставлено на стол: «" + deskShort(text) + "»", 2500);
+}
 async function deskClip(el, k, t, later) {
   const box = el.querySelector(".desk-clip"), inp = el.querySelector(".desk-clip-in");
-  if (k === "clip") {
-    box.hidden = !box.hidden; t.setAttribute("aria-expanded", String(!box.hidden));
-    if (!box.hidden) inp.focus({ preventScroll: true });
-    return later();
-  }
+  if (k === "clip") { deskClipBox(el, box.hidden); return later(); }
   if (k === "clip-read") {                             // Clipboard API — по нажатию (iOS иначе не даёт)
     try { inp.value = await navigator.clipboard.readText(); inp.focus(); }
     catch (_) { toast("Телефон не дал прочитать буфер — вставьте в поле долгим нажатием", 4500); inp.focus(); }
@@ -596,7 +672,7 @@ async function deskClip(el, k, t, later) {
   if (!deskScr) return toast("Стол ещё не подключён", 3000);
   // буфер UTF-8 (Xvnc) — вставляем как есть; старый сервер (Latin-1) — кириллицу и эмодзи набираем клавишами
   const wide = /[^\u0000-\u00ff]/.test(text) && !deskScr.utf8, typed = k === "clip-type" || wide;
-  if (typed) deskScr.type(text); else deskScr.paste(text);
+  if (k === "clip-type") deskScr.type(text); else deskPut(text);
   inp.value = "";
   toast(!typed ? "Вставлено на стол (Ctrl+V). Не вставилось — «Напечатать»"
     : wide && k === "clip-paste" ? "В тексте не только латиница — набрал его на столе клавишами" : "Напечатано на столе", 3500);

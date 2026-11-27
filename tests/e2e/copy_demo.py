@@ -1,6 +1,6 @@
 """«Копировать» у каждого сообщения и у каждого блока кода (Playwright; pytest запускает, только если есть браузер).
 
-    python tests/e2e/copy_demo.py http://127.0.0.1:8797/?demo [папка-для-снимков]
+    python tests/e2e/copy_demo.py http://127.0.0.1:8797/?demo&dev [папка-для-снимков]
 
 Буфер обмена перехвачен (navigator.clipboard.writeText → window.__clip). Проверки (390 и 1366, светлая и тёмная):
   (а) ответ Claude — «Копировать» внизу справа, после времени; копируется исходный markdown;
@@ -14,6 +14,8 @@
 
 import sys
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 CLIP = """() => { window.__clip = null;
   const w = (t) => { window.__clip = t; return Promise.resolve(); };
   try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: w } }); }
@@ -22,7 +24,7 @@ NOCLIP = """() => { window.__clip = null;
   const no = () => Promise.reject(new Error('нет'));
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: no } });
   document.execCommand = (c) => {
-    window.__clip = c === 'copy' ? document.activeElement.value : null; return true; }; }"""
+    window.__clip = c === 'copy' ? String(getSelection()) : null; return true; }; }  // выделение Range (iPhone)"""
 
 
 def clip(pg):
@@ -149,4 +151,5 @@ def run(base: str, shots: str = ""):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo", sys.argv[2] if len(sys.argv) > 2 else "")
+    run(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8797/?demo&dev",
+        sys.argv[2] if len(sys.argv) > 2 else "")

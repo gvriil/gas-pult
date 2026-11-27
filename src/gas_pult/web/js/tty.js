@@ -309,6 +309,11 @@ function ttyOpenX(wid) {
       { label: "Скопировать экран", icon: "copy", sub: "видимые строки терминала",
         run: () => copyText(xOn() ? xScreen() : pre.textContent.split("\n").slice(-40).join("\n"), "Экран скопирован") },
       { label: "Выделить пальцем", icon: "edit", sub: "экран текстом: долгое нажатие → «Скопировать»", run: () => selMode(true) },
+      { label: "Вставить из буфера", icon: "paste", sub: "текст из буфера устройства — в окно", run: async () => {   // буфер, 25.11
+        let t = ""; try { t = await navigator.clipboard.readText(); } catch (e) {}
+        if (!t) { box.focus(); return toast("Нажмите и удерживайте экран терминала → «Вставить»", 4500); }
+        flush(); send("/api/tty/type", { text: t }); toast("Вставлено", 1800);
+      } },
     ]);
   };
   $$("ttySelX").onclick = () => selMode(false);

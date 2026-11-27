@@ -33,7 +33,7 @@ TRUST_OPT = re.compile(r"^\s*(❯\s*)?(\d+\.\s*)?(Yes, I trust|No, exit|No\b)", 
 def trust_keys(text: str) -> list[str] | None:
     """Клавиши, чтобы ответить «да» на вопрос о доверии папке: [«Down»…, «Enter»]; не вопрос о доверии или не
     понятно, где «Yes» и курсор, — None (тогда ничего не нажимаем: Enter на «No, exit» закрыл бы Claude)."""
-    if not TRUST_ASK.search(text):
+    if not TRUST_ASK.search(" ".join(text.split())):     # узкое окно переносит вопрос на две строки (25.11)
         return None
     lines = text.splitlines()
     opts = [i for i, x in enumerate(lines) if TRUST_OPT.match(x)]
@@ -315,10 +315,12 @@ class Tmux:
     def _windows(self) -> list[dict]:
         out = self.run("list-windows", "-t", self.session, "-F", "#{window_id}\t#{window_index}\t#{window_name}\t"
                        "#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}\t#{@gas_pult}\t#{@gas_pult_by}\t"
-                       "#{@gas_pult_sid}")
+                       "#{@gas_pult_sid}\t#{@gas_pult_from}\t#{@gas_pult_focus}")
+        # from — окно, из которого это открыли командой tmux (spawned.py): видно по фокус-ссылке родителя
         # sid — id сессии Claude Code (``--session-id``): у окна свой журнал, а не «последний в папке»
-        ws = [dict(zip(("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid"), line.split("\t"),
-                       strict=False)) for line in out.splitlines()]
+        # focus — id фокус-ссылки, по которой окно открыли (``set_focus``): по ссылке на проект видны только такие
+        keys = ("id", "idx", "name", "cmd", "path", "tty", "mark", "by", "sid", "from", "focus")
+        ws = [dict(zip(keys, line.split("\t"), strict=False)) for line in out.splitlines()]
         procs = tty_procs([w.get("tty", "") for w in ws])
         for w in ws:  # Claude может быть запущен через bash -c — смотрим все процессы терминала окна
             procs_w = procs.get(w.get("tty", "").removeprefix("/dev/"), [])        # [[pid, argv…], …]
@@ -401,9 +403,16 @@ class Tmux:
         после Enter смотрим поле ввода (``field``, вместе с бледным текстом — поле не в фокусе рисуется бледным): там
         всё ещё наш текст — Enter ещё раз (до трёх).
 
+        Текст — та самая подсказка Claude Code в строке ввода (💡 в боте и в панели) — принимаем её клавишей Tab, а не
+        вставкой: так Claude Code засчитывает подсказку использованной. Вставку он считает «неиспользованной», и после
+        20 таких подряд показывает подсказки реже (Claude Code 2.1.332: «Showing fewer prompt suggestions»; 27.11).
+
         ``{"ok": bool, "result": "sent" | "retried N" | "stuck", "after": "empty" | "ours" | "other"}``."""
-        self.run("load-buffer", "-b", "gas-pult", "-", input=text)
-        self.run("paste-buffer", "-p", "-d", "-b", "gas-pult", "-t", wid)
+        if self.hint(wid) == " ".join(text.split()):
+            self.keys(wid, "Tab")                        # принять подсказку (документация Claude Code: Tab)
+        else:
+            self.run("load-buffer", "-b", "gas-pult", "-", input=text)
+            self.run("paste-buffer", "-p", "-d", "-b", "gas-pult", "-t", wid)
         sleep(0.5)
         self.keys(wid, "Enter")
         waited, tries = 0.0, 0
@@ -442,15 +451,24 @@ class Tmux:
         self.run("send-keys", "-t", wid, "Enter")
         self.watch_trust(wid)
 
-    def accept_trust(self, wid: str, wait: float = TRUST_WAIT, step: float = 1.0) -> bool:
-        """Ждать до ``wait`` с вопрос «доверять папке?» в окне и ответить «да». True — ответили."""
+    def accept_trust(self, wid: str, wait: float = TRUST_WAIT, step: float = 0.3, settle: float = 2.0) -> bool:
+        """Ждать до ``wait`` с вопрос «доверять папке?» в окне и ответить «да». True — ответили и вопроса больше нет.
+
+        25.11 (владелец: «доверять» не сработало, человек не смог написать): нажатия, отправленные пока Claude Code
+        ещё рисует экран, теряются — раньше пульт после первой попытки переставал следить. Теперь опрос каждые 0,3 с,
+        после нажатий ждём до ``settle`` с, что вопрос исчез, иначе отвечаем снова."""
         end = time.monotonic() + wait
         while time.monotonic() < end:
-            text = "\n".join(self.screen(wid, 30))
-            if keys := trust_keys(text):
+            if keys := trust_keys("\n".join(self.screen(wid, 30))):
                 for k in keys:
                     self.run("send-keys", "-t", wid, k)
-                return True
+                    time.sleep(0.05)
+                gone = time.monotonic() + settle
+                while time.monotonic() < gone:
+                    time.sleep(step)
+                    if not TRUST_ASK.search(" ".join("\n".join(self.screen(wid, 30)).split())):
+                        return True
+                continue
             time.sleep(step)
         return False
 
@@ -479,6 +497,18 @@ class Tmux:
             cmd = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
                    f"--unit=gas-pult-tmux-{int(time.time())}", *cmd]
         subprocess.run(cmd, check=True)
+        self.spawn_hook()
+
+    def spawn_hook(self) -> bool:
+        """Хук «окно открыли из окна» (spawned.py) — только на tmux владельца: у пространств свой сервер, и окно
+        пространства по ссылке владельца не видно. True — поставлен."""
+        if not self.owner_tmux():
+            return False
+        from gas_pult import spawned
+        try:
+            return spawned.install(self.run)
+        except OSError:
+            return False
 
     def env_args(self) -> list[str]:
         return [x for k, v in WINDOW_ENV for x in ("-e", f"{k}={v}")]
@@ -509,6 +539,11 @@ class Tmux:
             self.set_sid(wid, sid)
         self.watch_trust(wid)
         return wid
+
+    def set_focus(self, wid: str, rid: str):
+        """Метка окна ``@gas_pult_focus`` — фокус-ссылка, по которой его открыли. Живёт и гаснет вместе с окном: новое
+        окно с тем же номером (после перезапуска tmux) метки не получит."""
+        self.run("set-option", "-w", "-t", wid, "@gas_pult_focus", rid)
 
     def set_sid(self, wid: str, sid: str):
         """Метка окна ``@gas_pult_sid`` — id сессии Claude Code, чей журнал читать; пусто — снять (старый способ)."""

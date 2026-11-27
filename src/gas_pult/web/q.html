@@ -32,9 +32,9 @@
   .opt:hover { border-color: var(--accent); } .opt:focus-visible, input:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .opt .box { flex: none; width: 22px; height: 22px; border: 2px solid var(--muted); border-radius: 6px; display: grid; place-items: center; }
   .opt.one .box { border-radius: 50%; }
-  .opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
-  .opt[aria-checked="true"] .box { border-color: var(--accent); background: var(--accent); }
-  .opt[aria-checked="true"] .box::after { content: ""; width: 10px; height: 10px; border-radius: inherit; background: var(--on-accent); }
+  .opt[aria-checked="true"], .opt[data-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .opt[aria-checked="true"] .box, .opt[data-checked="true"] .box { border-color: var(--accent); background: var(--accent); }
+  .opt[aria-checked="true"] .box::after, .opt[data-checked="true"] .box::after { content: ""; width: 10px; height: 10px; border-radius: inherit; background: var(--on-accent); }
   input[type=text], input[type=number], textarea { width: 100%; min-height: 48px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px;
          background: var(--card); color: var(--text); font: inherit; margin-top: 8px; }
   textarea { min-height: 96px; resize: vertical; }
@@ -47,15 +47,39 @@
   .btn:disabled { opacity: .5; cursor: default; }
   .saved { font-size: 14px; color: var(--muted); } .err { color: var(--danger); font-size: 15px; margin: 8px 0 0; }
   .done { text-align: center; padding-top: 18vh; } .done .big { font-size: 56px; color: var(--ok); line-height: 1; }
+  /* Термины (glossary): подчёркнутое слово — кнопка, нажатие — пояснение в 1–2 предложения. Вариант с термином —
+     карточка-div: выбор — кнопка-флажок слева (подписана текстом через aria-labelledby), термин — отдельная кнопка рядом
+     с ней, а не внутри: нажатие на термин не переключает выбор (TGI 23.11) */
+  .gl { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; margin: 0; cursor: help; position: relative;
+        text-align: inherit; text-decoration: underline dotted; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .gl::before { content: ""; position: absolute; inset: -8px -3px; }
+  .gl[aria-expanded="true"] { text-decoration-style: solid; }
+  .opt .pick { flex: none; display: grid; place-items: center; min-width: 32px; min-height: 32px; margin: -5px; padding: 0;
+               border: 0; background: none; color: inherit; cursor: pointer; }
+  .opt:has(.pick:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .gltip { position: fixed; left: 0; top: 0; z-index: 10; max-width: min(340px, calc(100vw - 16px)); padding: 12px 14px;
+           border-radius: 12px; background: var(--text); color: var(--bg); font-size: 15px; line-height: 1.45;
+           box-shadow: 0 6px 24px rgba(0, 0, 0, .25); overflow-wrap: anywhere; }
+  .gltip strong { display: block; margin-bottom: 2px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .review dt { font-weight: 600; margin-top: 10px; } .review dd { margin: 2px 0 0; color: var(--muted); }
+  /* Согласие на обработку ПДн (24.11): отдельная галочка, не в общем тексте; без неё «Отправить» неактивна, сервер
+     тоже отказывает. Документы — в новой вкладке: анкета и черновик остаются на месте */
+  .agree { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0 0; padding: 14px; border: 1.5px solid var(--line);
+           border-radius: var(--radius); background: var(--card); cursor: pointer; }
+  .agree input { flex: none; width: 24px; height: 24px; margin: 1px 0 0; accent-color: var(--accent); cursor: pointer; }
+  .agree a { color: var(--accent); text-underline-offset: 3px; }
+  .docs { font-size: 15px; margin: 8px 0 0; }
 </style>
 </head>
 <body>
 <main id="app" aria-live="polite"><p class="muted">Загружаю анкету…</p></main>
 <nav class="nav" id="nav" hidden><div><button class="btn" id="back" type="button">Назад</button><span class="saved" id="saved"></span><button class="btn main" id="next" type="button">Дальше</button></div></nav>
+<div class="gltip" id="gltip" role="tooltip" hidden></div><div class="sr" id="glsay" aria-live="polite"></div>
 <script>
 "use strict";
-const code = location.pathname.split("/").filter(Boolean)[1] || "";
+const seg = location.pathname.split("/").filter(Boolean);   // /q/<код> или /<имя> за прокси (botsmith.ru/med)
+const code = (seg[0] === "q" ? seg[1] : seg[0]) || "";
 const api = (act, body) => fetch(`/api/q/${encodeURIComponent(code)}${act ? "/" + act : ""}`, body ? {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}).then(async (r) => {
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || "Ошибка " + r.status); return d; });
@@ -63,6 +87,64 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const $ = (id) => document.getElementById(id);
 const LS = "pult:q:" + code;
 let F = null, A = {}, step = 0, saveT = 0;   // step: 0 — вступление, 1..N — разделы, N+1 — проверка
+let G = [], glOpen = null;                    // термины анкеты (glossary) и открытая кнопка термина
+let agree = false;                            // галочка согласия с Политикой — только для отправки (черновик — без неё)
+
+// gloss:start — термины: чистые функции (тест — tests/test_forms_glossary.py через node)
+const WORD = /[\p{L}\p{N}_]/u;
+const fold = (s) => String(s).toLowerCase().replace(/ё/g, "е");
+function glossTerms(g) {   // {термин: пояснение} → [{t, low, d}]: длинные раньше коротких — «1С: Бухгалтерия» раньше «1С»
+  if (!g || typeof g !== "object" || Array.isArray(g)) return [];
+  return Object.entries(g).filter(([t, d]) => typeof d === "string" && t.trim() && d.trim())
+    .map(([t, d]) => ({ t: t.trim(), low: fold(t.trim()), d: d.trim() })).sort((a, b) => b.low.length - a.low.length);
+}
+function glossParts(text, terms) {   // текст → ["кусок", {i: номер термина, s: как в тексте}, …]; целым словом, без регистра
+  const s = String(text ?? ""), low = fold(s), out = [];
+  if (!terms.length || low.length !== s.length) return [s];
+  let from = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (i > 0 && WORD.test(s[i - 1])) continue;            // начало слова: перед ним не буква и не цифра
+    const k = terms.findIndex((x) => low.startsWith(x.low, i) && !WORD.test(s[i + x.low.length] || ""));
+    if (k < 0) continue;
+    if (i > from) out.push(s.slice(from, i));
+    const n = terms[k].low.length;
+    out.push({ i: k, s: s.slice(i, i + n) });
+    from = i + n; i = from - 1;                            // внутри найденного термина других не ищем
+  }
+  if (from < s.length) out.push(s.slice(from));
+  return out;
+}
+// gloss:end
+
+// текст анкеты → HTML: всё экранировано, термин — кнопка (пояснение — только textContent, см. glShow)
+const gl = (text) => glossParts(text, G).map((p) => typeof p === "string" ? esc(p)
+  : `<button type="button" class="gl" data-g="${p.i}" aria-expanded="false" aria-controls="gltip">${esc(p.s)}</button>`).join("");
+
+function glShow(btn) {
+  glHide(false);
+  const x = G[+btn.dataset.g]; if (!x) return;
+  const tip = $("gltip"), h = document.createElement("strong"), p = document.createElement("span");
+  h.textContent = x.t; p.textContent = x.d;
+  tip.replaceChildren(h, p); tip.style.left = "0px"; tip.style.top = "0px"; tip.hidden = false;
+  btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-describedby", "gltip");
+  glOpen = btn; glPlace();
+  $("glsay").textContent = `${x.t}: ${x.d}`;               // нажатие не перечитывает описание — читаем вслух сами
+}
+function glHide(back) {
+  if (!glOpen) return;
+  const b = glOpen; glOpen = null;
+  b.setAttribute("aria-expanded", "false"); b.removeAttribute("aria-describedby");
+  $("gltip").hidden = true; $("glsay").textContent = "";
+  if (back && b.isConnected) b.focus();
+}
+function glPlace() {   // под термином, по центру; у края — прижато к экрану; внизу места нет — над термином
+  if (!glOpen) return;
+  const tip = $("gltip"), r = glOpen.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+  const w = tip.offsetWidth, h = tip.offsetHeight, nav = $("nav").hidden ? 0 : $("nav").offsetHeight;
+  const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, vw - w - 8));
+  const top = r.bottom + 8 + h <= innerHeight - nav ? r.bottom + 8 : Math.max(8, r.top - 8 - h);
+  tip.style.left = `${Math.round(left)}px`; tip.style.top = `${Math.round(top)}px`;
+}
 
 function load() { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } }
 function keep() {
@@ -77,7 +159,7 @@ async function start() {
   try { d = await api(""); } catch (e) {
     $("app").innerHTML = `<div class="done"><h1>Ссылка не работает</h1><p class="muted">${esc(e.message)}. Попросите новую ссылку у того, кто её прислал.</p></div>`; return;
   }
-  F = d.form; document.title = F.title;
+  F = d.form; document.title = F.title; G = glossTerms(F.glossary);
   if (d.sent) return thanks();
   A = { ...(d.draft || {}), ...load() };
   step = 0; draw();
@@ -85,13 +167,16 @@ async function start() {
 
 const total = () => F.sections.length + 1;
 function draw() {
+  glHide(false);
   $("nav").hidden = false;
   const n = total();
   $("back").hidden = step === 0;
   $("next").textContent = step === 0 ? "Начать" : step === n ? "Отправить" : "Дальше";
+  $("next").disabled = step === n && !agree;
   if (step === 0) {
-    $("app").innerHTML = `<h1>${esc(F.title)}</h1><p>${esc(F.intro)}</p>${F.rules?.length ? `<ul class="rules">${F.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
-      <p class="muted">Вопросов: ${F.sections.reduce((s, x) => s + x.questions.length, 0)}. Ответы сохраняются сами — можно закрыть и вернуться по той же ссылке.</p>`;
+    $("app").innerHTML = `<h1>${esc(F.title)}</h1><p>${gl(F.intro)}</p>${F.rules?.length ? `<ul class="rules">${F.rules.map((r) => `<li>${gl(r)}</li>`).join("")}</ul>` : ""}
+      <p class="muted">Вопросов: ${F.sections.reduce((s, x) => s + x.questions.length, 0)}. Ответы сохраняются сами — можно закрыть и вернуться по той же ссылке.</p>
+      ${G.length ? '<p class="muted">Подчёркнутое слово можно нажать — появится короткое пояснение.</p>' : ""}`;
     return scrollTo(0, 0);
   }
   const bar = `<div class="bar"><div class="prog" role="progressbar" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${step}"><i style="width:${Math.round(step / n * 100)}%"></i></div>
@@ -99,6 +184,9 @@ function draw() {
   if (step === n) return review(bar);
   const s = F.sections[step - 1];
   $("app").innerHTML = bar + `<h2>${esc(s.title)}</h2>` + s.questions.map(question).join("");
+  // вариант с термином — div, а не кнопка: iOS шлёт click по касанию только «нажимаемому» элементу — свой обработчик
+  // делает карточку такой (сам выбор — общий обработчик ниже)
+  $("app").querySelectorAll("div.opt").forEach((d) => d.addEventListener("click", () => {}));
   scrollTo(0, 0);
 }
 
@@ -107,17 +195,24 @@ function question(q) {
   let body = "";
   if (t === "choice") {
     const picks = a?.pick || [];
-    body = `<div class="opts" role="${q.multi ? "group" : "radiogroup"}" aria-label="${esc(q.text)}">` + q.options.map((o) =>
-      `<button type="button" class="opt${q.multi ? "" : " one"}" role="${q.multi ? "checkbox" : "radio"}" aria-checked="${picks.includes(o)}" data-q="${esc(q.id)}" data-o="${esc(o)}"><span class="box" aria-hidden="true"></span><span>${esc(o)}</span></button>`).join("") + "</div>"
+    const role = q.multi ? "checkbox" : "radio", cls = `opt${q.multi ? "" : " one"}`, box = '<span class="box" aria-hidden="true"></span>';
+    body = `<div class="opts" role="${q.multi ? "group" : "radiogroup"}" aria-label="${esc(q.text)}">` + q.options.map((o, j) => {
+      const on = picks.includes(o), label = gl(o), data = `data-q="${esc(q.id)}" data-o="${esc(o)}"`;
+      if (label === esc(o)) return `<button type="button" class="${cls}" role="${role}" aria-checked="${on}" ${data}>${box}<span>${label}</span></button>`;
+      // есть термин: кнопка термина — не внутри кнопки выбора (у radio/checkbox потомки — только текст, и нажатие
+      // переключило бы выбор); выбор подписан текстом варианта через aria-labelledby
+      const id = `ol-${esc(q.id)}-${j}`;
+      return `<div class="${cls}" ${data} data-checked="${on}"><button type="button" class="pick" role="${role}" aria-checked="${on}" aria-labelledby="${id}">${box}</button><span id="${id}">${label}</span></div>`;
+    }).join("") + "</div>"
       + (q.other ? `<input type="text" data-other="${esc(q.id)}" placeholder="Свой вариант — впишите, если нужного нет" value="${esc(a?.other || "")}" maxlength="300" aria-label="Свой вариант">` : "");
   } else if (t === "number") {
     body = `<input type="number" inputmode="decimal" data-num="${esc(q.id)}" value="${esc(a ?? "")}" placeholder="${esc(q.placeholder || "")}" aria-label="${esc(q.text)}">${q.unit ? `<span class="muted"> ${esc(q.unit)}</span>` : ""}`;
   } else {
     body = `<textarea data-text="${esc(q.id)}" maxlength="2000" placeholder="${esc(q.placeholder || (t === "photo" ? "Опишите словами — фото можно прислать потом в чат" : ""))}" aria-label="${esc(q.text)}">${esc(a ?? "")}</textarea>`;
   }
-  return `<section class="q" id="q-${esc(q.id)}"><h3>${esc(q.text)}${q.required ? '<span class="req">обязательно</span>' : ""}</h3>
+  return `<section class="q" id="q-${esc(q.id)}"><h3>${gl(q.text)}${q.required ? '<span class="req">обязательно</span>' : ""}</h3>
     ${q.multi ? '<p class="muted" style="font-size:14px;margin:0 0 6px">Можно отметить несколько</p>' : ""}
-    ${q.hint ? `<details class="why"><summary>Зачем спрашиваем</summary><p>${esc(q.hint)}</p></details>` : ""}${body}<div class="err" id="e-${esc(q.id)}" hidden></div></section>`;
+    ${q.hint ? `<details class="why"><summary>Зачем спрашиваем</summary><p>${gl(q.hint)}</p></details>` : ""}${body}<div class="err" id="e-${esc(q.id)}" hidden></div></section>`;
 }
 
 function review(bar) {
@@ -126,11 +221,15 @@ function review(bar) {
     const v = a == null ? "—" : typeof a === "object" ? [...(a.pick || []), ...(a.other ? ["свой: " + a.other] : [])].join(", ") || "—" : a;
     return `<dt>${esc(q.text)}</dt><dd>${esc(v)}</dd>`;
   }).join("");
-  $("app").innerHTML = bar + `<h2>Проверьте и отправьте</h2><p class="muted">Нажмите «Назад», чтобы поправить. После отправки ответы уйдут нам — мы сразу возьмём их в работу.</p><dl class="review">${rows}</dl><div class="err" id="sendErr" hidden></div>`;
+  $("app").innerHTML = bar + `<h2>Проверьте и отправьте</h2><p class="muted">Нажмите «Назад», чтобы поправить. После отправки ответы уйдут нам — мы сразу возьмём их в работу.</p><dl class="review">${rows}</dl>
+    <label class="agree"><input type="checkbox" id="agree"${agree ? " checked" : ""}><span>Согласен(на) на обработку персональных данных по <a href="/privacy" target="_blank" rel="noopener">Политике</a></span></label>
+    <p class="muted docs">Документы откроются в новой вкладке — анкета останется здесь: <a href="/privacy" target="_blank" rel="noopener">Политика обработки персональных данных</a> · <a href="/terms" target="_blank" rel="noopener">Условия использования</a></p>
+    <div class="err" id="sendErr" hidden></div>`;
   scrollTo(0, 0);
 }
 
 function thanks() {
+  glHide(false);
   $("nav").hidden = true;
   try { localStorage.removeItem(LS); } catch (e) { /* нечего чистить */ }
   $("app").innerHTML = `<div class="done"><div class="big" aria-hidden="true">✓</div><h1>Спасибо!</h1><p>${esc(F?.finish || "Ответы получены.")}</p></div>`;
@@ -140,13 +239,27 @@ function missingIn(s) {
   return s.questions.filter((q) => q.required && (A[q.id] == null || (typeof A[q.id] === "object" && !(A[q.id].pick?.length || A[q.id].other))));
 }
 
+// термин: перехват до выбора варианта (фаза захвата) — нажатие на термин в варианте не переключает выбор
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.(".gl");
+  if (b) { e.preventDefault(); e.stopPropagation(); return glOpen === b ? glHide(false) : glShow(b); }
+}, true);
+// нажатие мимо — закрыть: pointerdown, а не click — iOS не шлёт click по тексту без обработчика
+document.addEventListener("pointerdown", (e) => { if (glOpen && !e.target.closest?.(".gl, #gltip")) glHide(false); }, true);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && glOpen) { e.preventDefault(); glHide(true); } });
+addEventListener("resize", glPlace);
+addEventListener("scroll", glPlace, { passive: true });
 document.addEventListener("click", (e) => {
   const o = e.target.closest(".opt"); if (!o || !F) return;
   const q = F.sections.flatMap((s) => s.questions).find((x) => x.id === o.dataset.q);
   const cur = A[q.id] || { pick: [] }; let pick = [...(cur.pick || [])];
   pick = q.multi ? (pick.includes(o.dataset.o) ? pick.filter((x) => x !== o.dataset.o) : [...pick, o.dataset.o]) : [o.dataset.o];
   A[q.id] = { ...cur, pick };
-  o.closest(".opts").querySelectorAll(".opt").forEach((b) => b.setAttribute("aria-checked", String(pick.includes(b.dataset.o))));
+  o.closest(".opts").querySelectorAll(".opt").forEach((b) => {
+    const on = String(pick.includes(b.dataset.o));
+    (b.querySelector(".pick") || b).setAttribute("aria-checked", on);
+    if ("checked" in b.dataset) b.dataset.checked = on;
+  });
   $("e-" + q.id).hidden = true; keep();
 });
 document.addEventListener("input", (e) => {
@@ -154,6 +267,11 @@ document.addEventListener("input", (e) => {
   if (t.dataset.other) { A[t.dataset.other] = { pick: A[t.dataset.other]?.pick || [], other: t.value }; keep(); }
   else if (t.dataset.num) { if (t.value === "") delete A[t.dataset.num]; else A[t.dataset.num] = t.value; keep(); }
   else if (t.dataset.text) { if (!t.value.trim()) delete A[t.dataset.text]; else A[t.dataset.text] = t.value; keep(); }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "agree") return;
+  agree = e.target.checked; $("next").disabled = !agree;
+  if (agree && $("sendErr")) $("sendErr").hidden = true;
 });
 $("back").onclick = () => { if (step > 0) { step--; draw(); } };
 $("next").onclick = async () => {
@@ -166,8 +284,9 @@ $("next").onclick = async () => {
     }
   }
   if (step < n) { step++; return draw(); }
+  if (!agree) { const el = $("sendErr"); el.textContent = "Отметьте согласие на обработку персональных данных — без него отправить нельзя."; el.hidden = false; return; }
   $("next").disabled = true;
-  try { await api("submit", { answers: A }); thanks(); }
+  try { await api("submit", { answers: A, privacy: true }); thanks(); }
   catch (err) { const el = $("sendErr"); el.textContent = err.message; el.hidden = false; $("next").disabled = false; }
 };
 start();

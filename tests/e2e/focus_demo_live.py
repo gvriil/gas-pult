@@ -26,6 +26,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import _onebrowser  # noqa: F401  — e2e с браузером по одному на сервер (tests/heavy_lock.py)
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from focus_live import FETCH, free_port, start
 
@@ -57,7 +59,8 @@ def run(shots: str = ""):
             def device(mobile: bool, dark=False):
                 kw = {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True} if mobile \
                     else {"viewport": {"width": 1366, "height": 860}}
-                return br.new_context(color_scheme="dark" if dark else "light", **kw)
+                # пояс браузера = пояс расчёта ниже (UTC): иначе около полуночи «Демо до» расходится на день (CI 23.11)
+                return br.new_context(color_scheme="dark" if dark else "light", timezone_id="UTC", **kw)
 
             def page(ctx, url):
                 pg = ctx.new_page()
@@ -65,7 +68,7 @@ def run(shots: str = ""):
                       and errs.append(m.text))      # 403/409 — ожидаемые ответы сервера
                 pg.on("pageerror", lambda e: errs.append(str(e)))
                 pg.on("dialog", lambda d: d.accept())
-                pg.goto(url)
+                pg.goto(url, timeout=60_000)   # CI под нагрузкой: 30 с не хватало (26.11, прогон 45746751579)
                 return pg
 
             # ---------- (а) владелец: «⋯» проекта → «Создать демо-ссылку» ----------
@@ -93,7 +96,7 @@ def run(shots: str = ""):
             # ---------- (б) два устройства по одной ссылке: только просмотр ----------
             pa = page(device(True), url)
             pb = page(device(False, dark=True), url.replace("/#focus=", "/?theme=dark#focus="))
-            till = time.strftime("%d.%m", time.localtime(time.time() + 7 * 86400 - 60))
+            till = time.strftime("%d.%m", time.gmtime(time.time() + 7 * 86400 - 60))
             for pg in (pa, pb):
                 pg.wait_for_selector("#session:not([hidden])", timeout=15000)
                 pg.wait_for_selector("#focusExp:not([hidden])", state="attached", timeout=10000)
@@ -149,7 +152,8 @@ def run(shots: str = ""):
             po.locator(".sheet button", has_text="Отозвать эту ссылку").click()   # подтверждение — confirm(), принято
             for pg in (pa, pb):
                 pg.wait_for_selector("#focusEnd", timeout=20000)
-                assert "Ссылка не действует" in pg.inner_text("#focusEnd")
+                pg.wait_for_selector("#focusEnd[data-why=revoked]", timeout=5000)   # 22.11: свой экран
+                assert "Владелец отозвал ссылку" in pg.inner_text("#focusEnd")
             if shots:
                 pa.screenshot(path=f"{shots}/demo-revoked-390.png")
             log("(д) «Отозвать» — оба устройства: «Ссылка не действует»")

@@ -26,7 +26,7 @@ def test_e2e_effort_step_after_model():
             pg = br.new_page(viewport={"width": 390, "height": 844})
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
-            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&open=@1&noscroll")
+            pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev&open=@1&noscroll")
             pg.wait_for_selector("#content .msg")
             pg.evaluate("window.__api = api; window.__calls = [];"
                         " window.api = async (path, body) => path === '/api/model'"

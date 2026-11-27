@@ -11,8 +11,9 @@ import pytest
 from test_project_chats import call
 from test_project_chats import server as server
 
-from gas_pult import bot, cli, tasks, webapp, webauth
+from gas_pult import bot, cli, tasks, webauth
 from gas_pult.config import Config
+from gas_pult.panel import work
 
 
 @pytest.fixture
@@ -20,7 +21,7 @@ def t(tmp_path):
     return tasks.Tasks(tmp_path / "tasks.json")
 
 
-def test_add_check_order_and_done(t):
+def test_add_check_order_and_done(t, stored):
     a = t.add({"title": "Перезапустить панель", "kind": "command", "cmd": "systemctl --user restart x",
                "next": "нажать «Выполнить»"})
     b = t.add({"title": "Ответить Ивану", "kind": "write", "to": "@ivan", "draft": "Привет", "next": "отправить",
@@ -40,7 +41,7 @@ def test_add_check_order_and_done(t):
     assert t.remove(c["id"]) and not t.remove(c["id"])
     with pytest.raises(LookupError):
         t.update("нет", {"status": "done"})
-    assert oct((t.path).stat().st_mode & 0o777) == "0o600"
+    assert oct(stored.mode(t.path)) == "0o600"
 
 
 def test_etag_changes_with_content(t):
@@ -108,7 +109,7 @@ def test_api_owner_only_etag_and_run(server, monkeypatch):
     assert d["tasks"] == {"open": 1, "waiting": 0, "q1": 0, "doing": 0, "urgent": 0}
     monkeypatch.setattr(p.auth, "needs_confirm", lambda token, fresh=None: False)
     ran = []
-    monkeypatch.setattr(webapp, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))
+    monkeypatch.setattr(work, "execute", lambda cmd, path: ran.append((cmd, path)) or (0, 0.1, "привет\n"))
     code, r = call(base, "/api/tasks/run", {"id": x["id"]}, tok)
     assert code == 200 and r["code"] == 0 and "привет" in r["out"]
     assert p.tasks.get(x["id"])["result"]["code"] == 0 and ran[0][0] == "echo привет"
@@ -177,7 +178,7 @@ def test_e2e_tasks_demo():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     try:
-        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo")
+        mod.run(f"http://127.0.0.1:{srv.server_address[1]}/index.html?demo&dev")
     finally:
         srv.shutdown()
 

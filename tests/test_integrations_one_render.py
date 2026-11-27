@@ -1,13 +1,18 @@
-"""Владелец 20.11: «интеграции: сначала вываливаются модели, потом пропадают, появляются другие вещи». Экран рисуется
-один раз: «Загружаю…» → весь список (сервисы, календари, модели, запасные, голос) после всех запросов."""
+"""Владелец 20.11: «интеграции: сначала вываливаются модели, потом пропадают, появляются другие вещи». С 24.11
+(каталог по разделам, UI-обзор: окно открывалось 8–10 с): сразу — каталог из кэша или скелетон, модели — раздел того же
+каталога (не отдельный блок, который появляется и пропадает), статусы — тем же renderMcp на том же месте, поиск
+сохраняется; календари дорисовываются в свой блок."""
 from pathlib import Path
 
-INDEX = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+WEB = Path(__file__).resolve().parents[1] / "src/gas_pult/web"
+INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+CONN = (WEB / "js/connections.js").read_text(encoding="utf-8")
 
 
-def test_load_mcp_waits_for_everything_then_renders_once():
+def test_catalog_first_then_statuses_in_place():
     a = INDEX.index("async function loadMcp(fresh) {")
-    body = INDEX[a:INDEX.index("\nfunction renderModels()", a)]
-    assert body.index("await Promise.all(") < body.index("renderMcp()") < body.index("renderModels()")
-    assert 'part("calkeys").then((x) => x.calendarsSection())' in body          # «Календари» — в той же отрисовке
-    assert body.count("box.innerHTML = ") == 2                                   # «загружаю» и итог — два состояния
+    body = INDEX[a:INDEX.index("\n}\n", a)]
+    first = body.index("CONN.cached()")
+    assert first < body.index("CONN.skeleton()") < body.index('q("/api/mcp?catalog=1")') < body.index("full.then(")
+    assert "renderMcp(had)" in body                      # статусы — та же отрисовка, поиск не сбрасывается
+    assert 'id="modelsBox"' not in body and 'id="modelsBox" data-tour="models"' in CONN   # модели — раздел каталога

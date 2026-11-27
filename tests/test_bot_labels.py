@@ -36,7 +36,8 @@ def test_status_title_is_hidden(tmp_path):
 
 def test_no_window_name_in_bot_texts():
     from pathlib import Path
-    src = Path(bot.__file__).read_text(encoding="utf-8")
+    src = "".join(f.read_text(encoding="utf-8")                 # bot.py и его части botparts/* (шаг 8 монолита)
+                  for f in (Path(bot.__file__), *sorted((Path(bot.__file__).parent / "botparts").glob("*.py"))))
     shown = [ln for ln in src.splitlines() if ("{w['name']}" in ln or '{w["name"]}' in ln)]
     assert shown == [], shown
 

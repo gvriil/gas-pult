@@ -16,7 +16,7 @@ STT_STREAM = "/api/stt/stream"                            # голос пото�
 TERM = ("/api/term", "/api/run/term", "/api/commands/term", "/api/term/type", "/api/term/key", "/api/term/close")
 OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "/api/bridge/log",
               "/api/bridge/drafts", "/api/bridge/confirm", "/api/bridge/reject", "/api/bridge/private",
-              "/api/focus/browser",
+              "/api/focus/browser", "/api/focus/auto",
               "/api/media", "/api/run", "/api/commands/run", "/api/commands/mark", "/api/commands/output", "/api/close",
               "/api/restart", "/api/keys", "/api/keys/remove", "/api/providers", "/api/voice/choose",
               "/api/models", "/api/openrouter/start", "/api/openrouter/info", "/api/openrouter/models",
@@ -24,9 +24,12 @@ OWNER_ONLY = {"/api/bridge/devices", "/api/bridge/pair", "/api/bridge/revoke", "
               "/api/cost/limits", "/api/cost/decide",
               "/api/model/default", "/api/balance/clear", "/api/module/delete", *TERM,
               "/api/chat/delete", "/api/chat/restore", "/api/chat/trash", "/api/stopped/clear", "/api/notify/level",
+              "/api/chat/move",
               "/api/desktop/open",
-              "/api/tasks", "/api/tasks/add", "/api/tasks/update", "/api/tasks/remove", "/api/tasks/run",
+              "/api/tasks", "/api/tracks", "/api/deadlines",
+              "/api/tasks/add", "/api/tasks/update", "/api/tasks/remove", "/api/tasks/run",
               "/api/focus/new", "/api/focus/send", "/api/focus/qr", "/api/focus/list", "/api/focus/revoke",
+              "/api/focus/device", "/api/focus/asks",
               "/api/spaces", "/api/invite/new", "/api/space/task", "/api/space/connect", "/api/space/budget/add",
               "/api/setup/status", "/api/setup/login", "/api/setup/code", "/api/setup/cancel",
               "/api/login/code", "/api/login/check"}          # шторка «Нужен вход» (logins.py) — только владельцу
@@ -38,6 +41,7 @@ OWNER_ONLY |= {"/api/people/access"}
 OWNER_ONLY |= {"/api/q/new", "/api/q/list", "/api/q/answers"}   # анкеты клиентов (0010) — только владелец
 # Интеграции на чат посреди чата — перезапуск окна, как /api/restart: владелец и админ (включить выключенное = доступ)
 OWNER_ONLY |= {"/api/chat/mcp"}
+OWNER_ONLY |= {"/api/spend"}                                       # расход по ценам API (spend.py)
 ADMIN_OK |= {"/api/chat/mcp"}
 # Подтверждение кодом (аудит 09.11): сессия браузера моложе суток (``webauth.CONFIRM_FRESH``) выполняет команды на
 # сервере и пишет в терминал только после кода — ответ 403 ``{"code": "confirm", "confirm": "code"}``, панель покажет
@@ -60,6 +64,10 @@ OWNER_ONLY |= {SELFTEST}
 # Ссылки и терминал (владелец 17.11): вкладка в Chrome рабочего стола, выбор «где открыть» по сайту, окно ubuntu-shell
 OWNER_ONLY |= {"/api/desktop/url", "/api/links/prefs", "/api/shell/open"}
 OWNER_ONLY |= {"/api/calendars/keys", "/api/calendars/key", "/api/calendars/key/remove"}   # секреты календарей
+# Мессенджеры «как пользователь» (messengers/, 22.11): сессии и переписка владельца — только ему; пространства — позже
+MESSENGERS = ("/api/messengers", *(f"/api/messengers/{x}" for x in ("consent", "off", "tg/login", "tg/code",
+                                                                   "tg/password", "link", "chats", "allow")))
+OWNER_ONLY |= set(MESSENGERS)
 OWNER_ONLY |= {"/api/project/update"}               # название и архив проекта — владельцу (GAS-24)
 # Брифинг первого лица (GAS-18, brief.py): почта и календарь владельца — только ему
 BRIEF = ("/api/brief", "/api/brief/prefs", "/api/brief/act")
@@ -72,6 +80,15 @@ CONFIRM |= {"/api/desktop/mobile"}
 DESK_TABS = ("/api/desktop/tabs", "/api/desktop/tabs/shot", "/api/desktop/tabs/act")
 OWNER_ONLY |= set(DESK_TABS)
 CONFIRM |= set(DESK_TABS)
+# Платежи (billing/, владелец 22.11: «не экономим на безопасности платежей») — только владельцу; изменения — после
+# кода подтверждения. Список путей совпадает с ``billing.api.PATHS`` (тест test_billing_boundary).
+BILLING_GET = ("/api/billing/plans", "/api/billing/invoices", "/api/billing/invoice")
+BILLING_POST = ("/api/billing/plan", "/api/billing/invoice/new", "/api/billing/invoice/issue",
+                "/api/billing/invoice/pay", "/api/billing/invoice/void")
+OWNER_ONLY |= {*BILLING_GET, *BILLING_POST}
+CONFIRM |= set(BILLING_POST)
+FUNNEL = "/api/funnel"                   # воронка продукта (funnel.py, аудит 22.11): свод по всем людям — владельцу
+OWNER_ONLY |= {FUNNEL}
 
 # Вид панели (роль интерфейса и тумблеры возможностей) — своя настройка человека; потолок задаёт владелец.
 PERSONA = "/api/persona"
@@ -154,9 +171,11 @@ FOCUS_GET |= {"/api/stt/job"}
 FOCUS_POST |= {"/api/stt/retry"}
 FOCUS_GET |= {"/api/focus/bridge"}                  # фокус-ссылка с «Браузер»: свой компьютер (владелец 17.11)
 FOCUS_POST |= {"/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private"}
+# «Открыть на другом устройстве» (владелец 22.11): одноразовая ссылка своей записи — H.focus_do, id из записи
+FOCUS_POST |= {"/api/focus/device"}
 FOCUS_NO_W = {"/api/meta", "/api/sessions", "/api/upload", "/api/stt", "/api/logout", "/api/mcp",
               "/api/focus/bridge", "/api/focus/bridge/pair", "/api/focus/bridge/revoke", "/api/focus/bridge/private",
-              "/api/mcp/connected", "/api/uses"}   # без окна в запросе
+              "/api/mcp/connected", "/api/uses", "/api/focus/device"}   # без окна в запросе
 FOCUS_NO_W |= set(STT_JOB) | {"/api/tts/about", "/api/starters", "/api/media"}
 FOCUS_GET |= {"/api/media"}           # картинки в переписке по фокус-ссылке (papasan 19.11): только папки ссылки
 # Демо-ссылка (``mode: "demo"``, focus.py): показ клиенту на нескольких устройствах — смотреть сессии (переписка,
@@ -190,3 +209,50 @@ SPACE_OK |= set(REC)
 FOCUS_POST |= {"/api/rec/chunk", "/api/rec/finish", "/api/rec/drop"}
 FOCUS_GET |= {"/api/rec/status"}
 FOCUS_NO_W |= set(REC)
+# Токены для 1С и CRM (apitokens.py, решение владельца 22.11 «API с первого дня»): ``/api/v1/<путь>`` — псевдоним
+# ``/api/<путь>`` с ``Authorization: Bearer``. Только явный белый список: группа → пути чтения (GET) и записи (POST).
+# Запись — только у токена с галочкой «запись». Дальше — обычные права выпустившего (``permit``, пространство).
+V1_PREFIX = "/api/v1/"
+V1_GET = {
+    "sessions": ("/api/sessions", "/api/projects", "/api/project", "/api/project/sessions", "/api/project/history",
+                 "/api/history", "/api/last", "/api/activity"),
+    "tasks": ("/api/tasks",),
+    "drafts": ("/api/drafts",),                  # «Ждут вашего Да» — только смотреть
+    "send": (),
+}
+V1_POST = {
+    "sessions": (),
+    "tasks": ("/api/tasks/add", "/api/tasks/update"),   # без команд: ``kind=command`` и ``cmd`` — 403 (webapp.v1_call)
+    "drafts": (),                                       # «Да» и «Нет» — только человек в панели
+    "send": ("/api/send",),                             # сообщение агенту в окно сессии
+}
+# Никогда через токен — даже с «запись»: «Да» человека, команды и терминал, люди, ключи, токены, платежи, настройки.
+APITOKENS = ("/api/apitokens", "/api/apitokens/new", "/api/apitokens/revoke")
+V1_NEVER = (CONFIRM | set(TERM) | set(TTY) | set(DRAFTS) | set(BILLING_POST) | set(APITOKENS) | set(MESSENGERS) |
+            {"/api/drafts/check", "/api/bridge/confirm", "/api/bridge/reject", "/api/tasks/run", "/api/tasks/remove",
+             "/api/people", "/api/people/role", "/api/people/remove", "/api/people/access", "/api/keys",
+             "/api/keys/remove", "/api/providers", "/api/prefs", PERSONA, "/api/notify/prefs", "/api/notify/level",
+             "/api/model/default", "/api/cost/limits", "/api/invite/new", "/api/focus/new", "/api/close",
+             "/api/restart", "/api/login/code"}) - {"/api/drafts"}
+assert not ({p for g in V1_POST.values() for p in g} | {p for g in V1_GET.values() for p in g}) & V1_NEVER
+# Выпуск и отзыв токенов — свои: владелец пульта и человек пространства (не наблюдатель); не по ссылкам.
+SPACE_OK |= set(APITOKENS)
+SLINK_NO |= set(APITOKENS)
+# Сообщения команды в чат и «Сообщить об ошибке» (teammsg.py, владелец 22.11): написать в чат окна или проекта —
+# только владелец (штаб — ещё и ``gas-pult chat say``); отчёт об ошибке — каждый, кто видит чат: свой чат, своё
+# пространство, фокус-ссылка — только её окно (``H.focus_call``), наблюдатель тоже; демо-ссылке — нет.
+TEAM_SAY = "/api/team/say"
+BUG = "/api/bug"
+OWNER_ONLY |= {TEAM_SAY}
+SPACE_OK |= {BUG}
+FOCUS_POST |= {BUG}
+
+# Согласие на подключение (consents.py, владелец 23.11): текст экрана и запись «Понимаю: аккаунт мой…» — участнику и
+# выше, тестировщику пространства и фокус-ссылке (её согласие — за её пространством); наблюдателю и токенам — нет.
+CONSENT = "/api/consent"
+MEMBER_ONLY |= {CONSENT}
+SPACE_OK |= {CONSENT}
+FOCUS_GET |= {CONSENT}
+FOCUS_POST |= {CONSENT}
+FOCUS_NO_W |= {CONSENT}
+V1_NEVER |= {CONSENT}
