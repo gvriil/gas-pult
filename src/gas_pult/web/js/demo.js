@@ -479,6 +479,15 @@ function demoApi(path, body) {
   R["/api/close"] = { result: "закрыто", draft: "" };
   if (path.startsWith("/api/bridge/")) return demoBridge(path, body);   // «Компьютеры» (мост, 21.11)
   if (path.startsWith("/api/meeting") || path.startsWith("/api/mt")) return demoMeeting(path, body);   // протоколы встреч (22.11)
+  if (path === "/api/tracks") {                         // «Поручения» (track штаба) — примеры, только чтение
+    const d = (h) => { const x = new Date(Date.now() - h * 3600e3); const p = (n) => String(n).padStart(2, "0");
+      return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())} ${p(x.getHours())}:${p(x.getMinutes())}`; };
+    return Promise.resolve({ src: true, tasks: [
+      { id: "T7", what: "Счёт поставщику на 48 000 ₽ — согласовать сроки", to: "Бухгалтер (Telegram)", state: "ответ_получен", open: true, created: d(5), updated: d(1), check: "ответ в Telegram — проверка раз в 5 минут", last: "Согласен на оплату до пятницы", stale: false },
+      { id: "T6", what: "Анкета клиента: уточнить объём склада", to: "Клиент (анкета)", state: "передана", open: true, created: d(40), updated: d(30), check: "вручную — командой track", last: "", stale: true },
+      { id: "T5", what: "Отчёт по продажам за неделю", to: "окно «Магазин»", state: "в_работе", open: true, created: d(3), updated: d(2), check: "окно «Магазин» отметит готово", last: "Собираю данные МойСклад", stale: false },
+      { id: "T4", what: "Встреча с поставщиком в четверг", to: "Поставщик (Telegram)", state: "закрыта", open: false, created: d(50), updated: d(20), check: "ответ в Telegram — проверка раз в 5 минут", last: "Подтвердил 12:30", stale: false }] });
+  }
   if (path.startsWith("/api/tasks")) return demoTasks(path, body);
   if (path.startsWith("/api/brief")) return demoBrief(path, body);
   if (path.startsWith("/api/desktop/tabs")) return demoTabs(path, body);   // вкладки Chrome стола на телефоне (22.11)

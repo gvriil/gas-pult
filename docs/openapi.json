@@ -12918,6 +12918,39 @@
     }
    }
   },
+  "/api/tracks": {
+   "get": {
+    "summary": "«Поручения»: что отправлено, кому и в каком состоянии — файл команды track, только чтение",
+    "tags": [
+     "Прочее"
+    ],
+    "operationId": "get_tracks",
+    "x-access": {
+     "role": "owner",
+     "tags": []
+    },
+    "security": [
+     {
+      "session": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "успех",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "default": {
+      "$ref": "#/components/responses/Error"
+     }
+    }
+   }
+  },
   "/api/tts": {
    "get": {
     "summary": "Озвучить ответ: звук (audio/mpeg)",

@@ -8,6 +8,7 @@
 
 import json
 
+from gas_pult import tracks
 from gas_pult.routes import SENT
 
 
@@ -65,6 +66,11 @@ def tasks_run(self, b: dict):
     return panel.task_run(str(b.get("id") or ""), b.get("confirmed") is True)
 
 
-GET = {"/api/brief": brief, "/api/tasks": tasks}
+def tracks_get(self, q: dict):
+    """GET /api/tracks — «Поручения»: файл команды ``track`` только на чтение (tracks.py)"""
+    return tracks.listing()
+
+
+GET = {"/api/brief": brief, "/api/tasks": tasks, "/api/tracks": tracks_get}
 POST = {"/api/brief/prefs": brief_prefs, "/api/brief/act": brief_act, "/api/tasks/add": tasks_add,
         "/api/tasks/update": tasks_update, "/api/tasks/remove": tasks_remove, "/api/tasks/run": tasks_run}
