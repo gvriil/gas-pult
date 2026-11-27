@@ -2,7 +2,9 @@
 
 Пишет одна команда — ``track`` штаба (``~/.local/state/tracks/tracks.json``); пульт только читает: ни одной записи
 отсюда, конфликтов нет. Для владельца — состояние, когда обновлено, как проверяется; открытое без движения дольше
-суток — ``stale`` (панель рисует красным). Закрытые не прячутся — отдаются тоже. Только стандартная библиотека.
+суток — ``stale`` (панель рисует красным). Закрытые не прячутся — отдаются тоже. ``owner`` — ждёт владельца
+(«владелец» в «кому» или «нужно решение»): блок «Решить сегодня» на экране «Сегодня», ``age_h`` — сколько часов ждёт.
+Только стандартная библиотека.
 """
 
 from __future__ import annotations
@@ -56,7 +58,10 @@ def listing(f: Path | None = None, now: float | None = None) -> dict:
         upd = _ts(t.get("updated") or t.get("created"))
         log = [x for x in t.get("log") or [] if isinstance(x, dict)]
         is_open = state not in OPEN_NOT
-        out.append({"id": str(t["id"]), "what": str(t.get("what") or ""), "to": str(t.get("to") or ""),
+        to = str(t.get("to") or "")
+        out.append({"id": str(t["id"]), "what": str(t.get("what") or ""), "to": to,
+                    "owner": is_open and ("владелец" in to.lower() or state == "нужно_решение"),   # «Решить сегодня»
+                    "age_h": round((now - (_ts(t.get("created")) or now)) / 3600, 1),
                     "state": state, "open": is_open, "created": str(t.get("created") or ""),
                     "updated": str(t.get("updated") or ""), "check": check_of(t),
                     "last": str(log[-1].get("note") or "") if log else "",

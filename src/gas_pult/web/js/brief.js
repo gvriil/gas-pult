@@ -169,6 +169,7 @@ function briefView(bg) {
   const off = (b.sources || []).filter((s) => s.state === "error" || s.state === "none");
   bg.innerHTML = `<div class="brief">${head("Сегодня", at && "на " + at,
       `<button class="icon" data-btour aria-label="Тур по брифингу">${ic("help")}</button><button class="icon" data-bprefs aria-label="Источники и время" data-tour="brief-prefs">${ic("settings")}</button><button class="icon" data-bfresh aria-label="Обновить">${ic("refresh")}</button>`)}
+    <section class="grp decide" id="decideBox" data-group="decide" hidden></section>
     <div class="bl" data-tour="brief-head">${esc(h1)}${h2.length ? `<small>${esc(h2.join(" "))}</small>` : ""}</div>
     <section class="grp" data-group="decisions" data-tour="brief-decisions">${nd
       ? `<h3>${ic("help")}Ждут вашего Да <span class="n">${nd}</span></h3>${b.decisions.map(decHtml).join("")}`
@@ -190,6 +191,26 @@ function briefView(bg) {
   bg.querySelectorAll("[data-more]").forEach((x) => { x.onclick = (e) => { if (!e.target.closest("a, button")) x.classList.toggle("open"); }; });
   if (!D.tour) briefTour();                            // первый брифинг — тур сам, дальше — по «?»
   subsLoad(bg);
+  decideLoad(bg);
+}
+
+// «Решить сегодня» (владелец 27.11, GAS-60): первым — что ждёт владельца из поручений штаба (/api/tracks, owner):
+// самые старые сверху, сколько ждёт; только чтение. Пусто — блока нет.
+const DEC_CSS = `.brief .decide ol { list-style: none; margin: 0; padding: 0; }
+.brief .decide li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+.brief .decide li b { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.brief .decide li .a { flex: none; font-size: calc(13px * var(--fz, 1)); color: var(--text-secondary); }
+.brief .decide li.old .a { color: var(--status-error, #C2361A); font-weight: 600; }`;
+const decAge = (h) => (h < 1 ? "меньше часа" : h < 24 ? `${Math.floor(h)} ч` : `${Math.floor(h / 24)} дн.`);
+async function decideLoad(bg) {
+  const box = bg.querySelector("#decideBox"); if (!box) return;
+  let d; try { d = await api("/api/tracks"); } catch (e) { return; }
+  const list = (d.tasks || []).filter((t) => t.owner).sort((a, b) => b.age_h - a.age_h);
+  if (!list.length) return;
+  if (!document.getElementById("decCss")) document.head.insertAdjacentHTML("beforeend", `<style id="decCss">${DEC_CSS}</style>`);
+  box.innerHTML = `<h3>${ic("warn")}Решить сегодня <span class="n">${list.length}</span></h3><ol>${list.map((t) =>
+    `<li class="${t.age_h >= 24 ? "old" : ""}"><b>${esc(t.what)}</b><span class="a">ждёт ${esc(decAge(t.age_h))}</span></li>`).join("")}</ol>`;
+  box.hidden = false;
 }
 
 // «Подписки и балансы» (владелец 27.11, GAS-60): сроки из реестров, неделя Claude, расход за сутки — только чтение
