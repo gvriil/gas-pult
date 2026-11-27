@@ -72,7 +72,13 @@ def rec_chunk(self):
 def stt(self):
     """POST_RAW /api/stt — запись голоса → текст: сразу или фоново (``?job=1``, GAS-34)"""
     panel = self.panel
-    if "job=1" in urllib.parse.urlparse(self.path).query:   # фоново, GAS-34
+    query = urllib.parse.urlparse(self.path).query
+    if "keep=1" in query and self.raw is None:              # «Сохранить на сервере» (в Mini App «Скачать» не работает)
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        if n <= 0:
+            raise ValueError("пустая запись")
+        return {"kept": panel.stt_keep_stream(self.rfile, min(n, KEEP_CAP), self.headers.get("Content-Type", ""))}
+    if "job=1" in query:                                       # фоново, GAS-34
         n, ctype = int(self.headers.get("Content-Length", 0) or 0), self.headers.get("Content-Type", "")
         if self.raw is None and n > MAX_VOICE:                 # запись не теряем: сначала на диск, потом причина
             name = panel.stt_keep_stream(self.rfile, min(n, KEEP_CAP), ctype)

@@ -53,3 +53,19 @@ def test_over_voice_limit_kept_on_disk_with_reason(tmp_path, monkeypatch):
     files = list((tmp_path / "keep").iterdir())
     assert len(files) == 1 and files[0].read_bytes() == b"A" * 64 and files[0].stat().st_mode & 0o777 == 0o600
     assert "сохранена на сервере" in str(e.value) and files[0].name in str(e.value) and not p.jobs
+
+
+def test_keep_only_saves_without_recognition(tmp_path):
+    """«Сохранить на сервере» в Telegram Mini App (там «Скачать» не работает): запись — на диск, без распознавания."""
+    p = FakePanel(tmp_path / "keep")
+    p.events = types.SimpleNamespace(event=lambda *a, **k: None)
+    h = handler(p, b"B" * 40)
+    h.path = "/api/stt?keep=1"
+    d = rv.stt(h)
+    assert (tmp_path / "keep" / d["kept"]).read_bytes() == b"B" * 40 and not p.jobs
+
+
+def test_mini_app_offers_save_not_download():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "src/gas_pult/web/index.html").read_text(encoding="utf-8")
+    assert "Сохранить на сервере" in html and 'api("/api/stt?keep=1", blob' in html
