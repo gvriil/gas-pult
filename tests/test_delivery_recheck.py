@@ -285,3 +285,31 @@ def test_fake_screen_first_enter_dropped_is_retried(fake_window):
     t, wid, _, log = fake_window("drop1")
     r = t.paste_ex(wid, TEXT)
     assert r["ok"] and r["result"] == "retried 1" and log.read_text().strip() == TEXT
+
+
+# ---------- подсказка Claude Code: принять Tab, не вставкой (27.11) ----------
+
+def _fake_tmux(hint: str):
+    from gas_pult import tmux as tm
+    t = tm.Tmux.__new__(tm.Tmux)
+    calls = []
+    t.hint = lambda wid: hint
+    t.run = lambda *a, **kw: calls.append(("run", a[0])) or ""
+    t.keys = lambda wid, *k: calls.append(("keys", k))
+    t.field = lambda wid: ("", "")                  # после Enter поле пустое — ушло
+    return t, calls
+
+
+def test_hint_is_accepted_with_tab_not_pasted():
+    """Пульт вставлял подсказку как текст — Claude Code считал её неиспользованной и после 20 подряд показывал
+    подсказки реже («Showing fewer prompt suggestions»). Теперь та же подсказка в поле — клавиша Tab, затем Enter."""
+    t, calls = _fake_tmux("аватар в телеграм, цветное")
+    r = t.paste_ex("@9", "аватар в телеграм,  цветное", sleep=lambda s: None)
+    assert r["ok"] and ("keys", ("Tab",)) in calls and ("keys", ("Enter",)) in calls
+    assert not any(c == ("run", "paste-buffer") for c in calls)
+
+
+def test_other_text_is_pasted_as_before():
+    t, calls = _fake_tmux("аватар в телеграм, цветное")
+    r = t.paste_ex("@9", "сделай отчёт", sleep=lambda s: None)
+    assert r["ok"] and ("run", "paste-buffer") in calls and ("keys", ("Tab",)) not in calls

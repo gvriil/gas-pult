@@ -403,9 +403,16 @@ class Tmux:
         после Enter смотрим поле ввода (``field``, вместе с бледным текстом — поле не в фокусе рисуется бледным): там
         всё ещё наш текст — Enter ещё раз (до трёх).
 
+        Текст — та самая подсказка Claude Code в строке ввода (💡 в боте и в панели) — принимаем её клавишей Tab, а не
+        вставкой: так Claude Code засчитывает подсказку использованной. Вставку он считает «неиспользованной», и после
+        20 таких подряд показывает подсказки реже (Claude Code 2.1.332: «Showing fewer prompt suggestions»; 27.11).
+
         ``{"ok": bool, "result": "sent" | "retried N" | "stuck", "after": "empty" | "ours" | "other"}``."""
-        self.run("load-buffer", "-b", "gas-pult", "-", input=text)
-        self.run("paste-buffer", "-p", "-d", "-b", "gas-pult", "-t", wid)
+        if self.hint(wid) == " ".join(text.split()):
+            self.keys(wid, "Tab")                        # принять подсказку (документация Claude Code: Tab)
+        else:
+            self.run("load-buffer", "-b", "gas-pult", "-", input=text)
+            self.run("paste-buffer", "-p", "-d", "-b", "gas-pult", "-t", wid)
         sleep(0.5)
         self.keys(wid, "Enter")
         waited, tries = 0.0, 0
