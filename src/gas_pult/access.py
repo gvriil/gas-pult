@@ -214,7 +214,7 @@ FOCUS_NO_W |= set(REC)
 V1_PREFIX = "/api/v1/"
 V1_GET = {
     "sessions": ("/api/sessions", "/api/projects", "/api/project", "/api/project/sessions", "/api/project/history",
-                 "/api/history", "/api/last", "/api/activity"),
+                 "/api/history", "/api/activity"),   # ВРЕМЕННО: проверка oasdiff — убран /api/v1/last
     "tasks": ("/api/tasks",),
     "drafts": ("/api/drafts",),                  # «Ждут вашего Да» — только смотреть
     "send": (),

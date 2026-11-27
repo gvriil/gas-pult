@@ -13568,54 +13568,6 @@
     }
    }
   },
-  "/api/v1/last": {
-   "get": {
-    "summary": "По токену: `/api/last` — Последний ответ агента текстом (для «Скопировать» и озвучки) (белый список `access.V1_*`, docs/API-V1.md)",
-    "tags": [
-     "API v1 для 1С и CRM"
-    ],
-    "operationId": "get_v1_last",
-    "x-access": {
-     "role": "token",
-     "tags": [
-      "V1",
-      "v1:sessions"
-     ]
-    },
-    "security": [
-     {
-      "bearer": []
-     }
-    ],
-    "parameters": [
-     {
-      "name": "w",
-      "in": "query",
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "успех",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object",
-         "properties": {
-          "text": {}
-         }
-        }
-       }
-      }
-     },
-     "default": {
-      "$ref": "#/components/responses/Error"
-     }
-    }
-   }
-  },
   "/api/v1/project": {
    "get": {
     "summary": "По токену: `/api/project` — Карточка проекта: папка, сессии, инструкции (белый список `access.V1_*`, docs/API-V1.md)",

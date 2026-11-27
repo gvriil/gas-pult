@@ -2,7 +2,7 @@
 
 <!-- Файл собран генератором: python -m gas_pult.api_spec. Руками не править — правьте src/gas_pult/api_spec.py (описания) или webapp.py (маршруты) и перезапустите генератор. -->
 
-Путей: **299**, пар «путь + метод»: **313**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
+Путей: **298**, пар «путь + метод»: **312**. Машиночитаемо — [`openapi.json`](openapi.json) (OpenAPI 3.1).
 
 Все пути — под адресом панели, ответы — JSON (кроме отмеченных). Ошибка — `{"error": "…", "code": …}` с кодом HTTP: 401 — нужен вход, 403 — не хватает прав (`code`: `terms`, `space`, `focus_scope`, `confirm`, `cap`, `dev`, `budget`), 404 — нет метода, 409/410 — конфликт или ссылка погасла, 429 — лимит.
 
@@ -429,7 +429,6 @@
 | `/api/v1/activity` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/activity` — Строка статуса чата: что агент делает сейчас (белый список `access.V1_*`, docs/API-V1.md) | `w` | — |
 | `/api/v1/drafts` | GET | по токену | `V1`, `v1:drafts` | По токену: `/api/drafts` — Черновики действий коннекторов: «Ждут вашего Да» (белый список `access.V1_*`, docs/API-V1.md) | — | `drafts` |
 | `/api/v1/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/history` — Переписка сессии страницами (новые сверху, `before` — раньше); `team` — сообщения команды (белый список `access.V1_*`, docs/API-V1.md) | `w`, `before`, `rev` | `team`, `same`, `rev`, `items`, `more` |
-| `/api/v1/last` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/last` — Последний ответ агента текстом (для «Скопировать» и озвучки) (белый список `access.V1_*`, docs/API-V1.md) | `w` | `text` |
 | `/api/v1/project` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project` — Карточка проекта: папка, сессии, инструкции (белый список `access.V1_*`, docs/API-V1.md) | `id` | — |
 | `/api/v1/project/history` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project/history` — Переписка завершённого чата — без окна (белый список `access.V1_*`, docs/API-V1.md) | `before`, `id`, `sid` | — |
 | `/api/v1/project/sessions` | GET | по токену | `V1`, `v1:sessions` | По токену: `/api/project/sessions` — Завершённые чаты проекта (журналы без окна), страницами (белый список `access.V1_*`, docs/API-V1.md) | `before`, `id`, `q` | — |
