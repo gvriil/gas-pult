@@ -197,6 +197,19 @@ class VoicePart:
         d.mkdir(parents=True, exist_ok=True, mode=0o700)
         return d
 
+    def stt_keep_stream(self, src, n: int, ctype: str) -> str:
+        """Запись больше предела распознавания — на диск по кускам (не в память), чтобы не пропала. Имя файла."""
+        f = self._keep_dir() / f"big-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}." \
+            f"{AUDIO_EXT.get(ctype.split(';')[0], 'webm')}"
+        with f.open("wb") as out:
+            f.chmod(0o600)
+            left = n
+            while left > 0 and (chunk := src.read(min(left, 1 << 20))):
+                out.write(chunk)
+                left -= len(chunk)
+        self.events.event("stt_keep_big", "stt:" + f.stem, bytes=n - left)
+        return f.name
+
     def stt_job(self, data: bytes | list[bytes], ctype: str, uid, cloud: bool = True) -> dict:
         """``data`` — запись или её отрезки (запись по кускам после обрыва: у отрезка свой заголовок файла —
         распознаём по отдельности, текст склеиваем)."""

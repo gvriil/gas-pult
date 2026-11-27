@@ -1548,12 +1548,12 @@ def handler(panel: Panel):
             """Чей сеанс записи: человек, пространство и фокус-ссылка — чужой сеанс не виден и не дописывается."""
             return f"{self.terms_uid()}:{self.space() or ''}:{(self.focused or {}).get('id', '')}"
 
-        def body(self) -> bytes:
+        def body(self, limit: int = MAX_BODY) -> bytes:
             if self.raw is not None:
                 return self.raw
             n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                raise ValueError("слишком большой запрос")
+            if n > limit:
+                raise ValueError(f"запрос {n >> 20} МБ больше предела {limit >> 20} МБ")
             return self.rfile.read(n)
 
         def repo_win(self, q: dict) -> dict:
