@@ -48,6 +48,53 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python tools/four_rules.py
 
+  # Контракт API (docs/openapi.json): схема — по стандарту OpenAPI 3.1 и совпадает с кодом (api_spec --check). В PR —
+  # ломающие изменения против базовой ветки, как oasdiff в TGI: в /api/v1 (1С, CRM — внешний контракт) — ошибка,
+  # остальное API панели — предупреждение (его меняем вместе с панелью). oasdiff — с проверкой контрольной суммы.
+  openapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OASDIFF_VERSION: "1.37.0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e . "openapi-spec-validator==0.7.2"
+      - name: docs/openapi.json совпадает с кодом
+        run: python -m gas_pult.api_spec --check
+      - name: Схема — OpenAPI 3.1
+        run: python -m openapi_spec_validator docs/openapi.json
+      - name: oasdiff (сверка контрольной суммы)
+        if: github.event_name == 'pull_request'
+        run: |
+          base="https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}"
+          name="oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "/tmp/$name" "$base/$name"
+          curl -fsSL -o /tmp/checksums.txt "$base/checksums.txt"
+          (cd /tmp && grep " $name\$" checksums.txt | sha256sum -c -)
+          tar -xzf "/tmp/$name" -C /tmp oasdiff
+          /tmp/oasdiff --version
+      - name: Ломающие изменения /api/v1 — против базовой ветки
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if ! git show "origin/${BASE_REF}:docs/openapi.json" > /tmp/base-openapi.json 2>/dev/null; then
+            echo "docs/openapi.json нет в ${BASE_REF} — сравнивать не с чем"; exit 0
+          fi
+          /tmp/oasdiff breaking /tmp/base-openapi.json docs/openapi.json --match-path '^/api/v1/' --fail-on ERR \
+            || { echo "::error::Ломающее изменение /api/v1 (контракт 1С и CRM): верните прежнее поведение или добавьте новый путь"; exit 1; }
+      - name: Остальное API панели — предупреждение
+        if: github.event_name == 'pull_request'
+        run: |
+          [ -s /tmp/base-openapi.json ] || exit 0
+          /tmp/oasdiff breaking /tmp/base-openapi.json docs/openapi.json --fail-on ERR \
+            || echo "::warning::Ломающее изменение внутреннего API панели — проверьте, что панель и мост обновлены вместе"
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
