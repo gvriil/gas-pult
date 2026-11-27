@@ -129,7 +129,7 @@ function trkCard(t) {
   const meta = [esc(t.to), `<span class="st">${esc(TRK_T[t.state] || t.state)}</span>`,
     `обновлено ${esc(t.updated.slice(8, 10) + "." + t.updated.slice(5, 7) + " " + t.updated.slice(11, 16))}`,
     t.stale ? '<span class="old">без движения больше суток</span>' : ""].filter(Boolean).join(" · ");
-  return `<div class="trk-c${trkRed(t) ? " r" : ""}"><b>${esc(t.id)} · ${esc(t.what)}</b><div class="m">${meta}</div>`
+  return `<div class="trk-c${trkRed(t) ? " r" : ""}" title="${esc(t.id)}"><b>${esc(t.what)}</b><div class="m">${meta}</div>`
     + `<div class="n">Проверка: ${esc(t.check)}${t.last ? " · " + esc(t.last) : ""}</div></div>`;
 }
 function trkHtml(f) {

@@ -39,8 +39,8 @@ def check_of(t: dict) -> str:
     if t.get("pr"):
         return "пулл-реквест " + str(t["pr"])
     if t.get("window"):
-        return "окно «" + str(t["window"]) + "» отметит готово"
-    return "вручную — командой track"
+        return "чат «" + str(t["window"]) + "» отметит готово"
+    return "отметит штаб"
 
 
 def listing(f: Path | None = None, now: float | None = None) -> dict:
