@@ -121,6 +121,20 @@ def external(text: str, source: str) -> str:
     return head + "\n\n" + text
 
 
+TASK_TEXT = ("title", "next", "question", "draft", "text")   # поля задачи, которые читает агент (tasks.LIMITS)
+
+
+def external_task(b: dict, source: str) -> dict:
+    """Задача из внешней системы (``/api/v1/tasks/add`` и ``…/update``): пометка источника и ловушки — в поле ``text``
+    (хранит переводы строк, tasks.RAW); ловушки ищутся во всех полях, которые читает агент. Нет текста — без изменений
+    (смена статуса через update). Остальные поля — как пришли: заголовок у владельца не удлиняется."""
+    free = [str(b.get(k)) for k in TASK_TEXT if b.get(k)]
+    if not free:
+        return b
+    head = external("\n".join(free), source).split("\n\n", 1)[0]
+    return {**b, "text": head + ("\n\n" + str(b["text"]) if b.get("text") else "")}
+
+
 def pii(text: str) -> list[str]:
     return list(dict.fromkeys(k for k, rx, g in PII for m in rx.finditer(norm(text))
                               if k != "номер карты" or _luhn(re.sub(r"\D", "", m.group(g)))))
