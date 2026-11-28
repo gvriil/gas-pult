@@ -1,0 +1,6 @@
+{"_source": "Схема vkcom/vk-api-schema (messages.getHistory, extended), данные выдуманные. Не проверено на песочнице.",
+ "response": {"count": 3, "items": [
+  {"id": 51, "conversation_message_id": 21, "date": 1795000000, "from_id": 2000000001, "peer_id": 2000000001, "out": 0, "text": "Здравствуйте! Есть ли свободные места на субботу?", "attachments": []},
+  {"id": 50, "conversation_message_id": 20, "date": 1794999000, "from_id": -1234567, "peer_id": 2000000001, "out": 1, "text": "Добрый день! Чем помочь?", "attachments": []},
+  {"id": 49, "conversation_message_id": 19, "date": 1794998000, "from_id": 2000000001, "peer_id": 2000000001, "out": 0, "text": "", "attachments": [{"type": "photo"}, {"type": "doc"}]}],
+  "profiles": [{"id": 2000000001, "first_name": "Анна", "last_name": "Тестова"}], "groups": [{"id": 1234567, "name": "Клуб Тест"}]}}

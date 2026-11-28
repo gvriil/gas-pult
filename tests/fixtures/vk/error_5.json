@@ -1,0 +1,2 @@
+{"_source": "Форма base_error из vkcom/vk-api-schema; VK отдаёт ошибки кодом 200. Текст — выдуманный.",
+ "error": {"error_code": 5, "error_msg": "User authorization failed: invalid access_token (4).", "request_params": [{"key": "method", "value": "messages.getConversations"}]}}
