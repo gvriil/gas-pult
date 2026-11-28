@@ -1,0 +1,2 @@
+{"_source": "base_error, код 901 — «нельзя отправлять сообщения этому пользователю без разрешения».",
+ "error": {"error_code": 901, "error_msg": "Can't send messages for users without permission"}}

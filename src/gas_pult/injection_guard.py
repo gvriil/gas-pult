@@ -37,7 +37,8 @@ STATE = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state
 # публичного репозитория; WebFetch/WebSearch; файлы входящих; Bash, который скачивает из сети (curl, wget, gh issue)
 _UNTRUSTED_MCP = re.compile(r"mail|gmail|imap|browser|playwright|searxng|search|fetch|telegram|tgbiz|drive|docs|"
                             r"notion|linear|slack|calendar|cdek|avito|bitrix|amocrm|1c|web|signal|whatsapp|msg-|"
-                            r"wildberries|ozon|moysklad|yclients|tbank|(?:^|_)max_|feedback|review|github|gitlab", re.I)
+                            r"wildberries|ozon|moysklad|yclients|tbank|(?:^|_)max_|(?:^|_)vk_|"
+                            r"feedback|review|github|gitlab", re.I)
 _UNTRUSTED_TOOLS = {"WebFetch", "WebSearch"}
 _INBOX = re.compile(r"/drive/|/Входящие/|/inbox/|/Downloads/|\.eml$|/mail/", re.I)
 _UNTRUSTED_BASH = re.compile(r"\b(?:curl|wget|lynx|w3m|yt-dlp)\b|read_chat\.py|\b(?:gh|glab)\s+(?:issue|pr|mr|api)\b",

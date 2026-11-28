@@ -1,0 +1,7 @@
+{"_source": "Схема vkcom/vk-api-schema (messages/objects.json, messages.getConversations), данные выдуманные. Не проверено на песочнице.",
+ "response": {"count": 2, "unread_count": 1, "items": [
+  {"conversation": {"peer": {"id": 2000000001, "type": "user", "local_id": 1}, "last_message_id": 51, "in_read": 50, "out_read": 49, "unread_count": 1, "can_write": {"allowed": true}},
+   "last_message": {"id": 51, "conversation_message_id": 21, "date": 1795000000, "from_id": 2000000001, "peer_id": 2000000001, "out": 0, "text": "Здравствуйте! Есть ли свободные места на субботу?", "attachments": []}},
+  {"conversation": {"peer": {"id": 2000000002, "type": "user", "local_id": 2}, "last_message_id": 48, "in_read": 48, "out_read": 48, "unread_count": 0, "can_write": {"allowed": false, "reason": 925}},
+   "last_message": {"id": 48, "conversation_message_id": 9, "date": 1794990000, "from_id": -1234567, "peer_id": 2000000002, "out": 1, "text": "Спасибо, ждём вас!", "attachments": [{"type": "photo"}]}}],
+  "profiles": [{"id": 2000000001, "first_name": "Анна", "last_name": "Тестова"}, {"id": 2000000002, "first_name": "Пётр", "last_name": "Примеров"}]}}

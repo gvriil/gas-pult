@@ -1,0 +1,2 @@
+{"_source": "base_error из vkcom/vk-api-schema, код 6 — «слишком много запросов в секунду».",
+ "error": {"error_code": 6, "error_msg": "Too many requests per second"}}
